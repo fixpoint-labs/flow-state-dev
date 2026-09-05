@@ -25,20 +25,53 @@ interface EmitProvenance {
 }
 
 /**
+ * Where this run sits, as the runtime describes it on `ctx._blockIdentity`.
+ *
+ * Both fields go on **every** item, which is what every canonical emit site in
+ * the framework does. They are not decoration: `taskId` is what puts an item in
+ * a task's own item list, and `ownedBy` is what nests it inside an enclosing
+ * container. A harness that drops them emits items a manager cannot attribute
+ * to the task it dispatched — and running inside a manager's task scope is the
+ * entire reason this package exists.
+ *
+ * Absent outside a task scope, and then the keys are omitted rather than set to
+ * `undefined`, so a persisted item does not carry a key that means nothing.
+ */
+interface EmitScope {
+  taskId?: string;
+  ownedBy?: string;
+}
+
+/** Read the run's scope off the block identity. */
+function deriveScope(ctx: BlockContext): EmitScope {
+  const identity = (ctx as { _blockIdentity?: { taskId?: string; ownedBy?: string } })
+    ._blockIdentity;
+  return {
+    ...(identity?.taskId !== undefined ? { taskId: identity.taskId } : {}),
+    ...(identity?.ownedBy !== undefined ? { ownedBy: identity.ownedBy } : {}),
+  };
+}
+
+/**
  * Emission bookkeeping for one run: the `tool_output` items opened by a call
  * and awaiting their result, and the run's last assistant text.
+ *
+ * Deliberately NOT tracking the distinct tool names a run used, as the Claude
+ * Code emitter does. That sibling puts them on its handle, but nothing in this
+ * repository reads the field, and nothing in the neutral contract does — a
+ * manager settles a run on `status`, `outcome`, `sessionId`, `usage` and `cost`.
+ * Accumulating it here to match the sibling would mean either a list nobody
+ * reads, or inventing a consumer to justify writing it.
  */
 export interface EmitState {
   readonly openTools: Map<string, { id: string; name: string; arguments: string }>;
-  /** Distinct tool names observed, in first-seen order. */
-  readonly toolsObserved: string[];
   /** The last completed assistant message — the run's `finalMessage`. */
   finalMessage: string | null;
 }
 
 /** Create a fresh {@link EmitState} for one run. */
 export function createEmitState(): EmitState {
-  return { openTools: new Map(), toolsObserved: [], finalMessage: null };
+  return { openTools: new Map(), finalMessage: null };
 }
 
 const CONVERSATIONAL_VISIBILITY = { client: true, history: true } as const;
@@ -68,7 +101,12 @@ function mintId(kind: string): string {
   return `item_${kind}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-/** Per-item base fields, reading a fresh `itemIndex` each call. */
+/**
+ * Per-item base fields, reading a fresh `itemIndex` each call.
+ *
+ * Every item this package creates goes through here, so the scope is stamped in
+ * one place rather than remembered at six call sites.
+ */
 function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) {
   return {
     id: mintId(kind),
@@ -76,6 +114,7 @@ function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) 
     itemIndex: ctx.response.getItemCount(),
     provenance,
     ts: Date.now(),
+    ...deriveScope(ctx),
   };
 }
 
@@ -163,7 +202,6 @@ async function emitToolCall(
   provenance: EmitProvenance,
   blockName: string,
 ): Promise<void> {
-  if (!state.toolsObserved.includes(event.name)) state.toolsObserved.push(event.name);
   const base = buildBase(ctx, provenance, "tool");
   const item = {
     ...base,
@@ -203,9 +241,6 @@ async function emitToolResult(
 ): Promise<void> {
   const open = state.openTools.get(event.callId);
   const isOrphan = open === undefined;
-  if (isOrphan && !state.toolsObserved.includes(event.name)) {
-    state.toolsObserved.push(event.name);
-  }
   const item = {
     id: open?.id ?? mintId("tool"),
     type: "tool_output" as const,
@@ -214,6 +249,7 @@ async function emitToolResult(
     itemIndex: ctx.response.getItemCount(),
     provenance,
     ts: Date.now(),
+    ...deriveScope(ctx),
     blockName: open?.name ?? event.name,
     output: event.output,
     toolCall: {
@@ -271,6 +307,7 @@ export async function finalizeOpenItems(
         itemIndex: ctx.response.getItemCount(),
         provenance,
         ts: Date.now(),
+        ...deriveScope(ctx),
         blockName: open.name,
         output: null,
         toolCall: {

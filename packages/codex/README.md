@@ -17,7 +17,13 @@ The SDK is an **exact-pinned optional peer**, and the pin is enforced: building 
 block against any other installed version throws, naming both versions. Codex's
 JSONL output sits behind an experimental flag and can change in a lockstep CLI and
 SDK release, so every Codex upgrade is a tested release of this package rather
-than something a host can take on its own. There is no override option.
+than something a host can take on its own. There is no override option — the
+version reader is not reachable from the public options, deliberately, because a
+host that could answer it could run an unvalidated wire.
+
+The gate fails **closed**: an SDK that is present but whose version cannot be
+determined (Yarn PnP, a custom loader) is refused too. "Nothing is installed" is
+safe; "I cannot tell" is not.
 
 At runtime Codex needs `CODEX_API_KEY` or a logged-in account, and expects a git
 repository unless `skipGitRepoCheck` says otherwise.

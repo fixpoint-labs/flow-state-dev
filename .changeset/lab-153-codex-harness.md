@@ -1,28 +1,9 @@
 ---
-"@flow-state-dev/codex": minor
+"@flow-state-dev/codex": patch
 ---
 
-LAB-153: a new `@flow-state-dev/codex` package runs OpenAI's Codex agent as a
-block, returning the framework's neutral harness handle — the same shape
-`@flow-state-dev/claude-code` returns, so a caller that reads the handle can drive
-either agent.
+LAB-153: new package `@flow-state-dev/codex` runs OpenAI's Codex agent as a block, returning the same neutral harness handle `@flow-state-dev/claude-code` returns.
 
-`codexAgent()` starts or resumes a Codex thread in a directory the host resolves,
-mirrors the run's messages, reasoning, commands and file changes into the item
-stream, and returns the handle. `createCodexAgentCapability()` exposes it to a
-generator as a tool.
+`codexAgent()` starts or resumes a Codex thread in a directory you resolve, mirrors the run into the item stream, and returns the handle; `createCodexAgentCapability()` exposes it to a generator as a tool. The block's input is the prompt — where a run writes (`cwd`) and which thread it continues (`resume`) are resolvers you supply, and `onSession` is called with the thread id mid-run so a cancelled run stays resumable.
 
-Where a run writes and which conversation it continues are configuration, never
-block input: the block is model-facing through its capability, so both arrive
-through resolvers the host writes. `onSession` is the write side of `resume` — it
-is called with the thread id the moment the run names one, before the run does any
-work, so a run a deadline cancels is still resumable.
-
-Codex is driven through `@openai/codex-sdk`, an **exact-pinned optional peer**.
-Building against any other installed version throws, naming both versions: the
-JSONL wire is experimental and can change in a lockstep CLI and SDK release, so a
-Codex upgrade is a tested release of this package rather than something a host
-takes on its own.
-
-Cost is an estimate from the framework's model price table, and absent rather than
-zero when the model is unknown, unpriced, or the turn reported no usage.
+Requires `@openai/codex-sdk` at exactly 0.152.1 as an optional peer. Building against any other installed version throws, and so does a version that cannot be determined; there is no override. Cost on the handle is an estimate and is `null` — never `0` — when the model is unknown, unpriced, or the turn reported no usage.

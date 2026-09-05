@@ -32,7 +32,12 @@ import {
 import { createEmitState, emitTranslatedEvent, finalizeOpenItems } from "./emit";
 import { translateCodexEvent } from "./translate";
 import { estimateCodexCost } from "./cost";
-import { CodexAgentAbortedError, CodexAgentConfigError, CodexAgentRunError } from "./errors";
+import {
+  CodexAgentAbortedError,
+  CodexAgentConfigError,
+  CodexAgentRunError,
+  CodexSdkNotInstalledError,
+} from "./errors";
 import {
   CODEX_SOURCE,
   codexAgentHandleSchema,
@@ -121,16 +126,28 @@ export interface CodexAgentOptions {
   client?: CodexClientOptions;
   /** Host hook resolving the Codex client. Default: lazy SDK import. */
   resolveCodexClient?: ResolveCodexClient;
-  /**
-   * How the version gate reads the installed SDK's version. A seam for the
-   * gate's own specs, not a way for a host to change the answer — there is no
-   * option that disables the refusal.
-   */
-  readInstalledSdkVersion?: InstalledSdkVersionReader;
   /** Capabilities forwarded to the underlying handler. */
   uses?: UsesSlot;
   /** Block name. Default `"codex-agent"`. */
   name?: string;
+}
+
+/**
+ * The version gate's test seam, keyed by a symbol this module does not export
+ * from the package root.
+ *
+ * It is deliberately not a field on {@link CodexAgentOptions}. A host able to
+ * substitute its own version reader could answer with the tested version and run
+ * an unvalidated wire — which would make the exact-version refusal, one of the
+ * three things this package promises, a claim rather than a guarantee. The specs
+ * import this symbol from the module directly; a consumer of the package cannot
+ * name it, so the only reachable behaviour is the real gate.
+ */
+export const INTERNAL_SDK_VERSION_READER = Symbol("codex.internal.readInstalledSdkVersion");
+
+/** The shape the specs pass through the symbol above. */
+interface InternalTestSeams {
+  [INTERNAL_SDK_VERSION_READER]?: InstalledSdkVersionReader;
 }
 
 /** Option-group keys the block owns and therefore refuses to forward. */
@@ -176,12 +193,13 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     thread: threadOptions,
     client: clientOptions,
     resolveCodexClient = createDefaultResolveCodexClient(clientOptions ?? {}),
-    readInstalledSdkVersion = readInstalledCodexSdkVersion,
     uses,
     name = "codex-agent",
   } = options;
 
-  assertTestedSdkVersion(readInstalledSdkVersion);
+  assertTestedSdkVersion(
+    (options as InternalTestSeams)[INTERNAL_SDK_VERSION_READER] ?? readInstalledCodexSdkVersion,
+  );
   assertNoOwnedKeys(
     threadOptions as Record<string, unknown> | undefined,
     REFUSED_THREAD_KEYS,
@@ -247,7 +265,6 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       const emitState = createEmitState();
       let sessionId: string | null = resumeId;
       let hookFired = false;
-      let finalMessage: string | null = null;
       let usage: CodexRunUsage | null = null;
       let failureMessage: string | null = null;
       // Tracked beside the outcome, never derived from it: a terminal turn
@@ -267,7 +284,15 @@ export function codexAgent(options: CodexAgentOptions = {}) {
         const deadline = abortRace(ctx.signal);
         try {
           for (;;) {
-            const next = await Promise.race([iterator.next(), deadline.promise]);
+            const pending = iterator.next();
+            // The losing side of a race still settles, and nothing is awaiting
+            // it any more. When the deadline wins, the CLI is killed moments
+            // later and this rejects — unhandled, which can take a host's
+            // process down over a cancel that worked. Claiming the rejection
+            // here does not hide it from the `await` below: a promise may have
+            // any number of reactions, and the one that matters still sees it.
+            pending.catch(() => {});
+            const next = await Promise.race([pending, deadline.promise]);
             if (next.done === true) break;
             for (const event of translateCodexEvent(next.value)) {
               if (event.kind === "thread_started") {
@@ -297,26 +322,25 @@ export function codexAgent(options: CodexAgentOptions = {}) {
           }
         } finally {
           deadline.dispose();
+          // Tell the stream nobody is reading it any more. On the normal path
+          // the generator is already done and this is a no-op; on the abort and
+          // throw paths it is what lets the SDK release the reader instead of
+          // holding it for a consumer that has gone.
+          void iterator.return?.().catch(() => {});
         }
       } catch (err) {
         await finalizeOpenItems(ctx, emitState, name);
-        const wrapped =
-          err instanceof CodexAgentAbortedError
-            ? new CodexAgentAbortedError(sessionId)
-            : new CodexAgentRunError(`Codex run failed: ${(err as Error).message}`, {
-                cause: (err as Error).message,
-              });
+        const failure = toRunFailure(err, sessionId);
         await emitTranslatedEvent(
-          { kind: "error", message: wrapped.message, code: wrapped.code },
+          { kind: "error", message: failure.message, code: failure.code },
           ctx,
           emitState,
           name,
         );
-        throw wrapped;
+        throw failure;
       }
 
       await finalizeOpenItems(ctx, emitState, name);
-      finalMessage = emitState.finalMessage ?? finalMessage;
 
       const handle: CodexAgentHandle = {
         source: CODEX_SOURCE,
@@ -328,7 +352,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
         url: null,
         dispatchedAt,
         outcome,
-        finalMessage,
+        finalMessage: emitState.finalMessage,
         usage:
           usage === null ? null : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
         cost: estimateCodexCost(usage, threadOptions?.model),
@@ -347,6 +371,35 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     },
   });
 }
+
+/**
+ * The error a failed run should throw, given whatever the stream threw.
+ *
+ * Re-wrapping everything loses two things that matter. A caller branches on the
+ * error CLASS — an abort is a deadline the caller set, a missing SDK is a
+ * configuration mistake, and neither is "the run failed" — and `(err as Error)
+ * .message` on a value that is not an `Error` is `undefined`, so a string throw
+ * from the vendor produced the message "Codex run failed: undefined" at exactly
+ * the moment an operator needed it to say something.
+ *
+ * So: our own classes pass through, and a foreign throw is wrapped with its
+ * original kept on the native `cause` chain rather than flattened to a string.
+ */
+function toRunFailure(err: unknown, sessionId: string | null): CodexAgentError {
+  // Re-minted rather than passed through: the abort raised inside the race
+  // knows no thread id, and the id is the whole point of the error — it is what
+  // lets a manager resume the run its own deadline killed.
+  if (err instanceof CodexAgentAbortedError) return new CodexAgentAbortedError(sessionId);
+  // Already ours. Wrapping again buries the class under a second
+  // "Codex run failed:" prefix and tells a caller nothing new.
+  if (err instanceof CodexSdkNotInstalledError) return err;
+  if (err instanceof CodexAgentRunError) return err;
+  const reason = err instanceof Error ? err.message : String(err);
+  return new CodexAgentRunError(`Codex run failed: ${reason}`, { cause: reason }, err);
+}
+
+/** Any of this package's errors that a failed run can end as. */
+type CodexAgentError = CodexAgentAbortedError | CodexAgentRunError | CodexSdkNotInstalledError;
 
 /**
  * Start the turn, forwarding the block's own signal into it.
@@ -384,6 +437,17 @@ function abortRace(signal: AbortSignal | undefined): {
 } {
   if (signal === undefined) {
     return { promise: new Promise<never>(() => {}), dispose: () => {} };
+  }
+  // An AbortSignal that is ALREADY aborted never fires `abort` again, so a
+  // listener on its own would wait forever. That is not a hypothetical window:
+  // the two resolvers, the SDK import, the thread start and `runStreamed` all
+  // await before this is armed, and a deadline landing anywhere in there would
+  // leave the block waiting on the vendor's stream — the exact hang the race
+  // exists to prevent, arrived at by the one path the race did not cover.
+  if (signal.aborted) {
+    const rejected = Promise.reject(new CodexAgentAbortedError(null));
+    rejected.catch(() => {});
+    return { promise: rejected, dispose: () => {} };
   }
   let onAbort: () => void = () => {};
   const promise = new Promise<never>((_resolve, reject) => {

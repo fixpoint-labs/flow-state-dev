@@ -261,11 +261,30 @@ export type ResolveCodexClient = (
 ) => ResolvedCodexClient | Promise<ResolvedCodexClient>;
 
 /**
- * How the version gate learns which SDK is installed. Returns `null` when none
- * is. A seam only so the refusal is testable against versions other than the
- * one on this disk; there is no option that lets a HOST change the answer.
+ * What the version gate could learn about the installed SDK.
+ *
+ * Three answers, not two, and the third is the one that matters. `absent` and
+ * `unreadable` both used to be `null`, and the gate PASSED on `null` — so a
+ * layout the manifest walk cannot see (Yarn PnP, a custom loader) let an
+ * unvalidated SDK through a gate whose whole purpose is to refuse one, while the
+ * dynamic import went on resolving and running it. A safety gate must fail
+ * closed: "there is nothing installed" is safe, "I cannot tell" is not.
  */
-export type InstalledSdkVersionReader = () => string | null;
+export type InstalledSdkVersion =
+  | { kind: "absent" }
+  | { kind: "version"; version: string }
+  | { kind: "unreadable"; reason: string };
+
+/**
+ * How the version gate learns which SDK is installed.
+ *
+ * A seam only so the refusal is testable against versions other than the one on
+ * this disk. It is deliberately NOT reachable from `CodexAgentOptions`: a host
+ * that could substitute its own reader could answer with the tested version and
+ * run an unvalidated wire, which would make the package's exact-version refusal
+ * a claim rather than a guarantee.
+ */
+export type InstalledSdkVersionReader = () => InstalledSdkVersion;
 
 // ---------------------------------------------------------------------------
 // The pure translation layer's output

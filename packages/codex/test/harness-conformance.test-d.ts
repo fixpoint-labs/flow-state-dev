@@ -19,12 +19,12 @@
  * `typecheck` script runs it after the `src` pass.
  */
 import type { HarnessBlock } from "@flow-state-dev/core/types";
-import { codexAgent } from "../src/agent";
+import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 
 const agent = codexAgent({
   // Never called: this file is compiled, not run. The version gate is stubbed
   // out for the same reason — a compile must not depend on what is on disk.
-  readInstalledSdkVersion: () => null,
+  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "absent" }),
   resolveCodexClient: () => ({
     startThread: () => {
       throw new Error("unused");
@@ -33,7 +33,7 @@ const agent = codexAgent({
       throw new Error("unused");
     },
   }),
-});
+} as CodexAgentOptions);
 
 // Red if the Codex harness drifts off the contract in either direction.
 const conforms: HarnessBlock = agent;

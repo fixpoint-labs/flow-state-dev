@@ -25,7 +25,7 @@ import { codexAgent, type CodexAgentOptions } from "./agent";
  */
 export function createCodexAgentCapability(options: CodexAgentOptions = {}) {
   const agent = codexAgent(options);
-  const resources = promotedResources(options.uses);
+  const resources = promotedResources(agent);
 
   return defineCapability({
     name: "codex-agent",
@@ -38,7 +38,7 @@ export function createCodexAgentCapability(options: CodexAgentOptions = {}) {
 }
 
 /**
- * The resource declarations of the statically-listed `uses` capabilities.
+ * The resource declarations the built agent block ended up with.
  *
  * They cannot stay where they were installed. `uses` puts them on the agent
  * handler, the handler is a tool inside this capability's preset, and a tool's
@@ -47,16 +47,20 @@ export function createCodexAgentCapability(options: CodexAgentOptions = {}) {
  * only. So the capability would be live at runtime with `ctx.resources` entries
  * resolving to nothing, and the route would 404 on a build that succeeded.
  *
- * Dynamic entries are skipped: they resolve per call, and a resource has to
- * exist before the block runs. Two capabilities claiming one accessor name is
- * already the framework's refusal to make, by name, at construction.
+ * **Read off the CONSTRUCTED block, not off the `uses` list.** Walking the list
+ * and taking each reference's top-level `resources` sees only what a capability
+ * declares at its own root: it misses resources an active preset contributes,
+ * ones an open-config capability resolves when it is applied, and ones a nested
+ * capability declares. `handler()` has already resolved all of that into
+ * `declaredResources`, so asking the block is both simpler and complete.
+ *
+ * Dynamic `uses` entries still contribute nothing here, and that is the
+ * framework's constraint rather than this function's: they resolve per call, and
+ * a resource has to exist before the block runs. Two capabilities claiming one
+ * accessor name is already the framework's refusal to make, at construction.
  */
-function promotedResources(uses: CodexAgentOptions["uses"]): Record<string, DeclaredResourceEntry> {
-  const out: Record<string, DeclaredResourceEntry> = {};
-  for (const entry of uses ?? []) {
-    if (typeof entry === "function") continue;
-    const declared = (entry as { resources?: Record<string, DeclaredResourceEntry> }).resources;
-    Object.assign(out, declared ?? {});
-  }
-  return out;
+function promotedResources(agent: {
+  declaredResources?: Record<string, DeclaredResourceEntry>;
+}): Record<string, DeclaredResourceEntry> {
+  return { ...(agent.declaredResources ?? {}) };
 }

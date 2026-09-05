@@ -11,12 +11,19 @@
 import { describe, it, expect } from "vitest";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { harnessRunHandleSchema } from "@flow-state-dev/core";
-import { codexAgent } from "../src/agent";
+import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 import { CodexAgentAbortedError, CodexAgentConfigError, CodexAgentRunError } from "../src/errors";
-import { TESTED_SDK_VERSION, type CodexAgentHandle, type CodexThreadEvent } from "../src/types";
+import {
+  TESTED_SDK_VERSION,
+  type CodexAgentHandle,
+
+  type CodexThreadEvent,
+} from "../src/types";
 
 /** Every spec below builds against a stubbed version gate; slice 1 owns the gate itself. */
-const GATE_OFF = { readInstalledSdkVersion: () => TESTED_SDK_VERSION };
+const GATE_OFF = {
+  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+} as CodexAgentOptions;
 
 interface Recorder {
   started: Array<Record<string, unknown> | undefined>;
@@ -432,6 +439,40 @@ describe("codexAgent — the endings", () => {
     expect(seen).toEqual(["thr_1"]);
   });
 
+  it("a throw that is not an Error still names what happened", async () => {
+    // `(err as Error).message` on a string throw is `undefined`, so the run
+    // error reads "Codex run failed: undefined" — a message that tells an
+    // operator nothing at the one moment they need it to.
+    const { resolve } = scripted([], { throwOnRun: "codex exploded" as unknown as Error });
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+    const { error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error?.cause).toBeInstanceOf(CodexAgentRunError);
+    expect((error?.cause as Error).message).toContain("codex exploded");
+    expect((error?.cause as Error).message).not.toContain("undefined");
+  });
+
+  it("does not re-wrap an error that is already one of ours", async () => {
+    // A nested run error re-wrapped picks up a second "Codex run failed:"
+    // prefix and loses the class a caller branches on.
+    const original = new CodexAgentRunError("Codex run failed: the first time");
+    const { resolve } = scripted([], { throwOnRun: original });
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+    const { error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error?.cause).toBe(original);
+    expect((error?.cause as Error).message).toBe("Codex run failed: the first time");
+  });
+
+  it("keeps the original error reachable through the native cause chain", async () => {
+    const original = new TypeError("stream is not iterable");
+    const { resolve } = scripted([], { throwOnRun: original });
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+    const { error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect((error?.cause as Error).cause).toBe(original);
+  });
+
   it("an empty prompt throws before anything is spawned", async () => {
     const { resolve, rec } = scripted(OK_STREAM);
     const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
@@ -477,6 +518,70 @@ describe("codexAgent — cancellation", () => {
     // The id is already in the host's durable state, so the manager can resume
     // the run its own deadline killed.
     expect(seen).toEqual(["thr_1"]);
+  }, 15_000);
+
+  it("throws when the deadline fires in the window BEFORE the stream is being read", async () => {
+    // The gap the up-front `signal.aborted` check does not cover: the resolvers,
+    // the SDK import, the thread start and `runStreamed` all await before the
+    // race is armed. An AbortSignal that is ALREADY aborted never fires `abort`
+    // again, so a listener registered after the fact waits forever — and the
+    // block falls back to waiting on the vendor's stream, which is the exact
+    // hang the race exists to prevent.
+    const ac = new AbortController();
+    const { resolve } = scripted(async function* () {
+      yield { type: "thread.started", thread_id: "thr_1" } as CodexThreadEvent;
+      await new Promise((r) => setTimeout(r, 10_000));
+    });
+    const block = codexAgent({
+      ...GATE_OFF,
+      resolveCodexClient: resolve,
+      // Stands in for any await in that window: a host resolver reading its own
+      // state while the deadline runs out.
+      cwd: () => {
+        ac.abort();
+        return "/work/checkout";
+      },
+    });
+    const runtime = await createTestContext({});
+    (runtime.ctx as { signal?: AbortSignal }).signal = ac.signal;
+
+    const startedAt = Date.now();
+    await expect(
+      block.config.execute?.({ prompt: "go" }, runtime.ctx as never),
+    ).rejects.toBeInstanceOf(CodexAgentAbortedError);
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+  }, 15_000);
+
+  it("does not orphan the stream's rejection when the deadline wins the race", async () => {
+    // The abandoned side of `Promise.race` still settles. The CLI dying makes
+    // that pending `next()` reject moments later with nothing awaiting it, which
+    // surfaces as an unhandled rejection and can take a host's process down.
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const ac = new AbortController();
+      const { resolve } = scripted(async function* () {
+        yield { type: "thread.started", thread_id: "thr_1" } as CodexThreadEvent;
+        // The stream the block walked away from, failing the way a killed CLI does.
+        await new Promise((r) => setTimeout(r, 50));
+        throw new Error("Codex Exec exited with code 143");
+      });
+      const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+      const runtime = await createTestContext({});
+      (runtime.ctx as { signal?: AbortSignal }).signal = ac.signal;
+      setTimeout(() => ac.abort(), 10);
+
+      await expect(
+        block.config.execute?.({ prompt: "go" }, runtime.ctx as never),
+      ).rejects.toBeInstanceOf(CodexAgentAbortedError);
+
+      // Let the abandoned promise settle before judging.
+      await new Promise((r) => setTimeout(r, 300));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   }, 15_000);
 
   it("a signal already aborted stops the run without spawning anything", async () => {

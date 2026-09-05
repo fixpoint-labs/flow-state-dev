@@ -14,6 +14,7 @@
  * Tests inject a scripted client through their own resolver and never touch the
  * real SDK — the shape `claude-code/sdk/sdk-client.ts` already uses.
  */
+import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { dirname, join, parse } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +22,7 @@ import { CodexSdkNotInstalledError, CodexSdkVersionMismatchError } from "./error
 import { TESTED_SDK_VERSION } from "./types";
 import type {
   CodexClientOptions,
+  InstalledSdkVersion,
   InstalledSdkVersionReader,
   ResolveCodexClient,
   ResolvedCodexClient,
@@ -36,25 +38,27 @@ const defaultImporter: CodexSdkImporter = () =>
   import(/* @vite-ignore */ SDK_MODULE) as Promise<{ Codex?: unknown }>;
 
 /**
- * Read the version of the `@openai/codex-sdk` installed beside this package, or
- * `null` when none is.
+ * What can be established about the `@openai/codex-sdk` installed beside this
+ * package: its version, that there is none, or that we cannot tell.
  *
- * Walks `node_modules` upward from this module rather than asking the module
- * resolver, because the resolver cannot answer this question. The SDK's
- * `exports` map publishes only `.` under the `import` condition, so
- * `require.resolve("@openai/codex-sdk/package.json")` throws
- * `ERR_PACKAGE_PATH_NOT_EXPORTED` and `require.resolve("@openai/codex-sdk")`
- * throws too — on a package that is installed and perfectly usable. Either
- * would read as "not installed" and let an untested wire through the gate,
- * which is the one thing this function exists to prevent.
+ * The version comes from walking `node_modules` upward for the SDK's manifest,
+ * rather than asking the module resolver, because the resolver cannot answer
+ * this question: the SDK's `exports` map publishes only `.` under the `import`
+ * condition, so `require.resolve("@openai/codex-sdk/package.json")` throws
+ * `ERR_PACKAGE_PATH_NOT_EXPORTED` on a package that is installed and perfectly
+ * usable. The walk is the same one Node performs for a bare specifier, minus the
+ * `exports` enforcement, which is not relevant to reading a manifest.
  *
- * The walk is the same one Node performs for a bare specifier, minus the
- * `exports` enforcement that is not relevant to reading a manifest. An exotic
- * layout the walk cannot see (Yarn PnP) yields `null`, which the gate treats as
- * "no SDK installed" — the run then fails at first use with the install hint
- * rather than silently on a wrong wire.
+ * **The third answer is the one that matters.** A layout the walk cannot see —
+ * Yarn PnP, a custom loader — is not the same fact as "nothing is installed",
+ * and reporting it as such let an unvalidated SDK through the very gate that
+ * exists to refuse one, while the dynamic import went on loading and running it.
+ * So when the walk comes up empty the resolver is asked to distinguish the two,
+ * using its failure mode: `MODULE_NOT_FOUND` means there is genuinely nothing
+ * there; anything else means the SDK is present and only its version is
+ * unknown, which the gate refuses.
  */
-export function readInstalledCodexSdkVersion(): string | null {
+export function readInstalledCodexSdkVersion(): InstalledSdkVersion {
   let dir = dirname(fileURLToPath(import.meta.url));
   const { root } = parse(dir);
   for (;;) {
@@ -62,12 +66,37 @@ export function readInstalledCodexSdkVersion(): string | null {
       const manifest = JSON.parse(
         readFileSync(join(dir, "node_modules", ...SDK_MODULE.split("/"), "package.json"), "utf8"),
       ) as { version?: string };
-      if (typeof manifest.version === "string") return manifest.version;
+      if (typeof manifest.version === "string") {
+        return { kind: "version", version: manifest.version };
+      }
     } catch {
       // Not installed at this level, or an unreadable manifest — keep walking.
     }
-    if (dir === root) return null;
+    if (dir === root) break;
     dir = dirname(dir);
+  }
+
+  // The walk found nothing. That is only safe if the SDK is genuinely not
+  // installed, so ASK THE RESOLVER rather than assuming it — a layout the walk
+  // cannot see would otherwise read as "absent" and pass the gate while the
+  // dynamic import went on loading and running the very SDK we failed to check.
+  //
+  // The resolver's failure mode is the discriminator. `MODULE_NOT_FOUND` means
+  // there is nothing there. Anything else — notably `ERR_PACKAGE_PATH_NOT_EXPORTED`,
+  // which this package's `exports` map produces for a `require` — means the SDK
+  // IS present and we simply could not read its version.
+  try {
+    createRequire(import.meta.url).resolve(SDK_MODULE);
+    return { kind: "unreadable", reason: "its manifest could not be located" };
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
+      return { kind: "absent" };
+    }
+    return {
+      kind: "unreadable",
+      reason: `its manifest could not be located and resolving it failed with ${code ?? "an unknown error"}`,
+    };
   }
 }
 
@@ -80,8 +109,15 @@ export function readInstalledCodexSdkVersion(): string | null {
  */
 export function assertTestedSdkVersion(read: InstalledSdkVersionReader): void {
   const installed = read();
-  if (installed === null || installed === TESTED_SDK_VERSION) return;
-  throw new CodexSdkVersionMismatchError(installed, TESTED_SDK_VERSION);
+  // Nothing installed: no version to check, and no wire to run. The absence
+  // surfaces on the first run as an install hint instead (§9).
+  if (installed.kind === "absent") return;
+  if (installed.kind === "version" && installed.version === TESTED_SDK_VERSION) return;
+  throw new CodexSdkVersionMismatchError(
+    installed.kind === "version" ? installed.version : null,
+    TESTED_SDK_VERSION,
+    installed.kind === "unreadable" ? installed.reason : undefined,
+  );
 }
 
 /**
@@ -101,7 +137,12 @@ export function createDefaultResolveCodexClient(
     try {
       mod = await importSdk();
     } catch (err) {
-      throw new CodexSdkNotInstalledError(undefined, { cause: (err as Error).message });
+      // `String(err)` rather than `err.message`: an import can reject with
+      // something that is not an `Error`, and the install hint reading
+      // "undefined" would waste the one message a host gets here.
+      throw new CodexSdkNotInstalledError(undefined, {
+        cause: err instanceof Error ? err.message : String(err),
+      });
     }
     if (typeof mod.Codex !== "function") {
       throw new CodexSdkNotInstalledError(

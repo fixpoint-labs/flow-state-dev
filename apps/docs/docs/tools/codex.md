@@ -45,6 +45,11 @@ building a block against any other installed version fails immediately, naming
 both versions. There is no option to override it. The way to take a newer Codex
 is a release of `@flow-state-dev/codex` that has been tested against it.
 
+Building also fails if an SDK is installed but its version cannot be read, which
+can happen under Yarn PnP or a custom loader. A gate that guessed in that case
+would be no gate at all. Point `resolveCodexClient` at your own client if you
+need to run in a layout the check cannot see.
+
 The SDK brings the `codex` binary with it, so there is no separate CLI to
 install. At runtime it needs either `CODEX_API_KEY` in the environment or a
 logged-in Codex account. It also expects to work inside a git repository; pass
@@ -178,7 +183,7 @@ Every one of these is fatal for the run that raised it:
 |---|---|
 | Empty prompt | Throws before anything is spawned |
 | SDK not installed | Throws on the first run, with an install hint |
-| A different SDK version installed | Throws when the block is built, naming both versions |
+| A different SDK version installed, or one whose version cannot be read | Throws when the block is built |
 | A working directory or a signal in `thread` or `client` | Throws when the block is built |
 | The CLI exits non-zero | Throws, carrying its stderr |
 | The deadline fires | Throws |

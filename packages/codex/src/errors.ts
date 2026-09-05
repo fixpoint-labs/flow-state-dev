@@ -35,11 +35,26 @@ export class CodexSdkNotInstalledError extends Error {
  */
 export class CodexSdkVersionMismatchError extends Error {
   readonly code = "CODEX_SDK_VERSION_MISMATCH";
-  constructor(readonly installed: string, readonly tested: string) {
+  /**
+   * @param installed the version found, or `null` when an SDK is present but its
+   *   version could not be established. The gate refuses in BOTH cases: "there
+   *   is nothing installed" is safe, "I cannot tell what is installed" is not,
+   *   and a gate that passed the second would let an unchecked wire run.
+   * @param unreadableReason why the version could not be read, when it could not.
+   */
+  constructor(
+    readonly installed: string | null,
+    readonly tested: string,
+    readonly unreadableReason?: string,
+  ) {
     super(
-      `\`@openai/codex-sdk\` ${installed} is installed, but @flow-state-dev/codex is tested against exactly ${tested}. ` +
+      (installed === null
+        ? `\`@openai/codex-sdk\` is installed but its version could not be determined (${unreadableReason ?? "reason unknown"}), and @flow-state-dev/codex is tested against exactly ${tested}. `
+        : `\`@openai/codex-sdk\` ${installed} is installed, but @flow-state-dev/codex is tested against exactly ${tested}. `) +
         "Codex's JSONL wire is experimental and can change in a lockstep CLI+SDK release, so this package refuses to run against a version it has not checked. " +
-        `Pin \`@openai/codex-sdk\` to ${tested}, or take a release of @flow-state-dev/codex that tests ${installed}.`,
+        (installed === null
+          ? `Install \`@openai/codex-sdk\` ${tested} in a layout this package can read, or pass your own \`resolveCodexClient\`.`
+          : `Pin \`@openai/codex-sdk\` to ${tested}, or take a release of @flow-state-dev/codex that tests ${installed}.`),
     );
     this.name = "CodexSdkVersionMismatchError";
   }
@@ -65,8 +80,16 @@ export class CodexAgentConfigError extends Error {
  */
 export class CodexAgentRunError extends Error {
   readonly code = "CODEX_AGENT_RUN_FAILED";
-  constructor(message: string, readonly detail?: { cause?: string }) {
-    super(message);
+  /**
+   * @param detail carries the underlying message as a string, the shape the
+   *   Claude Code adapter's equivalent uses and the one a host can log.
+   * @param cause the original throw, forwarded to `Error`'s own `cause` so the
+   *   class and stack of whatever failed stay reachable. `detail.cause` alone
+   *   loses both, which is the difference between "the SDK threw" and knowing
+   *   what it threw and where.
+   */
+  constructor(message: string, readonly detail?: { cause?: string }, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause });
     this.name = "CodexAgentRunError";
   }
 }
