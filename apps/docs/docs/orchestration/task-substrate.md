@@ -200,7 +200,7 @@ A legal status transition is necessary but not sufficient. A verb that owns a si
 | `parked` | `unpark(id, feedback?)` |
 | `in_progress`, once its lease has expired | `reclaim()` |
 
-`unblock` runs on a blocked task and refuses every other status, raising the same `IllegalTaskTransitionError` an illegal transition raises, or declining with reason `disallowed` when you passed `ifAllowed`. If you reached for it to put a *running* task back in the queue, `reclaim()` is the call, and it works differently: it takes no task id, sweeps the whole collection, resets every `in_progress` task whose lease has passed, and resolves to the number it moved. A task parked for review goes back through `unpark`, which clears its lease on the way.
+`unblock` runs on a blocked task and refuses every other status, raising the same `IllegalTaskTransitionError` an illegal transition raises, or declining with reason `disallowed` when you passed `ifAllowed`. If you reached for it to put a *running* task back in the queue, `reclaim()` is the call, and it works differently: it takes no task id, sweeps the whole collection, resets every `in_progress` task whose lease has passed, and resolves to the number it moved. A task parked for review goes back through `unpark`, which clears its lease on the way. `unpark` runs on a parked task and refuses every other status whether or not you pass options: `{ outcome: "declined", reason: "disallowed", status }` for a live task, `reason: "terminal"` for a settled one, and nothing written either way. A task that has already been answered is `pending`, so a second answer is refused and the first stands. To get the answered work running as well, the board's `unparkAndDrain` step re-queues and drains in one call; see [Task board](./task-board.md#picking-it-back-up).
 
 `claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress` or `parked`). Two refusals come out of it, and they mean different things:
 
@@ -219,7 +219,7 @@ One caller is entitled to more than that: a worker that has not started yet. If 
 
 The lease answers one question: is a live worker on this right now? A task in `parked` is stopped on purpose and nobody is running it, so the lease has nothing to govern there. Its deadline can pass by any amount and your ticket still goes through: a `unpark` an hour into human review is recorded, and nothing reclaims the task while it waits. So when a task has to wait on a person for longer than any lease you would want to set, park it with `awaitReview` rather than holding a claim open on a running task.
 
-With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` is the exception and needs nothing, because it runs the terminal check whether you pass options or not.
+With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` and `unpark` are the exceptions and need nothing: `cancel` runs the terminal check whether you pass options or not, and `unpark` runs only from `parked`, refusing a task in any other status.
 
 
 ### What a write reports
@@ -266,7 +266,7 @@ if (outcome.outcome === "declined") {
 }
 ```
 
-`cancel` needs no guards to be advisory: cancelling a task that already settled declines with reason `terminal`, and the first settlement's reason and timestamps are left alone. Pass it a `claim` and that is honoured too. The other lifecycle methods decline only when you pass the guards above; without them an illegal transition throws.
+`cancel` needs no guards to be advisory: cancelling a task that already settled declines with reason `terminal`, and the first settlement's reason and timestamps are left alone. Pass it a `claim` and that is honoured too. `unpark` is the other: it declines on any task that is not parked, naming the status it found, and a settled task declines `terminal`. The other lifecycle methods decline only when you pass the guards above; without them an illegal transition throws.
 
 `setAssignee` is the one field mutator that refuses anything — it declines on a terminal task. `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to a terminal task, which is how a post-drain audit labels what went wrong, so those four answer only `recorded` or `unchanged`. `patchMetadata` merges the patch rather than comparing it, so it answers `recorded` even for a patch that changes nothing.
 

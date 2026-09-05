@@ -551,11 +551,11 @@ describe("the answer — one action, and the run comes back holding it", () => {
 
 describe("the guard — reported declines, and the row half of the pair", () => {
   it("refuses an answer to a row that was never parked, and says so", async () => {
-    // Behaviour 13. The substrate will not refuse for us — `unpark`
-    // passes no `requireFrom` and every remaining guard is behind `ifAllowed` —
-    // so a never-parked row would report `recorded` and the answer would land
-    // on a run nobody is waiting on. A silent decline is the defect class this
-    // lab exists to remove, relocated.
+    // Behaviour 13. The substrate refuses a non-parked task too (`unpark` is
+    // fenced to `parked` since FIX-1244); this pins conductor's own row-level
+    // half, the one that tells attempt 1's withdrawn row from attempt 2's open
+    // one. A silent decline is the defect class this lab exists to remove,
+    // relocated.
     const seen = seenTurns();
     live = createConductorHarness({
       resolveClaudeAgent: turnAgent([{ question: "which path?", subtype: "success" }], seen),

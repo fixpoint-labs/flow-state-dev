@@ -20,10 +20,13 @@
  *
  * ## The guard is conductor's own, and it is a PAIR
  *
- * The substrate will not refuse for us: `unpark` passes no
- * `requireFrom` and every remaining guard is behind `ifAllowed`, which this
- * design does not adopt — so a row that was never parked reports `recorded` and
- * the answer lands on a run nobody is waiting on. So the guard is here.
+ * The substrate refuses a non-parked task itself since FIX-1244 — `unpark` is
+ * fenced to `parked` and declines otherwise — so the task-level half of this
+ * guard is redundant with it. The guard stays because its other half is
+ * conductor's own (the ROW must still be `open`, below) and because
+ * collapsing `answer` onto `board.unparkAndDrain` is a follow-up, not this
+ * change. Until then `decideAnswer` still calls the verb bare and does not
+ * read its verdict.
  *
  * **Parked AND the named row still `open`.** The task is shared across
  * attempts; the row is per-attempt. Attempt 1 asks and fails, so its row is
@@ -79,9 +82,10 @@
  *
  * - **The refusal is right on the common path, not on the race.** This reads
  *   the board row and then calls `unpark`, and the row can move
- *   between them. Closing that means the verb itself refuses a non-parked row
- *   atomically, which is FIX-1244's. Do not invent a lock, a compare-and-set,
- *   or a conductor-side status.
+ *   between them. The verb itself now refuses a non-parked row atomically
+ *   (FIX-1244) and returns `declined`; this code does not yet read that
+ *   verdict. Do not invent a lock, a compare-and-set, or a conductor-side
+ *   status — collapse onto the atomic verb instead, as a follow-up.
  * - **A second answer arriving mid-flight is dropped, not refused.** While the
  *   row is `answered` and the sequence is still moving, recovery cannot tell a
  *   second answer from a replay of the first: it resumes the run holding the

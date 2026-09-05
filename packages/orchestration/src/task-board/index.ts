@@ -472,8 +472,9 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * - `"exit"`: a parked task is not this drain's to wait on. The drain
    *   finishes and returns, the completion item reports
    *   `terminationReason: "parked-for-review"`, and the task stays parked and
-   *   durable. A later `unpark` re-queues it — it does not start
-   *   anything, so whatever drains the board next is what picks it up.
+   *   durable. `unparkAndDrain` is the return trip: it re-queues the task
+   *   and runs this drain in the answering request (FIX-1244). A bare
+   *   `unpark` only re-queues, and whatever drains the board next picks it up.
    *
    * Separate from `onIdle` deliberately, and **refused at construction** on
    * three configurations it cannot serve: a board whose tasks don't outlive

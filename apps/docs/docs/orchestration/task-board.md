@@ -99,7 +99,7 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
 - `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
 - `"handed-off"` — every task still outstanding is running in a child session. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a [seat that hands off](#seats-that-hand-off) reports it, and `counts.in_progress` is how many are still running.
-- `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"handed-off"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked.
+- `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"handed-off"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
 
 Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, was moved to `blocked`, or is `pending` behind a dep that will never complete. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. A refused retry outranks all of them.
 
@@ -182,43 +182,41 @@ With that set, a task in `parked` is not counted as work the drain waits on. Onc
 
 ### Picking it back up
 
-A resume moves the task back to `pending`. `tasks` is the board's task list, which any block reaches through the board's capability. See [Commanding the board with its capability](#commanding-the-board-with-its-capability):
+The answer goes in through `board.unparkAndDrain`, a step you mount like any other block. It takes the id of the parked task and the answer, moves the task back to `pending`, and drains the board in the same request, so the work restarts right there:
 
 ```ts
-const tasks = await ctx.cap.reviews.tasks();
-await tasks.unpark("draft-42", "approved, ship it");
-```
-
-The second argument is feedback for whoever picks the task up. It reaches the worker as `input.feedback` on the next attempt. A task that has never been reviewed has no `feedback`, so a worker can branch on it.
-
-**A resume re-queues the task. It does not start anything.** Nothing is watching the board on your behalf, so a resumed task sits in `pending` until something drains the board again: a later turn from the user, a scheduled action, or a background job. If you resume a task and nothing happens, this is why. Run the drain:
-
-```ts
-// Later, in a new request:
-await runAction({
-  flow,
-  actionName: "drain-reviews",
-  input: {},
-  userId,
-  sessionId, // the session whose task list holds the parked task
-  stores,
-  runtimeConfig: {},
+const flow = defineFlow({
+  kind: "reviews",
+  actions: {
+    drain: { block: board.drain },
+    answer: { block: board.unparkAndDrain },
+  },
 });
+
+// A later request runs the `answer` action with
+// { taskId: "draft-42", feedback: "approved, ship it" }
 ```
 
-**The later drain has to reach the same task list**, and that is the part this
-call does not make obvious. A collection declared `scope: "session"` lives in one
-session, so the drain has to name it. Leave `sessionId` out and nothing
-complains: the runtime starts a fresh session, the drain resolves an empty task
-list, reports that it drained, and never sees the parked task. A `user`- or
-`org`-scoped collection spans every session that principal has, so it does not
-need this.
+`feedback` reaches the worker as `input.feedback` on the next attempt. A task that has never been reviewed has no `feedback`, so a worker can branch on it. A block that wants to show the person the question first reads the parked task through [the board's capability](#commanding-the-board-with-its-capability).
 
-`flow` and `stores` are the ones you already built; [Running a flow by
-hand](/docs/advanced/manual-flow-execution) covers assembling them outside the
-HTTP transport, which is where a scheduled or background drain runs.
+The step returns the write's verdict, and it drains only when the answer was accepted:
 
-Whichever drain gets there first claims the task and runs it to completion, exactly as if it had been queued that moment.
+| Task's state when the answer arrives | Returned | Drain runs |
+| --- | --- | --- |
+| `parked` | `{ outcome: "recorded" }` | yes |
+| `pending` (already answered and queued) | `{ outcome: "declined", reason: "disallowed", status: "pending" }` | no |
+| `in_progress` or `blocked` | `{ outcome: "declined", reason: "disallowed", status }` | no |
+| `completed`, `errored`, or `cancelled` | `{ outcome: "declined", reason: "terminal", status }` | no |
+
+A refused answer writes nothing. One park takes one answer: the first accepted answer is the one the worker sees, and a second delivery for the same question is refused rather than replacing it. To change an answer, wait for the worker to park again.
+
+**When the answer lands but the work does not start.** If the request fails after the answer is written and before the task is claimed (cancelled mid-drain, say), the answer is safe on the task and the task is queued. Delivering it again is refused, because the task is no longer parked. What you want then is a drain: run `board.drain` on a later request and it picks the task up.
+
+**What throws.** A `taskId` the board does not hold throws rather than returning a verdict. Two board shapes throw when the step runs, though the board itself builds fine: a board whose collection is not a `defineTaskCollection`, and a board whose `initialTasks` include an entry without an `id`. The second would add that task again on every drain and run the answered work twice.
+
+**The answering request has to reach the same task list.** The collection's `scope` decides which storage key a request resolves, and the answer is looked up by task id inside that key. For a `session`-scoped collection that means the same session under the same tenant; a collection declared `sharedToWorkstream` resolves to the lineage the workstream shares, not to a session id. A `user`- or `org`-scoped collection spans every session that principal has, so anyone in the org can answer an org-scoped task. Get the key wrong and what happens depends on what that other task list holds. If it has no task by that id, the step throws. If it holds a task with the same id that is also parked, the answer lands on that task and that board drains, with no error. Boards in this mode give every initial task a stable id, so two sessions parked at the same step both have a task called `draft-42`. Nothing checks this for you.
+
+Whichever drain gets there first claims the task and runs it, exactly as if it had been queued that moment. If another drain claims the task before the one `unparkAndDrain` starts, that drain finds nothing to claim and returns.
 
 ### What the mode requires
 
@@ -230,7 +228,7 @@ Every requirement below is checked when you build the board. Get one wrong and `
 
 ### What it does not change
 
-The task lifecycle is the same under either setting. A parked task sits in `parked`, `awaitReview` and `unpark` move it in and out, and `onReview` decides only whether the drain counts it while it sits there.
+The task lifecycle is the same under either setting. A parked task sits in `parked` until it is answered, and `onReview` decides only whether the drain counts it while it sits there.
 
 The setting is board-wide. A board cannot park one task as "release the request" and another as "hold it".
 
