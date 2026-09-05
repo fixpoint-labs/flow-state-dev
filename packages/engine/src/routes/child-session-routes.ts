@@ -1,5 +1,5 @@
 /**
- * `GET /sessions/:sessionId/workstreams` — the first hop from a conversation
+ * `GET /sessions/:sessionId/children` — the first hop from a conversation
  * to the background work hanging off it (FIX-1010).
  *
  * Two hops by design: this read returns one summary row per child session, and
@@ -9,9 +9,9 @@
  * filter on the flat session listing: the framework resolves the parent record
  * and checks its owner before this handler runs.
  *
- * What it returns is **every** child session, not only detached ones. The
+ * What it returns is **every** child session, not only handed-off ones. The
  * store predicate selects on parentage, and nothing on a session record marks
- * it as task-board work. Today the detached-start path is the only writer of
+ * it as task-board work. Today the dispatch seam is the only writer of
  * `parentSessionId`, but that is a fact about the current tree, not a filter
  * this route applies — a second writer would be returned here, which is
  * correct and must not read as a bug.
@@ -21,11 +21,11 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestStore, SessionRecord, StoreRegistry } from "../stores/types";
 import { toBareSessionId } from "../stores/scope-keys";
 import { jsonResponse, loadTenantSession } from "./route-utils";
-import { DEFAULT_MAX_WORKSTREAM_LIST_LIMIT } from "../runtime-config";
+import { DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT } from "../runtime-config";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 /** Rows returned when the caller passes no `limit`. */
-const WORKSTREAM_LIST_DEFAULT_LIMIT = 25;
+const CHILD_LIST_DEFAULT_LIMIT = 25;
 /**
  * Largest `limit` this route accepts when the host configures none. Lower than
  * the collection-state listing's 200 because the cost per row is different:
@@ -33,18 +33,18 @@ const WORKSTREAM_LIST_DEFAULT_LIMIT = 25;
  * amplification rather than only payload size.
  *
  * A deployment running large orchestrations raises it with
- * `maxWorkstreamListLimit` — the list is all-time history, so it outgrows any
+ * `maxChildSessionListLimit` — the list is all-time history, so it outgrows any
  * fixed number, and the right ceiling depends on what that deployment is
  * willing to spend per read.
  */
-const WORKSTREAM_LIST_MAX_LIMIT = DEFAULT_MAX_WORKSTREAM_LIST_LIMIT;
+const CHILD_LIST_MAX_LIMIT = DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT;
 /**
  * Largest `offset` this route accepts. A database walks and discards every row
  * up to the offset, and those rows are inside the caller's own owner and
  * tenant — so without a cap a nominally bounded read scans the parent's whole
  * child history and every boundary check still passes.
  */
-const WORKSTREAM_LIST_MAX_OFFSET = 10_000;
+const CHILD_LIST_MAX_OFFSET = 10_000;
 
 /**
  * Statuses that make a row `active` wherever in the job they appear.
@@ -116,7 +116,7 @@ function isLiveWhenMostRecent(
  * `active` (most recent, so continuable) or superseded and ignored, so it can
  * never be the emitted value.
  */
-export type WorkstreamStatus =
+export type ChildSessionStatus =
   | "active"
   | "completed"
   | "failed"
@@ -136,7 +136,7 @@ type TerminalRequestStatus = Exclude<
 /**
  * How a finished run reads on the wire.
  *
- * Every entry is an identity today, so `status as WorkstreamStatus` would be
+ * Every entry is an identity today, so `status as ChildSessionStatus` would be
  * shorter and would behave identically — **until it didn't.** A cast assumes
  * the two unions stay 1:1 and asserts it once, at author time, forever. This
  * map is total over {@link TerminalRequestStatus}, so a new terminal status
@@ -149,7 +149,7 @@ type TerminalRequestStatus = Exclude<
  */
 export const TERMINAL_WIRE_STATUS: Record<
   TerminalRequestStatus,
-  WorkstreamStatus
+  ChildSessionStatus
 > = {
   completed: "completed",
   failed: "failed",
@@ -158,32 +158,32 @@ export const TERMINAL_WIRE_STATUS: Record<
 };
 
 /** One background job, as this route reports it. */
-export type WorkstreamSummary = {
+export type ChildSessionSummary = {
   /** Bare child session id — the address for hop 2. */
   id: string;
   /** Bare id of the conversation this job hangs off. */
   parentSessionId: string;
   createdAt: number;
   updatedAt: number;
-  /** What body of work the job is for. Written by the detached-start path. */
+  /** The key the child was derived from. Written by the dispatch seam. */
   topic?: string;
-  /** Which worker the job is routed to. Written by the detached-start path. */
+  /** The entry the child was dispatched for, as `<type>:<target>`. Written by the dispatch seam. */
   coordinate?: string;
   /**
    * Absent when the job has no run of this conversation's identity at all —
    * absence is not a status and is deliberately not defaulted to anything.
    */
-  status?: WorkstreamStatus;
+  status?: ChildSessionStatus;
 };
 
-type WorkstreamRouteContext = {
+type ChildSessionRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
   /** Tenant id from the request header (FIX-682). */
   tenantId?: string;
   /**
    * Largest `limit` this listing accepts (FIX-1012). Absent →
-   * {@link WORKSTREAM_LIST_MAX_LIMIT}.
+   * {@link CHILD_LIST_MAX_LIMIT}.
    */
   maxListLimit?: number;
 };
@@ -257,11 +257,11 @@ function parentIdentity(
  * is an alarm the user has no way to clear, and the failed attempt is still
  * one hop away in the job's own history.
  */
-async function resolveWorkstreamStatus(
+async function resolveChildSessionStatus(
   store: RequestStore,
   childSessionId: string,
   identity: ParentIdentity
-): Promise<WorkstreamStatus | undefined> {
+): Promise<ChildSessionStatus | undefined> {
   const live = await store.list({
     sessionId: childSessionId,
     status: LIVE_STATUSES,
@@ -286,7 +286,7 @@ async function resolveWorkstreamStatus(
 }
 
 /**
- * Project the two labels the detached-start writer stamps onto the row.
+ * Project the two labels the dispatch seam stamps onto the row.
  *
  * Read straight off `SessionRecord`, where both fields are declared: the
  * writer (`context/create-request-host.ts`) sets them from the routing seed it
@@ -303,9 +303,9 @@ async function resolveWorkstreamStatus(
  *
  * The labels decide nothing here or anywhere else — see `SessionRecord.topic`.
  */
-function readWorkstreamLabels(
+function readChildSessionLabels(
   record: SessionRecord
-): Pick<WorkstreamSummary, "topic" | "coordinate"> {
+): Pick<ChildSessionSummary, "topic" | "coordinate"> {
   return {
     ...(record.topic == null ? {} : { topic: record.topic }),
     ...(record.coordinate == null ? {} : { coordinate: record.coordinate })
@@ -337,10 +337,10 @@ function boundedParam(
   return parsed;
 }
 
-export async function handleListSessionWorkstreams(
+export async function handleListSessionChildren(
   request: Request,
-  route: Extract<ParsedFlowRoute, { kind: "list_session_workstreams" }>,
-  ctx: WorkstreamRouteContext
+  route: Extract<ParsedFlowRoute, { kind: "list_session_children" }>,
+  ctx: ChildSessionRouteContext
 ): Promise<Response> {
   const parent = await loadTenantSession(
     ctx.stores.session,
@@ -355,7 +355,7 @@ export async function handleListSessionWorkstreams(
   }
 
   const url = new URL(request.url);
-  const maxLimit = ctx.maxListLimit ?? WORKSTREAM_LIST_MAX_LIMIT;
+  const maxLimit = ctx.maxListLimit ?? CHILD_LIST_MAX_LIMIT;
   const limit = boundedParam(
     url.searchParams.get("limit"),
     "limit",
@@ -366,14 +366,14 @@ export async function handleListSessionWorkstreams(
     // client that wants more now asks for it. The clamp is for the opposite
     // case — a host that lowers the ceiling below the default, where an
     // unclamped default would exceed its own maximum.
-    Math.min(WORKSTREAM_LIST_DEFAULT_LIMIT, maxLimit)
+    Math.min(CHILD_LIST_DEFAULT_LIMIT, maxLimit)
   );
   if (typeof limit !== "number") return jsonResponse(400, limit);
   const offset = boundedParam(
     url.searchParams.get("offset"),
     "offset",
     0,
-    WORKSTREAM_LIST_MAX_OFFSET,
+    CHILD_LIST_MAX_OFFSET,
     0
   );
   if (typeof offset !== "number") return jsonResponse(400, offset);
@@ -393,12 +393,12 @@ export async function handleListSessionWorkstreams(
     ...identity
   });
 
-  const workstreams = await Promise.all(
-    children.map(async (child): Promise<WorkstreamSummary> => {
+  const summaries = await Promise.all(
+    children.map(async (child): Promise<ChildSessionSummary> => {
       // Request records key on the bare session id, not the namespaced
       // storage key.
       const id = toBareSessionId(child.id, ctx.tenantId);
-      const status = await resolveWorkstreamStatus(
+      const status = await resolveChildSessionStatus(
         ctx.stores.request,
         id,
         identity
@@ -408,7 +408,7 @@ export async function handleListSessionWorkstreams(
         parentSessionId: route.sessionId,
         createdAt: child.createdAt,
         updatedAt: child.updatedAt,
-        ...readWorkstreamLabels(child),
+        ...readChildSessionLabels(child),
         ...(status !== undefined ? { status } : {})
       };
     })
@@ -418,5 +418,5 @@ export async function handleListSessionWorkstreams(
   // session records, which here would put every child's `state`, `resources`
   // and append-only `journal` on the wire — unbounded per row, multiplied by
   // the page.
-  return jsonResponse(200, { workstreams });
+  return jsonResponse(200, { children: summaries });
 }

@@ -26,27 +26,14 @@ export type {
 export { asRuntime } from "./block";
 
 export type {
-  DetachedProvenance,
-  DetachedRoutingSeed,
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
   SettleParentTaskInput,
-  SettleParentTaskResult,
-  StartDetachedInput,
-  StartDetachedRefusal,
-  StartDetachedResult
+  SettleParentTaskResult
 } from "./request-host";
 
 export { NoRequestHostError, requireRequestHost } from "./request-host";
-
-export type { WorkstreamBinding, WorkstreamBindings } from "./workstream";
-
-export {
-  declareWorkstreamBindings,
-  mergeWorkstreamBindings,
-  workstreamBindingKey
-} from "./workstream";
 
 export type {
   BlockDispatchType,
@@ -73,6 +60,8 @@ export {
   dispatchThroughSeam,
   markDispatcher,
   taskBindingOf,
+  framed,
+  readFramed,
   taskDispatchInputSchema,
   taskSessionKeyFor
 } from "./dispatch";

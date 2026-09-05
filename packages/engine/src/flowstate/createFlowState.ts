@@ -32,11 +32,10 @@ import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store
 import { resolveProfileStores } from "./resolve-slots";
 import type { FlowDispatcher } from "../transports/dispatcher";
 import {
-  createDetachedStartOperation,
-  type DispatchedDetachedChild
-} from "../context/detached-start-operation";
-import { createDispatchOperation, type DispatchOperation } from "../context/dispatch-operation";
-import type { DetachedStartOperation } from "../context/create-request-host";
+  createDispatchOperation,
+  type DispatchOperation,
+  type DispatchedChild
+} from "../context/dispatch-operation";
 import type { InboundTransportHost } from "../transports/types";
 import type { StoreRegistry } from "../stores/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
@@ -72,7 +71,7 @@ const MAX_NAMED_TRUNCATED_CHILDREN = 5;
  * would trade a run that never finished for one that half-wrote.
  *
  * A **cap on a slice of the drain budget**, not an addition to it: the reserve
- * is carved out of `detachedDrainTimeoutMs` so the option stays a true ceiling.
+ * is carved out of `dispatchDrainTimeoutMs` so the option stays a true ceiling.
  */
 const DETACHED_ABORT_UNWIND_MS = 2_000;
 
@@ -132,7 +131,7 @@ const RECOVERY_SWEEP_DRAIN_MS = 5_000;
  * honoured as "do not wait": that is a legitimate choice for a host that wants
  * shutdown to be immediate, and it still reports what it left behind.
  */
-function resolveDetachedDrainTimeout(configured: number | undefined): number {
+function resolveDispatchDrainTimeout(configured: number | undefined): number {
   if (configured === undefined || !Number.isFinite(configured)) {
     return DEFAULT_DETACHED_DRAIN_TIMEOUT_MS;
   }
@@ -233,14 +232,14 @@ class InternalFlowState<TSettings extends object>
   /** Started worker, closed by dispose() before store adapters. */
   #workerHandle: WorkerHandle | undefined;
   /**
-   * In-process detached children still running, drained by `dispose()`.
+   * In-process dispatched children still running, drained by `dispose()`.
    *
-   * Only ever populated by the start operation `#installDetachedStart` installs
+   * Only ever populated by the operation `#installDispatchOperation` installs
    * — a queue-backed child runs in another process and is not this one's to wait
    * for. Entries remove themselves when they settle, so a long-lived server does
    * not accumulate them.
    */
-  readonly #detachedChildren = new Set<DispatchedDetachedChild>();
+  readonly #dispatchedChildren = new Set<DispatchedChild>();
   /**
    * The host the request-host operations dispatch through, built on first use
    * and shared by the detached start and the dispatch seam — see
@@ -262,9 +261,9 @@ class InternalFlowState<TSettings extends object>
   /**
    * The one concurrency arbiter every host in this process shares (FIX-1077).
    *
-   * Two hosts exist in a router deployment — the one the detached start
-   * operation is built over, and the router's. Each would otherwise own a
-   * private keyed gate, so a Workstream spawned by an HTTP request could start
+   * Two hosts exist in a router deployment — the one the dispatch operation
+   * is built over, and the router's. Each would otherwise own a private keyed
+   * gate, so a child session dispatched by an HTTP request could start
    * under a `user`/`session` key its own parent still held: a declared `queue`
    * policy silently not serialising, or a `reject` policy silently admitting.
    * Policy is a property of the flow, not of whichever host took the dispatch.
@@ -276,6 +275,21 @@ class InternalFlowState<TSettings extends object>
       throw new FlowStateConfigError(
         "createFlowState: the removed `middleware` option is not executed. " +
           "Move policy checks to the HTTP authentication layer or block logic."
+      );
+    }
+
+    if (Object.hasOwn(options, "detachedDrainTimeoutMs")) {
+      throw new FlowStateConfigError(
+        "createFlowState: `detachedDrainTimeoutMs` is now `dispatchDrainTimeoutMs`. " +
+          "Accepting it silently would leave the shutdown drain on its default, so a host " +
+          "tuned for a long-running child would truncate one without saying why."
+      );
+    }
+    if (Object.hasOwn(options, "maxWorkstreamListLimit")) {
+      throw new FlowStateConfigError(
+        "createFlowState: `maxWorkstreamListLimit` is now `maxChildSessionListLimit`. " +
+          "Accepting it silently would leave the children listing on its default cap, so a " +
+          "host that raised the ceiling would truncate its reads without a named error."
       );
     }
 
@@ -431,7 +445,7 @@ class InternalFlowState<TSettings extends object>
    *
    * Every wait here races a deadline. A round cap alone bounded the number of
    * batches and not the wait inside one, so a single child that never settles —
-   * a Workstream blocked on an external call — meant the `await` never returned,
+   * a child blocked on an external call — meant the `await` never returned,
    * the cap was never reached, and `dispose()` hung forever, taking `fsdev run`
    * and any production shutdown with it.
    *
@@ -442,9 +456,9 @@ class InternalFlowState<TSettings extends object>
    * process leaves nothing.
    */
   async #drainDetachedChildren(): Promise<void> {
-    if (this.#detachedChildren.size === 0) return;
+    if (this.#dispatchedChildren.size === 0) return;
 
-    const budgetMs = resolveDetachedDrainTimeout(this.#options.detachedDrainTimeoutMs);
+    const budgetMs = resolveDispatchDrainTimeout(this.#options.dispatchDrainTimeoutMs);
     const startedAt = Date.now();
     // ONE deadline for the whole drain, not one per round. A per-round budget
     // multiplies by the round cap, so a slow-but-progressing spawn chain could
@@ -470,13 +484,13 @@ class InternalFlowState<TSettings extends object>
 
     for (
       let round = 0;
-      this.#detachedChildren.size > 0 && round < MAX_DETACHED_DRAIN_ROUNDS;
+      this.#dispatchedChildren.size > 0 && round < MAX_DETACHED_DRAIN_ROUNDS;
       round += 1
     ) {
       const remainingMs = waitDeadline - Date.now();
       if (remainingMs <= 0) break;
 
-      const pending = [...this.#detachedChildren];
+      const pending = [...this.#dispatchedChildren];
       // Printed because an unexplained pause at exit reads as a hang — this says
       // what is being waited for.
       //
@@ -493,7 +507,7 @@ class InternalFlowState<TSettings extends object>
       // stderr, where every other diagnostic in this file already goes.
       this.#logShutdown(
         "warn",
-        `[flowstate] waiting for ${pending.length} detached request(s) to finish before shutdown`,
+        `[flowstate] waiting for ${pending.length} dispatched request(s) to finish before shutdown`,
         { pending: pending.length, budgetMs }
       );
 
@@ -506,7 +520,7 @@ class InternalFlowState<TSettings extends object>
       if (!finishedInTime) break;
     }
 
-    if (this.#detachedChildren.size > 0) {
+    if (this.#dispatchedChildren.size > 0) {
       await this.#cancelOutstandingChildren(deadline, startedAt, budgetMs);
     }
   }
@@ -532,7 +546,7 @@ class InternalFlowState<TSettings extends object>
    * aborted run throws at its next await and writes a terminal record, and that
    * write needs the stores still open. It runs against the SAME deadline the
    * wait phase did, so the whole drain — waiting, cancelling and unwinding —
-   * fits inside `detachedDrainTimeoutMs` rather than overrunning it by a
+   * fits inside `dispatchDrainTimeoutMs` rather than overrunning it by a
    * constant. A child that ignores its abort signal therefore cannot re-open the
    * hang this method exists to close, and a `0` budget cancels and returns
    * without waiting at all.
@@ -542,7 +556,7 @@ class InternalFlowState<TSettings extends object>
     startedAt: number,
     budgetMs: number
   ): Promise<void> {
-    const abandoned = [...this.#detachedChildren];
+    const abandoned = [...this.#dispatchedChildren];
 
     for (const child of abandoned) {
       // Best-effort by contract: `false` means the run already deregistered,
@@ -627,7 +641,7 @@ class InternalFlowState<TSettings extends object>
    * with afterwards.
    */
   #reportTruncatedChildren(
-    abandoned: readonly DispatchedDetachedChild[],
+    abandoned: readonly DispatchedChild[],
     elapsedMs: number,
     budgetMs: number
   ): void {
@@ -638,7 +652,7 @@ class InternalFlowState<TSettings extends object>
     const overflow = abandoned.length - MAX_NAMED_TRUNCATED_CHILDREN;
 
     console.error(
-      `[flowstate] shutdown cancelled ${abandoned.length} detached request(s) ` +
+      `[flowstate] shutdown cancelled ${abandoned.length} dispatched request(s) ` +
         `after ${elapsedMs}ms (budget ${budgetMs}ms); they may not have completed: ` +
         `${named}${overflow > 0 ? `, and ${overflow} more` : ""}`
     );
@@ -731,7 +745,7 @@ class InternalFlowState<TSettings extends object>
    * was a flag threaded into the route handlers to suppress theirs, which buys
    * a no-op query at the price of a new option on a public surface — and the
    * handlers must keep their own call regardless, for the same reason they keep
-   * their own `startOperation` installer: a caller mounting the router without
+   * their own dispatch-operation installer: a caller mounting the router without
    * a `FlowState` has no other owner.
    *
    * Both bounds come off the SAME `resolveStaleSweep` values the request host
@@ -873,8 +887,8 @@ class InternalFlowState<TSettings extends object>
     //
     // The sweeper facts come from `resolveStaleSweep` — the same rule the
     // router applies to the pair it builds its own sweeper from — so the gate
-    // and the sweeper cannot describe different cadences. `startOperation` is
-    // wired at the bottom of this method, once the dispatcher it must go
+    // and the sweeper cannot describe different cadences. The dispatch
+    // operation is wired at the bottom of this method, once the dispatcher it must go
     // through is resolved; `parentTask` stays unwired here, and that verb
     // refuses by name rather than pretending otherwise.
     //
@@ -919,7 +933,7 @@ class InternalFlowState<TSettings extends object>
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
       publicReentrySources: this.#options.publicReentrySources,
-      maxWorkstreamListLimit: this.#options.maxWorkstreamListLimit,
+      maxChildSessionListLimit: this.#options.maxChildSessionListLimit,
       requestHost: {
         staleThresholdMs,
         ...(this.#routerRequested ? { staleSweepIntervalMs } : {})
@@ -929,8 +943,7 @@ class InternalFlowState<TSettings extends object>
     this.#resolvedRuntimeConfig = runtimeConfig;
 
     // BEFORE the worker wiring and before any router exists, so every later copy
-    // of `requestHost` carries it. See `#installDetachedStart`.
-    this.#installDetachedStart(runtimeConfig, stores);
+    // of `requestHost` carries it. See `#installDispatchOperation`.
     this.#installDispatchOperation(runtimeConfig, stores);
 
     this.#detectInterruptedOnStartup(stores, staleThresholdMs, queuedGraceMs);
@@ -962,120 +975,14 @@ class InternalFlowState<TSettings extends object>
   }
 
   /**
-   * Install the detached start operation on the SHARED runtime config, once.
-   *
-   * ## Why this is the only installer that matters
-   *
-   * `startOperation` is a mutation of an object that exists in more than one
-   * copy, and that is the whole bug class this method closes. `createFlowApiRouter`
-   * does not mutate the config it is given — it builds a fresh `requestHost`
-   * literal (`{ ...base.requestHost, staleThresholdMs, staleSweepIntervalMs }`).
-   * That spread is a **fork**: anything stamped after it is router-local by
-   * construction. `createFlowRouteHandlers` then stamped the operation onto that
-   * fork, which nobody else holds — so the object handed to
-   * `worker.startWorker(runtime)` never got one, and a colocated queue worker
-   * running a detached board met `no-start-operation`.
-   *
-   * Installing here, at config construction, inverts it: the shared object
-   * carries the operation from birth, so the router's fork and the worker's
-   * reference both inherit it by spread and there is nothing left to stamp
-   * afterwards. The same move `#buildRuntime` already documents for the rest of
-   * the seam ("belongs on the SHARED config, not on the router's copy of it"),
-   * finally applied to the field that was left behind.
-   *
-   * ## Lazy, because the host is the expensive part
-   *
-   * The operation dispatches through an `InboundTransportHost`, and a deployment
-   * that never detaches should not pay to build one. Deferring construction to
-   * the first call also removes the ordering constraint that forced the previous
-   * version to run *after* the worker wiring: the dispatcher is read when the
-   * call happens, by which time `#workerDispatcher` and any router are resolved.
-   * Installing eagerly at construction and resolving lazily at use is what lets
-   * one assignment be both early enough for every copy and late enough for every
-   * dependency.
-   *
-   * ## Every topology, including `worker-only`
-   *
-   * An earlier version skipped `worker-only` on the reasoning that a host built
-   * there would run detached work in-process instead of enqueuing it. That is
-   * true and it is better than refusing: the colocated and worker-only bullmq
-   * topologies are documented as supported, and a topology that claims support
-   * while refusing detached work is not supporting it. The child runs on the
-   * worker rather than through the queue, so it is not durable the way an
-   * enqueued job is — a queue-backed start operation owned by the queue's own
-   * adapter remains the better answer (FIX-1069), and this is what the feature
-   * does until that exists rather than nothing at all.
-   *
-   * A start operation already on the config is still never overwritten: a
-   * deployment that wired its own is the more specific answer.
-   *
-   * ## Why the disposal gate lives HERE and not in `startDetached`
-   *
-   * The gate below refuses new detached work once `dispose()` has begun, and it
-   * belongs to this operation rather than to the shared `startDetached` seam.
-   * `startDetached` serves every deployment, including a direct
-   * `createFlowApiRouter` caller that has no `FlowState` and therefore no
-   * `dispose()` at all — gating there would make such a caller refuse during a
-   * disposal it is not part of and cannot observe. Disposal is a property of the
-   * owner, so the check belongs to the owner's operation.
-   */
-  #installDetachedStart(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
-    const requestHost = runtimeConfig.requestHost;
-    if (requestHost === undefined) return;
-    if (requestHost.startOperation !== undefined) return;
-
-    let operation: DetachedStartOperation | undefined;
-    requestHost.startOperation = (spec) => {
-      // ADMISSION CLOSES BEFORE THE DRAIN LOOKS.
-      //
-      // `dispose()` used to take a snapshot of outstanding children and then
-      // act, while the system carried on admitting work — so anything that
-      // registered afterwards was never waited for, never cancelled, and never
-      // reported. Two ways in: a worker draining its last jobs spawns a child
-      // after the drain has already run, and a descendant starts during the
-      // reserved unwind window after the snapshot was taken. Closing each window
-      // in turn just moved the race; refusing new work outright removes it.
-      //
-      // **This is the only way `#detachedChildren` grows.** It is fed solely by
-      // `onDispatched`, which fires solely inside the operation below, so a
-      // refusal here means nothing can register for the rest of the process's
-      // life. That is what makes the drain's snapshot complete rather than
-      // merely early.
-      //
-      // **The gate and the tracking are one synchronous instant, and that is
-      // load-bearing.** Below, `host.dispatch(...)` is synchronous and
-      // `onDispatched` fires on the next line, with no `await` between them — so
-      // "passed the gate" and "is tracked" are not two states a disposal can
-      // land between. Put an `await` in that window and this gate quietly
-      // becomes a race again.
-      //
-      // A `startDetached` already in flight — its child-session write is async
-      // and may straddle this — arrives here afterwards and is refused. That is
-      // the honest answer: the session record exists with no run, which is the
-      // adoptable state a retry already handles, and the caller gets a named
-      // refusal it can settle its own row from rather than leaving it to lease
-      // recovery.
-      if (this.#disposed) {
-        return Promise.resolve({
-          notStarted: true,
-          reason: "the runtime is shutting down and is no longer starting detached work"
-        });
-      }
-      operation ??= this.#buildDetachedStartOperation(runtimeConfig, stores);
-      return operation(spec);
-    };
-  }
-
-  /**
    * Install the dispatch seam's operation on the shared config, before any fork
-   * of `requestHost` exists — on the same terms as `#installDetachedStart`, and
-   * for the same reason: `createFlowApiRouter` rebuilds `requestHost` as a
+   * of `requestHost` exists, because `createFlowApiRouter` rebuilds `requestHost` as a
    * fresh literal, so anything stamped there lands on a copy a colocated worker
    * never sees.
    *
-   * The disposal gate is the detached start's, applied to the same instant: a
-   * dispatched child runs here under the same drain, so admission has to close
-   * for it at the same moment or the drain's snapshot is incomplete.
+   * The disposal gate is applied at the instant `dispose()` begins: a
+   * dispatched child runs here under the drain, so admission has to close
+   * for it at that moment or the drain's snapshot is incomplete.
    */
   #installDispatchOperation(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
     const requestHost = runtimeConfig.requestHost;
@@ -1131,8 +1038,7 @@ class InternalFlowState<TSettings extends object>
 
   /**
    * Build the dispatch seam's operation, on first use. A dispatched child that
-   * runs here is tracked for the shutdown drain exactly as a detached one is —
-   * see `#buildDetachedStartOperation` for why that is keyed on the effective
+   * runs here is tracked for the shutdown drain, keyed on the effective
    * dispatcher.
    */
   #buildDispatchOperation(runtimeConfig: RuntimeConfig, stores: StoreRegistry): DispatchOperation {
@@ -1142,48 +1048,7 @@ class InternalFlowState<TSettings extends object>
     return createDispatchOperation({
       host,
       ...(runsHere
-        ? { onDispatched: (child: DispatchedDetachedChild) => this.#trackDetachedChild(child) }
-        : {})
-    });
-  }
-
-  /**
-   * Build the detached start operation, on first use.
-   *
-   * Split from the install so everything it reads — the worker's dispatcher, the
-   * shared arbiter — is resolved by the time it runs, rather than captured at a
-   * moment when the worker adapter has not been consulted yet.
-   */
-  #buildDetachedStartOperation(
-    runtimeConfig: RuntimeConfig,
-    stores: StoreRegistry
-  ): DetachedStartOperation {
-    const dispatcher = this.#options.dispatcher ?? this.#workerDispatcher;
-    const host = this.#hostForRequestHostOperations(runtimeConfig, stores);
-
-    // Track children for the shutdown drain ONLY when they run here.
-    //
-    // The drain exists because truncating in-process work strands it: nothing
-    // else is holding the run, so a closed store mid-write leaves a task row
-    // `in_progress` forever. An externally dispatched child is a different
-    // situation: the enqueue is confirmed before `startDetached` returns, so
-    // there is no half-written row to strand, and `finished` there resolves only
-    // when some worker completes the job — waiting would block `dispose()` on a
-    // process this one does not control, indefinitely in a topology where the
-    // workers live elsewhere.
-    //
-    // Keyed on the effective DISPATCHER rather than on `worker.mode`, because the
-    // two genuinely disagree: `options.dispatcher` (mutually exclusive with
-    // `worker`, so `mode` reads as its `colocated` default) can be external, and
-    // a custom dispatcher exposing `dispatchLocal` is local whatever the mode
-    // says. `isInProcessDispatcher` is the host's own test, shared so this and
-    // the dispatch branch cannot come to different conclusions.
-    const runsHere = isInProcessDispatcher(dispatcher);
-
-    return createDetachedStartOperation({
-      host,
-      ...(runsHere
-        ? { onDispatched: (child: DispatchedDetachedChild) => this.#trackDetachedChild(child) }
+        ? { onDispatched: (child: DispatchedChild) => this.#trackDetachedChild(child) }
         : {})
     });
   }
@@ -1197,11 +1062,11 @@ class InternalFlowState<TSettings extends object>
    * handled. Without the `catch` here, the `finally` link would itself reject
    * and become the unhandled rejection this is meant to avoid.
    */
-  #trackDetachedChild(child: DispatchedDetachedChild): void {
-    this.#detachedChildren.add(child);
+  #trackDetachedChild(child: DispatchedChild): void {
+    this.#dispatchedChildren.add(child);
     void child.finished
       .catch(() => undefined)
-      .finally(() => this.#detachedChildren.delete(child));
+      .finally(() => this.#dispatchedChildren.delete(child));
   }
 
   async #doInit(): Promise<FlowApiRouter> {
@@ -1240,7 +1105,7 @@ class InternalFlowState<TSettings extends object>
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
       queuedGraceMs: this.#options.queuedGraceMs,
       dispatcher: this.#options.dispatcher ?? this.#workerDispatcher,
-      // The same arbiter the detached-start host uses, so one flow-level
+      // The same arbiter the dispatch operation uses, so one flow-level
       // concurrency policy is enforced once across the process — see `#arbiter`.
       arbiter: this.#arbiter
     });

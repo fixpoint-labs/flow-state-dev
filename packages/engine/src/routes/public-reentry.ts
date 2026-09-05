@@ -30,7 +30,6 @@ import {
   INTERNAL_SOURCE,
   TASK_SOURCE,
   WEBHOOK_SOURCE,
-  WORKSTREAM_SOURCE
 } from "../execution/transport-sources";
 
 /**
@@ -46,8 +45,6 @@ import {
  * - `webhook` — reachable only through a verified webhook. Re-running one from a
  *   public surface would bypass signature verification, which is why all three
  *   routes already refused it.
- * - `workstream` — a detached dispatch started by the injection seam. It has no
- *   caller-facing entry at all, so it must have no caller-facing re-entry.
  * - `task` and `internal` — dispatched by the dispatch seam from inside a
  *   running request. Neither has a caller-facing entry at all, so neither may
  *   have a caller-facing re-entry. A dispatched session IS reachable from
@@ -64,11 +61,11 @@ const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
 /**
  * Sources a host may never declare, whatever it passes.
  *
- * All four are stamped by the framework itself, not by a deployment's
+ * All three are stamped by the framework itself, not by a deployment's
  * transport, so none is a deployment's to re-open — and the reason each is
  * excluded is a property of the framework rather than of the deployment.
  * `webhook`'s handler is reachable only behind signature verification;
- * `workstream`, `task` and `internal` have no caller-facing entry at all by
+ * `task` and `internal` have no caller-facing entry at all by
  * construction. Re-admitting any of them hands an HTTP caller `inputOverride`
  * on a handler that was never caller-addressed, which is precisely the bypass
  * the allow-list exists to close.
@@ -84,7 +81,6 @@ const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
  */
 const NEVER_PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
   WEBHOOK_SOURCE,
-  WORKSTREAM_SOURCE,
   TASK_SOURCE,
   INTERNAL_SOURCE
 ]);

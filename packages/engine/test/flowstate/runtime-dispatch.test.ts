@@ -1,8 +1,8 @@
 /**
- * Every topology a `FlowState` owns can start detached work (FIX-1077).
+ * Every topology a `FlowState` owns can dispatch a child request (FIX-1077).
  *
  * `createFlowRouteHandlers` was the only thing that ever assigned
- * `runtimeConfig.requestHost.startOperation`, and it assigned it to the fresh
+ * `runtimeConfig.requestHost.dispatchOperation`, and it assigned it to the fresh
  * `requestHost` literal `createFlowApiRouter` had already forked — an object
  * nobody else held. So the operation reached HTTP requests and nothing else:
  * `fsdev run` and `fsdev chat` (which `AGENTS.md` names as the DEFAULT way to
@@ -24,26 +24,26 @@
  *  - a colocated queue worker, with its dispatcher closing the loop the way a
  *    real adapter does.
  *
- * `worker-only` starts detached work too, rather than refusing it — see the
- * reasoning on that test. The child runs on the worker instead of the queue, so
- * it is not durable; it IS tracked for the shutdown drain, because it is
- * in-process work. Those two properties are independent.
+ * `worker-only` dispatches too, rather than refusing — see the reasoning on
+ * that test. The child runs on the worker instead of the queue, so it is not
+ * durable; it IS tracked for the shutdown drain, because it is in-process work.
+ * Those two properties are independent.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler, requireRequestHost } from "@flow-state-dev/core";
-import type { ModelResolver, StartDetachedResult } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction } from "../../src";
+import { defineFlow, dispatchThroughSeam, handler, markDispatcher } from "@flow-state-dev/core";
+import type { DispatchOutcome, ModelResolver } from "@flow-state-dev/core/types";
+import { createFlowState, FlowStateConfigError, inMemoryStores, runAction } from "../../src";
 import type { FlowStateRuntime, WorkerAdapter } from "../../src/flowstate/types";
 import type { StoreAdapter } from "../../src/stores/store-adapter";
 
-const USER_ID = "u_detached";
+const USER_ID = "u_dispatch";
 
-/** What the launching block saw, and what the child actually ran. */
+/** What the dispatching block saw, and what the child actually ran. */
 type Observed = {
-  start?: StartDetachedResult;
+  start?: DispatchOutcome;
   error?: string;
-  /** One entry per child request that executed the workstream core. */
+  /** One entry per child request that executed the `core` entry. */
   children: { sessionId: string; input: unknown; model?: string }[];
 };
 
@@ -55,20 +55,17 @@ function markerResolver(marker: string): ModelResolver {
 }
 
 /**
- * A flow whose action detaches, plus the workstream core the child enters.
- *
- * `workstream` is not an app-author surface — the framework assembles it from a
- * board's detached worker declarations — so it is attached directly here. That
- * is the precondition for a detached dispatch, not the thing under test:
- * without it `startDetached` refuses `no-workstream-core` long before it reaches
- * the start operation.
+ * A flow whose action dispatches a `{ key }` child to its own `internal`
+ * entry, `core`. The dispatch is the precondition for every case below, not
+ * the thing under test; the launcher reaches the seam directly so it can keep
+ * running after the dispatch and observe the outcome as a value.
  */
 function detachingFlow(
   kind: string,
   observed: Observed,
   options: {
     coreDelayMs?: number;
-    /** The parent keeps running after detaching, so it keeps holding its key. */
+    /** The parent keeps running after dispatching, so it keeps holding its key. */
     launcherDelayMs?: number;
     /** The child never finishes — a run blocked on something external. */
     coreNeverSettles?: boolean;
@@ -81,9 +78,12 @@ function detachingFlow(
     outputSchema: z.object({}),
     execute: async (_input, ctx) => {
       try {
-        observed.start = await requireRequestHost(ctx).startDetached({
-          seed: { topic: "background" },
-          input: { note: "detached-payload" }
+        observed.start = await dispatchThroughSeam(ctx, {
+          type: "internal",
+          target: "core",
+          session: { key: "background" },
+          payload: { note: "dispatched-payload" },
+          from: "launch"
         });
         // Keep running, and therefore keep holding this request's concurrency
         // key, so a child queued behind it is still queued at shutdown.
@@ -96,6 +96,9 @@ function detachingFlow(
       return {};
     }
   });
+  // Declared, so `defineFlow`'s address walk sees the dispatch and verifies
+  // the entry resolves.
+  markDispatcher(launcher, { type: "internal", target: "core" });
 
   const core = handler({
     name: "core",
@@ -120,16 +123,14 @@ function detachingFlow(
     }
   });
 
-  const flow = defineFlow({
+  return defineFlow({
     kind,
     actions: { launch: { inputSchema: z.object({}), block: launcher } },
+    internal: { actions: { core: { block: core } } },
     ...(options.concurrency !== undefined
       ? { request: { concurrency: options.concurrency } }
       : {})
   })({ id: kind });
-
-  (flow as { workstream?: unknown }).workstream = { block: core };
-  return flow;
 }
 
 /** Poll until `predicate` holds — the child runs fire-and-forget, unawaited. */
@@ -239,10 +240,10 @@ async function runLikeCli(
   });
 }
 
-describe("detached start on a runtime-only init (FIX-1077)", () => {
+describe("dispatch on a runtime-only init (FIX-1077)", () => {
   it("starts a real child request in this process — no router involved", async () => {
     const observed: Observed = { children: [] };
-    const flow = detachingFlow("runtime-detached", observed);
+    const flow = detachingFlow("runtime-dispatch", observed);
 
     const state = createFlowState({
       flows: { detaching: flow },
@@ -256,7 +257,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
 
     expect(observed.error).toBeUndefined();
     // Before this wiring the shipped answer here was
-    // `{ ok: false, refused: "no-start-operation" }`.
+    // `{ ok: false, refused: "no-dispatch-operation" }`.
     expect(observed.start).toMatchObject({ ok: true, adopted: false });
 
     // The launching request returned before the child did — detachment's whole
@@ -264,22 +265,23 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     await until(() => observed.children.length === 1, "the child to run");
 
     const child = observed.children[0]!;
-    expect(child.input).toEqual({ note: "detached-payload" });
+    expect(child.input).toEqual({ note: "dispatched-payload" });
     // It ran in the child session the seam derived, not in the parent's.
     expect(child.sessionId).not.toBe("s_parent");
     expect(observed.start).toMatchObject({ sessionId: child.sessionId });
 
     // ...and that session is a persisted child of the launching one, so the
-    // Workstream is discoverable rather than merely executed.
+    // child is discoverable rather than merely executed.
     const record = await runtime.stores.session.get(child.sessionId);
     expect(record?.parentSessionId).toBe("s_parent");
     expect(record?.userId).toBe(USER_ID);
     expect(record?.topic).toBe("background");
+    expect(record?.coordinate).toBe("internal:core");
 
     await state.dispose();
   });
 
-  it("launches a Workstream from inside a COLOCATED queue worker", async () => {
+  it("dispatches a child from inside a COLOCATED queue worker", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("colocated-worker-launch", observed);
 
@@ -292,7 +294,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
       // A colocated queue, closed the whole way round: the dispatcher "enqueues"
       // and the worker in this same process picks the job up and runs it. A stub
       // that only returns a handle would leave the child forever unconsumed and
-      // could never show a Workstream launching, which is the point here.
+      // could never show a child dispatching, which is the point here.
       createDispatcher: (runtime: FlowStateRuntime) => ({
         dispatch: async (envelope: {
           requestId: string;
@@ -351,22 +353,22 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
       runtimeConfig: captured!.runtimeConfig
     });
 
-    // Before this, the worker met `no-start-operation`: the only installer wrote
+    // Before this, the worker met `no-dispatch-operation`: the only installer wrote
     // to the router's fork of `requestHost`, which this object is not.
     expect(observed.error).toBeUndefined();
     expect(observed.start).toMatchObject({ ok: true });
 
-    // And the observable that matters — a Workstream actually launched and ran,
+    // And the observable that matters — a child actually dispatched and ran,
     // not merely that an operation was installed on a runtime.
-    await until(() => observed.children.length === 1, "the Workstream to run");
+    await until(() => observed.children.length === 1, "the child to run");
     expect(observed.children[0]!.sessionId).not.toBe("s_worker");
 
     await state.dispose();
   });
 
-  it("launches a Workstream from a worker-only process too", async () => {
+  it("dispatches a child from a worker-only process too", async () => {
     const observed: Observed = { children: [] };
-    const flow = detachingFlow("worker-only-detached", observed);
+    const flow = detachingFlow("worker-only-dispatch", observed);
 
     const state = createFlowState({
       flows: { detaching: flow },
@@ -380,10 +382,10 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
 
     // This assertion is INVERTED from what it was. It used to pin the refusal —
     // on the reasoning that a `worker-only` process has no dispatcher, so a host
-    // built for it runs detached work in-process instead of enqueuing it. That
+    // built for it runs dispatched work in-process instead of enqueuing it. That
     // remains true and it is still better than refusing: the colocated and
     // worker-only queue topologies are documented as supported, and refusing
-    // detached work in one of them is not supporting it.
+    // dispatched work in one of them is not supporting it.
     //
     // The cost is real and named: the child runs on this worker rather than
     // through the queue, so it is not durable the way an enqueued job is. A
@@ -391,7 +393,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // better answer (FIX-1069); this is what the feature does until that exists.
     expect(observed.error).toBeUndefined();
     expect(observed.start).toMatchObject({ ok: true });
-    await until(() => observed.children.length === 1, "the Workstream to run");
+    await until(() => observed.children.length === 1, "the child to run");
 
     await state.dispose();
   });
@@ -409,7 +411,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // The `fsdev serve` / `fsdev dev` order: the runtime resolves first (the
     // bind guard and the banner both read it), and only then is a router built.
     const runtime = await state.getRuntime();
-    const wired = runtime.runtimeConfig.requestHost?.startOperation;
+    const wired = runtime.runtimeConfig.requestHost?.dispatchOperation;
     expect(wired).toBeDefined();
 
     await state.getRouter();
@@ -419,7 +421,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // own config rather than mutating this one. So taking the operation off here
     // to let the router re-wire would hand the router a capability and remove it
     // from everything else in the process.
-    expect(runtime.runtimeConfig.requestHost?.startOperation).toBe(wired);
+    expect(runtime.runtimeConfig.requestHost?.dispatchOperation).toBe(wired);
 
     await runLikeCli(runtime, flow, "s_parent");
     expect(observed.start).toMatchObject({ ok: true });
@@ -456,7 +458,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     expect(observed.children).toHaveLength(1);
 
     // And the child got far enough to do real work, not merely to start.
-    expect(observed.children[0]!.input).toEqual({ note: "detached-payload" });
+    expect(observed.children[0]!.input).toEqual({ note: "dispatched-payload" });
   });
 
   it("NEGATIVE: does not wait on an externally dispatched child, whose queue may have no consumer", async () => {
@@ -498,7 +500,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     async () => {
       const observed: Observed = { children: [] };
       const flow = detachingFlow("runtime-drain-wedged", observed, {
-        // In-process, so it IS tracked — and never finishes. A Workstream
+        // In-process, so it IS tracked — and never finishes. A child
         // blocked on an external call looks exactly like this.
         coreNeverSettles: true
       });
@@ -508,7 +510,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
         stores: { default: { primary: inMemoryStores() } },
         modelResolver: markerResolver("app-default"),
         // Short budget so the test measures the bound rather than the default.
-        detachedDrainTimeoutMs: 250
+        dispatchDrainTimeoutMs: 250
       });
 
       const runtime = await state.getRuntime();
@@ -542,14 +544,14 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
         line.includes("shutdown cancelled")
       );
       expect(truncation).toBeDefined();
-      expect(truncation).toContain("1 detached request(s)");
+      expect(truncation).toContain("1 dispatched request(s)");
       const startedChild = observed.start as { sessionId?: string };
       expect(truncation).toContain(startedChild.sessionId!);
     }
   );
 
   it(
-    "detachedDrainTimeoutMs is a true ceiling — including the documented 0",
+    "dispatchDrainTimeoutMs is a true ceiling — including the documented 0",
     { timeout: 20_000 },
     async () => {
       // A budget the drain cannot possibly satisfy, so the only thing under test
@@ -563,7 +565,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
           flows: { detaching: flow },
           stores: { default: { primary: inMemoryStores() } },
           modelResolver: markerResolver("app-default"),
-          detachedDrainTimeoutMs: budget
+          dispatchDrainTimeoutMs: budget
         });
         const runtime = await state.getRuntime();
         await runLikeCli(runtime, flow, "s_parent");
@@ -598,7 +600,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("runtime-drain-queued", observed, {
       coreDelayMs: 30,
-      // The shape that makes a detached child queue on the same key its parent
+      // The shape that makes a dispatched child queue on the same key its parent
       // would hold. A drain that waited for the child to be *executing* from
       // inside the parent would deadlock here — the child cannot start until the
       // key is free, and the key is not free until the parent returns.
@@ -653,7 +655,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // ...and the notice went to the logger, which is what a silent one can then
     // suppress. Writing straight to `console` bypassed it entirely.
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("detached request(s) to finish before shutdown");
+    expect(warnings[0]).toContain("dispatched request(s) to finish before shutdown");
   });
 
   it("a child cancelled while QUEUED never starts, even at a 0 ceiling", async () => {
@@ -675,7 +677,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
       // Immediate shutdown: the ceiling wins, so nothing is waited for. The
       // cancel still has to APPLY — it is a decision the queued waiter re-reads,
       // not a wait, which is what lets both hold at once.
-      detachedDrainTimeoutMs: 0
+      dispatchDrainTimeoutMs: 0
     });
 
     // The parent must go through the HOST to claim a concurrency key at all —
@@ -718,7 +720,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     expect(observed.children).toEqual([]);
 
     // And it is recorded as what it was. `aborted` is a successful cancellation;
-    // `failed` would tell clients, workstream summaries and recovery that an
+    // `failed` would tell clients, child-session summaries and recovery that an
     // execution broke, and recovery reads terminal statuses to decide what needs
     // attention. Two different events must not share one status.
     const childRequestId = (observed.start as { requestId?: string }).requestId!;
@@ -745,7 +747,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
         flows: { detaching: flow },
         stores: { default: { primary: adapter } },
         modelResolver: markerResolver("app-default"),
-        detachedDrainTimeoutMs: 0
+        dispatchDrainTimeoutMs: 0
       });
 
       const router = await state.getRouter();
@@ -797,7 +799,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     }
   );
 
-  it("refuses to admit detached work once disposal has begun", async () => {
+  it("refuses to admit a dispatch once disposal has begun", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("admission-closed", observed);
 
@@ -811,7 +813,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     await state.dispose();
 
     // A parent still running when shutdown began — the worker draining its last
-    // jobs is the shipped shape — reaching `startDetached` afterwards. Before
+    // jobs is the shipped shape — reaching the seam afterwards. Before
     // the gate this registered a child the drain had already walked past: never
     // waited for, never cancelled, never reported, and writing while the stores
     // closed underneath it.
@@ -863,7 +865,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     await state.dispose();
   });
 
-  it("enforces a reject policy ACROSS the router and detached hosts, not once each", async () => {
+  it("enforces a reject policy ACROSS the router and dispatch hosts, not once each", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("runtime-arbiter-shared", observed, {
       // The parent holds this key for its whole run. A child dispatched under
@@ -878,7 +880,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     });
 
     // The topology the split lives in: the runtime resolves first (so
-    // `#wireDetachedStart` builds a host), and a router is built after (so a
+    // `#installDispatchOperation` builds a host), and a router is built after (so a
     // second host exists). `fsdev serve` and `fsdev dev` both do this.
     await state.getRuntime();
     const router = await state.getRouter();
@@ -916,7 +918,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     expect(observed.error).toBeUndefined();
   });
 
-  it("drains a Workstream started over HTTP on the router-first path", async () => {
+  it("drains a child dispatched over HTTP on the router-first path", async () => {
     const observed: Observed = { children: [] };
     // Slow enough to be provably mid-flight when the response comes back.
     const flow = detachingFlow("router-first-drain", observed, { coreDelayMs: 60 });
@@ -959,7 +961,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // the child was still running. Asserting that `onDispatched` is wired would
     // not have caught it — only asking whether the work actually survived does.
     expect(observed.children).toHaveLength(1);
-    expect(observed.children[0]!.input).toEqual({ note: "detached-payload" });
+    expect(observed.children[0]!.input).toEqual({ note: "dispatched-payload" });
   });
 
   it("a router-first init puts the TRACKED operation on the shared config", async () => {
@@ -984,7 +986,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // wherever a FlowState owns the config, the operation on it is the tracked
     // one, and that this is the object a colocated worker and a direct
     // `runAction` read.
-    expect(runtime.runtimeConfig.requestHost?.startOperation).toBeDefined();
+    expect(runtime.runtimeConfig.requestHost?.dispatchOperation).toBeDefined();
 
     await state.dispose();
   });
@@ -1175,7 +1177,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
   });
 
   /**
-   * A detached child's keep-alive hook comes from the LAUNCHING request's
+   * A dispatched child's keep-alive hook comes from the LAUNCHING request's
    * config, not the host's.
    *
    * On a freeze-after-response platform (`after()` / `waitUntil`) the hook is
@@ -1189,7 +1191,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
    * Asserted on the PER-REQUEST hook specifically. "Some hook was called" passes
    * whichever config it came from and would not have caught this.
    */
-  it("hands a detached child to the launching request's keep-alive hook", async () => {
+  it("hands a dispatched child to the launching request's keep-alive hook", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("keepalive-scope", observed, { coreDelayMs: 30 });
 
@@ -1244,12 +1246,12 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
    * A diagnostic must not be able to stop the work from starting.
    *
    * The model-override warning fires synchronously inside `dispatch`, before
-   * materialization and before the enqueue. `createDetachedStartOperation` reads
+   * materialization and before the enqueue. `createDispatchOperation` reads
    * a synchronous throw from `dispatch` as "nothing was started" and settles the
    * caller's row accordingly — so a `RuntimeLogger.warn` that throws reports the
    * work as never started when the only thing that failed was the logging.
    */
-  it("starts detached work even when the override warning's logger throws", async () => {
+  it("starts dispatched work even when the override warning's logger throws", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("warn-throws", observed);
 
@@ -1339,7 +1341,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     const state = createFlowState({
       flows: { detaching: flow },
       stores: { default: { primary: adapter } },
-      detachedDrainTimeoutMs: 50
+      dispatchDrainTimeoutMs: 50
     });
 
     const runtime = await state.getRuntime();
@@ -1386,5 +1388,43 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // `dispose()` abandons the rest of the drain — the child is never
     // cancelled, and this report never printed.
     expect(errors.some((line) => line.includes("shutdown cancelled"))).toBe(true);
+  });
+
+  it("refuses the removed `detachedDrainTimeoutMs` key BY NAME rather than ignoring it", () => {
+    // Accepting the old key silently would leave the drain on its default, so
+    // a host tuned for a long-running child would truncate one without saying
+    // why. The refusal names the replacement.
+    let thrown: unknown;
+    try {
+      createFlowState({
+        flows: { detaching: detachingFlow("old-drain-key", { children: [] }) },
+        stores: { default: { primary: inMemoryStores() } },
+        ...({ detachedDrainTimeoutMs: 250 } as object)
+      });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(FlowStateConfigError);
+    expect((thrown as Error).name).toBe("FlowStateConfigError");
+    expect((thrown as Error).message).toMatch(/dispatchDrainTimeoutMs/);
+  });
+
+  it("refuses the removed `maxWorkstreamListLimit` key BY NAME rather than ignoring it", () => {
+    // Same rule as the drain key: a host that raised the listing ceiling under
+    // the old name would keep the default cap and truncate its reads without a
+    // named error. The refusal names the replacement.
+    let thrown: unknown;
+    try {
+      createFlowState({
+        flows: { detaching: detachingFlow("old-list-key", { children: [] }) },
+        stores: { default: { primary: inMemoryStores() } },
+        ...({ maxWorkstreamListLimit: 500 } as object)
+      });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(FlowStateConfigError);
+    expect((thrown as Error).name).toBe("FlowStateConfigError");
+    expect((thrown as Error).message).toMatch(/maxChildSessionListLimit/);
   });
 });

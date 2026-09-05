@@ -119,16 +119,11 @@ export { defineCapability, getBaseCapability } from "./capability";
  */
 export { NoRequestHostError, requireRequestHost } from "./types/request-host";
 export type {
-  DetachedProvenance,
-  DetachedRoutingSeed,
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
   SettleParentTaskInput,
-  SettleParentTaskResult,
-  StartDetachedInput,
-  StartDetachedRefusal,
-  StartDetachedResult
+  SettleParentTaskResult
 } from "./types/request-host";
 
 /**
@@ -144,6 +139,8 @@ export {
   dispatchThroughSeam,
   markDispatcher,
   taskBindingOf,
+  framed,
+  readFramed,
   taskDispatchInputSchema,
   taskSessionKeyFor
 } from "./types/dispatch";
@@ -235,12 +232,9 @@ export { runRescue } from "./blocks/sequencer";
 export { composeSideChainSignal } from "./blocks/sequencer";
 export {
   defineFlow,
-  buildWorkstreamCore,
   resolveEntry,
-  workstreamDispatchInputSchema,
   type EntryCoordinate,
   type EntryMaps,
-  type WorkstreamDispatchInput,
 } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";

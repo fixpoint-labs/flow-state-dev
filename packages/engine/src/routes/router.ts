@@ -70,9 +70,9 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       sessionId: p.sessionId
     }))
   ],
-  list_session_workstreams: [
-    entry("GET", "/sessions/:sessionId/workstreams", (p) => ({
-      kind: "list_session_workstreams",
+  list_session_children: [
+    entry("GET", "/sessions/:sessionId/children", (p) => ({
+      kind: "list_session_children",
       sessionId: p.sessionId
     }))
   ],

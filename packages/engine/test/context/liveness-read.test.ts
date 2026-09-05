@@ -36,7 +36,7 @@ function entry(over: Partial<ActiveRequestEntry> = {}): ActiveRequestEntry {
     sessionId: "s_child",
     userId: "u_alice",
     tenantId: "t_acme",
-    source: "workstream",
+    source: "task",
     startedAt: NOW - 10_000,
     lastHeartbeatAt: NOW - 1_000,
     ...over

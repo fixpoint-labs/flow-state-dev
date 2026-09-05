@@ -1,6 +1,6 @@
 /**
- * FIX-1068: a session-scoped resource marked `sharedToWorkstream` has ONE
- * identity across a session lineage, so a session and the Workstreams it spawns
+ * FIX-1068: a session-scoped resource marked `sharedToLineage` has ONE
+ * identity across a session lineage, so a session and the child sessions it dispatches
  * reach the same resource through the ordinary resource API.
  *
  * What each test here is defending:
@@ -53,7 +53,7 @@ function lineageAddr(rootId: string): string {
 /** Shared across the lineage — the resource under test. */
 const board = defineResource({
   scope: "session",
-  sharedToWorkstream: true,
+  sharedToLineage: true,
   ref: "board",
   stateSchema: z.object({ note: z.string().default("") })
 });
@@ -72,7 +72,7 @@ const scratch = defineResource({
 const tasks = defineResourceCollection({
   pattern: "tasks/*",
   scope: "session",
-  sharedToWorkstream: true,
+  sharedToLineage: true,
   stateSchema: z.object({ title: z.string().default("") }),
   client: {
     content: { read: true, create: true, update: true, delete: true },
@@ -90,7 +90,7 @@ const flow = defineFlow({
 })();
 
 /**
- * Seed a session record the way the detached-start writer would. `root` is the
+ * Seed a session record the way the dispatch seam mints a child. `root` is the
  * bare id of the lineage root; omit it for a top-level session, and omit it
  * *with* a parent to reproduce a child persisted before the field existed.
  */
@@ -130,7 +130,7 @@ function contextFor(stores: StoreRegistry, sessionId: string) {
   });
 }
 
-describe("FIX-1068: sharedToWorkstream resources across a session lineage", () => {
+describe("FIX-1068: sharedToLineage resources across a session lineage", () => {
   it("resolves a shared resource to the same address in parent and child", async () => {
     const stores = createInMemoryStores();
     await seedSession(stores, "s_root", undefined, lineageAddr("s_root"));
@@ -206,11 +206,11 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
     expect(parentAgain.session.state.turn).toBe(7);
   });
 
-  it("resolves a nested workstream to the lineage root, not its immediate parent", async () => {
+  it("resolves a nested child to the lineage root, not its immediate parent", async () => {
     const stores = createInMemoryStores();
     await seedSession(stores, "s_root", undefined, lineageAddr("s_root"));
     await seedSession(stores, "s_child", "s_root", lineageAddr("s_root"));
-    // A workstream spawned from inside a workstream inherits its parent's root.
+    // A child dispatched from inside a child inherits its parent's root.
     await seedSession(stores, "s_grandchild", "s_child", lineageAddr("s_root"));
 
     const grandchild = await contextFor(stores, "s_grandchild");
@@ -368,13 +368,13 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
     }
   });
 
-  it("rejects same-prefix session collections with conflicting sharedToWorkstream", async () => {
+  it("rejects same-prefix session collections with conflicting sharedToLineage", async () => {
     // Collections sharing a storage prefix share one storage slot, so they
     // cannot resolve to two different sessions. Same rule as flowIsolation.
     const sharedNotes = defineResourceCollection({
       pattern: "[t]/notes",
       scope: "session",
-      sharedToWorkstream: true,
+      sharedToLineage: true,
       stateSchema: z.object({ n: z.number().default(0) })
     });
     const privateEvents = defineResourceCollection({
@@ -399,6 +399,6 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
         userId: "u_1",
         stores: createInMemoryStores()
       })
-    ).rejects.toThrow(/conflicting sharedToWorkstream/);
+    ).rejects.toThrow(/conflicting sharedToLineage/);
   });
 });

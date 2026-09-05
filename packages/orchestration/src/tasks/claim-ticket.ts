@@ -59,7 +59,7 @@ export interface TaskClaimTicket {
    * `createdAt` above is a millisecond clock, and a delete-then-recreate under
    * the same id lands in the same millisecond often enough (measured 198/200,
    * see `schema/task.ts`) that the two rows share it. Carried so a holder that
-   * has to re-verify its claim *across a process boundary* — the detached start
+   * has to re-verify its claim *across a process boundary* — the child's task
    * gate is the one that does — can ask the question `createdAt` cannot answer.
    *
    * **Absent on a row persisted before `incarnationId` shipped, and on any
@@ -105,7 +105,7 @@ export function ticketForClaim(collectionId: string, claimed: Task): TaskClaimTi
     createdAt: claimed.createdAt,
     // Spread conditionally so an absent nonce stays an ABSENT KEY. A present
     // key holding `undefined` reads the same to `ticketNamesTask` and does not
-    // to a JSON boundary, and this ticket's fields are copied onto a detached
+    // to a JSON boundary, and this ticket's fields are copied onto a task
     // dispatch envelope that has to survive one.
     ...(claimed.incarnationId !== undefined
       ? { incarnationId: claimed.incarnationId }

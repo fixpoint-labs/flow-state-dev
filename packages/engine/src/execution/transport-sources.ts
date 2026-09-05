@@ -24,22 +24,6 @@ export const CHAT_SOURCE = "chat";
 export const SCHEDULED_SOURCE = "scheduled";
 
 /**
- * Stamped by the injection seam on a detached dispatch — a request started from
- * inside a running block rather than by a caller.
- *
- * It resolves exactly one pre-assembled entry, the flow's workstream core, and
- * resolution is **terminal** for it: absent core means a named refusal, never a
- * fall-through to `flow.actions`. It is also deliberately absent from the public
- * re-entry allow-list, so a detached request cannot be retried, continued or
- * resumed from a public surface.
- *
- * Behind the fence this cycle: it keeps its terminal path and takes no new
- * callers. It has no dispatch type — {@link dispatchTypeOf} answers `undefined`
- * for it — because it is routed before the typed lookup is asked.
- */
-export const WORKSTREAM_SOURCE = "workstream";
-
-/**
  * Stamped by the dispatch seam on a task hand-off — a board drain handing a
  * claimed row to `flow.task.actions[name]` in a child session. Deliberately
  * absent from the public re-entry allow-list and present in its never-set: a
@@ -61,9 +45,6 @@ export const INTERNAL_SOURCE = "internal";
  * the entry map a caller cannot pick a boundary. Every caller-facing transport
  * (`http`, `mcp`, `voice`, a custom adapter's own source) delivers `public`
  * dispatches; the four framework-stamped sources each deliver their own type.
- *
- * `undefined` for the fenced {@link WORKSTREAM_SOURCE}, which resolves the
- * flow's pre-assembled workstream core and never a typed entry.
  */
 export function dispatchTypeOf(source: string | undefined): DispatchType | undefined {
   switch (source) {
@@ -77,8 +58,6 @@ export function dispatchTypeOf(source: string | undefined): DispatchType | undef
       return "task";
     case INTERNAL_SOURCE:
       return "internal";
-    case WORKSTREAM_SOURCE:
-      return undefined;
     default:
       return "public";
   }

@@ -33,7 +33,7 @@ join. Explicitly not FIX-1166, which is LAB-139's Proof and stays unspent.
 - **It runs in a checkout that is not the server's**, so the working directory is actually
   exercised rather than being incidentally correct.
 - **It asserts completion off the BOARD ROW, via the `status` action** — not off the run record,
-  and not off the workstream request's status. A settlement declined on a lost claim is *silent*:
+  and not off the child session request's status. A settlement declined on a lost claim is *silent*:
   `recordSuccess` writes with `ifAllowed: true`, so a refused `complete()` is dropped rather than
   thrown, the worker returns normally, and the request completes. Both of those therefore read as
   success while the row is still open. A goal check that trusted either would certify nothing

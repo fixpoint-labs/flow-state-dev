@@ -11,8 +11,9 @@ import type {
 } from "@flow-state-dev/core/types";
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
-import { RESUME_ACTION_STATUS, workstreamBindingKey } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry } from "@flow-state-dev/core";
+import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf } from "@flow-state-dev/core";
+import type { TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -142,17 +143,15 @@ async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
 }
 
 /**
- * Refuse a dispatch-time core whose detached boards this flow cannot route
- * (FIX-982).
+ * Refuse a dispatch-time core whose dispatchers this flow cannot route.
  *
  * A carried core is produced after `defineFlow` ran — today by a dynamic
- * schedule's `resolve` — so its blocks were never walked and its declarations
- * never reached `flow.workstreamBindings`. A task board with a detached worker
- * inside one is therefore admitted with no route: the drain claims a row, the
- * spawn refuses `no-workstream-core` (or the workstream core has no route for
- * that `boardId`), and the row fails or cycles through lease recovery. Work that
- * stalls without erroring, which is the failure class this whole change exists
- * to remove.
+ * schedule's `resolve` — so its blocks were never walked and the
+ * definition-time address check never saw them. A dispatcher admitted here
+ * whose address the flow does not declare would otherwise reach the seam's
+ * `no-entry` refusal only after a board had claimed a row — a row that then
+ * waits out its lease. Work that stalls without erroring, which is the failure
+ * class this check exists to remove.
  *
  * Checked HERE because this is the one seam every carried core passes through,
  * whatever transport produced it, and because it is upstream of everything: the
@@ -163,21 +162,10 @@ async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
  * does not exist at definition time, and the only predicate available there —
  * "this flow has a `schedules.resolve`" — would refuse flows whose resolvers
  * never touch a board. This predicate is exact: it fires when a core actually
- * carries a detached binding this flow cannot route, and never otherwise.
+ * carries a dispatcher this flow cannot route, and never otherwise.
  *
- * **Bound worth knowing.** The bindings check reads the union already
- * accumulated on the core's root block, which is what composition bubbles up. A
- * board reachable from the carried core only through a generator's static
- * `tools` array is not in that union (a generator carries none of its tools'
- * rails), so it is not caught here and keeps the late failure it has today.
- *
- * The same seam refuses a **dispatcher** inside a carried core whose address
- * the flow does not declare. The definition-time address check never walked
- * these blocks, and a dispatcher admitted here would otherwise reach the seam's
- * `no-entry` refusal only after a board had claimed a row — a row that then
- * waits out its lease. This walk does take the tool edge, on the same terms as
- * `defineFlow`'s: composition through `childBlocks`, plus a generator's static
- * `tools`.
+ * This walk takes the tool edge, on the same terms as `defineFlow`'s:
+ * composition through `childBlocks`, plus a generator's static `tools`.
  */
 function assertCarriedCoreRoutable(flow: FlowInstance, core: ActionCore): void {
   // Every block an `ActionCore` can execute, which is the root plus the two
@@ -188,13 +176,6 @@ function assertCarriedCoreRoutable(flow: FlowInstance, core: ActionCore): void {
   // `userMessage` are a schema and a pure function; `tokenBudget` and `durable`
   // are settings), so this list is the whole executable surface.
   const carriers = [core.block, core.onCompleted, core.onErrored];
-
-  for (const carrier of carriers) {
-    const declared = carrier?.workstreamBindings;
-    if (declared === undefined) continue;
-    assertBindingsRoutable(flow, declared);
-  }
-
   assertDispatchersRoutable(flow, carriers);
 }
 
@@ -232,7 +213,15 @@ async function reconcileDroppedDelivery(
   }
 }
 
-/** Refuse any dispatcher reachable from `roots` whose address the flow does not declare. */
+/**
+ * Refuse any dispatcher reachable from `roots` whose address the flow does not
+ * declare — and, for a task dispatcher, one the entry's own board does not
+ * hold. Target existence is not routability for a hand-off: the entry runs
+ * behind ONE board's gate, so a seat another board holds would claim a row on
+ * its ledger and have the child refuse it at the gate, after the dispatch was
+ * accepted, leaving the row `in_progress` until lease recovery. `defineFlow`
+ * refuses that statically; this is the same rule for a core it never walked.
+ */
 function assertDispatchersRoutable(
   flow: FlowInstance,
   roots: readonly (BlockDefinition | undefined)[]
@@ -248,44 +237,39 @@ function assertDispatchersRoutable(
     seen.add(block);
 
     const address = block.dispatch;
-    if (address !== undefined && resolveTypedEntry(flow, address.type, address.target) === undefined) {
-      throw new ValidationError(
-        `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
-          `dispatches to ${address.type}:"${address.target}", which the flow does not declare. ` +
-          `The core was produced at dispatch time — a dynamic schedule's resolver — so its ` +
-          `dispatcher never reached the flow definition. Declare the entry on the flow, or ` +
-          `drop the dispatch from the resolver's block.`,
-        { scope: "request" }
-      );
+    if (address !== undefined) {
+      const entry = resolveTypedEntry(flow, address.type, address.target);
+      if (entry === undefined) {
+        throw new ValidationError(
+          `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
+            `dispatches to ${address.type}:"${address.target}", which the flow does not declare. ` +
+            `The core was produced at dispatch time — a dynamic schedule's resolver — so its ` +
+            `dispatcher never reached the flow definition. Declare the entry on the flow, or ` +
+            `drop the dispatch from the resolver's block.`,
+          { scope: "request" }
+        );
+      }
+      if (address.type === "task") {
+        const binding = taskBindingOf(block);
+        const gatedBy = (entry as TaskEntry).gatedBy;
+        if (binding === undefined || gatedBy === undefined || gatedBy.gate !== binding.gate) {
+          throw new ValidationError(
+            `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
+              `hands off to task:"${address.target}", which is gated for board ` +
+              `"${gatedBy?.boardId ?? "<none>"}", but the seat is held by ` +
+              (binding === undefined ? "no board" : `board "${binding.boardId}"`) +
+              `. One entry settles against one ledger; a row claimed on another board's ledger ` +
+              `would be refused at this gate after the dispatch was accepted. Hand off from the ` +
+              `board that declares this entry, or declare an entry for the other board.`,
+            { scope: "request" }
+          );
+        }
+      }
     }
 
     for (const child of block.childBlocks ?? []) queue.push(child);
     const tools = (block.config as { tools?: unknown }).tools;
     if (Array.isArray(tools)) queue.push(...(tools as BlockDefinition[]));
-  }
-}
-
-/** Refuse any binding in `declared` the flow has no route for. */
-function assertBindingsRoutable(
-  flow: FlowInstance,
-  declared: NonNullable<BlockDefinition["workstreamBindings"]>
-): void {
-  for (const binding of declared.values()) {
-    const key = workstreamBindingKey(binding.boardId, binding.coordinateKey);
-    // Identity, not key equality — the same test `defineFlow`'s reachability
-    // assertion makes. A binding present under a DIFFERENT object is a second
-    // declaration that happens to collide on the coordinate, not this one
-    // arriving by another route, and routing it would run someone else's board.
-    if (flow.workstreamBindings?.get(key) === binding) continue;
-    throw new ValidationError(
-      `Flow "${flow.kind}" cannot route the detached work in this dispatch's action core: ` +
-        `board "${binding.boardId}" coordinate "${binding.coordinateKey}" (worker ` +
-        `"${binding.worker.name}") is not among the flow's declared bindings. The core was ` +
-        `produced at dispatch time — a dynamic schedule's resolver — so its board never reached ` +
-        `the flow definition and no workstream route exists for it. Declare the board on a ` +
-        `statically-reachable action, or drop the detached dispatch from it.`,
-      { scope: "request" }
-    );
   }
 }
 

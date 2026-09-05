@@ -147,7 +147,7 @@ export async function handleGetSessionState(
     session.orgId !== undefined ? resourceScopeIds(session.orgId, isoFlow, "org") : [];
 
   // FIX-1068: session scope reads its own rows, with any resource declared
-  // `sharedToWorkstream` taken from the lineage root instead — the same view a
+  // `sharedToLineage` taken from the lineage root instead — the same view a
   // block resolves through `ctx.resources`.
   const [sessionContent, userContent, orgContent] = await Promise.all([
     readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeType, scopeId) =>

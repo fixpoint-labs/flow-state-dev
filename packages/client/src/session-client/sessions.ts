@@ -14,7 +14,7 @@ import type {
   SessionRequestSummary,
   SessionStateSnapshotResponse,
   SessionSummary,
-  WorkstreamSummary
+  ChildSessionSummary
 } from "../types";
 
 /**
@@ -52,13 +52,13 @@ export type ListSessionRequestsOptions = {
 };
 
 /**
- * Query options for listing the Workstreams under one conversation.
+ * Query options for listing the ChildSessions under one conversation.
  *
  * Paging only — there is no filter here. Which background work a caller may
  * see is decided by the server from the stored parent record, never from
  * anything the caller sends (BP-031).
  */
-export type ListWorkstreamsOptions = {
+export type ListChildSessionsOptions = {
   /** 1–100. The server returns 25 rows when this is absent. */
   limit?: number;
   /** 0–10000. */
@@ -121,10 +121,10 @@ export type SessionClient = {
    * the background is declared by the flow author when the flow is wired up,
    * never chosen by the caller.
    */
-  listWorkstreams: (
+  listChildSessions: (
     parentSessionId: string,
-    options?: ListWorkstreamsOptions
-  ) => Promise<WorkstreamSummary[]>;
+    options?: ListChildSessionsOptions
+  ) => Promise<ChildSessionSummary[]>;
   getSessionState: (
     sessionId: string,
     options?: GetSessionStateOptions
@@ -220,16 +220,16 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     return payload.requests;
   };
 
-  const listWorkstreams = async (
+  const listChildSessions = async (
     parentSessionId: string,
-    listOptions?: ListWorkstreamsOptions
-  ): Promise<WorkstreamSummary[]> => {
+    listOptions?: ListChildSessionsOptions
+  ): Promise<ChildSessionSummary[]> => {
     const parentId = requireId(parentSessionId, "parentSessionId");
-    const payload = await requestJson<{ workstreams: WorkstreamSummary[] }>({
+    const payload = await requestJson<{ children: ChildSessionSummary[] }>({
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
-        path: `/api/flows/sessions/${encodeURIComponent(parentId)}/workstreams`,
+        path: `/api/flows/sessions/${encodeURIComponent(parentId)}/children`,
         query: asQuery({
           limit: listOptions?.limit,
           offset: listOptions?.offset
@@ -239,12 +239,12 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
 
     // The client is about to relabel these rows as this conversation's
     // background work, and it will not relabel a row the server did not claim.
-    return payload.workstreams.filter((workstream) => {
-      if (workstream.parentSessionId === parentId) return true;
+    return payload.children.filter((childSession) => {
+      if (childSession.parentSessionId === parentId) return true;
       warnParentMismatchOnce(
-        `${parentId}:${workstream.id}`,
-        `listWorkstreams("${parentId}") dropped row "${workstream.id}" whose ` +
-          `parentSessionId is "${workstream.parentSessionId}", not the requested parent.`
+        `${parentId}:${childSession.id}`,
+        `listChildSessions("${parentId}") dropped row "${childSession.id}" whose ` +
+          `parentSessionId is "${childSession.parentSessionId}", not the requested parent.`
       );
       return false;
     });
@@ -435,7 +435,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     listSessions,
     getSession,
     listSessionRequests,
-    listWorkstreams,
+    listChildSessions,
     getSessionState,
     createSession,
     updateSessionMetadata,

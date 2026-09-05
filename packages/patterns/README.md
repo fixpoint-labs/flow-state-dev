@@ -154,7 +154,7 @@ Concurrent drain over a `TaskCollection` with dependency gating and per-task wor
 
 **Waiting on a person (`onReview`)**: `"hold"` (default) keeps a task parked with `awaitReview` in the in-flight counts, so the drain stays open until someone moves it out. `"exit"` excuses parked tasks from those counts: the drain returns while the task stays parked and durable, and a later `resumeFromReview` re-queues it for whatever drains the board next. It needs a `defineTaskCollection` collection, the default `onIdle`, and an explicit `id` on every `initialTasks` entry; anything else is refused when the board is built.
 
-The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures" | "retry-budget-exhausted" | "handed-off" | "parked-for-review"` field so callers can tell a clean drain from a dep-blocked exit, from one the board's retry budget stopped, from one whose remaining work is running in a Workstream, and from one whose remaining work is waiting on a person — without inspecting `counts`.
+The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures" | "retry-budget-exhausted" | "handed-off" | "parked-for-review"` field so callers can tell a clean drain from a dep-blocked exit, from one the board's retry budget stopped, from one whose remaining work is running in a child session, and from one whose remaining work is waiting on a person — without inspecting `counts`.
 
 ```typescript
 import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/orchestration/task-board";

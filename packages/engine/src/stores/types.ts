@@ -50,7 +50,7 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   parentSessionId?: string;
   /**
    * The lineage this session belongs to (FIX-1068) — the address every resource
-   * it declares `sharedToWorkstream` stores under.
+   * it declares `sharedToLineage` stores under.
    *
    * **Minted, not derived.** A root session mints one when its record is
    * created; every descendant inherits that same literal value at spawn. The
@@ -70,9 +70,9 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   lineageId?: string;
   /**
-   * Human-readable name for the body of work a detached child session was
-   * started for (FIX-1010). Stamped by the detached-start writer
-   * (`context/create-request-host.ts`) from the routing seed the child key was
+   * Human-readable name for the body of work a child session was
+   * dispatched for (FIX-1010). Stamped by the dispatch seam
+   * (`context/create-request-host.ts`) from the key the child was
    * derived from — **never** from {@link SessionRecord.metadata}, which is the
    * caller's own free-form bag and can say anything.
    *
@@ -98,9 +98,8 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   topic?: string;
   /**
-   * Which worker within the {@link SessionRecord.topic} a detached child is
-   * routed to — the seed's optional further discrimination, absent when the
-   * caller gave none. Same writer, same server-derived source, and the same
+   * Which entry a child was dispatched for, as `<type>:<target>`, absent on a
+   * session nothing dispatched. Same writer, same server-derived source, and the same
    * no-authority rule: see {@link SessionRecord.topic}, which carries the whole
    * contract for both fields.
    */
@@ -887,7 +886,7 @@ export type ContentScopeType = "session" | "user" | "org";
  *
  * Wider than {@link ContentScopeType}, which is the scope a resource is
  * DECLARED at. The two differ for exactly one case: a session-scoped resource
- * marked `sharedToWorkstream` stores in the `lineage` space, addressed by the
+ * marked `sharedToLineage` stores in the `lineage` space, addressed by the
  * lineage rather than by a session.
  *
  * They are separate types rather than one widened type because they answer

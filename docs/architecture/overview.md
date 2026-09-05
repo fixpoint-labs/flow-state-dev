@@ -119,9 +119,9 @@ request → session → user → org
 
 Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicState`, and more. **They do not all take the version check** — some writes are guarded by compare-and-swap and can be refused, while the commutative ones persist unconditionally, and which is which depends on the shape of the call, the adapter and the scope. Before you rely on either behaviour, read [Atomicity Guarantees](./state-and-scopes.md#atomicity-guarantees), which is where that split is stated. Blocks declare only the state fields they need via partial schemas, so a counter block doesn't need to know about a preferences block's state. See [State and Scopes](./state-and-scopes.md) for the routing.
 
-### Detached work — outliving the request
+### Dispatched work — outliving the request
 
-Work dispatched through `ctx.requestHost.startDetached` runs in a **Workstream**, a child session that keeps going after the request that started it has returned. Where it runs, whether it survives the process, and what recovers it if the process stops all depend on the deployment topology. See [Detached Work](./detached-work.md).
+Work a flow hands off — through a `dispatcher()` block, or a task board seat holding a `dispatcher({ type: "task" })` — runs in a **child session** that keeps going after the request that started it has returned. Where it runs, whether it survives the process, and what recovers it if the process stops all depend on the deployment topology. See [Dispatched Work](./dispatched-work.md).
 
 ### Streaming — resilient by default
 

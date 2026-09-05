@@ -104,7 +104,7 @@ export const observedPlanItemStateSchema = z.object({
 /**
  * `**`, not `*`: a key carries the run id and then a whole file path, so it has
  * many segments. `prefetchMode: "lazy"` is the other half of that — rows are
- * namespaced per run and a workstream session is reused across runs, so an
+ * namespaced per run and a child session is reused across runs, so an
  * eager collection would bulk-load every historical row of every previous run
  * before the current one touched a single key. The recorder only ever upserts
  * by exact key, which the lazy accessor serves with a single-key read;

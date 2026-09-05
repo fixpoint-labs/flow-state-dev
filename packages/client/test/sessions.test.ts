@@ -6,7 +6,7 @@ import {
   type SessionRequestSummary,
   type SessionStateSnapshotResponse,
   type SessionSummary,
-  type WorkstreamSummary
+  type ChildSessionSummary
 } from "../src";
 
 function createJsonResponse(body: unknown, status = 200): Response {
@@ -200,9 +200,9 @@ describe("createSessionClient", () => {
   });
 });
 
-describe("createSessionClient.listWorkstreams", () => {
-  const WORKSTREAM: WorkstreamSummary = {
-    id: "ws_9f3a",
+describe("createSessionClient.listChildSessions", () => {
+  const CHILD: ChildSessionSummary = {
+    id: "dsx_9f3a",
     parentSessionId: "sess_1",
     createdAt: 1,
     updatedAt: 2,
@@ -213,47 +213,47 @@ describe("createSessionClient.listWorkstreams", () => {
 
   it("addresses the parent conversation and unwraps the response envelope", async () => {
     const fetcher = vi.fn<ClientFetch>(async () =>
-      createJsonResponse({ workstreams: [WORKSTREAM] })
+      createJsonResponse({ children: [CHILD] })
     );
     const client = createSessionClient({ fetcher });
 
-    const result = await client.listWorkstreams("sess_1");
+    const result = await client.listChildSessions("sess_1");
 
-    expect(result).toEqual([WORKSTREAM]);
+    expect(result).toEqual([CHILD]);
     expect(fetcher.mock.calls[0]?.[0]).toBe(
-      "/api/flows/sessions/sess_1/workstreams"
+      "/api/flows/sessions/sess_1/children"
     );
   });
 
   it("passes paging options through as canonical query params", async () => {
     const fetcher = vi.fn<ClientFetch>(async () =>
-      createJsonResponse({ workstreams: [] })
+      createJsonResponse({ children: [] })
     );
     const client = createSessionClient({ fetcher });
 
-    await client.listWorkstreams("sess_1", { limit: 50, offset: 25 });
+    await client.listChildSessions("sess_1", { limit: 50, offset: 25 });
 
     expect(fetcher.mock.calls[0]?.[0]).toBe(
-      "/api/flows/sessions/sess_1/workstreams?limit=50&offset=25"
+      "/api/flows/sessions/sess_1/children?limit=50&offset=25"
     );
   });
 
   it("reads back a row that carries no labels and no status (BP-030)", async () => {
-    // A server that predates the labels, or a Workstream that has not run
+    // A server that predates the labels, or a ChildSession that has not run
     // anything yet. Absent must stay absent — never an empty name, never a
     // defaulted status.
     const bare = {
-      id: "ws_bare",
+      id: "dsx_bare",
       parentSessionId: "sess_1",
       createdAt: 1,
       updatedAt: 2
     };
     const fetcher = vi.fn<ClientFetch>(async () =>
-      createJsonResponse({ workstreams: [bare] })
+      createJsonResponse({ children: [bare] })
     );
     const client = createSessionClient({ fetcher });
 
-    const [row] = await client.listWorkstreams("sess_1");
+    const [row] = await client.listChildSessions("sess_1");
 
     expect(row).toEqual(bare);
     expect(row?.topic).toBeUndefined();
@@ -268,36 +268,36 @@ describe("createSessionClient.listWorkstreams", () => {
     // would be the client inventing a meaning.
     const fetcher = vi.fn<ClientFetch>(async () =>
       createJsonResponse({
-        workstreams: [
-          WORKSTREAM,
-          { ...WORKSTREAM, id: "ws_other", parentSessionId: "sess_2" }
+        children: [
+          CHILD,
+          { ...CHILD, id: "dsx_other", parentSessionId: "sess_2" }
         ]
       })
     );
     const client = createSessionClient({ fetcher });
 
-    const result = await client.listWorkstreams("sess_1");
+    const result = await client.listChildSessions("sess_1");
 
-    expect(result.map((row) => row.id)).toEqual(["ws_9f3a"]);
+    expect(result.map((row) => row.id)).toEqual(["dsx_9f3a"]);
   });
 
   it("warns in development when it drops a mismatched row", async () => {
     const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const fetcher = vi.fn<ClientFetch>(async () =>
       createJsonResponse({
-        workstreams: [
-          { ...WORKSTREAM, id: "ws_warn_child", parentSessionId: "sess_warn_other" }
+        children: [
+          { ...CHILD, id: "dsx_warn_child", parentSessionId: "sess_warn_other" }
         ]
       })
     );
     const client = createSessionClient({ fetcher });
 
-    await client.listWorkstreams("sess_warn_parent");
+    await client.listChildSessions("sess_warn_parent");
 
     expect(spy).toHaveBeenCalledTimes(1);
     const [message] = spy.mock.calls[0] ?? [];
     expect(message).toContain("sess_warn_parent");
-    expect(message).toContain("ws_warn_child");
+    expect(message).toContain("dsx_warn_child");
     expect(message).toContain("sess_warn_other");
 
     spy.mockRestore();
@@ -312,14 +312,14 @@ describe("createSessionClient.listWorkstreams", () => {
     try {
       const fetcher = vi.fn<ClientFetch>(async () =>
         createJsonResponse({
-          workstreams: [
-            { ...WORKSTREAM, id: "ws_silent_child", parentSessionId: "sess_silent_other" }
+          children: [
+            { ...CHILD, id: "dsx_silent_child", parentSessionId: "sess_silent_other" }
           ]
         })
       );
       const client = createSessionClient({ fetcher });
 
-      const result = await client.listWorkstreams("sess_silent_parent");
+      const result = await client.listChildSessions("sess_silent_parent");
 
       expect(result).toEqual([]);
       expect(spy).not.toHaveBeenCalled();
@@ -331,11 +331,11 @@ describe("createSessionClient.listWorkstreams", () => {
 
   it("rejects an empty parent session id", async () => {
     const fetcher = vi.fn<ClientFetch>(async () =>
-      createJsonResponse({ workstreams: [] })
+      createJsonResponse({ children: [] })
     );
     const client = createSessionClient({ fetcher });
 
-    await expect(client.listWorkstreams("  ")).rejects.toThrow(
+    await expect(client.listChildSessions("  ")).rejects.toThrow(
       /non-empty parentSessionId/
     );
     expect(fetcher).not.toHaveBeenCalled();
