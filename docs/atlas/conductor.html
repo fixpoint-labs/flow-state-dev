@@ -580,7 +580,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <div class="card" style="--tc: var(--prose)">
       <h5>Runs</h5><span class="role">bounded, disposable</span>
-      <p>One harness run per issue-phase, in its own session &#8212; a top-level one a person can address, not hidden behind the coordinator &#8212; and its own worktree. Each returns at most a screen; the transcript stays where it ran.</p>
+      <p>One harness run per issue-phase, in its own session &#8212; a child of the dispatching session, derived per task (section 6) &#8212; and its own worktree. Each returns at most a screen; the transcript stays where it ran. Who a person addresses is thread 15.</p>
     </div>
   </div>
 </section>
@@ -727,9 +727,9 @@ const epicBoard = (epicId: string) => <em>taskBoard</em>({
   onIdle: "complete-or-blocked",
   onReview: "exit",                  <i>// a parked row lets the drain return (section 6)</i>
   workers: {                         <i>// three dispatcher SEATS &#8212; no dispatch: { mode: "detached" } anywhere</i>
-    spec:      <b>dispatcher</b>({ type: "task", target: "spec",      session: "per-task" }),
-    implement: <b>dispatcher</b>({ type: "task", target: "implement", session: "per-task" }),
-    review:    <b>dispatcher</b>({ type: "task", target: "review",    session: "per-task" }),
+    spec:      <b>dispatcher</b>({ name: "hand-off-spec",      type: "task", target: "spec",      session: "per-task" }),
+    implement: <b>dispatcher</b>({ name: "hand-off-implement", type: "task", target: "implement", session: "per-task" }),
+    review:    <b>dispatcher</b>({ name: "hand-off-review",    type: "task", target: "review",    session: "per-task" }),
   },
 });
 
@@ -742,12 +742,12 @@ const conduct = <em>sequencer</em>({ id: "conduct" }).step(board.drain);
 export const conductor = <em>defineFlow</em>({
   kind: "conductor",
   resources: { epics, issues, specs, runs, <b>inbox</b>, decisions },   <i>// inbox: the question collection</i>
-  request: { concurrency: "queue" },            <i>// the default rung; per-type and per-entry rungs are proposed</i>
-  public: { actions: {                          <i>// a caller &#8212; a person, or the operator board</i>
+  request: { concurrency: "queue" },            <i>// the FLOW rung. An entry overrides it (EXISTS); there is no per-type rung</i>
+  actions: {                                    <i>// the public entries &#8212; a caller: a person, or the operator board</i>
     seed:   { block: seedThenDrain },           <i>// an issue-phase -&gt; a row, then one drain</i>
     status: { block: readBoard },               <i>// reads rows, dispatches nothing</i>
     <b>answer</b>: { block: answerThenDrain },         <i>// re-queues the parked row it names, then drains</i>
-  } },                                          <i>// a gate and a question are both parked rows: no approve</i>
+  },                                            <i>// a gate and a question are both parked rows: no approve</i>
   internal: { actions: {                        <i>// a dispatcher block in another request</i>
     wake:   { block: conduct },                 <i>// an event advances whatever is ready</i>
   } },
@@ -900,7 +900,7 @@ export const conductor = <em>defineFlow</em>({
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 400" role="img" aria-label="The question channel as a cycle. A harness manager, which the lab ships, wraps each run, runs the turn, reads the outcome, and posts what it cannot answer to the inbox. The inbox, which the lab ships, is a user-scoped collection holding one row per open question, moving from open to answered or withdrawn. The epic session is the one a person addresses: it holds one inbox, serialized, and reports; the coordinator seeds and reports and does not proxy answers. You answer on the epic session, naming the row. The answer entry, which the lab ships, re-queues the parked row and drains, and the next attempt of the run starts holding the answer. This is a default pending sign-off, not a decision.">
+      <svg viewBox="0 0 940 400" role="img" aria-label="The question channel as a cycle. A harness manager, which the lab ships, wraps each run, runs the turn, reads the outcome, and posts what it cannot answer to the inbox. The inbox, which the lab ships, is a user-scoped collection holding one row per open question, moving from open to answered or withdrawn. The epic session is the one a person addresses: it reads one user-scoped inbox, shared across every epic and serialized, and reports; the coordinator seeds and reports and does not proxy answers. You answer on the epic session, naming the row. The answer entry, which the lab ships, re-queues the parked row and drains, and the next attempt of the run starts holding the answer. This is a default pending sign-off, not a decision.">
         <rect class="n-box" x="16" y="46" width="268" height="104" rx="4"/>
         <text class="t-b" x="34" y="72">harness manager</text>
         <text class="t-xs" x="34" y="90">EXISTS &middot; LAB &middot; ONE PER RUN</text>
@@ -922,7 +922,7 @@ export const conductor = <em>defineFlow</em>({
         <rect class="n-prop" x="656" y="46" width="268" height="104" rx="4"/>
         <text class="t-b f-accent" x="674" y="72">the epic session</text>
         <text class="t-xs" x="674" y="90">PROPOSED &middot; THE ADDRESS A PERSON USES</text>
-        <text class="t-s" x="674" y="112">one inbox, serialized</text>
+        <text class="t-s" x="674" y="112">reads one shared inbox, serialized</text>
         <text class="t-s" x="674" y="132">reports; the coordinator seeds</text>
 
         <path class="ln" d="M790,150 L790,182"/>
@@ -940,10 +940,10 @@ export const conductor = <em>defineFlow</em>({
         <path class="ln" d="M330,300 L150,300 L150,150"/>
         <text class="t-lbl" x="196" y="292">IN</text>
 
-        <text class="t-lbl" x="470" y="368" text-anchor="middle">ONE INBOX PER EPIC SESSION, SERIALIZED. THE ANSWER RE-QUEUES THE ROW; THE NEXT ATTEMPT STARTS HOLDING IT.</text>
+        <text class="t-lbl" x="470" y="368" text-anchor="middle">ONE USER INBOX, SHARED ACROSS EPICS, SERIALIZED. THE ANSWER RE-QUEUES THE ROW; THE NEXT ATTEMPT STARTS HOLDING IT.</text>
       </svg>
     </div>
-    <figcaption><b>Out, and back in.</b> One subsystem with two directions, and a manager on the run's end of it. The epic session's context is the middle box &#8212; its own open rows &#8212; and nothing larger. Everything a run knows stays in the run. The lab ships the manager, the inbox and <code>answer</code>; what the epic session is, and who a person addresses, is the default of thread 15.</figcaption>
+    <figcaption><b>Out, and back in.</b> One subsystem with two directions, and a manager on the run's end of it. The epic session's context is the middle box &#8212; open rows in one user-scoped inbox, shared across epics &#8212; and nothing larger. Everything a run knows stays in the run. The lab ships the manager, the inbox and <code>answer</code>; what the epic session is, and who a person addresses, is the default of thread 15.</figcaption>
   </figure>
 
   <h3>Out &#8212; the inbox resource</h3>
@@ -1211,7 +1211,7 @@ export const inboxCollection = <em>defineResourceCollection</em>({
 
   <h3>The machinery is small</h3>
 
-  <p>The process executing the current request sends. The same process, conceptually on another thread, receives the dispatch and handles it as a request on the addressed session. Where a queue adapter is configured &#8212; <code>@flow-state-dev/bullmq</code> is the one in the tree &#8212; delivery is a job, and that is what makes it survive a process restart. For an in-process host, delivery is attached to the <strong>process</strong>, not to the originating web request, so a sender that has already returned does not take its dispatch with it. Whether that per-adapter split survives the send becoming a block is open &#8212; thread 23.</p>
+  <p>The process executing the current request sends. The same process, conceptually on another thread, receives the dispatch and handles it as a request on the addressed session. Where a queue adapter is configured &#8212; <code>@flow-state-dev/bullmq</code> is the one in the tree &#8212; a <code>{ key }</code> child's delivery is a job, and that is what makes it survive a process restart. An <code>{ id }</code> delivery into a session that already exists gets no job there at all: the host refuses it before anything is enqueued, because the recipient's concurrency policy would not be applied past that boundary <span class="tag t-real">exists</span>. For an in-process host, delivery is attached to the <strong>process</strong>, not to the originating web request, so a sender that has already returned does not take its dispatch with it. Whether that per-adapter split survives the send becoming a block is open &#8212; thread 23.</p>
 
   <p>Arbitration is not new either. The concurrency policy is <em>&#8220;enforced once at the shared dispatch seam, so every transport &#8230; inherits the same behavior&#8221;</em> &#8212; and an <code>internal</code> dispatch inherits it with everything else. It either <strong>waits for the session to finish its in-flight requests</strong> (<code>queue</code>, FIFO on the key) or is <strong>handled as soon as it arrives</strong> (<code>allow</code>). One word on the flow. No new queueing mechanism.</p>
 
