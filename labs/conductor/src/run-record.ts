@@ -237,6 +237,22 @@ interface ClaimView {
 const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "parked"]);
 
 /**
+ * The status `parked` replaced. A row persisted before that rename still
+ * carries it. The substrate maps it forward at its own read boundary, but the
+ * fence reads the board as a plain resource collection and never passes that
+ * boundary — so it maps the value forward itself, or a parked attempt from
+ * before the rename has every write refused and its run record freezes.
+ */
+const LEGACY_PARKED_STATUS = "awaiting_review";
+
+/** The board row as the fence reads it, with the legacy status mapped forward. */
+function readClaim(state: unknown): ClaimView | undefined {
+  if (state === undefined) return undefined;
+  const claim = state as ClaimView;
+  return claim.status === LEGACY_PARKED_STATUS ? { ...claim, status: "parked" } : claim;
+}
+
+/**
  * The substrate's lease rule, mirrored here for the same reason
  * {@link ATTEMPT_OWNED_STATUSES} is: this file reads the board through a
  * structural interface and does not import the `Task` type.
@@ -332,7 +348,7 @@ export async function writeRunRow(
   const runs = collectionRef(ctx, RUNS);
   const board = collectionRef(ctx, identity.boardCollectionId);
 
-  const claim = (await board.getOptional(identity.taskId))?.state as ClaimView | undefined;
+  const claim = readClaim((await board.getOptional(identity.taskId))?.state);
   if (claim === undefined) return "refused";
   if (claim.attempts !== identity.attempt) return "refused";
   if (!ATTEMPT_OWNED_STATUSES.has(String(claim.status))) return "refused";

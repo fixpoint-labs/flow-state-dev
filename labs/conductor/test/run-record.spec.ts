@@ -202,6 +202,24 @@ describe("the run record — obligation A", () => {
     expect(await writeRunRow(ctx, identity(1), { sessionId: "s" })).toBe("refused");
   });
 
+  it("applies a write for a row parked before the status was renamed", async () => {
+    // A board row persisted before `awaiting_review` became `parked` still
+    // carries the old word, and the fence reads the board as a plain resource
+    // collection, so no substrate read boundary maps it forward on the way in.
+    // A parked attempt owns its row, whichever spelling the row arrived with;
+    // reading the old one as "not an owning status" would refuse every write
+    // the attempt makes and leave the run record frozen on an active park.
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+
+    await board.upsert(TASK, claimed(1));
+    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await board.upsert(TASK, claimed(1, "awaiting_review"));
+
+    expect(await writeRunRow(ctx, identity(1), { sessionId: "s" })).toBe("applied");
+  });
+
   it("refuses a write once this attempt's lease has lapsed", async () => {
     // The substrate refuses a SETTLEMENT on a lapsed lease exactly as it
     // refuses one on a lost claim — both are `"lost-claim"`. A fence that took
