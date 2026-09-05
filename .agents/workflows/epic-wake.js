@@ -1629,7 +1629,7 @@ const GATE_SCHEMA = {
     'latestActivityAt',
   ],
   properties: {
-    approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human' },
+    approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human — or by the configured owner, who counts even as the PR author' },
     approvedByLabel: {
       type: 'boolean',
       description:
@@ -1998,6 +1998,17 @@ const rows = input.issues || []
 // (the scouts are told to report it false); comment and review approval are unaffected. Fail-closed
 // on purpose: widening to any human here is the same class of bug as reading the label at all was.
 const approvalOwner = typeof input.owner === 'string' && input.owner.trim() ? input.owner.trim() : null
+// Who may approve by COMMENT or REVIEW. "Not the PR author" exists so a worker cannot approve its own
+// PR — and every PR here is opened under the owner's login, so read literally it excluded the owner
+// by construction: "Approved. Lets proceed." from the owner on their own spec PR read as a
+// self-approval and released nothing. The owner is not a worker; their sign-off counts as author.
+// Every OTHER login keeps the exclusion, and bots never count. With no owner configured there is
+// nobody to exempt, so the rule stands as it was.
+const approverRule =
+  `from a human who is not the PR author` +
+  (approvalOwner
+    ? ` — EXCEPT \`${approvalOwner}\`, whose approving comment or review counts even when that login is also the PR's author. Every PR in this repo is opened under that account, so the author exclusion would rule the owner out by construction; it exists so a worker cannot approve its own PR, and the owner is not a worker. Every other login is still excluded when it authored the PR`
+    : '')
 // An explicit positive cap wins; anything else (absent, 0, junk) falls back to the default
 // rather than silently becoming it.
 const cap = Number.isFinite(input.cap) && input.cap > 0 ? input.cap : 3
@@ -2035,7 +2046,7 @@ if (carriedForward.size) {
 const [gate, linear, prScan] = await parallel([
   () =>
     agent(
-      `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a human who is not the PR author. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
+      `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head, ${approverRule}. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
         (approvalOwner
           ? `SEPARATELY, report approvedByLabel:true whenever the PR currently carries the \`epic approved\` LABEL **and \`${approvalOwner}\` applied it**. Two independent checks, and conflating them is the bug this wording exists to prevent:\n` +
             `  · WHO — verify provenance. Read the PR's timeline for \`labeled\` events naming \`epic approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\`. Not "a human" — this label is that account's authorization channel specifically, and a label is writable by every collaborator and every bot with write access, so accepting it from anyone else releases every child issue without the sign-off the gate exists to require. If the timeline is unreadable, or no \`labeled\` event can be found for a label that is present, or the most recent one was applied by anybody else, report FALSE — an approval you cannot attribute to \`${approvalOwner}\` is not an approval.\n` +
@@ -2102,7 +2113,7 @@ const [gate, linear, prScan] = await parallel([
                 )
                 .join('') +
               `\nFor EVERY issue above:\n` +
-              `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a non-author human. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
+              `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head, ${approverRule}. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
               (approvalOwner
                 ? `SEPARATELY report specApprovedByLabel:true whenever that issue's spec PR currently carries the \`spec approved\` LABEL **and \`${approvalOwner}\` applied it**. Same two independent checks as the epic gate. WHO: read the PR timeline for \`labeled\` events naming \`spec approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\` — not merely "a human". Labels are writable by every collaborator and every bot with write access, so a label from any other actor would release implementation without the sign-off the gate requires; if the timeline is unreadable, carries no \`labeled\` event for a present label, or names anybody else, report FALSE. WHEN: do not check — once the actor is \`${approvalOwner}\`, presence alone passes: do not compare the label against the head commit and do not treat a later push as invalidating it, since a spec PR takes commits while review is folded and expiring the label would revoke the approval on the next round. Removal is the revocation. Report it independently of specApproved.\n`
                 : `The \`spec approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report specApprovedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
@@ -2706,7 +2717,12 @@ const plan = allocate(refreshed, claims, cap, foldEpicWanted, epicApproved)
 if (!epicApproved) {
   log(
     `Epic objective not signed off — holding ${plan.held.length} issue(s) before their first action` +
-      `${plan.foldEpic ? ', but still folding epic-PR review so the objective can be revised' : ''}.`,
+      `${plan.foldEpic ? ', but still folding epic-PR review so the objective can be revised' : ''}.` +
+      // The carry-case line above says "timeline unreadable" only when a recorded approval rode it; with
+      // nothing recorded the gate simply holds, and the label sitting on the PR would go unmentioned.
+      // Keyed on `!epic.approved`, not on `labelUnattributable` alone: a carried approval held for
+      // another reason (a change request, an unusable head) is not "nothing recorded".
+      `${labelUnattributable && !epic.approved ? ` The \`epic approved\` label is on #${epic.prNumber} but its applier could not be read (timeline unreadable), and no earlier approval was recorded to hold, so it releases nothing.` : ''}`,
   )
 }
 for (const row of plan.blocked) {
