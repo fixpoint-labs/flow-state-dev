@@ -232,7 +232,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="what">
   <div class="sec-head"><span class="sec-num">01</span><h2>What Workforce is</h2></div>
-  <p class="lede">Opinions so people get going on Layer&nbsp;1 without inventing their own. A worker is a flow. A channel is a session the factory opens. Collaboration is the dispatch spine, not a second bus.</p>
+  <p class="lede">Opinions so people get going on Layer&nbsp;1 without inventing their own. A worker is a flow. A <strong>DM</strong> is one static session with that worker. A <strong>group</strong> is a board plus one session per subscriber. Collaboration is the dispatch spine, not a second bus.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
@@ -245,7 +245,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Intended</h5><span class="role">layer 2 factory</span>
-      <p>One contract, one flow per worker, same shape. Files configure the worker. Memory is isolated org/user resources. Teams are a roster plus shared sessions.</p>
+      <p>One contract, one flow per worker, same shape. Files configure the worker. Memory is isolated org/user resources. Teams are a roster plus shared boards. Delivery is N per-subscriber sessions, not one group room.</p>
     </div>
     <div class="card" style="--tc: var(--ink-3)">
       <h5>Not</h5><span class="role">a product, a primitive</span>
@@ -255,7 +255,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 360" role="img" aria-label="Two Layer 2 opinions on one Layer 1 substrate. The solid bottom band is Layer 1: four block kinds, flows and actions, sessions, scoped resources with flowIsolation, capabilities, the task board, skills, and dispatcher. Above it, two dashed boxes. Left: Conductor, this-cycle thin shell on the dispatch spine, a coding meta-harness that does not wait on Workforce. Right: Workforce, the proposed convention: one worker contract, factory bootstrap, roster plus sessions.">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Two Layer 2 opinions on one Layer 1 substrate. The solid bottom band is Layer 1: four block kinds, flows and actions, sessions, scoped resources with flowIsolation, capabilities, the task board, skills, and dispatcher. Above it, two dashed boxes. Left: Conductor, this-cycle thin shell on the dispatch spine, a coding meta-harness that does not wait on Workforce. Right: Workforce, the proposed convention: one worker contract, factory bootstrap, roster plus boards, DMs as sessions, groups as a board plus N sessions.">
         <rect class="n-code" x="16" y="248" width="908" height="88" rx="5"/>
         <text class="t-lbl f-code" x="34" y="270">LAYER 1 &#8212; SUBSTRATE &#183; EXISTS</text>
         <text class="t-b" x="34" y="296">four block kinds &#183; flows &#183; sessions &#183; resources &#183; capabilities</text>
@@ -279,7 +279,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-s" x="496" y="100">one worker contract, then compose</text>
         <text class="t-xs" x="496" y="128">ONE FLOW PER WORKER &#183; SAME SHAPE</text>
         <text class="t-xs" x="496" y="148">FILES CONFIGURE. ISOLATION IS MEMORY.</text>
-        <text class="t-xs" x="496" y="168">CHANNELS AND PROJECTS ARE SESSIONS</text>
+        <text class="t-xs" x="496" y="168">DM IS A SESSION &#183; GROUP IS A BOARD + N</text>
         <text class="t-b f-accent" x="496" y="196">convention now. runtime later.</text>
       </svg>
     </div>
@@ -357,7 +357,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="344" y="226">FILES &#183; ISOLATION &#183; BOOTSTRAP</text>
         <rect class="n-prop" x="624" y="168" width="280" height="72" rx="4"/>
         <text class="t-s f-accent" x="638" y="190">proposed compose</text>
-        <text class="t-xs" x="638" y="210">ROSTER &#183; SHARED SESSIONS</text>
+        <text class="t-xs" x="638" y="210">ROSTER &#183; SHARED BOARDS</text>
         <text class="t-xs" x="638" y="226">PLAN ON THE EXISTING BOARD</text>
 
         <path class="ln" d="M470,260 L470,276"/>
@@ -499,8 +499,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <div class="fig-body">
       <svg viewBox="0 0 940 300" role="img" aria-label="Three sessions of the same worker flow. Each session is a room. Under them, one isolated org resource and one isolated user resource keyed by flowKind, shared across those sessions and invisible to other worker flows. A side note: Agent has no resources field; isolation is the memory.">
         <rect class="n-prop" x="16" y="16" width="200" height="88" rx="4"/>
-        <text class="t-s f-accent" x="30" y="40">session &#183; slack</text>
-        <text class="t-xs" x="30" y="60">CHANNEL</text>
+        <text class="t-s f-accent" x="30" y="40">session &#183; #eng</text>
+        <text class="t-xs" x="30" y="60">THIS WORKER&#8217;S SUBSCRIBE</text>
         <text class="t-xs" x="30" y="78">FLOW: ENG-MANAGER</text>
 
         <rect class="n-prop" x="232" y="16" width="200" height="88" rx="4"/>
@@ -510,8 +510,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
         <rect class="n-prop" x="448" y="16" width="200" height="88" rx="4"/>
         <text class="t-s f-accent" x="462" y="40">session &#183; dm</text>
-        <text class="t-xs" x="462" y="60">TALK TO ENG MGR</text>
-        <text class="t-xs" x="462" y="78">SAME FLOW KIND</text>
+        <text class="t-xs" x="462" y="60">DM CHANNEL</text>
+        <text class="t-xs" x="462" y="78">TALK TO ENG MGR</text>
 
         <path class="ln" d="M116,104 L116,140"/>
         <path class="ln" d="M332,104 L332,140"/>
@@ -548,61 +548,94 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="channels">
   <div class="sec-head"><span class="sec-num">05</span><h2>Channels</h2></div>
-  <p class="lede">A channel is a <strong>static session</strong> the factory opens at bootstrap, using today&#8217;s session APIs. It is not a seed-session field on <code>defineFlow</code>. That field does not exist, and this convention does not add it.</p>
+  <p class="lede">Two channel kinds. A <strong>DM</strong> is one static session with that one worker, opened at bootstrap. A <strong>group</strong> is a message board plus one subscription session per subscribed member. Neither is a seed-session field on <code>defineFlow</code>. That field does not exist, and this convention does not add it. There is no shared group session.</p>
+
+  <div class="cards">
+    <div class="card" style="--tc: var(--code)">
+      <h5>DM</h5><span class="role">one static session</span>
+      <p>One session with that one worker. Bootstrap opens it through today&#8217;s session API. Addressed by <code>id</code> after.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Group</h5><span class="role">board + N sessions</span>
+      <p>The board is the shared working set. Each subscribed member has their own session on their flow. A post wakes those sessions via <code>dispatcher()</code>. Not one room they all enter.</p>
+    </div>
+  </div>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 320" role="img" aria-label="Factory bootstrap opens static sessions through the existing create_session route. Three channel sessions result: the engineering room, a standing launch review, and a direct talk-to-eng-manager session. A dashed X marks seed-session on defineFlow as cut.">
-        <rect class="n-prop" x="16" y="16" width="280" height="120" rx="5"/>
-        <text class="t-lbl" x="34" y="38">BOOTSTRAP &#183; PROPOSED</text>
-        <text class="t-b f-accent" x="34" y="64">factory opens rooms</text>
-        <text class="t-xs" x="34" y="88">CALLS TODAY&#8217;S SESSION API</text>
-        <text class="t-xs" x="34" y="108">create_session PER CHANNEL</text>
+      <svg viewBox="0 0 940 400" role="img" aria-label="Two channel kinds. Top: a DM is one static session opened at bootstrap through the existing create_session route, talk-to-eng-manager. Bottom: a group is a shared board, the working set, plus one subscription session per member; dispatcher wakes each member's own session. A cut box refuses a seed-session field on defineFlow and a shared group session type.">
+        <rect class="n-prop" x="16" y="16" width="280" height="108" rx="5"/>
+        <text class="t-lbl" x="34" y="38">DM &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="34" y="64">one static session</text>
+        <text class="t-xs" x="34" y="88">THAT ONE WORKER</text>
+        <text class="t-xs" x="34" y="108">BOOTSTRAP CALLS create_session</text>
 
-        <path class="ln" d="M296,76 L340,76"/>
+        <path class="ln" d="M296,70 L328,70"/>
 
-        <rect class="n-code" x="340" y="28" width="260" height="96" rx="4"/>
-        <text class="t-lbl f-code" x="356" y="50">EXISTS</text>
-        <text class="t-s" x="356" y="74">POST .../sessions</text>
-        <text class="t-xs" x="356" y="96">session-routes.ts</text>
+        <rect class="n-code" x="328" y="32" width="228" height="76" rx="4"/>
+        <text class="t-lbl f-code" x="344" y="54">EXISTS</text>
+        <text class="t-s" x="344" y="78">POST .../sessions</text>
+        <text class="t-xs" x="344" y="96">session-routes.ts</text>
 
-        <path class="ln" d="M600,76 L644,40"/>
-        <path class="ln" d="M600,76 L644,76"/>
-        <path class="ln" d="M600,76 L644,112"/>
+        <path class="ln" d="M556,70 L588,70"/>
 
-        <rect class="n-prop" x="644" y="16" width="280" height="40" rx="4"/>
-        <text class="t-s" x="658" y="42">#engineering</text>
-        <rect class="n-prop" x="644" y="64" width="280" height="40" rx="4"/>
-        <text class="t-s" x="658" y="90">launch-review</text>
-        <rect class="n-prop" x="644" y="112" width="280" height="40" rx="4"/>
-        <text class="t-s" x="658" y="138">talk-to-eng-mgr</text>
+        <rect class="n-prop" x="588" y="16" width="336" height="108" rx="4"/>
+        <text class="t-s f-accent" x="604" y="42">talk-to-eng-mgr</text>
+        <text class="t-xs" x="604" y="64">DM CHANNEL</text>
+        <text class="t-xs" x="604" y="82">ONE SESSION &#183; ADDRESSED BY { id }</text>
+        <text class="t-xs" x="604" y="104">id REFUSES IF MISSING</text>
 
-        <rect class="n-box" x="16" y="160" width="584" height="136" rx="5"/>
-        <text class="t-lbl" x="34" y="182">A CHANNEL IS</text>
-        <text class="t-s" x="34" y="208">a session record with a flowKind</text>
-        <text class="t-xs" x="34" y="230">OPENED ONCE. ADDRESSED BY ID AFTER.</text>
-        <text class="t-xs" x="34" y="248">dispatcher({ session: { id } }) DELIVERS INTO IT</text>
-        <text class="t-xs" x="34" y="268">NEVER AUTO-CREATED ON A TYPO &#8212; id REFUSES IF MISSING</text>
+        <rect class="n-prop" x="16" y="140" width="280" height="128" rx="5"/>
+        <text class="t-lbl" x="34" y="162">GROUP &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="34" y="188">#engineering</text>
+        <text class="t-xs" x="34" y="210">THE BOARD IS THE WORKING SET</text>
+        <text class="t-xs" x="34" y="228">NOT A SESSION</text>
+        <text class="t-xs" x="34" y="248">N SUBSCRIBERS &#183; N SESSIONS</text>
 
-        <rect class="n-prose" x="616" y="160" width="308" height="136" rx="5"/>
-        <text class="t-lbl" x="634" y="182">CUT</text>
-        <text class="t-s" x="634" y="208">seed-session on defineFlow</text>
-        <text class="t-xs" x="634" y="230">NO SUCH FIELD ON MAIN</text>
-        <text class="t-xs" x="634" y="248">DO NOT ADD ONE</text>
-        <text class="t-xs" x="634" y="274">BOOTSTRAP CALLS THE ROUTE</text>
+        <path class="ln" d="M296,204 L328,204"/>
+
+        <rect class="n-code" x="328" y="156" width="228" height="96" rx="5"/>
+        <text class="t-lbl f-code" x="344" y="178">DISPATCH SPINE &#183; EXISTS</text>
+        <text class="t-s" x="344" y="204">dispatcher() &#215; N</text>
+        <text class="t-xs" x="344" y="226">ONE WAKE PER SUBSCRIBER</text>
+        <text class="t-xs" x="344" y="244">NO SHARED GROUP SESSION</text>
+
+        <path class="ln" d="M556,188 L588,168"/>
+        <path class="ln" d="M556,220 L588,232"/>
+
+        <rect class="n-prop" x="588" y="140" width="336" height="56" rx="4"/>
+        <text class="t-s f-accent" x="604" y="164">session &#183; eng-manager</text>
+        <text class="t-xs" x="604" y="184">THIS WORKER&#8217;S SUBSCRIBE</text>
+        <rect class="n-prop" x="588" y="204" width="336" height="56" rx="4"/>
+        <text class="t-s f-accent" x="604" y="228">session &#183; api-designer</text>
+        <text class="t-xs" x="604" y="248">THIS WORKER&#8217;S SUBSCRIBE</text>
+
+        <rect class="n-box" x="16" y="284" width="584" height="100" rx="5"/>
+        <text class="t-lbl" x="34" y="306">NOT THIS</text>
+        <text class="t-s" x="34" y="330">one shared group session</text>
+        <text class="t-xs" x="34" y="350">NO MULTIPARTY SESSION TYPE</text>
+        <text class="t-xs" x="34" y="368">POSTS FAN OUT. THEY DO NOT ENTER ONE ROOM.</text>
+
+        <rect class="n-prose" x="616" y="284" width="308" height="100" rx="5"/>
+        <text class="t-lbl" x="634" y="306">CUT</text>
+        <text class="t-s" x="634" y="330">seed-session on defineFlow</text>
+        <text class="t-xs" x="634" y="350">NO SUCH FIELD ON MAIN</text>
+        <text class="t-xs" x="634" y="368">BOOTSTRAP CALLS THE ROUTE</text>
       </svg>
     </div>
-    <figcaption><b>Bootstrap uses the route that already exists.</b> <code>handleCreateSession</code> is on <code>packages/engine/src/routes/session-routes.ts</code>. <code>dispatcher</code> delivers into an existing session with <code>{ id }</code>, and refuses if the id is missing &#8212; it never creates. That pair is enough. A declarative seed on the flow is the wrong door.</figcaption>
+    <figcaption><b>DM is a session. Group is a board plus N sessions.</b> <code>handleCreateSession</code> is on <code>packages/engine/src/routes/session-routes.ts</code> &#8212; that is how a DM is opened. <code>dispatcher</code> delivers into one existing session with <code>{ id }</code>, and refuses if the id is missing. A group post is N of those deliveries, one per subscriber, not one room. A declarative seed on the flow is the wrong door.</figcaption>
   </figure>
 
   <div class="tw">
     <table>
       <thead><tr><th>Piece</th><th>Status</th><th>What it is, narrowly</th></tr></thead>
       <tbody>
-        <tr><td><code>create_session</code> / list / get / delete</td><td><span class="tag t-real">exists</span></td><td>Session routes on the engine. Factory bootstrap is a caller of these, not a new verb.</td></tr>
-        <tr><td><code>dispatcher</code> <code>session: { id }</code></td><td><span class="tag t-real">exists</span> in-process</td><td>Deliver into a session that already exists. Same principal, same flow. Never created. <strong>Only where the host runs its own work.</strong> Past an external queue it refuses by name &#8212; a delivery into an existing session cannot be arbitrated against that session&#8217;s concurrency policy across that boundary, so a BullMQ deployment gets <code>external-dispatcher</code> rather than an under-delivered send (<code>packages/engine/src/context/create-request-host.ts</code>). The <code>{ key }</code> form is unaffected.</td></tr>
-        <tr><td>Channel as a named static session</td><td><span class="tag t-prop">proposed</span></td><td>Convention: bootstrap opens the rooms the roster needs. The session <em>is</em> the channel.</td></tr>
+        <tr><td><code>create_session</code> / list / get / delete</td><td><span class="tag t-real">exists</span></td><td>Session routes on the engine. DM bootstrap is a caller of these, not a new verb.</td></tr>
+        <tr><td><code>dispatcher</code> <code>session: { id }</code></td><td><span class="tag t-real">exists</span> in-process</td><td>Deliver into one session that already exists. Same principal, same flow. Never created. A group post is N of these, one per subscriber. <strong>Only where the host runs its own work.</strong> Past an external queue it refuses by name &#8212; a delivery into an existing session cannot be arbitrated against that session&#8217;s concurrency policy across that boundary, so a BullMQ deployment gets <code>external-dispatcher</code> rather than an under-delivered send (<code>packages/engine/src/context/create-request-host.ts</code>). The <code>{ key }</code> form is unaffected.</td></tr>
+        <tr><td>DM as a named static session</td><td><span class="tag t-prop">proposed</span></td><td>Convention: bootstrap opens one session with that one worker. The session <em>is</em> the DM.</td></tr>
+        <tr><td>Group as board + N subscriber sessions</td><td><span class="tag t-prop">proposed</span></td><td>The board is the shared working set. Each subscribed member has their own session on their flow. Not one session the group sits in.</td></tr>
         <tr><td>Seed / nonstandard sessions on <code>defineFlow</code></td><td><span class="tag t-gone">cut</span></td><td>No such field. Do not add one so a flow can declare its rooms. That is bootstrap&#8217;s job.</td></tr>
+        <tr><td>One shared / multiparty group session</td><td><span class="tag t-gone">cut</span></td><td>Do not invent a session type several workers enter. Fan-out is N dispatches into N sessions that already exist.</td></tr>
       </tbody>
     </table>
   </div>
@@ -610,7 +643,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="projects">
   <div class="sec-head"><span class="sec-num">06</span><h2>Projects and tasks</h2></div>
-  <p class="lede">Projects and tasks are <strong>dynamic sessions</strong>. Every message-board subscription gets its own action and its own session. That is a convention on the dispatch spine, not a second messaging product.</p>
+  <p class="lede">Projects and tasks are <strong>dynamic sessions</strong>. Every message-board subscription gets its own action and its own session. A group channel is this pattern &#8212; the board plus one session per subscribed member &#8212; not a third session type. That is a convention on the dispatch spine, not a second messaging product.</p>
 
   <figure>
     <div class="fig-body">
@@ -661,10 +694,10 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <table>
       <thead><tr><th></th><th>Channel</th><th>Project / task</th></tr></thead>
       <tbody>
-        <tr><td>Lifetime</td><td>Static. Opened at bootstrap. Stays.</td><td>Dynamic. Minted when the subscription fires. Adopted on retry.</td></tr>
-        <tr><td>How it is created</td><td><code>create_session</code>, then addressed by <code>{ id }</code>.</td><td><code>dispatcher</code> <code>{ key }</code> or a task session policy.</td></tr>
-        <tr><td>What it is for</td><td>A standing room: the team channel, talk-to-X.</td><td>A piece of work: a spec thread, a review, a task seat.</td></tr>
-        <tr><td>What it is not</td><td>A Layer&nbsp;1 Channel type.</td><td>A Layer&nbsp;1 Project or MessageBoard type.</td></tr>
+        <tr><td>Lifetime</td><td>DM: static, opened at bootstrap, stays. Group: the board is standing; each subscriber&#8217;s session is minted like a project subscription.</td><td>Dynamic. Minted when the subscription fires. Adopted on retry.</td></tr>
+        <tr><td>How it is created</td><td>DM: <code>create_session</code>, then addressed by <code>{ id }</code>. Group: <code>dispatcher</code> into each member&#8217;s own session.</td><td><code>dispatcher</code> <code>{ key }</code> or a task session policy.</td></tr>
+        <tr><td>What it is for</td><td>DM: talk-to-X. Group: a shared board; delivery is N wakes, not one room.</td><td>A piece of work: a spec thread, a review, a task seat.</td></tr>
+        <tr><td>What it is not</td><td>A Layer&nbsp;1 Channel type. Not a shared group session.</td><td>A Layer&nbsp;1 Project or MessageBoard type.</td></tr>
       </tbody>
     </table>
   </div>
@@ -672,11 +705,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="teams">
   <div class="sec-head"><span class="sec-num">07</span><h2>Teams and roster</h2></div>
-  <p class="lede">A team is a <strong>roster plus shared sessions</strong>. Built-ins &#8212; librarian, chief of staff, team coordinator &#8212; are roster entries, not packages. Cross-team work goes through shared channels and shared projects.</p>
+  <p class="lede">A team is a <strong>roster plus shared boards</strong>. The board is the shared working set. Delivery is N dispatches into N per-subscriber sessions on each worker&#8217;s flow. Built-ins &#8212; librarian, chief of staff, team coordinator &#8212; are roster entries, not packages. Cross-team work goes through those boards, not through a shared session.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 380" role="img" aria-label="Two team boxes, each a roster plus shared sessions. Engineering has eng-manager, api-designer, and a team coordinator. Marketing has marketing-manager and campaign-writer. A shared roster band below holds librarian, chief of staff, and copy-editor. Shared sessions sit between the teams: a launch project and an org channel. Built-ins are drawn as ordinary roster rows.">
+      <svg viewBox="0 0 940 380" role="img" aria-label="Two team boxes, each a roster. Engineering has eng-manager, api-designer, and a team coordinator. Marketing has marketing-manager and campaign-writer. Between them, shared boards: a launch project board and an org group board. Each board is a working set; delivery is N dispatches into N per-subscriber sessions. A shared roster band below holds librarian, chief of staff, and copy-editor as ordinary roster rows, reached through a board, each in their own session.">
         <rect class="n-prop" x="16" y="16" width="292" height="168" rx="4"/>
         <text class="t-lbl" x="28" y="36">engineering</text>
         <text class="t-s f-accent" x="28" y="60">eng-manager</text>
@@ -692,16 +725,16 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="336" y="76">WORKER FLOW</text>
         <text class="t-s f-accent" x="336" y="100">campaign-writer</text>
         <text class="t-xs" x="336" y="116">WORKER FLOW</text>
-        <text class="t-xs" x="336" y="156">SHARED SESSIONS LIVE WITH THE TEAM</text>
+        <text class="t-xs" x="336" y="156">THE BOARD IS SHARED. SESSIONS ARE NOT.</text>
 
         <rect class="n-box" x="632" y="16" width="292" height="168" rx="4"/>
-        <text class="t-lbl" x="644" y="36">shared sessions</text>
+        <text class="t-lbl" x="644" y="36">shared boards</text>
         <text class="t-s" x="644" y="60">#launch</text>
-        <text class="t-xs" x="644" y="76">PROJECT BOTH TEAMS ENTER</text>
+        <text class="t-xs" x="644" y="76">BOARD &#183; N SESSIONS, ONE PER SUBSCRIBER</text>
         <text class="t-s" x="644" y="100">#org</text>
-        <text class="t-xs" x="644" y="116">CHANNEL ANY ROSTER CAN JOIN</text>
-        <text class="t-xs" x="644" y="148">CROSS-TEAM = THESE ROOMS</text>
-        <text class="t-xs" x="644" y="166">NOT A TEAM GRAPH PRIMITIVE</text>
+        <text class="t-xs" x="644" y="116">BOARD &#183; FAN-OUT VIA DISPATCH</text>
+        <text class="t-xs" x="644" y="148">CROSS-TEAM = THESE BOARDS</text>
+        <text class="t-xs" x="644" y="166">NOT A SHARED SESSION</text>
 
         <rect class="n-prop" x="16" y="204" width="908" height="152" rx="5"/>
         <text class="t-lbl" x="34" y="226">SHARED ROSTER &#183; BUILT-INS ARE ENTRIES</text>
@@ -711,10 +744,10 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-s" x="150" y="280">routes across teams, so it belongs to none</text>
         <text class="t-b f-accent" x="34" y="306">copy-editor</text>
         <text class="t-s" x="150" y="306">last read before anything ships</text>
-        <text class="t-xs" x="34" y="336">NO HOME TEAM. REACHED THROUGH A SHARED CHANNEL OR A SHARED PROJECT. NOT A PACKAGE.</text>
+        <text class="t-xs" x="34" y="336">NO HOME TEAM. REACHED THROUGH A SHARED BOARD. EACH GETS ITS OWN SESSION. NOT A PACKAGE.</text>
       </svg>
     </div>
-    <figcaption><b>Roster plus rooms.</b> A team is who is on it and which sessions they share. A built-in is a worker like any other, registered on the roster. Cross-team is not a new edge type &#8212; it is a room more than one roster can enter.</figcaption>
+    <figcaption><b>Roster plus boards.</b> A team is who is on it and which boards they share. The board is the shared working set. Delivery is N dispatches into N per-subscriber sessions on each worker&#8217;s flow. A built-in is a worker like any other, registered on the roster. Cross-team is not a new edge type &#8212; it is a board more than one roster can subscribe to, never one room they all enter.</figcaption>
   </figure>
 
   <div class="tw">
@@ -722,9 +755,9 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <thead><tr><th>What the team buys</th><th>Why it is not a Layer 1 type</th></tr></thead>
       <tbody>
         <tr><td>A default answer to &#8220;who does this?&#8221;</td><td>The roster is a list of worker flow kinds. Layer&nbsp;1 already addresses a flow and a session.</td></tr>
-        <tr><td>Shared sessions</td><td>Bootstrap opens them. Members are whoever the factory invited. No Team primitive required.</td></tr>
+        <tr><td>Shared boards</td><td>The board is the working set. Each subscriber is woken in their own session via <code>dispatcher()</code>. No Team primitive, and no shared group session.</td></tr>
         <tr><td>Built-ins</td><td>Librarian, chief of staff, team coordinator: same contract, shipped as roster rows when the factory exists.</td></tr>
-        <tr><td><strong>When it is not a team</strong></td><td>One worker and no shared room. Then the folder buys nothing and should not exist.</td></tr>
+        <tr><td><strong>When it is not a team</strong></td><td>One worker and no shared board. Then the folder buys nothing and should not exist.</td></tr>
       </tbody>
     </table>
   </div>
@@ -902,7 +935,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <table>
       <thead><tr><th>Claim</th><th>Whose opinion</th><th>What being wrong costs</th></tr></thead>
       <tbody>
-        <tr><td>A session is owned by a workflow</td><td>Conductor</td><td>Right for an SDLC meta-harness. Fatal as a Layer&nbsp;1 law, because a Workforce channel <em>is</em> a session of a worker flow.</td></tr>
+        <tr><td>A session is owned by a workflow</td><td>Conductor</td><td>Right for an SDLC meta-harness. Fatal as a Layer&nbsp;1 law, because a Workforce DM <em>is</em> a session of a worker flow, and each group subscriber&#8217;s session is too.</td></tr>
         <tr><td>A worker is a flow; memory is isolated resources</td><td>Workforce convention</td><td>Do not replace it with a second memory system, or with a field on <code>Agent</code>.</td></tr>
         <tr><td>Talk is <code>dispatcher()</code></td><td>Layer 1, already true</td><td>A Workforce-shaped messenger beside <code>dispatcher()</code> is a second send door. Relay (<strong>FIX-1197</strong>) is that same door, not a new one.</td></tr>
         <tr><td>Conductor waits on Workforce</td><td>False this cycle</td><td>The coding product stalls on a factory that is not being built. Horizon only.</td></tr>
@@ -954,7 +987,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div class="tension">
     <h5>No Layer 1 Channel, Team, Project, or MessageBoard packages</h5>
-    <p>Those words are convention over sessions, rosters, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms is a second architecture.</p>
+    <p>Those words are convention over sessions, rosters, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms, or a shared group session several workers enter, is a second architecture.</p>
   </div>
 
   <div class="tension">
@@ -985,7 +1018,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is one worker contract on Layer&nbsp;1: a flow per worker, files for tools, skills, personality, and role, memory via isolation, channels as static sessions, projects as dynamic ones, teams as roster plus shared rooms, plans as board plus resource text, talk as dispatch. Today it is a thin registry. This cycle writes the convention. Conductor does not wait.</p>
+    <p>Workforce is one worker contract on Layer&nbsp;1: a flow per worker, files for tools, skills, personality, and role, memory via isolation, DMs as static sessions, groups as a board plus one session per subscriber, projects as dynamic ones, teams as roster plus shared boards, plans as board plus resource text, talk as dispatch. Today it is a thin registry. This cycle writes the convention. Conductor does not wait.</p>
   </div>
 </section>
 
