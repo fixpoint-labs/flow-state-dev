@@ -451,7 +451,9 @@ export function conductorFlow(options: ConductorFlowOptions) {
     }
   }
 
-  assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo);
+  // `process.cwd()` is this lab's answer to where its own code lives — see
+  // `requireSourceRepo`, which states the same thing at the environment door.
+  assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo, process.cwd());
   assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
   // The remaining half of the same rule. The two lines above reach the
   // filesystem with `sourceRepo`, so an unusable one fails here; `root` had

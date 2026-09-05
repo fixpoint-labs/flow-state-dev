@@ -37,7 +37,10 @@ import {
  * so the check passed and the harm was unchanged. The rule is *the same
  * repository*, and only git can answer that.
  */
-export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
+export function requireSourceRepo(
+  variable = "CONDUCTOR_REPO",
+  dispatcher: string | readonly string[] = process.cwd(),
+): string {
   // The variable NAME is a parameter so the whole rule travels, not two thirds
   // of it. The goal runner reads a differently-named variable and was therefore
   // reusing only `assertDistinctRepository`, keeping its own copy of the
@@ -51,7 +54,13 @@ export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
     );
   }
 
-  assertDistinctRepository(variable, repo);
+  // **This lab's answer to "where does the host live", stated once.** The
+  // package takes no default for it, deliberately — a default is a guess, and
+  // the wrong guess leaves the self-modification fence silently off. The
+  // conductor runs from its own checkout, so `process.cwd()` is the honest
+  // answer here; a deployment where it is not passes its own, or `[]` if it has
+  // no repository at all.
+  assertDistinctRepository(variable, repo, dispatcher);
   return repo;
 }
 

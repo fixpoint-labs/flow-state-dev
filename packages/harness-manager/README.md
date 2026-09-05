@@ -96,6 +96,28 @@ Neither bounds what the run *spawned*. A command the agent's process started can
 
 **Checkout internals** — `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. Exported because this repository's own consumer and its goal checks reach for them, **not** because you should build on them: they are git-worktree-specific, and a second checkout strategy would put them behind a seam. Adopt `harnessManager({ harness })` and let it own the checkout.
 
+## Telling the guard where you live
+
+`assertDistinctRepository` stops a run being pointed at the repository your own
+application lives in — a coding agent editing the thing that dispatched it. It
+needs to know where that is, and it will not guess:
+
+```ts
+assertDistinctRepository("workspace.sourceRepo", sourceRepo, process.cwd());
+```
+
+Pass the directory your code lives in. Pass a list if it spans more than one
+place. **Pass `[]` if this host genuinely has no repository of its own** — a
+built artifact, compiled output in an image with no `.git` anywhere. That case
+is real and supported; it just has to be said.
+
+There is no default, deliberately. A default is a guess, and the wrong guess is
+silent: this guard refuses only on a *match*, so a host it cannot identify would
+match nothing and pass, leaving the fence off in exactly the deployment shapes
+where nobody would notice — a container whose `WORKDIR` sits outside the source
+tree, a service unit, a process launched from `/`. Given a location it cannot
+resolve, it refuses and names the option.
+
 ## Limits
 
 - **One host's storage.** Checkouts and leases live on a local filesystem, so a retry inherits the last attempt's work because that work is on disk. On a multi-host deployment the recorded checkout names nothing on the machine that picks the retry up.

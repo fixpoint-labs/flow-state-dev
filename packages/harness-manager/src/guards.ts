@@ -108,14 +108,38 @@ export function repositoryIdentity(dir: string): string | undefined {
  * nothing.
  *
  * The answer is that such a host **passes its own root**, which is the one party
- * that actually knows. `dispatcher` is that declaration; it defaults to
- * `process.cwd()`, which is right for a host started from its checkout, and
- * accepts a list for a host whose code spans more than one place.
+ * that actually knows. `dispatcher` is that declaration, and it is required —
+ * there is deliberately no default, because every default is a guess and the
+ * wrong guess here is silent. A host started from its checkout passes
+ * `process.cwd()`; a host whose code spans more than one place passes a list; a
+ * host with no repository at all passes `[]` and says so.
  */
-function dispatcherIdentities(dispatcher: readonly string[]): string[] {
-  return dispatcher
-    .map(repositoryIdentity)
-    .filter((id): id is string => id !== undefined);
+function dispatcherIdentities(variable: string, dispatcher: readonly string[]): string[] {
+  return dispatcher.map((where) => {
+    const identity = repositoryIdentity(where);
+    if (identity !== undefined) return identity;
+    // **"I cannot tell" is refused, not treated as safe.**
+    //
+    // This guard refuses on a MATCH, so an unresolvable host matches nothing and
+    // would pass — leaving the fence inert in ordinary deployment shapes (a
+    // container whose WORKDIR is outside the source tree, a service unit, a
+    // process launched from `/`) with nothing saying so. That is the fail-open
+    // the harness version gate was changed to avoid, and the two guards in this
+    // package should not disagree about what an unknown means.
+    //
+    // A host that genuinely has no repository — a built artifact, compiled
+    // output in an image with no `.git` anywhere — says so with `[]`, which is a
+    // decision on the record rather than an accident of the working directory.
+    throw new Error(
+      `[harness-manager] the host location "${where}" given as \`dispatcher\` is not ` +
+        `inside a git repository, so this guard cannot tell whether ${variable} is the ` +
+        `host's own repository. Refusing rather than permitting: the check only refuses ` +
+        `on a match, so an unidentifiable host would silently pass and the fence against ` +
+        `a run editing the thing that dispatched it would be off. Pass the directory the ` +
+        `host's own code lives in, or \`[]\` if this host genuinely has no repository ` +
+        `(a built artifact, say).`,
+    );
+  });
 }
 
 /**
@@ -132,7 +156,7 @@ function dispatcherIdentities(dispatcher: readonly string[]): string[] {
 export function assertDistinctRepository(
   variable: string,
   repo: string,
-  dispatcher: string | readonly string[] = process.cwd(),
+  dispatcher: string | readonly string[],
 ): void {
   const theirs = repositoryIdentity(repo);
   if (theirs === undefined) {
@@ -147,9 +171,11 @@ export function assertDistinctRepository(
   }
 
   // Only a MATCH is a refusal; a host genuinely unrelated to the target matches
-  // nothing and passes.
+  // nothing and passes. **An empty list is the host saying it has no repository
+  // of its own**, which is the one way to reach that outcome without an
+  // identity — see `dispatcherIdentities` for why silence is not the other.
   const mine = typeof dispatcher === "string" ? [dispatcher] : dispatcher;
-  if (dispatcherIdentities(mine).includes(theirs)) {
+  if (dispatcherIdentities(variable, mine).includes(theirs)) {
     throw new Error(
       `[harness-manager] ${variable} (${repo}) is the repository the host itself lives in ` +
         "— a different path inside it, another of its worktrees, or a symlink to it is " +

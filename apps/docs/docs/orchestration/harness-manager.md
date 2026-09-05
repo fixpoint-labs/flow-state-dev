@@ -121,6 +121,25 @@ Be honest about what the lease is: checking the lock and removing it are two ste
 
 How promptly the harness then returns is the harness's own business, and harnesses differ. Neither bounds what the run *spawned*: a command the agent's process started can outlive the kill. The sandbox you configure on the harness is the fence for a runaway command, not this deadline.
 
+## Pointing it away from your own code
+
+A coding agent editing the application that dispatched it is the one accident
+worth a guard, so `assertDistinctRepository` refuses a source repository that is
+the host's own. It needs to be told where the host lives, and it does not guess:
+
+```ts
+assertDistinctRepository("sourceRepo", sourceRepo, process.cwd());
+```
+
+Pass the directory your code lives in, a list if it spans several, or `[]` if
+this host has no repository of its own — a built artifact in a container, say.
+That last case is supported; it just has to be stated.
+
+Given a location it cannot resolve to a repository, it refuses rather than
+permits. The reason is that the check only refuses on a *match*: a host it
+cannot identify would match nothing and sail through, and the fence would be off
+in precisely the deployments where nobody looks.
+
 ## What stays with you
 
 The manager runs a claimed row. Everything around that is the host's: putting rows on the board in the first place, waking it, reading status back, and whatever check tells a phase the job is done.

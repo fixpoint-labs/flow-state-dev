@@ -77,16 +77,36 @@ describe("CONDUCTOR_REPO — the reading, not the rule", () => {
     expect(() => requireSourceRepo()).toThrow(/not set/);
   });
 
-  it("reports no identity outside a repository, instead of throwing", () => {
-    // A dispatcher run from a non-repo directory must still be able to drive a
-    // real one — `undefined` on both sides must not read as a match.
+  it("refuses when run from outside any repository, instead of silently permitting", () => {
+    // **This test used to assert the opposite**, and what it was protecting was
+    // real: a dispatcher run from a non-repo directory must still be able to
+    // drive a real one. That case is kept below — it just has to be said now.
+    //
+    // What changed is the silent half. The guard refuses on a MATCH, so an
+    // unresolvable host matched nothing and passed, which made the
+    // self-modification fence inert in an ordinary deployment shape (a
+    // container whose WORKDIR is outside the source tree) with nothing saying
+    // so. The lab's answer to "where do I live" is `process.cwd()`; when that
+    // answer is not a repository, the honest response is to say so rather than
+    // to run with the fence off.
     const plain = mkdtempSync(join(tmpdir(), "conductor-plain-"));
     dirs.push(plain);
     expect(repositoryIdentity(plain)).toBeUndefined();
 
     process.chdir(plain);
     process.env.CONDUCTOR_REPO = repo();
-    expect(() => requireSourceRepo()).not.toThrow();
+    expect(() => requireSourceRepo()).toThrow(/dispatcher/);
+  });
+
+  it("drives a real repository from a host that says it has none", () => {
+    // The case the old test was protecting, preserved — and now a statement
+    // rather than a side effect of where the process happens to stand.
+    const plain = mkdtempSync(join(tmpdir(), "conductor-plain-"));
+    dirs.push(plain);
+    process.chdir(plain);
+    process.env.CONDUCTOR_REPO = repo();
+
+    expect(() => requireSourceRepo("CONDUCTOR_REPO", [])).not.toThrow();
   });
 });
 

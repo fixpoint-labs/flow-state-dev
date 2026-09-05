@@ -63,7 +63,7 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     process.chdir(nested);
     process.env.CONDUCTOR_REPO = dir;
 
-    expect(() => assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!)).toThrow(/same repository/);
+    expect(() => assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!, process.cwd())).toThrow(/same repository/);
   });
 
   it("refuses another WORKTREE of the dispatcher's repository", () => {
@@ -76,7 +76,7 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     process.chdir(dir);
     process.env.CONDUCTOR_REPO = tree;
 
-    expect(() => assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!)).toThrow(/same repository/);
+    expect(() => assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!, process.cwd())).toThrow(/same repository/);
   });
 
   it("refuses a SYMLINK to the dispatcher's repository", () => {
@@ -91,7 +91,7 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     process.chdir(dir);
     process.env.CONDUCTOR_REPO = link;
 
-    expect(() => assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!)).toThrow(/same repository/);
+    expect(() => assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!, process.cwd())).toThrow(/same repository/);
   });
 
   it("refuses a target that is not a repository at all", () => {
@@ -102,10 +102,10 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     process.chdir(repo());
 
     process.env.CONDUCTOR_REPO = plain;
-    expect(() => assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!)).toThrow(/not a git repository/);
+    expect(() => assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!, process.cwd())).toThrow(/not a git repository/);
 
     process.env.CONDUCTOR_REPO = join(plain, "nope");
-    expect(() => assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!)).toThrow(/not a git repository/);
+    expect(() => assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!, process.cwd())).toThrow(/not a git repository/);
   });
 
   it("accepts a genuinely different repository", () => {
@@ -119,7 +119,7 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     // The guard returns nothing — it refuses or it does not. (The env READER
     // returns the path, and that is the lab's to assert, where the reading is.)
     expect(() =>
-      assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!),
+      assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!, process.cwd()),
     ).not.toThrow();
     expect(repositoryIdentity(theirs)).not.toBe(repositoryIdentity(mine));
   });
@@ -145,6 +145,39 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     expect(() => assertDistinctRepository("sourceRepo", nested(host), host)).toThrow(
       /same repository/,
     );
+  });
+
+  it("refuses when it cannot identify the host, rather than permitting", () => {
+    // **"I cannot tell" is not "safe".**
+    //
+    // This guard refuses on a MATCH, so a host whose location resolves to no git
+    // identity matches nothing and would silently pass — and the deployment
+    // shapes where that happens are ordinary, not exotic: a container whose
+    // WORKDIR is outside the source tree, a service unit, a process launched
+    // from `/`. The fence would be inert exactly where nobody looks.
+    //
+    // The epic already answered this question the same way for the harness
+    // version gate: nothing installed is safe, an unknown version is not. Two
+    // guards in one epic disagreeing about what an unknown means is worse than
+    // either answer.
+    const notARepo = mkdtempSync(join(tmpdir(), "harness-manager-plain-"));
+    dirs.push(notARepo);
+
+    expect(() => assertDistinctRepository("sourceRepo", repo(), notARepo)).toThrow(
+      /dispatcher/,
+    );
+  });
+
+  it("takes an empty list as the host saying it has no repository", () => {
+    // The legitimate case a flat refusal would have broken: a built artifact —
+    // compiled output in an image, no `.git` anywhere — genuinely has no
+    // repository of its own, and there is nothing for a run to damage by
+    // editing it.
+    //
+    // So the opt-out exists, and it is explicit. The difference from the old
+    // behaviour is not whether this host is allowed to run; it is whether the
+    // permission was a decision or an accident of the working directory.
+    expect(() => assertDistinctRepository("sourceRepo", repo(), [])).not.toThrow();
   });
 
   it("does NOT refuse a repository merely because this package is installed under it", () => {
