@@ -50,6 +50,17 @@ const SLOT_CACHE_SOURCE_TASK_RESOLVER = "resolveCacheSourceTask";
 const SLOT_OBSERVATION_WRITER = "writeToolObservation";
 
 /**
+ * Slot prefix for a board's run state on the same bag, keyed by board name so
+ * a board nested inside another board's worker keeps its own. This slot is
+ * local to this module — nothing in core reads it.
+ */
+const SLOT_BOARD_RUN_STATE = "boardRunState";
+
+function boardRunStateSlot(name: string): string {
+  return `${SLOT_BOARD_RUN_STATE}:${name}`;
+}
+
+/**
  * Get-or-create the per-request resolver bag on the request handle.
  * The handle reference is shared across every nested execution scope
  * (the runtime passes `request: requestHandle` into every
@@ -78,9 +89,15 @@ function getRequestResolverBag(ctx: BlockContext): Record<string, unknown> {
 }
 
 /**
- * Shared mutable bag stamped onto a board run's outer sequencer state.
- * Both setup and teardown read it; the worker-step resolver reads it to
- * pick up the current ledger / policy.
+ * One drain's flow state: the cache store, ledger and policy the drain
+ * installed. It lives on the request's resolver bag, under the board's slot,
+ * for exactly as long as that drain runs — setup writes it, the worker-step
+ * resolver reads it, teardown removes it. It is NOT a closure-scoped bag on
+ * the board definition (FIX-1244): two drains of one board can overlap in
+ * one process — an answer's drain starting while the drain that parked the
+ * task is still open on a hold board, or two answers arriving in two requests
+ * on an exit board — and a shared bag would let the second's install take the
+ * first's ledger and the second's teardown clear it under the first's workers.
  *
  * Per-worker state (the current claim) is tracked via AsyncLocalStorage
  * on `workerClaimStore`, NOT on this bag — a single shared field would
@@ -152,8 +169,6 @@ export interface InstallBoardFlowStateOptions {
   toolCache?: TaskBoardToolCacheConfig | boolean;
   /** Resolves the active collection — same factory the worker step uses. */
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
-  /** Shared mutable bag — written by the setup handler, read everywhere else. */
-  runState: BoardRunFlowState;
 }
 
 /**
@@ -164,7 +179,7 @@ export interface InstallBoardFlowStateOptions {
 export function createInstallBoardFlowState(
   options: InstallBoardFlowStateOptions,
 ) {
-  const { name, collectionId, runState } = options;
+  const { name, collectionId } = options;
   const cacheEnabled = shouldEnableCache(options.toolCache);
   const cacheCfg =
     typeof options.toolCache === "object" && options.toolCache !== null
@@ -184,6 +199,8 @@ export function createInstallBoardFlowState(
       // avoid `ctx.request.state` because that gets structured-cloned
       // for state snapshots, and functions can't be cloned.
       const state = getRequestResolverBag(ctx);
+      const runState: BoardRunFlowState = { collectionId };
+      state[boardRunStateSlot(name)] = runState;
 
       if (cacheEnabled) {
         const store = createInMemoryToolCacheStore({
@@ -192,7 +209,7 @@ export function createInstallBoardFlowState(
           defaultScope: cacheCfg.defaultScope ?? "run",
         });
         runState.cacheStore = store;
-        state[SLOT_TOOL_CACHE_STORE_RESOLVER] = () => runState.cacheStore;
+        state[SLOT_TOOL_CACHE_STORE_RESOLVER] = () => store;
       } else {
         // Explicit clear — a previous board run in the same request
         // would otherwise leave a stale resolver pointing at the old
@@ -203,7 +220,6 @@ export function createInstallBoardFlowState(
       const ledger = createObservationLedger();
       runState.ledger = ledger;
       runState.policy = policy;
-      runState.collectionId = collectionId;
 
       state[SLOT_OBSERVATION_WRITER] = (e: {
         toolName: string;
@@ -216,7 +232,7 @@ export function createInstallBoardFlowState(
         // worker — never from a shared bag field, which would race under
         // concurrency > 1.
         const taskId = workerClaimStore.getStore()?.taskId;
-        runState.ledger?.append({
+        ledger.append({
           collectionId,
           ...(taskId !== undefined ? { taskId } : {}),
           toolName: e.toolName,
@@ -242,23 +258,25 @@ export function createInstallBoardFlowState(
 /**
  * Build the teardown handler that runs both on completion (via
  * `.tap(boardMetaCompleted).step(teardown)`) and on error (the outer
- * sequencer adds it under `.rescue`). Clears both stores so a board
- * that loops within the same request starts each run fresh.
+ * sequencer adds it under `.rescue`). Clears the ledger and drops this
+ * drain's run state from the request so a board that loops within the
+ * same request starts each run fresh.
  */
-export function createTeardownBoardFlowState(options: { name: string; runState: BoardRunFlowState }) {
-  const { name, runState } = options;
+export function createTeardownBoardFlowState(options: { name: string }) {
+  const { name } = options;
   return handler({
     name: `${name}-teardown-flow-state`,
     transient: true,
     inputSchema: z.unknown(),
-    execute: async (input) => {
-      runState.ledger?.clear();
+    execute: async (input, ctx) => {
+      const state = getRequestResolverBag(ctx);
+      const runState = state[boardRunStateSlot(name)] as BoardRunFlowState | undefined;
+      runState?.ledger?.clear();
       // Cache store cleanup is a no-op for the in-memory LRU when the
-      // store goes out of scope, but we explicitly drop the reference
-      // so the LRU is collectible immediately even if something holds
-      // a reference to the runState bag.
-      runState.cacheStore = undefined;
-      runState.ledger = undefined;
+      // store goes out of scope, but we explicitly drop the whole run
+      // state so the LRU is collectible immediately even if something
+      // holds a reference to the request bag.
+      delete state[boardRunStateSlot(name)];
       // Dual-purpose handler: also used as a `.rescue` branch on the
       // board's outer sequencer. The rescue path passes the caught
       // error as the handler's input — rethrow so the board failure
@@ -273,21 +291,23 @@ export function createTeardownBoardFlowState(options: { name: string; runState: 
 
 /**
  * Build the resolver passed to `buildWorkerStep`. Pulls the active
- * ledger view + policy from the run state and stamps the current task
- * id on the run state so the cache wrapping sees the right
- * attribution. Returns `undefined` when no policy / ledger is bound,
+ * ledger view + policy from the run state this drain installed on the
+ * worker's request. Returns `undefined` when no policy / ledger is bound,
  * which signals `packWorkerInput` to omit `priorWork` entirely
  * (back-compat).
  */
-export function createFlowPolicyResolver(runState: BoardRunFlowState) {
+export function createFlowPolicyResolver(name: string) {
   return (
-    _ctx: BlockContext,
+    ctx: BlockContext,
   ): {
     flowPolicy: TaskFlowPolicy;
     ledger: ObservationLedgerView;
   } | undefined => {
-    const policy = runState.policy;
-    const ledger = runState.ledger;
+    const runState = getRequestResolverBag(ctx)[boardRunStateSlot(name)] as
+      | BoardRunFlowState
+      | undefined;
+    const policy = runState?.policy;
+    const ledger = runState?.ledger;
     if (policy === undefined || ledger === undefined) return undefined;
     return { flowPolicy: policy, ledger: ledger.view() };
   };

@@ -1024,7 +1024,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
       const tasks = await ctx.cap[boardId].tasks();
       const surface: AnswerBoard = {
         get: (id) => tasks.get(id),
-        resumeFromReview: (id, feedback) => tasks.resumeFromReview(id, feedback),
+        unpark: (id, feedback) => tasks.unpark(id, feedback),
         // The collection's own clock, never `Date.now()` — a lease is a
         // comparison and a comparison needs one clock. Reading the wall clock
         // works right up until the collection is built on an injected one, at
@@ -1101,7 +1101,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
        * Answer a parked run's question and start it again holding the answer.
        *
        * **The drain is this action's**, not the operator's next step.
-       * `resumeFromReview` only re-queues the row, and with `onReview: "exit"`
+       * `unpark` only re-queues the row, and with `onReview: "exit"`
        * the drain that observed the question has already ended — so an `answer`
        * that stopped after two calls would leave the row waiting for whatever
        * happens to drain next.

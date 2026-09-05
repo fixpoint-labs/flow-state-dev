@@ -277,7 +277,7 @@ describe.each([
     });
   });
 
-  describe("block / unblock / awaitReview / resumeFromReview / cancel", () => {
+  describe("block / unblock / awaitReview / unpark / cancel", () => {
     it("block transitions pending → blocked", async () => {
       await collection.addTask({ id: "t", goal: "t" });
       await collection.block("t", "deps not ready");
@@ -302,13 +302,13 @@ describe.each([
       expect(events.at(-1)?.kind).toBe("review_requested");
     });
 
-    it("resumeFromReview returns to pending without incrementing attempts", async () => {
+    it("unpark returns to pending without incrementing attempts", async () => {
       await collection.addTask({ id: "t", goal: "t" });
       await collection.claim("w");
       const beforeReview = collection.get("t")!;
       const attempts = beforeReview.attempts;
       await collection.awaitReview("t");
-      await collection.resumeFromReview("t", "do this instead");
+      await collection.unpark("t", "do this instead");
       const t = collection.get("t")!;
       expect(t.status).toBe("pending");
       expect(t.attempts).toBe(attempts);

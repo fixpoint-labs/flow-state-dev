@@ -160,7 +160,7 @@ function buildScenario() {
       // A correctly sleeping worker is still parked when this elapses.
       await delay(150);
       observed.drainDoneBeforeResume = drain.done;
-      await tasks.resumeFromReview("parked");
+      await tasks.unpark("parked");
     },
   });
 

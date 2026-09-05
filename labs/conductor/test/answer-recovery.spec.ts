@@ -1,7 +1,7 @@
 /**
  * The recovery rule, arm by arm.
  *
- * `answer` commits in three places — patch the row, `resumeFromReview`, drain —
+ * `answer` commits in three places — patch the row, `unpark`, drain —
  * and the drain commits in two more, so the sequence has four commit points and
  * a crash at any of them leaves a durable prefix. This drives `decideAnswer`
  * directly because each arm is a *state of the world at one instant*: a row
@@ -50,7 +50,7 @@ function fakeBoard(task: {
   const resumed: string[] = [];
   const board: AnswerBoard = {
     get: () => task,
-    resumeFromReview: async (id) => {
+    unpark: async (id) => {
       resumed.push(id);
     },
     now: () => NOW,
@@ -95,7 +95,7 @@ describe("recovery — the three restartable prefixes", () => {
   });
 
   it("drains ONLY when the crash landed between the resume and the drain", async () => {
-    // `resumeFromReview` only re-queues, and `onReview: "exit"` already ended
+    // `unpark` only re-queues, and `onReview: "exit"` already ended
     // the drain that saw the question — so nothing is left to run it.
     const { ctx, topic } = await stageAnswered();
     const { board, resumed } = fakeBoard({ status: "pending", attempts: 2 });

@@ -183,7 +183,7 @@ function buildScenario(config: {
       observed.drainDoneBeforeResume = drain.done;
       observed.askStatusAtCheck = tasks.get("ask")?.status;
 
-      await tasks.resumeFromReview("ask", "approved, carry on");
+      await tasks.unpark("ask", "approved, carry on");
     },
   });
 
@@ -572,7 +572,7 @@ describe("onReview: 'exit' — the return trip", () => {
         checkpoint.gateStatus = tasks.get("gate")?.status;
         checkpoint.elapsed = Date.now() - startedAt;
         checkpoint.taskCount = tasks.count();
-        await tasks.resumeFromReview("ask", "approved, carry on");
+        await tasks.unpark("ask", "approved, carry on");
         return null;
       },
     });
@@ -956,7 +956,7 @@ describe("onReview: 'exit' — a worker parking its OWN task", () => {
         const tasks: TaskCollectionRef = await ctx.cap[boardName].tasks();
         checkpoint.status = tasks.get("ask")?.status;
         checkpoint.count = tasks.count();
-        await tasks.resumeFromReview("ask", "approved, carry on");
+        await tasks.unpark("ask", "approved, carry on");
         return null;
       },
     });

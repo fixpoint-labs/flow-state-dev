@@ -117,13 +117,13 @@ describe("a parked row declines the attempt's settlement", () => {
 
 describe("what the refusal deliberately does not touch", () => {
   it("lets the review end by resume, on the same claim", async () => {
-    // `resumeFromReview` also targets `pending` and may carry the worker's own
+    // `unpark` also targets `pending` and may carry the worker's own
     // ticket. It must keep working, which is why the refusal is scoped to
     // settlement kinds rather than to the target status.
     const tasks = collection();
     const claim = await claimThenPark(tasks, "ask");
 
-    const outcome = await tasks.resumeFromReview("ask", "approved", { claim });
+    const outcome = await tasks.unpark("ask", "approved", { claim });
 
     expect(outcome.outcome).not.toBe("declined");
     expect(tasks.get("ask")?.status).toBe("pending");
