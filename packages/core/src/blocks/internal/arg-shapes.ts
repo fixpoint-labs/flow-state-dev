@@ -43,15 +43,22 @@ export function isInlineConfig(value: unknown): boolean {
 }
 
 /**
- * Detects a concurrency-options object in the trailing argument slot of the
- * iterating methods (`forEach`, `forEachSideChain`). Rejects block
+ * Detects an options object in the trailing argument slot of the iterating
+ * methods (`forEach`, `forEachSideChain`): the concurrency knob, and `blocks`
+ * — the blocks a per-item factory declares it can produce. Rejects block
  * definitions so a trailing block is never mistaken for options.
+ *
+ * `blocks` has to be recognised here, not just typed: the two-argument shape
+ * `forEach(factory, { blocks })` is otherwise read as `(connector, block)`, and
+ * the declaration is dropped without a compile error or a run-time one.
  *
  * Note: an empty object `{}` is treated as options (the `Object.keys` clause).
  * This matches current behavior; tightening it is a deliberate non-goal
  * (FIX-508 §7).
  */
-export function isConcurrencyOptions(value: unknown): value is { maxConcurrency?: number; concurrency?: number } {
+export function isConcurrencyOptions(
+  value: unknown
+): value is { maxConcurrency?: number; concurrency?: number; blocks?: readonly BlockDefinition<any, any>[] } {
   if (typeof value !== "object" || value === null) {
     return false;
   }
@@ -61,7 +68,12 @@ export function isConcurrencyOptions(value: unknown): value is { maxConcurrency?
   }
 
   const record = value as Record<string, unknown>;
-  return "maxConcurrency" in record || "concurrency" in record || Object.keys(record).length === 0;
+  return (
+    "maxConcurrency" in record ||
+    "concurrency" in record ||
+    "blocks" in record ||
+    Object.keys(record).length === 0
+  );
 }
 
 /**

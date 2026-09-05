@@ -88,7 +88,11 @@ import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/ty
 import { updateStateWith } from "@flow-state-dev/core/helpers";
 import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
-import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
+import {
+  assertTransitionAllowed,
+  isTerminalStatus,
+  withMigratedStatus,
+} from "../schema/task-status";
 import type {
   TaskCollectionRef,
   TaskTransitionOptions,
@@ -183,21 +187,37 @@ export interface ResourceBackedOptions {
   /**
    * Refuse every `setAssignee` on this collection (FIX-982).
    *
-   * Set by a task board that declares detached workers. The assignee is what a
-   * detached task's routing coordinate derives from, so reassigning after
+   * Set by a task board with dispatcher seats. The assignee is what a
+   * handed-off task's routing key derives from, so reassigning after
    * admission silently strands the task — see `TaskCollectionRef.setAssignee`.
    *
    * Only the resource backing carries this, and that is deliberate rather than
-   * an omission: a detached board is refused at construction unless its backing
+   * an omission: a handed-off board is refused at construction unless its backing
    * is durable, so no other backing can host one.
    */
   immutableAssignee?: boolean;
 }
 
+/**
+ * The read boundary for this backing. Collection instances are stored, not
+ * parsed, so a row written before the `parked` rename arrives carrying the
+ * legacy status; it is mapped forward here (see `withMigratedStatus`), before
+ * any filter or the transition guard sees it.
+ *
+ * Every read of committed task state goes through this — `readTaskState` for
+ * a ref, and directly for the `current` a CAS updater is handed, since that
+ * mutator re-reads committed state on each retry.
+ */
+function readTaskStateOf<TInput, TOutput>(
+  state: JsonObject
+): Task<TInput, TOutput> {
+  return withMigratedStatus(state) as unknown as Task<TInput, TOutput>;
+}
+
 function readTaskState<TInput, TOutput>(
   ref: ResourceRef<JsonObject>
 ): Task<TInput, TOutput> {
-  return ref.state as unknown as Task<TInput, TOutput>;
+  return readTaskStateOf<TInput, TOutput>(ref.state);
 }
 
 /**
@@ -421,7 +441,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     try {
       committed = await updateStateWith(ref, (current) => {
-        const task = current as unknown as Task<TInput, TOutput>;
+        const task = readTaskStateOf<TInput, TOutput>(current);
         const reason = transitionDeclineReason(
           task as Task,
           targetStatus,
@@ -496,7 +516,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     try {
       nextTask = await updateStateWith(ref, (current) => {
-        const task = current as unknown as Task<TInput, TOutput>;
+        const task = readTaskStateOf<TInput, TOutput>(current);
         if (options?.declineOnTerminal === true && isTerminalStatus(task.status)) {
           throw new WriteDeclined("terminal", task.status);
         }
@@ -602,7 +622,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         const written = await updateStateWith<JsonObject, ClaimWrite | undefined>(
           candidateRef,
           (current) => {
-            const task = current as unknown as Task<TInput, TOutput>;
+            const task = readTaskStateOf<TInput, TOutput>(current);
             const at = now();
             // Re-check admission on the freshest state — another worker
             // may have claimed this task in the time between scan and CAS.
@@ -771,9 +791,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         () => ({ error: undefined }),
         options,
         // `blocked` is the ONLY status this may run from. The other two paths
-        // to `pending` have their own verbs (`reclaim`, `resumeFromReview`),
-        // and those clear the lease and the claim coordinate; this one has
-        // nothing to clear because `blocked` is reachable only from `pending`.
+        // to `pending` have their own verbs (`reclaim`, and `unpark` with its
+        // own fence), and those clear the lease and the claim coordinate; this
+        // one has nothing to clear because `blocked` is reachable only from
+        // `pending`.
         "blocked"
       );
     },
@@ -781,14 +802,21 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     async awaitReview(id, feedback, options) {
       return transitionRef(
         id,
-        "awaiting_review",
+        "parked",
         "review_requested",
         () => (feedback !== undefined ? { feedback } : {}),
         options
       );
     },
 
-    async resumeFromReview(id, feedback, options) {
+    async unpark(id, feedback, options) {
+      // Fenced to the one edge it owns (FIX-1244): `parked` is the ONLY status
+      // this may run from, and the check runs inside the atomic write, so a
+      // row a worker is holding, or one somebody already answered, comes back
+      // `declined` naming the status it found — never re-queued. `ifAllowed` is
+      // forced AFTER the spread, the way `cancel` forces it: the fence is the
+      // verb's contract, not an option a caller can switch off, and a terminal
+      // row declines `terminal` instead of throwing.
       return transitionRef(
         id,
         "pending",
@@ -798,7 +826,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           leaseUntil: undefined,
           claimedBy: undefined,
         }),
-        options
+        { ...options, ifAllowed: true },
+        "parked"
       );
     },
 
@@ -847,7 +876,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         }
 
         const next = await updateStateWith(taskRef, (current) => {
-          const t = current as unknown as Task<TInput, TOutput>;
+          const t = readTaskStateOf<TInput, TOutput>(current);
           if (
             t.status !== "in_progress" ||
             t.leaseUntil === undefined ||
@@ -878,10 +907,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async setAssignee(id, assignee) {
-      // FIX-982: on a detached board the assignee is fixed at admission, and
+      // FIX-982: on a handed-off board the assignee is fixed at admission, and
       // this arm is checked FIRST because it holds whatever the task's status
       // is (see `TaskWriteDeclineReason`). Answered without touching the store —
-      // the board either runs detached work or it does not, so there is nothing
+      // the board either hands off or it does not, so there is nothing
       // to read and nothing to race. The task must still exist, though: a
       // decline for a task that was never there would be a different kind of
       // lie, and every sibling patch throws on an unknown id.

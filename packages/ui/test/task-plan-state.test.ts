@@ -149,7 +149,7 @@ describe("extractTaskPlanState", () => {
         errored: 0,
         cancelled: 0,
         blocked: 0,
-        awaiting_review: 0,
+        parked: 0,
         in_progress: 0,
         pending: 0,
       }),
@@ -342,7 +342,7 @@ describe("discoverCollections", () => {
 describe("humanizeStatus", () => {
   it.each([
     ["in_progress", "In progress"],
-    ["awaiting_review", "Awaiting review"],
+    ["parked", "Parked"],
     ["needs-revision", "Needs revision"],
     ["planning", "Planning"],
     ["", ""],
@@ -411,5 +411,65 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
     expect(ids.has(orphan.id)).toBe(false);
     // Bookend task-change items are never owned.
     expect([...ids].some((id) => id.startsWith("item_change"))).toBe(false);
+  });
+});
+
+/**
+ * FIX-1245 — a trace recorded before the `parked` rename.
+ *
+ * Item logs are immutable, so an old `task-change` still carries
+ * `awaiting_review` on the task and an old `task-board-meta` carries it as a
+ * counts key. The fold maps both forward, because every consumer of this state
+ * — `isFullyDone`, the section buckets, the counts ribbon — reads only `parked`.
+ */
+describe("extractTaskPlanState, legacy awaiting_review items", () => {
+  it("reads a legacy task status as parked", () => {
+    resetItemCounters();
+    const legacy = makeTask({ id: "t1", status: "awaiting_review" as TaskStatus });
+    const state = extractTaskPlanState(
+      [makeTaskChange("board-1", legacy, { kind: "review_requested" })],
+      "board-1"
+    );
+    expect(state.tasks[0]?.task.status).toBe("parked");
+  });
+
+  it("folds a legacy counts key into parked", () => {
+    resetItemCounters();
+    const state = extractTaskPlanState(
+      [
+        makeBoardMeta("board-1", "completed", {
+          total: 1,
+          completed: 0,
+          errored: 0,
+          cancelled: 0,
+          blocked: 0,
+          awaiting_review: 1,
+          in_progress: 0,
+          pending: 0,
+        }),
+      ],
+      "board-1"
+    );
+    expect(state.boardMeta.counts?.parked).toBe(1);
+    expect(state.boardMeta.counts).not.toHaveProperty("awaiting_review");
+  });
+
+  it("leaves a post-rename counts payload untouched", () => {
+    resetItemCounters();
+    const counts = {
+      total: 1,
+      completed: 0,
+      errored: 0,
+      cancelled: 0,
+      blocked: 0,
+      parked: 1,
+      in_progress: 0,
+      pending: 0,
+    };
+    const state = extractTaskPlanState(
+      [makeBoardMeta("board-1", "completed", counts)],
+      "board-1"
+    );
+    expect(state.boardMeta.counts).toEqual(counts);
   });
 });

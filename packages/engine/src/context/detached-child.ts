@@ -1,5 +1,5 @@
 /**
- * Deriving and adopting the child session a detached start targets (FIX-999).
+ * Deriving and adopting the child session a dispatch targets (FIX-999).
  *
  * The seam's safety rule: a caller supplies the *target* of an operation and
  * never the *authority* for it. It hands over a routing seed and the seam builds
@@ -16,7 +16,7 @@
  * liveness calls refuse — unsettleable, uninterruptible, invisible.
  */
 import { createHash } from "node:crypto";
-import type { DetachedRoutingSeed } from "@flow-state-dev/core/types";
+import { framed } from "@flow-state-dev/core/types";
 
 /** The server-derived facts a child key is built from. Never caller-supplied. */
 export type DerivationIdentity = {
@@ -31,7 +31,7 @@ export type DerivationIdentity = {
    *
    * In the key material because a session id can be deleted and recreated: the
    * same id, same principal and same seed would otherwise derive the same child,
-   * and the new conversation would ADOPT the old lineage's workstream — silently
+   * and the new conversation would ADOPT the old lineage's child — silently
    * inheriting an address belonging to a conversation that no longer exists.
    * Conjoining the lineage makes the two children different sessions, so nothing
    * has to detect the case.
@@ -42,36 +42,39 @@ export type DerivationIdentity = {
 /** Prefix so a derived child id is recognisable in a store dump. */
 const CHILD_ID_PREFIX = "dsx_";
 
-/**
- * Length-prefix a field so field boundaries cannot be confused.
- *
- * Without this, `("u_ab", "c")` and `("u_a", "bc")` hash identically, and since
- * the parent session id is one of the fields that is a cross-lineage collision
- * reachable by choosing ids — exactly what the derivation exists to prevent.
- */
-function framed(value: string | undefined): string {
-  const v = value ?? "";
-  return `${v.length}:${v}`;
-}
+// Fields are length-framed with core's codec so field boundaries cannot be
+// confused: without it `("u_ab", "c")` and `("u_a", "bc")` hash identically,
+// and since the parent session id is one of the fields that is a cross-lineage
+// collision reachable by choosing ids — exactly what the derivation exists to
+// prevent. An absent tenant frames as the empty field.
 
 /**
- * Derive the child session id for a detached start.
- *
- * Deterministic by design — the same identity and seed must land on the same
- * child, because that is what makes "adopt if it already exists" the ordinary
- * second-task-same-topic path rather than a conflict.
+ * The namespace a dispatched child's key is framed under, so no other
+ * derivation from the same parent can land on a dispatched child by choosing
+ * the same string.
  */
-export function deriveChildSessionId(
-  identity: DerivationIdentity,
-  seed: DetachedRoutingSeed
-): string {
+const DISPATCH_NAMESPACE = "dispatch";
+
+/**
+ * Derive the child session id for a `{ key }`-targeted dispatch.
+ *
+ * The identity material — tenant, principal, parent session and lineage,
+ * none of them caller-supplied — with the key
+ * framed under its own namespace. Deterministic by design: the same key from
+ * the same parent lands on the same child, which is what makes "adopt if it
+ * already exists" the ordinary retry path rather than a conflict. The key alone
+ * discriminates among a parent's dispatched children, so two dispatchers in one
+ * flow that compute the same key share one child — a board that wants its
+ * per-task children apart from another board's frames its own id into the key.
+ */
+export function deriveDispatchChildSessionId(identity: DerivationIdentity, key: string): string {
   const material = [
-    framed(identity.tenantId),
+    framed(identity.tenantId ?? ""),
     framed(identity.userId),
     framed(identity.parentSessionId),
     framed(identity.lineageId),
-    framed(seed.topic),
-    framed(seed.key)
+    framed(DISPATCH_NAMESPACE),
+    framed(key)
   ].join("|");
 
   const digest = createHash("sha256").update(material, "utf8").digest("hex");
@@ -85,6 +88,13 @@ export type ExpectedChildIdentity = {
   tenantId: string | undefined;
   orgId: string | undefined;
   parentSessionId: string;
+  /**
+   * The parent's lineage. A `{ key }` dispatch always requires the child to
+   * share it, since `sharedToLineage` resources in the child resolve against
+   * that root. Optional only so a caller that compares nothing else can omit
+   * it; absent → not compared.
+   */
+  lineageId?: string;
 };
 
 /** The subset of a stored session record adoption inspects. */
@@ -94,6 +104,7 @@ export type AdoptionCandidate = {
   tenantId?: string;
   orgId?: string;
   parentSessionId?: string;
+  lineageId?: string;
 };
 
 /** Which field disagreed. Reported for diagnostics; the caller refuses by name. */
@@ -102,7 +113,8 @@ export type AdoptionMismatch =
   | "userId"
   | "tenantId"
   | "orgId"
-  | "parentSessionId";
+  | "parentSessionId"
+  | "lineageId";
 
 export type AdoptionVerdict =
   | { adoptable: true }
@@ -154,6 +166,14 @@ export function evaluateAdoption(
   }
   if (!sameOptional(record.parentSessionId, expected.parentSessionId)) {
     return { adoptable: false, mismatch: "parentSessionId" };
+  }
+  // The lineage is in the derivation, so a record the seam minted carries the
+  // parent's lineage by construction. A pre-created record does not: it was
+  // minted with whatever lineage the session route gave it, and adopting it
+  // would put every lineage-shared resource in the child on a different root
+  // than the parent's — the ledger a hand-off must settle against.
+  if (expected.lineageId !== undefined && !sameOptional(record.lineageId, expected.lineageId)) {
+    return { adoptable: false, mismatch: "lineageId" };
   }
   return { adoptable: true };
 }

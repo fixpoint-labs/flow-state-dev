@@ -1,7 +1,7 @@
 /**
  * The cross-layer path, deterministically.
  *
- * A real runtime, a real detached dispatch into a child session, the real claim
+ * A real runtime, a real hand-off dispatch into a child session, the real claim
  * gate, the real `user`-scoped board and its fenced settlement — with the SDK
  * `query` and the done-condition stubbed so a verdict can be staged.
  *
@@ -100,7 +100,7 @@ async function readStatus(h: ConductorHarness): Promise<StatusRow> {
 /**
  * Wait for the claimed attempt to stop running.
  *
- * The drain hands the row to a workstream and returns with it still open —
+ * The drain hands the row to a child session and returns with it still open —
  * the seeding request deliberately does not wait for the run. So the assertion
  * point is when the row leaves `in_progress`, which is where the board's own
  * fenced settlement has landed.
@@ -485,7 +485,7 @@ describe("the manager — a declined settlement is silent", () => {
   it("status reports the board row as not completed when the claim was lost", async () => {
     // `recordSuccess` writes with `ifAllowed: true`, so a `complete()` refused
     // on a lost claim is DROPPED rather than thrown: the worker returns
-    // normally and the workstream request completes. Inferring completion from
+    // normally and the child session's request completes. Inferring completion from
     // the run record or from request status would therefore be the same
     // silent-success defect this lab exists to remove, relocated into the thing
     // that verifies it.
@@ -550,7 +550,7 @@ describe("the manager — the phase surface", () => {
     expect(built.collectionId).not.toBe(h.built.collectionId);
   });
 
-  it("constructs a detached board — the worker declares no session state", async () => {
+  it("constructs a board that hands off — the worker declares no session state", async () => {
     // The regression is a construction-time throw, so the assertion is that the
     // board builds at all.
     const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
@@ -696,14 +696,14 @@ describe("the flow — how much it runs at once", () => {
     //
     // The board's `concurrency` is now 1 rather than the substrate's default of
     // 4 — worth setting, because it bounds how many rows one drain hands off at
-    // a time. But it does NOT bound how many coding runs are alive: a detached
+    // a time. But it does NOT bound how many coding runs are alive: a hand-off
     // dispatch hands off and returns, releasing the drain's slot long before the
     // run it started finishes. Two seeded issues therefore produce two live runs
     // whatever `concurrency` is.
     //
     // So "one issue at a time" is a property of how you seed, not something the
     // board enforces, and the README says exactly that. If a future change makes
-    // the board gate detached runs, this test goes red and the README needs
+    // the board gate handed-off runs, this test goes red and the README needs
     // rewriting with it — which is the point of pinning it.
     let running = 0;
     let peak = 0;
@@ -964,7 +964,7 @@ describe("numeric options are validated at the programmatic door too", () => {
 });
 
 describe("the drain budget covers the whole worker", () => {
-  // The defect: `detachedDrainTimeoutMs` was `runTimeoutMs`, the agent step
+  // The defect: `dispatchDrainTimeoutMs` was `runTimeoutMs`, the agent step
   // alone. A worker also waits for the lock, provisions, and probes for the PR —
   // and the engine carves its cancellation reserve OUT of this budget rather
   // than adding to it, so the effective wait was already LESS than the agent's
@@ -1241,7 +1241,7 @@ describe("the run record — readable from any coordinator session", () => {
   it("answers a status call from a session that never saw the run", async () => {
     // The shape that reproduced the bug, now asserting the fix.
     //
-    // `sharedToWorkstream` gave one identity across A session's lineage, and a
+    // `sharedToLineage` gave one identity across A session's lineage, and a
     // new coordinator session is a different lineage root — so `status` from a
     // fresh session returned the board row with `run: null`, losing the failure
     // reason, the harness session, the cost and the checkout. The board said the
@@ -1300,7 +1300,7 @@ describe("the ledger is partitioned by tenant", () => {
 
     // Storage — the half that decides who can claim whose row.
     expect(acme.collectionId).not.toBe(globex.collectionId);
-    // Routing — hashed into the derived workstream session id.
+    // Routing — hashed into the derived child session id.
     expect(acme.boardId).not.toBe(globex.boardId);
   });
 
@@ -1330,7 +1330,7 @@ describe("the ledger is partitioned by tenant", () => {
 
     // Storage — who can claim whose row.
     expect(left.collectionId).not.toBe(right.collectionId);
-    // Routing — hashed into the derived workstream session id.
+    // Routing — hashed into the derived child session id.
     expect(left.boardId).not.toBe(right.boardId);
     // The run record, which leads with the collection identity.
     expect(runTopic(left.collectionId, ISSUE, PHASE)).not.toBe(
@@ -1540,7 +1540,7 @@ describe("the ledger is partitioned by tenant", () => {
       });
       await live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, OTHER);
       const parked = await settleAsTenant(live, OTHER);
-      expect(parked.status).toBe("awaiting_review");
+      expect(parked.status).toBe("parked");
       const topic = parked.questions[0]!.question;
       const runsBefore = seen.prompts.length;
 
@@ -1552,7 +1552,7 @@ describe("the ledger is partitioned by tenant", () => {
       // tenant, or the read would be refused too and this would pass because it
       // saw nothing either way.
       const after = await settleAsTenant(live, OTHER);
-      expect(after.status).toBe("awaiting_review");
+      expect(after.status).toBe("parked");
       expect(after.questions[0]?.question).toBe(topic);
       expect(after.attempts).toBe(parked.attempts);
       expect(seen.prompts).toHaveLength(runsBefore);

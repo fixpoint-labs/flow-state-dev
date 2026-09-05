@@ -2,47 +2,47 @@
  * Background-work pipeline — the turn files the work and returns.
  *
  * Every other thinking style answers inside the turn. This one does not: it
- * writes the request onto a durable board and hands it to a **Workstream** — a
- * child session that outlives the request that started it — then replies and
- * ends the turn while the work is still going. The reply a later turn gives is
- * where the result shows up.
+ * writes the request onto a durable board and hands it to a **child session** —
+ * one that outlives the request that started it — then replies and ends the
+ * turn while the work is still going. The reply a later turn gives is where
+ * the result shows up.
  *
  * ## The three declarations that make the hand-off legal
  *
- * - **`backgroundWorkLedger` is resource-backed.** A detached worker's row
+ * - **`backgroundWorkLedger` is resource-backed.** A handed-off row
  *   outlives the claiming request, so the board refuses anything but a durable
  *   collection at construction.
- * - **`sharedToWorkstream: true`.** The ledger is session-scoped, and a
- *   Workstream is a different session — without this it would hydrate empty
+ * - **`sharedToLineage: true`.** The ledger is session-scoped, and a
+ *   child session is a different session — without this it would hydrate empty
  *   inside the child and the child could not settle the row it was dispatched
  *   for. The flag resolves a session-scoped resource against the lineage root,
- *   so the conversation and every Workstream under it address one ledger.
+ *   so the conversation and every child session under it address one ledger.
  * - **An explicit `boardId`.** It is hashed into the child session's id, so it
  *   has to be stable and deliberate rather than an incidental string.
  *
  * ## What this pipeline can and cannot show you
  *
  * The parent's view of the ledger is the one it hydrated when the request
- * started, and it never observes the Workstream's write. So {@link
+ * started, and it never observes the child session's write. So {@link
  * reportBackgroundWork} reports the *just-filed* row as running no matter how
  * fast the child is, and results appear on the next turn. Polling for
  * completion inside one turn would wait forever; the shape here is the one that
  * works.
  *
- * A detached generator also streams no in-flight text — a reader attaching to
- * the Workstream sees completed items, not tokens arriving.
+ * A generator running in a child session also streams no in-flight text — a reader attaching to
+ * the child session sees completed items, not tokens arriving.
  */
-import { generator, handler, sequencer } from "@flow-state-dev/core";
+import { dispatcher, generator, handler, sequencer } from "@flow-state-dev/core";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorker, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import type { PipelineConfig } from "./config";
 
-/** Stable board id. Hashed into every Workstream this board starts — renaming it re-keys live ones. */
+/** Stable board id. Hashed into every child session this board starts — renaming it re-keys live ones. */
 const BOARD_ID = "kitchen-sink-background-work";
 
-/** The one assignee this board routes to, and the coordinate its Workstreams are addressed by. */
+/** The one assignee this board routes to, and the coordinate its child sessions are addressed by. */
 const ASSIGNEE = "brief";
 
 /** Longest display label we render for a filed row. Never used for routing. */
@@ -52,7 +52,7 @@ const LABEL_MAX_LENGTH = 60;
 const briefRequestSchema = z.object({ request: z.string() });
 
 /**
- * The durable ledger the conversation and its Workstreams share.
+ * The durable ledger the conversation and its child sessions share.
  *
  * Exported so the board's rows are addressable from a test or a debug read
  * without rebuilding the declaration — `taskBoard` binds this exact object.
@@ -60,24 +60,24 @@ const briefRequestSchema = z.object({ request: z.string() });
 export const backgroundWorkLedger = defineTaskCollection({
   id: "background-work",
   scope: "session",
-  sharedToWorkstream: true,
+  sharedToLineage: true,
   stateSchema: briefRequestSchema,
 });
 
 /**
- * The Workstream's `topic` — a **routing identity**, not a label.
+ * The child session's `topic` — a **routing identity**, not a label.
  *
- * Whitespace-normalized and otherwise complete. `deriveChildSessionId` hashes
+ * Whitespace-normalized and otherwise complete. `deriveDispatchChildSessionId` hashes
  * this together with the board's routing key, so it is the value that decides
  * which child session a task lands in. Two turns asking the same thing land on
- * the same Workstream and continue its history, which is the substrate's
+ * the same child session and continue its history, which is the substrate's
  * adoption path rather than an accident.
  *
  * **Never truncate this.** It used to be cut to 60 characters and reused as the
  * display label, which meant two different prompts sharing their first 59
- * characters derived the *same* Workstream and the panel showed one row mixing
- * both jobs. The task board frames its coordinates by length
- * (`orchestration/task-board/coordinate.ts`) precisely so two distinct
+ * characters derived the *same* child session and the panel showed one row mixing
+ * both jobs. The dispatch key a seat derives is length-framed
+ * (`taskSessionKeyFor` in `core/src/types/dispatch.ts`) precisely so two distinct
  * addresses can never alias; truncating the other half of the identity at the
  * app layer gave that back. Display truncation belongs at the render edge —
  * see {@link labelFor} and the panel's `truncate` class.
@@ -112,9 +112,9 @@ function renderOutput(output: unknown): string {
  * Build the `background-work` pipeline from the resolved router config.
  *
  * The board is constructed here rather than at module scope because its worker
- * takes the router's model resolver, and because the detached bindings it
- * stamps onto `board.drain` reach the flow through this pipeline being a route
- * — a board nobody composes declares nothing.
+ * takes the router's model resolver, and because the hand-off its seat
+ * carries reaches the flow through this pipeline being a route — a board
+ * nobody composes declares nothing.
  */
 /**
  * Session state this pipeline persists: which finished ledger rows it has
@@ -176,14 +176,14 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
   const { modelId } = config;
 
   /**
-   * The detached worker.
+   * The handed-off worker.
    *
    * Deliberately bare — no capabilities, no context bundle, no history. It runs
-   * in a Workstream whose session state and conversation are not the parent's,
+   * in a child session whose session state and conversation are not the parent's,
    * so anything it read from them would be empty rather than wrong, and a
-   * detached worker may not declare `sessionStateSchema` at all (every detached
-   * worker in a flow shares one Workstream flow, where two routes choosing the
-   * same key with different shapes would corrupt each other silently).
+   * handed-off entry may not declare `sessionStateSchema` at all (`defineFlow`
+   * refuses one: rows sharing a child session under a `per-worker` or `key`
+   * policy would corrupt each other's state silently).
    */
   const briefWorker = generator({
     name: "background-brief",
@@ -202,9 +202,9 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
       const payload = briefRequestSchema.safeParse(input.input);
       return payload.success ? payload.data.request : input.goal;
     },
-    // Without this a generator auto-emits nothing, and the Workstream's own
+    // Without this a generator auto-emits nothing, and the child session's own
     // history would hold block traces and no answer. `history: true` because
-    // these items ARE the Workstream's conversation — they never reach the
+    // these items ARE the child session's conversation — they never reach the
     // parent's, which is a different session.
     itemVisibility: { client: true, history: true },
   });
@@ -214,8 +214,8 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     boardId: BOARD_ID,
     collection: backgroundWorkLedger,
     // Not the default (`"skip"`), and deliberately. `onError` decides what a
-    // worker failure does to the run executing it — and for a detached worker
-    // that run is the **Workstream's**, not the drain's. Under `"skip"` a
+    // worker failure does to the run executing it — and for a handed-off worker
+    // that run is the **child session's**, not the drain's. Under `"skip"` a
     // worker that throws leaves the task `errored` while its child request
     // still completes, so the panel renders the row green while the next turn
     // reports the same work as failed: two surfaces disagreeing about one
@@ -227,14 +227,21 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     // and costs the honest status.
     onError: "fail",
     workers: {
-      // Cast: a registry is heterogeneous, so `TaskWorker` fixes its output at
-      // `unknown` while this worker settles a `string`. The board only ever
-      // reads `task.output` as `unknown`, so the runtime contract holds — the
-      // same narrowing `task-queue-demo` takes on its registry.
-      [ASSIGNEE]: {
-        worker: briefWorker as unknown as TaskWorker,
-        dispatch: { mode: "detached" },
-      },
+      // The seat is a dispatcher: it hands each row off to the flow's
+      // `brief` task entry (`briefWorker`, declared below) instead of running
+      // anything in the drain. Keyed on the task's `metadata.topic`: two
+      // requests on one topic land in the same child session and continue its
+      // history, which is the point of the topic (see `routingTopicFor`). A
+      // row with no topic gets a child of its own.
+      [ASSIGNEE]: dispatcher<TaskWorkerInput>({
+        name: "background-work-hand-off",
+        type: "task",
+        target: ASSIGNEE,
+        session: {
+          key: (task) =>
+            typeof task.metadata?.topic === "string" ? task.metadata.topic : task.taskId,
+        },
+      }),
     },
   });
 
@@ -251,7 +258,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
         title: labelFor(topic),
         assignee: ASSIGNEE,
         input: { request: input.message },
-        // `metadata.topic` is what the spawn seeds the Workstream's routing
+        // `metadata.topic` is what the spawn seeds the child session's routing
         // with — the value hashed into the child session id. Full, never
         // truncated; see `routingTopicFor`.
         metadata: { topic },
@@ -264,7 +271,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
    * The turn's reply: what was just filed, plus anything that has landed since.
    *
    * Reads the ledger rather than the drain's output, because the rows a
-   * *previous* turn detached are the interesting ones — this turn's own row is
+   * *previous* turn handed off are the interesting ones — this turn's own row is
    * still `in_progress` by construction.
    */
   const reportBackgroundWork = handler({
@@ -312,7 +319,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
       const running = rows.filter(
         (row) => row.status === "pending" || row.status === "in_progress",
       );
-      // A row that never reached a Workstream — the spawn was refused, or the
+      // A row that never reached a child session — the spawn was refused, or the
       // worker threw. Reported by name: saying "filed as background work" over
       // a row that failed inside this very turn is the one thing this reply
       // must not do.
@@ -327,7 +334,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
         .filter((task) => task.goal === input.message)
         .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
       // A spawn refused at dispatch settles the row `errored` inside THIS turn.
-      // Leading with "it runs in its own workstream" over a row that never
+      // Leading with "it runs in its own child session" over a row that never
       // reached one, and then appending "did not run" below, hands the user two
       // contradictory instructions in a single message.
       const filedFailed =
@@ -337,7 +344,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
       const label = labelFor(routingTopicFor(input.message));
       const parts = [
         filedFailed
-          ? `**${label}** could not be handed to a workstream — it was refused before it ` +
+          ? `**${label}** could not be handed to a child session — it was refused before it ` +
             `started (${filed.status}), so nothing is running for it. The Background work ` +
             `panel will not show a row for this one.`
           : // Deliberately does NOT invite another turn. "Ask me again in a
@@ -350,7 +357,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
             // reply on its own, which is stated as a fact rather than as an
             // instruction to go and trigger one.
             `Filed **${label}** as background work. It runs in its own ` +
-            `workstream, so this turn is done. Watch it in the Background work panel ` +
+            `child session, so this turn is done. Watch it in the Background work panel ` +
             `beside this conversation, which has its own refresh — and anything that has ` +
             `finished will come back with my next reply.`,
       ];
@@ -408,15 +415,26 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     },
   });
 
-  return sequencer({
+  const pipeline = sequencer({
     name: "background-work-thinking",
     inputSchema: z.object({ message: z.string() }),
     outputSchema: z.string(),
   })
     .tap(fileSideChainTask)
-    // The drain claims the row, hands it to a Workstream, and returns with the
+    // The drain claims the row, hands it to a child session, and returns with the
     // row still open. `.tap` keeps the turn's message as the running value so
     // the report below reads its own input rather than the drain's bookkeeping.
     .tap(board.drain)
     .step(reportBackgroundWork);
+
+  // The task entry rides along so the flow can declare it under
+  // `task: { actions }`: the block that runs in the child session for each row
+  // the seat hands off. `defineFlow` puts it behind the board's claim gate,
+  // and refuses the flow if the hand-off is reachable and the entry is not
+  // declared. Cast: a registry is heterogeneous, so `TaskWorker` fixes its
+  // output at `unknown` while this worker settles a `string` — the same
+  // narrowing `task-queue-demo` takes.
+  return Object.assign(pipeline, {
+    taskEntries: { [ASSIGNEE]: { block: briefWorker as unknown as TaskWorker } },
+  });
 }

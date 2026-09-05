@@ -26,30 +26,49 @@ export type {
 export { asRuntime } from "./block";
 
 export type {
-  DetachedProvenance,
-  DetachedRoutingSeed,
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
   SettleParentTaskInput,
-  SettleParentTaskResult,
-  StartDetachedInput,
-  StartDetachedRefusal,
-  StartDetachedResult
+  SettleParentTaskResult
 } from "./request-host";
 
 export { NoRequestHostError, requireRequestHost } from "./request-host";
 
-export type { WorkstreamBinding, WorkstreamBindings } from "./workstream";
+export type {
+  BlockDispatchType,
+  DispatchAddress,
+  DispatchOutcome,
+  DispatchRefusal,
+  DispatchSeam,
+  DispatchSpec,
+  DispatchType,
+  InternalEntry,
+  SessionTarget,
+  TaskBinding,
+  TaskDispatchInput,
+  TaskEntry,
+  TaskSessionPolicy
+} from "./dispatch";
 
 export {
-  declareWorkstreamBindings,
-  mergeWorkstreamBindings,
-  workstreamBindingKey
-} from "./workstream";
+  DISPATCH_SEAM,
+  DISPATCH_TYPES,
+  DispatchRefusedError,
+  NoDispatchSeamError,
+  bindTaskDispatcher,
+  dispatchThroughSeam,
+  markDispatcher,
+  taskBindingOf,
+  framed,
+  readFramed,
+  taskDispatchInputSchema,
+  taskSessionKeyFor
+} from "./dispatch";
 
 export type {
   ActionConfig,
+  TypedEntries,
   ActionCore,
   ActionMcpConfig,
   CostEstimator,
@@ -316,3 +335,23 @@ export type {
 } from "../schema/action-schema";
 
 export { applyGetOrPatchState, defineResource, resource } from "./resource";
+
+/**
+ * The coding-harness contract (LAB-152) — what a harness block is handed and
+ * what it hands back, plus the signatures a host feeds it configuration
+ * through. The matching runtime schemas are exported from the package root.
+ */
+export type {
+  HarnessBlock,
+  HarnessCostBasis,
+  HarnessResolver,
+  HarnessRunCost,
+  HarnessRunEnvelope,
+  HarnessRunHandle,
+  HarnessRunInput,
+  HarnessRunOutcome,
+  HarnessRunStatus,
+  HarnessRunUsage,
+  HarnessSessionHook,
+  HarnessSource,
+} from "./harness";

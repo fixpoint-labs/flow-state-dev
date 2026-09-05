@@ -6,10 +6,19 @@
  * link between a shipped, released change and the reasoning behind it. Without
  * the issue id in the fragment, a CHANGELOG entry has no route back.
  *
+ * THIS DOES NOT REQUIRE A CHANGESET. Under BP-022 most PRs have none, and a PR
+ * with no fragment passes here trivially. The rule is conditional: *if* you
+ * wrote one, name the issue. Do not read a green result as "the changeset
+ * question was answered" — a missing fragment and a correct absence look
+ * identical to this script, deliberately, because deciding between them needs a
+ * human's read of who the change is visible to.
+ *
  * Scoped to fragments this branch adds or edits (BP-022), so the rule applies
  * going forward without a backfill of every fragment written before it existed.
- * Empty fragments (`pnpm changeset --empty`, internal-only work) release
- * nothing and are skipped.
+ * The 422 fragments written before the first release were archived to
+ * `docs/internal/archive/changesets/` rather than released; nothing there is in
+ * scope, because this only ever looks inside `.changeset`. Empty fragments
+ * (`pnpm changeset --empty`) release nothing and are skipped.
  *
  * WHAT THIS MEASURES: "did the author of this release note name their issue" —
  * NOT "did this PR's diff touch the file". The two came apart during the

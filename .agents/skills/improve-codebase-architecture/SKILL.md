@@ -152,4 +152,4 @@ If any of the three filters fail, skip the record entirely. Ephemeral reasons ("
 - File header comment + doc comments on every export (BP-007).
 - Per-package check: `pnpm --filter <pkg> typecheck && pnpm --filter <pkg> test`. Root `pnpm typecheck` if the refactor crossed packages (also runs the boundary validator).
 - Update the per-package `README.md` if the public API changed. Update any affected `apps/docs` pages.
-- Add a `.changeset/*.md` fragment if the change ships to consumers. See [`docs/contributing/release-notes-workflow.md`](../../../docs/contributing/release-notes-workflow.md).
+- Add a `.changeset/*.md` fragment only if a consumer of a published package needs to know. A refactor that preserves the public surface does not — and that is most of what this skill produces. See [`docs/contributing/release-notes-workflow.md`](../../../docs/contributing/release-notes-workflow.md).

@@ -16,7 +16,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, dispatchThroughSeam, handler } from "@flow-state-dev/core";
 import { requireRequestHost } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "../../src";
 import type { StoreRegistry } from "../../src/stores/types";
@@ -191,22 +191,32 @@ describe("request-host seam, end to end", () => {
     expect(message).not.toMatch(/undefined is not a function/i);
   });
 
-  it("start-or-adopt refuses BY NAME when the flow declares no workstream core", async () => {
+  it("the dispatch seam refuses BY NAME when the flow declares no entry at the address", async () => {
     let refusal: unknown;
 
+    // A handler that reaches the seam directly, without `markDispatcher`, so
+    // the `defineFlow` address walk cannot see the dispatch and refuse it at
+    // definition time. This is the run-time half of the same rule.
     const probe = handler({
-      name: "probe-spawn",
+      name: "probe-dispatch",
       inputSchema: z.object({}),
       outputSchema: z.boolean(),
       execute: async (_input, ctx) => {
-        const host = requireRequestHost(ctx);
-        refusal = await host.startDetached({ seed: { topic: "review" }, input: {} });
+        refusal = await dispatchThroughSeam(ctx, {
+          type: "internal",
+          // Collides with the flow's own public action name on purpose: a
+          // resolution that fell through to `flow.actions` would find it.
+          target: "run",
+          session: { key: "review" },
+          payload: {},
+          from: "probe-dispatch"
+        });
         return true;
       }
     });
 
     const flow = defineFlow({
-      kind: "seam-e2e-spawn",
+      kind: "seam-e2e-dispatch",
       actions: { run: { block: probe } }
     })();
 
@@ -215,14 +225,15 @@ describe("request-host seam, end to end", () => {
       actionName: "run",
       input: {},
       userId: "u_alice",
-      sessionId: "s_spawn",
+      sessionId: "s_dispatch",
       stores: createInMemoryStores(),
       runtimeConfig: { requestHost: HEALTHY_LIVENESS }
     });
 
     expect(result.error).toBeUndefined();
-    // The *off* state of admission: no core, so a named refusal — and crucially
-    // NOT a dispatch that fell through to the flow's own `run` action.
-    expect(refusal).toMatchObject({ ok: false, refused: "no-workstream-core" });
+    // The *off* state of admission: no `internal` entry, so a named refusal —
+    // and crucially NOT a dispatch that fell through to the flow's own `run`
+    // action, whose name the address carries.
+    expect(refusal).toMatchObject({ ok: false, refused: "no-entry" });
   });
 });

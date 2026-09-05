@@ -166,7 +166,7 @@ export function shouldRetryOnFail(task: Task): boolean {
  */
 export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>([
   "in_progress",
-  "awaiting_review",
+  "parked",
 ]);
 
 /**
@@ -175,7 +175,7 @@ export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>([
  * Named because {@link transitionDeclineReason} refuses exactly these on a row
  * that is parked for review, and the set is not guessable from the target
  * status: a failure with retries left targets `pending`, which is also where a
- * `resumeFromReview` lands. The kind separates them; the status cannot.
+ * `unpark` lands. The kind separates them; the status cannot.
  */
 export const SETTLEMENT_CHANGE_KINDS = new Set<TaskChangeKind>([
   "completed",
@@ -276,7 +276,7 @@ export type FailRouting =
  *    only ever refuse a retry that would otherwise have happened, and it can
  *    never refuse a first attempt.
  * 2. **The budget applies only to attempt-owned failures.** `errored` is
- *    reachable from `in_progress` and `awaiting_review` and from NEITHER
+ *    reachable from `in_progress` and `parked` and from NEITHER
  *    `pending` nor `blocked`, while this routing is status-blind on the
  *    `maxAttempts` half — so a `fail()` on a pending or blocked task carrying
  *    `maxAttempts` legally re-pends today, and rerouting it to `errored` at the
@@ -437,16 +437,23 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  * after a lost lease is refused so the row stays recoverable instead of being
  * terminalized `errored` by our own liveness mechanism.
  *
+ * Its one opt-out is `adoptLapsedLease` on a renewal (FIX-1305): a claimant
+ * that has not started yet takes the row back rather than being refused, and
+ * because every other arm still runs, "took it back" and "lost it" are decided
+ * by this same write. See the option for why only the caller can tell the two
+ * lapsed claimants apart.
+ *
  * @param collectionId The board this write is happening on — compared against
  *   the ticket's, because two boards may both hold a task id.
  * @param now The clock the write is running against. Both backings already
  *   have one in scope at the call site; taking it as a parameter rather than
  *   capturing `Date.now` is what keeps this testable with an injected clock.
  * @param requireFrom The one status this verb may run from, when the verb owns a
- *   single edge rather than every legal path to its target. `unblock` is the
- *   only such verb: `blocked → pending`. The status table cannot express this —
- *   it maps status to status, not verb to edge, and `in_progress → pending` and
- *   `awaiting_review → pending` are legal for `reclaim` and `resumeFromReview`.
+ *   single edge rather than every legal path to its target. Two verbs do:
+ *   `unblock` (`blocked → pending`) and `unpark` (`parked → pending`, FIX-1244).
+ *   The status table cannot express this — it maps status to status, not verb
+ *   to edge, and `in_progress → pending` is legal for `reclaim`, so without the
+ *   fence `unpark` would re-queue a row a worker is holding.
  *   Checked ahead of the general legality arm so the more specific refusal wins.
  */
 export function transitionDeclineReason(
@@ -476,9 +483,9 @@ export function transitionDeclineReason(
   // FIX-1234: the caller asked not to settle a row somebody parked for review.
   //
   // Nothing above refuses this on its own, and that is deliberate rather than an
-  // oversight: `awaiting_review` is in ATTEMPT_OWNED_STATUSES, `terminal` does
+  // oversight: `parked` is in ATTEMPT_OWNED_STATUSES, `terminal` does
   // not fire on a parked row, `isTransitionAllowed` permits both
-  // `awaiting_review → completed` and `→ errored`, and `leaseLapsed`
+  // `parked → completed` and `→ errored`, and `leaseLapsed`
   // short-circuits to `false` for any status other than `in_progress`. A holder
   // recording a review's REJECTION as a failure is a supported write, and it
   // travels exactly this path.
@@ -492,18 +499,31 @@ export function transitionDeclineReason(
   // it always had.
   //
   // Scoped to settlement kinds so the flag cannot refuse the verbs that legally
-  // move a parked row: `resumeFromReview` targets `pending`, which a retrying
+  // move a parked row: `unpark` targets `pending`, which a retrying
   // failure also targets, and only the kind separates them.
   if (
     options.refuseWhenParked === true &&
-    task.status === "awaiting_review" &&
+    task.status === "parked" &&
     changeKind !== undefined &&
     SETTLEMENT_CHANGE_KINDS.has(changeKind)
   ) {
     return "parked";
   }
   if (claim !== undefined && !attemptOwnsTask(task, claim.attempt)) return "lost-claim";
-  if (claim !== undefined && leaseLapsed(task, now)) return "lost-claim";
+  // FIX-1305: a renewal may be the ticket-holder taking the row BACK, rather
+  // than a late write against a row it has lost. The two are the same evidence
+  // — everything above passed, so the identity the ticket names is still the
+  // row's and nobody has reclaimed it — and only the caller knows which one it
+  // is, so it says (`adoptLapsedLease`).
+  //
+  // Scoped to a renewal, and that scope is structural rather than a promise:
+  // `renewLease` is the only write that targets `in_progress`, so a settlement
+  // carrying the flag is unaffected and a lapsed worker's result is still
+  // refused. Nothing else about the write changes — a reclaim that moved
+  // `attempts` or the status has already declined one arm up, which is what
+  // makes the takeover decided by the race instead of by the clock.
+  const adopting = options.adoptLapsedLease === true && targetStatus === "in_progress";
+  if (claim !== undefined && !adopting && leaseLapsed(task, now)) return "lost-claim";
   return undefined;
 }
 
@@ -565,7 +585,7 @@ export function depsSatisfied(
  * agree with anything — there is no window between them to get wrong.
  *
  * **Scoped to `in_progress` on purpose.** {@link ATTEMPT_OWNED_STATUSES} also
- * contains `awaiting_review`, and `awaitReview` deliberately does *not* clear
+ * contains `parked`, and `awaitReview` deliberately does *not* clear
  * `leaseUntil` — so an unscoped reading would take back (and refuse writes on)
  * any task a human took longer than a lease to review. A review park is an
  * explicit park; the lease governs `in_progress` and nothing else.
@@ -576,6 +596,41 @@ export function depsSatisfied(
 export function leaseLapsed(task: Task, now: number): boolean {
   if (task.status !== "in_progress") return false;
   return task.leaseUntil != null && task.leaseUntil <= now;
+}
+
+/**
+ * The lease duration the claim **committed to** — how long the claimant may be
+ * gone, as the claim wrote it, not how much of it is left.
+ *
+ * The one number two mechanisms both rest on, which is why it is a function
+ * rather than a line in each of them: the renewal driver derives its cadence
+ * from it ({@link startLeaseRenewal}), and a claimant taking a lapsed row back
+ * renews for it, so the two would disagree the moment either copy was edited.
+ * Not the lease that is *left* — that is `leaseUntil - now`, a different
+ * number, and conflating them shrinks a late-starting driver's cadence to a
+ * write storm.
+ *
+ * **Read from `leaseDurationMs`, with `leaseUntil - updatedAt` as the fallback
+ * for a row claimed before that field existed (BP-030).** The subtraction is
+ * exact only at the instant of the claim, which is what made storing the
+ * number necessary: `setPriority`, `addLabel`, `removeLabel` and
+ * `patchMetadata` are supported on an `in_progress` row and all move
+ * `updatedAt` while leaving `leaseUntil` alone, so on a legacy row a
+ * coordinator's relabel shortens what this reports — and past the deadline
+ * drives it non-positive. Both consumers treat that as "cannot reason about
+ * this row" rather than as a short lease, which is the same conservative
+ * answer those rows got before this field existed.
+ *
+ * `undefined` when the row holds no lease deadline — nothing is claiming to be
+ * alive on it, so there is no committed span to report even if the duration a
+ * past claim wrote is still on the row. A non-positive result is returned
+ * as-is; what to do about it is the caller's: the driver goes inert, the
+ * takeover refuses.
+ */
+export function committedLeaseSpan(task: Task): number | undefined {
+  if (task.leaseUntil == null) return undefined;
+  if (task.leaseDurationMs != null) return task.leaseDurationMs;
+  return task.leaseUntil - task.updatedAt;
 }
 
 /**
@@ -807,6 +862,11 @@ export function applyClaimToTask<TInput, TOutput>(
     ...(recovering ? { abandonments: readAbandonments(task as Task) + 1 } : {}),
     startedAt: task.startedAt ?? now,
     leaseUntil: now + leaseDurationMs,
+    // The duration this claim committed to, kept beside the deadline it
+    // produced (FIX-1305). Every other write to a running row moves
+    // `updatedAt`, so the subtraction that used to stand in for this number
+    // stops being it the moment a coordinator relabels the task.
+    leaseDurationMs,
     claimedBy,
     updatedAt: now,
   };

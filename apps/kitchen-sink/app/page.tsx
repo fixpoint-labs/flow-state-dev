@@ -612,7 +612,7 @@ function ChatPanel({
       <div className="border-t">
         {session.items.length === 0 && <SuggestionRow onSuggestionClick={onSuggestionClick} disabled={isDisabled} />}
         <StuckRequestBanner session={session} />
-        {/* Outside the conversation, deliberately: a workstream's output is not
+        {/* Outside the conversation, deliberately: a child session's output is not
             part of the transcript and nothing folds it in. */}
         <BackgroundWorkPanel session={session} flowKind="chat-agent" />
         <ResumePrompt session={session} />

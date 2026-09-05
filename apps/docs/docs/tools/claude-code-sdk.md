@@ -72,8 +72,23 @@ const agent = claudeCodeAgent({
 // seq.step(agent) with input { prompt: "Tidy the imports in src/." }
 ```
 
-The block returns a handle describing the run: its terminal status, the final
-assistant message, the tools it used, and usage when the SDK reports it.
+The block returns a handle describing the run. Most of it is the framework's
+neutral harness handle — the shape any coding agent driven as a block hands
+back, so code that reads it works the same whichever agent produced it:
+
+| Field | What it holds |
+|---|---|
+| `source` | Which agent and entry point produced the run. This one is `claude-code/sdk`. |
+| `status` | `running`, `completed`, or `errored`. |
+| `sessionId`, `url`, `dispatchedAt` | The run's own id, a link to it when there is one, and when it started. |
+| `outcome` | How it ended: `finished`, `stopped-at-limit` (it hit a turn or budget cap), or `failed`. `null` while unknown. |
+| `finalMessage` | The last assistant message, or `null`. |
+| `usage` | Input and output tokens, or `null` when the SDK reports none. |
+| `cost` | `{ usd, basis }`, where `basis` says whether the number was `reported` by the agent or `estimated`. `null` when neither is known. |
+
+Claude's own extras sit beside those: `resultSubtype` (the SDK's terminal result
+code) and `toolsObserved` (the distinct tool names the run exercised). Nothing is
+invented — a field the SDK did not report reads `null`.
 
 ## What it emits
 
@@ -107,19 +122,18 @@ resource (an open connection, for example).
 
 ### Turning it off for background work
 
-A **workstream** is a child session dedicated to one background job, running
-outside the request that started it. If you dispatch the agent into one, set
-`detached: true`:
+Background work runs in a child session, outside the request that started it. If
+you dispatch the agent into one, set `detached: true`:
 
 ```ts
 const agent = claudeCodeAgent({ detached: true });
 ```
 
 Each job is then one run. Nothing is written to session state, and no prior SDK
-conversation is resumed — a second job addressed to the same workstream begins a
-new agent run. What the run did is still recorded: the workstream's own item
-stream holds its messages, reasoning, and tool calls in order, which is what you
-read the run back from.
+conversation is resumed — a second job landing in the same child session begins a
+new agent run. What the run did is still recorded: that session's own item stream
+holds its messages, reasoning, and tool calls in order, which is what you read the
+run back from.
 
 **The session id does not disappear.** The option governs session state and
 automatic resume, not the run's own result: the handle the block returns still
@@ -128,23 +142,23 @@ worker, that handle is the worker's output, and the board writes the output onto
 the task when it settles — so the id is persisted there. Worth knowing if you are
 reasoning about data retention, or if you plan to resume a run by hand later.
 
-The option is also required rather than optional there. Background workers share
-one flow, so two of them declaring the same session-state key would overwrite
-each other, and the task board refuses to build a background worker that declares
-session state.
+You have to pass it there. A worker that runs in a child session may share that
+session with other rows, so two blocks declaring the same session-state key would
+overwrite each other. The task board refuses to build a hand-off whose block
+declares session state.
 
-That refusal sees the worker block and the blocks composed inside it. It does
-**not** see a session-state schema contributed by a capability, which reaches a
-block through a separate channel that leaves no mark on the block itself. So a
-worker can be accepted while still carrying session state that way. If you attach
-this agent as a capability, pass the option there too — it takes the same one:
+That refusal reads the worker block, the blocks composed inside it, and the
+session state a capability the block `uses` declares for itself. What it cannot
+read is a schema a capability's *preset* adds, since a preset's contribution
+depends on a runtime opt-out. So pass the option wherever you attach the agent —
+the capability form takes the same one:
 
 ```ts
 createClaudeCodeAgentCapability({ detached: true });
 ```
 
-See [Background work](../server/background-work.md) for how a workstream is set
-up and read back.
+See [Dispatched work](../server/background-work.md) for how the child session is
+started and read back.
 
 ## Where the run works
 
@@ -472,7 +486,7 @@ framework stores and serves for you — and writes into them as the run goes:
 | `observed-plan` | item on the run's own to-do list: its wording, its current status, and the status before that |
 | `observed-gaps` | thing the recorder understood and could not record, with the reason and which record it stands in for |
 
-Entries are keyed as `<requestId>/<invocation>`. A workstream can host several
+Entries are keyed as `<requestId>/<invocation>`. One session can host several
 runs over its life, and a single request can itself run the agent more than once
 — a generator holding it as a tool can call it repeatedly — so both halves are
 needed to keep one run's answer from becoming somebody else's.
@@ -483,7 +497,7 @@ Both records come back over the resource route, one page at a time. Scope the
 read with `topicPrefix`, and follow `nextCursor` while one is returned:
 
 ```
-GET /sessions/<workstreamId>/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/
+GET /sessions/<sessionId>/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/
 
 { "items": [
   { "topic": "<requestId>/<invocation>/work/repo/src/checkout.ts",
@@ -580,7 +594,7 @@ that work will plug into.
 | Situation | Behavior |
 |-----------|----------|
 | `@anthropic-ai/claude-agent-sdk` not installed | Throws `ClaudeAgentSdkNotInstalledError` with an install hint. |
-| The agent finishes with an error result (hit max turns, budget, or a runtime error) | Treated as an outcome: the handle's `status` is `"errored"` with the SDK's `resultSubtype`, and an `error` item is emitted. No throw. |
+| The agent finishes with an error result (hit max turns, budget, or a runtime error) | Treated as an outcome: the handle's `status` is `"errored"`, its `outcome` is `stopped-at-limit` or `failed` (with the SDK's own `resultSubtype` alongside), and an `error` item is emitted. No throw. |
 | The SDK throws mid-stream | Wrapped in `ClaudeAgentRunError` and rethrown after an `error` item. |
 | A tool or sub-agent is still open when the stream ends | Its item is marked `incomplete`. |
 | Empty prompt | Validation error before the agent starts. |

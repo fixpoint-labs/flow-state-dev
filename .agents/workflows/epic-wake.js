@@ -164,6 +164,12 @@ function isDirectRoute(row) {
   return row.route === 'direct'
 }
 
+// Hoisted into the pure-rules region because `pendingAction` reads it: a rule the verify harness
+// loads on its own cannot depend on a constant declared 2000 lines down in the wake body.
+// The subset where the WORK IS GONE, as opposed to finished. A verdict can still be folded into completed
+// work (the spec is there, the thread is there); there is nothing to fold it into on cancelled work.
+const CANCELLED_LINEAR = /^(cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
+
 /**
  * The next bounded action for one issue, or null if it is genuinely waiting on something
  * external. `why` is for the log line — a dispatch the user can't explain is drift.
@@ -337,6 +343,46 @@ function pendingAction(row) {
   if (!(row.subPrs || []).length && (row.blockerResolutions || []).length) {
     return { action: 'apply-decision', why: `${row.blockerResolutions.length} answered decision(s) to apply` }
   }
+  return null
+}
+
+/**
+ * WHY a row sitting in AWAITING_SPEC_APPROVAL with spec-review feedback in flight did not dispatch.
+ *
+ * ONE ordered statement of the park chain, because two copies of it drifted four times. `allocate`'s
+ * reporting branch has to name the reason a row did not move, and it kept re-deriving that reason
+ * from a hand-picked subset of `pendingAction`'s guards: first in the wrong order (budget before
+ * cursor), then missing `crossSpecHold` entirely, then missing the two refusals that sit AHEAD of the
+ * phase switch — a row parked on an open prerequisite or an unresolved human question was announced
+ * as "held by the cross-spec coherence pass ... it dispatches once the pass clears", which is false
+ * in both cases and points the human at the wrong lever. Each round added the missing conjunct; each
+ * next round found another. So the order lives here, once, and the reporting branch reads it.
+ *
+ * The order is `pendingAction`'s own, top to bottom: the pre-phase refusals first (terminal, an open
+ * `blockedBy`, an unresolved `blocker`), then the AWAITING_SPEC_APPROVAL branch — the hold, the
+ * cursor, the budget. Order is the whole content of this function: every one of these can be true at
+ * once, and only the FIRST is why the row is parked.
+ *
+ * `pendingAction` deliberately does NOT call this (BP-035: it is a well-covered switch, and it is the
+ * one gate that must never be bypassable). Sharing it would have to move `verdicts` — which returns an
+ * ACTION, not a park — relative to the pre-phase guards, which is a real behaviour change on the
+ * dispatch path for the sake of the reporting path. The two are pinned in agreement by a matrix check
+ * in `verify.mjs` instead: for every combination in this phase, a kind here means `pendingAction`
+ * refuses, and no kind means it dispatches.
+ *
+ * Answers only for a row `pendingAction` refused. `verdicts` and `blockerResolutions` dispatch their
+ * own actions, so a row carrying either is not in this branch to begin with.
+ *
+ * @returns 'linear-terminal' | 'blocked-by' | 'blocker' | 'cross-spec-hold' | 'cursor' | 'budget',
+ *          or null when nothing here parks the row.
+ */
+function specReviewParkKind(row) {
+  if (row.linearTerminal) return 'linear-terminal'
+  if (row.blockedBy && row.blockedBy.length) return 'blocked-by'
+  if (row.blocker) return 'blocker'
+  if (row.specApproved) return crossSpecHold ? 'cross-spec-hold' : cursorUsable(row) ? null : 'cursor'
+  if (!cursorUsable(row)) return 'cursor'
+  if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) return 'budget'
   return null
 }
 
@@ -619,11 +665,14 @@ function subPrScanBinding(subPrs, states) {
 /**
  * Can this row's cursor move past the activity it is reporting?
  *
- * A scan may report new activity and omit `latestActivityAt` — schema-valid, and useless: there is
- * nothing to advance the cursor to. Dispatching anyway consumes the batch (a review round spent, or
- * PR fixes applied) while the cursor stays put, so the next wake rediscovers exactly the same
- * feedback and does it again. Withholding is the recoverable outcome: the flag stays live and the
- * batch is genuinely re-derived once a scan reports a timestamp.
+ * `latestActivityAt` is REQUIRED on PR_STATE_SCHEMA, so an omitted timestamp never reaches this guard
+ * — the batch fails schema validation first and the row reads unobserved. What this clause actually
+ * catches is the case the schema still allows: an explicit `null`, the scout saying "no activity to
+ * date" while also reporting `newSpecReviewEvents`/`newPrEvents` true — a contradiction with nothing
+ * to advance the cursor to. Dispatching anyway consumes the batch (a review round spent, or PR fixes
+ * applied) while the cursor stays put, so the next wake rediscovers exactly the same feedback and does
+ * it again. Withholding is the recoverable outcome: the flag stays live and the batch is genuinely
+ * re-derived once a scan reports a timestamp.
  *
  * The same rule covers every OTHER observation the prompt asked this scan for and it left out. An
  * incomplete scan that consumes the batch destroys the announcement of whatever it failed to look at,
@@ -1233,6 +1282,14 @@ function nextRow(row, { worker, action, landed, folded }) {
 function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const actionable = []
   const converged = []
+  // A row `pendingAction` refused for the SAME reason cursorUsable refuses it elsewhere — activity
+  // reported with no timestamp to advance past — is not converged: `atReviewBudget` never got asked.
+  // Bucketed separately so the caller can log it as what it is (withheld, scan retries) instead of
+  // claiming a convergence that never happened. → FIX-1303.
+  const withheldCursor = []
+  // Same rule, third cause: an APPROVED row parked by the cross-spec hold. The hold is why nothing
+  // dispatched, and neither the cursor nor the budget was ever the question. → FIX-1303.
+  const crossSpecHeld = []
   const blocked = []
   const waiting = []
   // Work that AUTHORS against the objective — a spec, or an implementation of one. When this wake is
@@ -1264,8 +1321,26 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
       continue
     }
     if (next) actionable.push({ row, ...next })
-    else if (row.phase === 'AWAITING_SPEC_APPROVAL' && row.newSpecReviewEvents) converged.push(row)
-    else waiting.push(row)
+    else if (row.phase === 'AWAITING_SPEC_APPROVAL' && row.newSpecReviewEvents) {
+      // `pendingAction` returned null for this exact combination for more than one reason, and only
+      // one of them — the budget — is a real convergence. WHICH reason is not re-derived here: this
+      // branch used to ask its own hand-picked subset of `pendingAction`'s guards, and that subset
+      // was wrong four times running (budget before cursor; no `crossSpecHold` at all; then neither
+      // of the two refusals that sit ahead of the phase switch). `specReviewParkKind` is the single
+      // ordered copy of that chain; this branch only maps its answer onto a bucket.
+      //
+      // The three named kinds get their own reporting line below. Everything else falls to
+      // `waiting`, which is truthful for each of them: a `blocked-by` row is already reported by
+      // name out of `plan.blocked` (and never reaches here — `allocate` routes it above), a
+      // `blocker` row's actual question is surfaced to the human every wake through `epicBlockers`,
+      // and a terminal row has no work left to announce. What none of them may be is "held by the
+      // cross-spec pass, dispatches once it clears" — the pass clearing would move none of them.
+      const parkKind = specReviewParkKind(row)
+      if (parkKind === 'cross-spec-hold') crossSpecHeld.push(row)
+      else if (parkKind === 'cursor') withheldCursor.push(row)
+      else if (parkKind === 'budget') converged.push(row)
+      else waiting.push(row)
+    } else waiting.push(row)
   }
 
   const held = epicApproved ? [] : actionable
@@ -1283,7 +1358,7 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const settle = claims.slice(0, Math.max(0, cap - advance.length - (foldEpic ? 1 : 0)))
   const queuedClaims = claims.slice(settle.length)
 
-  return { advance, deferred, held, blocked, converged, waiting, foldEpic, settle, queuedClaims, heldForFold }
+  return { advance, deferred, held, blocked, converged, withheldCursor, crossSpecHeld, waiting, foldEpic, settle, queuedClaims, heldForFold }
 }
 
 /**
@@ -1629,7 +1704,7 @@ const GATE_SCHEMA = {
     'latestActivityAt',
   ],
   properties: {
-    approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human' },
+    approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human — or by the configured owner, who counts even as the PR author' },
     approvedByLabel: {
       type: 'boolean',
       description:
@@ -1704,7 +1779,12 @@ const PR_STATE_SCHEMA = {
   // last four as quiet — which reads as four confirmed-unchanged rows, advances four cursors past
   // feedback nobody read, and clears four sets of flags. So every entry says whether it was actually
   // looked at, and an unobserved one is discarded exactly as a dead scout's result was.
-  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
+  // `latestActivityAt` is required for the reason its own description already claimed: it is the only
+  // thing that lets a cursor advance past reported activity. Left optional, a scout could satisfy the
+  // schema while omitting it, and `cursorUsable` correctly refused the batch — but the planner had no
+  // way to tell that refusal apart from a genuinely converged review, so it logged "converged" for a
+  // fold that was actually withheld. `['string','null']` still lets a scout say "no activity to date".
+  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha', 'latestActivityAt'],
   properties: {
     issueId: { type: 'string' },
     observed: {
@@ -1998,6 +2078,17 @@ const rows = input.issues || []
 // (the scouts are told to report it false); comment and review approval are unaffected. Fail-closed
 // on purpose: widening to any human here is the same class of bug as reading the label at all was.
 const approvalOwner = typeof input.owner === 'string' && input.owner.trim() ? input.owner.trim() : null
+// Who may approve by COMMENT or REVIEW. "Not the PR author" exists so a worker cannot approve its own
+// PR — and every PR here is opened under the owner's login, so read literally it excluded the owner
+// by construction: "Approved. Lets proceed." from the owner on their own spec PR read as a
+// self-approval and released nothing. The owner is not a worker; their sign-off counts as author.
+// Every OTHER login keeps the exclusion, and bots never count. With no owner configured there is
+// nobody to exempt, so the rule stands as it was.
+const approverRule =
+  `from a human who is not the PR author` +
+  (approvalOwner
+    ? ` — EXCEPT \`${approvalOwner}\`, whose approving comment or review counts even when that login is also the PR's author. Every PR in this repo is opened under that account, so the author exclusion would rule the owner out by construction; it exists so a worker cannot approve its own PR, and the owner is not a worker. Every other login is still excluded when it authored the PR`
+    : '')
 // An explicit positive cap wins; anything else (absent, 0, junk) falls back to the default
 // rather than silently becoming it.
 const cap = Number.isFinite(input.cap) && input.cap > 0 ? input.cap : 3
@@ -2035,7 +2126,7 @@ if (carriedForward.size) {
 const [gate, linear, prScan] = await parallel([
   () =>
     agent(
-      `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a human who is not the PR author. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
+      `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head, ${approverRule}. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
         (approvalOwner
           ? `SEPARATELY, report approvedByLabel:true whenever the PR currently carries the \`epic approved\` LABEL **and \`${approvalOwner}\` applied it**. Two independent checks, and conflating them is the bug this wording exists to prevent:\n` +
             `  · WHO — verify provenance. Read the PR's timeline for \`labeled\` events naming \`epic approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\`. Not "a human" — this label is that account's authorization channel specifically, and a label is writable by every collaborator and every bot with write access, so accepting it from anyone else releases every child issue without the sign-off the gate exists to require. If the timeline is unreadable, or no \`labeled\` event can be found for a label that is present, or the most recent one was applied by anybody else, report FALSE — an approval you cannot attribute to \`${approvalOwner}\` is not an approval.\n` +
@@ -2050,7 +2141,8 @@ const [gate, linear, prScan] = await parallel([
     ),
   () =>
     agent(
-      `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's id, current state name, its CATEGORY label, and the ids of any open blocked-by relations. Do not fetch them individually.\n` +
+      `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's human identifier, current state name, its CATEGORY label, and the identifiers of the issues that block it. Do not fetch them individually.\n` +
+        `IDENTIFIERS, NEVER UUIDs — Linear has two ids per issue and only one is usable here. \`id\` is the human identifier (\`LAB-152\`, \`FIX-150\` — Linear's \`identifier\` field), never the UUID \`id\` field: the wake matches your entries against the tracked ids above by identifier, so a UUID matches nothing and every issue reads as unobserved. \`blockedBy\` is the list of the BLOCKING ISSUES' identifiers — for each open \`blocks\` relation where this issue is the blocked side, the blocking issue's \`identifier\` — never the relation's own id, which nothing can resolve. \`category\` is the label from the category label group, verbatim. A correct entry: {"id":"LAB-150","state":"Backlog","blockedBy":["LAB-141"],"category":"Bug"}.\n` +
         `The category is what ROUTES the issue: "Bug" sends it straight to implementation with no spec. Report the label verbatim; report null if the issue genuinely carries no category label, and never infer one from the title — an unread category safely keeps the issue on the spec route, an invented one can send a feature to implementation ungated.\n` +
         `The carried ids matter separately from the children: orchestration.md keeps an existing functional parent and links such a member to the epic with relates-to, so it is NEVER in the parent→children set. Omitting it froze its Linear state at whatever was last cached — a blocked member never noticed its prerequisite merge, and a cancelled one kept being dispatched.`,
       { label: 'linear:epic-children', phase: 'Refresh', schema: LINEAR_SCHEMA, agentType: 'scout' },
@@ -2101,7 +2193,7 @@ const [gate, linear, prScan] = await parallel([
                 )
                 .join('') +
               `\nFor EVERY issue above:\n` +
-              `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a non-author human. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
+              `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head, ${approverRule}. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
               (approvalOwner
                 ? `SEPARATELY report specApprovedByLabel:true whenever that issue's spec PR currently carries the \`spec approved\` LABEL **and \`${approvalOwner}\` applied it**. Same two independent checks as the epic gate. WHO: read the PR timeline for \`labeled\` events naming \`spec approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\` — not merely "a human". Labels are writable by every collaborator and every bot with write access, so a label from any other actor would release implementation without the sign-off the gate requires; if the timeline is unreadable, carries no \`labeled\` event for a present label, or names anybody else, report FALSE. WHEN: do not check — once the actor is \`${approvalOwner}\`, presence alone passes: do not compare the label against the head commit and do not treat a later push as invalidating it, since a spec PR takes commits while review is folded and expiring the label would revoke the approval on the next round. Removal is the revocation. Report it independently of specApproved.\n`
                 : `The \`spec approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report specApprovedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
@@ -2213,9 +2305,43 @@ if (!scanned && epic.approved) {
 // them to the objective as it stood before the fold that made it approvable.
 const epicHead = (gate && gate.headSha) || epic.headSha || null
 
+// The scout is asked for HUMAN identifiers, and Linear has two ids per issue. Every reader below keys
+// on the identifier — `linearById`, the discovery filter, `openBlockers` — so a UUID in `id` matches
+// no row (every child reads as newly discovered, every carried row as unobserved), and a UUID in
+// `blockedBy` (the RELATION's id, reported instead of the blocking issue's identifier) names a
+// blocker nothing can resolve, which strands the row for the rest of the epic. Both were observed in
+// production. Neither is corrected here, because inventing an identifier is fabricating an
+// observation: a malformed entry is dropped WHOLE, so its issue reads exactly as if the scout had
+// died for it (invariant 1), and the drop is logged so a bad scan is loud rather than silent.
+// Dropping only the bad `blockedBy` ids would be worse than dropping the entry — `[]` means "no
+// blockers" and would admit the issue alongside the very prerequisite it named.
+//
+// A dropped entry that is a CARRIED row leaves a trace `mayWrap` already reads — the row itself,
+// unrefreshed, sitting non-terminal in `issues`. A dropped entry for a NEW child (one `rows` has
+// never seen) leaves no such trace: it never enters `discovered`, so it is invisible to every
+// wrap-adjacent reader, and if every carried row happens to be terminal the epic reads as fully
+// done and wraps — permanently omitting a child nobody ever invented a row for. Inventing one from
+// a UUID would violate invariant 1 (never guess at a malformed observation), so instead
+// `droppedLinearEntries` holds `mayWrap` false for every wake where anything was dropped, whether
+// or not it can be tied to a carried row — the safe direction, since the alternative is silently
+// closing over an issue that never got a chance to be discovered.
+const ISSUE_IDENTIFIER = /^[A-Z]+-\d+$/
+const reportedLinear = (linear && linear.issues) || []
+const linearIssues = reportedLinear.filter(
+  (li) => ISSUE_IDENTIFIER.test(li.id) && (li.blockedBy || []).every((b) => ISSUE_IDENTIFIER.test(b)),
+)
+const droppedLinearEntries = reportedLinear.filter((li) => !linearIssues.includes(li))
+if (droppedLinearEntries.length) {
+  log(
+    `The Linear refresh reported ${droppedLinearEntries.length} entr${droppedLinearEntries.length === 1 ? 'y' : 'ies'} with a UUID where an issue identifier (LAB-152) was asked for — ` +
+      `${droppedLinearEntries.map((li) => `${li.id} blockedBy [${(li.blockedBy || []).join(', ')}]`).join('; ')}. ` +
+      `Discarded rather than guessed at: each such issue reads as unobserved this wake (carried state stands, no blocker clears, nothing is discovered), and the next wake retries.`,
+  )
+}
+
 // Fold the scout reads into the carried table. Handles and counters come from `args`
 // (the coordinator's file); phase and freshness come from the scouts.
-const linearById = new Map((linear && linear.issues ? linear.issues : []).map((i) => [i.id, i]))
+const linearById = new Map(linearIssues.map((i) => [i.id, i]))
 // The batch, unpacked into the same per-row map the per-issue scouts used to produce — so every
 // reader downstream is unchanged, and the batching is invisible past this line.
 //
@@ -2261,11 +2387,8 @@ const freshById = bindByPosition(
 // the epic could wrap without it (→ epic-lifecycle § Intake). They enter at NEEDS_SPEC and hit
 // their own spec-approval gate like any other.
 const TERMINAL_LINEAR = /^(done|closed|cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
-// The subset where the WORK IS GONE, as opposed to finished. A verdict can still be folded into completed
-// work (the spec is there, the thread is there); there is nothing to fold it into on cancelled work.
-const CANCELLED_LINEAR = /^(cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
-const discovered = (linear && linear.issues ? linear.issues : [])
-  .filter((li) => li.id && li.id !== epic.issueId && !rows.some((r) => r.id === li.id))
+const discovered = linearIssues
+  .filter((li) => li.id !== epic.issueId && !rows.some((r) => r.id === li.id))
   // A child the human already closed or dropped is not new work. Entering it at NEEDS_SPEC would
   // dispatch a spec for a removed issue AND keep the epic from ever satisfying its wrap condition.
   .filter((li) => !TERMINAL_LINEAR.test((li.state || '').trim()))
@@ -2671,7 +2794,12 @@ const plan = allocate(refreshed, claims, cap, foldEpicWanted, epicApproved)
 if (!epicApproved) {
   log(
     `Epic objective not signed off — holding ${plan.held.length} issue(s) before their first action` +
-      `${plan.foldEpic ? ', but still folding epic-PR review so the objective can be revised' : ''}.`,
+      `${plan.foldEpic ? ', but still folding epic-PR review so the objective can be revised' : ''}.` +
+      // The carry-case line above says "timeline unreadable" only when a recorded approval rode it; with
+      // nothing recorded the gate simply holds, and the label sitting on the PR would go unmentioned.
+      // Keyed on `!epic.approved`, not on `labelUnattributable` alone: a carried approval held for
+      // another reason (a change request, an unusable head) is not "nothing recorded".
+      `${labelUnattributable && !epic.approved ? ` The \`epic approved\` label is on #${epic.prNumber} but its applier could not be read (timeline unreadable), and no earlier approval was recorded to hold, so it releases nothing.` : ''}`,
   )
 }
 for (const row of plan.blocked) {
@@ -2698,6 +2826,24 @@ if (unmergedBlockers.size) {
 }
 for (const row of plan.converged) {
   log(`${row.id}: spec converged (${row.specReviewRounds} rounds spent) — review event logged, awaiting the human gate.`)
+}
+// The scan reported spec-review activity with no timestamp to advance the cursor to — the same
+// unusable-batch case cursorUsable refuses everywhere else, not a spec that actually hit its review
+// budget. Said out loud rather than folded into "converged": the fold is withheld, nothing is spent,
+// and the next wake's scan retries. → FIX-1303.
+for (const row of plan.withheldCursor) {
+  log(
+    `${row.id}: spec-review activity reported with no timestamp to advance the cursor to — fold withheld, not converged. The next wake's scan retries.`,
+  )
+}
+// The approved-and-held case, said by name rather than landing silently in `waiting`. The epic-level
+// hold line above names the pass but not the rows, so a row carrying feedback it cannot act on had
+// nothing of its own to say — and a held row that says nothing is exactly the invisible stall this
+// wake's reporting exists to prevent. → FIX-1303.
+for (const row of plan.crossSpecHeld) {
+  log(
+    `${row.id}: spec approved with spec-PR feedback to carry — held by the cross-spec coherence pass, not converged. It dispatches once the pass clears.`,
+  )
 }
 // No silent stops: the cap is a question for the human, and it is the one hold that looks
 // identical to a healthy quiet row from the outside — no gate pending, no blocker text of its own.
@@ -3324,6 +3470,22 @@ const epicBlockers = [
     ...epicOpenQuestions.map((q) => ({ issueId: epic.issueId, blocker: `Epic-spec open question — needs a human: ${q}` })),
 ]
 
+// Every `mayWrap` term except the drop guard, so the log below can say the drop is the ONLY thing
+// still holding the wrap rather than a generic reminder that fires even when other work is open.
+const wrapReadyButForDrops =
+  issues.every((r) => r.linearTerminal || r.merged || r.phase === 'DONE') &&
+  !issues.some((r) => pendingAction(r) !== null) &&
+  !issues.some((r) => (r.unsettled || []).length && !CANCELLED_LINEAR.test((r.linearState || '').trim())) &&
+  epicBlockers.length === 0 &&
+  (epicOut.verdicts || []).length === 0 &&
+  (epicOut.answers || []).length === 0 &&
+  plan.queuedClaims.length + unsettled.length + newRequests.length === 0
+if (wrapReadyButForDrops && droppedLinearEntries.length) {
+  log(
+    `Holding the epic's wrap this wake: ${droppedLinearEntries.length} Linear refresh entr${droppedLinearEntries.length === 1 ? 'y was' : 'ies were'} dropped for a UUID identifier, so the carried table cannot confirm nothing was omitted — the epic would otherwise read as fully done. The next wake retries the Linear refresh.`,
+  )
+}
+
 return {
   epicApproved,
   epic: epicOut,
@@ -3406,16 +3568,12 @@ return {
   // so "nothing left to show the human" and "safe to close the surface" cannot disagree. Cancelled rows
   // need no exception here: they are dispatchable-null and carry no blocker, so their leftover verdict
   // state, which nothing can apply, stops holding the epic open.
-  mayWrap:
-    issues.every((r) => r.linearTerminal || r.merged || r.phase === 'DONE') &&
-    !issues.some((r) => pendingAction(r) !== null) &&
-    // Row-level unsettled evidence is a question owed to the human even where the blocker text has been
-    // cleared, and `pendingAction` is null for a terminal row carrying it. Scoped to LIVE rows: on
-    // cancelled work there is nothing left to apply a decision to, so counting it there is what stranded
-    // the epic short of wrap with no action able to release it.
-    !issues.some((r) => (r.unsettled || []).length && !CANCELLED_LINEAR.test((r.linearState || '').trim())) &&
-    epicBlockers.length === 0 &&
-    (epicOut.verdicts || []).length === 0 &&
-    (epicOut.answers || []).length === 0 &&
-    plan.queuedClaims.length + unsettled.length + newRequests.length === 0,
+  //
+  // `droppedLinearEntries.length === 0` (folded into `wrapReadyButForDrops` above, then ANDed
+  // here) is the final term rather than folded into the others' predicates because it is the one
+  // condition none of `issues`/`epicBlockers` can ever encode: a dropped entry for a newly
+  // discovered child leaves no row at all (see the comment at `droppedLinearEntries`), so "every
+  // row is terminal" is true precisely in the failure case this guards. Every wake with a drop
+  // holds the wrap, whether or not the drop was ultimately tied to a carried row.
+  mayWrap: wrapReadyButForDrops && droppedLinearEntries.length === 0,
 }

@@ -119,17 +119,46 @@ export { defineCapability, getBaseCapability } from "./capability";
  */
 export { NoRequestHostError, requireRequestHost } from "./types/request-host";
 export type {
-  DetachedProvenance,
-  DetachedRoutingSeed,
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
   SettleParentTaskInput,
-  SettleParentTaskResult,
-  StartDetachedInput,
-  StartDetachedRefusal,
-  StartDetachedResult
+  SettleParentTaskResult
 } from "./types/request-host";
+
+/**
+ * One dispatch protocol — typed entries addressed `(type, name)`, the
+ * `dispatcher()` block that sends to one, and the seam the runtime attaches.
+ */
+export {
+  DISPATCH_SEAM,
+  DISPATCH_TYPES,
+  DispatchRefusedError,
+  NoDispatchSeamError,
+  bindTaskDispatcher,
+  dispatchThroughSeam,
+  markDispatcher,
+  taskBindingOf,
+  framed,
+  readFramed,
+  taskDispatchInputSchema,
+  taskSessionKeyFor
+} from "./types/dispatch";
+export type {
+  BlockDispatchType,
+  DispatchAddress,
+  DispatchOutcome,
+  DispatchRefusal,
+  DispatchSeam,
+  DispatchSpec,
+  DispatchType,
+  InternalEntry,
+  SessionTarget,
+  TaskBinding,
+  TaskDispatchInput,
+  TaskEntry,
+  TaskSessionPolicy
+} from "./types/dispatch";
 export type {
   CapabilityPresetCtx,
   CapabilityRef,
@@ -179,11 +208,18 @@ export type { ReplayLog } from "./blocks/internal/replay-log";
 // re-emissions for the read paths (GET history, useSession, SSE replay seed).
 export { collapseToCanonicalLog } from "./items/canonical-log";
 export {
+  dispatcher,
+  dispatchHandleSchema,
   generator,
   handler,
   providerTool,
   router,
-  sequencer
+  sequencer,
+  type DispatchHandle,
+  type DispatcherConfig,
+  type DispatcherSession,
+  type InternalDispatcherConfig,
+  type TaskDispatcherConfig
 } from "./blocks";
 // Block-level rescue resolution (FIX-742). Exported so the server's top-level
 // `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow
@@ -196,9 +232,9 @@ export { runRescue } from "./blocks/sequencer";
 export { composeSideChainSignal } from "./blocks/sequencer";
 export {
   defineFlow,
-  buildWorkstreamCore,
-  workstreamDispatchInputSchema,
-  type WorkstreamDispatchInput,
+  resolveEntry,
+  type EntryCoordinate,
+  type EntryMaps,
 } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";
@@ -441,3 +477,14 @@ export type {
 // the top-level surface so flow authors import both from one place.
 export { SUSPENSION_SKIPPED } from "./types/suspension";
 export type { ResumeAction, SuspensionSkipped } from "./types/suspension";
+
+/**
+ * The coding-harness contract's runtime schemas (LAB-152). A harness block
+ * declares these as its input and output schemas; the types they validate are
+ * exported from `@flow-state-dev/core/types`.
+ */
+export {
+  harnessRunEnvelopeSchema,
+  harnessRunHandleSchema,
+  harnessRunInputSchema,
+} from "./types/harness";

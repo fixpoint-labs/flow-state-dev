@@ -7,11 +7,13 @@ import type {
   BranchStep,
   BranchStepOutput,
   InlineBlockFactory,
+  IterationOptions,
   ParallelStep,
   ParallelStepOutput,
   SequencerConfig,
   SequencerDefinition,
   SequencerRuntimeState,
+  SideChainIterationOptions,
   SideChainResult
 } from "./sequencer-methods";
 import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
@@ -24,7 +26,6 @@ import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
 import type { StepOutcome } from "./internal/arg-shapes";
 import { runSideChain, runChild } from "./internal/sequencer-kernel";
 import type { DeclaredResources } from "../types/block";
-import type { WorkstreamBindings } from "../types/workstream";
 import { getEmitterItemCount, isBlockDefinition, matchesRescueHandler, toError } from "./internal/utils";
 import { withTimeout } from "../helpers/with-timeout";
 import {
@@ -1106,21 +1107,14 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   // prefetch hook (FIX-688), which must load this block's own declarations
   // without re-loading descendants'.
   ownDeclaredResources?: DeclaredResources,
-  // This sequencer's OWN detached worker bindings (FIX-982) — the set a task
-  // board stamps on the drain it just built. Carried across every rebuild;
-  // the bubble-up set is NOT carried, it is re-derived from `childBlocks` by
-  // `buildBlock`, so a chained step can never hand back a sequencer that has
-  // silently forgotten one of its children's boards.
-  ownWorkstreamBindings?: WorkstreamBindings,
   // Every child block this chain has composed so far — one per `.step()`,
   // `.tap()`, `.branch()` arm, and so on, in the order they were added.
   //
   // Retained because a `SequencerOperation` is `{name, run}`: the child lives
   // inside the closure and nowhere else, which made the sequencer edge opaque to
   // any definition-time traversal. Since a board's drain IS a sequencer, that
-  // opacity is what stopped "every reachable detached board resolves to a
-  // binding" from being checkable at all. It is also the single input the
-  // bindings rail is derived from, which is why the two are one change.
+  // opacity is what stopped "every dispatcher this flow reaches names an entry
+  // that exists" from being checkable at all.
   childBlocks: readonly BlockDefinition<any, any>[] = []
 ): SequencerDefinition<TInput, TOutput, TStateSchema> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
@@ -1158,7 +1152,6 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     // `config.rescue` (which `buildBlock` folds in on its own) because a
     // sequencer keeps its handlers outside the config, in the operation loop.
     childBlocks: [...childBlocks, ...rescueHandlers.map((handler) => handler.block)],
-    ownWorkstreamBindings,
   });
 
   // Override the informational schema on the block definition so devtools and consumers
@@ -1195,12 +1188,11 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
    * **Every chaining method funnels through here, and hands over the child
    * blocks themselves rather than per-rail projections of them.** That is the
    * whole point: a child block carries `declaredResources`, `requiresOrg` and
-   * `workstreamBindings`, and each rail used to be re-derived and re-passed by
-   * hand at every one of the ~16 call sites — so the defect rate was sites ×
-   * rails, and a site that remembered two rails out of three failed silently.
-   * With the block itself as the argument, a site can only forget the block, and
-   * forgetting the block drops all rails at once — which `defineFlow`'s
-   * reachability assertion refuses at definition time.
+   * its place in the walkable graph, and each rail used to be re-derived and
+   * re-passed by hand at every one of the ~16 call sites — so the defect rate
+   * was sites × rails, and a site that remembered two rails out of three
+   * failed silently. With the block itself as the argument, a site can only
+   * forget the block, and forgetting the block drops all rails at once.
    *
    * `undefined` entries are accepted and skipped: `.tap()` and `.forEach()` take
    * a plain function or a per-item factory in some shapes, and there is no child
@@ -1225,11 +1217,6 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       capabilityRefs,
       mergeRequiresOrgFrom(...children),
       ownDeclaredResources,
-      // The stamp, read off `baseBlock` rather than the closure parameter so a
-      // board that stamped the finished drain survives chaining. The bubble-up
-      // set is not threaded at all — `buildBlock` re-derives it from the
-      // children below.
-      baseBlock.ownWorkstreamBindings,
       [...childBlocks, ...children]
     );
   };
@@ -1473,8 +1460,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       arg2?:
         | BlockDefinition<any, any>
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
-        | { maxConcurrency?: number },
-      arg3?: { maxConcurrency?: number }
+        | IterationOptions,
+      arg3?: IterationOptions
     ): SequencerDefinition<TInput, TStepOut[], TStateSchema> {
       // Shapes: forEach(block|factory) | forEach(connector, block|factory),
       // each with optional trailing concurrency options.
@@ -1483,7 +1470,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       const blockOrFactory = shape.blockOrFactory as
         | BlockDefinition<any, any>
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>);
-      const options = shape.options as { maxConcurrency?: number } | undefined;
+      const options = shape.options as IterationOptions | undefined;
 
       // Determine element output schema for z.array() propagation
       const elementBlock = isBlockDefinition(blockOrFactory)
@@ -1542,7 +1529,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         arraySchema,
         undefined,
-        elementBlock
+        elementBlock,
+        ...(options?.blocks ?? [])
       );
     },
 
@@ -1554,8 +1542,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       arg2?:
         | BlockDefinition<any, any>
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
-        | { concurrency?: number },
-      arg3?: { concurrency?: number }
+        | SideChainIterationOptions,
+      arg3?: SideChainIterationOptions
     ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       // Shapes mirror forEach(); the trailing options carry `concurrency`.
       const shape = resolveCallShape([arg1, arg2, arg3], "iterating");
@@ -1563,7 +1551,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       const blockOrFactory = shape.blockOrFactory as
         | BlockDefinition<any, any>
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>);
-      const options = shape.options as { concurrency?: number } | undefined;
+      const options = shape.options as SideChainIterationOptions | undefined;
 
       const elementBlock = isBlockDefinition(blockOrFactory)
         ? (blockOrFactory as BlockDefinition<any, any>)
@@ -1647,7 +1635,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         lastOutputSchema,
         undefined,
-        elementBlock
+        elementBlock,
+        ...(options?.blocks ?? [])
       );
     },
 
@@ -2026,15 +2015,10 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         accumulatedRequiresOrg ?? false
       );
       // A rescue handler is an ordinary block and may itself contain a board (a
-      // cleanup drain, say), so its bindings bubble like every other child's —
-      // but `handlers` REPLACES the installed set, so the rail is re-derived
-      // from them rather than accumulated. Accumulating (seeding from
-      // `baseBlock.workstreamBindings`, which already folds in the handlers this
-      // call is dropping) is what made `.rescue([a]).rescue([b])` advertise a
-      // worker nothing could reach. `createSequencer` lists `handlers` among the
-      // children, so `a` disappears by not being passed rather than by being
-      // removed.
-      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg, ownDeclaredResources, baseBlock.ownWorkstreamBindings, childBlocks);
+      // cleanup drain, say), so it is listed among the children like every
+      // other — and `handlers` REPLACES the installed set, so a replaced
+      // handler disappears from the walkable graph by not being passed.
+      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg, ownDeclaredResources, childBlocks);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
@@ -2452,12 +2436,6 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         undefined,
         undefined,
         ownDeclaredResources,
-        // Bindings are NOT among the defaults dropped above (FIX-982). Read off
-        // `baseBlock` rather than the closure parameter: a board stamps the
-        // finished drain, so the parameter predates the stamp and
-        // `board.drain.connectInput(...)` would return an executable sequencer
-        // with no route to its own worker.
-        baseBlock.ownWorkstreamBindings,
         childBlocks
       );
     },

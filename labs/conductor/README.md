@@ -206,7 +206,7 @@ commits land on another is the kind of agreement where every layer is wrong toge
   is a copy conductor keeps so it can say which session a run was.
 - **One issue at a time is a property of how you seed, not something the board enforces.** The
   board's `concurrency` is set to 1, which bounds how many rows one drain hands off — but a
-  detached dispatch hands off and returns, releasing the slot long before the run finishes. Two
+  hand-off dispatch hands off and returns, releasing the slot long before the run finishes. Two
   seeded issues produce two live runs whatever that setting is; measured, and pinned by a test.
 - **No UI.**
 
@@ -219,7 +219,7 @@ work the retry budget is priced on. Making checkouts portable is not built and i
 of scope.
 
 **Use the shutdown budget `conductorFlow` derives for you.** It returns `drainBudgetMs`; pass
-that as `detachedDrainTimeoutMs` on `createFlowState`. Sizing it by hand goes wrong in both
+that as `dispatchDrainTimeoutMs` on `createFlowState`. Sizing it by hand goes wrong in both
 directions: the framework default is tuned to a serverless SIGTERM window, far shorter than a
 coding run, and the obvious correction — the run's own deadline — is *also* too small. A worker
 waits for the checkout lock, provisions, runs the agent, and then probes for the pull request, and

@@ -14,7 +14,7 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
-import { handler } from "@flow-state-dev/core";
+import { handler, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { AnyResourceRef, BlockContext } from "@flow-state-dev/core/types";
 import type { UsesSlot } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -49,6 +49,8 @@ import {
 import { ClaudeAgentRunError } from "./errors";
 import type { ClaudeAgentSettingSource } from "./types";
 import {
+  CLAUDE_SDK_SOURCE,
+  outcomeFromResultSubtype,
   sdkAgentHandleSchema,
   type ClaudeAgentQueryOptions,
   type ResolveClaudeAgent,
@@ -69,11 +71,6 @@ export const SDK_AGENT_RUNS_KEY = "sdkAgentRuns" as const;
 export const claudeAgentSessionStateSchema = z.object({
   [SDK_SESSION_ID_KEY]: z.string().nullable().default(null),
   [SDK_AGENT_RUNS_KEY]: z.array(sdkAgentHandleSchema).default([]),
-});
-
-const inputSchema = z.object({
-  /** The instruction prompt to run through the agent loop. */
-  prompt: z.string(),
 });
 
 /** Options for {@link claudeCodeAgent}. */
@@ -146,21 +143,23 @@ export interface ClaudeCodeAgentOptions {
     ctx: AgentCallbackContext,
   ) => ToolApprovalDecision | Promise<ToolApprovalDecision>;
   /**
-   * Run the agent as **detached background work** — a task board worker
-   * dispatched into a Workstream. Default `false`: an in-session agent that
-   * keeps conversation state — the `sdkSessionId` resume handle and the
-   * `sdkAgentRuns` log — which is the behaviour every existing caller has.
+   * Run the agent as **handed-off background work** — the block a task board
+   * seat's `dispatcher({ type: "task" })` targets, declared on the flow under
+   * `task: { actions }` and run in a child session. Default `false`: an
+   * in-session agent that keeps conversation state — the `sdkSessionId` resume
+   * handle and the `sdkAgentRuns` log — which is the behaviour every existing
+   * caller has.
    *
    * **This is the canonical explanation; everywhere else links here.**
    *
-   * The board refuses a detached worker whose block authors a
-   * `sessionStateSchema`, because every detached worker in a flow becomes a
-   * route on one shared Workstream flow, where two routes choosing the same key
-   * with different shapes corrupt each other silently.
+   * `defineFlow` refuses a handed-off entry whose block authors a
+   * `sessionStateSchema` (`assertHandOffBlockSupported`), because the block
+   * runs in a child session it may share with other rows, where two blocks
+   * choosing the same key with different shapes corrupt each other silently.
    *
-   * A background job is one run in one workstream, so nothing on that path
-   * reads the resume handle back and the run log's job belongs to the
-   * workstream's own item stream. `true` therefore suppresses three things
+   * A background job is one run in one child session, so nothing on that path
+   * reads the resume handle back and the run log's job belongs to the child
+   * session's own item stream. `true` therefore suppresses three things
    * together, and they are one decision rather than three: the **declaration**,
    * the **reads and writes** that go with it (a value written under an
    * undeclared key is not a smaller version of the same behaviour), and the
@@ -170,8 +169,8 @@ export interface ClaudeCodeAgentOptions {
    *
    * Everything else is identical: the items the run emits, the handle it
    * returns, and how failures surface. The one deliberate consequence is that a
-   * second task addressed to the same workstream starts the agent fresh, while
-   * the workstream's own item history continues as normal.
+   * second task addressed to the same child session starts the agent fresh, while
+   * the child session's own item history continues as normal.
    */
   detached?: boolean;
   /**
@@ -196,8 +195,8 @@ export interface ClaudeCodeAgentOptions {
    *   never happened.
    *
    * All three are readable over the resource route that already ships, keyed
-   * under the run's own request id so a workstream reused across runs answers
-   * "what did this run do" rather than "what has this workstream ever done".
+   * under the run's own request id so a child session reused across runs answers
+   * "what did this run do" rather than "what has this child session ever done".
    *
    * **What the file record is, precisely.** It is a log of the file operations
    * the run's file TOOLS performed, not an index of everything that changed on
@@ -463,7 +462,7 @@ export function forwardSignalToController(
  * without them there is nothing to record into.
  *
  * Every entry is keyed under {@link runNamespace}, which is what keeps a reused
- * workstream's runs apart.
+ * child session's runs apart.
  */
 /**
  * Percent-escape the characters that stop a value being ONE resource-path
@@ -679,11 +678,16 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     name,
     description:
       "Run the Claude Code Agent SDK in-process, translating its streamed messages into FSD items.",
-    inputSchema,
+    // The contract's own schema, not a local copy of it. The type-level
+    // conformance assertion cannot catch input drift — parameter bivariance
+    // accepts a block whose input carries extra required fields — so a
+    // hand-rolled duplicate here would sit exactly in that blind spot and stay
+    // silent if the contract's input ever grows.
+    inputSchema: harnessRunInputSchema,
     outputSchema: sdkAgentHandleSchema,
-    // Decided HERE rather than at run time, and that is forced: the task board
-    // inspects this static definition (`assertDetachedBoardSupported`) and
-    // rejects the board before any `execute` callback receives a context.
+    // Decided HERE rather than at run time, and that is forced: `defineFlow`
+    // inspects this static definition (`assertHandOffBlockSupported`) and
+    // rejects the hand-off before any `execute` callback receives a context.
     ...(detached ? {} : { sessionStateSchema: claudeAgentSessionStateSchema }),
     // Also static, and for a related reason: `defineFlow` collects declared
     // resources off block definitions at build time. A collection nobody
@@ -803,6 +807,11 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       const recorder = recordWork ? openWorkRecorder(ctx, workingDirectory) : null;
 
       let resultSubtype: SdkResultSubtype | null = null;
+      // Tracked beside the subtype, not derived from it: `resultSubtype` is
+      // `null` both when no terminal result arrived and when one arrived
+      // carrying a subtype this package does not recognize. Only this flag
+      // tells those apart, and `outcome` depends on the difference.
+      let terminalResultArrived = false;
       let finalMessage: string | null = null;
       let newSessionId: string | null = session.sdkSessionId;
       let usage: SdkAgentHandle["usage"] = null;
@@ -887,6 +896,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                 }
                 if (ctx.signal.aborted) return;
                 if (event.kind === "result") {
+                  terminalResultArrived = true;
                   resultSubtype = event.subtype;
                   if (event.sessionId !== null) newSessionId = event.sessionId;
                   if (event.finalMessage !== null)
@@ -994,15 +1004,19 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
         const errored = isErroredSubtype(resultSubtype);
         const handle: SdkAgentHandle = {
-          source: "sdk",
+          source: CLAUDE_SDK_SOURCE,
           status: errored ? "errored" : "completed",
           sessionId: newSessionId,
           url: null,
           dispatchedAt,
-          resultSubtype,
+          outcome: outcomeFromResultSubtype(resultSubtype, terminalResultArrived),
           finalMessage,
-          toolsObserved: emitState.toolsObserved,
           usage,
+          // The SDK reports its own total, so the basis is `reported` whenever
+          // there is one at all — this path never derives a number.
+          cost: costUsd === null ? null : { usd: costUsd, basis: "reported" },
+          resultSubtype,
+          toolsObserved: emitState.toolsObserved,
           costUsd,
         };
 

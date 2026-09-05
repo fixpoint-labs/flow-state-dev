@@ -2,24 +2,25 @@
  * Park-exit: the board mode that says "a task parked for review is not mine to
  * wait on" (FIX-1234).
  *
- * A worker that parks a task for a human leaves the row `awaiting_review`, and
+ * A worker that parks a task for a human leaves the row `parked`, and
  * that status has always held the drain open. Nobody waits on a human for the
  * length of a request on purpose, so what actually happened was worse than a
  * wait: the drain ran out its iteration budget — silently — and returned with
  * the parked row abandoned where it sat.
  *
  * This mode excuses parked rows from the board's waitable count, so the drain
- * finishes and returns while the row stays parked and durable. A later
- * `resumeFromReview` re-queues it for whatever drains the board next.
+ * finishes and returns while the row stays parked and durable. The board's
+ * `unparkAndDrain` step is the return trip (FIX-1244): the fenced `unpark`
+ * write, then this drain, in the answering request.
  *
- * **Off by default, and a detached board has to ask for it too.** Turning it on
+ * **Off by default, and a handed-off board has to ask for it too.** Turning it on
  * moves *when* an existing caller's request resolves, so it is never inferred
  * from anything the board already declares.
  *
  * ## What lives here
  *
  * The option type and the construction-time refusals — the same split
- * `./detached.ts` uses, and for the same reason: what a declaration *means* and
+ * `./hand-off.ts` uses, and for the same reason: what a declaration *means* and
  * which declarations cannot work are decided once, away from the drain that
  * composes them. The exclusion itself is a status test inside `shared.ts`'s
  * waitable count, where the board's one exit question already lives.
@@ -29,7 +30,7 @@ import type { TaskBoardBacking } from "./index";
 /**
  * What the board does when the only work left is parked for review.
  *
- * - `"hold"` — keep the drain open until the row leaves `awaiting_review`.
+ * - `"hold"` — keep the drain open until the row leaves `parked`.
  *   The default, and what every board does today.
  * - `"exit"` — excuse parked rows from the drain's waitable count: the drain
  *   returns, reports `terminationReason: "parked-for-review"`, and leaves the
@@ -58,7 +59,7 @@ export type TaskBoardOnReview = "hold" | "exit";
  * The throws below carry their own diagnosis and their own fix; the comments do
  * not repeat them, and say only what the message cannot.
  *
- * Shape and register follow `assertDetachedBoardSupported`: name the board,
+ * Shape and register follow `assertHandOffBoardSupported`: name the board,
  * name what it declared, name what to change.
  */
 export function assertParkExitSupported(options: {

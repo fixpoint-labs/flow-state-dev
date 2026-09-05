@@ -9,7 +9,7 @@
  * Modes:
  *
  * - `complete-or-blocked` (default): exit when no `pending`,
- *   `in_progress`, or `awaiting_review` tasks remain (`drained`), OR
+ *   `in_progress`, or `parked` tasks remain (`drained`), OR
  *   when no in-flight worker is active AND no `pending` task is
  *   claimable because every remaining pending has a non-`completed`
  *   dep (`blocked`). The blocked exit closes the dispatcher-deadlock
@@ -17,11 +17,11 @@
  *   `cancelled` dep keeps `inFlightCount` non-zero forever.
  *
  * - `complete`: exit only when no `pending`, `in_progress`, or
- *   `awaiting_review` tasks remain. Legacy default; preserves the
+ *   `parked` tasks remain. Legacy default; preserves the
  *   spinning-poll behavior for boards that legitimately wait on an
  *   external pump to mark deps complete.
  *
- *   `awaiting_review` keeps the loop alive in both modes above
+ *   `parked` keeps the loop alive in both modes above
  *   (FIX-443 §10.1) while `onReview` is on its default `"hold"`: the
  *   worker's preceding `.waitForCondition` blocks until an external
  *   actor transitions the task back to `pending` (or to a terminal
@@ -60,7 +60,7 @@ export interface CheckBoardOptions {
   onIdle: "wait" | "complete" | "complete-or-blocked";
   shouldExit?: (collection: TaskCollectionRef) => boolean;
   /**
-   * Rows a Workstream is running (FIX-982). Forwarded verbatim to
+   * Rows a child session is running (FIX-982). Forwarded verbatim to
    * `classifyBoard`, which is the only thing that reads it — this block
    * keeps mapping the verdict straight onto its `reason` and holds no second
    * opinion about what counts as in-flight.

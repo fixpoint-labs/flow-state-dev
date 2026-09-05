@@ -13,7 +13,7 @@ export type ParsedFlowRoute =
   | { kind: "list_sessions" }
   | { kind: "get_session"; sessionId: string }
   | { kind: "list_session_requests"; sessionId: string }
-  | { kind: "list_session_workstreams"; sessionId: string }
+  | { kind: "list_session_children"; sessionId: string }
   | { kind: "get_session_state"; sessionId: string }
   | { kind: "create_session"; flowKind: string }
   | { kind: "delete_session"; sessionId: string }

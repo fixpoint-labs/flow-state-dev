@@ -11,13 +11,13 @@
  * `<TaskPlan />` renderer is what apps embed in their chat UI; this panel is
  * for debugging the substrate itself.
  *
- * A task whose worker was declared detached is run by a Workstream rather than
- * by the request you are looking at, so its row carries a link into that
- * Workstream (FIX-1071). The link is derived, absent for most tasks, and never
- * something the row is gated on — see `lib/workstream-links`.
+ * A task whose seat hands its rows off to a `task` entry is run by a ChildSession
+ * rather than by the request you are looking at, so its row carries a link into that
+ * ChildSession (FIX-1071). The link is derived, absent for most tasks, and never
+ * something the row is gated on — see `lib/child-session-links`.
  */
 import { useMemo } from "react";
-import type { WorkstreamSummary } from "@flow-state-dev/client";
+import type { ChildSessionSummary } from "@flow-state-dev/client";
 import { ClipboardList, Eye, Layers } from "lucide-react";
 import {
   groupCollections,
@@ -26,8 +26,12 @@ import {
   type ResolvedTask,
   type TaskStreamItem,
 } from "../../lib/task-collection-state";
-import { linkWorkstreamsToTasks, taskLinkKey } from "../../lib/workstream-links";
-import type { Truncation } from "../../hooks/use-workstreams";
+import {
+  decodeChildSessionEntry,
+  linkChildSessionsToTasks,
+  taskLinkKey,
+} from "../../lib/child-session-links";
+import type { Truncation } from "../../hooks/use-child-sessions";
 import { EmptyState } from "../shared/empty-state";
 import { Badge } from "../ui/badge";
 import { JsonViewer } from "../shared/json-viewer";
@@ -42,21 +46,21 @@ type Props = {
    * The open session's background work, so a task run by one can say so.
    * Omitted (or empty) leaves every row exactly as it was.
    */
-  workstreams?: readonly WorkstreamSummary[];
+  childSessions?: readonly ChildSessionSummary[];
   /**
-   * What is known about Workstreams beyond the page that was read. An
+   * What is known about child sessions beyond the page that was read. An
    * unmatched task is only definitely unmatched when this is `complete`.
    */
   truncation: Truncation;
-  /** Open the Workstream running a task. */
-  onOpenWorkstream: (workstream: WorkstreamSummary) => void;
+  /** Open the ChildSession running a task. */
+  onOpenChildSession: (childSession: ChildSessionSummary) => void;
 };
 
-export function TaskCollectionsView({ items, workstreams, truncation, onOpenWorkstream }: Props) {
+export function TaskCollectionsView({ items, childSessions, truncation, onOpenChildSession }: Props) {
   const collections = useMemo(() => groupCollections(items), [items]);
   const byTask = useMemo(
-    () => linkWorkstreamsToTasks(workstreams ?? [], collections).byTask,
-    [workstreams, collections]
+    () => linkChildSessionsToTasks(childSessions ?? [], collections).byTask,
+    [childSessions, collections]
   );
 
   if (collections.length === 0) {
@@ -76,7 +80,7 @@ export function TaskCollectionsView({ items, workstreams, truncation, onOpenWork
           collection={collection}
           byTask={byTask}
           truncation={truncation}
-          onOpenWorkstream={onOpenWorkstream}
+          onOpenChildSession={onOpenChildSession}
         />
       ))}
     </div>
@@ -87,12 +91,12 @@ function CollectionCard({
   collection,
   byTask,
   truncation,
-  onOpenWorkstream,
+  onOpenChildSession,
 }: {
   collection: CollectionView;
-  byTask: ReadonlyMap<string, WorkstreamSummary>;
+  byTask: ReadonlyMap<string, ChildSessionSummary>;
   truncation: Truncation;
-  onOpenWorkstream: (workstream: WorkstreamSummary) => void;
+  onOpenChildSession: (childSession: ChildSessionSummary) => void;
 }) {
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
@@ -131,7 +135,7 @@ function CollectionCard({
               <th className="py-1.5 font-medium">Goal</th>
               <th className="py-1.5 font-medium">Status</th>
               <th className="py-1.5 font-medium">Assignee</th>
-              <th className="py-1.5 font-medium">Workstream</th>
+              <th className="py-1.5 font-medium">ChildSession</th>
               <th className="py-1.5 font-medium">Latest kind</th>
               <th className="px-3 py-1.5 font-medium text-right">Details</th>
             </tr>
@@ -141,9 +145,9 @@ function CollectionCard({
               <TaskRow
                 key={entry.task.id}
                 entry={entry}
-                workstream={byTask.get(taskLinkKey(collection.id, entry.task.id))}
+                childSession={byTask.get(taskLinkKey(collection.id, entry.task.id))}
                 truncation={truncation}
-                onOpenWorkstream={onOpenWorkstream}
+                onOpenChildSession={onOpenChildSession}
               />
             ))}
           </tbody>
@@ -155,14 +159,14 @@ function CollectionCard({
 
 function TaskRow({
   entry,
-  workstream,
+  childSession,
   truncation,
-  onOpenWorkstream,
+  onOpenChildSession,
 }: {
   entry: ResolvedTask;
-  workstream?: WorkstreamSummary;
+  childSession?: ChildSessionSummary;
   truncation: Truncation;
-  onOpenWorkstream: (workstream: WorkstreamSummary) => void;
+  onOpenChildSession: (childSession: ChildSessionSummary) => void;
 }) {
   const { task } = entry;
   return (
@@ -178,10 +182,10 @@ function TaskRow({
       </td>
       <td className="py-1.5 pr-2 text-slate-400">{task.assignee ?? "—"}</td>
       <td className="py-1.5 pr-2">
-        <WorkstreamLink
-          workstream={workstream}
+        <ChildSessionLink
+          childSession={childSession}
           truncation={truncation}
-          onOpen={onOpenWorkstream}
+          onOpen={onOpenChildSession}
         />
       </td>
       <td className="py-1.5 pr-2 text-slate-400">
@@ -215,23 +219,23 @@ function TaskRow({
 }
 
 /**
- * The Workstream running this task, if one is.
+ * The ChildSession running this task, if one is.
  *
  * Renders `—` rather than nothing when there is none, which is the majority
  * case: an inline worker runs inside the request you are already looking at, so
- * "no Workstream" is the normal answer and not a gap in the data.
+ * "no ChildSession" is the normal answer and not a gap in the data.
  */
-function WorkstreamLink({
-  workstream,
+function ChildSessionLink({
+  childSession,
   truncation,
   onOpen,
 }: {
-  workstream?: WorkstreamSummary;
+  childSession?: ChildSessionSummary;
   truncation: Truncation;
-  onOpen: (workstream: WorkstreamSummary) => void;
+  onOpen: (childSession: ChildSessionSummary) => void;
 }) {
-  if (workstream === undefined) {
-    // "No Workstream" is only a fact when the whole listing was read. Past that
+  if (childSession === undefined) {
+    // "No ChildSession" is only a fact when the whole listing was read. Past that
     // page, or when the check for more failed, the honest statement is "none
     // among the ones I have" — and a bare dash makes the stronger claim.
     //
@@ -243,7 +247,7 @@ function WorkstreamLink({
       return (
         <span
           className="text-amber-500/70"
-          title="No workstream among those listed. This session has more background work than the panel reads, so an older one may be running this task."
+          title="No childSession among those listed. This session has more background work than the panel reads, so an older one may be running this task."
         >
           —?
         </span>
@@ -253,7 +257,7 @@ function WorkstreamLink({
       return (
         <span
           className="text-amber-500/70"
-          title="No workstream among those listed, and checking whether there are more didn't come back — so one may be missing from the list."
+          title="No childSession among those listed, and checking whether there are more didn't come back — so one may be missing from the list."
         >
           —?
         </span>
@@ -262,11 +266,15 @@ function WorkstreamLink({
     return <span className="text-slate-600">—</span>;
   }
 
-  const label = workstream.topic ?? workstream.id;
-  // A match is page-local. `resolveWorkstream` establishes that exactly one
-  // candidate IN THE LOADED PAGE fits; an older unlisted Workstream with the
-  // same topic and a compatible worker would fit too, and it would belong to a
-  // different board — the FIX-1088 class, where task events carry no board
+  // The entry the child runs (`implement`, from a `task:implement` coordinate).
+  // A linked child's key names this very row or its seat, so repeating it here
+  // says nothing the row does not; the entry is the part that is new. The id
+  // stands in when no entry was stamped.
+  const label = decodeChildSessionEntry(childSession.coordinate)?.target ?? childSession.id;
+  // A match is page-local. `linkChildSessionsToTasks` establishes that the
+  // pairing is unambiguous IN THE LOADED PAGE; an older unlisted ChildSession
+  // whose key names the same task id or seat would fit too, and it would belong
+  // to a different board — the FIX-1088 class, where task events carry no board
   // identity to settle it.
   //
   // Marked rather than withheld. The link is a documented best-effort
@@ -277,11 +285,11 @@ function WorkstreamLink({
   return (
     <button
       type="button"
-      onClick={() => onOpen(workstream)}
+      onClick={() => onOpen(childSession)}
       title={
         unverified
-          ? `Open workstream ${workstream.id}. Matched against the workstreams listed; others were not read, so this may not be the one running the task.`
-          : `Open workstream ${workstream.id}`
+          ? `Open childSession ${childSession.id}. Matched against the childSessions listed; others were not read, so this may not be the one running the task.`
+          : `Open childSession ${childSession.id}`
       }
       className={`inline-flex items-center gap-1 rounded border bg-slate-900/60 px-1.5 py-0.5 text-[10px] hover:bg-slate-800 ${
         unverified
@@ -311,7 +319,7 @@ const STATUS_TONE: Record<string, string> = {
   pending: "bg-slate-800 text-slate-400",
   in_progress: "bg-blue-900/40 text-blue-300",
   blocked: "bg-amber-900/40 text-amber-300",
-  awaiting_review: "bg-cyan-900/40 text-cyan-300",
+  parked: "bg-cyan-900/40 text-cyan-300",
   completed: "bg-emerald-900/40 text-emerald-300",
   errored: "bg-red-900/40 text-red-300",
   cancelled: "bg-slate-800/60 text-slate-500",
@@ -330,7 +338,7 @@ function CountsRibbon({ counts }: { counts: NonNullable<BoardMeta["counts"]> }) 
     ["pending", counts.pending, "text-slate-400"],
     ["active", counts.in_progress, "text-blue-300"],
     ["blocked", counts.blocked, "text-amber-300"],
-    ["review", counts.awaiting_review, "text-cyan-300"],
+    ["parked", counts.parked, "text-cyan-300"],
     ["done", counts.completed, "text-emerald-300"],
     ["error", counts.errored, "text-red-300"],
     ["canc", counts.cancelled, "text-slate-500"],

@@ -7,14 +7,14 @@
  * The board's recorders read the row's status before settling it, and that read
  * cannot carry the guarantee. It is a check racing the thing it checks: a
  * concurrent park landing *after* the read and *before* the write arrives in a
- * status the attempt still owns (`awaiting_review` is in
- * `ATTEMPT_OWNED_STATUSES`) and one that `awaiting_review → completed` and
+ * status the attempt still owns (`parked` is in
+ * `ATTEMPT_OWNED_STATUSES`) and one that `parked → completed` and
  * `→ errored` can legally leave. Every existing worker-self-park test passes
  * with the read alone, because none of them interleaves anything.
  *
  * So the refusal moved inside the atomic transition, behind the opt-in
  * `refuseWhenParked`, and that is what these assert. Each one calls the settling
- * verb with the row already `awaiting_review` — exactly the state a concurrent
+ * verb with the row already `parked` — exactly the state a concurrent
  * park produces at the moment the write evaluates — rather than staging a fake
  * interleaving around a read that no longer decides anything. The property under
  * test is "the write refuses", whatever the caller believed beforehand.
@@ -52,7 +52,7 @@ async function claimThenPark(
   expect(claimed).not.toBeNull();
   const ticket = ticketForClaim(tasks.collectionId, claimed!);
   await tasks.awaitReview(id, "needs a human");
-  expect(tasks.get(id)?.status).toBe("awaiting_review");
+  expect(tasks.get(id)?.status).toBe("parked");
   return ticket;
 }
 
@@ -66,7 +66,7 @@ describe("a parked row declines the attempt's settlement", () => {
     expect(outcome.outcome).toBe("declined");
     expect(outcome.outcome === "declined" && outcome.reason).toBe("parked");
     // The human still has something to look at, and no result was recorded.
-    expect(tasks.get("ask")?.status).toBe("awaiting_review");
+    expect(tasks.get("ask")?.status).toBe("parked");
     expect(tasks.get("ask")?.output).toBeUndefined();
   });
 
@@ -82,7 +82,7 @@ describe("a parked row declines the attempt's settlement", () => {
 
     expect(outcome.outcome).toBe("declined");
     expect(outcome.outcome === "declined" && outcome.reason).toBe("parked");
-    expect(tasks.get("ask")?.status).toBe("awaiting_review");
+    expect(tasks.get("ask")?.status).toBe("parked");
   });
 
   it("refuses a RETRYING `fail`, which would otherwise hand the row to a sibling", async () => {
@@ -98,7 +98,7 @@ describe("a parked row declines the attempt's settlement", () => {
 
     expect(outcome.outcome).toBe("declined");
     expect(outcome.outcome === "declined" && outcome.reason).toBe("parked");
-    expect(tasks.get("ask")?.status).toBe("awaiting_review");
+    expect(tasks.get("ask")?.status).toBe("parked");
   });
 
   it("says `parked` rather than `lost-claim`, because nobody took the row", async () => {
@@ -117,13 +117,13 @@ describe("a parked row declines the attempt's settlement", () => {
 
 describe("what the refusal deliberately does not touch", () => {
   it("lets the review end by resume, on the same claim", async () => {
-    // `resumeFromReview` also targets `pending` and may carry the worker's own
+    // `unpark` also targets `pending` and may carry the worker's own
     // ticket. It must keep working, which is why the refusal is scoped to
     // settlement kinds rather than to the target status.
     const tasks = collection();
     const claim = await claimThenPark(tasks, "ask");
 
-    const outcome = await tasks.resumeFromReview("ask", "approved", { claim });
+    const outcome = await tasks.unpark("ask", "approved", { claim });
 
     expect(outcome.outcome).not.toBe("declined");
     expect(tasks.get("ask")?.status).toBe("pending");

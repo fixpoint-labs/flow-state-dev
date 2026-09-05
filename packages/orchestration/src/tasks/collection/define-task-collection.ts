@@ -65,14 +65,14 @@ export interface DefineTaskCollectionOptions<
   scope: ResourceScope;
   /**
    * Give a `session`-scoped board ONE ledger across the session lineage
-   * (FIX-1068), so the Workstream a detached worker runs in settles against the
+   * (FIX-1068), so the child session a handed-off row runs in settles against the
    * same rows the dispatching session holds. Without it a session-scoped board
-   * hydrates empty inside a Workstream and the task cannot be settled.
+   * hydrates empty inside a child session and the task cannot be settled.
    *
    * Session-scope only — `defineResourceCollection` rejects it at user/org
    * scope, where the ledger already spans every session the principal touches.
    */
-  sharedToWorkstream?: boolean;
+  sharedToLineage?: boolean;
   /**
    * Schema for each task's `input` payload. Optional; defaults to
    * `z.unknown()`. This is the typed payload a worker receives, not the whole
@@ -109,8 +109,8 @@ export function defineTaskCollection<
     pattern: `${options.id}/**`,
     scope: options.scope,
     stateSchema: envelope,
-    ...(options.sharedToWorkstream !== undefined
-      ? { sharedToWorkstream: options.sharedToWorkstream }
+    ...(options.sharedToLineage !== undefined
+      ? { sharedToLineage: options.sharedToLineage }
       : {}),
     ...(options.maxInstances !== undefined
       ? { maxInstances: options.maxInstances }
@@ -129,7 +129,7 @@ export function defineTaskCollection<
  * builds a fresh wrapper per resolution, so an `immutableAssignee` passed as one
  * wrapper's option guards only the caller that passed it — a second board, or any
  * other resolution of the same collection, gets an unguarded wrapper over the
- * same rows and can reassign a task the detached board routes by. Marking the
+ * same rows and can reassign a task the handed-off board routes by. Marking the
  * declaration instead means every resolution reads one answer.
  *
  * Keyed by object identity rather than collection id: ids are per-flow strings,
@@ -161,7 +161,7 @@ export function defineTaskCollection<
  *
  * The behaviour chosen in the meantime fails **closed**: an unnecessary decline
  * is visible immediately and recoverable by giving the second flow its own
- * declaration, where a missed freeze silently strands detached work.
+ * declaration, where a missed freeze silently strands handed-off work.
  *
  * A `WeakSet`, so a declaration that falls out of scope is collectable and tests
  * that build collections per-case do not accumulate policy.
@@ -177,11 +177,11 @@ const immutableAssigneeLedgers = new WeakSet<DefinedTaskCollection>();
 /**
  * Freeze the assignee on every task in this ledger, for every ref that resolves
  * it. Called by `taskBoard` when a board binding this collection declares
- * detached workers, whose routing coordinate is derived from the assignee.
+ * dispatcher seats, whose child's routing key is derived from the assignee.
  *
- * Idempotent, and deliberately one-way: two boards on one ledger, one detached
- * and one not, must not disagree about whether reassignment is allowed, and the
- * detached board's invariant is the one that breaks silently.
+ * Idempotent, and deliberately one-way: two boards on one ledger, one handing
+ * off and one not, must not disagree about whether reassignment is allowed, and
+ * the handed-off board's invariant is the one that breaks silently.
  */
 export function freezeLedgerAssignee(collection: DefinedTaskCollection): void {
   immutableAssigneeLedgers.add(collection);
@@ -190,7 +190,7 @@ export function freezeLedgerAssignee(collection: DefinedTaskCollection): void {
 /**
  * Is this ledger's assignee frozen? Read at resolution time, never captured at
  * construction time — boards are constructed in an arbitrary order and a board
- * built before the detached one would otherwise close over a stale `false`.
+ * built before the handed-off one would otherwise close over a stale `false`.
  */
 export function hasFrozenLedgerAssignee(collection: DefinedTaskCollection): boolean {
   return immutableAssigneeLedgers.has(collection);

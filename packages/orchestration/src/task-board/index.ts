@@ -5,7 +5,7 @@
  * per-task worker routing. The unified Plan/Task primitive's canonical
  * validation case: dispatch is CAS-safe, workers are routed by
  * `task.assignee`, mid-drain enqueues are picked up automatically, and
- * `awaiting_review` is correctly handled (skip + wait) for the HITL
+ * `parked` is correctly handled (skip + wait) for the HITL
  * forward-compat surface that ships in Wave 2.
  *
  * ## Pipeline shape
@@ -48,10 +48,10 @@
  *   two outcomes apart without inspecting `counts`.
  *
  * - `onIdle: 'complete'`: exit only when no `pending`, `in_progress`,
- *   or `awaiting_review` tasks remain. Legacy default. Use when a
+ *   or `parked` tasks remain. Legacy default. Use when a
  *   pending task with a non-completed dep is a transient state an
  *   external pump will eventually resolve.
- *   `awaiting_review` keeps the loop alive — workers idle-poll until
+ *   `parked` keeps the loop alive — workers idle-poll until
  *   an external actor transitions the task out.
  *
  * - `onIdle: 'wait'`: never exit on drained-ness. Defer to
@@ -59,7 +59,7 @@
  *   `maxIterations` trips.
  *
  * `onReview` is the second, independent knob (FIX-1234). On the default
- * `'hold'` an `awaiting_review` task holds the drain open in every mode
+ * `'hold'` a `parked` task holds the drain open in every mode
  * above. On `'exit'` it does not: parked rows are excused from the
  * board's waitable count, the drain returns reporting
  * `terminationReason: "parked-for-review"`, and the task stays parked
@@ -74,7 +74,7 @@
  * and the other immediately re-scans for the next eligible task. No
  * pattern-level coordination beyond that.
  */
-import { sequencer, defineCapability } from "@flow-state-dev/core";
+import { handler, sequencer, defineCapability } from "@flow-state-dev/core";
 import { z } from "zod";
 import { whenBoardClaimable } from "./predicates";
 import type { DefinedCapability, SequencerDefinition } from "@flow-state-dev/core";
@@ -85,7 +85,6 @@ import type {
   MaybePromise,
   StateRef,
 } from "@flow-state-dev/core/types";
-import { declareWorkstreamBindings } from "@flow-state-dev/core/types";
 import {
   freezeLedgerAssignee,
   getOrCreateTaskCollection,
@@ -119,9 +118,12 @@ import {
   taskBoardWorkerStateSchema,
   taskBoardWorkerBodyStateSchema,
   claimResultSchema,
+  taskWriteOutcomeSchema,
+  unparkAndDrainInputSchema,
   type ClaimResult,
+  type UnparkAndDrainInput,
 } from "./schemas";
-import type { Task } from "../tasks";
+import type { Task, TaskWriteOutcome } from "../tasks";
 import { resolveDispatcher, type TaskBoardDispatcherInput } from "./shared";
 import { createSeedCollection } from "./blocks/seed-collection";
 import { createClaimTask } from "./blocks/claim-task";
@@ -140,21 +142,18 @@ import {
   createInstallBoardFlowState,
   createTeardownBoardFlowState,
   stampCurrentClaim,
-  type BoardRunFlowState,
 } from "./flow-policy-wiring";
-import {
-  assertDetachedBoardSupported,
-  detachedTaskPredicate,
-  resolveWorkerSlots,
-  type ResolvedWorkerSlot,
-  type TaskWorkerDispatch,
-  type TaskWorkerSlot,
-  type TaskWorkerSlotRegistry,
-} from "./detached";
 import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
-import { buildDetachedRunner } from "./detached-runner";
-import { createSpawnDetached } from "./blocks/spawn-detached";
-import { coordinateKey, type WorkerCoordinate } from "./coordinate";
+import {
+  assertHandOffBoardSupported,
+  handedOffTaskPredicate,
+  resolveWorkerSlots,
+  type HandOffSeat,
+  type TaskSeat,
+  type TaskSeatRegistry,
+} from "./hand-off";
+import { createTaskGate } from "./task-entry";
+import { createHandOff } from "./blocks/hand-off";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -167,6 +166,7 @@ export {
   claimResultSchema,
   taskWorkerInputSchema,
   checkBoardOutputSchema,
+  unparkAndDrainInputSchema,
 } from "./schemas";
 export type {
   TaskBoardState,
@@ -174,6 +174,7 @@ export type {
   TaskBoardWorkerBodyState,
   ClaimResult,
   CheckBoardOutput,
+  UnparkAndDrainInput,
 } from "./schemas";
 export type { TaskBoardDispatcherInput } from "./shared";
 export { createSeedCollection } from "./blocks/seed-collection";
@@ -233,24 +234,28 @@ export {
 } from "./capability";
 export { currentWorkerClaim } from "./flow-policy-wiring";
 export type { BoardRunFlowState } from "./flow-policy-wiring";
-export {
-  assertDetachedBoardSupported,
-  detachedTaskPredicate,
-  isTaskWorkerEntry,
-  resolveWorkerSlot,
-  resolveWorkerSlots,
-} from "./detached";
-export type {
-  ResolvedWorkerSlot,
-  TaskWorkerDispatch,
-  TaskWorkerEntry,
-  TaskWorkerSlot,
-  TaskWorkerSlotRegistry,
-} from "./detached";
 export { assertParkExitSupported } from "./park-exit";
 export type { TaskBoardOnReview } from "./park-exit";
-export { coordinateKey, coordinateLabel, workstreamRoutingSeed } from "./coordinate";
-export type { WorkerCoordinate } from "./coordinate";
+export {
+  assertHandOffBlockSupported,
+  assertHandOffBoardSupported,
+  handedOffTaskPredicate,
+  isTaskDispatcher,
+  resolveWorkerSlot,
+  resolveWorkerSlots,
+} from "./hand-off";
+export type {
+  HandOffSeat,
+  TaskDispatcherBlock,
+  TaskSeat,
+  TaskSeatAddress,
+  TaskSeatRegistry,
+} from "./hand-off";
+export type { TaskSessionPolicy } from "@flow-state-dev/core/types";
+export { StaleTaskClaimError, createTaskGate, taskDispatchInputSchema } from "./task-entry";
+export type { TaskGateOptions, TaskDispatchInput } from "./task-entry";
+export { createHandOff } from "./blocks/hand-off";
+export type { HandOffOptions } from "./blocks/hand-off";
 
 // ---------------------------------------------------------------------------
 // Public config / handle
@@ -314,32 +319,19 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   name: string;
 
   /**
-   * Explicit, stable identifier for this board. **Required when any worker
-   * declares `dispatch: { mode: "detached" }`**, optional otherwise (FIX-982).
+   * Explicit, stable identifier for this board. **Required when any seat
+   * holds a `dispatcher({ type: "task" })`**, optional otherwise.
    *
-   * A detached worker runs in a Workstream whose session id is derived by
-   * hashing `(parentSessionId, boardId, coordinate, topic)`, so this value
-   * lands in a persisted key. It cannot be derived from `name` (unique per
-   * flow, not per session) or from `collectionId` (the literal
-   * `"factory-supplied"` for every factory board), which is why it is
-   * declared rather than inferred.
+   * A handed-off row's child session is keyed on this value together with the
+   * seat and the row, so it lands in a persisted key. It cannot be derived
+   * from `name` (unique per flow, not per session) or from `collectionId`
+   * (the literal `"factory-supplied"` for every factory board), which is why
+   * it is declared rather than inferred.
    *
-   * Renaming it is a **breaking re-key**: live Workstreams keyed on the old
-   * value are orphaned.
+   * Renaming it is a **breaking re-key**: live child sessions keyed on the
+   * old value are orphaned.
    */
   boardId?: string;
-
-  /**
-   * Dispatch mode for a **uniform** worker — a board whose `workers` is a
-   * single block (FIX-982). Omitted means inline, which is what every board
-   * does today.
-   *
-   * Registry boards declare this per worker instead, as
-   * `{ worker, dispatch }` values under `workers`; passing this field
-   * alongside a registry is a construction error, because it would not say
-   * which worker it meant.
-   */
-  dispatch?: TaskWorkerDispatch;
 
   /**
    * Where the collection lives — a once-chosen internal detail. Optional; an
@@ -368,11 +360,13 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * are standard `BlockDefinition`s consuming the substrate's
    * `TaskWorkerInput` shape.
    *
-   * A registry **value** may also be a `{ worker, dispatch }` entry, which is
-   * how a board declares that worker detached (FIX-982). A bare block still
-   * means inline, so no existing board needs editing.
+   * A registry value may also be a `dispatcher({ type: "task" })` block — a
+   * **seat that hands off**: the row is dispatched to the `task` entry the
+   * dispatcher names, and the flow that declares that entry owns the worker.
+   * The board runs the hand-off through its own claim gate, so the child
+   * settles the same row this drain claimed.
    */
-  workers: TaskWorker<TInput, TOutput> | TaskWorkerSlotRegistry;
+  workers: TaskWorker<TInput, TOutput> | TaskSeatRegistry;
 
   /**
    * Optional default worker — the **delegation floor** (FIX-940).
@@ -382,11 +376,8 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * declared workers are never routed through it (reached only on a
    * genuine miss). Non-delegation consumers (blackboard, patterns) leave
    * it unset.
-   *
-   * Accepts a `{ worker, dispatch }` entry to detach the floor itself
-   * (FIX-982); a bare block still means inline.
    */
-  defaultWorker?: TaskWorkerSlot;
+  defaultWorker?: TaskSeat;
 
   /**
    * Maximum parallel workers. Default: 4. The pattern spawns exactly
@@ -441,7 +432,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * completion item reports `terminationReason: "retry-budget-exhausted"`.
    *
    * `0` is legal and means "run every task once, never retry". Only failure
-   * retries count — `unblock`, `resumeFromReview`, and `reclaim` also re-pend a
+   * retries count — `unblock`, `unpark`, and `reclaim` also re-pend a
    * task and do not consume the budget. See `tasks/collection/task-caps.ts` for
    * the full semantics, including why the budget is spent at authorization.
    */
@@ -463,7 +454,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    *   `terminationReason` field distinguishes `"all-completed"` from
    *   `"blocked-by-failures"`.
    * - `"complete"`: exit only when no `pending`, `in_progress`, or
-   *   `awaiting_review` tasks remain. Pre-FIX-626 default; preserved
+   *   `parked` tasks remain. Pre-FIX-626 default; preserved
    *   for boards that wait on an external pump to mark deps complete.
    * - `"wait"`: never auto-exit; defer to `shouldExit`. Long-running
    *   session-scoped boards.
@@ -474,14 +465,15 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * What the board does when the only work left is parked for review
    * (FIX-1234). Default `"hold"`.
    *
-   * - `"hold"`: an `awaiting_review` task keeps the drain open, and the
+   * - `"hold"`: a `parked` task keeps the drain open, and the
    *   launching request with it, until an external actor moves the task out.
    *   What every board does today.
    * - `"exit"`: a parked task is not this drain's to wait on. The drain
    *   finishes and returns, the completion item reports
    *   `terminationReason: "parked-for-review"`, and the task stays parked and
-   *   durable. A later `resumeFromReview` re-queues it — it does not start
-   *   anything, so whatever drains the board next is what picks it up.
+   *   durable. `unparkAndDrain` is the return trip: it re-queues the task
+   *   and runs this drain in the answering request (FIX-1244). A bare
+   *   `unpark` only re-queues, and whatever drains the board next picks it up.
    *
    * Separate from `onIdle` deliberately, and **refused at construction** on
    * three configurations it cannot serve: a board whose tasks don't outlive
@@ -524,7 +516,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   /**
    * Sleep duration when a worker's claim returns null. Bounds the
    * busy-wait cost while waiting for new pending tasks (or for an
-   * `awaiting_review` task to be resumed). Default: 50ms.
+   * `parked` task to be resumed). Default: 50ms.
    */
   idlePollMs?: number;
 
@@ -615,20 +607,16 @@ export interface TaskBoardHandle<
    */
   backing: TaskBoardBacking;
   /**
-   * The board's declared `boardId` (FIX-982), or `undefined` when it declared
-   * none. Always present on a board with detached workers — that is what
-   * `assertDetachedBoardSupported` enforces — so P2's routing-coordinate
-   * derivation can read it off the handle without re-deriving from config.
+   * The board's declared `boardId`, or `undefined` when it declared none.
+   * Always present on a board with a dispatcher seat — that is what
+   * `assertHandOffBoardSupported` enforces.
    */
   boardId?: string;
   /**
-   * The workers that declared `dispatch: { mode: "detached" }`, in declaration
-   * order (FIX-982). Empty on every board that ships today.
-   *
-   * Surfaced so the registry bubble-up (P2) reads one resolved list rather
-   * than re-walking the raw `workers` config and re-deciding what an entry is.
+   * The seats holding a `dispatcher({ type: "task" })`, in declaration order.
+   * Empty on every board that declares no dispatcher seat.
    */
-  detachedWorkers: readonly ResolvedWorkerSlot[];
+  handedOff: readonly HandOffSeat[];
   /**
    * Whether the board's own `initialTasks` seed carries any task without a
    * stable `id` (FIX-910). An idless initial task is re-added on every drain
@@ -651,6 +639,31 @@ export interface TaskBoardHandle<
    * `TaskBoardConfig.maxEnqueuedTasks`.
    */
   caps: TaskCapOptions;
+  /**
+   * Hand a parked task its answer and run the board in this request (FIX-1244).
+   *
+   * A sequencer step like any other: it reads `{ taskId, feedback }` from the
+   * value it is handed (`UnparkAndDrainInput`), calls the fenced `unpark`, and
+   * — only when that write was **accepted** — runs `board.drain` as a tap, so
+   * the step's own value is the write's `TaskWriteOutcome` either way. A
+   * refusal (`declined`, naming the status the write found) drains nothing:
+   * an already-queued task, a running one, a settled one all come back as a
+   * value with no drain behind it.
+   *
+   * A task id the ledger does not hold **throws**, as `unpark` does. So does
+   * an unsupported board, and it throws **when the step runs**, not when the
+   * board is built: the collection must be resource-backed (a parked row has
+   * to outlive the request that parked it), and `initialTasks` must all carry
+   * a stable id (the drain re-seeds on every pass, and an id-less entry would
+   * be added again and the answered work run twice). Both are checked here
+   * rather than at construction because a board that never calls this step
+   * has nothing to be refused for.
+   *
+   * The answering request has to resolve the same ledger as the request that
+   * parked the task — the same resolved storage key, per the resource-scope
+   * resolver — or the id is looked up on some other board.
+   */
+  unparkAndDrain: SequencerDefinition<UnparkAndDrainInput, TaskWriteOutcome>;
 }
 
 // ---------------------------------------------------------------------------
@@ -678,7 +691,6 @@ export function taskBoard<
     collection: collectionConfig,
     workers: workersConfig,
     defaultWorker: defaultWorkerConfig,
-    dispatch: uniformDispatch,
     concurrency = 4,
     dispatcher: dispatcherInput = "topological",
     onIdle = "complete-or-blocked",
@@ -710,26 +722,22 @@ export function taskBoard<
     );
   }
 
-  // FIX-982: flatten `{ worker, dispatch }` entries down to the bare shapes the
-  // drain already composes, and note which asked to be detached. A board with
-  // no entries produces exactly the values it was handed.
-  const isUniform = typeof (workersConfig as { run?: unknown }).run === "function";
-  if (uniformDispatch !== undefined && !isUniform) {
-    throw new Error(
-      `[task-board] "${name}" passes a board-level \`dispatch\` alongside a worker registry — ` +
-        `it would not say which worker it meant. Declare dispatch per worker instead: ` +
-        `\`workers: { <assignee>: { worker, dispatch } }\`.`
-    );
-  }
+  // Read every seat down to the bare block the drain composes, refusing the
+  // removed seat shapes by name. A board with only inline seats produces
+  // exactly the values it was handed.
   const resolvedWorkers = resolveWorkerSlots({
-    workers: workersConfig,
+    name,
+    // The cast only widens the input side: a dispatcher's input is the
+    // envelope, not the packed worker input, and the substitution below never
+    // runs it here.
+    workers: workersConfig as TaskWorker | TaskSeatRegistry,
     ...(defaultWorkerConfig !== undefined
-      ? { defaultWorker: defaultWorkerConfig }
+      ? { defaultWorker: defaultWorkerConfig as TaskWorker }
       : {}),
-    ...(uniformDispatch !== undefined ? { dispatch: uniformDispatch } : {}),
   });
   const workers = resolvedWorkers.workers;
   const defaultWorker = resolvedWorkers.defaultWorker;
+  const handedOff = resolvedWorkers.handedOff;
 
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
@@ -746,19 +754,17 @@ export function taskBoard<
     drainUses,
   } = binding;
 
-  // FIX-982 decision 11 — a detached board is refused here, loudly and by
-  // name, never degraded with a warning. Runs after the binding so the
-  // once-chosen backing is known. Two of the spec's six refusals are NOT here
-  // because the fact they test does not exist yet at construction; see the
-  // module doc on `./detached`.
-  assertDetachedBoardSupported({
+  // The hand-off refusals — loudly and by name, never degraded with a
+  // warning. After the binding, because the once-chosen backing is only known
+  // then.
+  assertHandOffBoardSupported({
     name,
     boardId,
     backing,
     ...(collectionDeclaration !== undefined
       ? { collection: collectionDeclaration }
       : {}),
-    detached: resolvedWorkers.detached,
+    handedOff,
   });
 
   // Seed-inspectability for construction-time guards (FIX-910): an initial task
@@ -768,7 +774,7 @@ export function taskBoard<
   const hasIdlessInitialTasks = initialTasks.some((t) => t.id === undefined);
 
   // FIX-1234 decision 3 — park-exit's three refusals. After the binding, like
-  // the detached ones, because two of the facts they test (the once-chosen
+  // the hand-off ones, because two of the facts they test (the once-chosen
   // backing, the seed's ids) are only known here. The third condition is the
   // one park-exit itself creates: the mode makes a later drain the normal path,
   // and the drain re-seeds ahead of the pool.
@@ -797,7 +803,7 @@ export function taskBoard<
   // before; the completion meta is the third reader (FIX-1074), and it has to
   // agree with the other two — a board that exited because its work is running
   // elsewhere must not then report that exit as a failure.
-  const runsElsewhere = detachedTaskPredicate(resolvedWorkers.slots);
+  const runsElsewhere = handedOffTaskPredicate(handedOff);
 
   // FIX-1234: the second exclusion, threaded to the exit check and the wake
   // predicate from here — the same discipline `runsElsewhere` follows, and for
@@ -821,66 +827,77 @@ export function taskBoard<
     workerId: (ctx) => resolveWorkerIdFromCtx(ctx, name),
   });
 
-  // FIX-610 shared run-state bag — populated by `installFlowState`
-  // at the top of the outer sequencer and consulted by every worker
-  // dispatch. Cleared by `teardownFlowState` on both completion and
-  // error paths so a board re-entered within the same request starts
-  // each run fresh.
-  const runState: BoardRunFlowState = { collectionId };
+  // FIX-610 run state — installed on the request by `installFlowState` at
+  // the top of the outer sequencer and consulted by every worker dispatch
+  // in that request. Cleared by `teardownFlowState` on both completion and
+  // error paths so a board re-entered within the same request starts each
+  // run fresh. It is per request, not per board definition, so two drains
+  // of this board overlapping in one process cannot see each other's
+  // (FIX-1244).
   const installFlowState = createInstallBoardFlowState({
     name,
     collectionId,
     flowPolicy: flowPolicyConfig,
     toolCache,
     collection: collectionFactory,
-    runState,
   });
-  const teardownFlowState = createTeardownBoardFlowState({ name, runState });
+  const teardownFlowState = createTeardownBoardFlowState({ name });
 
-  // FIX-982 P3a — the spawn. A detached slot routes to a block that STARTS the
-  // worker in a Workstream and returns, instead of to the worker itself. The
-  // drain's shape is untouched (claim, route, record); only what the route does
-  // changes, so an inline board composes exactly as it did.
+  // The hand-off. A dispatcher seat routes to a block that puts the claimed
+  // row through the dispatch seam and returns, instead of to the dispatcher
+  // itself. The drain's shape is untouched (claim, route, record); only what
+  // the route does changes, so an inline board composes exactly as it did.
   //
   // Substituted here rather than inside `buildWorkerStep` because the routing
-  // table is the one place that already maps a coordinate to a block. The
-  // substitute receives the same packed `TaskWorkerInput` an inline worker
-  // would, which is what makes the two paths agree on what the worker sees.
-  // Keyed by COORDINATE, never by block identity. A block may legitimately sit
-  // at two coordinates with different dispatch modes — `{ inline: shared,
-  // background: { worker: shared, dispatch: { mode: "detached" } } }` is a valid
-  // board — and keying by the block would substitute the spawn at BOTH, so the
-  // inline assignee would silently detach. It would then fail in the Workstream
-  // rather than here, because the gate routes on the row's assignee and finds no
-  // binding for it. Two detached coordinates sharing one block collapse the same
-  // way, keeping only the last.
-  const spawnByCoordinate = new Map<string, TaskWorker>();
-  if (boardId !== undefined) {
-    for (const slot of resolvedWorkers.detached) {
-      spawnByCoordinate.set(
-        coordinateKey(slot.coordinate),
-        createSpawnDetached({
-          name: `${name}-spawn-${slot.label}`,
+  // table is the one place that already maps a seat to a block. The substitute
+  // receives the same packed `TaskWorkerInput` an inline worker would, which
+  // is what makes the two paths agree on what the worker sees.
+  // Keyed by SEAT, never by block identity: one dispatcher may legitimately
+  // sit at two seats, and each seat's hand-off carries its own name so the
+  // row's assignee is what the child's gate checks.
+  //
+  // The hand-off carries the board's BINDING — its id and the claim gate — so
+  // `defineFlow`, reaching it through the drain, can put the entry it addresses
+  // behind this board's gate. The gate is built once for the board: it is the
+  // same ledger and the same failure policy whichever seat hands off.
+  const handOffBySeat = new Map<string, TaskWorker>();
+  if (boardId !== undefined && handedOff.length > 0) {
+    const gate = createTaskGate({
+      name,
+      boardId,
+      collection: collectionFactory,
+      // The board's failure policy decides the child's outcome exactly as it
+      // decides the drain's, so it is threaded rather than re-chosen.
+      onError,
+      // The gated entry is reached by a task dispatch, not through the drain,
+      // so it has to declare the board's durable collection itself.
+      ...(drainUses !== undefined ? { uses: drainUses } : {}),
+    });
+    for (const seat of handedOff) {
+      if (seat.name === "") continue;
+      handOffBySeat.set(
+        seat.name,
+        createHandOff({
+          name: `${name}-hand-off-${seat.name}`,
           boardId,
-          coordinate: slot.coordinate,
-        }) as unknown as TaskWorker
+          seat: seat.name,
+          address: seat.dispatch,
+          binding: { boardId, gate },
+        })
       );
     }
   }
-  const spawnAt = (coordinate: WorkerCoordinate, worker: TaskWorker): TaskWorker =>
-    spawnByCoordinate.get(coordinateKey(coordinate)) ?? worker;
 
   const dispatchWorkers: TaskWorker | TaskWorkerRegistry =
     typeof (workers as { run?: unknown }).run === "function"
-      ? spawnAt({ kind: "uniform" }, workers as TaskWorker)
+      ? (workers as TaskWorker)
       : Object.fromEntries(
           Object.entries(workers as TaskWorkerRegistry).map(([assignee, worker]) => [
             assignee,
-            spawnAt({ kind: "assignee", name: assignee }, worker),
+            handOffBySeat.get(assignee) ?? worker,
           ])
         );
-  const dispatchDefaultWorker =
-    defaultWorker !== undefined ? spawnAt({ kind: "floor" }, defaultWorker) : undefined;
+  const dispatchDefaultWorker = defaultWorker;
 
   const workerStep = buildWorkerStep({
     name,
@@ -889,7 +906,7 @@ export function taskBoard<
       ? { defaultWorker: dispatchDefaultWorker }
       : {}),
     collection: collectionFactory,
-    resolveFlowPolicy: createFlowPolicyResolver(runState),
+    resolveFlowPolicy: createFlowPolicyResolver(name),
   });
 
   const recordSuccess = createRecordSuccess({
@@ -1144,7 +1161,17 @@ export function taskBoard<
     .forEach(
       () => Array.from({ length: concurrency }, (_, i) => i),
       (workerId: number) => makeWorker(workerId),
-      { maxConcurrency: concurrency }
+      {
+        maxConcurrency: concurrency,
+        // The per-worker wrapper is built at run time, so the walk `defineFlow`
+        // makes over the drain would otherwise stop here and never see the
+        // hand-off dispatchers sitting in the worker router. The blocks every
+        // worker is composed from are static and shared, and declaring them
+        // is what lets a flow that reaches this drain without declaring the
+        // task entry a seat hands off to be refused at definition rather than
+        // at the first hand-off.
+        blocks: [claimTask, workerBody, checkBoard],
+      }
     )
     // The completion item reads the pool's own exit outputs — the `forEach`
     // result this tap receives — for the one fact it cannot re-derive: whether
@@ -1167,69 +1194,70 @@ export function taskBoard<
     .tap(teardownFlowState)
     .rescue([{ block: teardownFlowState }]);
 
-  // FIX-982 P2 — stamp this board's detached bindings onto the drain so they
-  // bubble to the flow. From here they ride the same rail resource declarations
-  // do: enclosing sequencers merge them as steps are added, and `defineFlow`
-  // reads the union off each action root. Nothing is authored to make that
-  // happen, and nothing downstream has to re-walk the block tree to find a
-  // board.
-  //
-  // The `boardId !== undefined` narrowing is a type-level formality, not a
-  // second guard: `assertDetachedBoardSupported` above already refused a
-  // detached board without one, because the value lands in a persisted routing
-  // key. A board with no detached workers stamps nothing.
-  //
-  // Each binding also carries this board's ONE detached runner (FIX-982 P3a) —
-  // the same object on every binding, because the runner belongs to the board
-  // rather than to a worker. That is what lets the flow-level assembly route a
-  // dispatch to a board and never to a bare worker, so the start gate, the task
-  // scope mark and the claim-ticket re-mint cannot be bypassed by adding a
-  // worker later.
-  if (boardId !== undefined) {
-    const runner = buildDetachedRunner({
-      name,
-      boardId,
-      collection: collectionFactory,
-      detached: resolvedWorkers.detached,
-      // The board's failure policy decides the Workstream's outcome exactly as
-      // it decides the drain's, so it is threaded rather than re-chosen here.
-      onError,
-      // The runner is reached by a detached dispatch, not through the drain,
-      // so it has to declare the board's durable collection itself.
-      ...(drainUses !== undefined ? { uses: drainUses } : {}),
-    });
-    if (runner !== undefined) {
-      declareWorkstreamBindings(
-        drain,
-        resolvedWorkers.detached.map((slot) => ({
-          boardId,
-          coordinateKey: coordinateKey(slot.coordinate),
-          worker: slot.worker as unknown as BlockDefinition<never, never>,
-          runner: runner as unknown as BlockDefinition<never, never>,
-        }))
-      );
-    }
-  }
-
-  // FIX-982 decision 10 — a detached board's assignee is fixed at admission,
-  // because it is what the routing coordinate derives from. Recorded on the
-  // LEDGER declaration rather than on the refs built from it: two boards may
-  // bind the same durable collection and only one need declare detached
-  // workers, yet they share rows, so a reassignment through either board's ref
-  // moves a coordinate the detached board routes by. Reading it back at
-  // resolution time (`resolveResourceTaskCollection`) also makes construction
-  // order irrelevant — the sibling board is as likely to be declared first.
+  // A handed-off board's assignee is fixed at admission, because it is what
+  // the child's routing key derives from. Recorded on the LEDGER declaration
+  // rather than on the refs built from it: two boards may bind the same
+  // durable collection and only one need declare a dispatcher seat, yet they
+  // share rows, so a reassignment through either board's ref moves a key the
+  // handed-off board routes by. Reading it back at resolution time
+  // (`resolveResourceTaskCollection`) also makes construction order
+  // irrelevant — the sibling board is as likely to be declared first.
   //
   // Deliberately the LAST thing this function does. The mark is one-way and
   // outlives a failed construction, so it must not run until everything that
-  // can throw has not: `assertDetachedBoardSupported` refuses a durable
-  // detached board that omits a `boardId` or whose worker declares
-  // `sessionStateSchema`, and a caller that catches either — a config fallback,
-  // a hot reload, a test — would otherwise be left with a declaration that
-  // declines valid `setAssignee` calls for a board that was never created.
-  if (resolvedWorkers.detached.length > 0 && isDefinedTaskCollection(collectionConfig)) {
+  // can throw has not: `assertHandOffBoardSupported` refuses a durable
+  // handed-off board that omits a `boardId`, and a caller that catches it — a
+  // config fallback, a hot reload, a test — would otherwise be left with a
+  // declaration that declines valid `setAssignee` calls for a board that was
+  // never created.
+  if (handedOff.length > 0 && isDefinedTaskCollection(collectionConfig)) {
     freezeLedgerAssignee(collectionConfig);
   }
+
+  // The return trip for a parked task (FIX-1244): the fenced re-queue, then the
+  // board's own drain, in the caller's request. Built for every board and
+  // refused only when it runs — see `TaskBoardHandle.unparkAndDrain` for why
+  // the two checks are invocation-time and not construction-time.
+  //
+  // A `.tapIf`, not a `.stepIf`: the tap runs the drain for effect and carries
+  // the write's outcome forward on both branches, so the step returns the
+  // `TaskWriteOutcome` whether the drain ran or not. A `.stepIf` would replace
+  // it with the drain's result on exactly the branch that matters, and
+  // `drain` is typed loosely enough that the swap would not be caught here.
+  const unparkStep = handler({
+    name: `${name}-unpark`,
+    inputSchema: unparkAndDrainInputSchema,
+    outputSchema: taskWriteOutcomeSchema,
+    ...(drainUses !== undefined ? { uses: drainUses } : {}),
+    execute: async (input, ctx): Promise<TaskWriteOutcome> => {
+      if (backing !== "resource") {
+        throw new Error(
+          `[task-board] "${name}" unparkAndDrain needs a resource-backed collection — ` +
+            `a parked task has to outlive the request that parked it for an answer to ` +
+            `find it, and a ${backing}-backed collection does not. Pass a ` +
+            `defineTaskCollection() to \`collection\`.`
+        );
+      }
+      if (hasIdlessInitialTasks) {
+        throw new Error(
+          `[task-board] "${name}" unparkAndDrain refuses a board whose \`initialTasks\` ` +
+            `carry no stable id — the drain it runs re-seeds ahead of the worker pool, ` +
+            `and an id-less entry is added again each pass, so the answered work would ` +
+            `run twice. Give each initialTask an explicit \`id\`.`
+        );
+      }
+      const tasks = await collectionFactory(ctx);
+      return tasks.unpark(input.taskId, input.feedback);
+    },
+  });
+
+  const unparkAndDrain: SequencerDefinition<UnparkAndDrainInput, TaskWriteOutcome> = sequencer({
+    name: `${name}-unpark-and-drain`,
+    inputSchema: unparkAndDrainInputSchema,
+    ...(drainUses !== undefined ? { uses: drainUses } : {}),
+  })
+    .step(unparkStep)
+    .tapIf((outcome: TaskWriteOutcome) => outcome.outcome === "recorded", drain);
 
   // Capability, collectionId, and (for durable boards) the drain's resource
   // `uses` all come from `resolveCollectionBinding` — one place that maps the
@@ -1242,9 +1270,10 @@ export function taskBoard<
     capability,
     backing,
     ...(boardId !== undefined ? { boardId } : {}),
-    detachedWorkers: resolvedWorkers.detached,
+    handedOff,
     hasIdlessInitialTasks,
     caps,
+    unparkAndDrain,
   };
 }
 
@@ -1320,7 +1349,7 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
   /**
    * The durable collection's own declaration, when there is one (FIX-1074).
    * Only the `resource` backing has one; the others carry no scope at all, and
-   * a detached board on them is already refused on `backing`.
+   * a handed-off board on them is already refused on `backing`.
    */
   collectionDeclaration?: DefinedTaskCollection;
   drainUses?: readonly DefinedCapability[];

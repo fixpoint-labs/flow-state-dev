@@ -1,17 +1,17 @@
 /**
- * Child-session derivation and adoption for the detached-start verb (FIX-999).
+ * Child-session derivation and adoption for a `{ key }` dispatch (FIX-999).
  *
  * The seam's central safety rule is that a caller supplies the *target* of an
- * operation and never the *authority* for it. It hands over a routing seed; the
- * seam derives the child session key from that seed plus the running request's
+ * operation and never the *authority* for it. It hands over a key; the seam
+ * derives the child session id from that key plus the running request's
  * server-derived identity. Two collisions must therefore be **inexpressible**
  * rather than rejected:
  *
- *   - two principals with the same seed (a model authors the same topic twice);
- *   - **one principal's two parent sessions** with the same seed.
+ *   - two principals with the same key (a model authors the same topic twice);
+ *   - **one principal's two parent sessions** with the same key.
  *
- * The second is the one that is easy to miss. Deriving over `[principal, seed]`
- * alone lets session B derive session A's child key, adopt A's child — whose
+ * The second is the one that is easy to miss. Deriving over `[principal, key]`
+ * alone lets session B derive session A's child id, adopt A's child — whose
  * `parentSessionId` still points at A — and then every downstream verb follows
  * the wrong lineage: settle writes to A's board, and interrupt and liveness both
  * refuse for B because their descendant checks walk a parent chain that never
@@ -19,7 +19,7 @@
  *
  * Adoption has a second door onto the same failure. The public session-create
  * route lets a same-principal caller choose the session id, so a record can be
- * *pre-created* at the deterministic child key. `createExecutionContext`
+ * *pre-created* at the deterministic child id. `createExecutionContext`
  * validates user, tenant and org bindings but not `flowKind` and not
  * `parentSessionId`, so a pre-created top-level record — or one belonging to a
  * different flow — would pass that check and be adopted. Adoption therefore
@@ -27,7 +27,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  deriveChildSessionId,
+  deriveDispatchChildSessionId,
   evaluateAdoption,
   type DerivationIdentity
 } from "../../src/context/detached-child";
@@ -35,65 +35,76 @@ import {
 const base: DerivationIdentity = {
   userId: "u_alice",
   tenantId: "t_acme",
-  parentSessionId: "s_parent_a"
+  parentSessionId: "s_parent_a",
+  lineageId: "lin_a"
 };
 
 describe("child session derivation", () => {
-  it("is deterministic for the same identity and seed — that is what makes adoption possible", () => {
-    const a = deriveChildSessionId(base, { topic: "review" });
-    const b = deriveChildSessionId(base, { topic: "review" });
+  it("is deterministic for the same identity and key — that is what makes adoption possible", () => {
+    const a = deriveDispatchChildSessionId(base, "review");
+    const b = deriveDispatchChildSessionId(base, "review");
     expect(a).toBe(b);
   });
 
-  it("gives two principals different children for an identical seed", () => {
-    const alice = deriveChildSessionId(base, { topic: "review" });
-    const bob = deriveChildSessionId({ ...base, userId: "u_bob" }, { topic: "review" });
+  it("gives two principals different children for an identical key", () => {
+    const alice = deriveDispatchChildSessionId(base, "review");
+    const bob = deriveDispatchChildSessionId({ ...base, userId: "u_bob" }, "review");
     expect(alice).not.toBe(bob);
   });
 
-  it("gives ONE principal's two parent sessions different children for an identical seed", () => {
-    // The round-3 defect. Without the parent session in the key material these
-    // are equal, session B adopts session A's child, and B's work settles onto
-    // A's board while B's own interrupt and liveness calls refuse.
-    const fromA = deriveChildSessionId(base, { topic: "review" });
-    const fromB = deriveChildSessionId(
-      { ...base, parentSessionId: "s_parent_b" },
-      { topic: "review" }
-    );
+  it("gives ONE principal's two parent sessions different children for an identical key", () => {
+    // Without the parent session in the key material these are equal, session
+    // B adopts session A's child, and B's work settles onto A's board while
+    // B's own interrupt and liveness calls refuse.
+    const fromA = deriveDispatchChildSessionId(base, "review");
+    const fromB = deriveDispatchChildSessionId({ ...base, parentSessionId: "s_parent_b" }, "review");
     expect(fromA).not.toBe(fromB);
   });
 
+  it("gives two incarnations of one parent id different children (FIX-1068)", () => {
+    // A session id can be deleted and recreated. Without the lineage in the
+    // key material the new conversation would derive — and adopt — the old
+    // lineage's child, inheriting an address belonging to a conversation that
+    // no longer exists.
+    const first = deriveDispatchChildSessionId(base, "review");
+    const second = deriveDispatchChildSessionId({ ...base, lineageId: "lin_b" }, "review");
+    expect(first).not.toBe(second);
+  });
+
   it("separates tenants", () => {
-    const acme = deriveChildSessionId(base, { topic: "review" });
-    const other = deriveChildSessionId({ ...base, tenantId: "t_other" }, { topic: "review" });
+    const acme = deriveDispatchChildSessionId(base, "review");
+    const other = deriveDispatchChildSessionId({ ...base, tenantId: "t_other" }, "review");
     expect(acme).not.toBe(other);
   });
 
-  it("distinguishes seeds, including the optional discriminator", () => {
-    const t1 = deriveChildSessionId(base, { topic: "review" });
-    const t2 = deriveChildSessionId(base, { topic: "triage" });
-    const t3 = deriveChildSessionId(base, { topic: "review", key: "second" });
-    expect(new Set([t1, t2, t3]).size).toBe(3);
+  it("distinguishes keys", () => {
+    const k1 = deriveDispatchChildSessionId(base, "review");
+    const k2 = deriveDispatchChildSessionId(base, "triage");
+    const k3 = deriveDispatchChildSessionId(base, "review/second");
+    expect(new Set([k1, k2, k3]).size).toBe(3);
+  });
+
+  it("is recognisable as a derived child in a store dump", () => {
+    expect(deriveDispatchChildSessionId(base, "review")).toMatch(/^dsx_[0-9a-f]{32}$/);
   });
 
   it("does not confuse field boundaries — concatenation-style collisions are not reachable", () => {
     // A naive `${a}${b}` derivation collides here. Encoding lengths (or a
     // delimiter that cannot appear in the values) is what prevents it.
-    const x = deriveChildSessionId(
-      { userId: "u_a", tenantId: undefined, parentSessionId: "bc" },
-      { topic: "t" }
+    const x = deriveDispatchChildSessionId(
+      { userId: "u_a", tenantId: undefined, parentSessionId: "bc", lineageId: "l" },
+      "t"
     );
-    const y = deriveChildSessionId(
-      { userId: "u_ab", tenantId: undefined, parentSessionId: "c" },
-      { topic: "t" }
+    const y = deriveDispatchChildSessionId(
+      { userId: "u_ab", tenantId: undefined, parentSessionId: "c", lineageId: "l" },
+      "t"
     );
     expect(x).not.toBe(y);
   });
 });
 
 describe("adoption identity validation", () => {
-  const seed = { topic: "review" };
-  const childId = deriveChildSessionId(base, seed);
+  const childId = deriveDispatchChildSessionId(base, "review");
 
   /** What the seam expects a genuine child of this request to look like. */
   const expected = {
@@ -154,6 +165,45 @@ describe("adoption identity validation", () => {
     // the same thing, and a strict `!==` would refuse a genuine child.
     const nulled = { ...genuineChild, orgId: null as unknown as undefined };
     expect(evaluateAdoption(nulled, { ...expected, orgId: undefined })).toEqual({
+      adoptable: true
+    });
+  });
+});
+
+describe("evaluateAdoption — the lineage arm a dispatched child requires", () => {
+  const expected = {
+    flowKind: "work",
+    userId: "u_alice",
+    tenantId: undefined,
+    orgId: undefined,
+    parentSessionId: "s_parent"
+  };
+  const genuine = {
+    flowKind: "work",
+    userId: "u_alice",
+    parentSessionId: "s_parent",
+    lineageId: "lin_parent"
+  };
+
+  it("refuses a record minted for a different lineage when the caller requires one", () => {
+    // The seam always requires it: a `sharedToLineage` resource in the child
+    // resolves against the lineage root, so a child on another lineage would
+    // read a different ledger than the parent that dispatched it.
+    const result = evaluateAdoption(
+      { ...genuine, lineageId: "lin_other" },
+      { ...expected, lineageId: "lin_parent" }
+    );
+    expect(result).toEqual({ adoptable: false, mismatch: "lineageId" });
+  });
+
+  it("adopts a record on the required lineage", () => {
+    expect(evaluateAdoption(genuine, { ...expected, lineageId: "lin_parent" })).toEqual({
+      adoptable: true
+    });
+  });
+
+  it("does not compare the lineage when the caller names none", () => {
+    expect(evaluateAdoption({ ...genuine, lineageId: "lin_other" }, expected)).toEqual({
       adoptable: true
     });
   });

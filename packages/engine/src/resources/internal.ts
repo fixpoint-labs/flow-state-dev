@@ -182,7 +182,7 @@ export async function getPersistedData(
   if (!tenantMatches(session.tenantId, tenantId)) return undefined;
 
   if (scope === "session") {
-    // FIX-1068: a resource declared `sharedToWorkstream` lives at the lineage
+    // FIX-1068: a resource declared `sharedToLineage` lives at the lineage
     // root, so the scope this session reads is its own rows with the shared
     // keys taken from there — the same view execution resolves.
     const [resources, content] = await Promise.all([

@@ -1,30 +1,30 @@
 /**
- * The conductor flow — a board, one detached worker, and three zero-model
+ * The conductor flow — a board, one handed-off worker, and three zero-model
  * actions.
  *
  * `seed` files an issue-phase as a durable row. `wake` drains the board, which
- * claims a row and hands it to the manager in its own workstream. `status`
+ * claims a row and hands it to the manager in its own child session. `status`
  * reads back what happened.
  *
  * ## The board's own ledger is a deliverable, not a default
  *
- * A detached board refuses three things at construction, and a flow that leaves
- * any of them implicit throws before `seed` can run: an explicit stable
- * `boardId`, a durable `defineTaskCollection()` backing, and a ledger the
- * workstream can reach.
+ * A board that hands off refuses three things at construction, and a flow
+ * that leaves any of them implicit throws before `seed` can run: an explicit
+ * stable `boardId`, a durable `defineTaskCollection()` backing, and a ledger
+ * the child session can reach.
  *
- * **`user`-scoped, no `sharedToWorkstream`.** The task row is where a human's
+ * **`user`-scoped, no `sharedToLineage`.** The task row is where a human's
  * later answer lands, through a NEW request, so a parked row has to outlive the
  * coordinator session that created it. `user` rather than `org` because it
  * matches the already-user-scoped inbox where the other half of that round trip
  * arrives, while `org` would share a claim pool across users. At `user` scope
- * the `sharedToWorkstream` refusal never fires — it is conditional on session
+ * the `sharedToLineage` refusal never fires — it is conditional on session
  * scope — and the other two requirements still apply exactly as stated.
  *
  * **Partitioned by epic, and the partition has to reach storage.** One board
  * per epic, and each epic gets its own COLLECTION identity. A distinct
  * `boardId` is not sufficient and is not an alternative: it never reaches the
- * ledger — it is hashed into the derived workstream session id and framed into
+ * ledger — it is hashed into the derived child session id and framed into
  * the coordinate key — so two epic boards under one user sharing a collection
  * id and differing only in `boardId` would operate on the same rows, and one
  * epic's drain could claim or settle another's. Both ids are needed and neither
@@ -49,11 +49,11 @@
  * never declare `client.state.read` and its collection-state route answers 403.
  * And nothing else substitutes: `recordSuccess` writes with `ifAllowed: true`,
  * so a `complete()` refused on a lost claim is DROPPED rather than thrown — the
- * worker returns normally, the workstream request completes, and the run record
+ * worker returns normally, the child session's request completes, and the run record
  * reads as a success while the board row is still open. **The board row is the
  * authority on completion; the run record never is.**
  */
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import {
@@ -229,7 +229,7 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
  *
  * **Drainability is ASKED, not re-derived.** Six review rounds found six
  * separate inputs to "can a drain run this" — assignee, retry budget, `deps`,
- * `blocked`, `awaiting_review`, and a spent abandonment allowance — because this
+ * `blocked`, `parked`, and a spent abandonment allowance — because this
  * function was enumerating, field by field, a question the substrate already
  * answers. `@flow-state-dev/orchestration/tasks` says so at the export:
  * `isClaimable` is THE admission predicate, and "a caller implementing
@@ -377,7 +377,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
 
   // Both ids, per epic, and neither substituting for the other.
   // The tenant is in BOTH ids for the same reason the epic is: `boardId`
-  // partitions routing (it is hashed into the derived workstream session id),
+  // partitions routing (it is hashed into the derived child session id),
   // the collection identity partitions storage, and neither substitutes for the
   // other.
   // **Every numeric option is validated at THIS door too.**
@@ -596,13 +596,22 @@ export function conductorFlow(options: ConductorFlowOptions) {
     boardId,
     collection: tasks,
     // ONE issue at a time, stated rather than inherited. The substrate's default
-    // is 4, so a single drain would launch four detached coding runs at once —
+    // is 4, so a single drain would launch four handed-off coding runs at once —
     // contradicting this lab's own deployment contract and multiplying model
     // spend by four. The manager holds a worker slot for its run's whole
     // duration, so this is also what keeps that cost legible.
     concurrency: 1,
     workers: {
-      [ASSIGNEE]: { worker: manager, dispatch: { mode: "detached" } },
+      // Hands off: each row runs in a child session of its own, keyed on the
+      // task id — which IS the issue-phase (`conductorTaskId`), so a retry
+      // re-enters the same child and its run record. The block that runs
+      // there is the manager, declared on the flow's `task.actions` below.
+      [ASSIGNEE]: dispatcher({
+        name: `${boardId}-hand-off`,
+        type: "task",
+        target: ASSIGNEE,
+        session: "per-task",
+      }),
     },
     // **A run parked on a person is not this drain's to wait on.**
     //
@@ -721,8 +730,9 @@ export function conductorFlow(options: ConductorFlowOptions) {
           // Without this the substrate is single-attempt and a reported failure
           // costs nothing and delivers nothing — the defect this lab exists to fix.
           maxAttempts,
-          // The workstream routing identity the detached spawn seeds. Routing
-          // only; nothing derives a path or a permission from it.
+          // A readable label for the row. The child session is keyed on the
+          // task id (`session: "per-task"`), so nothing routes on this and
+          // nothing derives a path or a permission from it.
           metadata: { topic: `${input.issue}/${input.phase}` },
         });
         await ctx.sequencer?.patchState({ taskId: task.id });
@@ -1014,7 +1024,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
       const tasks = await ctx.cap[boardId].tasks();
       const surface: AnswerBoard = {
         get: (id) => tasks.get(id),
-        resumeFromReview: (id, feedback) => tasks.resumeFromReview(id, feedback),
+        unpark: (id, feedback) => tasks.unpark(id, feedback),
         // The collection's own clock, never `Date.now()` — a lease is a
         // comparison and a comparison needs one clock. Reading the wall clock
         // works right up until the collection is built on an injected one, at
@@ -1028,6 +1038,11 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
 
   const defineConductor = defineFlow({
     kind: CONDUCTOR_FLOW_KIND,
+    // The task entry the board's seat hands off to: the manager, reached by
+    // the `task` dispatch the drain sends for each claimed row. `defineFlow`
+    // puts it behind the board's claim gate; the flow, not the board, owns
+    // what a task dispatch can reach.
+    task: { actions: { [ASSIGNEE]: { block: manager } } },
     actions: {
       /** File an issue-phase and start it in one call. */
       seed: {
@@ -1042,7 +1057,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           // preventing one.
           .tap(tenantGate)
           .tap(seedTask)
-          // The drain claims the row and hands it to a workstream, then returns
+          // The drain claims the row and hands it to a child session, then returns
           // with the row still open. The seeding request does not wait for the
           // run — which is the point.
           .step(board.drain)
@@ -1086,7 +1101,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
        * Answer a parked run's question and start it again holding the answer.
        *
        * **The drain is this action's**, not the operator's next step.
-       * `resumeFromReview` only re-queues the row, and with `onReview: "exit"`
+       * `unpark` only re-queues the row, and with `onReview: "exit"`
        * the drain that observed the question has already ended — so an `answer`
        * that stopped after two calls would leave the row waiting for whatever
        * happens to drain next.

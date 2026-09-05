@@ -12,13 +12,7 @@ import { generator, type GeneratorConfig } from "../blocks/generator";
 import { mergeDeclaredResources } from "../blocks/internal/build-block";
 import type { AuthenticationConfig } from "../types/auth";
 import type { BlockDefinition, DeclaredResourceEntry, DeclaredResources } from "../types/block";
-import {
-  declareWorkstreamBindings,
-  mergeWorkstreamBindings,
-  workstreamBindingKey,
-  type WorkstreamBindings,
-} from "../types/workstream";
-import { buildWorkstreamCore } from "./workstream-core";
+import { taskBindingOf, type TaskBinding, type InternalEntry, type TaskEntry } from "../types/dispatch";
 import type {
   ActionConfig,
   FlowDefinition,
@@ -31,6 +25,7 @@ import type {
   ScopeClientConfig,
   SessionConfig,
   ToolsConfig,
+  TypedEntries,
   UserConfig,
 } from "../types/flow";
 import type { ResourceScope } from "../types/resource";
@@ -172,7 +167,14 @@ function rejectRemovedClientData(value: object | undefined, flowKind: string, sc
 }
 
 /** The definition-only options {@link rejectDefinitionOnlyOptions} refuses. */
-const DEFINITION_ONLY_INSTANCE_OPTIONS = ["webhooks", "chat", "schedules", "mcp"] as const;
+const DEFINITION_ONLY_INSTANCE_OPTIONS = [
+  "webhooks",
+  "chat",
+  "schedules",
+  "mcp",
+  "internal",
+  "task",
+] as const;
 
 /**
  * Reject transport configs that are declared on the flow DEFINITION only.
@@ -265,8 +267,24 @@ function withFlowTools(
   // way of a rescue handler, and that lands on the built definition. Rebuilding
   // without carrying them means a flow silently loses a route the moment it
   // declares `tools`, and only for the boards behind a generator's failure path.
-  declareWorkstreamBindings(rebuilt, [...(block.workstreamBindings?.values() ?? [])]);
   return rebuilt;
+}
+
+/**
+ * Apply flow-level `tools` to each block of an `internal` or `task` entry map,
+ * the same way `mergeActions` does for caller actions. A no-op when the flow
+ * declares no tools or no entries.
+ */
+function withFlowToolsEntries<TEntry extends InternalEntry | TaskEntry>(
+  entries: Record<string, TEntry> | undefined,
+  flowTools: ToolsConfig | undefined
+): Record<string, TEntry> | undefined {
+  if (entries === undefined || flowTools === undefined) return entries;
+  const result: Record<string, TEntry> = {};
+  for (const [name, entry] of Object.entries(entries)) {
+    result[name] = { ...entry, block: withFlowTools(entry.block, flowTools) };
+  }
+  return result;
 }
 
 function mergeActions(
@@ -405,10 +423,11 @@ function actionCoreBlocks(core: {
 /**
  * Every statically-declared block in the flow.
  *
- * Four binding families all carry the shared `ActionCore` (caller actions,
- * webhook, chat, and static schedule bindings), so each contributes its root and
- * its observers. The flow-level `request` hooks are blocks too, and are declared
- * once for the whole flow rather than per binding.
+ * Six entry families all carry the shared `ActionCore` (caller actions,
+ * internal and task entries, and the webhook, chat and static schedule
+ * bindings), so each contributes its root and its observers. The flow-level
+ * `request` hooks are blocks too, and are declared once for the whole flow
+ * rather than per entry.
  *
  * Dynamic schedules (`schedules.resolve`) are deliberately absent: their blocks
  * do not exist until a resolver runs, so there is nothing to collect at
@@ -416,6 +435,8 @@ function actionCoreBlocks(core: {
  */
 function actionBlocks(
   actions: AnyActions,
+  internal: Record<string, InternalEntry> | undefined,
+  tasks: Record<string, TaskEntry> | undefined,
   webhooks: WebhookConfig | undefined,
   chat: ChatConfig | undefined,
   schedules: SchedulesConfig | undefined,
@@ -423,6 +444,12 @@ function actionBlocks(
 ): BlockDefinition[] {
   const blocks: BlockDefinition[] = [];
   for (const action of Object.values(actions)) blocks.push(...actionCoreBlocks(action));
+  if (internal !== undefined) {
+    for (const entry of Object.values(internal)) blocks.push(...actionCoreBlocks(entry));
+  }
+  if (tasks !== undefined) {
+    for (const entry of Object.values(tasks)) blocks.push(...actionCoreBlocks(entry));
+  }
   if (webhooks !== undefined) {
     for (const sub of Object.values(webhooks)) {
       for (const binding of Object.values(sub.on)) blocks.push(...actionCoreBlocks(binding));
@@ -464,79 +491,6 @@ function collectBlockResources(
 }
 
 /**
- * Collect detached worker bindings from every declared block in the flow (FIX-982).
- *
- * Reads the already-accumulated union off each root rather than walking the
- * block tree — sequencers and routers merge their children's bindings as they
- * are composed, so by the time a flow is defined each root carries them all.
- *
- * Takes the same block list `collectBlockResources` and `collectRequiresOrg` do,
- * by construction rather than by convention: all three answer "what did the
- * blocks of this flow declare?", and the way this rail has failed repeatedly is
- * one of them seeing a smaller flow than the others.
- */
-function collectWorkstreamBindings(
-  blocks: readonly BlockDefinition[]
-): WorkstreamBindings | undefined {
-  let collected: WorkstreamBindings | undefined;
-  for (const block of blocks) {
-    collected = mergeWorkstreamBindings(collected, block.workstreamBindings);
-  }
-  return collected;
-}
-
-/**
- * Collect bindings, then keep collecting from the runners those bindings name,
- * until no new runner appears (FIX-1074).
- *
- * **Jobs nest, and that is the case a single pass misses.** A board substitutes
- * a spawn block for each detached worker, so the real worker is not a child of
- * any action root — the only block that contains it is the board's runner, which
- * reaches the flow as a *binding* rather than as a block. If that worker in turn
- * drains a second detached board, the inner board's binding exists nowhere but
- * on the outer runner. One pass yields the outer board alone, the flow's
- * workstream core is built with no route for the inner `boardId`, and the inner
- * child's dispatch has nowhere to land — leaving its row `in_progress` for lease
- * recovery. Nesting is a documented shape, so this is a supported configuration
- * that did not work.
- *
- * **Termination is by visited-set, not by a depth bound.** Every iteration
- * processes only runners not yet collected from, and the set of blocks in a flow
- * is finite, so the loop cannot revisit and cannot spin — including when two
- * boards reach each other, which a bound would have to guess a number for. A
- * depth cap would also silently truncate a legal-but-deep nesting, which is the
- * failure mode this whole area keeps producing.
- *
- * Each newly discovered runner is walked for its own static tool edges too, so a
- * board reached through a generator's `tools` inside a nested worker is found on
- * the same terms as one at the top level.
- */
-function collectWorkstreamBindingsToFixpoint(
-  roots: readonly BlockDefinition[]
-): WorkstreamBindings | undefined {
-  let collected = collectWorkstreamBindings(roots);
-  // The runners already folded in. Grows monotonically over a finite set of
-  // blocks, which is what bounds the loop.
-  const collectedFrom = new Set<BlockDefinition>();
-
-  while (collected !== undefined) {
-    const pending = distinctRunners(collected).filter(
-      (runner) => !collectedFrom.has(runner)
-    );
-    if (pending.length === 0) break;
-    for (const runner of pending) collectedFrom.add(runner);
-
-    const nested = walkFlowGraph(pending);
-    collected = mergeWorkstreamBindings(
-      collected,
-      collectWorkstreamBindings([...pending, ...nested.toolRoots])
-    );
-  }
-
-  return collected;
-}
-
-/**
  * A generator's **statically declared** tools, or nothing (FIX-1074).
  *
  * `tools` is a `ToolsSlot` — an array, or a function resolved per call with the
@@ -550,79 +504,42 @@ function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
 }
 
 /**
- * Walk the flow's block graph once, returning the two views the caller needs.
- *
- * - `reachable` — every block, through composition AND through a generator's
- *   static `tools` array. What the reachability assertion checks.
- * - `toolRoots` — the blocks arrived at *across a tool edge*. What the collector
- *   adds to the action roots.
- *
- * **The two views are different on purpose, and collapsing them re-opens a bug.**
- * A composed child's bindings bubble into its parent, so reading them off the
- * ROOT and reading them off the child should agree — and when they don't, some
- * composition step dropped the rail, which is precisely what
- * {@link assertWorkstreamBindingsReachable} exists to catch. Collecting from
- * every reachable block instead would repair that silently by reading the child
- * directly, and the assertion could never fire again.
- *
- * A tool edge is not that. A generator is a leaf that bubbles none of its tools'
- * rails **by design**, so a tool's bindings are missing for a structural reason
- * rather than a propagation failure — and each tool block is the root of its own
- * composed subtree, so its own accumulated union is authoritative exactly as an
- * action root's is. That is why tool roots are collected and their descendants
- * are not.
+ * Walk the flow's block graph once: every block reachable from the roots,
+ * through composition AND through a generator's static `tools` array. This is
+ * what the dispatch-target resolution reads.
  *
  * **The tool edge is here because a board can be handed to a model as a tool**
- * (`tools: [board.drain]`, the shape FIX-925 shipped). Without it a detached
- * board reached only that way contributed no bindings, `flow.workstream` was
- * never built, and the first time the model called the tool the board claimed a
- * row, spawned, and failed `no-workstream-core` — recording the task as failed
- * for a configuration the author had every reason to think was supported
+ * (`tools: [board.drain]`, the shape FIX-925 shipped). Without it a board
+ * reached only that way was invisible to the walk: its dispatcher seats went
+ * unresolved, so the first time the model called the tool the board failed on
+ * a configuration the author had every reason to think was supported
  * (FIX-1074).
+ *
+ * Only the dispatch walk needs the tool edge. Resources and `requiresOrg` are
+ * collected off the action roots, and a handed-off board's ledger reaches the
+ * flow through the task entry its seat addresses — an action root of its own —
+ * so a board reached only as a tool still lands its declarations.
  *
  * A block is visited once: blocks are shared freely (one handler across several
  * actions) and a router route may point back up the tree, so revisits and cycles
- * are ordinary rather than exceptional. `viaTool` is recorded before that check,
- * so a block reached both ways still counts as a tool root.
+ * are ordinary rather than exceptional.
  */
-function walkFlowGraph(roots: readonly BlockDefinition[]): {
-  reachable: BlockDefinition[];
-  toolRoots: BlockDefinition[];
-} {
+function walkFlowGraph(roots: readonly BlockDefinition[]): BlockDefinition[] {
   const seen = new Set<BlockDefinition>();
-  const toolRoots = new Set<BlockDefinition>();
-  const queue: { block: BlockDefinition; viaTool: boolean }[] = roots.map(
-    (block) => ({ block, viaTool: false })
-  );
+  const queue: BlockDefinition[] = [...roots];
   while (queue.length > 0) {
-    const { block, viaTool } = queue.pop()!;
-    if (viaTool) toolRoots.add(block);
+    const block = queue.pop()!;
     if (seen.has(block)) continue;
     seen.add(block);
     // Rescue handlers installed via `config.rescue` are already folded into
     // `childBlocks` by `buildBlock`.
-    for (const child of block.childBlocks ?? []) queue.push({ block: child, viaTool: false });
-    for (const tool of staticTools(block)) queue.push({ block: tool, viaTool: true });
-  }
-  return { reachable: [...seen], toolRoots: [...toolRoots] };
-}
-
-/** True when any declared block (root or lifecycle observer) opted into `requireOrg`. */
-/**
- * The distinct runner blocks in a binding set (FIX-982 P3a).
- *
- * Deduped by reference, because a board stamps ONE runner onto every binding it
- * declares — a board with twelve detached workers must contribute its runner
- * once, not twelve times, or every resource it declares is merged repeatedly.
- */
-function distinctRunners(bindings: WorkstreamBindings): BlockDefinition[] {
-  const seen = new Set<BlockDefinition>();
-  for (const binding of bindings.values()) {
-    if (binding.runner != null) seen.add(binding.runner as BlockDefinition);
+    queue.push(...(block.childBlocks ?? []));
+    queue.push(...staticTools(block));
   }
   return [...seen];
 }
 
+/** True when any declared block (root or lifecycle observer) opted into `requireOrg`. */
 function collectRequiresOrg(blocks: readonly BlockDefinition[]): boolean {
   for (const block of blocks) {
     if (block.requiresOrg) return true;
@@ -631,50 +548,188 @@ function collectRequiresOrg(blocks: readonly BlockDefinition[]): boolean {
 }
 
 /**
- * Assert that every detached board reachable from this flow's declared blocks
- * resolves to a binding on the flow (FIX-982).
+ * Read the entries of one typed map (`flow.internal` / `flow.task`), refusing
+ * the flat sibling shape by name.
  *
- * `collectWorkstreamBindings` reads the union off each block and trusts that
- * composition carried it there. This checks that trust against the same
- * {@link reachableBlocks} closure. The two disagree exactly when some
- * composition step dropped a child's bindings on the way up — the failure this
- * rail has had over and over — and the difference between catching it here and
- * not catching it is the difference between a flow that refuses to define and a
- * detached task that is admitted, claimed, dispatched, and then never runs.
- *
- * It is checkable at all only because `BlockDefinition.childBlocks` now retains
- * the sequencer's children. A board's drain IS a sequencer, so while that edge
- * was closure-captured a traversal could not reach a single real board.
- *
- * **Both sides read the same closure, deliberately.** An earlier cut walked the
- * tree here and read roots there, and the tool edge is exactly where that would
- * have bitten: the collector would have gained a board the assertion could not
- * see, or the reverse, and a flow would either define with a hole in it or
- * refuse for a binding that was in fact present.
- *
- * Identity, not key equality, is the test: `mergeWorkstreamBindings` dedupes on
- * the binding object, so a coordinate present under a *different* object is a
- * different declaration that happens to collide, not the same one arriving twice.
+ * The design settled the nesting — entries live under the type so a per-type
+ * setting has a home beside them — and an earlier cut carried them as flat
+ * maps. A flat map here would otherwise read as "no entries" and every
+ * dispatch to it would be refused at run time, one row at a time.
  */
-function assertWorkstreamBindingsReachable(
+function typedEntries<TEntry>(
   kind: string,
-  reachable: readonly BlockDefinition[],
-  collected: WorkstreamBindings | undefined
+  type: "internal" | "task",
+  value: TypedEntries<TEntry> | undefined
+): Record<string, TEntry> | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || typeof value.actions !== "object" || value.actions === null) {
+    throw new Error(
+      `Flow "${kind}" declares "${type}" without an \`actions\` map. Entries of a type are ` +
+        `nested under it: \`${type}: { actions: { name: { block } } }\`.`
+    );
+  }
+  return value.actions;
+}
+
+/**
+ * Validate the `internal` and `task` entry maps at definition time.
+ *
+ * One refusal, by name: an entry with no block cannot be dispatched to, and the
+ * failure would otherwise surface as a property read on `undefined` inside the
+ * runtime. Whether a task entry is reached through a board's claim gate is the
+ * walk's question (`resolveDispatchTargets`), not the map's.
+ */
+function validateEntryMaps(
+  kind: string,
+  internal: Record<string, InternalEntry> | undefined,
+  tasks: Record<string, TaskEntry> | undefined
 ): void {
-  for (const block of reachable) {
-    for (const binding of block.workstreamBindings?.values() ?? []) {
-      const key = workstreamBindingKey(binding.boardId, binding.coordinateKey);
-      if (collected?.get(key) === binding) continue;
+  for (const [name, entry] of Object.entries(internal ?? {})) {
+    if (typeof entry?.block?.name !== "string") {
       throw new Error(
-        `[workstream] flow "${kind}" reaches block "${block.name}", which declares detached ` +
-          `worker "${binding.worker.name}" at board "${binding.boardId}" coordinate ` +
-          `"${binding.coordinateKey}" — but that binding never reached the flow. A detached wake ` +
-          `carrying that coordinate would have no block to run. This is a propagation bug in the ` +
-          `composition path between that block and its action root, not something the flow author ` +
-          `declared wrongly: some step rebuilt a block without carrying its children over.`
+        `Flow "${kind}" internal entry "${name}" has no block. An internal entry is ` +
+          `\`{ block, ...policy }\`, the same shape as an action.`
       );
     }
+    validateConcurrencyConfig(`Flow "${kind}" internal entry "${name}"`, entry.concurrency);
   }
+  for (const [name, entry] of Object.entries(tasks ?? {})) {
+    if (typeof entry?.block?.name !== "string") {
+      throw new Error(
+        `Flow "${kind}" task entry "${name}" has no block. A task entry is ` +
+          `\`{ block, ...policy }\`, the same shape as an action.`
+      );
+    }
+    validateConcurrencyConfig(`Flow "${kind}" task entry "${name}"`, entry.concurrency);
+  }
+}
+
+/**
+ * Resolve every dispatcher reachable from this flow's declared blocks against
+ * the entries the flow declares, and put each task entry behind the claim gate
+ * of the board that hands off to it.
+ *
+ * This is the definition-time half of the no-fallback rule. A dispatcher's
+ * address is static — `(type, target)` on the block definition — so the check
+ * is a lookup, not an inference: `internal:"wake"` must be
+ * `flow.internal.actions.wake`; `task:"implement"` must be
+ * `flow.task.actions.implement`. Caught here, the author sees the block and the
+ * address; caught at run time, a claimed row would be handed off to nothing and
+ * wait out its lease.
+ *
+ * A task entry is declared as a plain block, and a `task` dispatch may only
+ * ever reach it through its board's gate — the row re-read, the claim verified,
+ * the task scope marked, the ticket re-minted. The board cannot install that
+ * gate itself, because the flow owns the entry, so it binds the gate onto the
+ * hand-off it holds at the seat (`bindTaskDispatcher`) and this walk applies
+ * it: the returned map carries `gate(entry)` in place of each entry a board
+ * addresses. A task dispatcher no board holds, an entry no board addresses, and
+ * two boards addressing one entry are each refused by name — every one of them
+ * is a worker that could run against a row nothing verified.
+ *
+ * Reads the reachable closure {@link walkFlowGraph} builds, taking the tool
+ * edge, because a dispatcher is reachable only through
+ * composition, a rescue handler or a tool edge, and the seam is reachable only
+ * from blocks that carry an address — `dispatcher()` and the board's hand-off
+ * both stamp one, and nothing on `ctx` lets a handler body dispatch without it.
+ */
+function resolveDispatchTargets(
+  kind: string,
+  reachable: readonly BlockDefinition[],
+  internal: Record<string, InternalEntry> | undefined,
+  tasks: Record<string, TaskEntry> | undefined
+): Record<string, TaskEntry> | undefined {
+  const gated: Record<string, TaskEntry> = {};
+  // Keyed on the gate the board bound, not on its `boardId` string: two
+  // `taskBoard()` instances can spell the same `boardId` over different
+  // ledgers, and only one of their gates can front the entry.
+  const gatedBy = new Map<string, TaskBinding>();
+  // Entries some seat hands off to under a policy that shares one child across
+  // rows (`per-worker`, or a `key`). Two rows dispatched into one session
+  // interleave their writes under the `allow` default, so these default to
+  // `queue` unless the author chose a policy. A `per-task` seat lands every row
+  // in a session of its own and keeps the flow default.
+  const sharedChild = new Set<string>();
+
+  for (const block of reachable) {
+    const address = block.dispatch;
+    if (address === undefined) continue;
+    const label = `${address.type}:"${address.target}"`;
+
+    if (address.type === "internal") {
+      if (internal !== undefined && Object.hasOwn(internal, address.target)) continue;
+      throw new Error(
+        `Flow "${kind}" reaches block "${block.name}", which dispatches to ${label}, but the ` +
+          `flow declares no such entry. Add \`internal: { actions: { ${address.target}: { block } } }\` ` +
+          `to the flow, or point the dispatcher at an entry it declares. A dispatch never resolves ` +
+          `another type's map, so this dispatch could not run.`
+      );
+    }
+
+    if (address.type === "task") {
+      const entry = tasks !== undefined && Object.hasOwn(tasks, address.target)
+        ? tasks[address.target]
+        : undefined;
+      if (entry === undefined) {
+        throw new Error(
+          `Flow "${kind}" reaches block "${block.name}", which hands off to ${label}, but the ` +
+            `flow declares no such task entry. Add \`task: { actions: { ${address.target}: { block } } }\` ` +
+            `to the flow — the block that runs each row this seat hands off.`
+        );
+      }
+      const binding = taskBindingOf(block);
+      if (binding === undefined) {
+        throw new Error(
+          `Flow "${kind}" reaches block "${block.name}", which hands off to ${label}, but no ` +
+            `task board holds it. A task dispatcher is a seat: put it under a board's ` +
+            `\`workers\`, which is the only place a claim on a durable row is minted.`
+        );
+      }
+      const holder = gatedBy.get(address.target);
+      if (holder !== undefined && holder.gate !== binding.gate) {
+        throw new Error(
+          holder.boardId === binding.boardId
+            ? `Flow "${kind}" task entry "${address.target}" is handed off to by two boards ` +
+                `that both declare boardId "${binding.boardId}". A boardId names one board and ` +
+                `one ledger; give the second board its own boardId and its own entry.`
+            : `Flow "${kind}" task entry "${address.target}" is handed off to by two boards, ` +
+                `"${holder.boardId}" and "${binding.boardId}". One entry settles against one ` +
+                `ledger; declare a second entry for the second board.`
+        );
+      }
+      if (holder === undefined) {
+        gatedBy.set(address.target, binding);
+        gated[address.target] = { ...binding.gate(entry, address.target), gatedBy: binding };
+      }
+      if (address.session !== "per-task") sharedChild.add(address.target);
+      continue;
+    }
+
+    throw new Error(
+      `Flow "${kind}" reaches block "${block.name}", which dispatches type ` +
+        `"${String((address as { type: string }).type)}". A block may dispatch only the types ` +
+        `whose trust it can supply — "internal" and "task".`
+    );
+  }
+
+  if (tasks === undefined) return undefined;
+  for (const target of sharedChild) {
+    const entry = gated[target];
+    if (entry !== undefined && entry.concurrency === undefined) {
+      gated[target] = { ...entry, concurrency: "queue" };
+    }
+  }
+  for (const name of Object.keys(tasks)) {
+    if (gatedBy.has(name)) continue;
+    throw new Error(
+      `Flow "${kind}" declares task entry "${name}", but no task board reachable from the ` +
+        `flow hands off to it. Only a board can dispatch a task — it mints the claim the entry ` +
+        `runs under — so an entry without one could never be reached. Add a ` +
+        `\`dispatcher({ type: "task", target: "${name}" })\` seat to a board the flow ` +
+        `reaches, or remove the entry.`
+    );
+  }
+  return gated;
 }
 
 /**
@@ -724,7 +779,7 @@ function tupleKey(t: { scope: ResourceScope; ref: string; flowIsolation: boolean
  *     (always a hard error — would silently share storage).
  *   - `flowIsolation: true` on a session-scoped resource (semantically
  *     meaningless; almost certainly a confused author).
- *   - `sharedToWorkstream: true` outside session scope (same reason: user and
+ *   - `sharedToLineage: true` outside session scope (same reason: user and
  *     org scope already span every session in a lineage).
  *
  * Same-accessor-key collisions are caught at the `mergeDeclaredResources`
@@ -753,9 +808,9 @@ function validateFlowResources(
       );
     }
 
-    if (entry.sharedToWorkstream === true && entry.scope !== "session") {
+    if (entry.sharedToLineage === true && entry.scope !== "session") {
       throw new Error(
-        `Resource "${accessor}" in flow "${flowKind}" sets sharedToWorkstream: true on a ` +
+        `Resource "${accessor}" in flow "${flowKind}" sets sharedToLineage: true on a ` +
         `${entry.scope}-scoped resource. That scope already spans every session in a ` +
         `lineage — drop the flag.`
       );
@@ -802,28 +857,28 @@ function mergeFlowResourceMap(
   if (blockResources === undefined) return { ...flowResources };
 
   // An override that silently changes WHERE a resource stores is never what an
-  // author meant (FIX-1068). `sharedToWorkstream` decides whether a
+  // author meant (FIX-1068). `sharedToLineage` decides whether a
   // session-scoped resource resolves against the running session or against the
   // lineage, and a block that declared it — a task board binding its ledger, for
   // instance — built its durability on that answer. Overriding the flag through
   // an accessor-name collision leaves the block claiming rows in one place while
   // the work that must read them looks in another: a parent claims a task in its
-  // own session and the Workstream resolves an empty ledger, which is a silent
+  // own session and the child session resolves an empty ledger, which is a silent
   // loop rather than an error. Refused by name, so the author can see which two
   // declarations disagree.
   for (const [accessor, blockEntry] of Object.entries(blockResources)) {
     const flowEntry = (flowResources as DeclaredResources)[accessor];
     if (flowEntry === undefined || flowEntry === blockEntry) continue;
-    const blockShared = (blockEntry as { sharedToWorkstream?: boolean }).sharedToWorkstream === true;
-    const flowShared = (flowEntry as { sharedToWorkstream?: boolean }).sharedToWorkstream === true;
+    const blockShared = (blockEntry as { sharedToLineage?: boolean }).sharedToLineage === true;
+    const flowShared = (flowEntry as { sharedToLineage?: boolean }).sharedToLineage === true;
     if (blockShared === flowShared) continue;
     throw new Error(
       `Resource "${accessor}" in flow "${flowKind}": the flow-level declaration sets ` +
-        `sharedToWorkstream: ${flowShared}, but a block declared the same accessor with ` +
-        `sharedToWorkstream: ${blockShared}. A flow-level declaration overrides a block's, so ` +
+        `sharedToLineage: ${flowShared}, but a block declared the same accessor with ` +
+        `sharedToLineage: ${blockShared}. A flow-level declaration overrides a block's, so ` +
         `this would move the resource between the running session and the lineage without the ` +
-        `block knowing — a detached task board would claim rows in one place while its ` +
-        `Workstream reads an empty ledger and loops. Make the two agree, or give one a ` +
+        `block knowing — a task board that hands off would claim rows in one place while its ` +
+        `child session reads an empty ledger and loops. Make the two agree, or give one a ` +
         `distinct accessor name.`
     );
   }
@@ -985,9 +1040,20 @@ function createFlowInstance(
   const chat = withFlowToolsChat(definition.chat, tools);
   const schedules = withFlowToolsSchedules(definition.schedules, tools);
 
+  // The two entry maps a caller cannot name. Validated before any aggregation
+  // walks their blocks, like the transport maps above; both get the flow's
+  // `tools` like a caller action does. A task entry is then put behind its
+  // board's claim gate by the address walk below, so the map the instance
+  // carries is not the map the author wrote.
+  const declaredInternal = typedEntries(kind, "internal", definition.internal);
+  const declaredTaskEntries = typedEntries(kind, "task", definition.task);
+  validateEntryMaps(kind, declaredInternal, declaredTaskEntries);
+  const internal = withFlowToolsEntries(declaredInternal, tools);
+  const declaredTasks = withFlowToolsEntries(declaredTaskEntries, tools);
+
   // Enumerated once and shared by every collector below. Three separate
   // walks was how a lifecycle observer's board could reach `runAction` while
-  // being invisible to `flow.workstreamBindings`.
+  // being invisible to the dispatch-target walk.
   // Merged before collection, not after: `FlowInstanceOptions` can replace a
   // `request` lifecycle observer, and the instance returned below runs the
   // merged one. Collecting from `definition.*` would read the blocks the flow was
@@ -995,48 +1061,41 @@ function createFlowInstance(
   // declarations, and keeping a replaced block's.
   const requestMerged = mergeConfig(definition.request, options?.request);
 
+  // The address check runs over the reachable closure of every entry as
+  // authored: every dispatcher the flow can reach — through composition, a
+  // rescue handler, or a tool edge — must name an entry the flow declares. It
+  // also produces the task map the instance carries: each task entry rebuilt
+  // behind the claim gate of the board whose hand-off addresses it. The roots
+  // below are then collected from THAT map, so the gate's own declarations
+  // (the board's ledger) count.
+  const task = resolveDispatchTargets(
+    kind,
+    walkFlowGraph(
+      actionBlocks(actions, internal, declaredTasks, webhooks, chat, schedules, requestMerged)
+    ),
+    internal,
+    declaredTasks
+  );
+
   const declaredBlocks = actionBlocks(
     actions,
+    internal,
+    task,
     webhooks,
     chat,
     schedules,
     requestMerged
   );
 
-  // Bindings are collected FIRST, because a detached worker is no longer
-  // reachable through the blocks above and its declarations would otherwise be
-  // lost (FIX-982 P3a).
-  //
-  // The drain substitutes a spawn block for each detached worker in its routing
-  // table, so the worker itself is not a child of any action root. The block
-  // that DOES contain it is the board's runner, which reaches the flow only as a
-  // binding. Collect resources and `requiresOrg` over the action blocks plus
-  // those runners, or a worker whose resource nothing inline happens to also
-  // declare would be missing from `flow.resources` — and the failure surfaces as
-  // an unresolved resource inside the Workstream, far from the declaration.
-  // `requiresOrg` is worse: it would simply not be enforced.
-  //
-  // Collected from the action roots PLUS every block reached across a static
-  // `tools` edge, because a board handed to a model as a tool is a supported
-  // shape and a generator bubbles none of its tools' rails (FIX-1074).
-  // Deliberately not from every reachable block — see {@link walkFlowGraph} for
-  // why that would silently repair the propagation bug the assertion catches.
-  const graph = walkFlowGraph(declaredBlocks);
-  const workstreamBindings = collectWorkstreamBindingsToFixpoint([
-    ...declaredBlocks,
-    ...graph.toolRoots,
-  ]);
-  // Reachability stays on the closure of the ORIGINAL roots: the question it
-  // answers is whether the flow can route to a board it can reach, and the
-  // runners are what it would route to, so including them would make the check
-  // trivially true.
-  assertWorkstreamBindingsReachable(kind, graph.reachable, workstreamBindings);
-  const declaringBlocks =
-    workstreamBindings === undefined
-      ? declaredBlocks
-      : [...declaredBlocks, ...distinctRunners(workstreamBindings)];
+  // Resources and `requiresOrg` are collected off the action roots alone. A
+  // handed-off board's worker is not a child of any root — the drain routes
+  // the seat to a hand-off block — but the ledger it settles against is
+  // declared by the gate on the task entry the seat addresses, and task
+  // entries are action roots. So a board reached only as a generator's tool
+  // (FIX-1074) still lands its declarations here without the walk taking the
+  // tool edge for them.
 
-  const blockResources = collectBlockResources(declaringBlocks);
+  const blockResources = collectBlockResources(declaredBlocks);
   const flowOwnResources = options?.resources ?? definition.resources;
   // Accessor keys declared in the flow's OWN `resources` map, captured before
   // block-tree/capability resources bubble up and merge in (FIX-688). The
@@ -1082,22 +1141,16 @@ function createFlowInstance(
     validateConcurrencyConfig(`Flow "${kind}" action "${actionName}"`, action.concurrency);
   }
 
-  // The one core a detached dispatch resolves (FIX-982 P3a). Assembled here
-  // because this is the only point that holds every board's bindings at once,
-  // and `undefined` for a flow that declares no detached work — which is what
-  // makes `startDetached`'s `no-workstream-core` refusal a real answer rather
-  // than a placeholder.
-  const workstream = buildWorkstreamCore(kind, workstreamBindings);
 
   return {
     id: options?.id ?? kind,
     kind,
     requireUser,
-    requiresOrg: collectRequiresOrg(declaringBlocks),
+    requiresOrg: collectRequiresOrg(declaredBlocks),
     authentication,
     actions,
-    workstreamBindings,
-    ...(workstream !== undefined ? { workstream } : {}),
+    ...(internal !== undefined ? { internal: { actions: internal } } : {}),
+    ...(task !== undefined ? { task: { actions: task } } : {}),
     session,
     request: requestMerged,
     user,
@@ -1146,18 +1199,13 @@ export function defineFlow<
     kind: normalizedDefinition.kind,
     requireUser: baseInstance.requireUser,
     requiresOrg: baseInstance.requiresOrg,
-    // Mirrored for the same reason `requiresOrg` is: this blueprint is read
-    // directly, and a missing field reads as an absent feature rather than as an
-    // unmirrored one.
-    workstreamBindings: baseInstance.workstreamBindings,
-    // Mirrored alongside the bindings it is assembled from, so a reader of the
-    // blueprint can tell "declares detached work" from "declares none" without
-    // instantiating the flow.
-    ...(baseInstance.workstream !== undefined
-      ? { workstream: baseInstance.workstream }
-      : {}),
     authentication: baseInstance.authentication,
     actions: baseInstance.actions as TActions,
+    // Mirrored for the same reason `requiresOrg` is: this blueprint is read
+    // directly, and a missing map reads as an absent feature rather than as an
+    // unmirrored one.
+    ...(baseInstance.internal !== undefined ? { internal: baseInstance.internal } : {}),
+    ...(baseInstance.task !== undefined ? { task: baseInstance.task } : {}),
     session: baseInstance.session as TSession,
     request: baseInstance.request as TRequest,
     user: baseInstance.user as TUser,

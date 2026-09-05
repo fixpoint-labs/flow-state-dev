@@ -2,12 +2,12 @@
  * `onReview` — the declaration surface and its construction-time refusals
  * (FIX-1234).
  *
- * Two properties carry the weight here, and they are the same two the detached
+ * Two properties carry the weight here, and they are the same two the hand-off
  * declaration surface is held to:
  *
  * - **The off state.** A board that says nothing about `onReview` behaves
  *   exactly as it did before this option existed — including a durable one, a
- *   detached one, and one on a non-default `onIdle`. Every refusal below is one
+ *   handed-off one, and one on a non-default `onIdle`. Every refusal below is one
  *   bad predicate away from firing on an ordinary board, so the off state is
  *   asserted rather than assumed (BP-030 / BP-035).
  *

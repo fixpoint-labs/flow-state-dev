@@ -18,7 +18,7 @@
  */
 import { z, type ZodTypeAny } from "zod";
 import { transientSlot } from "@flow-state-dev/core";
-import { taskClaimTicketSchema, type Task } from "../tasks";
+import { taskClaimTicketSchema, taskStatusSchema, type Task, type TaskWriteOutcome } from "../tasks";
 
 /**
  * Default outer-sequencer state shape: a `tasks` record under the default key.
@@ -119,22 +119,12 @@ export type ClaimResult = {
 };
 
 /**
- * Worker input shape — mirrors the substrate's `TaskWorkerInput`
- * structurally. Defined as a Zod schema here (instead of a bare TS
- * type) so the pattern's worker-router can declare it as `inputSchema`
- * and have the framework validate every dispatch.
+ * Worker input shape — one object with `TaskWorkerInput`, owned in
+ * `../tasks/workers/types.ts` (the type is inferred from this schema).
+ * Re-exported here so the existing
+ * `@flow-state-dev/orchestration/task-board` import path stays put.
  */
-export const taskWorkerInputSchema = z.object({
-  taskId: z.string(),
-  goal: z.string(),
-  title: z.string().optional(),
-  context: z.string().optional(),
-  input: z.unknown().optional(),
-  attempts: z.number().int().nonnegative(),
-  feedback: z.string().optional(),
-  metadata: z.record(z.unknown()).optional(),
-  deps: z.record(z.unknown()).optional(),
-});
+export { taskWorkerInputSchema } from "../tasks/workers/types";
 
 /**
  * Output of `checkBoard` — drives the worker's `loopBack` predicate, and
@@ -163,3 +153,41 @@ export const checkBoardOutputSchema = z.object({
 });
 
 export type CheckBoardOutput = z.infer<typeof checkBoardOutputSchema>;
+
+/**
+ * What `board.unparkAndDrain` takes (FIX-1244): the id of the task being
+ * answered and the prose answer, which reaches the worker as `input.feedback`
+ * on the next attempt. Read from the value the step is handed — the action's
+ * input when it is the first step, the previous step's output otherwise —
+ * never from state or construction config.
+ */
+export const unparkAndDrainInputSchema = z.object({
+  taskId: z.string(),
+  feedback: z.string().optional(),
+});
+
+export type UnparkAndDrainInput = z.infer<typeof unparkAndDrainInputSchema>;
+
+/**
+ * The substrate's `TaskWriteOutcome`, as a schema, so a step that returns the
+ * write's verdict unwrapped can declare it (BP-025). `reason` is the decline
+ * vocabulary `TaskWriteDeclineReason` enumerates; kept as a string enum here
+ * rather than derived, because the type is a union of literals with doc
+ * comments and has no schema of its own.
+ */
+export const taskWriteOutcomeSchema: z.ZodType<TaskWriteOutcome> = z.discriminatedUnion("outcome", [
+  z.object({ outcome: z.literal("recorded") }),
+  z.object({ outcome: z.literal("unchanged") }),
+  z.object({
+    outcome: z.literal("declined"),
+    reason: z.enum([
+      "immutable-assignee",
+      "terminal",
+      "not-my-task",
+      "disallowed",
+      "lost-claim",
+      "parked",
+    ]),
+    status: taskStatusSchema,
+  }),
+]);
