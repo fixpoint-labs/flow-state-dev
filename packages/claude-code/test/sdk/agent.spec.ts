@@ -939,6 +939,64 @@ describe("claudeCodeAgent — resume and onSession", () => {
     expect(onSession).toHaveBeenCalledWith("sess_named", expect.anything());
   });
 
+  it("announces the session BEFORE anything that can throw consumes the message", async () => {
+    // **The property the hook's placement exists for, pinned so a merge cannot
+    // quietly move it.**
+    //
+    // `onSession` sits at the first point the id is known and above everything
+    // that follows — translation, emission, the recorder. The reason is not
+    // tidiness: a run that dies mid-stream returns no handle, so the hook is the
+    // ONLY way its id reaches the host, and every line below it is a line that
+    // can prevent it running.
+    //
+    // FIX-1301 rewrites this same loop (a race against `ctx.signal`, with an
+    // early return per iteration). Whichever change lands second grafts the
+    // other in, and the resolution to catch is one that slides this hook down
+    // past the work — it compiles, it reads fine, and no other test notices,
+    // because the resume tests never make emission fail.
+    //
+    // So: the message that names the session is also the message whose emission
+    // throws. The hook must already have fired.
+    const onSession = vi.fn();
+    const block = claudeCodeAgent({
+      // ONE message, carrying the session id AND content whose emission fails.
+      // Both halves happen in a single iteration, which is what makes this a
+      // test about ORDER rather than about two messages.
+      resolveClaudeAgent: scriptedQuery([
+        {
+          type: "assistant",
+          session_id: "sess_named",
+          message: { content: [{ type: "text", text: "hello" }] },
+        },
+        { ...RESULT_OK, session_id: "sess_named" },
+      ]),
+      detached: true,
+      includePartialMessages: false,
+      onSession,
+    });
+
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+    const realEmit = runtime.ctx.response.emit.bind(runtime.ctx.response);
+    (runtime.ctx.response as { emit: unknown }).emit = async (event: {
+      type?: string;
+    }) => {
+      // The first item this run tries to record fails the request.
+      if (event?.type === "item.added") {
+        throw new Error("the request record rejected the item");
+      }
+      return realEmit(event as never);
+    };
+
+    await expect(
+      block.config.execute?.({ prompt: "go" }, runtime.ctx as never),
+    ).rejects.toThrow(/rejected the item/);
+
+    // The run failed on its very first emission — and the host was still told
+    // which session it was in. Move the hook below the emission and this is
+    // never called.
+    expect(onSession).toHaveBeenCalledWith("sess_named", expect.anything());
+  });
+
   it("calls the hook on a run whose result is errored", async () => {
     // An errored terminal result is a RETURN, not a throw — this lab's whole
     // premise. The session exists and the failure was not a resume failure, so

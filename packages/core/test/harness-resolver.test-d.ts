@@ -69,6 +69,20 @@ export const managerShapedReadsCompile: HarnessResolver<string | null> = (ctx) =
 };
 
 /**
+ * The same guarantee, at every option that IS one of these resolvers.
+ *
+ * `claudeCodeAgent`'s `cwd` / `sandbox` / `resume` and the workspace
+ * capability's `root` all decide where a run writes or what it continues, and
+ * all of them are `HarnessResolver`. Declaring the type once and asserting the
+ * arity once is what keeps the next such option from quietly reintroducing the
+ * parameter — the `root` option did exactly that, surviving the first pass
+ * because it spelled its own signature out instead of naming the type.
+ */
+export const everyFeedIsContextOnly: Array<HarnessResolver<string>> = [
+  (ctx) => String(ctx.signal.aborted),
+];
+
+/**
  * A harness calls the resolver with ITS OWN context, which is narrower than the
  * declared one wherever the harness declared something — session state, above
  * all. Contravariance makes that the failure mode a too-tight declaration
