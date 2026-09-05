@@ -114,6 +114,27 @@ const log = () => readFileSync(LOG, "utf8");
   check("resume: the handle's thread id is the resumed id", thread.id === "thr_saved_42" && turn.finalResponse === "Wrote notes.md", thread.id);
 }
 
+// 3b. Resume of a thread the CLI no longer has — settled against the REAL CLI in
+// real-cli-resume.mjs (`node spec-poc/LAB-153-codex-sdk-shape/real-cli-resume.mjs`),
+// which found: zero stdout events, a plain-text stderr error, exit 1. This mode
+// reproduces that finding so the fast fake-based suite carries it too — this fake
+// previously echoed every resume id unconditionally (by construction) and so could
+// not have caught the LAB-153/LAB-154 dispute this settles.
+{
+  const codex = fresh("dead-resume");
+  const thread = codex.resumeThread("thr_dead", { skipGitRepoCheck: true });
+  let sawAnyEvent = false;
+  let error = null;
+  try {
+    const { events } = await thread.runStreamed("continue");
+    for await (const _ev of events) sawAnyEvent = true;
+  } catch (e) {
+    error = e;
+  }
+  check("resume/dead: no event reaches the SDK consumer before the throw (FINDING, confirmed against the real CLI)", !sawAnyEvent && error !== null, error?.message);
+  check("resume/dead: .id is never overwritten from a stream event — stays the caller-supplied dead id", thread.id === "thr_dead", thread.id);
+}
+
 // 4. Abort: a signal fired mid-run kills the child and the run REJECTS (a throw, not a status).
 {
   const codex = fresh("hang");

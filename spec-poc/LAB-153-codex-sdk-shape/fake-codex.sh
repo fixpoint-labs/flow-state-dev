@@ -3,7 +3,7 @@
 #
 # Records the argv, stdin and env the SDK hands it, then emits the JSONL that
 # `codex exec --experimental-json` emits. FAKE_CODEX_MODE steers the ending:
-#   ok (default) · hang · hang-grandchild · fail · crash · nousage
+#   ok (default) · hang · hang-grandchild · fail · crash · nousage · dead-resume
 LOG="${FAKE_CODEX_LOG:-/dev/null}"
 printf '%s\n' "ARGV: $*" >> "$LOG"
 PROMPT="$(cat)"
@@ -14,6 +14,14 @@ TID="${FAKE_CODEX_THREAD_ID:-thr_fake_1}"
 for ((i=1; i<=$#; i++)); do
   if [[ "${!i}" == "resume" ]]; then j=$((i+1)); TID="${!j}"; fi
 done
+if [[ "${FAKE_CODEX_MODE:-ok}" == "dead-resume" ]]; then
+  # LAB-153-thread-naming settlement: the real CLI, asked to resume an id it has
+  # never seen, emits NOTHING on stdout (no thread.started, no event of any kind)
+  # and fails on stderr with a plain-text RPC error — see real-cli-resume.mjs.
+  # This mode reproduces exactly that, so it holds without hitting the network.
+  echo "Error: thread/resume: thread/resume failed: no rollout found for thread id $TID (code -32600)" >&2
+  exit 1
+fi
 echo "{\"type\":\"thread.started\",\"thread_id\":\"$TID\"}"
 echo '{"type":"turn.started"}'
 case "${FAKE_CODEX_MODE:-ok}" in
