@@ -13,7 +13,11 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { claudeRemoteHandleSchema, type ClaudeRemoteHandle } from "./types";
+import {
+  CLAUDE_CLI_REMOTE_SOURCE,
+  claudeRemoteHandleSchema,
+  type ClaudeRemoteHandle,
+} from "./types";
 import { parseRemoteDispatchOutput } from "./parse-output";
 import { defaultResolveClaudeCli, type ResolveClaudeCli } from "./resolve-cli";
 import { ClaudeCliNotFoundError, ClaudeRemoteDispatchError } from "./errors";
@@ -105,7 +109,7 @@ export function claudeRemoteDispatch(options: ClaudeRemoteDispatchOptions = {}) 
 
       const { url, sessionId } = parseRemoteDispatchOutput(result.stdout);
       const handle: ClaudeRemoteHandle = {
-        source: "cli-remote",
+        source: CLAUDE_CLI_REMOTE_SOURCE,
         status: "dispatched",
         sessionId,
         url,

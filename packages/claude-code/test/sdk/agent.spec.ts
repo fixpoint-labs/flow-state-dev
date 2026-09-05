@@ -15,13 +15,16 @@ import {
   SDK_SESSION_ID_KEY,
   SDK_AGENT_RUNS_KEY,
 } from "../../src/sdk/agent";
+import { harnessRunHandleSchema } from "@flow-state-dev/core";
 import { createDefaultResolveClaudeAgent } from "../../src/sdk/sdk-client";
 import { ClaudeAgentSdkNotInstalledError, ClaudeAgentRunError } from "../../src/sdk/errors";
-import type {
-  SdkAgentHandle,
-  SdkMessageLike,
-  ResolveClaudeAgent,
-  ClaudeAgentQueryOptions,
+import {
+  CLAUDE_SDK_SOURCE,
+  sdkAgentHandleSchema,
+  type SdkAgentHandle,
+  type SdkMessageLike,
+  type ResolveClaudeAgent,
+  type ClaudeAgentQueryOptions,
 } from "../../src/sdk/types";
 
 /** Build an async-iterable scripted `query` from a fixed message list. */
@@ -221,7 +224,7 @@ describe("claudeCodeAgent", () => {
     expect(runs[0].sessionId).toBe("sess_new");
 
     const handle = output as SdkAgentHandle;
-    expect(handle.source).toBe("sdk");
+    expect(handle.source).toBe(CLAUDE_SDK_SOURCE);
     expect(handle.status).toBe("completed");
     expect(handle.resultSubtype).toBe("success");
     expect(handle.usage).toEqual({ inputTokens: 50, outputTokens: 10 });
@@ -1881,4 +1884,106 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     expect(seen[0]!.prompt).toBe("picked:  raw");
   });
 
+  // The runtime half of the conformance claim (LAB-152). The type assertion in
+  // `test/harness-conformance.test-d.ts` is typed over `any` schema slots and
+  // proves less than it looks like it does; these run the real block and check
+  // what a manager driving any harness would actually read off the handle.
+  describe("the neutral harness contract", () => {
+    /** Run the block on a scripted result and return its handle. */
+    async function runFor(result: SdkMessageLike | null): Promise<SdkAgentHandle> {
+      const block = claudeCodeAgent({
+        resolveClaudeAgent: scriptedQuery(result === null ? [] : [result]),
+      });
+      const { output, error } = await testBlock(block, { input: { prompt: "go" } });
+      expect(error).toBeNull();
+      return output as SdkAgentHandle;
+    }
+
+    it("returns a handle that parses against the neutral schema", async () => {
+      const handle = await runFor(RESULT_OK);
+
+      // Parsed, not merely shaped like it: this is what a manager declaring the
+      // neutral handle as its own input would put the value through.
+      const neutral = harnessRunHandleSchema.parse(handle);
+      expect(neutral).toEqual({
+        source: CLAUDE_SDK_SOURCE,
+        status: "completed",
+        sessionId: "sess_new",
+        url: null,
+        dispatchedAt: handle.dispatchedAt,
+        outcome: "finished",
+        finalMessage: "final answer",
+        usage: { inputTokens: 50, outputTokens: 10 },
+        cost: { usd: 0.01, basis: "reported" },
+      });
+    });
+
+    it("names itself with the package/door convention", async () => {
+      // Not cosmetic: `source` is what a later check compares a run's origin
+      // against, so an unpinned value makes that check a check of nothing.
+      expect((await runFor(RESULT_OK)).source).toBe("claude-code/sdk");
+    });
+
+    it.each([
+      ["success", "finished"],
+      ["error_max_turns", "stopped-at-limit"],
+      ["error_max_budget_usd", "stopped-at-limit"],
+      ["error_during_execution", "failed"],
+      ["error_max_structured_output_retries", "failed"],
+    ] as const)("reads subtype %s as outcome %s", async (subtype, outcome) => {
+      // The vendor's enum is translated at the one place it is known, so no
+      // reader downstream ever branches on an SDK string.
+      const handle = await runFor({ type: "result", subtype, session_id: "s" });
+      expect(handle.outcome).toBe(outcome);
+      expect(handle.resultSubtype).toBe(subtype);
+    });
+
+    it("leaves outcome, usage and cost null when the run reported no result", async () => {
+      const handle = await runFor(null);
+
+      expect(handle.outcome).toBeNull();
+      expect(handle.usage).toBeNull();
+      expect(handle.cost).toBeNull();
+      expect(handle.costUsd).toBeNull();
+    });
+
+    it("marks the cost reported, never estimated, on this path", async () => {
+      // This door gets its number from the SDK. A harness that reports none
+      // (and has one derived for it) is what `estimated` exists for.
+      expect((await runFor(RESULT_OK)).cost).toEqual({ usd: 0.01, basis: "reported" });
+    });
+
+    it("keeps costUsd and resultSubtype beside the neutral fields", async () => {
+      // The dual the run manager reads today. It comes off only when the
+      // manager switches to `cost` and `outcome` — until then, removing either
+      // silently breaks a reader in another package.
+      const handle = await runFor(RESULT_OK);
+
+      expect(handle.costUsd).toBe(handle.cost?.usd);
+      expect(handle.resultSubtype).toBe("success");
+    });
+
+    it("still parses a handle persisted under the old source spelling", async () => {
+      // A run recorded before the convention existed is still in session state
+      // (BP-030). It reads through to the new value rather than failing.
+      const parsed = sdkAgentHandleSchema.parse({
+        source: "sdk",
+        status: "completed",
+        sessionId: "sess_old",
+        url: null,
+        dispatchedAt: 1,
+        resultSubtype: "success",
+        finalMessage: "hi",
+        toolsObserved: [],
+        usage: null,
+        costUsd: null,
+      });
+
+      expect(parsed.source).toBe(CLAUDE_SDK_SOURCE);
+      // Written before `outcome` and `cost` existed, so both read as absent
+      // rather than as a value nobody recorded.
+      expect(parsed.outcome).toBeNull();
+      expect(parsed.cost).toBeNull();
+    });
+  });
 });

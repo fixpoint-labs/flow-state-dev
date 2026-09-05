@@ -335,3 +335,23 @@ export type {
 } from "../schema/action-schema";
 
 export { applyGetOrPatchState, defineResource, resource } from "./resource";
+
+/**
+ * The coding-harness contract (LAB-152) — what a harness block is handed and
+ * what it hands back, plus the signatures a host feeds it configuration
+ * through. The matching runtime schemas are exported from the package root.
+ */
+export type {
+  HarnessBlock,
+  HarnessCostBasis,
+  HarnessResolver,
+  HarnessRunCost,
+  HarnessRunEnvelope,
+  HarnessRunHandle,
+  HarnessRunInput,
+  HarnessRunOutcome,
+  HarnessRunStatus,
+  HarnessRunUsage,
+  HarnessSessionHook,
+  HarnessSource,
+} from "./harness";

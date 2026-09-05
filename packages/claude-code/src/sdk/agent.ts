@@ -49,6 +49,8 @@ import {
 import { ClaudeAgentRunError } from "./errors";
 import type { ClaudeAgentSettingSource } from "./types";
 import {
+  CLAUDE_SDK_SOURCE,
+  outcomeFromResultSubtype,
   sdkAgentHandleSchema,
   type ClaudeAgentQueryOptions,
   type ResolveClaudeAgent,
@@ -855,15 +857,19 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
         const errored = isErroredSubtype(resultSubtype);
         const handle: SdkAgentHandle = {
-          source: "sdk",
+          source: CLAUDE_SDK_SOURCE,
           status: errored ? "errored" : "completed",
           sessionId: newSessionId,
           url: null,
           dispatchedAt,
-          resultSubtype,
+          outcome: outcomeFromResultSubtype(resultSubtype),
           finalMessage,
-          toolsObserved: emitState.toolsObserved,
           usage,
+          // The SDK reports its own total, so the basis is `reported` whenever
+          // there is one at all — this path never derives a number.
+          cost: costUsd === null ? null : { usd: costUsd, basis: "reported" },
+          resultSubtype,
+          toolsObserved: emitState.toolsObserved,
           costUsd,
         };
 
