@@ -142,7 +142,6 @@ import {
   createInstallBoardFlowState,
   createTeardownBoardFlowState,
   stampCurrentClaim,
-  type BoardRunFlowState,
 } from "./flow-policy-wiring";
 import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
 import {
@@ -828,21 +827,21 @@ export function taskBoard<
     workerId: (ctx) => resolveWorkerIdFromCtx(ctx, name),
   });
 
-  // FIX-610 shared run-state bag — populated by `installFlowState`
-  // at the top of the outer sequencer and consulted by every worker
-  // dispatch. Cleared by `teardownFlowState` on both completion and
-  // error paths so a board re-entered within the same request starts
-  // each run fresh.
-  const runState: BoardRunFlowState = { collectionId };
+  // FIX-610 run state — installed on the request by `installFlowState` at
+  // the top of the outer sequencer and consulted by every worker dispatch
+  // in that request. Cleared by `teardownFlowState` on both completion and
+  // error paths so a board re-entered within the same request starts each
+  // run fresh. It is per request, not per board definition, so two drains
+  // of this board overlapping in one process cannot see each other's
+  // (FIX-1244).
   const installFlowState = createInstallBoardFlowState({
     name,
     collectionId,
     flowPolicy: flowPolicyConfig,
     toolCache,
     collection: collectionFactory,
-    runState,
   });
-  const teardownFlowState = createTeardownBoardFlowState({ name, runState });
+  const teardownFlowState = createTeardownBoardFlowState({ name });
 
   // The hand-off. A dispatcher seat routes to a block that puts the claimed
   // row through the dispatch seam and returns, instead of to the dispatcher
@@ -907,7 +906,7 @@ export function taskBoard<
       ? { defaultWorker: dispatchDefaultWorker }
       : {}),
     collection: collectionFactory,
-    resolveFlowPolicy: createFlowPolicyResolver(runState),
+    resolveFlowPolicy: createFlowPolicyResolver(name),
   });
 
   const recordSuccess = createRecordSuccess({
