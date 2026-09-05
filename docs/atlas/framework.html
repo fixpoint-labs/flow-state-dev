@@ -229,7 +229,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <a class="grp">Edges</a>
     <a href="#transports">21 · Inbound transports</a>
     <a href="#hosts">22 · Hosts &amp; stores</a>
-    <a href="#detached">23 · Detached work</a>
+    <a href="#dispatched">23 · Dispatched work</a>
     <a class="grp">Surfaces</a>
     <a href="#consumers">24 · Client, React, CLI</a>
     <a href="#proving">25 · Proving ground</a>
@@ -314,7 +314,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-b" x="380" y="64">engine</text>
         <text class="t-s" x="380" y="79">executeBlock, retry, rescue</text>
         <text class="t-s" x="380" y="94">scopes, CAS, items, SSE, HTTP routes</text>
-        <text class="t-s" x="380" y="109">suspend/resume, recovery, workstreams</text>
+        <text class="t-s" x="380" y="109">suspend/resume, recovery, child sessions</text>
         <path class="ln" d="M490,122 L490,138" marker-end="url(#a1)"/>
 
         <rect class="n-grp" x="360" y="140" width="260" height="222" rx="4"/>
@@ -485,7 +485,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <li>A <strong>sequencer step</strong> can be a task board&rsquo;s drain — <code>.step(board.drain)</code>. <code>parallelTasks</code>, <code>supervisor</code>, <code>planAndExecute</code> and <code>eventActors</code> are all exactly that.</li>
     <li>A <strong>board worker</strong> can be a sequencer, so one node of a dynamic graph can be a fixed pipeline.</li>
     <li>A <strong>generator</strong> holding a skill can command its own private board — the skill plans tasks, <code>runBoard</code> drains them.</li>
-    <li>A <strong>board task</strong> can spawn detached, re-entering later through that same board's runner in a child session.</li>
+    <li>A <strong>board task</strong> can be handed off by a dispatcher seat, re-entering through that same board's claim gate in a child session.</li>
   </ul>
   <p>So the practical design move is not "which mode is this application?" but <strong>"at which point in this pipeline does the shape stop being knowable?"</strong> Everything before that point should be a sequencer. Everything after it needs a board or a skill. Most real systems put the boundary somewhere in the middle, and the framework's job is to make that seam invisible.</p>
 
@@ -503,7 +503,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 336" role="img" aria-label="All four control modes resolve to one BlockContext, which reaches six orthogonal systems: blocks answer what runs, the control mode answers what runs next, scopes answer how long it is remembered, resources answer what is shared, items answer who sees it, and workstreams answer how long it may take.">
+      <svg viewBox="0 0 940 336" role="img" aria-label="All four control modes resolve to one BlockContext, which reaches six orthogonal systems: blocks answer what runs, the control mode answers what runs next, scopes answer how long it is remembered, resources answer what is shared, items answer who sees it, and child sessions answer how long it may take.">
         <defs><marker id="d2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
 
         <rect class="n-box" x="48" y="16" width="200" height="34" rx="4"/>
@@ -560,7 +560,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
         <rect class="n-box" x="636" y="234" width="292" height="88" rx="4"/>
         <text class="t-acc" x="650" y="254">how long may it take?</text>
-        <text class="t-b" x="650" y="276">workstreams</text>
+        <text class="t-b" x="650" y="276">child sessions</text>
         <text class="t-xs" x="650" y="294">A CHILD SESSION THAT OUTLIVES THE REQUEST</text>
         <text class="t-xs" x="650" y="310">DURABILITY DEPENDS ON THE TOPOLOGY</text>
       </svg>
@@ -569,11 +569,11 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   </figure>
 
   <h3>Why the orthogonality earns its keep</h3>
-  <p>Because the six vary independently, you can change one without touching the rest. Make a chat pipeline concurrent by swapping a <code>forEach</code> for a board — the scopes, the resources, and the item routing are untouched. Hide a sub-agent's chatter from the user while keeping it in the parent's context — that is one <code>itemVisibility</code> field, not a rearchitecture. Move work off the request without rewriting it — <code>startDetached</code>, and the same block runs in a child session.</p>
+  <p>Because the six vary independently, you can change one without touching the rest. Make a chat pipeline concurrent by swapping a <code>forEach</code> for a board — the scopes, the resources, and the item routing are untouched. Hide a sub-agent's chatter from the user while keeping it in the parent's context — that is one <code>itemVisibility</code> field, not a rearchitecture. Move work off the request without rewriting it — put a dispatcher in the board seat, and the same block runs in a child session.</p>
   <p>The two places the axes genuinely meet are worth knowing, because they are where the system gets its power:</p>
   <ul>
     <li><strong>Resources are how concurrent actors share.</strong> The <code>TaskCollection</code> is resource-backed, so the board's ledger is not a special store — it is the ordinary resource system under a task-shaped schema. That is why a board gets CAS, change events, client projection, and reactive blocks without asking for any of them.</li>
-    <li><strong>The board and the workstream meet at the runner.</strong> A detached dispatch carries a <code>boardId</code>, never a worker — it re-enters through the declaring board's runner, which re-reads the claimed row, re-verifies the claim, and only then routes to the assignee the durable row names. There is no path from a detached dispatch to a bare worker block, which is what makes "a task that outlives the turn" safe rather than a forgeable entry point.</li>
+    <li><strong>The board and the child session meet at the claim gate.</strong> A <code>task</code> dispatch carries the claim's envelope — board, seat, task, attempt — never a worker: it re-enters through the gate <code>defineFlow</code> wraps around the declared <code>task</code> entry, which re-reads the row, re-verifies the claim is still current, re-mints the ticket from what it read, and only then runs the block. There is no path from a <code>task</code> dispatch to a bare worker block, which is what makes "a task that outlives the turn" safe rather than a forgeable entry point.</li>
   </ul>
 
   <h3>One request, all the way down</h3>
@@ -581,7 +581,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 486" role="img" aria-label="A single request traced through nested control modes: an HTTP action enters a deterministic sequencer, which routes to a generator carrying a skill; the skill plans tasks onto a private board, the board drains workers concurrently, one worker spawns detached into a workstream, and the sequencer finishes with a synthesis handler. Each row is annotated with the substrate it touches.">
+      <svg viewBox="0 0 940 486" role="img" aria-label="A single request traced through nested control modes: an HTTP action enters a deterministic sequencer, which routes to a generator carrying a skill; the skill plans tasks onto a private board, the board drains workers concurrently, one dispatcher seat hands its row off into a child session, and the sequencer finishes with a synthesis handler. Each row is annotated with the substrate it touches.">
         <text class="t-lbl" x="24" y="20">The call tree</text>
         <text class="t-lbl" x="500" y="20">Mode</text>
         <text class="t-lbl" x="620" y="20">What the substrate does at this depth</text>
@@ -636,16 +636,16 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-s" x="142" y="326">worker  analyst-b</text>
         <text class="t-xs" x="620" y="326">ITEMS STAMPED WITH THE TASK THAT PRODUCED THEM</text>
         <path class="ln-soft" d="M130,352 L137,352"/>
-        <text class="t-s" x="142" y="356">worker  writer → startDetached</text>
+        <text class="t-s" x="142" y="356">seat  writer → dispatcher("task")</text>
         <rect class="n-box-2" x="500" y="342" width="92" height="20" rx="10"/>
         <rect x="500" y="342" width="3" height="20" fill="var(--warn)"/>
-        <text class="t-xs" x="546" y="356" text-anchor="middle">DETACHED</text>
-        <text class="t-xs" x="620" y="356">CHILD SESSION · RE-ENTERS VIA THE BOARD'S RUNNER</text>
+        <text class="t-xs" x="546" y="356" text-anchor="middle">HAND-OFF</text>
+        <text class="t-xs" x="620" y="356">CHILD SESSION · RE-ENTERS VIA THE BOARD'S CLAIM GATE</text>
         <path class="ln-soft" d="M154,382 L161,382"/>
-        <text class="t-s" x="166" y="386">workstream — its own session cell</text>
+        <text class="t-s" x="166" y="386">dsx_ child session — its own cell</text>
         <text class="t-xs" x="620" y="386">USER AND ORG STILL RESOLVE TO THE PARENT'S CELLS</text>
         <path class="ln-soft" d="M154,412 L161,412"/>
-        <text class="t-s" x="166" y="416">sharedToWorkstream resources</text>
+        <text class="t-s" x="166" y="416">sharedToLineage resources</text>
         <text class="t-xs" x="620" y="416">RESOLVE AGAINST THE LINEAGE ROOT, NOT THIS SESSION</text>
         <path class="ln-soft" d="M58,442 L65,442"/>
         <text class="t-s" x="70" y="446">handler  synthesize</text>
@@ -699,7 +699,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="855" y="142" text-anchor="middle">BUILT</text>
 
         <text class="t-s" x="24" y="172">a shared workspace</text>
-        <text class="t-xs" x="330" y="172">RESOURCES · COLLECTIONS · sharedToWorkstream</text>
+        <text class="t-xs" x="330" y="172">RESOURCES · COLLECTIONS · sharedToLineage</text>
         <rect class="n-acc" x="782" y="158" width="146" height="20" rx="10"/>
         <text class="t-xs" x="855" y="172" text-anchor="middle">BUILT</text>
 
@@ -709,7 +709,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="855" y="202" text-anchor="middle">BUILT</text>
 
         <text class="t-s" x="24" y="232">a member that outlives a turn</text>
-        <text class="t-xs" x="330" y="232">WORKSTREAMS, RE-ENTERING VIA THE BOARD'S RUNNER</text>
+        <text class="t-xs" x="330" y="232">A DISPATCHER SEAT, HANDING OFF INTO A CHILD SESSION</text>
         <rect class="n-acc" x="782" y="218" width="146" height="20" rx="10"/>
         <text class="t-xs" x="855" y="232" text-anchor="middle">BUILT</text>
 
@@ -738,7 +738,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <p>Most of the machinery is there. An agent already has an editable identity, a model, tools, capabilities, and a place to do work. What a team layer would add is <strong>relationships and a lifetime</strong>:</p>
   <ul>
     <li><strong>A roster that is a thing, not a map.</strong> <code>createAgentRegistry</code> is a flat name-to-agent lookup with a duplicate check. A team has structure — who may assign to whom, who reviews whom, who is the executive. Today that structure exists only implicitly, as whatever the executive generator happens to plan.</li>
-    <li><strong>A workspace scoped to the team, not to a turn.</strong> The pieces exist (<code>sharedToWorkstream</code>, resource collections, the lineage root) but nothing binds them to a roster. A standing team wants a durable board its members return to, not a board that lives inside one generator's state.</li>
+    <li><strong>A workspace scoped to the team, not to a turn.</strong> The pieces exist (<code>sharedToLineage</code>, resource collections, the lineage root) but nothing binds them to a roster. A standing team wants a durable board its members return to, not a board that lives inside one generator's state.</li>
     <li><strong>Composition of the two unwired fields.</strong> <code>usesSkills</code> would let a member carry its own playbooks rather than inheriting the coordinator's; <code>contextMode: "fork"</code> would give a member its own context window instead of composing inline. Both are the difference between "a prompt with a name" and "a participant".</li>
   </ul>
 
@@ -778,7 +778,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>node</code></td><td>Host</td><td class="num">731</td><td class="num">6</td><td>Long-lived Node HTTP host in one call.</td><td>engine</td></tr>
       <tr><td><code>next</code></td><td>Host</td><td class="num">61</td><td class="num">2</td><td>Next.js catch-all route adapter. The thinnest package in the repo.</td><td>engine</td></tr>
       <tr><td><code>vercel</code></td><td>Host</td><td class="num">739</td><td class="num">9</td><td>SSE shaping, heartbeats, runtime config for Vercel's execution model.</td><td>engine, store-postgres</td></tr>
-      <tr><td><code>bullmq</code></td><td>Host</td><td class="num">1,098</td><td class="num">11</td><td>Durable background jobs, native cron, full-flow worker dispatch. The only durable detached topology.</td><td>core, engine</td></tr>
+      <tr><td><code>bullmq</code></td><td>Host</td><td class="num">1,098</td><td class="num">11</td><td>Durable background jobs, native cron, full-flow worker dispatch. The only topology where dispatched work is durable.</td><td>core, engine</td></tr>
       <tr><td><code>client</code></td><td>Consumer</td><td class="num">3,632</td><td class="num">12</td><td>Isomorphic API client: actions, sessions, SSE stream store, resources, recovery, transcription.</td><td>contracts, core</td></tr>
       <tr><td><code>react</code></td><td>Consumer</td><td class="num">7,160</td><td class="num">37</td><td>15 hooks, item and suspension renderers, renderer registry, voice components. No transport logic.</td><td>client, contracts, core</td></tr>
       <tr><td><code>devtool</code></td><td>Consumer</td><td class="num">11,626</td><td class="num">87</td><td>Pre-built inspector assets served by <code>fsdev dev</code>. Built from <code>apps/devtool</code>.</td><td>client, core</td></tr>
@@ -1045,11 +1045,11 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <p class="lede">A flow is the unit of deployment: it binds blocks to entry points, declares the state scopes they may touch, and decides what any of it is allowed to show a client.</p>
 
   <p>The concept that unifies the entry points is <code>ActionCore</code> — the executable unit plus its execution policy, independent of how it is addressed or authorized. Two address forms build on it, and the runtime records both identically.</p>
-  <p>A third form exists and is easy to miss because it is not addressed at all. A dispatch stamped <code>source: "workstream"</code> resolves <strong>terminally</strong> to the framework-assembled <code>flow.workstream</code> core: <code>resolveActionCore</code> returns it before the <code>flow.actions[actionName]</code> lookup, so detached re-entry can never fall through to a caller-addressed action even when it carries an action name. That is a security boundary, not an optimisation — auditing action resolution against the two forms below alone misses it.</p>
+  <p>A third form exists and is easy to miss because no caller addresses it. A dispatch stamped <code>source: "task"</code> or <code>"internal"</code> resolves through its <strong>own</strong> entry map — <code>flow.task.actions</code> or <code>flow.internal.actions</code>, one <code>(type, name)</code> lookup with no fallback — and a <code>task</code> entry resolves to the claim gate <code>defineFlow</code> wrapped around the declared block, so a hand-off can never fall through to a caller-addressed action even when its name collides with one in <code>flow.actions</code>. That is a security boundary, not an optimisation — auditing action resolution against the two forms below alone misses it.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 900 296" role="img" aria-label="Diagram showing ActionCore at the centre, reached by two address forms: caller-addressed actions in flow.actions via HTTP and MCP, and event-addressed transport bindings carrying the core inline from webhook, chat and scheduled sources; both converge on resolveActionCore and the same execution pipeline. A third, detached form is described in the text: a workstream-sourced dispatch resolves terminally to flow.workstream and never reaches this lookup.">
+      <svg viewBox="0 0 900 296" role="img" aria-label="Diagram showing ActionCore at the centre, reached by two address forms: caller-addressed actions in flow.actions via HTTP and MCP, and event-addressed transport bindings carrying the core inline from webhook, chat and scheduled sources; both converge on resolveActionCore and the same execution pipeline. A third, dispatched form is described in the text: a task- or internal-sourced dispatch resolves through its own entry map and never reaches flow.actions.">
         <defs><marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker>
         <marker id="a6a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker></defs>
 
@@ -1131,7 +1131,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <span class="chip">POST /:kind/sessions</span>
     <span class="chip">DELETE /sessions/:id</span>
   </div>
-  <p>That table is produced by the built-in HTTP transport adapter, which <code>createFlowApiRouter</code> mounts internally. Every other transport mounts alongside it rather than replacing it — the engine has route modules for abort, resume, recovery, resources, state, streams, workstreams, and debug on top of the eleven above.</p>
+  <p>That table is produced by the built-in HTTP transport adapter, which <code>createFlowApiRouter</code> mounts internally. Every other transport mounts alongside it rather than replacing it — the engine has route modules for abort, resume, recovery, resources, state, streams, child sessions, and debug on top of the eleven above.</p>
 </section>
 
 <section id="state">
@@ -1207,7 +1207,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <div class="card"><h5>Block-level state</h5><span class="role">locality</span><p>A block declares a partial schema for just its own fields. Schemas bubble up through sequencers to the flow, so nothing needs a god-object state type.</p></div>
     <div class="card"><h5>Tenant isolation</h5><span class="role">multi-tenant</span><p>Store-key isolation by <code>(scopeId, flowKind, ref)</code> or <code>(scopeId, ref)</code>, with a binding check for key ambiguity. Cross-flow state is shared by default, isolated on opt-in.</p></div>
     <div class="card"><h5>Transient slots</h5><span class="role">non-persisted</span><p>State fields that live for the request and never hit the store — used for the status slot and other ephemeral signals.</p></div>
-    <div class="card"><h5>Workstream scope</h5><span class="role">detached children</span><p>A child session that outlives its request. Each scope re-resolves inside it, and resources can be shared to the lineage explicitly.</p></div>
+    <div class="card"><h5>Child session scope</h5><span class="role">dispatched work</span><p>A child session that outlives its request. Each scope re-resolves inside it, and a <code>sharedToLineage</code> resource stores at the lineage root.</p></div>
   </div>
 </section>
 
@@ -1643,7 +1643,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="466" y="336">COUNTS + terminationReason · CASCADE-SKIP ANY STRANDED DEPENDENTS</text>
 
         <text class="t-xs" x="452" y="368">A DRAIN RUNS INSIDE THE REQUEST THAT MOUNTED IT — EVERY WORKER'S TASK</text>
-        <text class="t-xs" x="452" y="382">FINISHES BEFORE THAT REQUEST DOES, UNLESS IT IS EXPLICITLY DETACHED</text>
+        <text class="t-xs" x="452" y="382">FINISHES BEFORE THAT REQUEST DOES, UNLESS ITS SEAT HANDS IT OFF</text>
       </svg>
     </div>
     <figcaption><b>The board is the only drain.</b> Seven of the nine patterns are compositions over this loop rather than independent orchestrators — which is why a change to claim semantics or termination policy propagates to all of them at once.</figcaption>
@@ -1714,7 +1714,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <div class="cards">
     <div class="card"><h5>GoalSeekLoop</h5><span class="role">config-driven</span><p>Re-drains the board until a judge says done. Both <code>planAndExecute</code> and <code>parallelTasks</code> are built on it.</p></div>
     <div class="card"><h5>Flow policy</h5><span class="role">work placement</span><p>Declares whether a worker's tasks belong inside the claiming request or in a session of their own. Validated and routed today; running out-of-request is groundwork.</p></div>
-    <div class="card"><h5>Detached runner</h5><span class="role">outliving the turn</span><p>Board work spawned as a detached child, with handoff, shared-key, nested and child-death cases all covered by integration scenarios.</p></div>
+    <div class="card"><h5>Dispatcher seats</h5><span class="role">outliving the turn</span><p>Board work handed off into a child session, with hand-off, shared-key, nested and child-death cases all covered by integration scenarios.</p></div>
     <div class="card"><h5>Quiescence</h5><span class="role">event-driven boards</span><p>A board can wait indefinitely for externally-arriving work rather than draining to empty.</p></div>
     <div class="card"><h5>Item windows</h5><span class="role">attribution</span><p>Items are stamped with the task whose execution scope produced them, so <code>task.items()</code> is exact under concurrency — one shared algorithm backs both the substrate and the UI.</p></div>
     <div class="card"><h5>Lease renewal</h5><span class="role">liveness</span><p>An <code>AsyncLocalStorage</code> scope stamps renewals; a worker that stops renewing has its task handed back out under a separate abandonment budget.</p></div>
@@ -1833,7 +1833,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="230" y="286">A CONFORMANCE SUITE IN @flow-state-dev/testing IS WHAT MAKES A CUSTOM ADAPTER TRUSTWORTHY</text>
       </svg>
     </div>
-    <figcaption><b>The source string is load-bearing, but it is not the auth gate.</b> It is the one trusted fact about where a request came from, so routing decisions derive from it rather than from anything in the body or metadata (BP-031) — <code>resolveActionCore</code> uses it to stop caller-controlled metadata from selecting an event-only handler. That is provenance routing, not authentication. Caller identity comes from <code>host.resolvePrincipal</code> (a flow&rsquo;s own <code>authentication.resolvePrincipal</code> wins over the host&rsquo;s), and management-route ownership is checked separately in <code>authorizeManagementRoute</code>. An adapter that satisfies the source gate and stops there has skipped both.<br><br>The five adapters stamp <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code> and <code>chat</code>; <code>workstream</code> is a sixth real value, set by the detached re-entry path rather than an adapter, and checked by both <code>public-reentry</code> and the concurrency arbiter. Custom transports pick their own. Worth flagging: the documented known-set in <code>core/src/types/auth.ts</code> reads <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code>, <code>notification</code> — it omits <code>chat</code> and <code>workstream</code>, and names <code>notification</code>, which appears nowhere in the code as a source value. The doc comment is drifting in both directions.</figcaption>
+    <figcaption><b>The source string is load-bearing, but it is not the auth gate.</b> It is the one trusted fact about where a request came from, so routing decisions derive from it rather than from anything in the body or metadata (BP-031) — <code>resolveActionCore</code> uses it to stop caller-controlled metadata from selecting an event-only handler. That is provenance routing, not authentication. Caller identity comes from <code>host.resolvePrincipal</code> (a flow&rsquo;s own <code>authentication.resolvePrincipal</code> wins over the host&rsquo;s), and management-route ownership is checked separately in <code>authorizeManagementRoute</code>. An adapter that satisfies the source gate and stops there has skipped both.<br><br>The five adapters stamp <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code> and <code>chat</code>; <code>task</code> and <code>internal</code> are two more real values, stamped by the dispatch seam rather than an adapter, refused outright by <code>public-reentry</code>, and resolved by type in the concurrency arbiter. Custom transports pick their own. Worth flagging: the documented known-set in <code>core/src/types/auth.ts</code> reads <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code>, <code>notification</code> — it omits <code>chat</code>, <code>task</code> and <code>internal</code>, and names <code>notification</code>, which appears nowhere in the code as a source value. The doc comment is drifting in both directions.</figcaption>
   </figure>
 
   <h4>What each adapter adds beyond the contract</h4>
@@ -1875,9 +1875,9 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <p>Session, request, user and org stores extend a shared <code>DeltaStoreOps</code> — that shared base is what makes delta-verb routing (§10) uniform across every backing rather than re-implemented per adapter.</p>
 </section>
 
-<section id="detached">
-  <div class="sec-head"><span class="sec-num">23</span><h2>Detached work</h2></div>
-  <p class="lede">Work started with <code>ctx.requestHost.startDetached</code> runs in a <strong>workstream</strong> — a child session that keeps going after its originating request has returned. Where it actually runs, and whether it survives a redeploy, is entirely a function of deployment topology.</p>
+<section id="dispatched">
+  <div class="sec-head"><span class="sec-num">23</span><h2>Dispatched work</h2></div>
+  <p class="lede">Work a flow hands off — a <code>dispatcher()</code> block in a running request, or a task-board seat holding <code>dispatcher({ type: "task" })</code> — runs in a <strong>child session</strong> (a <code>dsx_</code> id derived from the dispatcher's <code>session</code> policy) on a request of its own, and keeps going after its originating request has returned. The child settles the row it was dispatched for through <code>ctx.requestHost.settleParentTask</code>. Where it actually runs, and whether it survives a redeploy, is entirely a function of deployment topology.</p>
 
   <div class="tw"><table>
     <thead><tr><th>Topology</th><th>Where the child runs</th><th>Acceptance means</th><th>Survives the process?</th><th><code>dispose()</code> waits?</th></tr></thead>
@@ -1888,16 +1888,16 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>colocated</code></td><td>a worker, possibly this one</td><td>the job is on the queue</td><td><strong>yes</strong></td><td>claimed job: yes, <em>unbounded</em></td></tr>
       <tr><td><code>dispatch-only</code></td><td>another container</td><td>the job is on the queue</td><td><strong>yes</strong></td><td>no</td></tr>
       <tr><td><code>worker-only</code></td><td>this process</td><td>registered here</td><td><strong>no</strong> — the trap</td><td>bounded for children, unbounded for a claimed job</td></tr>
-      <tr><td>no request host</td><td>nowhere</td><td><code>NoRequestHostError</code></td><td>—</td><td>—</td></tr>
+      <tr><td>no dispatch seam</td><td>nowhere</td><td><code>NoDispatchSeamError</code></td><td>—</td><td>—</td></tr>
     </tbody>
   </table></div>
 
   <div class="note">
     <span class="lbl">The one that bites</span>
-    <p><code>worker-only</code> is the natural place to start durable jobs and the one place they silently aren't durable: the mode consumes the queue and dispatches nothing, so <code>startDetached</code> runs the child in the worker process and enqueues nothing. A crash loses the run outright rather than costing a retry. The docs are explicit that running it in-process there is the honest interim answer, not a guarantee — for the queue to own the work, start it from <code>colocated</code> or <code>dispatch-only</code>.</p>
+    <p><code>worker-only</code> is the natural place to start durable jobs and the one place they silently aren't durable: the mode consumes the queue and dispatches nothing, so a hand-off there runs the child in the worker process and enqueues nothing. A crash loses the run outright rather than costing a retry. The docs are explicit that running it in-process there is the honest interim answer, not a guarantee — for the queue to own the work, dispatch it from <code>colocated</code> or <code>dispatch-only</code>.</p>
   </div>
 
-  <p>Two different waits hide behind <code>dispose()</code>, and only one is bounded. The in-process detached-child drain races <code>detachedDrainTimeoutMs</code>; separately, <code>dispose()</code> awaits the worker handle, which for BullMQ is a non-forced <code>Worker.close()</code> that waits for whatever jobs the process has claimed, with no framework budget over it. <strong>Size the platform's kill timeout for the longest job, not for <code>detachedDrainTimeoutMs</code>.</strong></p>
+  <p>Two different waits hide behind <code>dispose()</code>, and only one is bounded. The in-process child-session drain races <code>dispatchDrainTimeoutMs</code>; separately, <code>dispose()</code> awaits the worker handle, which for BullMQ is a non-forced <code>Worker.close()</code> that waits for whatever jobs the process has claimed, with no framework budget over it. <strong>Size the platform's kill timeout for the longest job, not for <code>dispatchDrainTimeoutMs</code>.</strong></p>
 </section>
 
 <section id="consumers">
@@ -2086,7 +2086,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       </tr>
       <tr>
         <td><strong>utilities → reduce</strong></td>
-        <td>Of 11 factories: <code>contextReducer</code>, <code>memoryExtractor</code> and <code>intentRouter</code> have <strong>zero consumers anywhere</strong>. <code>keyedRouter</code> has 9 and is load-bearing — <code>core</code>'s own router and workstream core, plus the task board's runner and worker step. <code>decomposer</code> and <code>combiner</code> are consumed only by patterns. The remaining five appear once or twice, in kitchen-sink or labs.</td>
+        <td>Of 11 factories: <code>contextReducer</code>, <code>memoryExtractor</code> and <code>intentRouter</code> have <strong>zero consumers anywhere</strong>. <code>keyedRouter</code> has 9 and is load-bearing — <code>core</code>'s own router and the task board's worker step among them. <code>decomposer</code> and <code>combiner</code> are consumed only by patterns. The remaining five appear once or twice, in kitchen-sink or labs.</td>
         <td>Confirmed, with a caveat: <code>keyedRouter</code> is not a utility in the same sense as the rest — it is infrastructure the framework itself runs on, and should probably move rather than be pruned alongside them.</td>
       </tr>
       <tr>
@@ -2181,8 +2181,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <div class="tension">
     <h5>9 · Three things are called a host</h5>
-    <p><code>RequestHost</code> in <code>core</code> (the detached-work seam, <code>startDetached</code>). <code>InboundTransportHost</code> in <code>engine</code> (what an adapter's <code>createBindings</code> receives). And the host-adapter packages — <code>node</code>, <code>next</code>, <code>vercel</code>, <code>bullmq</code> — which are what a deployment calls its host.</p>
-    <p>They are genuinely three different things, and the detached-work topology matrix has to talk about all three at once to explain a single behaviour, which is why that table is as hard to read as it is.</p>
+    <p><code>RequestHost</code> in <code>core</code> (what a child session sees: <code>parentTask</code>, <code>settleParentTask</code>, <code>livenessOf</code>). <code>InboundTransportHost</code> in <code>engine</code> (what an adapter's <code>createBindings</code> receives). And the host-adapter packages — <code>node</code>, <code>next</code>, <code>vercel</code>, <code>bullmq</code> — which are what a deployment calls its host.</p>
+    <p>They are genuinely three different things, and the dispatched-work topology matrix has to talk about all three at once to explain a single behaviour, which is why that table is as hard to read as it is.</p>
     <span class="ask">Worth checking whether the naming collision is causing the explanation cost, or merely accompanying it.</span>
   </div>
 

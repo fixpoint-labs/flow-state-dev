@@ -33,7 +33,6 @@ import type {
   ConcurrencyPolicyName
 } from "@flow-state-dev/core";
 import { createKeyedAsyncGate } from "../../utils/keyed-async-gate";
-import { WORKSTREAM_SOURCE } from "../../execution/transport-sources";
 import { resolveEntry } from "../../execution/resolve-entry";
 import { ConcurrencyRejectedError } from "../errors";
 import type { DispatchEnvelope } from "../dispatcher";
@@ -143,16 +142,7 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
 
   return {
     resolve(flow, actionName, view): ResolvedDecision {
-      // A detached dispatch (FIX-999, behind the fence) carries its handler
-      // inline on the flow's workstream core and passes the handler block name
-      // as `actionName` — provenance only. It takes the flow default: that name
-      // can collide with a public action's key, and inheriting an unrelated
-      // action's `queue`/`reject` policy would let its back-pressure decide
-      // whether detached work runs. No metadata coordinate is required here
-      // because the source alone identifies the dispatch, and the source is
-      // stamped by the seam rather than by a caller.
-      const isDetached = view.source === WORKSTREAM_SOURCE;
-      // Every other dispatch resolves the entry's own policy through the same
+      // Every dispatch resolves the entry's own policy through the same
       // keyed lookup the dispatch resolves its handler with: the trusted
       // `source` (set by the adapter or the dispatch seam, never the caller)
       // decides the type, and the type's own map is read — `flow.actions` by
@@ -166,9 +156,8 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
       // the resolver at dispatch time and carried on the envelope, so its
       // policy is read from there — the same core `runAction` will run.
       const carried = (view as { resolvedActionCore?: EntryPolicyView }).resolvedActionCore;
-      const entryConfig = isDetached
-        ? undefined
-        : carried !== undefined
+      const entryConfig =
+        carried !== undefined
           ? carried.concurrency
           : resolveEntry(flow, actionName, view.source, view.metadata)?.concurrency;
       const effective = entryConfig ?? flow.request?.concurrency;

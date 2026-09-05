@@ -119,22 +119,12 @@ export type ClaimResult = {
 };
 
 /**
- * Worker input shape — mirrors the substrate's `TaskWorkerInput`
- * structurally. Defined as a Zod schema here (instead of a bare TS
- * type) so the pattern's worker-router can declare it as `inputSchema`
- * and have the framework validate every dispatch.
+ * Worker input shape — one object with `TaskWorkerInput`, owned in
+ * `../tasks/workers/types.ts` (the type is inferred from this schema).
+ * Re-exported here so the existing
+ * `@flow-state-dev/orchestration/task-board` import path stays put.
  */
-export const taskWorkerInputSchema = z.object({
-  taskId: z.string(),
-  goal: z.string(),
-  title: z.string().optional(),
-  context: z.string().optional(),
-  input: z.unknown().optional(),
-  attempts: z.number().int().nonnegative(),
-  feedback: z.string().optional(),
-  metadata: z.record(z.unknown()).optional(),
-  deps: z.record(z.unknown()).optional(),
-});
+export { taskWorkerInputSchema } from "../tasks/workers/types";
 
 /**
  * Output of `checkBoard` — drives the worker's `loopBack` predicate, and

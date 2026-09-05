@@ -22,7 +22,7 @@
  *
  * `recordSuccess` writes with `ifAllowed: true`, so a `complete()` refused on a
  * lost claim is DROPPED rather than thrown: the worker returns normally, the
- * workstream request completes, and the run record reads as a success while the
+ * child session's request completes, and the run record reads as a success while the
  * row is still open. Inferring completion from either is the same silent-success
  * defect this issue exists to remove, relocated into the thing that verifies it.
  *
@@ -281,7 +281,7 @@ await runGoal(async () => {
       // The finding, not a workaround: the default is tuned to a serverless
       // SIGTERM grace period rather than to a coding run, so an in-process host
       // must raise it past its longest expected run or a shutdown kills one.
-      detachedDrainTimeoutMs: built.drainBudgetMs,
+      dispatchDrainTimeoutMs: built.drainBudgetMs,
       logger: silentLogger,
     } as never);
 
@@ -378,7 +378,7 @@ await runGoal(async () => {
     // **Times the attempts, because this loop waits through all of them.**
     // `drainBudgetMs` bounds ONE drain, which is exactly right where it is used
     // as a host's shutdown budget — `fsdev.config.ts` passes it to
-    // `detachedDrainTimeoutMs` and must NOT scale it. This site is the one that
+    // `dispatchDrainTimeoutMs` and must NOT scale it. This site is the one that
     // waits across retries: it wakes a `pending` row, so the wall clock has to
     // cover every attempt the board is allowed to run, not just the first.
     const deadline = Date.now() + built.drainBudgetMs * MAX_ATTEMPTS;
@@ -557,10 +557,10 @@ await runGoal(async () => {
     }
   } finally {
     // **Dispose before deleting.** On the timeout path the row is still
-    // `in_progress`, so a detached run is still executing against this checkout
+    // `in_progress`, so a handed-off run is still executing against this checkout
     // — removing the tree and the SQLite files underneath it produces a cascade
     // of follow-on failures that look like the finding and are not, and leaves
-    // the runtime's resources open. Disposal drains the detached work first.
+    // the runtime's resources open. Disposal drains the handed-off work first.
     await (state as { dispose?: () => Promise<void> } | undefined)?.dispose?.();
     rmSync(scratch, { recursive: true, force: true });
   }

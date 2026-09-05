@@ -1,30 +1,30 @@
 /**
- * The conductor flow — a board, one detached worker, and three zero-model
+ * The conductor flow — a board, one handed-off worker, and three zero-model
  * actions.
  *
  * `seed` files an issue-phase as a durable row. `wake` drains the board, which
- * claims a row and hands it to the manager in its own workstream. `status`
+ * claims a row and hands it to the manager in its own child session. `status`
  * reads back what happened.
  *
  * ## The board's own ledger is a deliverable, not a default
  *
- * A detached board refuses three things at construction, and a flow that leaves
- * any of them implicit throws before `seed` can run: an explicit stable
- * `boardId`, a durable `defineTaskCollection()` backing, and a ledger the
- * workstream can reach.
+ * A board that hands off refuses three things at construction, and a flow
+ * that leaves any of them implicit throws before `seed` can run: an explicit
+ * stable `boardId`, a durable `defineTaskCollection()` backing, and a ledger
+ * the child session can reach.
  *
- * **`user`-scoped, no `sharedToWorkstream`.** The task row is where a human's
+ * **`user`-scoped, no `sharedToLineage`.** The task row is where a human's
  * later answer lands, through a NEW request, so a parked row has to outlive the
  * coordinator session that created it. `user` rather than `org` because it
  * matches the already-user-scoped inbox where the other half of that round trip
  * arrives, while `org` would share a claim pool across users. At `user` scope
- * the `sharedToWorkstream` refusal never fires — it is conditional on session
+ * the `sharedToLineage` refusal never fires — it is conditional on session
  * scope — and the other two requirements still apply exactly as stated.
  *
  * **Partitioned by epic, and the partition has to reach storage.** One board
  * per epic, and each epic gets its own COLLECTION identity. A distinct
  * `boardId` is not sufficient and is not an alternative: it never reaches the
- * ledger — it is hashed into the derived workstream session id and framed into
+ * ledger — it is hashed into the derived child session id and framed into
  * the coordinate key — so two epic boards under one user sharing a collection
  * id and differing only in `boardId` would operate on the same rows, and one
  * epic's drain could claim or settle another's. Both ids are needed and neither
@@ -49,7 +49,7 @@
  * never declare `client.state.read` and its collection-state route answers 403.
  * And nothing else substitutes: `recordSuccess` writes with `ifAllowed: true`,
  * so a `complete()` refused on a lost claim is DROPPED rather than thrown — the
- * worker returns normally, the workstream request completes, and the run record
+ * worker returns normally, the child session's request completes, and the run record
  * reads as a success while the board row is still open. **The board row is the
  * authority on completion; the run record never is.**
  */
@@ -377,7 +377,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
 
   // Both ids, per epic, and neither substituting for the other.
   // The tenant is in BOTH ids for the same reason the epic is: `boardId`
-  // partitions routing (it is hashed into the derived workstream session id),
+  // partitions routing (it is hashed into the derived child session id),
   // the collection identity partitions storage, and neither substitutes for the
   // other.
   // **Every numeric option is validated at THIS door too.**
@@ -596,7 +596,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
     boardId,
     collection: tasks,
     // ONE issue at a time, stated rather than inherited. The substrate's default
-    // is 4, so a single drain would launch four detached coding runs at once —
+    // is 4, so a single drain would launch four handed-off coding runs at once —
     // contradicting this lab's own deployment contract and multiplying model
     // spend by four. The manager holds a worker slot for its run's whole
     // duration, so this is also what keeps that cost legible.
@@ -1057,7 +1057,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           // preventing one.
           .tap(tenantGate)
           .tap(seedTask)
-          // The drain claims the row and hands it to a workstream, then returns
+          // The drain claims the row and hands it to a child session, then returns
           // with the row still open. The seeding request does not wait for the
           // run — which is the point.
           .step(board.drain)

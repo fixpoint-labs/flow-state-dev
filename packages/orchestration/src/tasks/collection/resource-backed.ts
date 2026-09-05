@@ -187,12 +187,12 @@ export interface ResourceBackedOptions {
   /**
    * Refuse every `setAssignee` on this collection (FIX-982).
    *
-   * Set by a task board that declares detached workers. The assignee is what a
-   * detached task's routing coordinate derives from, so reassigning after
+   * Set by a task board with dispatcher seats. The assignee is what a
+   * handed-off task's routing key derives from, so reassigning after
    * admission silently strands the task — see `TaskCollectionRef.setAssignee`.
    *
    * Only the resource backing carries this, and that is deliberate rather than
-   * an omission: a detached board is refused at construction unless its backing
+   * an omission: a handed-off board is refused at construction unless its backing
    * is durable, so no other backing can host one.
    */
   immutableAssignee?: boolean;
@@ -898,10 +898,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async setAssignee(id, assignee) {
-      // FIX-982: on a detached board the assignee is fixed at admission, and
+      // FIX-982: on a handed-off board the assignee is fixed at admission, and
       // this arm is checked FIRST because it holds whatever the task's status
       // is (see `TaskWriteDeclineReason`). Answered without touching the store —
-      // the board either runs detached work or it does not, so there is nothing
+      // the board either hands off or it does not, so there is nothing
       // to read and nothing to race. The task must still exist, though: a
       // decline for a task that was never there would be a different kind of
       // lie, and every sibling patch throws on an unknown id.

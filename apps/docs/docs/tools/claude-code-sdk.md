@@ -107,19 +107,18 @@ resource (an open connection, for example).
 
 ### Turning it off for background work
 
-A **workstream** is a child session dedicated to one background job, running
-outside the request that started it. If you dispatch the agent into one, set
-`detached: true`:
+Background work runs in a child session, outside the request that started it. If
+you dispatch the agent into one, set `detached: true`:
 
 ```ts
 const agent = claudeCodeAgent({ detached: true });
 ```
 
 Each job is then one run. Nothing is written to session state, and no prior SDK
-conversation is resumed — a second job addressed to the same workstream begins a
-new agent run. What the run did is still recorded: the workstream's own item
-stream holds its messages, reasoning, and tool calls in order, which is what you
-read the run back from.
+conversation is resumed — a second job landing in the same child session begins a
+new agent run. What the run did is still recorded: that session's own item stream
+holds its messages, reasoning, and tool calls in order, which is what you read the
+run back from.
 
 **The session id does not disappear.** The option governs session state and
 automatic resume, not the run's own result: the handle the block returns still
@@ -128,23 +127,23 @@ worker, that handle is the worker's output, and the board writes the output onto
 the task when it settles — so the id is persisted there. Worth knowing if you are
 reasoning about data retention, or if you plan to resume a run by hand later.
 
-The option is also required rather than optional there. Background workers share
-one flow, so two of them declaring the same session-state key would overwrite
-each other, and the task board refuses to build a background worker that declares
-session state.
+You have to pass it there. A worker that runs in a child session may share that
+session with other rows, so two blocks declaring the same session-state key would
+overwrite each other. The task board refuses to build a hand-off whose block
+declares session state.
 
-That refusal sees the worker block and the blocks composed inside it. It does
-**not** see a session-state schema contributed by a capability, which reaches a
-block through a separate channel that leaves no mark on the block itself. So a
-worker can be accepted while still carrying session state that way. If you attach
-this agent as a capability, pass the option there too — it takes the same one:
+That refusal reads the worker block, the blocks composed inside it, and the
+session state a capability the block `uses` declares for itself. What it cannot
+read is a schema a capability's *preset* adds, since a preset's contribution
+depends on a runtime opt-out. So pass the option wherever you attach the agent —
+the capability form takes the same one:
 
 ```ts
 createClaudeCodeAgentCapability({ detached: true });
 ```
 
-See [Background work](../server/background-work.md) for how a workstream is set
-up and read back.
+See [Dispatched work](../server/background-work.md) for how the child session is
+started and read back.
 
 ## Where the run works
 
@@ -472,7 +471,7 @@ framework stores and serves for you — and writes into them as the run goes:
 | `observed-plan` | item on the run's own to-do list: its wording, its current status, and the status before that |
 | `observed-gaps` | thing the recorder understood and could not record, with the reason and which record it stands in for |
 
-Entries are keyed as `<requestId>/<invocation>`. A workstream can host several
+Entries are keyed as `<requestId>/<invocation>`. One session can host several
 runs over its life, and a single request can itself run the agent more than once
 — a generator holding it as a tool can call it repeatedly — so both halves are
 needed to keep one run's answer from becoming somebody else's.
@@ -483,7 +482,7 @@ Both records come back over the resource route, one page at a time. Scope the
 read with `topicPrefix`, and follow `nextCursor` while one is returned:
 
 ```
-GET /sessions/<workstreamId>/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/
+GET /sessions/<sessionId>/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/
 
 { "items": [
   { "topic": "<requestId>/<invocation>/work/repo/src/checkout.ts",

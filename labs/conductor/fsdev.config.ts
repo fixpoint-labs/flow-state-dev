@@ -20,7 +20,7 @@
  * dispatcher's own code. Numeric settings are validated there too; see
  * `positiveIntFromEnv` for why an unchecked one is charged to a task.
  *
- * **`detachedDrainTimeoutMs` is derived, not chosen.** Its default is tuned to a
+ * **`dispatchDrainTimeoutMs` is derived, not chosen.** Its default is tuned to a
  * serverless SIGTERM grace period, far shorter than a coding run, so an
  * in-process host that leaves it alone truncates a run on every shutdown. But
  * setting it to the agent's own deadline was barely better: a worker also waits
@@ -70,5 +70,5 @@ export default createFlowState({
   }) as ModelResolver,
   stores: { dev: { primary: filesystemStores({ rootDir: path.join(root, "data") }) } },
   defaultProfile: "dev",
-  detachedDrainTimeoutMs: drainBudgetMs,
+  dispatchDrainTimeoutMs: drainBudgetMs,
 });

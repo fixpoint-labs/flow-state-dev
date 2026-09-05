@@ -52,16 +52,16 @@ export function resolveDispatcher(
 }
 
 /**
- * Would this row's work be *routed* to a Workstream rather than run in the
+ * Would this row's work be *routed* to a child session rather than run in the
  * drain that is asking (FIX-982)?
  *
- * A board that declares a worker `dispatch: { mode: "detached" }` hands its
- * claimed rows to a Workstream, which settles them from its own session. The
- * launching request must not wait on those — waiting on them is precisely the
- * thing detachment exists to stop.
+ * A board with a `dispatcher({ type: "task" })` seat hands its claimed rows
+ * to a child session, which settles them from its own session. The launching
+ * request must not wait on those — waiting on them is precisely the thing the
+ * hand-off exists to stop.
  *
- * Supplied by the board, which derives it from its own detached declarations,
- * so a board with nothing detached passes nothing and every count below is the
+ * Supplied by the board, which derives it from its own dispatcher seats, so a
+ * board with none passes nothing and every count below is the
  * `count()` it always was.
  *
  * **A routing question, not a liveness one.** It answers *where this row's work
@@ -73,11 +73,11 @@ export function resolveDispatcher(
 export type RunsElsewhere = (task: Task) => boolean;
 
 /**
- * Is this row **handed off** — routed to a Workstream, and still held by one?
+ * Is this row **handed off** — routed to a child session, and still held by one?
  *
  * The conjunction is the whole definition and neither half stands alone:
  * routing says the work belongs elsewhere, the live lease says somebody is
- * still on it. A row that is detached by routing and abandoned in fact is not
+ * still on it. A row that is handed off by routing and abandoned in fact is not
  * handed off; it is recoverable, and every caller here has to treat it that way.
  *
  * Exported because two different questions read it and must not answer it
@@ -87,8 +87,8 @@ export type RunsElsewhere = (task: Task) => boolean;
  * a drain it correctly exited as a failure, or a genuinely stuck board as a
  * clean hand-off. One predicate, one answer (FIX-1074).
  *
- * `runsElsewhere` absent means the board declares nothing detached, so nothing
- * is ever handed off and every caller keeps its pre-detachment behaviour
+ * `runsElsewhere` absent means the board has no dispatcher seat, so nothing
+ * is ever handed off and every caller keeps its pre-hand-off behaviour
  * bit-for-bit.
  */
 export function isHandedOff(
@@ -108,8 +108,8 @@ export function isHandedOff(
  *
  * **Reads through `list` rather than `count` because `TaskFilter` has no
  * predicate slot** — it matches on status, assignee and labels only, and
- * "…and not running elsewhere" is expressible as none of the three. A detached
- * coordinate is usually an assignee and would *almost* fit `filter.assignee`,
+ * "…and not running elsewhere" is expressible as none of the three. A handed-off
+ * seat is usually an assignee and would *almost* fit `filter.assignee`,
  * but the uniform and floor cases do not (a floor worker is defined by the
  * assignees it is NOT), so the predicate has to see the row. One pass either
  * way; both callers below already ran one.
@@ -117,7 +117,7 @@ export function isHandedOff(
  * **Only `in_progress` is subject to the exclusion**, and the other two
  * statuses are deliberate omissions rather than oversights:
  *
- * - a `pending` detached row is work this drain has yet to claim and dispatch,
+ * - a `pending` handed-off row is work this drain has yet to claim and dispatch,
  *   so excluding it would let the drain exit *before* spawning anything — the
  *   feature inverted into a board that silently runs nothing;
  * - a `parked` row is parked for an external actor whichever way it
@@ -131,7 +131,7 @@ export function isHandedOff(
  * this count. It drops `parked` rows, and it is a **predicate of its
  * own beside** the routing one rather than a widening of it, because the two
  * answer different questions. `runsElsewhere` asks *where this row's work
- * belongs*, derived from the board's detached declarations. This one asks
+ * belongs*, derived from the board's dispatcher seats. This one asks
  * whether the row is waiting on a **human**, which is true on any board however
  * it dispatches.
  *
@@ -152,7 +152,7 @@ export function isHandedOff(
  * anyone is on it, because it reads declarations and an assignee — facts that
  * are just as true of a row nobody is running. A claimant that dies between
  * `claim()` and the child's first breath leaves exactly that: `in_progress`,
- * detached assignee, no worker anywhere. So does a child that was accepted and
+ * handed-off assignee, no worker anywhere. So does a child that was accepted and
  * then died. Both become recoverable when the deadline passes, and excluding
  * them on routing alone hides them from the drain at the moment they become so.
  *
@@ -237,7 +237,7 @@ export interface WaitableCount {
  * `parked` are all in-flight — `parked` per FIX-443
  * §10.1, the others by definition. Terminal statuses don't count.
  *
- * `runsElsewhere` (FIX-982) drops the rows a Workstream is running;
+ * `runsElsewhere` (FIX-982) drops the rows a child session is running;
  * `excuseParked` (FIX-1234) drops the rows parked for a human. See
  * {@link countWaitable} for which statuses each reaches and why they are two
  * predicates rather than one.

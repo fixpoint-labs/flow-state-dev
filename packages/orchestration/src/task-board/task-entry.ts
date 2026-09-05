@@ -133,7 +133,7 @@ export interface TaskGateOptions {
    *
    * **Resolved against the running context, which in the child is the child's
    * own session.** A session-scoped board is therefore reachable here only when
-   * it resolves to the lineage root (`sharedToWorkstream`); `taskBoard()` refuses
+   * it resolves to the lineage root (`sharedToLineage`); `taskBoard()` refuses
    * the other shape at construction, because arriving here would mean the gate
    * reads an empty ledger and calls every claim stale.
    */

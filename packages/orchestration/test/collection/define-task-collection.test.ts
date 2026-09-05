@@ -66,27 +66,27 @@ describe("defineTaskCollection", () => {
     expect(todos.maxInstances).toBe(5);
   });
 
-  it("forwards sharedToWorkstream so a session-scoped board reaches its Workstream", () => {
-    // A detached worker settles its own task from inside a child session. A
+  it("forwards sharedToLineage so a session-scoped board reaches its child session", () => {
+    // A handed-off worker settles its own task from inside a child session. A
     // session-scoped ledger only reaches it when the collection spans the
     // lineage, so the flag has to survive the wrapper rather than be dropped.
     const todos = defineTaskCollection({
       id: "shared",
       scope: "session",
-      sharedToWorkstream: true,
+      sharedToLineage: true,
     });
-    expect(todos.sharedToWorkstream).toBe(true);
+    expect(todos.sharedToLineage).toBe(true);
   });
 
-  it("leaves sharedToWorkstream unset when not asked for", () => {
+  it("leaves sharedToLineage unset when not asked for", () => {
     const todos = defineTaskCollection({ id: "plain", scope: "session" });
-    expect(todos.sharedToWorkstream).toBeUndefined();
+    expect(todos.sharedToLineage).toBeUndefined();
   });
 
-  it("rejects sharedToWorkstream on a user-scoped ledger", () => {
+  it("rejects sharedToLineage on a user-scoped ledger", () => {
     expect(() =>
-      defineTaskCollection({ id: "wrong", scope: "user", sharedToWorkstream: true })
-    ).toThrow(/sharedToWorkstream:true on user-scoped/);
+      defineTaskCollection({ id: "wrong", scope: "user", sharedToLineage: true })
+    ).toThrow(/sharedToLineage:true on user-scoped/);
   });
 
   it("taskEnvelopeSchema validates a full task with a typed, optional input", () => {

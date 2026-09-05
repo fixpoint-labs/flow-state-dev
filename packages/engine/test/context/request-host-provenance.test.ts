@@ -1,37 +1,35 @@
 /**
- * What `startDetached` stamps onto the detached REQUEST record (FIX-982).
+ * What the dispatch seam stamps onto the dispatched REQUEST record (FIX-982).
  *
- * The integration suite proves the field survives to a real record on the
- * shipped router path (`task-board-detached-handoff.test.ts`). What it cannot
- * show is the branch no shipped caller takes: the task board is the only caller
- * of this seam today, and it always has a claimed row, so it always supplies
- * `provenance`. The absent case is reachable only here — and it is the case a
- * legacy reader depends on, because a record written before the field existed
- * looks exactly like one written by a caller that omitted it.
+ * `dispatch-delivery-guards.test.ts` proves the stamp survives to a real record
+ * on the shipped path. What it cannot show is the branch no shipped caller
+ * takes: the task board is the only substrate caller of this seam today, and it
+ * always has a claimed row, so it always supplies `provenance`. The absent case
+ * is reachable only here — and it is the case a legacy reader depends on,
+ * because a record written before the field existed looks exactly like one
+ * written by a caller that omitted it.
  *
- * The boundary case matters as much: `record` is the caller's own bag and must
- * never reach the request record, whatever it is named. That is what lets a
- * reader treat everything under `metadata.workstream` as server-assembled.
+ * The boundary case matters as much: the `payload` is the entry's input and
+ * must never reach the request record's provenance, whatever keys it carries.
+ * That is what lets a reader treat everything under `metadata.dispatch` as
+ * server-assembled.
  */
 import { describe, it, expect } from "vitest";
-import type { FlowInstance } from "@flow-state-dev/core";
 import { createRequestHost } from "../../src/context/create-request-host";
 import type { SessionRecord } from "../../src/stores/types";
+import { CHILD_ENTRY, dispatchableFlow } from "./seam-harness";
 
 const IDENTITY = {
   userId: "u_alice",
   tenantId: undefined,
   orgId: undefined,
-  sessionId: "s_parent"
+  sessionId: "s_parent",
+  lineageId: "lin_parent"
 };
 
-/** Only `kind` and `workstream` are read by the verb under test. */
-const FLOW = {
-  kind: "seam-provenance",
-  workstream: { block: { name: "core" } }
-} as unknown as FlowInstance;
+const FLOW = dispatchableFlow("seam-provenance");
 
-/** An empty key that accepts the create — the ordinary first-spawn path. */
+/** An empty key that accepts the create — the ordinary first-dispatch path. */
 function emptyStores() {
   return {
     session: {
@@ -46,19 +44,17 @@ function emptyStores() {
   } as never;
 }
 
-/** Run one `startDetached` and hand back the envelope the seam assembled. */
-async function envelopeFor(
-  args: Parameters<
-    ReturnType<typeof createRequestHost>["host"]["startDetached"]
-  >[0]
+/** Run one dispatch and hand back the metadata the seam assembled for it. */
+async function metadataFor(
+  spec: Partial<Parameters<ReturnType<typeof createRequestHost>["seam"]>[0]>
 ): Promise<Record<string, unknown> | undefined> {
   let metadata: Record<string, unknown> | undefined;
-  const { host } = createRequestHost({
+  const { seam } = createRequestHost({
     stores: emptyStores(),
     flow: FLOW,
     identity: IDENTITY,
-    startOperation: async (spec) => {
-      metadata = spec.metadata;
+    dispatchOperation: async (started) => {
+      metadata = started.metadata;
       return { requestId: "req_child" };
     },
     liveness: {
@@ -68,21 +64,29 @@ async function envelopeFor(
     }
   });
 
-  const result = await host.startDetached(args);
+  const result = await seam({
+    ...CHILD_ENTRY,
+    session: { key: "review" },
+    payload: {},
+    from: "board-drain",
+    ...spec
+  });
   expect(result).toMatchObject({ ok: true });
   return metadata;
 }
 
-describe("the provenance a detached start stamps on the request record", () => {
-  it("carries the caller's server-derived task id beside the routing labels", async () => {
-    const metadata = await envelopeFor({
-      seed: { topic: "review", key: "board|worker" },
-      input: {},
-      provenance: { taskId: "task_7f3" }
-    });
+describe("the provenance a dispatch stamps on the request record", () => {
+  it("carries the caller's server-derived task id beside the address and key", async () => {
+    const metadata = await metadataFor({ provenance: { taskId: "task_7f3" } });
 
     expect(metadata).toEqual({
-      workstream: { topic: "review", key: "board|worker", taskId: "task_7f3" }
+      dispatch: {
+        type: "internal",
+        target: "work",
+        from: { block: "board-drain", sessionId: "s_parent" },
+        key: "review",
+        taskId: "task_7f3"
+      }
     });
   });
 
@@ -91,30 +95,38 @@ describe("the provenance a detached start stamps on the request record", () => {
     // predate `taskId` sees exactly what it always saw, and one written after it
     // gets `undefined` from a plain property read rather than a present key
     // holding nothing (BP-030).
-    const metadata = await envelopeFor({
-      seed: { topic: "review", key: "board|worker" },
-      input: {}
+    const metadata = await metadataFor({});
+
+    expect(metadata).toEqual({
+      dispatch: {
+        type: "internal",
+        target: "work",
+        from: { block: "board-drain", sessionId: "s_parent" },
+        key: "review"
+      }
+    });
+    const stamp = metadata!.dispatch as Record<string, unknown>;
+    expect(stamp.taskId).toBeUndefined();
+    expect("taskId" in stamp).toBe(false);
+  });
+
+  it("does NOT let the payload reach the request record's provenance", async () => {
+    // The payload is the entry's input. If it ever leaked here,
+    // `metadata.dispatch` would stop being server truth and a reader could not
+    // tell the two apart — which is the whole reason `provenance` is a
+    // separate channel. A payload naming its keys after the server's must
+    // change nothing.
+    const metadata = await metadataFor({
+      payload: { taskId: "task_forged", dispatch: { taskId: "task_forged" }, from: "forged" }
     });
 
     expect(metadata).toEqual({
-      workstream: { topic: "review", key: "board|worker" }
+      dispatch: {
+        type: "internal",
+        target: "work",
+        from: { block: "board-drain", sessionId: "s_parent" },
+        key: "review"
+      }
     });
-    expect((metadata!.workstream as Record<string, unknown>).taskId).toBeUndefined();
-    expect("taskId" in (metadata!.workstream as object)).toBe(false);
-  });
-
-  it("does NOT let the caller's own bag reach the request record", async () => {
-    // `record` is documented as the caller's bookkeeping and lands on the child
-    // SESSION record. If it ever leaked here, `metadata.workstream` would stop
-    // being server truth and a reader could not tell the two apart — which is
-    // the whole reason `provenance` is a separate channel rather than a wider
-    // `record`. A caller naming its keys after the server's must change nothing.
-    const metadata = await envelopeFor({
-      seed: { topic: "review" },
-      input: {},
-      record: { taskId: "task_forged", workstream: { taskId: "task_forged" } }
-    });
-
-    expect(metadata).toEqual({ workstream: { topic: "review" } });
   });
 });

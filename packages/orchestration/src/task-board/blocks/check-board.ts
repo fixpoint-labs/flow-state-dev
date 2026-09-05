@@ -60,7 +60,7 @@ export interface CheckBoardOptions {
   onIdle: "wait" | "complete" | "complete-or-blocked";
   shouldExit?: (collection: TaskCollectionRef) => boolean;
   /**
-   * Rows a Workstream is running (FIX-982). Forwarded verbatim to
+   * Rows a child session is running (FIX-982). Forwarded verbatim to
    * `classifyBoard`, which is the only thing that reads it — this block
    * keeps mapping the verdict straight onto its `reason` and holds no second
    * opinion about what counts as in-flight.

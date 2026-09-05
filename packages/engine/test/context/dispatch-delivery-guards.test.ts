@@ -307,10 +307,17 @@ describe("the stamp is trusted only under a seam-stamped source", () => {
     expect(readDispatchStamp("internal", forged)?.recipientLineageId).toBe("lin_victim");
   });
 
-  it("gives the fenced workstream source no dispatch type", () => {
-    expect(dispatchTypeOf("workstream")).toBeUndefined();
-    expect(dispatchTypeOf("http")).toBe("public");
+  it("types a dispatch by the door it came through, and a caller-facing door as public", () => {
     expect(dispatchTypeOf("task")).toBe("task");
+    expect(dispatchTypeOf("internal")).toBe("internal");
+    expect(dispatchTypeOf("webhook")).toBe("webhook");
+    expect(dispatchTypeOf("chat")).toBe("chat");
+    expect(dispatchTypeOf("scheduled")).toBe("schedule");
+    // Every caller-facing transport — including one the framework has never
+    // heard of — delivers `public`; nothing in a body can pick another type.
+    expect(dispatchTypeOf("http")).toBe("public");
+    expect(dispatchTypeOf("some-third-party-transport")).toBe("public");
+    expect(dispatchTypeOf(undefined)).toBe("public");
   });
 });
 

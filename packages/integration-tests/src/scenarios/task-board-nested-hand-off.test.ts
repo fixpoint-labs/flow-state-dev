@@ -106,7 +106,7 @@ function buildNestedFlow() {
   });
 
   const flow = defineFlow({
-    kind: "nested-detached",
+    kind: "nested-hand-off",
     actions: { start: { block: outerBoard.drain } },
     // Both boards' entries — neither is discovered through the other's
     // structure, so both must be declared explicitly. `defineFlow` gates each
@@ -114,7 +114,7 @@ function buildNestedFlow() {
     // seat's hand-off, the inner worker through the inner seat's, which sits
     // inside the outer worker's drain.
     task: { actions: { top: { block: outerWorker }, deep: { block: innerWorker } } },
-  })({ id: "nested-detached" });
+  })({ id: "nested-hand-off" });
 
   return { flow, ran };
 }

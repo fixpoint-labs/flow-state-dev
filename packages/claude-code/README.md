@@ -95,7 +95,7 @@ type ClaudeRemoteHandle = {
 A later request reads `ctx.session.state.claudeRemoteTasks` to reference prior
 dispatches.
 
-### Running as detached background work (`/sdk`)
+### Running as background work (`/sdk`)
 
 The SDK agent keeps its own session state — `sdkSessionId` (the run it resumes)
 and `sdkAgentRuns` (the handles it has returned). Pass `detached: true` to run it
@@ -106,17 +106,18 @@ claudeCodeAgent({ detached: true });
 ```
 
 Nothing is declared, read, or written, and the SDK is handed no `resume`, so each
-run starts fresh. Use it when the agent runs as background work on a task board:
-those workers share one flow, so the board refuses one whose block declares
-session state. The run's own history is the workstream's item stream instead.
+run starts fresh. Use it when the agent runs as a task-board worker in a child
+session: rows may share that session, so the board refuses a hand-off whose block
+declares session state. The run's own history is the child session's item stream
+instead.
 
 The returned handle still carries the SDK `sessionId`, and as a worker's output
 it is persisted with the task — the option governs session state and resume, not
 the result.
 
-`createClaudeCodeAgentCapability({ detached: true })` takes the same option, and
-passing it is required rather than tidy: a capability declares the schema through
-a channel the board's refusal cannot see.
+`createClaudeCodeAgentCapability({ detached: true })` takes the same option, and you
+have to pass it: the board refuses a block whose capability declares the schema, and
+cannot see one a capability's preset adds at all.
 
 ### Giving a run its own working directory (`/sdk`)
 
@@ -360,8 +361,8 @@ resource collections and writes into them as it goes:
 claudeCodeAgent({ detached: true, recordWork: true });
 ```
 
-Entries are keyed as `<requestId>/<invocation>`, so a workstream reused across
-runs — and a request that runs the agent more than once — both answer per run.
+Entries are keyed as `<requestId>/<invocation>`, so a session reused across runs —
+and a request that runs the agent more than once — both answer per run.
 All three declare client state reads, so
 `GET /sessions/:id/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/`
 returns them; each row's payload is on `clientData`. Follow `nextCursor` — the
@@ -507,7 +508,7 @@ for the full surface.
 | Auth | claude.ai subscription | Anthropic credentials |
 | Progress | Watch via `/tasks`, claude.ai, mobile | Streamed live as flow-state-dev items |
 | Session | Cloud session handle | Persistent, resumed across requests |
-| As background work | Already fire-and-forget | Task-board worker with `detached: true`; the workstream's item stream is the run's record |
+| As background work | Already fire-and-forget | Task-board worker with `detached: true`; the child session's item stream is the run's record |
 | Reach for it when | Offloading long autonomous work | A real agent in the loop, observed step by step |
 
 ## Running tests

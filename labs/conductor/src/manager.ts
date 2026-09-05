@@ -1,7 +1,7 @@
 /**
  * The manager — a task row becomes a watched, settled coding run.
  *
- * One detached worker on a conductor board:
+ * One handed-off worker on a conductor board:
  *
  *   open the run row → build the prompt & take the checkout → run the harness
  *   → read the verdict → settle or fail
@@ -281,10 +281,10 @@ export const conductorTaskInputSchema = z.object({
 /**
  * The manager's per-run values.
  *
- * Sequencer state, not session state: a detached board refuses a worker that
- * declares session state, because every detached worker in a flow becomes a
- * route on one shared workstream flow where two routes choosing one key with
- * different shapes corrupt each other silently.
+ * Sequencer state, not session state: `defineFlow` refuses a handed-off worker
+ * that declares session state, because the entry runs in a child session it
+ * may share with other rows, where two blocks choosing one key with different
+ * shapes corrupt each other silently.
  */
 const managerStateSchema = z.object({
   issue: z.string().nullable().default(null),
@@ -481,7 +481,7 @@ function managerState(state: ManagerState | undefined): ManagerState {
  * Everything one worker can legitimately spend, end to end.
  *
  * **The shutdown budget has to cover the whole worker, not the agent step.**
- * `detachedDrainTimeoutMs` was set to `runTimeoutMs`, which is only one of four
+ * `dispatchDrainTimeoutMs` was set to `runTimeoutMs`, which is only one of four
  * things a claimed row does before it settles — and the engine carves its
  * cancellation reserve OUT of that budget rather than adding to it, so the
  * effective wait was already *less* than the agent's own deadline. A valid run
@@ -733,7 +733,7 @@ function createConductorCapability(options: {
       [RUNS]: runRecordCollection,
       // Where a question is posted, withdrawn, and read back as an answer. The
       // `answer` and `status` actions declare the same definition object, so the
-      // question a detached workstream writes is the one the coordinator session
+      // question a child session writes is the one the coordinator session
       // reads — one registration, not two storage slots that look alike.
       [INBOX]: inboxCollection,
       // Declared so the fence can read the LIVE claim off the board row. The
@@ -744,7 +744,7 @@ function createConductorCapability(options: {
   });
 }
 
-/** Build the manager: one detached worker for one phase. */
+/** Build the manager: one handed-off worker for one phase. */
 export function harnessManager(options: ManagerOptions): TaskWorker {
   const {
     boardCollectionId,
@@ -1107,7 +1107,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    *
    * 1. **The verdict did NOT fail AND this attempt's marker holds a question →
    *    park.** `awaitReview`, announce, then return normally. The recorders
-   *    refuse a parked row, so the workstream request ends with the row still
+   *    refuse a parked row, so the child session's request ends with the row still
    *    `parked` and the run costs nothing while a person thinks.
    * 2. **The verdict succeeded AND the done-condition holds → return.**
    * 3. **Anything else → throw**, withdrawing this attempt's question first: the
@@ -1249,7 +1249,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // park on the question it just tried to answer.
         await announce({ question: questionTopicKey });
 
-        // Returning normally is the point: the workstream request ends and the
+        // Returning normally is the point: the child session's request ends and the
         // row stays parked, because both recorders decline a row the worker
         // parked for review.
         return {
@@ -1382,8 +1382,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .step(
       claudeCodeAgent({
         ...agent,
-        // The board-construction shim: a detached board refuses a worker whose
-        // block authors a session-state schema.
+        // The hand-off shim: `defineFlow` refuses a handed-off worker whose block
+        // authors a session-state schema.
         detached: true,
         recordWork: true,
         // The framework's one addition, and the reason this lab needs it: the

@@ -1055,6 +1055,72 @@ check('a present Linear row clears a resolved blocker', async () => {
   assert.deepEqual(workerLabels(calls), ['spec:FIX-2'])
 })
 
+check('a Linear scout that answers with UUIDs is discarded per entry, not believed', async () => {
+  // The scout is asked for identifiers (`FIX-2`), and Linear has two ids per issue. Seen in production
+  // both ways: `id` came back as issue UUIDs (nothing matched — every child read as newly discovered and
+  // every carried row as unobserved), and `blockedBy` came back as RELATION UUIDs (a blocker nothing can
+  // resolve, stranding the row for the rest of the epic). A malformed entry is dropped whole — its row
+  // reads as unobserved, exactly as if the scout had died for it — and the drop is logged.
+  const uuid = '9f6ea5fc-31bd-44dd-a4b6-de9c54f56861'
+  const relation = 'f4830b06-a106-4f98-852e-3f7e881e4fe5'
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { blockedBy: ['FIX-9'], linearState: 'Todo' }), row('FIX-3')] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') {
+        return {
+          issues: [
+            { id: uuid, state: 'Backlog', blockedBy: [] },
+            { id: 'FIX-2', state: 'In Development', blockedBy: [relation] },
+            { id: 'FIX-3', state: 'Todo', blockedBy: [] },
+          ],
+        }
+      }
+      if (label === 'refresh:issues') return prScan(prompt)
+      return { issueId: label.split(':')[1], ...workerRes() }
+    },
+  })
+  assert.ok(!result.issues.some((r) => r.id === uuid), 'a UUID id must not be discovered as a new sub-issue')
+  const fix2 = result.issues.find((r) => r.id === 'FIX-2')
+  assert.deepEqual(fix2.blockedBy, ['FIX-9'], 'a relation UUID in blockedBy voids the entry, so the carried blocker stands rather than clearing to []')
+  assert.equal(fix2.linearState, 'Todo', 'the voided entry refreshes nothing else on the row either')
+  assert.deepEqual(workerLabels(calls), ['spec:FIX-3'], 'the well-formed sibling still runs')
+  assert.match(logs.join('\n'), /UUID where an issue identifier/)
+})
+
+check('a dropped Linear entry for a NEW child holds the epic wrap, not just a carried row', async () => {
+  // Codex review on #1537: the UUID drop above only leaves a trace when the malformed entry belongs
+  // to a CARRIED row — the row itself sits unrefreshed and non-terminal. A malformed entry for a
+  // child the carried table has never seen never enters `discovered` at all, so it is invisible to
+  // `mayWrap`. Here every carried row is already terminal, so before the fix `mayWrap` saw only
+  // finished work and returned true — the coordinator could close the epic, and the dropped child's
+  // promised next-wake retry would never come; it would be omitted permanently.
+  const uuid = '9f6ea5fc-31bd-44dd-a4b6-de9c54f56861'
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'DONE', implPr: 9, merged: true, linearTerminal: true })] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') {
+        return {
+          issues: [
+            { id: 'FIX-2', state: 'Done', blockedBy: [] },
+            // The scout reporting a new child under the epic, but with the RELATION/issue UUID
+            // instead of its identifier — nothing to key a row on, so it must be dropped whole.
+            { id: uuid, state: 'Backlog', blockedBy: [] },
+          ],
+        }
+      }
+      if (label === 'refresh:issues') return prScan(prompt)
+      return { issueId: label.split(':')[1], ...workerRes() }
+    },
+  })
+  assert.ok(!result.issues.some((r) => r.id === uuid), 'a UUID id must not be invented as a new sub-issue row')
+  assert.equal(result.mayWrap, false, 'a dropped entry must hold the wrap even when every carried row already reads terminal')
+  assert.match(logs.join('\n'), /Holding the epic's wrap this wake: 1 Linear refresh entry was dropped/)
+})
+
 check("the issue scout is told a human's CHANGES_REQUESTED beats another's approval", async () => {
   // The epic gate prompt has carried this rule from the start; the issue scout asked only for a current-head
   // approved review, so a spec could read approved while a human's latest state was CHANGES_REQUESTED — or
@@ -1103,6 +1169,57 @@ check('both scouts must attribute an approval label to a human before it passes 
     assert.match(scout.prompt, /LABEL channel is OFF/, `${label} turns the label channel off`)
     assert.doesNotMatch(scout.prompt, /require its actor/, `${label} asks for no provenance it cannot check`)
   }
+})
+
+check("both scouts count the owner's own approval even though the owner is every PR's author", async () => {
+  // Every PR in this repo is opened under the owner's login, so "not the PR author" excluded the owner by
+  // construction: the owner's "Approved. Lets proceed." on their own spec PR read as a self-approval and
+  // released nothing. The exclusion exists so a WORKER cannot approve its own PR; the owner is not a
+  // worker. Every other login keeps the exclusion, and with no owner configured nobody is exempted.
+  const withOwner = await run('epic-wake.js', {
+    args: { ...epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }), owner: 'the-owner' },
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  for (const label of ['gate:epic', 'refresh:issues']) {
+    const scout = withOwner.calls.find((c) => c.label === label)
+    assert.ok(scout, `${label} scout ran`)
+    assert.match(scout.prompt, /not the PR author — EXCEPT `the-owner`/, `${label} exempts the owner from the author exclusion`)
+    assert.match(scout.prompt, /counts even when that login is also the PR's author/, `${label} says the owner counts as author`)
+    assert.match(scout.prompt, /Every other login is still excluded when it authored the PR/, `${label} keeps the exclusion for workers`)
+  }
+  const noOwner = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  for (const label of ['gate:epic', 'refresh:issues']) {
+    const scout = noOwner.calls.find((c) => c.label === label)
+    assert.match(scout.prompt, /not the PR author\./, `${label} keeps the plain rule with no owner`)
+    assert.doesNotMatch(scout.prompt, /EXCEPT/, `${label} exempts nobody when no owner is configured`)
+  }
+})
+
+check('an unattributable label on a never-approved epic is said out loud when the gate holds', async () => {
+  // The carry-case line ("timeline unreadable") fires only when a recorded approval rode the gap. With
+  // nothing recorded the gate simply held, and the label sitting on the PR went unmentioned.
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2')] }),
+    respond: epicResponder({ approved: false, approvedByLabel: false, labelPresent: true, labelProvenanceUnreadable: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.equal(result.epicApproved, false, 'nothing recorded, nothing released')
+  assert.match(logs.join('\n'), /Epic objective not signed off.*applier could not be read \(timeline unreadable\)/, 'the hold names the unreadable label')
+
+  // A CARRIED approval held for another reason — here a human change request — is not "nothing
+  // recorded". Keyed on the label alone the sentence fired here too, and said so falsely.
+  const carriedButHeld = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, approved: true },
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({ approved: false, approvedByLabel: false, labelPresent: true, labelProvenanceUnreadable: true, gateChangesRequested: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.equal(carriedButHeld.result.epicApproved, false, 'the change request still holds the gate')
+  assert.match(carriedButHeld.logs.join('\n'), /Epic objective not signed off/, 'the hold is still logged')
+  assert.doesNotMatch(carriedButHeld.logs.join('\n'), /no earlier approval was recorded/, 'but it does not claim nothing was recorded when a carried approval exists')
 })
 
 check('an owner-applied label still passes both gates', async () => {

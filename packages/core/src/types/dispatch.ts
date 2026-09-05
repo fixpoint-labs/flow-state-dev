@@ -128,9 +128,38 @@ export const taskDispatchInputSchema = z.object({
 
 export type TaskDispatchInput = z.infer<typeof taskDispatchInputSchema>;
 
-/** Length-prefix a field so field boundaries cannot migrate in a composed key. */
-function framed(value: string): string {
+/**
+ * Length-prefix a field so field boundaries cannot migrate in a composed key:
+ * `("u_ab", "c")` and `("u_a", "bc")` would otherwise concatenate identically.
+ * The writer's half of the codec; {@link readFramed} is the reader's.
+ */
+export function framed(value: string): string {
   return `${value.length}:${value}`;
+}
+
+/**
+ * Read one {@link framed} field starting at `at`: the value and where the next
+ * field begins, or `null` when the input does not have that shape.
+ *
+ * Strict about the shape `framed` writes — the digits must be exactly the
+ * decimal spelling of the value's length (no leading zeros) and the value must
+ * be fully present. An empty value is accepted: `framed("")` is `0:`, and a
+ * reader that needs non-empty fields checks that itself.
+ */
+export function readFramed(
+  input: string,
+  at: number
+): { value: string; next: number } | null {
+  const separator = input.indexOf(":", at);
+  if (separator === -1) return null;
+  const digits = input.slice(at, separator);
+  if (!/^\d+$/.test(digits)) return null;
+  const length = Number.parseInt(digits, 10);
+  if (String(length) !== digits) return null;
+  const start = separator + 1;
+  const end = start + length;
+  if (end > input.length) return null;
+  return { value: input.slice(start, end), next: end };
 }
 
 /**
@@ -241,7 +270,7 @@ export type DispatchSeam = (spec: DispatchSpec) => Promise<DispatchOutcome>;
 /**
  * The context slot the runtime attaches its dispatch operation under.
  *
- * A symbol rather than a named member, deliberately: a `ctx.startDetached`-style
+ * A symbol rather than a named member, deliberately: a `ctx.dispatch`-style
  * verb is reachable from any handler body, which makes "which blocks dispatch"
  * unanswerable at definition time. Reaching the seam through
  * `dispatchThroughSeam` from a block marked with `markDispatcher` keeps the
@@ -336,7 +365,16 @@ export type InternalEntry = ActionCore;
  * the packed worker input the row was claimed with, never the envelope, and
  * never runs against a row nothing verified.
  */
-export type TaskEntry = ActionCore;
+export type TaskEntry = ActionCore & {
+  /**
+   * The binding whose gate fronts this entry, set by `defineFlow` when it
+   * applies the gate. Read by the run-time routability check on a carried
+   * core: a task dispatcher produced at dispatch time must be held by the same
+   * board, or its rows would be claimed on one ledger and refused at another
+   * board's gate after the dispatch was accepted.
+   */
+  readonly gatedBy?: TaskBinding;
+};
 
 /**
  * What a task board binds onto the hand-off it installs at a `task` dispatcher

@@ -62,40 +62,42 @@ const snapshot = await sessions.getSessionState(sessionId, {
 await sessions.delete(sessionId);
 ```
 
-### `sessions.listWorkstreams(parentSessionId, options?)`
+### `sessions.listChildSessions(parentSessionId, options?)`
 
-List the background work running under one session. Background work runs in its own session hanging off the parent, so it doesn't appear in the parent's own requests.
+List the sessions started under one session. Work that outlives a turn runs in a session of its own hanging off the parent, so it doesn't appear in the parent's own requests.
 
 ```ts
-const workstreams = await sessions.listWorkstreams("sess_1", {
+const children = await sessions.listChildSessions("sess_1", {
   limit: 25,  // 1–100, defaults to 25
   offset: 0,  // 0–10000
 });
 
 // A row's `id` is a session id, so every session read works on it.
-for (const workstream of workstreams) {
-  const requests = await sessions.listSessionRequests(workstream.id);
+for (const child of children) {
+  const requests = await sessions.listSessionRequests(child.id);
 }
 ```
 
-Each row is a `WorkstreamSummary`:
+Each row is a `ChildSessionSummary`:
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `id` | `string` | The workstream's own session id. |
+| `id` | `string` | The child's own session id. |
 | `parentSessionId` | `string` | The session this work hangs off. |
 | `createdAt` / `updatedAt` | `number` | |
-| `topic` | `string \| undefined` | Display label for the body of work. |
-| `coordinate` | `string \| undefined` | Display label for the worker handling it. |
-| `status` | `WorkstreamStatus \| undefined` | Absent until the workstream has run something. |
+| `topic` | `string \| undefined` | Display label: the key the child was derived from. |
+| `coordinate` | `string \| undefined` | Display label for the entry running it. |
+| `status` | `ChildSessionStatus \| undefined` | Absent until the child has run something. |
 
-`WorkstreamStatus` is `"active" | "completed" | "failed" | "incomplete" | "aborted"`. `active` asserts only that the work hasn't finished, covering queued, running, and paused waiting for a person alike. It's the last state the server recorded, not a liveness check. Guard `topic`, `coordinate`, and `status` with `== null`.
+The table is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it.
 
-A session with no background work returns `[]`. An unknown session, or one the caller isn't allowed to read, throws `ClientHttpError`.
+`ChildSessionStatus` is `"active" | "completed" | "failed" | "incomplete" | "aborted"`. `active` asserts only that the work hasn't finished, covering queued, running, and paused waiting for a person alike. It's the last state the server recorded, not a liveness check. `topic` and `coordinate` are labels to display and nothing else — don't route or identify from them, and fall back to `id` rather than to a made-up name. Guard all three with `== null`.
 
-There is no client call that starts background work. Whether work detaches is declared by the flow on the server.
+A session that started nothing returns `[]`. An unknown session, or one the caller isn't allowed to read, throws `ClientHttpError`.
 
-Full walkthrough: [Client > Overview](/docs/client/overview#background-work).
+There is no counterpart that starts one. Whether work runs in a child session is declared by the flow on the server.
+
+Full walkthrough: [Client > Overview](/docs/client/overview#child-sessions).
 
 ## SSE Clients
 
