@@ -195,98 +195,101 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <div class="shell">
 <aside class="rail">
   <div class="rail-mark">The Workforce Atlas</div>
-  <div class="rail-sub">living design &middot; aug 2026</div>
+  <div class="rail-sub">living design &middot; sep 2026</div>
   <p class="sib">sibling · <a href="conductor.html">Conductor atlas</a><br>sibling · <a href="roadmap.html">Roadmap atlas</a></p>
   <nav>
-    <a class="grp">Orientation</a>
+    <a class="grp">The shape</a>
     <a href="#what">01 &middot; What Workforce is</a>
-    <a href="#layers">02 &middot; Layer 1 vs Layer 2</a>
-    <a href="#agent">03 &middot; Persistent Agent</a>
-    <a href="#channels">04 &middot; Teams, borrowing, channels</a>
-    <a href="#surface">05 &middot; Eventual surface</a>
-    <a href="#triangulate">06 &middot; Triangulate Conductor</a>
+    <a href="#contract">02 &middot; Worker contract</a>
+    <a href="#channels">03 &middot; Channels as sessions</a>
+    <a href="#boards">04 &middot; Projects and boards</a>
+    <a href="#roster">05 &middot; Teams and roster</a>
+    <a href="#identity">06 &middot; Identity and memory</a>
+    <a href="#dispatch">07 &middot; Dispatch spine</a>
+    <a href="#plan">08 &middot; Plan as content</a>
     <a class="grp">The ground</a>
-    <a href="#exists">07 &middot; What exists today</a>
-    <a href="#open">08 &middot; Not this cycle</a>
+    <a href="#exists">09 &middot; What exists today</a>
+    <a href="#triangulate">10 &middot; Triangulate Conductor</a>
+    <a href="#off">11 &middot; Off this page</a>
   </nav>
 </aside>
 
 <main>
 <header class="masthead">
   <p class="eyebrow">Living design</p>
-  <h1>A general harness on the same substrate</h1>
-  <p class="standfirst">Workforce is the other intended FSD harness. Conductor is product-specific to software development. Workforce is <strong>general</strong>: a conventions layer so people get going on Layer&nbsp;1 primitives without inventing their own opinions. The roadmap intends both. This cycle ships Conductor. This page exists so we do not over-build Conductor-only.</p>
+  <h1>One flow per worker, on the dispatch spine</h1>
+  <p class="standfirst">Workforce is Layer&nbsp;2 opinion on Layer&nbsp;1 that already exists. Eve-style files configure a worker. A factory turns those files into <strong>one standard flow</strong>. Channels are sessions that factory opens with today&#8217;s APIs. Collaboration is <code>dispatcher()</code> &#8212; including reverse, and cross-flow when it lands. Relay and Workstream are superseded names for that job.</p>
   <div class="key">
     <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
     <span><i class="sw-dash"></i> proposed &#8212; design, not built</span>
   </div>
-  <p class="sib">Sibling atlas: <a href="conductor.html">Conductor</a> &#8212; this-cycle priority. This page triangulates; it does not ship.</p>
+  <p class="sib">Sibling atlas: <a href="conductor.html">Conductor</a> &#8212; the coding-product track. Separate. Later reuse is earned. This page does not ship a package.</p>
 </header>
 
 <section id="what">
   <div class="sec-head"><span class="sec-num">01</span><h2>What Workforce is</h2></div>
-  <p class="lede">An open-source, vendor-agnostic harness built as opinions on FSD blocks. Not a coding product. Not this cycle. Not a D-n.</p>
+  <p class="lede">Opinions so people get going. Not a fifth block kind. Not a second Agent runtime. Not Channel / Team / Project packages in Layer&nbsp;1.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
       <h5>Today</h5><span class="role">a thin package</span>
-      <p>Named agents, a registry, and materialization into a block. One example uses it. That is the whole of the shipped surface.</p>
+      <p><code>defineAgent</code>, a registry, <code>materializeAgent</code>, a persona helper, a stub capability. One example seats a skill. That is the shipped surface.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Intended</h5><span class="role">layer 2 conventions</span>
-      <p>A file layout so people get going: knowledge on one side, workers on the other. Every folder is still a Layer&nbsp;1 resource, skill, tool, or agent.</p>
+      <p>Files configure tools, skills, personality, role. A factory emits one flow per worker. Teams are a roster plus shared sessions. Boards subscribe and post on the dispatch spine.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Eventually</h5><span class="role">a grok-bot-like surface</span>
-      <p>You talk to the engineering manager you already know. That identity lives on Engineering, has memory, and can be reached from more than one channel. It borrows the copy editor rather than owning one.</p>
+      <p>You talk to the engineering manager you already know. That identity has a flow, memory on that flow, and named channel sessions. Proposed. No UI exists.</p>
     </div>
-    <div class="card" style="--tc: var(--ink-3)">
-      <h5>Not</h5><span class="role">this-cycle conductor</span>
-      <p>Does not ride Relay fire-and-forget or the harness-manager proof. Does not rewrite the objective. Conductor stays the priority.</p>
+    <div class="card" style="--tc: var(--gone)">
+      <h5>Superseded</h5><span class="role">relay · workstream</span>
+      <p>Those words taught a second send door and a leftover child-session architecture. The door is <code>dispatcher()</code>. This page does not teach them as the plan.</p>
     </div>
   </div>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 360" role="img" aria-label="Two intended harnesses on one Layer 1 substrate. At the bottom, a solid Layer 1 band listing the existing primitives: four block kinds, flows and actions, sessions, resources and collections, capabilities, the task board, and skills. Above it sit two dashed product boxes. On the left, Conductor: product-specific to software development, a meta-harness that drives coding harnesses, this-cycle priority. On the right, Workforce: general, a conventions layer, not this cycle. Both boxes sit on the same substrate; neither invents new Layer 1 primitives.">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Two intended harnesses on one Layer 1 substrate. Bottom solid band lists existing primitives: four block kinds, flows and actions, sessions, resources, capabilities, task board, skills, dispatcher. Above it, two dashed product boxes. Left, Conductor: product-specific to software development, this-cycle priority. Right, Workforce: general conventions, one flow per worker, not a package this page ships.">
         <rect class="n-code" x="16" y="248" width="908" height="88" rx="5"/>
         <text class="t-lbl f-code" x="34" y="270">LAYER 1 &#8212; SUBSTRATE &#183; EXISTS</text>
         <text class="t-b" x="34" y="296">four block kinds &#183; flows &#183; sessions &#183; resources &#183; capabilities</text>
-        <text class="t-s" x="34" y="318">task board &#183; skills &#183; detached children &#183; the Agent type in core</text>
+        <text class="t-s" x="34" y="318">task board &#183; skills &#183; dispatcher() &#183; createSession({ sessionId }) &#183; flowIsolation</text>
 
         <path class="ln" d="M248,248 L248,214"/>
         <path class="ln" d="M692,248 L692,214"/>
 
         <rect class="n-prop" x="16" y="26" width="446" height="188" rx="5"/>
-        <text class="t-lbl" x="34" y="48">THIS CYCLE</text>
+        <text class="t-lbl" x="34" y="48">SEPARATE TRACK</text>
         <text class="t-b f-accent" x="34" y="76">Conductor</text>
         <text class="t-s" x="34" y="100">product-specific to software development</text>
         <text class="t-xs" x="34" y="128">A META-HARNESS THAT DRIVES CODING HARNESSES</text>
         <text class="t-xs" x="34" y="148">SESSION OWNED BY THE WORKFLOW</text>
         <text class="t-xs" x="34" y="168">ROLES ARE BLOCKS &#183; WORK LIVES IN RESOURCES</text>
-        <text class="t-b f-accent" x="34" y="196">priority. the atlas that ships.</text>
+        <text class="t-b f-accent" x="34" y="196">its own atlas. do not merge the tracks.</text>
 
         <rect class="n-prop" x="478" y="26" width="446" height="188" rx="5"/>
-        <text class="t-lbl" x="496" y="48">ROADMAP &#183; NOT THIS CYCLE</text>
+        <text class="t-lbl" x="496" y="48">THIS PAGE &#183; OPINIONS</text>
         <text class="t-b f-accent" x="496" y="76">Workforce</text>
-        <text class="t-s" x="496" y="100">general &#8212; opinions so people get going</text>
+        <text class="t-s" x="496" y="100">general &#8212; files in, one flow per worker out</text>
         <text class="t-xs" x="496" y="128">A CONVENTIONS LAYER ON THE SAME BLOCKS</text>
         <text class="t-xs" x="496" y="148">AN AGENT IS A PERSISTENT IDENTITY</text>
-        <text class="t-xs" x="496" y="168">SESSION IS A CHANNEL, NOT THE AGENT</text>
-        <text class="t-b f-accent" x="496" y="196">triangulates. does not ship.</text>
+        <text class="t-xs" x="496" y="168">ITS FLOW ISOLATES ITS MEMORY</text>
+        <text class="t-b f-accent" x="496" y="196">atlas only. not a package to ship.</text>
       </svg>
     </div>
-    <figcaption><b>One substrate, two harnesses.</b> Conductor is the coding-product opinion. Workforce is the general one. Both are Layer&nbsp;2 in the Eve / Grok&nbsp;Bot / Claude&nbsp;Work sense: they add opinions so Layer&nbsp;1 is not advanced-user-only. Neither is allowed to invent a new primitive.</figcaption>
+    <figcaption><b>One substrate, two harnesses.</b> Both are Layer&nbsp;2 in the Eve / Grok&nbsp;Bot / Claude&nbsp;Work sense: opinions so Layer&nbsp;1 is not advanced-user-only. Neither invents a primitive. This page does not merge them into one harness.</figcaption>
   </figure>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 220" role="img" aria-label="Three analog pairs for what Workforce is relative to a product-specific coding surface. Left pair: Eve sitting on Vercel. Centre pair: Grok Bot sitting on Cursor Build. Right pair: Claude Work sitting on Claude Code. Under each pair, Workforce sitting on Conductor. The top box in each pair is the general conventions surface; the bottom box is the product-specific or platform surface.">
+      <svg viewBox="0 0 940 220" role="img" aria-label="Three analog pairs. Left: Eve on Vercel. Centre: Grok Bot on Cursor Build. Right: Claude Work on Claude Code. Each pair is general conventions sitting on a product-specific or platform surface.">
         <rect class="n-grp" x="16" y="16" width="292" height="188" rx="5"/>
         <text class="t-lbl" x="162" y="38" text-anchor="middle">PLATFORM</text>
         <rect class="n-prop" x="36" y="52" width="252" height="52" rx="4"/>
         <text class="t-b f-accent" x="162" y="74" text-anchor="middle">Eve</text>
-        <text class="t-xs" x="162" y="92" text-anchor="middle">GENERAL / OPINIONATED</text>
+        <text class="t-xs" x="162" y="92" text-anchor="middle">FILES CONFIGURE THE AGENT</text>
         <path class="ln" d="M162,104 L162,118"/>
         <rect class="n-code" x="36" y="118" width="252" height="52" rx="4"/>
         <text class="t-b f-code" x="162" y="140" text-anchor="middle">Vercel</text>
@@ -316,359 +319,609 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="778" y="188" text-anchor="middle">WORK VS CODE</text>
       </svg>
     </div>
-    <figcaption><b>The analog, not the architecture.</b> Workforce is to Conductor as Eve is to Vercel, Grok&nbsp;Bot to Cursor&nbsp;Build, Claude&nbsp;Work to Code. A general conventions surface beside a product-specific coding one. Both ours; both on FSD. Conductor is the Code/Build this cycle.</figcaption>
+    <figcaption><b>The analog, not the architecture.</b> Workforce is to Conductor as Eve is to Vercel. The useful steal from Eve is the file convention: drop files in a folder, the agent&#8217;s shape comes from that, not from a hand-wired flow. The architecture underneath stays FSD.</figcaption>
   </figure>
 </section>
 
-<section id="layers">
-  <div class="sec-head"><span class="sec-num">02</span><h2>Layer 1 vs Layer 2</h2></div>
-  <p class="lede">Layer&nbsp;1 has substrate opinions only. How you use them is up to you, which is why it is powerful and advanced-user-only. Layer&nbsp;2 has opinions so people get going. Workforce was conceived as that layer.</p>
+<section id="contract">
+  <div class="sec-head"><span class="sec-num">02</span><h2>Worker contract</h2></div>
+  <p class="lede">One standard flow shape. One flow per worker. Files configure the worker. The factory emits the flow. A custom flow is allowed only if it keeps that contract &#8212; it is not a second Agent runtime.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 420" role="img" aria-label="A stack. The bottom solid band is Layer 1, existing primitives with almost no product opinion: handler, generator, sequencer, router; defineFlow and actions; a session that carries a flowKind; resources and collections scoped session, user, or org; capabilities; the task board and skills runtime; the Agent structural type in core. The middle dashed band is Layer 2 conventions: named agents, personas, a registry, materialize-into-a-block — the thin package that exists today — plus proposed opinions, persistent identity, channels, teams, a default way to staff work. The top dashed band is product harnesses that consume both layers: Conductor this cycle, a Grok-Bot-like Workforce surface later. Arrows show product harnesses sitting on conventions sitting on substrate.">
-        <rect class="n-prop" x="16" y="16" width="908" height="100" rx="5"/>
-        <text class="t-lbl" x="34" y="38">PRODUCT HARNESSES &#8212; PROPOSED AS PRODUCTS, NOT NEW PRIMITIVES</text>
-        <rect class="n-box" x="34" y="52" width="420" height="48" rx="4"/>
-        <text class="t-b" x="48" y="72">Conductor</text>
-        <text class="t-xs" x="48" y="88">SDLC META-HARNESS &#183; THIS CYCLE</text>
-        <rect class="n-prop" x="470" y="52" width="434" height="48" rx="4"/>
-        <text class="t-b f-accent" x="484" y="72">Workforce surface</text>
-        <text class="t-xs" x="484" y="88">GROK-BOT-LIKE &#183; NOT THIS CYCLE</text>
+      <svg viewBox="0 0 940 420" role="img" aria-label="Proposed worker factory. Left dashed column is Eve-style files: personality, role, tools, skills. Centre dashed box is the factory: it builds an Agent from the files and emits one standard defineFlow. Right solid-and-dashed stack is the result: one flow kind for that worker, standard actions, named channel sessions the factory opens, and flow-isolated memory resources.">
+        <rect class="n-prop" x="16" y="16" width="280" height="388" rx="5"/>
+        <text class="t-lbl" x="34" y="38">FILES &#183; PROPOSED</text>
+        <text class="t-s" x="34" y="68">workers/eng-manager/</text>
+        <text class="t-xs" x="50" y="94">personality.md</text>
+        <text class="t-xs" x="50" y="114">role.md</text>
+        <text class="t-xs" x="50" y="134">tools.md</text>
+        <text class="t-xs" x="50" y="154">skills/</text>
+        <text class="t-s f-accent" x="34" y="188">what the files set</text>
+        <text class="t-xs" x="34" y="212">TOOLS THE WORKER MAY CALL</text>
+        <text class="t-xs" x="34" y="230">SKILLS IT CAN LOAD</text>
+        <text class="t-xs" x="34" y="248">PERSONALITY / PERSONA</text>
+        <text class="t-xs" x="34" y="266">ROLE ON A ROSTER</text>
+        <text class="t-xs" x="34" y="300">NO FLOW WIRING IN THE FILES</text>
+        <text class="t-xs" x="34" y="318">NO SECOND RUNTIME HERE</text>
+        <text class="t-b f-accent" x="34" y="360">drop files. factory builds.</text>
+        <text class="t-xs" x="34" y="382">STARTING TREE. NOT SHIPPED.</text>
 
-        <path class="ln" d="M470,116 L470,132"/>
+        <path class="ln" d="M296,210 L330,210"/>
 
-        <rect class="n-prop" x="16" y="132" width="908" height="128" rx="5"/>
-        <text class="t-lbl" x="34" y="154">LAYER 2 &#8212; CONVENTIONS / OPINIONS</text>
-        <rect class="n-code" x="34" y="168" width="280" height="72" rx="4"/>
-        <text class="t-s f-code" x="48" y="190">exists, thin</text>
-        <text class="t-xs" x="48" y="210">defineAgent &#183; registry</text>
-        <text class="t-xs" x="48" y="226">materializeAgent &#183; definePersona</text>
-        <rect class="n-prop" x="330" y="168" width="280" height="72" rx="4"/>
-        <text class="t-s f-accent" x="344" y="190">knowledge</text>
-        <text class="t-xs" x="344" y="210">RESOURCES &#183; SKILLS &#183; TOOLS</text>
-        <text class="t-xs" x="344" y="226">WHAT A TEAM KNOWS</text>
-        <rect class="n-prop" x="624" y="168" width="280" height="72" rx="4"/>
-        <text class="t-s f-accent" x="638" y="190">workers</text>
-        <text class="t-xs" x="638" y="210">TEAMS &#183; IDENTITIES</text>
-        <text class="t-xs" x="638" y="226">WHO DOES THE WORK</text>
+        <rect class="n-prop" x="330" y="86" width="250" height="248" rx="5"/>
+        <text class="t-lbl" x="348" y="108">FACTORY &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="348" y="140">one worker &#8594; one flow</text>
+        <text class="t-xs" x="348" y="168">DEFINEAGENT FROM THE FILES</text>
+        <text class="t-xs" x="348" y="186">MATERIALIZE INTO THE SHAPE</text>
+        <text class="t-xs" x="348" y="204">EMIT defineFlow({ kind })</text>
+        <text class="t-xs" x="348" y="222">DECLARE THE STANDARD ACTIONS</text>
+        <text class="t-xs" x="348" y="254">BOOTSTRAP NAMED SESSIONS</text>
+        <text class="t-xs" x="348" y="272">createSession({ sessionId })</text>
+        <text class="t-s" x="348" y="306">Agent shape comes from</text>
+        <text class="t-s" x="348" y="322">the factory, not the author</text>
 
-        <path class="ln" d="M470,260 L470,276"/>
+        <path class="ln" d="M580,210 L614,210"/>
 
-        <rect class="n-code" x="16" y="276" width="908" height="122" rx="5"/>
-        <text class="t-lbl f-code" x="34" y="298">LAYER 1 &#8212; SUBSTRATE &#183; EXISTS &#183; DO NOT INVENT HERE</text>
-        <text class="t-s" x="34" y="322">handler &#183; generator &#183; sequencer &#183; router</text>
-        <text class="t-s" x="34" y="340">defineFlow / actions &#183; session carries flowKind &#183; resources (session / user / org)</text>
-        <text class="t-s" x="34" y="358">capabilities &#183; task board &#183; skills runtime &#183; startDetached</text>
-        <text class="t-s" x="34" y="376">Agent type in core &#8212; a named participant, not yet a persistent identity</text>
+        <rect class="n-code" x="614" y="16" width="310" height="120" rx="5"/>
+        <text class="t-lbl f-code" x="632" y="38">EXISTS &#183; PIECES THE FACTORY USES</text>
+        <text class="t-xs" x="632" y="64">defineAgent · materializeAgent</text>
+        <text class="t-xs" x="632" y="82">defineFlow · dispatcher()</text>
+        <text class="t-xs" x="632" y="100">createSession({ sessionId })</text>
+        <text class="t-xs" x="632" y="118">flowIsolation on resources</text>
+
+        <rect class="n-prop" x="614" y="152" width="310" height="252" rx="5"/>
+        <text class="t-lbl" x="632" y="174">RESULT &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="632" y="204">flowKind: eng-manager</text>
+        <text class="t-xs" x="632" y="228">ONE FLOW. THIS WORKER ONLY.</text>
+        <text class="t-xs" x="632" y="252">ACTIONS THE CONTRACT NAMES</text>
+        <text class="t-xs" x="632" y="270">CHANNEL SESSIONS, OPENED</text>
+        <text class="t-xs" x="632" y="288">MEMORY RESOURCES, ISOLATED</text>
+        <text class="t-xs" x="632" y="314">NOT A SHARED FLOW EVERYONE</text>
+        <text class="t-xs" x="632" y="332">ROUTES THROUGH</text>
+        <text class="t-b f-accent" x="632" y="370">the worker is the flow</text>
       </svg>
     </div>
-    <figcaption><b>Opinions sit on primitives.</b> Layer&nbsp;1 is the framework: four block kinds, flows, sessions, scoped resources, capabilities, the board, skills. Layer&nbsp;2 packages those into a way to start. Product harnesses consume both. A new box on this figure is an opinion or a product, never a fifth block kind.</figcaption>
+    <figcaption><b>Files in, one flow out.</b> The factory is the opinion. Layer&nbsp;1 already has the pieces it would call. Nothing in this figure is a new primitive. The tree is a starting point, not a shipped layout.</figcaption>
   </figure>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 500" role="img" aria-label="Proposed Workforce file convention. A dashed tree: workforce contains teams, org-level workers, org-level resources, skills and tools, automations, pipelines, and workforce.config. Teams are functions: engineering, marketing, product. Each team folder repeats resources, skills, tools, and workers, and each roster has a lead that holds the team board plus doers that claim its tasks. Shared specialists, copy editor and chief of staff, sit in org-level workers with no home team, borrowed by any team. Org resources hold what every team needs, such as the style guide. A side key explains that team knowledge is a bounded working set and that workers have a home team or are shared.">
-        <rect class="n-prop" x="16" y="16" width="560" height="470" rx="5"/>
-        <text class="t-lbl" x="34" y="38">FILE CONVENTION &#183; PROPOSED &#183; STARTING POINT</text>
-        <text class="t-s" x="34" y="68">workforce/</text>
-        <text class="t-s" x="50" y="90">teams/</text>
-        <text class="t-s f-accent" x="66" y="112">engineering/</text>
-        <text class="t-xs" x="82" y="130">resources/ &#183; skills/ &#183; tools/</text>
-        <text class="t-xs" x="82" y="148">workers/ eng-manager (lead) &#183; api-designer</text>
-        <text class="t-s f-accent" x="66" y="174">marketing/</text>
-        <text class="t-xs" x="82" y="192">resources/ &#183; skills/ &#183; tools/</text>
-        <text class="t-xs" x="82" y="210">workers/ marketing-manager (lead) &#183; campaign-writer</text>
-        <text class="t-s f-accent" x="66" y="236">product/</text>
-        <text class="t-xs" x="82" y="254">resources/ &#183; skills/ &#183; tools/</text>
-        <text class="t-xs" x="82" y="272">workers/ product-manager (lead) &#183; user-researcher</text>
-        <text class="t-s f-accent" x="50" y="300">workers/ copy-editor &#183; chief-of-staff</text>
-        <text class="t-xs" x="66" y="318">SHARED &#8212; NO HOME TEAM, BORROWED BY ANY</text>
-        <text class="t-s f-code" x="50" y="344">resources/ &#183; skills/ &#183; tools/</text>
-        <text class="t-xs" x="66" y="362">ORG KNOWLEDGE &#8212; THE STYLE GUIDE, ONCE</text>
-        <text class="t-s" x="50" y="388">automations/ &#183; pipelines/</text>
-        <text class="t-s" x="50" y="414">workforce.config</text>
-        <text class="t-xs" x="34" y="444">A TEAM IS A FUNCTION WITH ITS OWN WORKING SET</text>
-        <text class="t-xs" x="34" y="462">NOT A BOX ON AN ORG CHART. NO staff/ FOLDER.</text>
+      <svg viewBox="0 0 940 280" role="img" aria-label="Two compositions. Left, rejected: one shared workforce flow with a router sending every worker through the same actions. Right, proposed: three separate flows, one per worker, each with its own sessions and memory.">
+        <rect class="n-grp" x="16" y="16" width="446" height="248" rx="5"/>
+        <text class="t-lbl f-gone" x="34" y="38">NOT THIS &#8212; ONE SHARED FLOW</text>
+        <rect class="n-box" x="34" y="56" width="410" height="72" rx="4"/>
+        <text class="t-s" x="48" y="80">workforce-runtime</text>
+        <text class="t-xs" x="48" y="98">ONE FLOWKIND. A ROUTER PICKS A WORKER.</text>
+        <text class="t-xs" x="48" y="114">EVERYONE SHARES THE SAME RESOURCE KEYS</text>
+        <rect class="n-box" x="34" y="144" width="122" height="56" rx="4"/>
+        <text class="t-xs" x="48" y="168">eng mgr</text>
+        <text class="t-xs" x="48" y="184">A ROUTE</text>
+        <rect class="n-box" x="168" y="144" width="122" height="56" rx="4"/>
+        <text class="t-xs" x="182" y="168">librarian</text>
+        <text class="t-xs" x="182" y="184">A ROUTE</text>
+        <rect class="n-box" x="302" y="144" width="142" height="56" rx="4"/>
+        <text class="t-xs" x="316" y="168">coordinator</text>
+        <text class="t-xs" x="316" y="184">A ROUTE</text>
+        <text class="t-xs" x="34" y="228">MEMORY COLLIDES. A SESSION IS EVERYONE&#8217;S.</text>
+        <text class="t-b f-gone" x="34" y="248">rejected</text>
 
-        <rect class="n-code" x="592" y="16" width="332" height="216" rx="5"/>
-        <text class="t-lbl f-code" x="610" y="38">KNOWLEDGE</text>
-        <text class="t-b" x="610" y="64">a bounded working set</text>
-        <text class="t-xs" x="610" y="82">A COLLECTION TOPICKED BY TEAM &#8212; WORKS TODAY</text>
-        <text class="t-s" x="610" y="108">resources &#183; skills &#183; tools</text>
-        <text class="t-xs" x="610" y="134">ENGINEERING&#8217;S RFCS ARE NOT</text>
-        <text class="t-xs" x="610" y="152">MARKETING&#8217;S BRAND VOICE</text>
-        <text class="t-xs" x="610" y="178">ORG HOLDS WHAT ALL TEAMS NEED</text>
-        <text class="t-xs" x="610" y="196">A NAME BOUNDS IT, NOT SECURITY</text>
-        <text class="t-xs" x="610" y="222">NOT KNOWLEDGE HUB &#8212; SECTION 8</text>
-
-        <rect class="n-prop" x="592" y="248" width="332" height="238" rx="5"/>
-        <text class="t-lbl" x="610" y="270">WORKERS</text>
-        <text class="t-b f-accent" x="610" y="296">a home, or shared</text>
-        <text class="t-s" x="610" y="322">teams &#183; workers</text>
-        <text class="t-xs" x="610" y="348">A LEAD HOLDS THE TEAM&#8217;S BOARD</text>
-        <text class="t-xs" x="610" y="366">DOERS CLAIM ITS TASKS</text>
-        <text class="t-xs" x="610" y="392">A SHARED SPECIALIST HAS NO HOME</text>
-        <text class="t-xs" x="610" y="410">TEAM. IT IS REACHED, NOT OWNED.</text>
-        <text class="t-xs" x="610" y="436">WORKERS OR AGENTS &#8212; NAMING OPEN</text>
-        <text class="t-xs" x="610" y="462">AUTOMATIONS AND PIPELINES</text>
-        <text class="t-xs" x="610" y="480">ARE CONVENTIONS OVER FLOWS</text>
+        <rect class="n-grp" x="478" y="16" width="446" height="248" rx="5"/>
+        <text class="t-lbl" x="496" y="38">THIS &#8212; ONE FLOW PER WORKER</text>
+        <rect class="n-prop" x="496" y="56" width="130" height="88" rx="4"/>
+        <text class="t-s f-accent" x="508" y="80">eng-manager</text>
+        <text class="t-xs" x="508" y="98">OWN FLOWKIND</text>
+        <text class="t-xs" x="508" y="114">OWN SESSIONS</text>
+        <text class="t-xs" x="508" y="130">OWN MEMORY</text>
+        <rect class="n-prop" x="636" y="56" width="130" height="88" rx="4"/>
+        <text class="t-s f-accent" x="648" y="80">librarian</text>
+        <text class="t-xs" x="648" y="98">OWN FLOWKIND</text>
+        <text class="t-xs" x="648" y="114">OWN SESSIONS</text>
+        <text class="t-xs" x="648" y="130">OWN MEMORY</text>
+        <rect class="n-prop" x="776" y="56" width="130" height="88" rx="4"/>
+        <text class="t-s f-accent" x="788" y="80">coordinator</text>
+        <text class="t-xs" x="788" y="98">OWN FLOWKIND</text>
+        <text class="t-xs" x="788" y="114">OWN SESSIONS</text>
+        <text class="t-xs" x="788" y="130">OWN MEMORY</text>
+        <text class="t-xs" x="496" y="172">THEY TALK THROUGH DISPATCHER(), NOT A SHARED FLOW</text>
+        <text class="t-xs" x="496" y="190">ORG / USER RESOURCES CAN BE FLOW-ISOLATED</text>
+        <text class="t-b f-accent" x="496" y="228">the worker is addressable as a flow</text>
       </svg>
     </div>
-    <figcaption><b>The convention that demonstrates the layer.</b> A team is a function that owns a working set: its knowledge, and a roster with a lead that holds the board and doers that claim its tasks. Shared specialists &#8212; the copy editor, the chief of staff &#8212; sit at org <code>workers/</code> with no home team. Starting point. Not a shipped tree. Not a Knowledge Hub design.</figcaption>
+    <figcaption><b>Do not route everyone through one runtime flow.</b> A shared flow makes isolation a naming trick. One flow per worker makes <code>flowIsolation</code> on user- and org-scoped resources mean something: that worker&#8217;s memory is that flow&#8217;s.</figcaption>
   </figure>
-
-  <div class="note">
-    <span class="lbl">A team&#8217;s knowledge is a collection with the team as its topic &#8212; that already works</span>
-    <p>The convention needs no new scope to exist. <code>defineResourceCollection</code> already takes a <strong>parameterized pattern</strong> &#8212; <code>[team]/resources</code>, addressed with <code>{ team: "engineering" }</code> &#8212; or a wildcard prefix like <code>teams/engineering/*</code> (<code>packages/core/src/types/collection-patterns.ts</code>). That is enough to build the whole layout on today.</p>
-    <p>What an org-scoped collection does not give you is <strong>isolation</strong>: nothing stops one team&#8217;s worker reading another team&#8217;s instances. That is a <em>security</em> property, not a modeling blocker. A proper team scope may earn its place as a framework-level item later &#8212; section&nbsp;8 &#8212; and nothing waits on it.</p>
-  </div>
 
   <div class="tw">
     <table>
-      <thead><tr><th></th><th>Layer 1</th><th>Layer 2</th></tr></thead>
+      <thead><tr><th>The contract</th><th>Status</th><th>What it means, narrowly</th></tr></thead>
       <tbody>
-        <tr><td>What it is</td><td>Substrate. Composable primitives with almost no product opinion.</td><td>Conventions. A default way to use the substrate.</td></tr>
-        <tr><td>Who it is for</td><td>Authors who will compose their own harness.</td><td>Authors who want to get going, and still extend everything.</td></tr>
-        <tr><td>What it must not do</td><td>Absorb one product&#8217;s knowledge. That is tenet&nbsp;4.</td><td>Invent a primitive the substrate does not have. Compose, or file a Layer&nbsp;1 gap.</td></tr>
-        <tr><td>Extensibility</td><td>Infinite, if you will write the opinions yourself.</td><td>Infinite the same way: every opinion is still a block, so you replace it.</td></tr>
+        <tr><td>One standard flow shape</td><td><span class="tag t-prop">proposed</span></td><td>Every factory-built worker exposes the same action surface: a talk/inbox action, a way to receive a dispatch, a way to send one. Authors do not invent a new inbox per worker.</td></tr>
+        <tr><td>One flow per worker</td><td><span class="tag t-prop">proposed</span></td><td>The worker&#8217;s <code>flowKind</code> <em>is</em> the worker. Not a field on a shared runtime.</td></tr>
+        <tr><td>Files configure, factory emits</td><td><span class="tag t-prop">proposed</span></td><td>Personality, role, tools, skills are files. The factory calls today&#8217;s <code>defineAgent</code> / <code>defineFlow</code> / <code>createSession</code>.</td></tr>
+        <tr><td>Custom flow escape hatch</td><td><span class="tag t-prop">proposed</span></td><td>You may hand-write a <code>defineFlow</code> instead of taking the factory output. It must still be one flow for that worker and expose the same actions. It is not a licence to invent a second Agent type.</td></tr>
       </tbody>
     </table>
   </div>
-</section>
-
-<section id="agent">
-  <div class="sec-head"><span class="sec-num">03</span><h2>Persistent Agent</h2></div>
-  <p class="lede">An Agent does not live on a session, a channel, or even a Flow. It is a persistent identity with its own memory, brought into any session. The session is a channel. The agent is who walks into it.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 400" role="img" aria-label="Two readings of Agent, side by side. On the left, what exists: an Agent is a named reusable participant, persona plus model plus tools, registered once and materialized into a generator block inside a flow. It has no resources field and no notion of scope. Memory reaches it only through usesCapabilities. One example staffs a skill seat this way. On the right, the proposed Workforce reading: a persistent identity sits above any session. Its memory travels with it. Three sessions are channels it can enter, including one marked as its own persistent channel. The identity is the same box in all three. Dashed borders mark the right side as proposed.">
-        <rect class="n-grp" x="16" y="16" width="446" height="348" rx="5"/>
-        <text class="t-lbl" x="34" y="38">TODAY &#8212; EXISTS</text>
-        <text class="t-b" x="34" y="64">a named participant</text>
+      <svg viewBox="0 0 940 220" role="img" aria-label="Custom flow escape hatch. A dashed box on the left is the factory default flow. A dashed box on the right is a hand-written defineFlow. Both sit on the same worker-contract band: same actions, one flowKind, dispatch in and out. A gone label marks a second Agent runtime as rejected.">
+        <rect class="n-prop" x="16" y="16" width="280" height="100" rx="4"/>
+        <text class="t-s f-accent" x="32" y="40">factory default</text>
+        <text class="t-xs" x="32" y="60">STANDARD FLOW, FROM FILES</text>
+        <text class="t-xs" x="32" y="78">MOST WORKERS STOP HERE</text>
+        <text class="t-xs" x="32" y="96">PROPOSED</text>
 
-        <rect class="n-code" x="34" y="80" width="410" height="72" rx="4"/>
-        <text class="t-b f-code" x="48" y="104">Agent</text>
-        <text class="t-xs" x="48" y="122">PERSONA + MODEL + TOOLS</text>
-        <text class="t-xs" x="48" y="138">NO RESOURCES FIELD &#183; NO SCOPE</text>
+        <rect class="n-prop" x="330" y="16" width="280" height="100" rx="4"/>
+        <text class="t-s f-accent" x="346" y="40">custom defineFlow</text>
+        <text class="t-xs" x="346" y="60">HAND-WRITTEN, SAME CONTRACT</text>
+        <text class="t-xs" x="346" y="78">SAME ACTIONS. ONE FLOWKIND.</text>
+        <text class="t-xs" x="346" y="96">ESCAPE HATCH. PROPOSED.</text>
 
-        <path class="ln" d="M239,152 L239,172"/>
+        <rect class="n-box" x="644" y="16" width="280" height="100" rx="4"/>
+        <text class="t-s f-gone" x="660" y="40">second Agent runtime</text>
+        <text class="t-xs" x="660" y="60">A NEW TYPE, A NEW INBOX</text>
+        <text class="t-xs" x="660" y="78">A NEW SEND DOOR</text>
+        <text class="t-xs" x="660" y="96">REJECTED</text>
 
-        <rect class="n-box" x="34" y="172" width="410" height="88" rx="4"/>
-        <text class="t-s" x="48" y="196">materializeAgent &#8594; a block</text>
-        <text class="t-xs" x="48" y="216">WORKER SHAPE FOR A BOARD SEAT</text>
-        <text class="t-xs" x="48" y="232">STANDALONE SHAPE FOR A FLOW ACTION</text>
-        <text class="t-xs" x="48" y="248">LIVES INSIDE THE FLOW THAT INVOKED IT</text>
-
-        <text class="t-xs" x="34" y="290">MEMORY REACHES IT ONLY THROUGH usesCapabilities</text>
-        <text class="t-xs" x="34" y="308">usesSkills IS RESERVED. contextMode HONORS ONLY inline</text>
-        <text class="t-b f-code" x="34" y="340">a definition, not an identity that persists</text>
-
-        <rect class="n-grp" x="478" y="16" width="446" height="348" rx="5"/>
-        <text class="t-lbl" x="496" y="38">WORKFORCE &#8212; PROPOSED</text>
-        <text class="t-b f-accent" x="496" y="64">a persistent identity</text>
-
-        <rect class="n-prop" x="496" y="80" width="410" height="56" rx="4"/>
-        <text class="t-b f-accent" x="510" y="104">engineering manager</text>
-        <text class="t-xs" x="510" y="122">SAME PERSON. MEMORY TRAVELS.</text>
-
-        <path class="ln" d="M568,136 L568,156"/>
-        <path class="ln" d="M701,136 L701,156"/>
-        <path class="ln" d="M834,136 L834,156"/>
-
-        <rect class="n-box" x="496" y="156" width="122" height="70" rx="4"/>
-        <text class="t-s" x="508" y="178">slack</text>
-        <text class="t-xs" x="508" y="196">TEAM CHANNEL</text>
-        <text class="t-xs" x="508" y="212">BROUGHT IN</text>
-
-        <rect class="n-box" x="629" y="156" width="122" height="70" rx="4"/>
-        <text class="t-s" x="641" y="178">session B</text>
-        <text class="t-xs" x="641" y="196">A LAUNCH REVIEW</text>
-        <text class="t-xs" x="641" y="212">SAME MANAGER</text>
-
-        <rect class="n-prop" x="762" y="156" width="144" height="70" rx="4"/>
-        <text class="t-s f-accent" x="774" y="178">its channel</text>
-        <text class="t-xs" x="774" y="196">TALK TO ENG MGR</text>
-        <text class="t-xs" x="774" y="212">DIRECTLY</text>
-
-        <text class="t-xs" x="496" y="254">THE IDENTITY IS THE SAME BOX IN EVERY CHANNEL</text>
-        <text class="t-xs" x="496" y="272">A SESSION IS WHERE A CONVERSATION LIVES</text>
-        <text class="t-xs" x="496" y="290">THE AGENT IS WHO IS SPEAKING, IN ANY OF THEM</text>
-        <text class="t-b f-accent" x="496" y="340">the agent walks in. the session does not own it.</text>
+        <rect class="n-code" x="16" y="136" width="908" height="68" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="158">THE CONTRACT BOTH LEGAL PATHS KEEP</text>
+        <text class="t-s" x="34" y="184">one flowKind · the named receive / send actions · sessions the factory (or the author) opens · dispatcher() in and out</text>
       </svg>
     </div>
-    <figcaption><b>Session is a channel, not the agent.</b> Today an Agent is a reusable definition that becomes a block inside a flow. The intended reading: the engineering manager you already know walks into Slack, a launch review, or their own channel, carrying the same memory. The left is shipped. The right is not.</figcaption>
+    <figcaption><b>Eject to a custom flow, not to a custom runtime.</b> The hatch exists so a worker that needs an unusual sequencer can still sit on a roster. If it cannot receive a dispatch the way every other worker does, it is not a workforce worker.</figcaption>
   </figure>
-
-  <div class="note">
-    <span class="lbl">Do not read Conductor&#8217;s architect as this already existing</span>
-    <p>The Conductor atlas already says agents and sessions are not bound together, and that what a role knows is where its resources live. That is a Layer&nbsp;1 reading, and it is true of scoped resources today. It is not a persistent-identity runtime. <code>Agent</code> still has no <code>resources</code> field and no scope. Org-scoped memory for a role is a design on a young surface, not a Workforce feature that shipped.</p>
-  </div>
 </section>
 
 <section id="channels">
-  <div class="sec-head"><span class="sec-num">04</span><h2>Teams, borrowing, channels</h2></div>
-  <p class="lede">A team owns a working set, not a headcount. Its roster has a lead that holds the board and doers that claim its tasks. A specialist every team needs has no home team &#8212; it is borrowed. Channels are rooms; Relay is the one Layer&nbsp;1 door between them, status in section&nbsp;6. Proposed.</p>
+  <div class="sec-head"><span class="sec-num">03</span><h2>Channels are sessions</h2></div>
+  <p class="lede">Every worker flow has static sessions that act as channels. The factory opens those named sessions with <code>createSession({ sessionId })</code>. There is no seed-session fixture on <code>defineFlow</code>.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 320" role="img" aria-label="Membership versus borrowing. Three team boxes across the top: engineering with an eng manager as lead holding the team board and an api designer that claims its tasks; marketing with a marketing manager as lead and a campaign writer; product with a product manager as lead and a user researcher. Three short lines run down from the teams into a shared band below. The shared band is org-level workers with no home team: the copy editor, borrowed by anyone who ships words, and the chief of staff, which routes across teams. A closing line states that Engineering does not have a copy editor, it borrows one, because the style guide is org knowledge rather than Engineering's.">
-        <rect class="n-prop" x="16" y="16" width="292" height="126" rx="4"/>
-        <text class="t-lbl" x="28" y="36">engineering/</text>
-        <text class="t-s f-accent" x="28" y="60">eng manager</text>
-        <text class="t-xs" x="28" y="78">LEAD &#8212; HOLDS THE TEAM BOARD</text>
-        <text class="t-s f-accent" x="28" y="104">api designer</text>
-        <text class="t-xs" x="28" y="122">DOER &#8212; CLAIMS ITS TASKS</text>
+      <svg viewBox="0 0 940 340" role="img" aria-label="One worker flow with three static channel sessions. The flow kind is eng-manager. Three session boxes sit on it: slack, web, cli. A factory bootstrap box on the right calls createSession with a chosen sessionId for each. A note says defineFlow does not declare seed sessions.">
+        <rect class="n-prop" x="16" y="16" width="560" height="308" rx="5"/>
+        <text class="t-lbl" x="34" y="38">ONE WORKER FLOW &#183; PROPOSED LAYOUT</text>
+        <text class="t-b f-accent" x="34" y="68">flowKind: eng-manager</text>
+        <text class="t-xs" x="34" y="88">THE WORKER. NOT A SHARED RUNTIME.</text>
 
-        <rect class="n-prop" x="324" y="16" width="292" height="126" rx="4"/>
-        <text class="t-lbl" x="336" y="36">marketing/</text>
-        <text class="t-s f-accent" x="336" y="60">marketing manager</text>
-        <text class="t-xs" x="336" y="78">LEAD &#8212; HOLDS THE TEAM BOARD</text>
-        <text class="t-s f-accent" x="336" y="104">campaign writer</text>
-        <text class="t-xs" x="336" y="122">DOER &#8212; CLAIMS ITS TASKS</text>
+        <rect class="n-box" x="34" y="108" width="160" height="88" rx="4"/>
+        <text class="t-s" x="48" y="132">session</text>
+        <text class="t-b" x="48" y="154">slack</text>
+        <text class="t-xs" x="48" y="176">A CHANNEL</text>
 
-        <rect class="n-prop" x="632" y="16" width="292" height="126" rx="4"/>
-        <text class="t-lbl" x="644" y="36">product/</text>
-        <text class="t-s f-accent" x="644" y="60">product manager</text>
-        <text class="t-xs" x="644" y="78">LEAD &#8212; HOLDS THE TEAM BOARD</text>
-        <text class="t-s f-accent" x="644" y="104">user researcher</text>
-        <text class="t-xs" x="644" y="122">DOER &#8212; CLAIMS ITS TASKS</text>
+        <rect class="n-box" x="210" y="108" width="160" height="88" rx="4"/>
+        <text class="t-s" x="224" y="132">session</text>
+        <text class="t-b" x="224" y="154">web</text>
+        <text class="t-xs" x="224" y="176">A CHANNEL</text>
 
-        <path class="ln" d="M162,142 L162,176"/>
-        <path class="ln" d="M470,142 L470,176"/>
-        <path class="ln" d="M778,142 L778,176"/>
-        <text class="t-xs" x="176" y="166">BORROWS</text>
-        <text class="t-xs" x="484" y="166">BORROWS</text>
-        <text class="t-xs" x="792" y="166">BORROWS</text>
+        <rect class="n-box" x="386" y="108" width="160" height="88" rx="4"/>
+        <text class="t-s" x="400" y="132">session</text>
+        <text class="t-b" x="400" y="154">cli</text>
+        <text class="t-xs" x="400" y="176">A CHANNEL</text>
 
-        <rect class="n-box" x="16" y="176" width="908" height="120" rx="5"/>
-        <text class="t-lbl" x="34" y="198">SHARED &#183; org workers/ &#183; NO HOME TEAM</text>
-        <text class="t-b" x="34" y="226">copy editor</text>
-        <text class="t-s" x="150" y="226">the last read before anything ships, for every team</text>
-        <text class="t-b" x="34" y="252">chief of staff</text>
-        <text class="t-s" x="150" y="252">routes work across teams, so it belongs to none of them</text>
-        <text class="t-xs" x="34" y="282">ENGINEERING DOES NOT HAVE A COPY EDITOR. IT BORROWS ONE. THE STYLE GUIDE IS ORG KNOWLEDGE.</text>
+        <text class="t-xs" x="34" y="228">SAME FLOW. SAME MEMORY RESOURCES. THREE ROOMS.</text>
+        <text class="t-xs" x="34" y="246">A CHANNEL IS A SESSION RECORD WITH A CHOSEN ID.</text>
+        <text class="t-xs" x="34" y="264">IT IS NOT A NEW PRIMITIVE AND NOT A PACKAGE.</text>
+        <text class="t-b f-accent" x="34" y="298">the session is the channel</text>
+
+        <rect class="n-code" x="592" y="16" width="332" height="308" rx="5"/>
+        <text class="t-lbl f-code" x="610" y="38">BOOTSTRAP &#183; TODAY&#8217;S API</text>
+        <text class="t-s" x="610" y="68">createSession({</text>
+        <text class="t-s" x="628" y="88">flowKind: "eng-manager",</text>
+        <text class="t-s" x="628" y="108">userId,</text>
+        <text class="t-s" x="628" y="128">sessionId: "slack"</text>
+        <text class="t-s" x="610" y="148">})</text>
+        <text class="t-xs" x="610" y="180">CALLER-CHOSEN SESSION ID</text>
+        <text class="t-xs" x="610" y="198">ALREADY ON THE CLIENT</text>
+        <text class="t-xs" x="610" y="216">packages/client sessions.ts</text>
+        <text class="t-xs" x="610" y="248">FACTORY OPENS THE NAMED SET</text>
+        <text class="t-xs" x="610" y="266">AT BOOT. NOT AT DEFINEFLOW.</text>
+        <text class="t-b f-code" x="610" y="300">no seed-session on defineFlow</text>
       </svg>
     </div>
-    <figcaption><b>Membership is not the same as reach.</b> A worker&#8217;s home team is where its defaults and its knowledge live. Everything else it works with, it borrows. So the roster question is never &#8220;does this manager own that specialist&#8221; &#8212; it is &#8220;whose knowledge is this, and who else needs the same read.&#8221;</figcaption>
+    <figcaption><b>Bootstrap is a boot script, not a flow field.</b> <code>createSession</code> already accepts an optional <code>sessionId</code>. The factory uses that. Do not add a declarative seed-session fixture to <code>defineFlow</code> so channels can exist. Channels are not a Layer&nbsp;1 type.</figcaption>
   </figure>
 
-  <div class="tw">
-    <table>
-      <thead><tr><th>What the team folder buys</th><th>Why it is more than a namespace</th></tr></thead>
-      <tbody>
-        <tr><td>A bounded working set</td><td>A worker on Marketing carries brand voice and the calendar, not the RFC folder. Context is the scarce resource, and the folder is what bounds it.</td></tr>
-        <tr><td>A default answer to &#8220;who does this?&#8221;</td><td>The roster <em>is</em> the staffing answer. An author invoking the team does not wire up participants per flow &#8212; which is the whole reason Layer&nbsp;2 exists.</td></tr>
-        <tr><td>One home for shared knowledge</td><td>Brand voice is written once, on Marketing, instead of pasted into three worker definitions that then drift.</td></tr>
-        <tr><td><strong>When it is not a team</strong></td><td>One worker and no shared knowledge. Then the folder buys nothing and should not exist &#8212; a team that is a namespace is bloat wearing an org chart.</td></tr>
-      </tbody>
-    </table>
+  <div class="note">
+    <span class="lbl">Do not invent a session kind</span>
+    <p>A session record already carries a <code>flowKind</code>. That is enough. A channel is a convention: this session id, on this worker&#8217;s flow, is the Slack room, or the web room, or the CLI room. <code>dispatcher({ session: { id } })</code> already delivers into an existing session of the same flow. That is how another worker reaches a channel once they know the id.</p>
   </div>
+</section>
+
+<section id="boards">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Projects, tasks, boards</h2></div>
+  <p class="lede">A project or a task is a dynamic session &#8212; minted when the work appears, adopted on retry. Every message board a worker subscribes to gets its own action and its own session. Subscribe and post ride <code>dispatcher()</code>.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 240" role="img" aria-label="Channels and relay. Three channel boxes: the engineering team room, a launch review that borrows identities from three teams without merging them, and the engineering manager's own session for talking to them directly. Below, one Layer 1 Relay door, with its status in section 6, described as how the copy editor returns a line to Marketing or the chief of staff pings a Conductor session, and marked as not a second relay and not a Workforce product.">
-        <rect class="n-prop" x="16" y="16" width="292" height="80" rx="4"/>
-        <text class="t-s f-accent" x="28" y="40">channel &#183; #engineering</text>
-        <text class="t-xs" x="28" y="60">THAT TEAM&#8217;S ROOM</text>
-        <text class="t-xs" x="28" y="78">ITS BOARD, ITS KNOWLEDGE</text>
+      <svg viewBox="0 0 940 300" role="img" aria-label="Static channel sessions versus dynamic project and board sessions on one worker flow. Left: slack and web, opened at bootstrap. Right: a project session keyed by project id, and two board sessions, one per subscribed board, each with its own action.">
+        <rect class="n-code" x="16" y="16" width="908" height="48" rx="4"/>
+        <text class="t-b f-code" x="34" y="46">eng-manager flow &#8212; same worker, two kinds of session</text>
 
-        <rect class="n-prop" x="324" y="16" width="292" height="80" rx="4"/>
-        <text class="t-s f-accent" x="336" y="40">channel &#183; launch review</text>
-        <text class="t-xs" x="336" y="60">BORROWS FROM THREE TEAMS</text>
-        <text class="t-xs" x="336" y="78">DOES NOT MERGE THEM</text>
+        <rect class="n-prop" x="16" y="84" width="446" height="196" rx="5"/>
+        <text class="t-lbl" x="34" y="106">STATIC &#183; CHANNELS &#183; BOOTSTRAP</text>
+        <rect class="n-box" x="34" y="124" width="190" height="64" rx="4"/>
+        <text class="t-s" x="48" y="148">slack</text>
+        <text class="t-xs" x="48" y="166">OPENED ONCE, AT BOOT</text>
+        <rect class="n-box" x="240" y="124" width="190" height="64" rx="4"/>
+        <text class="t-s" x="254" y="148">web</text>
+        <text class="t-xs" x="254" y="166">OPENED ONCE, AT BOOT</text>
+        <text class="t-xs" x="34" y="214">createSession({ sessionId })</text>
+        <text class="t-xs" x="34" y="232">EXISTS</text>
+        <text class="t-b f-accent" x="34" y="260">rooms the worker always has</text>
 
-        <rect class="n-prop" x="632" y="16" width="292" height="80" rx="4"/>
-        <text class="t-s f-accent" x="644" y="40">channel &#183; talk to eng mgr</text>
-        <text class="t-xs" x="644" y="60">THEIR OWN SESSION</text>
-        <text class="t-xs" x="644" y="78">NOT THE TEAM ROOM</text>
-
-        <rect class="n-box" x="16" y="120" width="908" height="100" rx="5"/>
-        <text class="t-lbl" x="34" y="142">RELAY &#183; ONE LAYER 1 DOOR &#183; STATUS IN SECTION 6</text>
-        <text class="t-s" x="34" y="168">how the borrowed copy editor returns a line to Marketing, or the chief of staff pings a Conductor session</text>
-        <text class="t-xs" x="34" y="196">NOT A SECOND RELAY. NOT A WORKFORCE PRODUCT. THE SAME SEND DOOR.</text>
+        <rect class="n-prop" x="478" y="84" width="446" height="196" rx="5"/>
+        <text class="t-lbl" x="496" y="106">DYNAMIC &#183; PROJECTS / BOARDS &#183; PROPOSED</text>
+        <rect class="n-box" x="496" y="124" width="190" height="64" rx="4"/>
+        <text class="t-s" x="510" y="148">project / launch-42</text>
+        <text class="t-xs" x="510" y="166">KEYED CHILD SESSION</text>
+        <rect class="n-box" x="702" y="124" width="190" height="64" rx="4"/>
+        <text class="t-s" x="716" y="148">board / spec-9</text>
+        <text class="t-xs" x="716" y="166">ONE SESSION PER BOARD</text>
+        <text class="t-xs" x="496" y="214">dispatcher({ session: { key } }) MINTS / ADOPTS</text>
+        <text class="t-xs" x="496" y="232">THE KEY POLICY EXISTS. THE CONVENTION IS NEW.</text>
+        <text class="t-b f-accent" x="496" y="260">rooms that appear with the work</text>
       </svg>
     </div>
-    <figcaption><b>A channel is a room, not a team.</b> A launch review borrows three teams&#8217; people for one conversation and dissolves; the teams and their knowledge are unchanged. That separation is what keeps &#8220;who is in this room&#8221; from quietly becoming &#8220;who is on this team.&#8221;</figcaption>
+    <figcaption><b>Static rooms and work rooms.</b> Channels are a fixed set the factory opens. A project or a subscribed board is a session the dispatch key policy already knows how to mint. Do not add a Project type. Do not add a MessageBoard package.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 320" role="img" aria-label="Subscribe and post on the dispatch spine. A dashed board collection holds a brief as content and subscriber records in state. A post writes the collection. reactTo fires a dispatcher to each subscriber session. Two worker flows each have a board action and a board session.">
+        <rect class="n-prop" x="16" y="16" width="360" height="288" rx="5"/>
+        <text class="t-lbl" x="34" y="38">BOARD &#183; A COLLECTION &#183; PROPOSED OPINION</text>
+        <text class="t-s" x="34" y="68">resource collection</text>
+        <text class="t-xs" x="34" y="90">CONTENT = THE BRIEF / THREAD</text>
+        <text class="t-xs" x="34" y="108">writeContent ALREADY EXISTS</text>
+        <text class="t-xs" x="34" y="136">STATE HOLDS SUBSCRIBERS</text>
+        <text class="t-xs" x="34" y="154">flowKind · sessionId · action</text>
+        <text class="t-xs" x="34" y="182">reactTo ON THE COLLECTION</text>
+        <text class="t-xs" x="34" y="200">EXISTS &#8212; FIRING A BLOCK</text>
+        <text class="t-xs" x="34" y="228">THAT BLOCK IS A DISPATCHER</text>
+        <text class="t-b f-accent" x="34" y="268">not a Layer 1 package</text>
+
+        <path class="ln" d="M376,160 L420,160"/>
+        <text class="t-xs" x="380" y="148">POST</text>
+
+        <rect class="n-code" x="420" y="86" width="160" height="148" rx="5"/>
+        <text class="t-lbl f-code" x="436" y="108">SPINE</text>
+        <text class="t-s" x="436" y="136">dispatcher()</text>
+        <text class="t-xs" x="436" y="158">ONE SEND</text>
+        <text class="t-xs" x="436" y="176">PER SUBSCRIBER</text>
+        <text class="t-xs" x="436" y="194">NO SECOND BUS</text>
+        <text class="t-xs" x="436" y="212">EXISTS</text>
+
+        <path class="ln" d="M580,120 L624,70"/>
+        <path class="ln" d="M580,200 L624,250"/>
+
+        <rect class="n-prop" x="624" y="16" width="300" height="128" rx="5"/>
+        <text class="t-s f-accent" x="640" y="40">eng-manager</text>
+        <text class="t-xs" x="640" y="60">ACTION: board-post</text>
+        <text class="t-xs" x="640" y="78">SESSION: board/spec-9</text>
+        <text class="t-xs" x="640" y="96">ITS OWN ROOM FOR THIS BOARD</text>
+        <text class="t-xs" x="640" y="114">PROPOSED CONVENTION</text>
+
+        <rect class="n-prop" x="624" y="160" width="300" height="128" rx="5"/>
+        <text class="t-s f-accent" x="640" y="184">librarian</text>
+        <text class="t-xs" x="640" y="204">ACTION: board-post</text>
+        <text class="t-xs" x="640" y="222">SESSION: board/spec-9</text>
+        <text class="t-xs" x="640" y="240">SAME BOARD, THAT WORKER&#8217;S FLOW</text>
+        <text class="t-xs" x="640" y="258">PROPOSED CONVENTION</text>
+      </svg>
+    </div>
+    <figcaption><b>Subscribe is a row. Post is a dispatch.</b> A board is a collection with a brief in content and subscribers in state. <code>reactTo</code> already runs a block when the collection changes. That block is a <code>dispatcher()</code> to each subscriber&#8217;s session. Fan-out is a loop over declared sends, not a topic bus. Cross-flow notify waits on cross-flow landing &#8212; today the host refuses another flow&#8217;s session by name.</figcaption>
   </figure>
 
   <div class="tw">
     <table>
       <thead><tr><th>Piece</th><th>Status</th><th>What it is, narrowly</th></tr></thead>
       <tbody>
-        <tr><td>Session as a conversation</td><td><span class="tag t-real">exists</span></td><td>A session record carries a <code>flowKind</code>. It is where a conversation lives. Layer&nbsp;1 already has this.</td></tr>
-        <tr><td>A lead that holds a board, doers that claim</td><td><span class="tag t-real">exists</span></td><td>The task board and delegation already do this. A skill&#8217;s <code>agents:</code> map staffs seats and its body plans the board &#8212; <code>examples/guides/research-team</code>. What is missing is that the roster outlives the drain.</td></tr>
-        <tr><td>Borrowing a shared specialist</td><td><span class="tag t-real">exists</span> thin</td><td>Name indirection is real: <code>agent-ref</code> resolves a registry name to an <code>Agent</code>. That is the borrow mechanism, used in exactly one place today.</td></tr>
-        <tr><td>Team knowledge, stored</td><td><span class="tag t-real">exists</span></td><td>A collection topicked by team &#8212; <code>[team]/resources</code>, or a <code>teams/&lt;team&gt;/*</code> prefix. The storage half of a team needs nothing new (section&nbsp;2).</td></tr>
-        <tr><td>Team as a durable working set</td><td><span class="tag t-prop">proposed</span></td><td>The convention itself: a function folder whose roster outlives any one drain, and a default staffing answer. That is the proposed part &#8212; not the storage underneath it.</td></tr>
-        <tr><td>Agent-owned channel</td><td><span class="tag t-prop">proposed</span></td><td>A session designated as the place you talk to that worker directly. Not a new primitive &#8212; a convention over a session.</td></tr>
+        <tr><td>Child session from a key</td><td><span class="tag t-real">exists</span></td><td><code>dispatcher({ session: { key } })</code> mints or adopts a child. That is the dynamic-session mechanism. Use it for a project or a board subscription.</td></tr>
+        <tr><td>Deliver into an existing session</td><td><span class="tag t-real">exists</span></td><td><code>dispatcher({ session: { id } })</code>. Same flow, same principal. Refused otherwise.</td></tr>
+        <tr><td>Collection + <code>reactTo</code> + <code>writeContent</code></td><td><span class="tag t-real">exists</span></td><td>Enough to store a brief and fire a block on a post. The board opinion is how those are assembled, not a new store.</td></tr>
+        <tr><td>One session per subscribed board</td><td><span class="tag t-prop">proposed</span></td><td>The worker&#8217;s flow grows a session (and the contract action) for each board it joins. Isolation stays per worker.</td></tr>
+        <tr><td>MessageBoard as a Layer&nbsp;1 package</td><td><span class="tag t-gone">off the page</span></td><td>A board is a convention. If a build starts wanting a new store or a new block kind, that is a Layer&nbsp;1 gap to file, not a package to add here.</td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
-<section id="surface">
-  <div class="sec-head"><span class="sec-num">05</span><h2>Eventual surface</h2></div>
-  <p class="lede">Something you can talk to the way you talk to Grok&nbsp;Bot: an agent you already know, reachable from more than one place, remembering what it already knows. Open source. Vendor-agnostic. Built on blocks, so you replace any piece.</p>
+<section id="roster">
+  <div class="sec-head"><span class="sec-num">05</span><h2>Teams and the roster</h2></div>
+  <p class="lede">A team is a roster plus the sessions that roster shares. Built-ins &#8212; librarian, chief of staff, coordinator &#8212; are roster entries. A deterministic sequencer can sit on the same roster. It is not an agent.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 300" role="img" aria-label="A proposed eventual surface. A person reaches the same persistent agent from Slack, a web app, and a CLI. The agent holds memory and can relay to a teammate or into a Conductor session. Under the surface, a thin band reminds that every piece is still a Layer 1 block, so the surface is a convention, not a sealed product. The whole figure is dashed.">
-        <rect class="n-human" x="16" y="16" width="140" height="72" rx="4"/>
-        <text class="t-b f-human" x="30" y="42">you</text>
-        <text class="t-xs" x="30" y="62">ONE PERSON</text>
+      <svg viewBox="0 0 940 340" role="img" aria-label="A team as roster plus shared sessions. Top: engineering roster listing eng-manager, api-designer, and a triage sequencer. Bottom: shared team sessions and a team board. Side: org-level built-ins listed as roster entries that any team can name, not a dump of an internal process.">
+        <rect class="n-prop" x="16" y="16" width="560" height="308" rx="5"/>
+        <text class="t-lbl" x="34" y="38">TEAM &#183; PROPOSED OPINION &#183; NOT A PACKAGE</text>
+        <text class="t-s" x="34" y="68">engineering/</text>
+        <text class="t-xs" x="50" y="92">roster</text>
+        <text class="t-s f-accent" x="66" y="114">eng-manager</text>
+        <text class="t-xs" x="200" y="114">AGENT &#8212; OWN FLOW</text>
+        <text class="t-s f-accent" x="66" y="136">api-designer</text>
+        <text class="t-xs" x="200" y="136">AGENT &#8212; OWN FLOW</text>
+        <text class="t-s" x="66" y="158">triage-drain</text>
+        <text class="t-xs" x="200" y="158">SEQUENCER &#8212; NOT AN AGENT</text>
+        <text class="t-xs" x="50" y="190">shared sessions</text>
+        <text class="t-xs" x="66" y="212">#engineering &#8212; a session the roster can address</text>
+        <text class="t-xs" x="66" y="230">team board &#8212; collection + subscribe-post</text>
+        <text class="t-xs" x="34" y="262">A TEAM IS NOT A HEADCOUNT AND NOT A SCOPE</text>
+        <text class="t-xs" x="34" y="280">IT IS WHO IS ON IT, AND WHICH SESSIONS THEY SHARE</text>
+        <text class="t-b f-accent" x="34" y="308">roster + shared sessions. stop there.</text>
 
-        <path class="ln" d="M156,52 L196,52"/>
-        <path class="ln" d="M156,52 L196,20"/>
-        <path class="ln" d="M156,52 L196,84"/>
-
-        <rect class="n-prop" x="196" y="8" width="150" height="36" rx="4"/>
-        <text class="t-s" x="210" y="30">slack</text>
-        <rect class="n-prop" x="196" y="50" width="150" height="36" rx="4"/>
-        <text class="t-s" x="210" y="72">web</text>
-        <rect class="n-prop" x="196" y="92" width="150" height="36" rx="4"/>
-        <text class="t-s" x="210" y="114">cli</text>
-
-        <path class="ln" d="M346,70 L390,70"/>
-
-        <rect class="n-prop" x="390" y="28" width="240" height="88" rx="5"/>
-        <text class="t-b f-accent" x="406" y="54">engineering manager</text>
-        <text class="t-xs" x="406" y="74">THE ONE YOU ALREADY KNOW</text>
-        <text class="t-xs" x="406" y="92">MEMORY TRAVELS WITH THEM</text>
-
-        <path class="ln" d="M630,52 L674,28"/>
-        <path class="ln" d="M630,70 L674,70"/>
-        <path class="ln" d="M630,88 L674,112"/>
-
-        <rect class="n-prop" x="674" y="8" width="250" height="40" rx="4"/>
-        <text class="t-s" x="688" y="32">copy editor &#183; borrowed</text>
-        <rect class="n-box" x="674" y="54" width="250" height="40" rx="4"/>
-        <text class="t-s" x="688" y="78">relay &#8594; another channel</text>
-        <rect class="n-box" x="674" y="100" width="250" height="40" rx="4"/>
-        <text class="t-s" x="688" y="124">relay &#8594; a Conductor session</text>
-
-        <rect class="n-code" x="16" y="168" width="908" height="108" rx="5"/>
-        <text class="t-lbl f-code" x="34" y="190">UNDER THE SURFACE &#8212; STILL LAYER 1</text>
-        <text class="t-s" x="34" y="214">every door is a flow action. every memory is a resource. every send is relay.</text>
-        <text class="t-xs" x="34" y="236">OSS &#183; VENDOR-AGNOSTIC &#183; SWAP THE MODEL, THE CHANNEL ADAPTER, THE AGENT</text>
-        <text class="t-b f-code" x="34" y="258">the surface is a convention. it is not a sealed product.</text>
+        <rect class="n-prop" x="592" y="16" width="332" height="308" rx="5"/>
+        <text class="t-lbl" x="610" y="38">BUILT-INS &#183; ROSTER ENTRIES</text>
+        <text class="t-s f-accent" x="610" y="70">librarian</text>
+        <text class="t-xs" x="610" y="88">A WORKER. OWN FLOW.</text>
+        <text class="t-s f-accent" x="610" y="118">chief of staff</text>
+        <text class="t-xs" x="610" y="136">A WORKER. OWN FLOW.</text>
+        <text class="t-s f-accent" x="610" y="166">coordinator</text>
+        <text class="t-xs" x="610" y="184">A WORKER. OWN FLOW.</text>
+        <text class="t-xs" x="610" y="216">SAME CONTRACT AS ANY WORKER</text>
+        <text class="t-xs" x="610" y="234">FACTORY-BUILT, OR CUSTOM FLOW</text>
+        <text class="t-xs" x="610" y="252">THAT KEEPS THE CONTRACT</text>
+        <text class="t-xs" x="610" y="280">NOT A DUMP OF HOW WE RUN</text>
+        <text class="t-xs" x="610" y="298">AN INTERNAL CODING PROCESS</text>
       </svg>
     </div>
-    <figcaption><b>What &#8220;like Grok&nbsp;Bot&#8221; has to mean here.</b> You reach the engineering manager from Slack, the web, or a CLI. They reach the shared copy editor. Built as composition, so a vendor or a model is a binding, not a soul. Proposed. No UI, no adapter, no identity runtime exists for this.</figcaption>
+    <figcaption><b>Name them, do not special-case them.</b> Librarian, chief of staff, and coordinator are interesting because of their files and their seat on a roster, not because Workforce grows a type for each. A team that is only a namespace should not exist.</figcaption>
   </figure>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 240" role="img" aria-label="Deterministic sequencer versus agent on the same roster. Left: a sequencer block that drains or classifies, no persona, no memory, not an identity. Right: an agent with persona, model, tools, its own flow and memory. Both can be named on a team roster.">
+        <rect class="n-code" x="16" y="16" width="446" height="208" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="38">SEQUENCER MEMBER &#183; A BLOCK</text>
+        <text class="t-b" x="34" y="70">triage-drain</text>
+        <text class="t-xs" x="34" y="96">DETERMINISTIC STEPS</text>
+        <text class="t-xs" x="34" y="114">NO PERSONA. NO MODEL.</text>
+        <text class="t-xs" x="34" y="132">NO PERSISTENT IDENTITY</text>
+        <text class="t-xs" x="34" y="150">MAY BE A FLOW ACTION OR A SEAT</text>
+        <text class="t-xs" x="34" y="178">SITS ON THE ROSTER BECAUSE WORK</text>
+        <text class="t-xs" x="34" y="196">CALLS IT. NOT BECAUSE IT IS SOMEONE.</text>
+
+        <rect class="n-prop" x="478" y="16" width="446" height="208" rx="5"/>
+        <text class="t-lbl" x="496" y="38">AGENT MEMBER &#183; AN IDENTITY</text>
+        <text class="t-b f-accent" x="496" y="70">eng-manager</text>
+        <text class="t-xs" x="496" y="96">PERSONA + MODEL + TOOLS</text>
+        <text class="t-xs" x="496" y="114">OWN FLOW. OWN MEMORY.</text>
+        <text class="t-xs" x="496" y="132">OWN CHANNEL SESSIONS</text>
+        <text class="t-xs" x="496" y="150">FACTORY-BUILT FROM FILES</text>
+        <text class="t-xs" x="496" y="178">SITS ON THE ROSTER BECAUSE IT IS</text>
+        <text class="t-xs" x="496" y="196">A WHO, NOT A STEP.</text>
+      </svg>
+    </div>
+    <figcaption><b>Both can be on the roster. Only one is an agent.</b> A sequencer is a block you name because the work is knowable. An agent is a persistent identity. Putting a drain on a roster does not give it a soul, a channel, or a memory resource.</figcaption>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>What the team folder buys</th><th>When to skip it</th></tr></thead>
+      <tbody>
+        <tr><td>A default answer to &#8220;who is on this&#8221; &#8212; agents and sequencers, listed once.</td><td>One worker and no shared session. Then the folder is a namespace. Do not create it.</td></tr>
+        <tr><td>Shared sessions the roster can address &#8212; a team room, a team board.</td><td>If the only shared thing is a file prefix, use a collection topic. That already works.</td></tr>
+        <tr><td>A place to borrow a built-in by name, instead of pasting a specialist into every team.</td><td>If nobody else needs that specialist, it has a home team. Borrowing is for the shared ones.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="identity">
+  <div class="sec-head"><span class="sec-num">06</span><h2>Identity and memory</h2></div>
+  <p class="lede">An agent is a persistent identity with memory. That memory is ordinary resources on that worker&#8217;s flow. <code>flowIsolation</code> already keys user- and org-scoped resources per <code>flowKind</code>. One flow per worker is what makes that isolation mean &#8220;this worker.&#8221;</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 380" role="img" aria-label="Today versus proposed identity. Left: Agent is a named participant materialized into a block inside whoever invoked it, no resources field. Right: a persistent identity owns a flow; slack and a project session sit on that flow; user- and org-scoped resources with flowIsolation store memory under that flowKind.">
+        <rect class="n-grp" x="16" y="16" width="446" height="348" rx="5"/>
+        <text class="t-lbl" x="34" y="38">TODAY &#8212; EXISTS</text>
+        <text class="t-b" x="34" y="64">a named participant</text>
+        <rect class="n-code" x="34" y="80" width="410" height="72" rx="4"/>
+        <text class="t-b f-code" x="48" y="104">Agent</text>
+        <text class="t-xs" x="48" y="122">PERSONA + MODEL + TOOLS</text>
+        <text class="t-xs" x="48" y="138">NO RESOURCES FIELD &#183; NO SCOPE</text>
+        <rect class="n-box" x="34" y="168" width="410" height="88" rx="4"/>
+        <text class="t-s" x="48" y="192">materializeAgent &#8594; a block</text>
+        <text class="t-xs" x="48" y="212">LIVES INSIDE THE FLOW THAT INVOKED IT</text>
+        <text class="t-xs" x="48" y="228">ONE EXAMPLE: research-team</text>
+        <text class="t-xs" x="48" y="244">ONE FLOW, THREE ACTIONS, NOT ONE PER WORKER</text>
+        <text class="t-xs" x="34" y="286">MEMORY REACHES IT THROUGH usesCapabilities</text>
+        <text class="t-xs" x="34" y="304">usesSkills IS RESERVED</text>
+        <text class="t-b f-code" x="34" y="340">a definition, not an identity that persists</text>
+
+        <rect class="n-grp" x="478" y="16" width="446" height="348" rx="5"/>
+        <text class="t-lbl" x="496" y="38">WORKFORCE &#8212; PROPOSED</text>
+        <text class="t-b f-accent" x="496" y="64">a persistent identity</text>
+        <rect class="n-prop" x="496" y="80" width="410" height="56" rx="4"/>
+        <text class="t-b f-accent" x="510" y="104">eng-manager</text>
+        <text class="t-xs" x="510" y="122">ONE FLOWKIND. MEMORY KEYS TO IT.</text>
+        <rect class="n-box" x="496" y="152" width="190" height="64" rx="4"/>
+        <text class="t-s" x="510" y="176">slack</text>
+        <text class="t-xs" x="510" y="194">CHANNEL SESSION</text>
+        <rect class="n-box" x="702" y="152" width="190" height="64" rx="4"/>
+        <text class="t-s" x="716" y="176">launch-42</text>
+        <text class="t-xs" x="716" y="194">PROJECT SESSION</text>
+        <rect class="n-code" x="496" y="232" width="410" height="72" rx="4"/>
+        <text class="t-s f-code" x="510" y="256">resources + flowIsolation</text>
+        <text class="t-xs" x="510" y="274">USER / ORG SCOPE, KEYED BY FLOWKIND</text>
+        <text class="t-xs" x="510" y="290">EXISTS &#8212; packages/core resource.ts</text>
+        <text class="t-b f-accent" x="496" y="340">do not add Agent.resources</text>
+      </svg>
+    </div>
+    <figcaption><b>Memory is a resource on that flow, not a new field on Agent.</b> Growing <code>Agent</code> to look like an identity before a product needs the field is how Layer&nbsp;1 absorbs a Workforce opinion. The cheaper answer is already in the tree: isolate the resource by flow, and give the worker its own flow.</figcaption>
+  </figure>
+
+  <div class="note">
+    <span class="lbl">flowIsolation is the isolation, not a team scope</span>
+    <p>Set <code>flowIsolation: true</code> on a user- or org-scoped resource and the store key includes <code>flowKind</code>. Session scope is already flow-bound; the flag is rejected there. That is enough for &#8220;the engineering manager&#8217;s notes are not the librarian&#8217;s.&#8221; A team security boundary is a later Layer&nbsp;1 question, and it is not a blocker for this convention.</p>
+  </div>
+</section>
+
+<section id="dispatch">
+  <div class="sec-head"><span class="sec-num">07</span><h2>Collaboration rides the dispatch spine</h2></div>
+  <p class="lede">A worker talks to another worker by dispatching into a session. Reverse is the same door, aimed at the sender. Cross-flow is the same door, once the host accepts another <code>flowKind</code>. Relay and Workstream are superseded names for this job.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Dispatch spine. Left worker flow dispatches into a named session on the right worker flow. A stamp records from.block and from.sessionId. A dashed reverse arrow is session from true, proposed. A dashed cross-flow note says the host still refuses another flowKind today.">
+        <rect class="n-prop" x="16" y="16" width="360" height="160" rx="5"/>
+        <text class="t-lbl" x="34" y="38">SENDER &#183; PROPOSED WORKER</text>
+        <text class="t-b f-accent" x="34" y="68">eng-manager / slack</text>
+        <text class="t-xs" x="34" y="90">dispatcher({ target, session: { id } })</text>
+        <text class="t-xs" x="34" y="108">ADDRESS IS STATIC. SESSION IS CHOSEN.</text>
+        <text class="t-xs" x="34" y="126">THE BLOCK EXISTS.</text>
+        <text class="t-s" x="34" y="154">one send, one recipient</text>
+
+        <path class="ln" d="M376,96 L420,96"/>
+        <text class="t-xs" x="382" y="84">SEND</text>
+
+        <rect class="n-code" x="420" y="40" width="100" height="112" rx="5"/>
+        <text class="t-lbl f-code" x="432" y="62">SPINE</text>
+        <text class="t-xs" x="432" y="86">dispatcher</text>
+        <text class="t-xs" x="432" y="104">EXISTS</text>
+        <text class="t-xs" x="432" y="122">ONE DOOR</text>
+
+        <path class="ln" d="M520,96 L564,96"/>
+
+        <rect class="n-prop" x="564" y="16" width="360" height="160" rx="5"/>
+        <text class="t-lbl" x="582" y="38">RECIPIENT &#183; PROPOSED WORKER</text>
+        <text class="t-b f-accent" x="582" y="68">librarian / inbox</text>
+        <text class="t-xs" x="582" y="90">SAME-FLOW DELIVERY EXISTS</text>
+        <text class="t-xs" x="582" y="108">CROSS-FLOW: REFUSED TODAY</text>
+        <text class="t-xs" x="582" y="126">session-not-addressable</text>
+        <text class="t-s" x="582" y="154">lands when the host allows it</text>
+
+        <path class="ln-gone" d="M744,176 L744,208"/>
+        <text class="t-xs" x="754" y="198">REVERSE</text>
+
+        <rect class="n-prop" x="16" y="208" width="908" height="132" rx="5"/>
+        <text class="t-lbl" x="34" y="230">STAMP &#183; EXISTS &nbsp;&nbsp; REVERSE &#183; PROPOSED &nbsp;&nbsp; CROSS-FLOW &#183; NOT LANDED</text>
+        <text class="t-s" x="34" y="258">metadata.dispatch.from = { block, sessionId }</text>
+        <text class="t-xs" x="34" y="280">THE SENDER IS ALREADY ON THE ENVELOPE. READ VIA readDispatchStamp.</text>
+        <text class="t-s f-accent" x="34" y="306">session: { from: true } &#8212; proposed reverse: deliver back to that sessionId</text>
+        <text class="t-xs" x="34" y="326">NOT A SECOND RELAY. NOT STEER-AS-ARCHITECTURE. THE SAME DISPATCHER, AIMED AT FROM.</text>
+      </svg>
+    </div>
+    <figcaption><b>One door, three directions.</b> Forward is <code>session: { id }</code> or <code>{ key }</code> &#8212; shipped. Reverse is <code>{ from: true }</code> &#8212; proposed opinion on the stamp that already exists. Cross-flow is the same send to another <code>flowKind</code> &#8212; decided, not in the tree; <code>create-request-host.ts</code> still refuses it by name.</figcaption>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Word</th><th>Status</th><th>What to do with it</th></tr></thead>
+      <tbody>
+        <tr><td><code>dispatcher()</code></td><td><span class="tag t-real">exists</span></td><td>The send door. Handler, not a fifth block kind. Address is <code>(type, target)</code>. Session is <code>{ key }</code> or <code>{ id }</code>.</td></tr>
+        <tr><td>Dispatch stamp <code>from</code></td><td><span class="tag t-real">exists</span></td><td><code>{ block, sessionId }</code> on the recipient. Enough to aim a reverse send.</td></tr>
+        <tr><td><code>{ from: true }</code></td><td><span class="tag t-prop">proposed</span></td><td>A session target that means &#8220;the session on the stamp.&#8221; Do not invent a Relay verb for reply.</td></tr>
+        <tr><td>Cross-flow dispatch</td><td><span class="tag t-prop">not landed</span></td><td>Same door, other <code>flowKind</code>. Needed the moment two workers (two flows) talk. Until it lands, same-flow boards still work.</td></tr>
+        <tr><td>Relay</td><td><span class="tag t-gone">superseded</span></td><td>A second send door that was never a package. Do not teach it. Do not wait for <code>packages/relay</code>.</td></tr>
+        <tr><td>Workstream</td><td><span class="tag t-gone">superseded</span></td><td>A leftover child-session architecture beside dispatch. Leftover names remain in the client (<code>listWorkstreams</code>) and in <code>sharedToWorkstream</code>. Workforce collaboration does not ride them.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="lbl">No second bus</span>
+    <p>Boards fan out by looping <code>dispatcher()</code>. Reverse is <code>{ from: true }</code>. A custom worker flow that cannot be reached this way is not on the contract. If the door is missing a field, that is a Layer&nbsp;1 gap on <code>dispatcher()</code>, not a Workforce messenger.</p>
+  </div>
+</section>
+
+<section id="plan">
+  <div class="sec-head"><span class="sec-num">08</span><h2>Plan as content</h2></div>
+  <p class="lede">The plan capability is Layer&nbsp;2 opinion on the task board that already exists. The spec is resource text. The tasks are the structured half of the same plan. There is no document store and no second planner.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 320" role="img" aria-label="One plan on the existing task board. A collection instance holds writeContent text as the spec and structured task rows as the work. A dashed plan capability box sits on top as sugar. A gone box marks a second planner and a document store as rejected.">
+        <rect class="n-code" x="16" y="16" width="560" height="288" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="38">TASK BOARD &#183; EXISTS</text>
+        <text class="t-b" x="34" y="68">one collection instance</text>
+        <rect class="n-box" x="34" y="88" width="246" height="100" rx="4"/>
+        <text class="t-s" x="48" y="112">content</text>
+        <text class="t-b" x="48" y="134">the spec / the plan</text>
+        <text class="t-xs" x="48" y="154">writeContent / readContent</text>
+        <text class="t-xs" x="48" y="172">PROSE. THE DOCUMENT HALF.</text>
+        <rect class="n-box" x="296" y="88" width="246" height="100" rx="4"/>
+        <text class="t-s" x="310" y="112">state / rows</text>
+        <text class="t-b" x="310" y="134">the tasks</text>
+        <text class="t-xs" x="310" y="154">addTask · claim · settle</text>
+        <text class="t-xs" x="310" y="172">STRUCTURED HALF OF THE SAME PLAN</text>
+        <text class="t-xs" x="34" y="214">OR A SIBLING RESOURCE NEXT TO THE BOARD</text>
+        <text class="t-xs" x="34" y="232">SAME STORE. SAME SCOPE. NOT A DOC SERVICE.</text>
+        <text class="t-b f-code" x="34" y="272">one plan, two halves, one board</text>
+
+        <rect class="n-prop" x="592" y="16" width="332" height="168" rx="5"/>
+        <text class="t-lbl" x="610" y="38">PLAN CAPABILITY &#183; PROPOSED</text>
+        <text class="t-s f-accent" x="610" y="68">ctx.cap.plan</text>
+        <text class="t-xs" x="610" y="90">SUGAR ON THE BOARD YOU HAVE</text>
+        <text class="t-xs" x="610" y="108">READ / WRITE THE SPEC TEXT</text>
+        <text class="t-xs" x="610" y="126">ADD / LIST THE TASK ROWS</text>
+        <text class="t-xs" x="610" y="144">NO SECOND PLANNER LOOP</text>
+        <text class="t-xs" x="610" y="162">NO NEW COLLECTION TYPE</text>
+
+        <rect class="n-box" x="592" y="200" width="332" height="104" rx="5"/>
+        <text class="t-s f-gone" x="610" y="224">not a document store</text>
+        <text class="t-xs" x="610" y="244">NOT A SECOND PLANNER</text>
+        <text class="t-xs" x="610" y="262">NOT planAndExecute REBORN</text>
+        <text class="t-xs" x="610" y="280">AS A WORKFORCE PRODUCT</text>
+      </svg>
+    </div>
+    <figcaption><b>The spec is the content body.</b> <code>writeContent</code> already lives on the collection instance. <code>addTask</code> already lives on the board capability. Layer&nbsp;2 names that pair a plan. It does not grow a files service beside the board.</figcaption>
+  </figure>
+
+  <pre class="code"><i>// proposed opinion — not an API in the tree</i>
+<b>ctx.cap.plan</b>.read()          <i>// readContent on the board (or sibling) resource</i>
+<b>ctx.cap.plan</b>.write(markdown)  <i>// writeContent — the spec is text</i>
+<b>ctx.cap.plan</b>.addTask({&#8230;})    <i>// the structured half; today&#8217;s board sugar</i>
+<b>ctx.cap.plan</b>.listTasks()
+</pre>
+</section>
+
+<section id="exists">
+  <div class="sec-head"><span class="sec-num">09</span><h2>What exists today</h2></div>
+  <p class="lede">Read against the tree. The thin package is real. The worker contract, channels-as-sessions, teams, plan-as-content, and a Grok-Bot-like surface are not.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>The piece</th><th>Status</th><th>What the source actually is</th></tr></thead>
+      <tbody>
+        <tr><td><code>Agent</code> in core</td><td><span class="tag t-real">exists</span></td><td>Named participant: persona, model, tools, optional <code>outputSchema</code> and <code>usesCapabilities</code>. No <code>resources</code> field. <code>usesSkills</code> is RESERVED. <code>packages/core/src/types/agent.ts</code></td></tr>
+        <tr><td><code>defineAgent</code> / registry / <code>materializeAgent</code></td><td><span class="tag t-real">exists</span></td><td>Validate, hold in a <code>Map</code>, turn into a worker-shaped or standalone generator. The useful half of <code>@flow-state-dev/workforce</code>.</td></tr>
+        <tr><td><code>agentBlock</code> / <code>definePersona</code></td><td><span class="tag t-real">exists</span></td><td>Shorthand and persona-resource sugar. Used nowhere outside the package.</td></tr>
+        <tr><td><code>createWorkforceCapability</code></td><td><span class="tag t-none">stub</span></td><td>Returns <code>defineCapability({ name: "workforce" })</code> after a duplicate-name check. No presets.</td></tr>
+        <tr><td><code>examples/guides/research-team</code></td><td><span class="tag t-real">exists</span></td><td>The only caller. One flow, three actions, one <code>defineAgent</code>. Not one flow per worker.</td></tr>
+        <tr><td><code>dispatcher()</code> / stamp <code>from</code></td><td><span class="tag t-real">exists</span></td><td>Same-flow send. <code>{ key }</code> mints a child. <code>{ id }</code> delivers into an existing session. Cross-flow refused.</td></tr>
+        <tr><td><code>createSession({ sessionId })</code></td><td><span class="tag t-real">exists</span></td><td>Caller-chosen id. The bootstrap hook. Not a <code>defineFlow</code> field.</td></tr>
+        <tr><td><code>flowIsolation</code></td><td><span class="tag t-real">exists</span></td><td>User/org resources keyed by <code>flowKind</code>. Rejected at session scope.</td></tr>
+        <tr><td>Task board + <code>writeContent</code> + <code>reactTo</code></td><td><span class="tag t-real">exists</span></td><td>The board, the spec body, and the hook a subscribe-post loop would call.</td></tr>
+        <tr><td>Team-topicked collections</td><td><span class="tag t-real">exists</span></td><td><code>[team]/resources</code> or <code>teams/&lt;team&gt;/*</code>. Naming, not security.</td></tr>
+        <tr><td>Worker contract / factory / one flow per worker</td><td><span class="tag t-prop">proposed</span></td><td>This page. No factory in the tree. No <code>workforce/</code> layout.</td></tr>
+        <tr><td>Channels as sessions, team roster, plan capability</td><td><span class="tag t-prop">proposed</span></td><td>Opinions on the rows above. Not packages.</td></tr>
+        <tr><td><code>{ from: true }</code> / cross-flow</td><td><span class="tag t-prop">proposed</span></td><td>Reverse is an opinion on the stamp. Cross-flow is decided and not landed.</td></tr>
+        <tr><td>Grok-Bot-like surface</td><td><span class="tag t-prop">proposed</span></td><td>Slack / web / CLI into the same worker flow. No UI, no adapter.</td></tr>
+        <tr><td>Relay / Workstream as the plan</td><td><span class="tag t-gone">superseded</span></td><td>Do not teach. Leftover Workstream names in the client are not the architecture.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="lbl">The package is not the harness</span>
+    <p><code>@flow-state-dev/workforce</code> is agent registry and materialization. CLAUDE.md still calls it Layer&nbsp;2 on orchestration. What landed is the first cut &#8212; name a participant, look it up, turn it into a block &#8212; without the contract, the factory, the channels, or the surface. Read every &#8220;Workforce&#8221; claim against this inventory.</p>
+  </div>
 </section>
 
 <section id="triangulate">
-  <div class="sec-head"><span class="sec-num">06</span><h2>Triangulate Conductor</h2></div>
-  <p class="lede">Same Layer&nbsp;1 primitives. Different opinions. The point of this page is the split: what must stay shared so Workforce is still possible, and what Conductor may own as a product.</p>
+  <div class="sec-head"><span class="sec-num">10</span><h2>Triangulate Conductor</h2></div>
+  <p class="lede">Same Layer&nbsp;1. Different opinions. Separate tracks. This page exists so Conductor does not harden a coding-only substrate, and so Workforce does not grow a second send door beside the one Conductor already needs.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 360" role="img" aria-label="A three-column split. Centre column, solid: shared Layer 1 that both harnesses consume — blocks, flows, sessions, scoped resources, capabilities, task board, skills, the Agent type, and Relay as a send door. Left column, dashed: Conductor-only opinions — session owned by the workflow, SDLC phases, harness manager, worktrees, issue and epic as the unit of work. Right column, dashed: Workforce-only opinions — persistent identity, agent-owned channels, teams, a Grok-Bot-like surface. A note under the centre: do not bake a Conductor opinion into Layer 1 just because it ships first.">
-        <rect class="n-prop" x="16" y="16" width="292" height="300" rx="5"/>
+      <svg viewBox="0 0 940 340" role="img" aria-label="Three-column split. Centre, solid: shared Layer 1. Left, dashed: Conductor-only opinions. Right, dashed: Workforce-only opinions. A note: do not merge the harnesses; later reuse is earned.">
+        <rect class="n-prop" x="16" y="16" width="292" height="308" rx="5"/>
         <text class="t-lbl" x="34" y="38">CONDUCTOR-ONLY</text>
-        <text class="t-xs" x="34" y="56">PRODUCT OPINION &#183; THIS CYCLE</text>
+        <text class="t-xs" x="34" y="56">PRODUCT OPINION</text>
         <text class="t-s" x="34" y="86">session owned by the workflow</text>
         <text class="t-s" x="34" y="108">SDLC phases as the job</text>
         <text class="t-s" x="34" y="130">harness manager</text>
@@ -679,120 +932,70 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="34" y="248">AS LONG AS IT STAYS HERE</text>
         <text class="t-b f-accent" x="34" y="286">do not lift these into core</text>
 
-        <rect class="n-code" x="324" y="16" width="292" height="300" rx="5"/>
+        <rect class="n-code" x="324" y="16" width="292" height="308" rx="5"/>
         <text class="t-lbl f-code" x="342" y="38">MUST STAY SHARED</text>
         <text class="t-xs" x="342" y="56">LAYER 1 &#183; EXISTS OR ALREADY FILED</text>
         <text class="t-s" x="342" y="86">four block kinds</text>
         <text class="t-s" x="342" y="108">flows, actions, sessions</text>
-        <text class="t-s" x="342" y="130">scoped resources</text>
+        <text class="t-s" x="342" y="130">scoped resources · flowIsolation</text>
         <text class="t-s" x="342" y="152">capabilities</text>
-        <text class="t-s" x="342" y="174">task board &#183; skills</text>
-        <text class="t-s" x="342" y="196">Agent type in core</text>
-        <text class="t-s" x="342" y="218">Relay as a send door</text>
-        <text class="t-xs" x="342" y="248">A SESSION CAN BE EITHER</text>
-        <text class="t-xs" x="342" y="266">WORKFLOW-OWNED OR AGENT-OWNED</text>
-        <text class="t-b f-code" x="342" y="286">the substrate stays mute</text>
+        <text class="t-s" x="342" y="174">task board · skills</text>
+        <text class="t-s" x="342" y="196">dispatcher() · the stamp</text>
+        <text class="t-s" x="342" y="218">createSession({ sessionId })</text>
+        <text class="t-xs" x="342" y="252">A SESSION CAN BE A CHANNEL</text>
+        <text class="t-xs" x="342" y="270">OR A WORKFLOW ROOM</text>
+        <text class="t-b f-code" x="342" y="300">the substrate stays mute</text>
 
-        <rect class="n-prop" x="632" y="16" width="292" height="300" rx="5"/>
+        <rect class="n-prop" x="632" y="16" width="292" height="308" rx="5"/>
         <text class="t-lbl" x="650" y="38">WORKFORCE-ONLY</text>
-        <text class="t-xs" x="650" y="56">PRODUCT OPINION &#183; LATER</text>
-        <text class="t-s" x="650" y="86">file convention (workforce/)</text>
-        <text class="t-s" x="650" y="108">team-topicked knowledge</text>
-        <text class="t-s" x="650" y="130">rosters &#183; shared specialists</text>
-        <text class="t-s" x="650" y="152">agent-owned channels</text>
-        <text class="t-s" x="650" y="174">Grok-Bot-like surface</text>
-        <text class="t-s" x="650" y="196">vendor-agnostic bindings</text>
+        <text class="t-xs" x="650" y="56">CONVENTION &#183; THIS PAGE</text>
+        <text class="t-s" x="650" y="86">one flow per worker</text>
+        <text class="t-s" x="650" y="108">factory from files</text>
+        <text class="t-s" x="650" y="130">channels as named sessions</text>
+        <text class="t-s" x="650" y="152">roster + shared sessions</text>
+        <text class="t-s" x="650" y="174">plan as board content</text>
+        <text class="t-s" x="650" y="196">subscribe-post on dispatch</text>
         <text class="t-xs" x="650" y="230">DO NOT BUILD THESE</text>
         <text class="t-xs" x="650" y="248">ON THE CONDUCTOR SPINE</text>
         <text class="t-b f-accent" x="650" y="286">leave the door unused</text>
       </svg>
     </div>
-    <figcaption><b>The fork this page is for.</b> Conductor may own &#8220;a session belongs to the workflow.&#8221; Layer&nbsp;1 may not. A session already carries a <code>flowKind</code> and nothing more binding than that. If this cycle bakes workflow-ownership into the substrate so an agent cannot later own a channel, Workforce is designed out by accident. Relay stays a mute send door for the same reason.</figcaption>
+    <figcaption><b>Triangulation, not a merger.</b> Conductor may own &#8220;a session belongs to the workflow.&#8221; Layer&nbsp;1 may not, because a Workforce channel is a session on a worker&#8217;s flow. Reuse between the tracks is earned later. Do not fold them into one harness on this page.</figcaption>
   </figure>
-
-  <div class="tw">
-    <table>
-      <thead><tr><th>Claim</th><th>Whose opinion</th><th>What being wrong costs</th></tr></thead>
-      <tbody>
-        <tr><td>A session is owned by a workflow, not by an agent</td><td>Conductor</td><td>Right for an SDLC meta-harness. Fatal as a Layer&nbsp;1 law, because Workforce&#8217;s channel <em>is</em> an agent-owned session.</td></tr>
-        <tr><td>A role is a block; memory is where its resources live</td><td>Layer 1, already true</td><td>Both harnesses need this. Do not replace it with a second memory system.</td></tr>
-        <tr><td>Relay &#8212; one Layer&nbsp;1 send door</td><td>exists or already filed</td><td>Address, send, no fan-out. Filed this cycle as Conductor fire-and-forget. Not shipped code: no <code>packages/relay</code>, no <code>relay?</code> on <code>FlowDefinition</code>. Workforce talks through this same door later. A Conductor-shaped bus would have to be unwound.</td></tr>
-        <tr><td>The coordinator stays small on purpose</td><td>Conductor</td><td>A Workforce surface may want a long relationship with one agent. That is a different product, not a rebuttal.</td></tr>
-        <tr><td>Which layer Conductor&#8217;s roles sit on</td><td>Open in Conductor atlas, thread&nbsp;11</td><td>Do not settle it by adopting <code>@flow-state-dev/workforce</code> wholesale, or by forking a second materializer &#8220;for now.&#8221;</td></tr>
-      </tbody>
-    </table>
-  </div>
 </section>
 
-<section id="exists">
-  <div class="sec-head"><span class="sec-num">07</span><h2>What exists today</h2></div>
-  <p class="lede">A package, a type, and one example. The Conductor atlas already called this surface thin and unfinished. That reading still holds. Nothing below is a harness.</p>
-
-  <div class="tw">
-    <table>
-      <thead><tr><th>The piece</th><th>Status</th><th>What the source actually is</th></tr></thead>
-      <tbody>
-        <tr><td><code>Agent</code> in core</td><td><span class="tag t-real">exists</span></td><td>A named participant: persona, model, tools, optional <code>outputSchema</code> and <code>usesCapabilities</code>. No <code>resources</code> field. No scope. <code>usesSkills</code> is RESERVED. <code>contextMode</code> documents that only <code>"inline"</code> is honored. <code>packages/core/src/types/agent.ts</code></td></tr>
-        <tr><td><code>defineAgent</code> / registry / <code>materializeAgent</code></td><td><span class="tag t-real">exists</span></td><td>Validate a config, hold it in a <code>Map</code>, turn it into a worker-shaped or standalone generator. This is the useful half of the package.</td></tr>
-        <tr><td><code>agentBlock</code></td><td><span class="tag t-real">exists</span></td><td>Shorthand for the standalone shape. Used nowhere outside the workforce package.</td></tr>
-        <tr><td><code>definePersona</code></td><td><span class="tag t-real">exists</span></td><td>Sugar over <code>defineResource</code> / <code>defineResourceCollection</code>. Collection default scope is <code>org</code>. Used nowhere outside the package.</td></tr>
-        <tr><td><code>createWorkforceCapability</code></td><td><span class="tag t-none">stub</span></td><td>A <code>// TODO</code> that returns <code>defineCapability({ name: "workforce" })</code> after a duplicate-name check. No DevTool listing. No presets.</td></tr>
-        <tr><td><code>examples/guides/research-team</code></td><td><span class="tag t-real">exists</span></td><td>The only caller. One <code>defineAgent</code> + registry + <code>materializeAgent</code> seats a skill via <code>agent-ref</code>. Inline persona, session scope, a single flow. None of the three things a persistent-identity design leans on.</td></tr>
-        <tr><td>Kitchen-sink / integration tests</td><td><span class="tag t-gone">unused</span></td><td>Kitchen-sink depends on the package and imports it in zero source files. No integration test touches it.</td></tr>
-        <tr><td>Published agents doc</td><td><span class="tag t-prose">docs</span></td><td><code>apps/docs/docs/orchestration/agents.md</code> describes today&#8217;s named participant. It also says &#8220;There&#8217;s no cross-flow assignment.&#8221; The Conductor atlas records that as an unresolved contradiction, not as evidence either way.</td></tr>
-        <tr><td><code>workforce/</code> file convention</td><td><span class="tag t-prop">proposed</span></td><td>The tree in section&nbsp;2. No such layout exists. <code>workforce.config</code> is a name on this page, not a file in the repo.</td></tr>
-        <tr><td>Team-topicked collections</td><td><span class="tag t-real">exists</span></td><td><code>defineResourceCollection</code> validates parameterized patterns (<code>[team]/resources</code>, resolved with <code>{ team }</code>) and wildcard prefixes (<code>teams/&lt;team&gt;/*</code>) &#8212; <code>packages/core/src/types/collection-patterns.ts</code>. Enough to store a team&#8217;s working set now.</td></tr>
-        <tr><td>Isolation between teams</td><td><span class="tag t-gone">gap</span></td><td><code>ResourceScope</code> is <code>"session" | "user" | "org"</code> (<code>packages/core/src/types/resource.ts</code>), so a team topic is a naming boundary and not an enforced one. A security property to add deliberately &#8212; it blocks nothing here.</td></tr>
-        <tr><td>Persistent identity, durable teams, surface</td><td><span class="tag t-prop">proposed</span></td><td>This page. Not a package. Not a D-n. Not scheduled.</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <div class="note">
-    <span class="lbl">The package is Layer 2 sugar, not the harness</span>
-    <p><code>@flow-state-dev/workforce</code> is documented as agent registry and materialization. CLAUDE.md still calls it &#8220;Layer&nbsp;2 on orchestration.&#8221; That is the original conception. What landed is the first cut of the conventions &#8212; name a participant, look it up, turn it into a block &#8212; without the identity, the channels, or the surface. Read every &#8220;Workforce&#8221; claim in a Conductor discussion against this inventory, not against the intended harness.</p>
-  </div>
-</section>
-
-<section id="open">
-  <div class="sec-head"><span class="sec-num">08</span><h2>Not this cycle</h2></div>
-  <p class="lede">Held on purpose. The work that would make Workforce real is not on the Conductor spine, and it does not get a design on this page just because the thought exists.</p>
+<section id="off">
+  <div class="sec-head"><span class="sec-num">11</span><h2>Off this page</h2></div>
+  <p class="lede">Held on purpose. A thought is not a section.</p>
 
   <div class="tension">
-    <h5>This is not a ship, and it is not a D-n</h5>
-    <p>Conductor is the cycle: Relay fire-and-forget, the harness-manager proof, the parked row. Workforce is a second intended harness so that cycle does not harden a coding-only substrate. Updating this atlas is the work. Implementing the harness is not.</p>
+    <h5>Not Layer 1 packages</h5>
+    <p>Channel, Team, Project, and MessageBoard are opinions &#8212; roster, sessions, collections, dispatch. If a build starts wanting a new store, a new scope, or a new block kind, file a Layer&nbsp;1 gap. Do not open a package.</p>
   </div>
 
   <div class="tension">
-    <h5>Do not pull Workforce onto Relay + LAB-139</h5>
-    <p>Relay is a Layer&nbsp;1 door both products will want. Building it as Conductor&#8217;s question channel is correct for this cycle. Building Workforce channels on top of that spine this cycle is how a second product lands as a parasite of the first.</p>
+    <h5>Not designed here</h5>
+    <p>Knowledge Hub, OKF, this-cycle Workforce package implementation, module-swap hooks, watches, mailbox, token gates, and the Grok-versus-Cursor process we use to build FSD. Those are how <em>we</em> work, or a later product, not how a Workforce is run.</p>
   </div>
 
   <div class="tension">
-    <h5>Which layer Conductor&#8217;s roles sit on stays Conductor&#8217;s thread</h5>
-    <p>The Conductor atlas already holds this open (thread&nbsp;11): adopt the workforce wrapper, or move &#8220;materialize a role as a block&#8221; down into orchestration. This page does not settle it. The inventory in section&nbsp;7 is the evidence that thread is weighing &#8212; a thin, almost-unexercised wrapper &#8212; not a reason to start the harness.</p>
+    <h5>SOPs are not a second file convention</h5>
+    <p>Default no. Start as a worker&#8217;s job &#8212; the engineering manager does the thing. Promote to a shared file only when more than one worker must run the same steps. Do not design that file on this page.</p>
   </div>
 
   <div class="tension">
-    <h5>Knowledge Hub stays held</h5>
-    <p>The <code>resources/</code> and <code>skills/</code> folders in the section&nbsp;2 tree are the knowledge-management half of the convention &#8212; what Engineering knows, or Marketing, scoped at org or team. That is not Knowledge Hub. Active-memory, process-the-inbox, a product for that knowledge, stays held. Not a section here, not a design for a held issue.</p>
+    <h5>No seed-session on defineFlow</h5>
+    <p>Named channel sessions are opened with <code>createSession({ sessionId })</code>. Adding a fixture map to <code>defineFlow</code> so channels can exist is how a convention becomes a primitive.</p>
   </div>
 
   <div class="tension">
-    <h5>Team scope, if it comes, comes for security</h5>
-    <p>A team topic on a collection is a <em>naming</em> boundary. It holds the layout and it enforces nothing: a worker that can read the org can read every team&#8217;s folder. Making that boundary real means a framework-level team scope, and the argument for one is security &#8212; not the convention, which has enough to build with now.</p>
-    <span class="ask">Not a blocker and not this cycle. Build on team-topicked collections; let the first case where one team&#8217;s knowledge genuinely must be unreadable by another be what buys the scope. Being wrong costs a migration of resource keys, pre-1.0, with no persisted-row change implied.</span>
-  </div>
-
-  <div class="tension">
-    <h5>Named participant versus persistent identity</h5>
-    <p>Today&#8217;s <code>Agent</code> is a definition you materialize. The intended Agent is an identity that persists. Growing the type to look like the second, before a product needs it, is how Layer&nbsp;1 absorbs a Workforce opinion. Leave the type until a build that is actually staffing persistent identities has to say what field is missing.</p>
-    <span class="ask">When that build exists, the first question is still &#8220;is this a resource the agent brings, or a new field on Agent?&#8221; &#8212; and the cheaper answer is usually the resource.</span>
+    <h5>Do not merge the harnesses</h5>
+    <p>Conductor and Workforce share a substrate. They do not share a spine. Later reuse is earned by both tracks staying on <code>dispatcher()</code>, sessions, and the board &#8212; not by writing one harness that pretends to be both.</p>
   </div>
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is the general FSD harness: teams that own a working set &#8212; their knowledge and their roster &#8212; with shared specialists borrowed across them, on Layer&nbsp;1 blocks. Eventually a surface where you talk to the engineering manager you already know. Today it is a thin registry. This cycle belongs to Conductor. Keep the substrate mute enough that the second harness is still possible.</p>
+    <p>Workforce is Eve-style files that a factory turns into one flow per worker, with channels as sessions it opens, teams as a roster plus shared sessions, plans as text on the board you already have, and collaboration as <code>dispatcher()</code> &#8212; including reverse, and cross-flow when it lands. Today it is a thin registry. This page is the opinion. It is not the package.</p>
   </div>
 </section>
 

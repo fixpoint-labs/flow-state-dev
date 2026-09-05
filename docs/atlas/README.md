@@ -22,9 +22,9 @@ issue identifiers; anything under `apps/docs/` is published and may not.
   system in `@flow-state-dev`, how they compose, and the open refactor
   questions. Its counts are measured against a commit rather than maintained,
   so read them as of the branch that last touched it.
-- `workforce.html` — the other intended harness: Layer 2 conventions on the
-  same substrate, persistent agents, not this cycle. Triangulates so Conductor
-  does not harden a coding-only Layer 1.
+- `workforce.html` — Layer 2 opinions on Layer 1: one flow per worker, channels
+  as sessions, collaboration on the dispatch spine. Atlas only; triangulates
+  Conductor. Relay and Workstream are superseded names on that page.
 - `roadmap.html` — the public product horizon: three jobs (framework,
   Workforce as a component, Conductor as the user product), the clocks, and
   collaboration as wait on the existing Relay door. Sibling to Conductor and
