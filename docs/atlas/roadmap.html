@@ -196,7 +196,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <aside class="rail">
   <div class="rail-mark">The Roadmap Atlas</div>
   <div class="rail-sub">product horizon &middot; aug 2026</div>
-  <p class="sib">sibling · <a href="conductor.html">Conductor atlas</a><br>sibling · <a href="workforce.html">Workforce atlas</a></p>
+  <p class="sib">sibling &#183; <a href="conductor.html">Conductor atlas</a><br>sibling &#183; <a href="workforce.html">Workforce atlas</a></p>
   <nav>
     <a class="grp">Orientation</a>
     <a href="#jobs">01 &middot; Three jobs</a>
@@ -289,7 +289,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 420" role="img" aria-label="A stack of three jobs. Top dashed band: Conductor, the user-product focus, unpublished, session owned by the workflow. Middle band: Workforce opinions as a shared floor and releasable component, with a later maybe peel-off for a Workforce user product drawn as a small dashed aside, not as a second install. Bottom solid band: Layer 1 substrate that exists — four block kinds, flows, sessions, resources, capabilities, task board, skills, the Agent type. Arrows show Conductor sitting on opinions sitting on substrate. A note: do not lift session-owned-by-workflow into Layer 1.">
+      <svg viewBox="0 0 940 420" role="img" aria-label="A stack of three jobs. Top dashed band: Conductor, the user-product focus, unpublished, session owned by the workflow. Middle band: Workforce opinions as a shared floor and releasable component, with a later maybe peel-off for a Workforce user product drawn as a small dashed aside, not as a second install. Bottom solid band: Layer 1 substrate that exists &#8212; four block kinds, flows, sessions, resources, capabilities, task board, skills, dispatch, the Agent type. Arrows show Conductor sitting on opinions sitting on substrate. A note: do not lift session-owned-by-workflow into Layer 1.">
         <rect class="n-prop" x="16" y="16" width="908" height="100" rx="5"/>
         <text class="t-lbl" x="34" y="38">USER PRODUCT &#8212; UNPUBLISHED LAB</text>
         <rect class="n-box" x="34" y="52" width="520" height="48" rx="4"/>
@@ -318,7 +318,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-lbl f-code" x="34" y="298">LAYER 1 &#8212; SUBSTRATE &#183; EXISTS &#183; DO NOT INVENT HERE</text>
         <text class="t-s" x="34" y="322">handler &#183; generator &#183; sequencer &#183; router</text>
         <text class="t-s" x="34" y="340">defineFlow / actions &#183; session carries flowKind &#183; resources (session / user / org)</text>
-        <text class="t-s" x="34" y="358">capabilities &#183; task board &#183; skills runtime &#183; startDetached</text>
+        <text class="t-s" x="34" y="358">capabilities &#183; task board &#183; skills runtime &#183; dispatch</text>
         <text class="t-s" x="34" y="376">Agent type in core &#8212; a named participant, not a persistent identity</text>
       </svg>
     </div>
@@ -371,7 +371,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 360" role="img" aria-label="Collaboration on the one Relay door. Two session boxes, dashed: session A holds a generator that addresses session B and waits; session B receives and replies. Between them, one Layer 1 Relay door, also dashed because it is not in the tree. The door has two halves: address plus fire-and-forget, the first cut, and address plus wait, the collaboration half. A third box notes that startDetached already exists and is a child of the current flow, not a message to another session. A closing line: one door, no second bus, session-owned-by-workflow stays Conductor.">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Collaboration on the one Relay door. Two session boxes, dashed: session A holds a generator that addresses session B and waits; session B receives and replies. Between them, one Layer 1 Relay door, also dashed because it is not in the tree. The door has two halves: address plus fire-and-forget, the first cut, and address plus wait, the collaboration half. A third box notes that a dispatch keyed on a value already exists and makes a child of the current flow, not a message to another session. A closing line: one door, no second bus, session-owned-by-workflow stays Conductor.">
         <rect class="n-prop" x="16" y="16" width="250" height="132" rx="5"/>
         <text class="t-lbl" x="34" y="38">SESSION A &#183; PROPOSED</text>
         <text class="t-b f-accent" x="34" y="68">a generator</text>
@@ -401,7 +401,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
         <rect class="n-code" x="16" y="168" width="446" height="80" rx="5"/>
         <text class="t-lbl f-code" x="34" y="190">ALREADY EXISTS &#8212; NOT THIS</text>
-        <text class="t-s" x="34" y="214">startDetached &#8594; a child of the current flow</text>
+        <text class="t-s" x="34" y="214">a { key } dispatch &#8594; a child of the current flow</text>
         <text class="t-xs" x="34" y="232">SAME FLOW KIND. NOT A MESSAGE TO ANOTHER SESSION.</text>
 
         <rect class="n-code" x="478" y="168" width="446" height="80" rx="5"/>
@@ -414,7 +414,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-s" x="34" y="312">Workforce collaboration = address + wait on Relay. Session-owned-by-workflow stays Conductor. Neither lifts into Layer 1.</text>
       </svg>
     </div>
-    <figcaption><b>Same door, later half, different job.</b> Relay is one Layer&nbsp;1 send door: address, send, no fan-out. Fire-and-forget is the first cut. Collaboration is the wait on that address. A child from <code>startDetached</code> is not a conversation. A second messaging primitive would have to be unwound.</figcaption>
+    <figcaption><b>Same door, later half, different job.</b> Relay is one Layer&nbsp;1 send door: address, send, no fan-out. Fire-and-forget is the first cut. Collaboration is the wait on that address. A child from a <code>{ key }</code> dispatch is not a conversation. A second messaging primitive would have to be unwound.</figcaption>
   </figure>
 
   <div class="tw">
@@ -488,12 +488,12 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <tbody>
         <tr><td>Layer&nbsp;1 packages</td><td><span class="tag t-real">exists</span></td><td><code>core</code>, <code>engine</code>, <code>orchestration</code>, and the rest of the published set. Version <code>0.0.0</code>. Releasing. Not on the market.</td></tr>
         <tr><td>Four block kinds, flows, sessions, resources</td><td><span class="tag t-real">exists</span></td><td>The substrate both jobs sit on. A session carries a <code>flowKind</code> and nothing that says who owns it.</td></tr>
-        <tr><td>Task board, skills, <code>startDetached</code></td><td><span class="tag t-real">exists</span></td><td>Detached work is a <strong>child</strong> of the current flow. It is not a send to another session.</td></tr>
+        <tr><td>Task board, skills, dispatch</td><td><span class="tag t-real">exists</span></td><td>A <code>{ key }</code> dispatch makes a <strong>child</strong> of the current flow. Only the <code>{ id }</code> form sends to a session that already exists.</td></tr>
         <tr><td><code>waitForSideChain</code></td><td><span class="tag t-real">exists</span></td><td>Waits for background work on the same request. Not a wait on an addressed session.</td></tr>
         <tr><td><code>Agent</code> in core</td><td><span class="tag t-real">exists</span></td><td>A named participant. No <code>resources</code> field. No scope. Not a persistent identity.</td></tr>
         <tr><td><code>@flow-state-dev/workforce</code></td><td><span class="tag t-real">exists</span> thin</td><td>Public package. <code>defineAgent</code>, registry, <code>materializeAgent</code>, <code>definePersona</code>. Capability factory is a stub. One example seats a skill. Not a user product.</td></tr>
         <tr><td>Conductor</td><td><span class="tag t-real">exists</span> lab</td><td><code>labs/conductor/</code>, <code>private: true</code>. One phase, seed / wake / status / answer. Unpublished. Not a launched product.</td></tr>
-        <tr><td>Relay door</td><td><span class="tag t-prop">filed</span></td><td>Designed as one Layer&nbsp;1 send door: address, send, no fan-out. <strong>Not in the tree.</strong> No <code>packages/relay</code>. No <code>relay</code> on <code>FlowDefinition</code>. No send-to-session verb in <code>engine</code>.</td></tr>
+        <tr><td>Relay door</td><td><span class="tag t-real">exists</span>, as <code>dispatcher()</code></td><td>One Layer&nbsp;1 send door: address, send, no fan-out. It shipped under a different name &#8212; a block in <code>core</code>, not a group on <code>FlowDefinition</code> &#8212; so there is still no <code>packages/relay</code> and no <code>relay</code> on <code>FlowDefinition</code>, and those stopped being the test of whether the door exists. Its <code>{ id }</code> form delivers into a session that already exists. The half that has not shipped is the wait.</td></tr>
         <tr><td>Address + fire-and-forget</td><td><span class="tag t-prop">this cycle</span></td><td>The first cut of that door. Intended. Not shipped. Enough to send. Not enough to collaborate.</td></tr>
         <tr><td>Address + wait</td><td><span class="tag t-prop">next</span></td><td>The half collaboration needs. Workforce-facing. Same door. Not a new primitive.</td></tr>
         <tr><td>Workforce user-product</td><td><span class="tag t-prop">later maybe</span></td><td>A peel-off. Opinions stay the shared floor. Not drawn as a second install.</td></tr>
