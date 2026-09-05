@@ -36,17 +36,30 @@ const LEGACY_SDK_SOURCE = "sdk";
  * The mapping lives here, at the one place the vendor's word is known, so no
  * reader downstream ever branches on an SDK enum. A turn cap and a budget cap
  * are both limits the run was stopped at; every other non-success failed.
+ *
+ * **Whether a terminal result ARRIVED is a separate fact from whether its
+ * subtype was RECOGNIZED**, which is why the caller passes it rather than
+ * having it inferred from `subtype === null`. `normalizeSubtype` maps an
+ * unrecognized subtype — a future SDK failure mode — to `null`, the same value
+ * a run that never produced a result carries. Collapsing the two would report
+ * `outcome: null` for a run that demonstrably failed, and `null` is the one
+ * thing a manager reads as "no terminal result arrived" (LAB-154 settles runs
+ * on this field). `translate.ts` guards the same hazard by keying its error
+ * event off the raw subtype.
  */
 export function outcomeFromResultSubtype(
   subtype: SdkResultSubtype | null,
+  terminalResultArrived: boolean,
 ): HarnessRunOutcome | null {
-  if (subtype === null) return null;
+  if (!terminalResultArrived) return null;
   switch (subtype) {
     case "success":
       return "finished";
     case "error_max_turns":
     case "error_max_budget_usd":
       return "stopped-at-limit";
+    // Includes `null`: a terminal result arrived and its subtype is not one
+    // this package knows. It was not a success, so the run failed.
     default:
       return "failed";
   }

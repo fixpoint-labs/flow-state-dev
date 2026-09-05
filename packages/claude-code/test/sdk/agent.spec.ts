@@ -1938,7 +1938,27 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       expect(handle.resultSubtype).toBe(subtype);
     });
 
+    it("reads an unrecognized terminal subtype as a failed outcome", async () => {
+      // `outcome` is the field the contract tells a manager to settle a run on,
+      // and `null` there has to keep meaning "no terminal result arrived". A
+      // future SDK failure mode this package does not know is still a terminal
+      // failure, so it reads `failed` — reporting `null` would make an errored
+      // run indistinguishable from one that never produced a result at all.
+      // `resultSubtype` stays null: the vendor's word is genuinely unknown.
+      const handle = await runFor({
+        type: "result",
+        subtype: "error_some_future_mode",
+        session_id: "s",
+      } as never);
+
+      expect(handle.outcome).toBe("failed");
+      expect(handle.status).toBe("errored");
+      expect(handle.resultSubtype).toBeNull();
+    });
+
     it("leaves outcome, usage and cost null when the run reported no result", async () => {
+      // The other side of the line above: no terminal result at all is the one
+      // case that still reads `null`.
       const handle = await runFor(null);
 
       expect(handle.outcome).toBeNull();

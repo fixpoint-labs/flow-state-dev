@@ -1,6 +1,6 @@
 ---
 "@flow-state-dev/core": minor
-"@flow-state-dev/claude-code": patch
+"@flow-state-dev/claude-code": minor
 ---
 
 A shared contract for coding-agent harnesses (LAB-152), so a harness package no

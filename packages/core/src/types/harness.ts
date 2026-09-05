@@ -94,7 +94,16 @@ export interface HarnessRunInput {
   prompt: string;
 }
 
-/** Runtime validator for {@link HarnessRunInput}. */
+/**
+ * Runtime validator for {@link HarnessRunInput}.
+ *
+ * Strips unknown keys rather than rejecting them, deliberately: a smuggled
+ * field (`resumeSessionId`, a `cwd`) is dropped instead of honoured, which is
+ * all BP-031 asks for here — resume and working directory reach a harness
+ * through the caller-fed {@link HarnessResolver}, never through block input.
+ * `.strict()` would fail louder, at the cost of breaking callers that pass
+ * framework metadata through the same object.
+ */
 export const harnessRunInputSchema = z.object({
   prompt: z.string(),
 });
