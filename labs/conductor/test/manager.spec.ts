@@ -214,9 +214,11 @@ describe("the manager — the verdict at each exit", () => {
     const row = await seedAndDrain(live);
 
     expect(row.status).toBe("pending");
-    expect(row.feedback).toContain("error_max_turns");
+    // The NEUTRAL outcome, not the SDK's `error_max_turns` — the manager reads
+    // the harness contract's fields, so this line reads the same for any harness.
+    expect(row.feedback).toContain("stopped-at-limit");
     expect(row.run?.outcome).toBe("failed");
-    expect(row.run?.reason).toContain("error_max_turns");
+    expect(row.run?.reason).toContain("stopped-at-limit");
   });
 
   it("does NOT complete a run that opened the PR and THEN reported failure", async () => {
@@ -304,8 +306,8 @@ describe("the manager — what carries across an attempt", () => {
     const settled = await wakeAndSettle(live);
 
     expect(seen.prompts).toHaveLength(2);
-    expect(seen.prompts[0]).not.toContain("error_max_turns");
-    expect(seen.prompts[1]).toContain("error_max_turns");
+    expect(seen.prompts[0]).not.toContain("stopped-at-limit");
+    expect(seen.prompts[1]).toContain("stopped-at-limit");
     expect(settled.status).toBe("completed");
   });
 
@@ -384,16 +386,20 @@ describe("the manager — what carries across an attempt", () => {
 });
 
 describe("what the retry is told about the last attempt", () => {
-  it("names the previous harness session in attempt 2's prompt", async () => {
-    // The collision: `openRunRow` applies the attempt-scoped clear, which nulls
-    // `sessionId` — correctly, since it describes the attempt now running. But
-    // the prompt read that same field to name the LAST attempt's session, and
-    // the clear runs first, so it always saw `null` and the line was silently
-    // never emitted. A rule and a reader that were each right alone.
+  it("continues attempt 1's session on attempt 2, and starts attempt 1 fresh", async () => {
+    // **The carry-forward is the resume resolver, and nothing else.** It used to
+    // be a line in the prompt naming the last session, which told the model a
+    // fact it could not act on — the run still started over in a tree it had
+    // never seen. Two mechanisms for "continue" is dual semantics, so the
+    // prompt line is gone and this is the only one.
     //
-    // Asserted on the PROMPT the agent actually received, not on the row: the
-    // row is exactly the thing that was misleading here.
-    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    // Asserted on what the SDK was HANDED, because that is the whole claim: the
+    // id reached the vendor as `resume`, not merely onto a row somewhere.
+    const seen = {
+      prompts: [] as string[],
+      cwds: [] as (string | undefined)[],
+      resumes: [] as (string | undefined)[],
+    };
     live = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
       isDone: () => false,
@@ -401,14 +407,169 @@ describe("what the retry is told about the last attempt", () => {
     });
 
     await seedAndDrain(live);
-    expect(seen.prompts).toHaveLength(1);
-    // Attempt 1 has nothing to carry, so it must NOT invent a session line.
-    expect(seen.prompts[0]).not.toMatch(/previous run's harness session/);
+    expect(seen.resumes).toEqual([undefined]);
 
     await wakeAndSettle(live);
 
+    expect(seen.resumes).toEqual([undefined, "sess_stub"]);
+  });
+
+  it("keeps the session id out of the prompt entirely", async () => {
+    // The anti-game half of the goal check, pinned in CI so it cannot rot: if a
+    // session id can reach the model through the prompt, a "resume worked" proof
+    // is only a proof that the model was told the answer.
+    const seen = {
+      prompts: [] as string[],
+      cwds: [] as (string | undefined)[],
+      resumes: [] as (string | undefined)[],
+    };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+      isDone: () => false,
+      maxAttempts: 3,
+    });
+
+    await seedAndDrain(live);
+    await wakeAndSettle(live);
+
     expect(seen.prompts).toHaveLength(2);
-    expect(seen.prompts[1]).toMatch(/The previous run's harness session was sess_stub\./);
+    for (const prompt of seen.prompts) {
+      expect(prompt).not.toMatch(/sess_stub/);
+      expect(prompt).not.toMatch(/harness session/i);
+    }
+  });
+
+  it("starts fresh again when the harness named no session at all", async () => {
+    // The self-heal, and the case a fallback would break. A run that was sent an
+    // id and ended without ever naming one — a resume the vendor could not
+    // honour — leaves the row exactly as the opening clear left it, so the next
+    // attempt starts fresh rather than re-sending a dead id forever.
+    //
+    // There is deliberately no "if the row is empty, take the handle's id"
+    // fallback: the handle of a refused resume carries the id that was SENT,
+    // which is precisely the dead one.
+    const seen = {
+      prompts: [] as string[],
+      cwds: [] as (string | undefined)[],
+      resumes: [] as (string | undefined)[],
+    };
+    live = createConductorHarness({
+      // A terminal result naming no session: the id never reaches the hook.
+      resolveClaudeAgent: scriptedAgent(
+        [sdkResult("error_during_execution", { session_id: undefined })],
+        seen,
+      ),
+      isDone: () => false,
+      maxAttempts: 3,
+    });
+
+    const first = await seedAndDrain(live);
+    expect(first.run?.sessionId).toBeNull();
+
+    await wakeAndSettle(live);
+
+    expect(seen.resumes).toEqual([undefined, undefined]);
+  });
+
+  it("records the session the harness confirmed, not the one it was sent", async () => {
+    // The row means one thing: the session the harness CONFIRMED it was in. So a
+    // run that was sent `sess_stub` and answered `sess_other` records the
+    // second, and the attempt after it continues the conversation that actually
+    // happened.
+    const seen = {
+      prompts: [] as string[],
+      cwds: [] as (string | undefined)[],
+      resumes: [] as (string | undefined)[],
+    };
+    let attempt = 0;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent(() => {
+        attempt += 1;
+        return [sdkResult("success", { session_id: `sess_${attempt}` })];
+      }, seen),
+      isDone: () => false,
+      maxAttempts: 4,
+    });
+
+    const first = await seedAndDrain(live);
+    expect(first.run?.sessionId).toBe("sess_1");
+
+    await wakeAndSettle(live);
+    expect(seen.resumes).toEqual([undefined, "sess_1"]);
+  });
+});
+
+describe("the verdict reads the neutral contract", () => {
+  /** Drive one attempt whose SDK result carries the given terminal subtype. */
+  async function attemptWith(subtype: string, extra: Record<string, unknown> = {}) {
+    const seen = {
+      prompts: [] as string[],
+      cwds: [] as (string | undefined)[],
+      resumes: [] as (string | undefined)[],
+    };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult(subtype, extra)], seen),
+      isDone: () => true,
+      maxAttempts: 3,
+    });
+    return seedAndDrain(live);
+  }
+
+  it("completes the row on a run that finished", async () => {
+    // `outcome: "finished"` is the neutral reading of the SDK's `success`. The
+    // manager settles on the neutral field, so a Codex run and a Claude run
+    // settle identically.
+    const row = await attemptWith("success");
+
+    expect(row.status).toBe("completed");
+    expect(row.run?.outcome).toBe("succeeded");
+    expect(row.run?.reason).toBeNull();
+  });
+
+  it("re-pends with a reason naming the outcome when the run was stopped at a limit", async () => {
+    // The failure reason names the NEUTRAL outcome, not the vendor's subtype.
+    // `error_max_turns` is Claude's word for it; a second harness has its own,
+    // and the row must read the same either way.
+    const row = await attemptWith("error_max_turns");
+
+    expect(row.status).toBe("pending");
+    expect(row.run?.outcome).toBe("failed");
+    expect(row.run?.reason).toMatch(/stopped-at-limit/);
+    expect(row.run?.reason).not.toMatch(/error_max_turns/);
+  });
+
+  it("re-pends with a reason naming the outcome when the run failed", async () => {
+    const row = await attemptWith("error_during_execution");
+
+    expect(row.status).toBe("pending");
+    expect(row.run?.reason).toMatch(/failed/);
+    expect(row.run?.reason).not.toMatch(/error_during_execution/);
+  });
+
+  it("names the run's closing text in the reason when it produced one", async () => {
+    // `outcome` says how it ended; `finalMessage` is the only part a person can
+    // act on. A reason carrying just the outcome word is a feedback line that
+    // tells the next attempt nothing it did not already know.
+    const row = await attemptWith("error_during_execution", {
+      result: "the branch had already been deleted",
+    });
+
+    expect(row.run?.reason).toMatch(/the branch had already been deleted/);
+  });
+
+  it("writes the neutral cost onto the row", async () => {
+    // Read off `cost.usd`, not off the Claude handle's retired `costUsd` dual.
+    const row = await attemptWith("success");
+
+    expect(row.run?.costUsd).toBe(0.02);
+  });
+
+  it("leaves the cost null when the harness reported none", async () => {
+    // Never invented. A harness with no configured model reports no cost at all,
+    // and a zero there would read as free rather than as unknown.
+    const row = await attemptWith("success", { total_cost_usd: null });
+
+    expect(row.run?.costUsd).toBeNull();
   });
 });
 

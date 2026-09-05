@@ -102,9 +102,9 @@ rows' statuses. Answering a question the job is not actually waiting on does not
 
 - **An answer spends one of the run's retries.** Ask three questions of a job budgeted for three
   and it has none left for a real failure. Budget for questions *plus* failures.
-- **The answered run restarts rather than resumes.** It begins a fresh coding session in the same
-  checkout, holding your answer and whatever the last attempt left on disk — it does not pick up
-  the earlier conversation.
+- **The answered run continues the session that asked.** It picks up the earlier conversation in
+  the same checkout, holding your answer and whatever the last attempt left on disk. If the coding
+  agent can no longer find that session, the attempt starts fresh rather than failing.
 - **A second answer arriving while the first is still being applied is dropped, not refused.** The
   run comes back holding the first one. Answer once, and read `status` before answering again.
 
@@ -127,9 +127,12 @@ scoped to the user, so a `status` call from a coordinator session that never saw
 the run still returns the harness session id, the checkout, the branch, the last
 outcome and the cost — which is the point of recording them at all.
 
-The session id on a run record is a copy, kept so conductor can say which
-session a run was. It is not a resume handle, and nothing here reads it back to
-continue anything.
+The session id on a run record is the session the harness CONFIRMED it was in.
+The harness writes it the moment it names one, every attempt's opening write
+clears it, and the next attempt hands it back to the harness to continue. So an
+attempt whose run never named a session leaves it empty, and the attempt after
+that starts fresh — which is how a session the agent has lost heals itself
+instead of being asked for forever.
 
 **Retention is a known gap.** Nothing prunes run records, and at user scope they
 outlive every session. Fine while a conductor drives one issue at a time; a
@@ -200,10 +203,9 @@ commits land on another is the kind of agreement where every layer is wrong toge
 - **No "made progress but is not finished" outcome.** It would have to settle the row either done
   (dishonest) or waiting on a person (which now means something specific: a question with an
   answer coming). A run that stalled without asking anything is a failed attempt.
-- **No resume.** Conductor starts runs; it does not continue one across a wait — an answered run
-  begins a fresh coding session in the same checkout. That is FIX-1179 / FIX-1246's, and the
-  association a resume reads from is a typed field on the task — the session id on the run record
-  is a copy conductor keeps so it can say which session a run was.
+- **Resume is conductor's own, not the task's.** An answered run does continue the session that
+  asked, off the session id on the run record. The typed resume association on the *task* is
+  FIX-1179 / FIX-1246's and is a different thing — nothing here stands in for it.
 - **One issue at a time is a property of how you seed, not something the board enforces.** The
   board's `concurrency` is set to 1, which bounds how many rows one drain hands off — but a
   hand-off dispatch hands off and returns, releasing the slot long before the run finishes. Two

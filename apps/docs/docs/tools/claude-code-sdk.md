@@ -163,6 +163,48 @@ createClaudeCodeAgentCapability({ detached: true });
 See [Dispatched work](../server/background-work.md) for how the child session is
 started and read back.
 
+### Continuing a run on the background path
+
+Background jobs start fresh by default. Sometimes you want the next one to pick up
+where the last one left off — the job asked a question, a person answered it, and
+the follow-up should continue that conversation rather than start over knowing
+only what its prompt says.
+
+Two options do that, and they work as a pair. `resume` says which session to
+continue; `onSession` tells you which session the run turned out to be in.
+
+```ts
+claudeCodeAgent({
+  detached: true,
+  // Which conversation to continue. Read it from somewhere you control —
+  // never from the block's input, which a model can see and set.
+  resume: (ctx) => lastSessionFor(ctx),
+  // Called during the run, the moment the agent names its session.
+  onSession: (id, ctx) => recordSessionFor(ctx, id),
+});
+```
+
+Return `null` or `""` from `resume` and the run starts fresh, which is what you
+want on the first attempt.
+
+`onSession` fires **during** the run rather than after it, and that timing is the
+reason it exists rather than reading the id off the returned handle. A run that
+gets cancelled — a deadline, a shutdown — never returns a handle at all, and that
+is exactly the run you most want to continue. The hook is called as soon as the
+agent names its session, before the run does anything that could fail.
+
+What the hook reports is the session the agent **confirmed** it is in, which is not
+always the one you asked for. Hand it an id the agent can no longer find and the
+run may answer with a session of its own, or end without naming one. So record what
+the hook gives you, and treat "the hook never fired" as "there is nothing to
+continue" — the next attempt then starts fresh on its own, instead of asking for a
+session that is gone over and over.
+
+Both options are background-path only. In session, the block already resumes the
+last run and records the new id itself, so a second answer to either question would
+be two owners of one decision. Passing them without `detached: true` throws when
+you build the block, not at run time.
+
 ## Where the run works
 
 By default the agent runs in whatever directory your server process is running
@@ -194,6 +236,14 @@ const agent = claudeCodeAgent({
 It is a function rather than a string on purpose. A flow is built once and then
 serves many runs, so a fixed directory would be the wrong shape — this resolves
 per run, just before the agent starts, and can return a promise as it does here.
+
+**It is handed the block's context and nothing else**, and that is deliberate
+rather than an oversight. `cwd`, `sandbox` and `resume` decide where a run
+writes, what fences it, and which conversation it continues — and the prompt is
+the one value a caller, or a model calling this block as a tool, controls. If a
+resolver could read the prompt, a caller could choose those things. So it
+cannot: everything a resolver legitimately needs is a fact about *which run this
+is*, and that comes from the context.
 
 **A throwaway directory and a resumed conversation do not go together**, which
 is why `detached: true` is part of this example rather than an aside. By
@@ -259,7 +309,7 @@ create the directory before handing it over:
 
 ```ts
 const agent = claudeCodeAgent({
-  cwd: async (_input, ctx) => {
+  cwd: async (ctx) => {
     const dir = checkoutFor(
       ctx.session.identity.tenantId,
       ctx.session.identity.id,
@@ -412,10 +462,10 @@ const checkoutFor = (ctx: object) => {
 };
 
 claudeCodeAgent({
-  cwd: (_input, ctx) => checkoutFor(ctx),
+  cwd: (ctx) => checkoutFor(ctx),
   settingSources: ["user"],
   env: { ...process.env, CI: "1" },
-  sandbox: async (_input, ctx) => ({
+  sandbox: async (ctx) => ({
     enabled: true,
     filesystem: { allowWrite: [await checkoutFor(ctx)] },
   }),

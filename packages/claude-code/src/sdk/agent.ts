@@ -15,7 +15,12 @@
  * `detached: true` turns the conversation-state half off — see the option.
  */
 import { handler, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { AnyResourceRef, BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type {
+  HarnessCallbackContext,
+  HarnessResolver,
+  HarnessSessionHook,
+} from "@flow-state-dev/core/types";
 import type { UsesSlot } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -77,29 +82,20 @@ export const claudeAgentSessionStateSchema = z.object({
 /**
  * The block context as an option callback receives it.
  *
- * Loose in every slot, deliberately. The slots are filled in by this factory's
- * OWN configuration — `sessionStateSchema` decides the session state, `uses`
- * decides the capability namespaces and the state targets — so pinning them
- * here would mean a callback stops type-checking because of an option set
- * beside it, which is not a signal a caller can act on. `ResolveClaudeAgent`
- * already carried this reasoning for one slot; `uses` was the second cause of
- * the same problem, which is what made it worth naming once.
+ * Loose in exactly three slots — session state (present or absent depending on
+ * `detached`), and the targets and capability namespaces `uses` derives — and
+ * checked in every other one. Pinning the three would mean a callback stops
+ * type-checking because of an option set beside it, which is not a signal a
+ * caller can act on. Everything else stays checked, so a scope-state field
+ * nobody declared reads `unknown` rather than `any`.
+ *
+ * **This is core's {@link HarnessCallbackContext}, not a copy of it**, and the
+ * identity is load-bearing rather than tidy: `resume`, `onSession` and `cwd`
+ * are the harness contract's own feeds, and this block CALLS them with this
+ * context. Two aliases that merely happened to agree would be one edit away
+ * from a harness that cannot be handed the feeds a manager built.
  */
-type AgentCallbackContext = BlockContext<
-  Record<string, unknown>,
-  // Session state: present or absent depending on `detached`, so it is not one
-  // static shape here.
-  any,
-  Record<string, unknown>,
-  Record<string, unknown>,
-  Record<string, AnyResourceRef>,
-  Record<string, unknown>,
-  unknown,
-  // Targets and capability namespaces: both derived from `uses`. These two are
-  // the whole reason this alias exists — everything above stays checked.
-  any,
-  any
->;
+type AgentCallbackContext = HarnessCallbackContext;
 
 /**
  * The Agent SDK's sandbox settings, as this package sees them.
@@ -247,18 +243,21 @@ export interface ClaudeCodeAgentOptions {
    * "sandboxed" but not "sandboxed to THIS run's workspace", which is the only
    * form of it that contains anything. Same reason `cwd` is a resolver.
    *
+   * **The resolver is handed the context alone**, like `cwd` and `resume` and
+   * for the sharper version of their reason: these settings are the FENCE, and
+   * a fence derived from the prompt is a fence the caller drew. See
+   * `HarnessResolver` in `@flow-state-dev/core/types`, which carries the
+   * argument once.
+   *
    * Loosely typed for the same reason `agents` is: this package treats the
    * Agent SDK as an optional peer, so its types are not imported here. An
    * open object rather than `unknown`, because `unknown | fn` collapses to
    * `unknown` and the resolver form — the one that matters — would then get
-   * no contextual typing and both its parameters would be implicit `any`.
+   * no contextual typing and its parameter would be an implicit `any`.
    */
   sandbox?:
     | SandboxSettings
-    | ((
-        input: { prompt: string },
-        ctx: AgentCallbackContext,
-      ) => SandboxSettings | Promise<SandboxSettings>);
+    | ((ctx: AgentCallbackContext) => SandboxSettings | Promise<SandboxSettings>);
   /**
    * Capabilities installed on the block this factory returns — the same `uses`
    * slot any other block takes, forwarded to `handler()`.
@@ -296,9 +295,16 @@ export interface ClaudeCodeAgentOptions {
    * empty, the rows are simply keyed somewhere else. See
    * `canonicalFilePathKey`, which is where the second half lands.
    *
-   * **A resolver, not a constant**, because one flow build serves many runs:
-   * the same shape {@link ClaudeCodeAgentOptions.prompt} already has. It is
-   * called once per invocation, before `query`.
+   * **A resolver, not a constant**, because one flow build serves many runs. It
+   * is called once per invocation, before `query`, and is handed the block's
+   * context and nothing else.
+   *
+   * **The prompt is deliberately not reachable from here.** It used to be the
+   * resolver's first argument, which undid the paragraph below: the prompt is
+   * the one value a caller — or a model holding this block as a tool — controls,
+   * so a resolver that could see it could be written to put the run's directory
+   * wherever the caller asked. `HarnessResolver` in
+   * `@flow-state-dev/core/types` carries the full argument.
    *
    * ```ts
    * import { mkdir, mkdtemp } from "node:fs/promises";
@@ -349,7 +355,7 @@ export interface ClaudeCodeAgentOptions {
    * }
    *
    * claudeCodeAgent({
-   *   cwd: async (_input, ctx) => {
+   *   cwd: async (ctx) => {
    *     const dir = checkoutFor(
    *       ctx.session.identity.tenantId,
    *       ctx.session.identity.id,
@@ -409,10 +415,60 @@ export interface ClaudeCodeAgentOptions {
    * outside it, and the file record is a log of what its tools did rather than
    * a fence around where they may go.
    */
-  cwd?: (
-    input: { prompt: string },
-    ctx: AgentCallbackContext,
-  ) => string | Promise<string>;
+  cwd?: HarnessResolver<string>;
+  /**
+   * Which conversation this background run continues. Default: unset — a fresh
+   * session, byte for byte today's `detached: true` behaviour (BP-030).
+   *
+   * **Background path only** (`detached: true`), and set it in-session and this
+   * factory throws. In-session the block's own conversation state already owns
+   * continuity — it reads the last run's id off session state and resumes it —
+   * so an explicit id would be a second owner of one decision, and which of the
+   * two won would depend on the order two lines happen to run in. Refused at
+   * construction rather than resolved and ignored, because a host that asked
+   * for a resume and silently did not get one has no way to find out.
+   *
+   * A resolver, not a value, for the reason {@link ClaudeCodeAgentOptions.cwd}
+   * gives: one flow build serves many runs, and the session to continue is
+   * per run. It is called once per invocation, before `query`.
+   *
+   * **`null` and `""` both mean "start fresh"** and reach the SDK as no
+   * `resume` at all. That matters more than it reads: a host's state carries
+   * `null` on the first attempt, an over-eager `?? ""` produces the other, and
+   * an empty `resume` key is a value the SDK is entitled to interpret.
+   *
+   * Pair it with {@link ClaudeCodeAgentOptions.onSession}. A host that resumes
+   * without recording the id the run confirms cannot continue a run that died
+   * mid-flight — which is the case resume mostly exists for.
+   *
+   * An option and never a field on the block's input, for the same reason
+   * `cwd` is one: the input schema is model-facing through the agent
+   * capability's tool preset, so a session id reachable from it is a session a
+   * model could choose to continue (BP-031).
+   */
+  resume?: HarnessResolver<string | null | undefined>;
+  /**
+   * Called the moment the SDK names the session this run is in, so a host can
+   * record the id it will later hand back through
+   * {@link ClaudeCodeAgentOptions.resume}. Default: unset.
+   *
+   * **Background path only**, refused in-session for the reason `resume` is:
+   * the block already persists the id to session state there, and a second
+   * writer racing it is two owners of one field.
+   *
+   * **It fires DURING the run, before the next streamed message is consumed** —
+   * not after it, and not from the returned handle. The distinction is the
+   * whole reason the hook exists: a run the host's deadline kills returns no
+   * handle at all, and a run that ends in a throw returns none either, so a
+   * host that only learned the id at the end has nothing to continue in exactly
+   * the case it wanted to. Called once per distinct session id rather than once
+   * per message, because every message carries one and the host's write is
+   * durable.
+   *
+   * It is not a place to do work. Whatever it does happens inline on the
+   * stream, so a slow hook slows the run and a throwing one fails it.
+   */
+  onSession?: HarnessSessionHook;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -624,6 +680,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     detached = false,
     recordWork = false,
     cwd: resolveCwd,
+    resume: resolveResume,
+    onSession,
     settingSources,
     env,
     sandbox,
@@ -631,6 +689,33 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onErrored,
     name = "claude-code-agent",
   } = options;
+
+  // **Two owners of one decision, refused where a host can still act on it.**
+  //
+  // In-session this block resumes from its own conversation state and writes
+  // the new id back to it. A `resume` resolver beside that is a second answer
+  // to "which session", and an `onSession` hook is a second writer of the id —
+  // in both cases which one wins depends on the order two lines happen to run
+  // in, which is not a thing a host can reason about or a test can pin.
+  //
+  // At construction rather than at run time, and not silently ignored: a host
+  // that asked for a resume and quietly did not get one finds out when a run
+  // starts over in a tree it has never seen.
+  const inSessionOnly = [
+    ...(resolveResume !== undefined ? ["resume"] : []),
+    ...(onSession !== undefined ? ["onSession"] : []),
+  ];
+  if (!detached && inSessionOnly.length > 0) {
+    throw new Error(
+      `claudeCodeAgent: ${inSessionOnly.map((o) => `\`${o}\``).join(" and ")} ` +
+        `${inSessionOnly.length === 1 ? "is" : "are"} background-path only, and this ` +
+        `block is in-session (\`detached\` is ${detached === false ? "false" : "unset"}). ` +
+        `In-session the block's own conversation state already owns continuity — it ` +
+        `resumes the last run's session and records the new id — so these would be a ` +
+        `second owner of that decision racing the first. Set \`detached: true\` to run ` +
+        `this as background work, or drop ${inSessionOnly.length === 1 ? "the option" : "both options"}.`,
+    );
+  }
 
   return handler({
     name,
@@ -694,36 +779,51 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         );
       }
 
-      // ONE input for every resolver on this block, and it is the resolved
-      // prompt rather than the raw one.
+      // **No resolver on this block is told the prompt.**
       //
-      // `cwd` used to be handed the block input directly while `sandbox` was
-      // handed a fresh `{ prompt: promptText }`. Those are different strings
-      // whenever a `prompt` picker or padding is in play — `cwd` saw what the
-      // caller sent, `sandbox` saw what the run runs — so a caller deriving
-      // coordinated paths from them could confine the run to a directory it
-      // was never given. The input schema is closed to `prompt`, so this one
-      // object is the whole of what a resolver can be told.
-      const resolverInput = { prompt: promptText };
+      // It used to be handed to all three, and the reasoning was about keeping
+      // them consistent with each other — `cwd` saw what the caller sent while
+      // `sandbox` saw what the run runs, so coordinated paths derived from the
+      // two could confine a run to a directory it was never given. Consistency
+      // was the wrong fix for that: the prompt is the one value a caller or a
+      // tool-using model controls, and every one of these three decides where a
+      // run writes, what fences it, or which conversation it continues. Handing
+      // it to them at all is the BP-031 defect the resolver exists to prevent.
+      //
+      // So it is not passed. A host cannot derive a directory or a session from
+      // the caller's text, because it does not have the caller's text.
 
       // Resolved ONCE per invocation, before the query and before the recorder
       // is opened, so the directory the SDK is handed and the directory the
       // record is keyed against cannot be two different answers from one
-      // resolver (§7's invariant is about them staying the same value, not
-      // merely about both being threaded).
+      // resolver.
       const workingDirectory = normalizeWorkingDirectory(
-        resolveCwd === undefined ? undefined : await resolveCwd(resolverInput, ctx),
+        resolveCwd === undefined ? undefined : await resolveCwd(ctx),
       );
 
       // Resolved beside the working directory, from the same input, and for
       // the same reason: the paths that confine a run are the paths it works
       // in, and a sandbox resolved at build time cannot name them.
+      // **Which conversation this run continues, on the background path only.**
+      //
+      // Resolved beside the working directory because the two are one
+      // instruction — continue THIS run in THIS checkout — and a host that
+      // resolved them at different moments could hand the SDK a session that
+      // belongs to a different tree.
+      //
+      // Both spellings of "start fresh" collapse to `undefined` here rather
+      // than at the spread below, so there is one place the distinction is
+      // made: `null` is what a host's state carries before any run has named a
+      // session, `""` is what an over-eager `?? ""` produces, and an empty
+      // `resume` key is a value the SDK is entitled to interpret.
+      const resumeSessionId =
+        detached && resolveResume !== undefined
+          ? ((await resolveResume(ctx)) ?? "")
+          : "";
+
       const sandboxSettings =
         typeof sandbox === "function"
-          ? await (sandbox as (i: { prompt: string }, c: AgentCallbackContext) => unknown)(
-              resolverInput,
-              ctx,
-            )
+          ? await (sandbox as (c: AgentCallbackContext) => unknown)(ctx)
           : sandbox;
 
       const resolved = await resolveClaudeAgent(ctx);
@@ -748,7 +848,11 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         ...(settingSources !== undefined ? { settingSources } : {}),
         ...(env !== undefined ? { env } : {}),
         ...(sandboxSettings !== undefined ? { sandbox: sandboxSettings } : {}),
+        // In-session, from the block's own conversation state; detached, from
+        // the host's resolver. Never both — construction refused that pairing
+        // above, so exactly one of these two is ever a non-empty string.
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
+        ...(resumeSessionId ? { resume: resumeSessionId } : {}),
         ...(onToolApproval
           ? { canUseTool: buildCanUseTool(onToolApproval, ctx) }
           : {}),
@@ -772,6 +876,20 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       let terminalResultArrived = false;
       let finalMessage: string | null = null;
       let newSessionId: string | null = session.sdkSessionId;
+      /**
+       * The last id handed to `onSession`, so the hook fires on a CHANGE rather
+       * than on every message that carries one.
+       *
+       * **Starts empty even when we were told to resume an id, deliberately.**
+       * Seeding it with the requested id would suppress the hook on exactly the
+       * run that resumed successfully — and what the hook reports is not "an id
+       * exists" but "the vendor CONFIRMED this run is in this session", which is
+       * a different fact from the one the host sent and the only one worth
+       * persisting. A host whose durable record is cleared per attempt (the
+       * shape a manager has, so a refused resume self-heals) would otherwise
+       * record nothing for a run that continued perfectly.
+       */
+      let announcedSessionId: string | null = null;
       let usage: SdkAgentHandle["usage"] = null;
       let costUsd: number | null = null;
 
@@ -798,6 +916,27 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             // aborted or failed run is still resumable.
             const sid = (message as { session_id?: string }).session_id;
             if (typeof sid === "string" && sid !== "") newSessionId = sid;
+
+            // **Tell the host, before this message is translated or the next
+            // one is read.**
+            //
+            // Everything below can throw and the whole loop can be cut off by
+            // an abort — which is precisely the run whose id a host most needs,
+            // because a killed run returns no handle to read it off. So the
+            // hook fires at the first point the id is known and before anything
+            // that could prevent it.
+            //
+            // Guarded on CHANGE rather than on presence: every message carries
+            // the session id, and the host's write is durable, so firing per
+            // message would put one write per streamed token on the hot path.
+            if (
+              onSession !== undefined &&
+              newSessionId !== null &&
+              newSessionId !== announcedSessionId
+            ) {
+              announcedSessionId = newSessionId;
+              await onSession(newSessionId, ctx);
+            }
 
             const events = translateSdkMessage(message, translateState);
             // DELIVERY IS STRUCTURAL, like shutdown. Translation consumed this
@@ -876,7 +1015,6 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           cost: costUsd === null ? null : { usd: costUsd, basis: "reported" },
           resultSubtype,
           toolsObserved: emitState.toolsObserved,
-          costUsd,
         };
 
         // Skipped wholesale when conversation state is off — a value written

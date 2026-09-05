@@ -473,7 +473,7 @@ export function createWorkspaceAgentCapability(
     },
     // Owned by this capability: the directory is the projection's, and it is
     // READ from the registry rather than re-resolved. See `openWorkspaces`.
-    cwd: (_input, ctx) => rootFor(ctx as WorkspaceContext),
+    cwd: (ctx) => rootFor(ctx as WorkspaceContext),
     ...(contain
       ? {
           // An explicit setting wins. Containment is a default, not a lock.
@@ -486,8 +486,7 @@ export function createWorkspaceAgentCapability(
           ],
           sandbox:
             agentOptions.sandbox ??
-            ((_input: { prompt: string }, ctx: WorkspaceContext) =>
-              containmentSandbox(rootFor(ctx))),
+            ((ctx) => containmentSandbox(rootFor(ctx as WorkspaceContext))),
         }
       : {}),
   });
