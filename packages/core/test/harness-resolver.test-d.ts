@@ -103,5 +103,17 @@ declare const harnessOwnContext: BlockContext<
 export const aHarnessCanCallIt: string | null | Promise<string | null> =
   managerShapedReadsCompile(harnessOwnContext);
 
+/**
+ * **The binding is deliberate, and a `void` one is not a mistake here.**
+ *
+ * What this asserts is the CALL — that a harness's own narrower context is an
+ * acceptable argument. `void | Promise<void>` is the hook's real return type, so
+ * the annotation checks that too; binding the result is what stops the call
+ * being elided as an unused expression, which would assert nothing at all.
+ *
+ * Falsified rather than assumed: pinning `HarnessCallbackContext`'s session slot
+ * to a concrete shape makes this line and its sibling above fail to compile,
+ * which is the contravariance break they exist to catch.
+ */
 export const aHarnessCanCallTheHook: void | Promise<void> =
   hookScopeStateIsUnknown("session-1", harnessOwnContext);
