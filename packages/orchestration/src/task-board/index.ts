@@ -144,7 +144,6 @@ import {
 import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
 import {
   assertHandOffBoardSupported,
-  handOffSeats,
   handedOffTaskPredicate,
   resolveWorkerSlots,
   type HandOffSeat,
@@ -236,21 +235,17 @@ export type { TaskBoardOnReview } from "./park-exit";
 export {
   assertHandOffBlockSupported,
   assertHandOffBoardSupported,
-  handOffSeats,
   handedOffTaskPredicate,
   isTaskDispatcher,
   resolveWorkerSlot,
   resolveWorkerSlots,
-  seatLabel,
 } from "./hand-off";
 export type {
   HandOffSeat,
-  ResolvedWorkerSlot,
   TaskDispatcherBlock,
   TaskSeat,
   TaskSeatAddress,
   TaskSeatRegistry,
-  WorkerSeat,
 } from "./hand-off";
 export type { TaskSessionPolicy } from "@flow-state-dev/core/types";
 export { StaleTaskClaimError, createTaskGate, taskDispatchInputSchema } from "./task-entry";
@@ -712,10 +707,7 @@ export function taskBoard<
   });
   const workers = resolvedWorkers.workers;
   const defaultWorker = resolvedWorkers.defaultWorker;
-  // The seats that hand off, recognised on the flattened slots: a dispatcher
-  // is a block carrying a `task` address, which the slot flattening carried
-  // through as a bare inline block.
-  const handedOff = handOffSeats(resolvedWorkers.slots);
+  const handedOff = resolvedWorkers.handedOff;
 
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
@@ -781,7 +773,7 @@ export function taskBoard<
   // before; the completion meta is the third reader (FIX-1074), and it has to
   // agree with the other two — a board that exited because its work is running
   // elsewhere must not then report that exit as a failure.
-  const runsElsewhere = handedOffTaskPredicate(resolvedWorkers.slots);
+  const runsElsewhere = handedOffTaskPredicate(handedOff);
 
   // FIX-1234: the second exclusion, threaded to the exit check and the wake
   // predicate from here — the same discipline `runsElsewhere` follows, and for
