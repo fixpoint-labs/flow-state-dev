@@ -34,8 +34,8 @@ repository unless `skipGitRepoCheck` says otherwise.
 import { codexAgent } from "@flow-state-dev/codex";
 
 const agent = codexAgent({
-  cwd: (_input, ctx) => workspacePathFor(ctx),          // where the run works
-  resume: (_input, ctx) => storedThreadId(ctx),         // which thread to continue
+  cwd: (ctx) => workspacePathFor(ctx),          // where the run works
+  resume: (ctx) => storedThreadId(ctx),         // which thread to continue
   onSession: (id, ctx) => storeThreadId(id, ctx),       // called the moment one is named
   thread: { model: "gpt-5.4-codex", sandboxMode: "workspace-write", approvalPolicy: "never" },
   client: { apiKey: process.env.CODEX_API_KEY },
@@ -47,7 +47,9 @@ to a generator as a tool.
 
 **The block's input is the prompt and nothing else.** Where a run writes and which
 conversation it continues are configuration, because the same block can be handed
-to a model as a tool — a field on the input is a field the model could set.
+to a model as a tool — a field on the input is a field the model could set. The
+resolvers are handed the block context alone and never the prompt, so a path or a
+session id cannot be derived from text the model wrote.
 
 **`onSession` is the write side of `resume`.** It is called with the thread id the
 moment the run names one, before the run does any work. A cancelled or crashed run

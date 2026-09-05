@@ -17,8 +17,7 @@
  */
 import { handler, harnessRunInputSchema } from "@flow-state-dev/core";
 import type {
-  AnyResourceRef,
-  BlockContext,
+  HarnessCallbackContext,
   HarnessResolver,
   HarnessRunOutcome,
   HarnessSessionHook,
@@ -52,25 +51,15 @@ import {
 } from "./types";
 
 /**
- * The block context as an option callback receives it.
+ * The block context an option callback receives — the contract's own alias.
  *
- * Loose in the two slots this factory's own configuration fills in (`uses`
- * decides the capability namespaces and the state targets), for the reason
- * `claude-code`'s equivalent alias records: a callback that stops type-checking
- * because of an option set beside it is not a signal a caller can act on.
- * Everything else stays checked.
+ * This package declared a local copy of this shape until core exported one.
+ * Using the contract's is the point of the contract: a resolver a host writes
+ * against `HarnessResolver` is handed exactly this, so a harness that narrowed
+ * or widened it locally would be the one place a host's callback stopped
+ * type-checking for reasons that had nothing to do with the host.
  */
-type AgentCallbackContext = BlockContext<
-  Record<string, unknown>,
-  Record<string, unknown>,
-  Record<string, unknown>,
-  Record<string, unknown>,
-  Record<string, AnyResourceRef>,
-  Record<string, unknown>,
-  unknown,
-  any,
-  any
->;
+type AgentCallbackContext = HarnessCallbackContext;
 
 /** Options for {@link codexAgent}. */
 export interface CodexAgentOptions {
@@ -236,17 +225,18 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       // immediately have to kill.
       if (ctx.signal?.aborted) throw new CodexAgentAbortedError(null);
 
-      // ONE input for every resolver on this block, and it is the input the
-      // block validated — not a second object built beside it. Resolvers that
-      // coordinate (a directory derived from the same prompt a sandbox is) must
-      // be told the same thing.
-      const resolverInput = { prompt };
-
       // Both resolved once per invocation, before anything is spawned, so the
       // directory the SDK is handed and the thread it continues cannot be two
       // different answers from one resolver.
-      const workingDirectory = resolveCwd === undefined ? undefined : await resolveCwd(resolverInput, ctx);
-      const resumeIdRaw = resolveResume === undefined ? null : await resolveResume(resolverInput, ctx);
+      //
+      // Neither is handed the run's input, and that is the contract's guarantee
+      // rather than an omission here: the prompt is the one thing a model
+      // controls, so a directory or a session id derived from it is a decision
+      // made from caller-controllable input (BP-031). The resolver signature
+      // takes the context alone, which makes that unavailable rather than
+      // merely discouraged.
+      const workingDirectory = resolveCwd === undefined ? undefined : await resolveCwd(ctx);
+      const resumeIdRaw = resolveResume === undefined ? null : await resolveResume(ctx);
       // `""` is treated as `null`: a host reading an unset field out of its own
       // state should get a fresh thread, not a resume of the empty id.
       const resumeId = resumeIdRaw === undefined || resumeIdRaw === "" ? null : resumeIdRaw;

@@ -79,8 +79,8 @@ import { codexAgent } from "@flow-state-dev/codex";
 
 const pipeline = sequencer({ name: "do-the-work" }).step(
   codexAgent({
-    cwd: (_input, ctx) => workspacePathFor(ctx),
-    resume: (_input, ctx) => previousSessionIdFor(ctx),
+    cwd: (ctx) => workspacePathFor(ctx),
+    resume: (ctx) => previousSessionIdFor(ctx),
     onSession: (id, ctx) => rememberSessionId(id, ctx),
     thread: { model: "gpt-5.4-codex", sandboxMode: "workspace-write", approvalPolicy: "never" },
   }),
@@ -118,6 +118,10 @@ before it breaks.
 `cwd` is a function you write. It is called once per run, before anything is
 spawned, and its answer becomes the directory Codex works in.
 
+It is handed the block context and nothing else. The prompt is not available to
+it, deliberately: the prompt is the one thing a model controls, so a directory
+derived from it would be a path the model chose.
+
 It is a working directory, not a fence: the run can still address paths outside
 it. The sandbox setting is the fence. The Claude Code page's
 [Where the run works](./claude-code-sdk.md#where-the-run-works) section derives a
@@ -130,7 +134,7 @@ both:
 
 ```ts
 codexAgent({
-  resume: (_input, ctx) => myState(ctx).codexThreadId,   // read: null starts fresh
+  resume: (ctx) => myState(ctx).codexThreadId,   // read: null starts fresh
   onSession: (id, ctx) => myState(ctx).save(id),         // write: called mid-run
 });
 ```
