@@ -115,10 +115,9 @@ argument that makes the write advisory. `ifAllowed` skips the write when the tas
 already settled, or when the transition is one the state machine or the calling verb
 refuses. A legal status transition is necessary but not sufficient: a verb that owns
 one edge runs only from that edge's source status. `unblock` runs on a `blocked` task
-and no other, and `unpark` on a `parked` task and no other — `unpark` is advisory by
-construction like `cancel`, so a task in any other status declines (`disallowed`, or
-`terminal` once settled) whether or not you pass options, and a second answer to an
-already-queued task is refused. `in_progress → pending` sits in the status table too,
+and no other, and `unpark` on a `parked` task and no other. Like `cancel`, `unpark`
+declines without options: `disallowed` for a live task, `terminal` once settled, and a
+second answer to an already-queued task is refused. `in_progress → pending` sits in the status table too,
 but it belongs to `reclaim()`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
@@ -310,9 +309,9 @@ omitted — reached only on a miss, declared workers untouched),
 keeps the drain open, or is excused from the in-flight counts so the drain returns
 and leaves it parked for a later one to claim once it is resumed; `"exit"` needs a
 `defineTaskCollection` collection, the default `onIdle`, and ids on `initialTasks`,
-and is refused at construction otherwise; `board.unparkAndDrain` is the return trip —
-hand it `{ taskId, feedback }` and it re-queues the parked task and drains in the same
-request, returning the write outcome and draining only when it was `recorded`), `initialTasks`,
+and is refused at construction otherwise; `board.unparkAndDrain` takes `{ taskId, feedback }`,
+re-queues the parked task, and drains in the same request, returning the write outcome
+and draining only when it was `recorded`), `initialTasks`,
 `onError`, `maxIterations` (per-worker claim-loop cap, default 10000), the two creation caps
 `maxEnqueuedTasks` (default 100 — tasks addable while others are `pending`,
 refreshes on drain) and `maxTotalTasks` (default 500 — lifetime count incl.

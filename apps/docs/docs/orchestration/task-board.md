@@ -199,7 +199,7 @@ const flow = defineFlow({
 
 `feedback` reaches the worker as `input.feedback` on the next attempt. A task that has never been reviewed has no `feedback`, so a worker can branch on it. A block that wants to show the person the question first reads the parked task through [the board's capability](#commanding-the-board-with-its-capability).
 
-The step returns the write's verdict, and it drains only when the answer was accepted:
+The step returns whether the answer was accepted, and drains only when it was:
 
 | Task's state when the answer arrives | Returned | Drain runs |
 | --- | --- | --- |
@@ -212,9 +212,9 @@ A refused answer writes nothing. One park takes one answer: the first accepted a
 
 **When the answer lands but the work does not start.** If the request fails after the answer is written and before the task is claimed (cancelled mid-drain, say), the answer is safe on the task and the task is queued. Delivering it again is refused, because the task is no longer parked. What you want then is a drain: run `board.drain` on a later request and it picks the task up.
 
-**What throws.** A `taskId` the board does not hold throws rather than returning a verdict. Two board shapes throw when the step runs, though the board itself builds fine: a board whose collection is not a `defineTaskCollection`, and a board whose `initialTasks` include an entry without an `id`. The second would add that task again on every drain and run the answered work twice.
+**What throws.** A `taskId` the board does not hold throws rather than returning a verdict. On a board without `onReview: "exit"`, the step also throws if the collection is not a `defineTaskCollection` or an `initialTasks` entry has no `id`; a board in that mode refuses both when it is built.
 
-**The answering request has to reach the same task list.** The collection's `scope` decides which storage key a request resolves, and the answer is looked up by task id inside that key. For a `session`-scoped collection that means the same session under the same tenant; a collection declared `sharedToWorkstream` resolves to the lineage the workstream shares, not to a session id. A `user`- or `org`-scoped collection spans every session that principal has, so anyone in the org can answer an org-scoped task. Get the key wrong and what happens depends on what that other task list holds. If it has no task by that id, the step throws. If it holds a task with the same id that is also parked, the answer lands on that task and that board drains, with no error. Boards in this mode give every initial task a stable id, so two sessions parked at the same step both have a task called `draft-42`. Nothing checks this for you.
+**The answering request has to reach the same task list.** The answer is looked up in whatever task list the request reaches, and the collection's `scope` decides which one that is. A `session`-scoped collection is reachable only from the same session under the same tenant. A `user`- or `org`-scoped collection spans every session that principal has, so anyone in the org can answer an org-scoped task. Reach the wrong task list and what happens depends on what it holds. If it has no task by that id, the step throws. If it holds a task with the same id that is also parked, the answer lands on that task and that board drains, with no error. Boards in this mode give every initial task a stable id, so two sessions parked at the same step both have a task called `draft-42`. Nothing checks this for you.
 
 Whichever drain gets there first claims the task and runs it, exactly as if it had been queued that moment. If another drain claims the task before the one `unparkAndDrain` starts, that drain finds nothing to claim and returns.
 
@@ -437,7 +437,7 @@ A task can also keep returning to `pending` without ever settling. `maxAttempts`
 
 Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound. What a coordinator should do about each is in [Delegation](../skills/delegation#how-much-work-the-board-will-take-on).
 
-The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, an `unblock`, a `unpark`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
+The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, an `unblock`, an `unpark`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
 
 ### Bounding the retries
 
