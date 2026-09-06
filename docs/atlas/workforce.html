@@ -201,22 +201,23 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <a class="grp">Orientation</a>
     <a href="#what">01 &middot; What Workforce is</a>
     <a href="#layers">02 &middot; Layer 1 vs Layer 2</a>
+    <a href="#fence">03 &middot; Agent vs team</a>
     <a class="grp">The convention</a>
-    <a href="#contract">03 &middot; The worker contract</a>
-    <a href="#memory">04 &middot; Memory via isolation</a>
-    <a href="#channels">05 &middot; Channels</a>
-    <a href="#projects">06 &middot; Projects and tasks</a>
-    <a href="#teams">07 &middot; Teams and roster</a>
-    <a href="#members">08 &middot; Sequencer vs agent</a>
-    <a href="#plan">09 &middot; The plan</a>
-    <a href="#collab">10 &middot; Collaboration</a>
+    <a href="#contract">04 &middot; The worker contract</a>
+    <a href="#memory">05 &middot; Memory via isolation</a>
+    <a href="#channels">06 &middot; Channels</a>
+    <a href="#projects">07 &middot; Projects and tasks</a>
+    <a href="#teams">08 &middot; Teams and roster</a>
+    <a href="#members">09 &middot; Sequencer vs agent</a>
+    <a href="#plan">10 &middot; The plan</a>
+    <a href="#collab">11 &middot; Collaboration</a>
     <a class="grp">The split</a>
-    <a href="#conductor">11 &middot; Conductor</a>
+    <a href="#conductor">12 &middot; Conductor</a>
     <a class="grp">The ground</a>
-    <a href="#exists">12 &middot; What exists today</a>
-    <a href="#api">13 &middot; API surface</a>
-    <a href="#gaps">14 &middot; L1 gaps</a>
-    <a href="#cuts">15 &middot; Cuts</a>
+    <a href="#exists">13 &middot; What exists today</a>
+    <a href="#api">14 &middot; API surface</a>
+    <a href="#gaps">15 &middot; L1 gaps</a>
+    <a href="#cuts">16 &middot; Cuts</a>
   </nav>
 </aside>
 
@@ -224,7 +225,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <header class="masthead">
   <p class="eyebrow">Living design</p>
   <h1>One worker contract. Then compose.</h1>
-  <p class="standfirst">Workforce is the general Layer&nbsp;2 convention: <strong>one worker shape, one flow per worker</strong>. A possible v1 kick is a thin package: factory + file conventions + roster/harness seat + room helpers over today&#8217;s Layer&nbsp;1. This page names that kick. It does not ship it. Not a Channel / Team / MessageBoard. Not a second dispatch, session, or board. Conductor does not wait on it.</p>
+  <p class="standfirst">Workforce is the general Layer&nbsp;2 convention: <strong>one worker shape, one flow per worker</strong>. The minimum useful v1 is <strong>one real team that can collaborate</strong> &#8212; roster, DMs, project rooms, board fan-out, ordered replies. That is roster + shared rooms + dispatch. Not a Team type. Agent already exists as a participant you seat. Collaboration stays on the rooms, not on Agent. This page names that kick. It does not ship it. Conductor does not wait on it.</p>
   <div class="key">
     <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
     <span><i class="sw-dash"></i> proposed v1 &#8212; thin wrapper, not built</span>
@@ -235,24 +236,24 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="what">
   <div class="sec-head"><span class="sec-num">01</span><h2>What Workforce is</h2></div>
-  <p class="lede">Opinions so people get going on Layer&nbsp;1 without inventing their own. A worker is a flow. A <strong>DM</strong> is one static session with that worker. A <strong>group</strong> is a board plus one session per subscriber. Collaboration is the dispatch spine, not a second bus.</p>
+  <p class="lede">Opinions so people get going on Layer&nbsp;1 without inventing their own. A worker is a flow. Agent is the participant you seat. A <strong>DM</strong> is one static session. Collaboration is the rooms and the dispatch spine, not a field on Agent and not a Team type.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
-      <h5>Today</h5><span class="role">exists · thin registry</span>
-      <p>Named agents, a registry, and materialization into a generator. Raw Layer&nbsp;1 calls already work: <code>create_session</code>, <code>dispatcher()</code>, <code>taskBoard</code>, <code>claim</code>, <code>{ from: true }</code>. That is the shipped surface.</p>
+      <h5>Today</h5><span class="role">exists · Agent + raw L1</span>
+      <p><code>Agent</code> is a named participant: persona, model, tools, capabilities, <code>materializeAgent</code>, registry / <code>agent-ref</code>. Not a session, room, or team. No durable memory on the type. Rooms already work as raw L1 calls.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
-      <h5>Possible v1</h5><span class="role">proposed · thin package</span>
-      <p>Only factory + file conventions + roster/harness seat + room helpers. Each helper wraps a Layer&nbsp;1 call already on this page. No second dispatch, session, or board model.</p>
+      <h5>Min useful v1</h5><span class="role">one collaborating team</span>
+      <p>Roster + DMs + project rooms + board fan-out + ordered replies. Layer&nbsp;2 over today&#8217;s L1. Agent is who you seat. Room helpers are how they talk. Not a Team type.</p>
     </div>
     <div class="card" style="--tc: var(--prose)">
       <h5>Later</h5><span class="role">not the kick</span>
-      <p>SOP files until a process repeats. Cross-flow helpers until the refuse goes away. Anything that would invent Channel / Team / MessageBoard / OKF.</p>
+      <p>SOP files until a process repeats. Cross-flow helpers until the refuse goes away. Growing Agent. Anything that invents Channel / Team / MessageBoard / OKF.</p>
     </div>
     <div class="card" style="--tc: var(--ink-3)">
-      <h5>Not</h5><span class="role">a product, a primitive</span>
-      <p>Not Layer&nbsp;1 Channel / Team / Project / Agent-as-flow. Not a knowledge product. Not something Conductor waits on.</p>
+      <h5>Not</h5><span class="role">collaboration on Agent</span>
+      <p>No members, channels, or inbox on <code>Agent</code>. No Layer&nbsp;1 Team. No second Agent model beside <code>AgentRegistry</code>. See <a href="#fence">&#167;03</a>.</p>
     </div>
   </div>
 
@@ -389,8 +390,134 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   </div>
 </section>
 
+<section id="fence">
+  <div class="sec-head"><span class="sec-num">03</span><h2>Agent vs team</h2></div>
+  <p class="lede">The fence. <code>Agent</code> already exists as Layer&nbsp;1. A team does not. The minimum useful v1 is one roster that can share rooms. Grow Agent only after the three proofs at the bottom of this section. Honesty over a prettier type.</p>
+
+  <div class="cards">
+    <div class="card" style="--tc: var(--code)">
+      <h5>Agent</h5><span class="role">exists · L1 participant</span>
+      <p>Name, persona, model, tools, skills (reserved), capabilities. <code>materializeAgent</code> turns it into a generator. Registry / <code>agent-ref</code> look it up. Not a session. Not a room. Not a team. No durable memory store on the type &#8212; <code>packages/core/src/types/agent.ts</code> has no <code>resources</code> field.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Seat</h5><span class="role">min useful · proposed v1</span>
+      <p>Materialize that participant into a DM or a project room. The Agent is who sits there. The session is the room. Collaboration is the room helpers, not a field on Agent.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Team</h5><span class="role">L2 · not a type</span>
+      <p>Roster + shared rooms + dispatch. One real team that can collaborate: roster, DMs, project rooms, board fan-out, ordered replies. Do not invent a Team primitive to hold what the roster and the rooms already name.</p>
+    </div>
+    <div class="card" style="--tc: var(--gone)">
+      <h5>Not on Agent</h5><span class="role">cut</span>
+      <p>No <code>members</code>. No <code>channels</code>. No <code>inbox</code>. Putting collaboration on the participant is how Agent becomes a second Workforce.</p>
+    </div>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 380" role="img" aria-label="The Agent versus team fence. Left solid: Agent exists as a Layer 1 participant — name, persona, model, tools, capabilities, materialize into a generator, registry and agent-ref. No resources field, no members, channels, inbox, or session. Right dashed: a team is proposed Layer 2 — roster plus DM, project rooms, board fan-out, ordered replies. Bottom cut: do not put collaboration on Agent, do not invent a Team type, do not fork a second Agent model.">
+        <rect class="n-code" x="16" y="16" width="448" height="248" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="38">AGENT &#183; EXISTS &#183; L1</text>
+        <text class="t-b" x="34" y="64">a participant you seat</text>
+        <text class="t-s" x="34" y="92">name &#183; persona &#183; model</text>
+        <text class="t-xs" x="34" y="110">allowedTools &#183; usesCapabilities</text>
+        <text class="t-xs" x="34" y="128">usesSkills RESERVED &#183; contextMode INLINE ONLY</text>
+        <text class="t-s" x="34" y="156">materializeAgent &#8594; generator</text>
+        <text class="t-xs" x="34" y="174">AgentRegistry.get / list &#183; agent-ref</text>
+        <text class="t-xs" x="34" y="200">NO resources FIELD</text>
+        <text class="t-xs" x="34" y="218">NO members / channels / inbox / session</text>
+        <text class="t-b f-code" x="34" y="248">not a room. not a team.</text>
+
+        <rect class="n-prop" x="480" y="16" width="444" height="248" rx="5"/>
+        <text class="t-lbl" x="498" y="38">TEAM &#183; PROPOSED V1 &#183; L2</text>
+        <text class="t-b f-accent" x="498" y="64">roster + rooms + dispatch</text>
+        <text class="t-s" x="498" y="92">one real team that can collaborate</text>
+        <text class="t-xs" x="498" y="110">ROSTER</text>
+        <text class="t-xs" x="498" y="128">DM &#183; openDm</text>
+        <text class="t-xs" x="498" y="146">PROJECT ROOMS &#183; openProjectRoom</text>
+        <text class="t-xs" x="498" y="164">BOARD FAN-OUT &#183; fanOutBoardPost</text>
+        <text class="t-xs" x="498" y="182">ORDERED REPLIES &#183; fileOrderedReplies</text>
+        <text class="t-xs" x="498" y="208">NOT A Team TYPE</text>
+        <text class="t-b f-accent" x="498" y="248">seat the agent. talk on the rooms.</text>
+
+        <rect class="n-prose" x="16" y="280" width="908" height="84" rx="5"/>
+        <text class="t-lbl" x="34" y="302">CUT</text>
+        <text class="t-s" x="34" y="326">no collaboration on Agent &#183; no Team L1 &#183; no second Agent model beside AgentRegistry</text>
+        <text class="t-xs" x="34" y="348">V1 THINS @flow-state-dev/workforce. IT DOES NOT FORK A PARALLEL PARTICIPANT TYPE.</text>
+      </svg>
+    </div>
+    <figcaption><b>Seat the participant. Collaborate in the rooms.</b> <code>Agent</code> on this pin is <code>packages/core/src/types/agent.ts</code> plus the thin workforce registry. A team is who is on the roster and which sessions they share. Growing Agent to look like the right column is the failure this fence exists to stop.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 220" role="img" aria-label="How a seat works, proposed. Left: Agent exists. Centre dashed: roster row binds Agent to a harness and a session — that bind is unproven, a named gap. Right solid: the session is the room, opened by create_session or dispatcher. Collaboration is the helpers into that room, not a field on Agent.">
+        <rect class="n-code" x="16" y="16" width="220" height="188" rx="5"/>
+        <text class="t-lbl f-code" x="32" y="38">1 &#183; AGENT EXISTS</text>
+        <text class="t-b" x="32" y="68">the participant</text>
+        <text class="t-xs" x="32" y="96">defineAgent</text>
+        <text class="t-xs" x="32" y="114">registry / agent-ref</text>
+        <text class="t-xs" x="32" y="140">MATERIALIZE INTO</text>
+        <text class="t-xs" x="32" y="158">A GENERATOR</text>
+        <text class="t-xs" x="32" y="184">NOT INTO A ROOM</text>
+
+        <path class="ln" d="M236,110 L268,110"/>
+
+        <rect class="n-prop" x="268" y="16" width="404" height="188" rx="5"/>
+        <text class="t-lbl" x="284" y="38">2 &#183; ROSTER BIND &#183; UNPROVEN</text>
+        <text class="t-b f-accent" x="284" y="68">Agent &#8594; harness &#8594; session</text>
+        <text class="t-xs" x="284" y="96">A ROW NAMES THE PARTICIPANT</text>
+        <text class="t-xs" x="284" y="114">AN OPTIONAL HARNESS ON THE SEAT</text>
+        <text class="t-xs" x="284" y="132">A SESSION THE ROOM HELPERS OPEN</text>
+        <text class="t-xs" x="284" y="158">NO Team TYPE IN THE MIDDLE</text>
+        <text class="t-xs" x="284" y="184">NAMED GAP. PROVE BEFORE GROWING AGENT.</text>
+
+        <path class="ln" d="M672,110 L704,110"/>
+
+        <rect class="n-code" x="704" y="16" width="220" height="188" rx="5"/>
+        <text class="t-lbl f-code" x="720" y="38">3 &#183; ROOM EXISTS</text>
+        <text class="t-b" x="720" y="68">the session</text>
+        <text class="t-xs" x="720" y="96">create_session</text>
+        <text class="t-xs" x="720" y="114">dispatcher { id } | { key }</text>
+        <text class="t-xs" x="720" y="140">HELPERS WRAP THESE</text>
+        <text class="t-xs" x="720" y="158">NOT Agent.channels</text>
+        <text class="t-xs" x="720" y="184">NOT Agent.inbox</text>
+      </svg>
+    </div>
+    <figcaption><b>The missing bind is a gap, not a type.</b> Ends exist: Agent, session. The roster row that joins Agent to a harness and a session is proposed Layer&nbsp;2. Inventing Team to hold that join is the expensive way to skip the proof.</figcaption>
+  </figure>
+
+  <h3>Prove before growing Agent</h3>
+  <p>These are not L1 substrate refuses. They are questions this page will not paper over by adding a field. Until each is proved, Agent stays the participant you already have.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>#</th><th>Prove</th><th>Atlas opinion</th><th>What growing Agent would fake</th></tr></thead>
+      <tbody>
+        <tr><td>A</td><td>Durable memory / identity across sessions</td><td><span class="tag t-prop">opinion</span> <code>flowIsolation</code> resources on the worker flow. Persona is a prompt source, not a store. Prove that isolated org/user rows outlive a DM and a project room. Prove they beat persona-only (a string or a template is not memory).</td><td><code>Agent.resources</code>, <code>Agent.memory</code>, a durable identity bag on the type. No such fields on this pin.</td></tr>
+        <tr><td>B</td><td>Roster bind: Agent &#8594; harness &#8594; session, no Team type</td><td><span class="tag t-prop">proposed</span> A roster row names the agent, an optional harness, and the session the room helpers open. Same bind, three fields. Prove one row can seat a participant into a DM and a project room without a Team object in the middle.</td><td>A Team type whose job is to hold the bind. <code>Agent.sessions</code>. A harness field on Agent.</td></tr>
+        <tr><td>C</td><td>v1 <em>is</em> thinning <code>@flow-state-dev/workforce</code></td><td><span class="tag t-prop">proposed</span> The package already exports <code>defineAgent</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code>, <code>agent-ref</code>. v1 adds factory + roster + room helpers around that registry. Prove the kick extends this Agent, not a second participant model with a friendlier name.</td><td>A parallel <code>Worker</code> / <code>Member</code> type. A second registry. Package docs that describe a different Agent than <code>packages/core/src/types/agent.ts</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <pre class="code"><i>// EXISTS &#8212; Agent is this, and only this. packages/core/src/types/agent.ts</i>
+<i>// workforce supplies the registry + materialize. It does not grow these fields.</i>
+type Agent = {
+  name: string;
+  description: string;
+  persona: PersonaSource;          <i>// prompt source. not a memory store</i>
+  model?: string;
+  allowedTools?: string[];
+  usesCapabilities?: Array&lt;string | DefinedCapability&gt;;
+  usesSkills?: string[];           <i>// RESERVED</i>
+  contextMode?: <em>"fork"</em> | <em>"inline"</em>; <i>// only inline honored</i>
+};
+<i>// not present: resources, members, channels, inbox, session, harness, memory</i></pre>
+</section>
+
 <section id="contract">
-  <div class="sec-head"><span class="sec-num">03</span><h2>The worker contract</h2></div>
+  <div class="sec-head"><span class="sec-num">04</span><h2>The worker contract</h2></div>
   <p class="lede">One factory. One flow per worker. Same shape every time. <strong>Proposed v1 factory inputs:</strong> role, personality, tools, skills. Roster + harness seat are proposed v1 compose, not files in the worker folder. SOP files are later &#8212; cut until a process repeats. A custom flow is allowed if it still adheres to the contract. Do not grow <code>Agent</code> or invent Team as Layer&nbsp;1.</p>
 
   <figure>
@@ -439,7 +566,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="34" y="376">THE FACTORY IS THE DEFAULT. THE CONTRACT IS THE LAW. NOT A MODULE-SWAP HOOK. NOT A NEW AGENT TYPE.</text>
       </svg>
     </div>
-    <figcaption><b>Same shape, then compose.</b> The factory is how most workers are born. The contract is what a worker <em>is</em>. A hand-written flow that keeps the contract is still a worker. A folder that does not emit that shape is not. Which harness a worker runs on is a <strong>roster field</strong>, proposed v1 &#8212; not a file in the folder, not a Layer&nbsp;1 Harness type. See <a href="#teams">&#167;07</a>.</figcaption>
+    <figcaption><b>Same shape, then compose.</b> The factory is how most workers are born. The contract is what a worker <em>is</em>. A hand-written flow that keeps the contract is still a worker. A folder that does not emit that shape is not. Which harness a worker runs on is a <strong>roster field</strong>, proposed v1 &#8212; not a file in the folder, not a Layer&nbsp;1 Harness type. See <a href="#teams">&#167;08</a>.</figcaption>
   </figure>
 
   <figure>
@@ -460,7 +587,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="50" y="232">THE FILES POINT AT THESE. NOT A SECOND RUNTIME.</text>
         <text class="t-s" x="34" y="264" fill="var(--prose)">sops/ &#183; later / cut</text>
         <text class="t-xs" x="50" y="286">UNTIL A PROCESS REPEATS ACROSS WORKERS AND DRIFTS</text>
-        <text class="t-xs" x="34" y="320">ROSTER + HARNESS SEAT ARE PROPOSED V1, NOT FILES HERE. SEE &#167;07.</text>
+        <text class="t-xs" x="34" y="320">ROSTER + HARNESS SEAT ARE PROPOSED V1, NOT FILES HERE. SEE &#167;08.</text>
 
         <rect class="n-code" x="592" y="16" width="332" height="152" rx="5"/>
         <text class="t-lbl f-code" x="610" y="38">EXISTS TODAY</text>
@@ -489,7 +616,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>roster + harness seat</h5><span class="role">proposed v1 compose</span>
-      <p>A list of worker flow kinds, plus an optional harness name on the seat. Not a file in the worker folder. Not a Layer&nbsp;1 Team or Harness type. See <a href="#teams">&#167;07</a>.</p>
+      <p>A list of worker flow kinds, plus an optional harness name on the seat. Not a file in the worker folder. Not a Layer&nbsp;1 Team or Harness type. See <a href="#teams">&#167;08</a>.</p>
     </div>
     <div class="card" style="--tc: var(--prose)">
       <h5>SOP files</h5><span class="role">later · cut until process repeats</span>
@@ -530,7 +657,7 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
 </section>
 
 <section id="memory">
-  <div class="sec-head"><span class="sec-num">04</span><h2>Memory via isolation</h2></div>
+  <div class="sec-head"><span class="sec-num">05</span><h2>Memory via isolation</h2></div>
   <p class="lede">A worker does not get a new memory system. Its memory is org- and user-scoped resources on its own flow, isolated by <code>flowIsolation</code>. The session is the room. The resources are what the worker keeps.</p>
 
   <figure>
@@ -580,12 +707,12 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
 
   <div class="note">
     <span class="lbl">Default shared; isolation is the worker opt-in</span>
-    <p><code>flowIsolation</code> defaults to <code>false</code>: user/org rows are shared across flows. Session scope is already flow-bound; <code>true</code> there is rejected at build. The convention&#8217;s memory is the isolated case &#8212; the worker&#8217;s org/user resources, not a second store.</p>
+    <p><code>flowIsolation</code> defaults to <code>false</code>: user/org rows are shared across flows. Session scope is already flow-bound; <code>true</code> there is rejected at build. The convention&#8217;s memory is the isolated case &#8212; the worker&#8217;s org/user resources, not a second store. Persona is a prompt source. It is not this store. Prove isolation across a DM and a project room before growing Agent. See <a href="#fence">&#167;03</a> proof&nbsp;A.</p>
   </div>
 </section>
 
 <section id="channels">
-  <div class="sec-head"><span class="sec-num">05</span><h2>Channels</h2></div>
+  <div class="sec-head"><span class="sec-num">06</span><h2>Channels</h2></div>
   <p class="lede">Two channel kinds. A <strong>DM</strong> is one static session with that one worker, opened at bootstrap. A <strong>group</strong> is a message board plus one subscription session per subscribed member. <strong>Same-flow fan-out exists</strong>: a post is <code>dispatcher()</code> &#215; N into those sessions. <strong>Reply-storm exclusion exists</strong>: today&#8217;s <code>TaskCollectionRef.claim</code> admits one holder per post. <strong>Who may reply is proposed Layer&nbsp;2 policy</strong>. <strong>Cross-kind / cross-flow delivery stays proposed</strong> until that refuse goes away. Not a new primitive and not a shared room.</p>
 
   <div class="cards">
@@ -767,7 +894,7 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <text class="t-xs" x="264" y="238">COLLABORATORS ADDRESS IT</text>
         <text class="t-xs" x="264" y="264">OR THEIR SUBSCRIBE</text>
         <text class="t-xs" x="264" y="282">SESSION ON ITS BOARD</text>
-        <text class="t-xs" x="264" y="300">SEE &#167;06</text>
+        <text class="t-xs" x="264" y="300">SEE &#167;07</text>
 
         <rect class="n-prop" x="480" y="148" width="220" height="168" rx="5"/>
         <text class="t-lbl" x="496" y="170">3 &#183; WORKER&#8596;WORKER</text>
@@ -805,7 +932,7 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
       <thead><tr><th>Talk</th><th>Room</th><th>How it is addressed</th></tr></thead>
       <tbody>
         <tr><td>User&#8596;worker</td><td>One static DM session per worker</td><td>That session&#8217;s <code>{ id }</code>. Bootstrap opens it. Already the DM lock.</td></tr>
-        <tr><td>Topic / task / project</td><td>A dynamic session for that work item</td><td>That session, or the collaborator&#8217;s subscription session on its board. See <a href="#projects">&#167;06</a>.</td></tr>
+        <tr><td>Topic / task / project</td><td>A dynamic session for that work item</td><td>That session, or the collaborator&#8217;s subscription session on its board. See <a href="#projects">&#167;07</a>.</td></tr>
         <tr><td>Worker&#8596;worker ad-hoc</td><td>Open or reuse a pairwise or small dynamic session</td><td>Session id or a known channel. Not a peer edge. Not a second bus.</td></tr>
         <tr><td>Team broadcast</td><td>Group board &#8594; N subscriber sessions</td><td>Same-flow fan-out exists (<code>dispatcher()</code> &#215; N). Reply-storm exclusion exists (<code>TaskCollectionRef.claim</code>). Who-may-reply stays proposed. Cross-kind / cross-flow still proposed.</td></tr>
       </tbody>
@@ -864,7 +991,7 @@ const room = {
 <i>// worker&#8596;worker reply across flows still waits on cross-flow (#1600 open)</i></pre>
 
   <h3>Room helpers &#8212; proposed v1 wrappers</h3>
-  <p>Same-flow N-rooms exist. Claim exclusion exists. Who may reply is proposed Layer&nbsp;2. Ordered multi-reply is proposed. The helpers below wrap those facts. They are not a second session model and not a Channel package. If a helper would need a door that is still refused, it is a gap &#8212; see <a href="#gaps">&#167;14</a> &#8212; not a pretend export.</p>
+  <p>Same-flow N-rooms exist. Claim exclusion exists. Who may reply is proposed Layer&nbsp;2. Ordered multi-reply is proposed. The helpers below wrap those facts. They are not a second session model and not a Channel package. If a helper would need a door that is still refused, it is a gap &#8212; see <a href="#gaps">&#167;15</a> &#8212; not a pretend export.</p>
 
   <figure>
     <div class="fig-body">
@@ -926,7 +1053,7 @@ const room = {
     <table>
       <thead><tr><th>Helper</th><th>Status</th><th>Wraps, narrowly</th></tr></thead>
       <tbody>
-        <tr><td><code>openDm</code></td><td><span class="tag t-prop">proposed v1</span></td><td><code>createSessionClient().createSession</code> for that worker flow. The session <em>is</em> the DM. Wake with <code>dispatcher({ session: { id } })</code>. On a queue host that wake is <code>external-dispatcher</code> &#8212; see <a href="#gaps">&#167;14</a>.</td></tr>
+        <tr><td><code>openDm</code></td><td><span class="tag t-prop">proposed v1</span></td><td><code>createSessionClient().createSession</code> for that worker flow. The session <em>is</em> the DM. Wake with <code>dispatcher({ session: { id } })</code>. On a queue host that wake is <code>external-dispatcher</code> &#8212; see <a href="#gaps">&#167;15</a>.</td></tr>
         <tr><td><code>openProjectRoom</code> / task room</td><td><span class="tag t-prop">proposed v1</span></td><td><code>create_session</code> or <code>dispatcher({ session: { key } })</code> / <code>TaskSessionPolicy</code>. Dynamic session for that work item. Not a Layer&nbsp;1 Project type.</td></tr>
         <tr><td><code>fanOutBoardPost</code></td><td><span class="tag t-prop">proposed v1</span></td><td>Same-flow fan-out <strong>exists</strong> under Layer&nbsp;1 (<code>dispatcher()</code> &#215; N). The helper is the named loop. Cross-kind still refused at <code>create-request-host</code>. Same <code>external-dispatcher</code> limit on <code>{ id }</code>.</td></tr>
         <tr><td><code>fileOrderedReplies</code></td><td><span class="tag t-prop">proposed v1</span></td><td>Coordinator over existing <code>claim</code> (exclusion) and <code>task.deps</code> (order). Who may attempt the claim stays proposed Layer&nbsp;2. Not a board-lock type. Not a multiparty session.</td></tr>
@@ -953,8 +1080,8 @@ const room = {
 </section>
 
 <section id="projects">
-  <div class="sec-head"><span class="sec-num">06</span><h2>Projects and tasks</h2></div>
-  <p class="lede">Projects and tasks are <strong>dynamic sessions</strong>. Every message-board subscription gets its own action and its own session. A group channel is this pattern &#8212; the board plus one session per subscribed member &#8212; not a third session type. Same-flow, a post wakes N subscribers via <code>dispatcher()</code> &#215; N &#8212; that exists. Exclusion is today&#8217;s <code>claim</code>. Cross-kind still waits. Who may reply is the proposed Layer&nbsp;2 policy in <a href="#channels">&#167;05</a>, not a Layer&nbsp;1 board-lock and not a shared room. That is a convention on the dispatch spine, not a second messaging product.</p>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Projects and tasks</h2></div>
+  <p class="lede">Projects and tasks are <strong>dynamic sessions</strong>. Every message-board subscription gets its own action and its own session. A group channel is this pattern &#8212; the board plus one session per subscribed member &#8212; not a third session type. Same-flow, a post wakes N subscribers via <code>dispatcher()</code> &#215; N &#8212; that exists. Exclusion is today&#8217;s <code>claim</code>. Cross-kind still waits. Who may reply is the proposed Layer&nbsp;2 policy in <a href="#channels">&#167;06</a>, not a Layer&nbsp;1 board-lock and not a shared room. That is a convention on the dispatch spine, not a second messaging product.</p>
 
   <figure>
     <div class="fig-body">
@@ -1032,8 +1159,8 @@ const board = <b>taskBoard</b>({
 </section>
 
 <section id="teams">
-  <div class="sec-head"><span class="sec-num">07</span><h2>Teams and roster</h2></div>
-  <p class="lede">A team is a <strong>roster plus shared boards</strong>. The board is the shared working set. Same-flow delivery is N dispatches into N per-subscriber sessions &#8212; that exists. Cross-kind delivery onto each worker&#8217;s own flow stays proposed until cross-flow lands. Built-ins &#8212; librarian, chief of staff, team coordinator &#8212; are roster entries, not packages. Cross-team work goes through those boards, not through a shared session. A seat can <strong>name which harness it runs on</strong> and inherit that harness&#8217;s subscriptions when those exist &#8212; proposed Layer&nbsp;2, and only once Conductor&#8217;s manager path exists.</p>
+  <div class="sec-head"><span class="sec-num">08</span><h2>Teams and roster</h2></div>
+  <p class="lede">A team is a <strong>roster plus shared rooms</strong>, not a Layer&nbsp;1 type. Agent is who you seat. The board is the shared working set. Same-flow delivery is N dispatches into N per-subscriber sessions &#8212; that exists. Cross-kind stays proposed until cross-flow lands. Built-ins are roster entries, not packages. A seat can <strong>name which harness it runs on</strong> &#8212; proposed, and the Agent&#8594;harness&#8594;session bind is still unproven. See <a href="#fence">&#167;03</a>.</p>
 
   <figure>
     <div class="fig-body">
@@ -1165,8 +1292,8 @@ const roster = <b>defineResourceCollection</b>({
 </section>
 
 <section id="members">
-  <div class="sec-head"><span class="sec-num">08</span><h2>Sequencer vs agent</h2></div>
-  <p class="lede">A roster seat is either a <strong>deterministic sequencer</strong> or a <strong>non-deterministic agent</strong>. Same contract. Different member. Do not pretend they are the same just because both are workers. Which harness a seat runs on is a separate proposed field on the roster, not a third member kind. See <a href="#teams">&#167;07</a>.</p>
+  <div class="sec-head"><span class="sec-num">09</span><h2>Sequencer vs agent</h2></div>
+  <p class="lede">A roster seat is either a <strong>deterministic sequencer</strong> or a <strong>non-deterministic agent</strong>. Same contract. Different member. The agent member is today&#8217;s <code>Agent</code> seated into a room &#8212; not a second participant type. Do not put members, channels, or an inbox on that type. Which harness a seat runs on is a roster field, not a third kind. See <a href="#fence">&#167;03</a> and <a href="#teams">&#167;08</a>.</p>
 
   <figure>
     <div class="fig-body">
@@ -1197,7 +1324,7 @@ const roster = <b>defineResourceCollection</b>({
 </section>
 
 <section id="plan">
-  <div class="sec-head"><span class="sec-num">09</span><h2>The plan</h2></div>
+  <div class="sec-head"><span class="sec-num">10</span><h2>The plan</h2></div>
   <p class="lede">The plan capability <strong>is</strong> the existing task board. The spec is resource text. The tasks are the structured half of that same plan. No second planner. No separate doc store.</p>
 
   <figure>
@@ -1241,8 +1368,8 @@ const roster = <b>defineResourceCollection</b>({
 </section>
 
 <section id="collab">
-  <div class="sec-head"><span class="sec-num">10</span><h2>Collaboration</h2></div>
-  <p class="lede">Workers talk on the <strong>dispatch spine</strong>. Reverse address is <code>{ from: true }</code> &#8212; it exists. Cross-flow is the same door, when it lands. Which room is proposed Layer&nbsp;2 &#8212; roster + context, then this door. See <a href="#channels">&#167;05</a>. The epic name Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> handler. Do not grow a second bus beside it.</p>
+  <div class="sec-head"><span class="sec-num">11</span><h2>Collaboration</h2></div>
+  <p class="lede">Workers talk on the <strong>dispatch spine</strong>. Reverse address is <code>{ from: true }</code> &#8212; it exists. Cross-flow is the same door, when it lands. Which room is proposed Layer&nbsp;2 &#8212; roster + context, then this door. See <a href="#channels">&#167;06</a>. The epic name Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> handler. Do not grow a second bus beside it.</p>
 
   <figure>
     <div class="fig-body">
@@ -1313,7 +1440,7 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="conductor">
-  <div class="sec-head"><span class="sec-num">11</span><h2>Conductor</h2></div>
+  <div class="sec-head"><span class="sec-num">12</span><h2>Conductor</h2></div>
   <p class="lede">This cycle, Conductor is a <strong>thin shell on Layer&nbsp;1 dispatch</strong>. It does not wait on a Workforce package, including a possible v1 kick. Conductor-as-a-coding-extension-on-Workforce is a later horizon, not a dependency arrow. If a roster seat names a harness, it rides Conductor&#8217;s harness-manager track &#8212; same stack, different consumer &#8212; once that path exists. The two products stay triangulated.</p>
 
   <figure>
@@ -1359,14 +1486,14 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="exists">
-  <div class="sec-head"><span class="sec-num">12</span><h2>What exists today</h2></div>
+  <div class="sec-head"><span class="sec-num">13</span><h2>What exists today</h2></div>
   <p class="lede">A package, a type, a dispatcher, session routes, a board. Nothing below is the factory. Read every &#8220;Workforce&#8221; claim against this inventory, not against the intended harness.</p>
 
   <div class="tw">
     <table>
       <thead><tr><th>The piece</th><th>Status</th><th>What the source actually is</th></tr></thead>
       <tbody>
-        <tr><td><code>Agent</code> in core</td><td><span class="tag t-real">exists</span></td><td>Named participant: persona, model, tools, optional <code>outputSchema</code> and <code>usesCapabilities</code>. No <code>resources</code> field. <code>usesSkills</code> is RESERVED. <code>contextMode</code> documents that only <code>"inline"</code> is honored. <code>packages/core/src/types/agent.ts</code></td></tr>
+        <tr><td><code>Agent</code> in core</td><td><span class="tag t-real">exists</span></td><td>Named participant: persona, model, tools, optional <code>outputSchema</code> and <code>usesCapabilities</code>. No <code>resources</code>, <code>members</code>, <code>channels</code>, <code>inbox</code>, or session field. <code>usesSkills</code> is RESERVED. <code>contextMode</code> documents that only <code>"inline"</code> is honored. Not a room. Not a team. <code>packages/core/src/types/agent.ts</code></td></tr>
         <tr><td><code>defineAgent</code> / registry / <code>materializeAgent</code></td><td><span class="tag t-real">exists</span></td><td>Validate a config, hold it in a <code>Map</code>, turn it into a worker-shaped or standalone generator. Useful. Not a flow factory.</td></tr>
         <tr><td><code>agentBlock</code></td><td><span class="tag t-real">exists</span></td><td>Shorthand for the standalone shape. Used nowhere outside the workforce package.</td></tr>
         <tr><td><code>definePersona</code></td><td><span class="tag t-real">exists</span></td><td>Sugar over <code>defineResource</code> / <code>defineResourceCollection</code>. Collection default scope is <code>org</code>. Used nowhere outside the package.</td></tr>
@@ -1381,8 +1508,8 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td>Reply-storm exclusion via <code>TaskCollectionRef.claim</code></td><td><span class="tag t-real">exists</span></td><td>One holder per post. Same CAS <code>taskBoard</code> drain uses. Eligibility narrows to that post. Who may attempt the claim is proposed Layer&nbsp;2. No board-lock type.</td></tr>
         <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed v1</span></td><td>This page. No <code>createWorkerFlow</code> export. No <code>workers/</code> tree. <code>workforce.config</code> is not a file in the repo. Role / personality / tools / skills are the v1 inputs. SOP is later.</td></tr>
         <tr><td>Roster-named harness + inherited subscriptions</td><td><span class="tag t-prop">proposed v1</span></td><td>A seat can name which harness it runs on and inherit that harness&#8217;s subscriptions when they exist. The consumer is Conductor&#8217;s harness-manager track. No second manager. No new Layer&nbsp;1 harness or subscription type. Not on main.</td></tr>
-        <tr><td>Room helpers (<code>openDm</code>, <code>fanOutBoardPost</code>, &#8230;)</td><td><span class="tag t-prop">proposed v1</span></td><td>Named wrappers over Layer&nbsp;1 already in this table. Not exports. See <a href="#api">&#167;13</a>. Same-flow fan-out exists; the helper is the name.</td></tr>
-        <tr><td>L2 routing matrix (which room)</td><td><span class="tag t-prop">proposed</span></td><td>See <a href="#channels">&#167;05</a>. Package docs must not fork this matrix. Marked proposed until cross-flow lands.</td></tr>
+        <tr><td>Room helpers (<code>openDm</code>, <code>fanOutBoardPost</code>, &#8230;)</td><td><span class="tag t-prop">proposed v1</span></td><td>Named wrappers over Layer&nbsp;1 already in this table. Not exports. See <a href="#api">&#167;14</a>. Same-flow fan-out exists; the helper is the name.</td></tr>
+        <tr><td>L2 routing matrix (which room)</td><td><span class="tag t-prop">proposed</span></td><td>See <a href="#channels">&#167;06</a>. Package docs must not fork this matrix. Marked proposed until cross-flow lands.</td></tr>
         <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-real">exists</span></td><td>Existing-session delivery to the seam-stamped sender. <code>packages/core/src/blocks/dispatcher.ts</code>. Documented in <code>docs/architecture/action-forms.md</code>.</td></tr>
         <tr><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">proposed</span></td><td>Refuse still on this pin. <code>create-request-host.ts</code> (<code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>). <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open, not merged. Do not flip until the refuse is gone.</td></tr>
         <tr><td>Published agents doc</td><td><span class="tag t-prose">docs</span></td><td><code>apps/docs/docs/orchestration/agents.md</code> describes today&#8217;s named participant. It is not this convention.</td></tr>
@@ -1392,13 +1519,13 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note">
     <span class="lbl">The package is Layer 2 sugar, not the harness</span>
-    <p><code>@flow-state-dev/workforce</code> is documented as agent registry and materialization. CLAUDE.md still calls it &#8220;Layer&nbsp;2 on orchestration.&#8221; What landed is the first cut &#8212; name a participant, look it up, turn it into a block &#8212; without the factory, the room helpers, or the roster. Read the package as evidence of a named participant, not as evidence a v1 factory shipped. Package docs must not fork the room matrix on this page.</p>
+    <p><code>@flow-state-dev/workforce</code> is documented as agent registry and materialization. CLAUDE.md still calls it &#8220;Layer&nbsp;2 on orchestration.&#8221; What landed is the first cut &#8212; name a participant, look it up, turn it into a block. v1, if kicked, <em>thins this package</em>: factory + roster + room helpers around the existing <code>AgentRegistry</code>. It does not fork a second Agent. Read the package as evidence of a named participant, not as evidence a team shipped. Package docs must not fork the room matrix on this page. See <a href="#fence">&#167;03</a> proof&nbsp;C.</p>
   </div>
 </section>
 
 <section id="api">
-  <div class="sec-head"><span class="sec-num">13</span><h2>Programmatic API surface</h2></div>
-  <p class="lede">Two columns. <strong>Exists</strong> is a raw Layer&nbsp;1 call already on main. <strong>Proposed v1</strong> is a named thin helper that wraps one of those calls. Nothing in the proposed column is an export today. Do not invent a fake package API that is not a wrapper.</p>
+  <div class="sec-head"><span class="sec-num">14</span><h2>Programmatic API surface</h2></div>
+  <p class="lede">Two columns. <strong>Exists</strong> is a raw Layer&nbsp;1 call already on main &#8212; including today&#8217;s <code>Agent</code> / <code>AgentRegistry</code>. <strong>Proposed v1</strong> is a named thin helper that wraps one of those calls. v1 thins <code>@flow-state-dev/workforce</code>. It does not add a second participant type. Nothing in the proposed column is an export today.</p>
 
   <figure>
     <div class="fig-body">
@@ -1431,7 +1558,7 @@ const replyToSender = <b>dispatcher</b>({
         <rect class="n-prose" x="16" y="292" width="908" height="72" rx="5"/>
         <text class="t-lbl" x="34" y="314">CUT / DO NOT FAKE</text>
         <text class="t-s" x="34" y="338">No Channel / Team / MessageBoard / OKF export. No second dispatcher, session, or board.</text>
-        <text class="t-xs" x="34" y="356">PACKAGE DOCS MUST NOT FORK THE &#167;05 MATRIX. A HELPER THAT NEEDS A GAP IS LISTED IN &#167;14, NOT SHIPPED AS AN ARGUMENT.</text>
+        <text class="t-xs" x="34" y="356">PACKAGE DOCS MUST NOT FORK THE &#167;06 MATRIX. A HELPER THAT NEEDS A GAP IS LISTED IN &#167;15, NOT SHIPPED AS AN ARGUMENT.</text>
       </svg>
     </div>
     <figcaption><b>Exists is a call. Proposed is a name for that call.</b> If a row on the right cannot be written as a wrapper of a row on the left, it is not v1 &#8212; it is a Layer&nbsp;1 gap or a cut. Package README, if a kick lands, points here for the room matrix. It does not grow a second one.</figcaption>
@@ -1444,7 +1571,7 @@ const replyToSender = <b>dispatcher</b>({
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Proposed v1</h5><span class="role">named wrappers</span>
-      <p><code>createWorkerFlow</code>, <code>openDm</code>, <code>openProjectRoom</code>, <code>fanOutBoardPost</code>, <code>fileOrderedReplies</code>. Each line in <a href="#channels">&#167;05</a> and <a href="#contract">&#167;03</a> shows the Layer&nbsp;1 body.</p>
+      <p><code>createWorkerFlow</code>, <code>openDm</code>, <code>openProjectRoom</code>, <code>fanOutBoardPost</code>, <code>fileOrderedReplies</code>. Each line in <a href="#channels">&#167;06</a> and <a href="#contract">&#167;04</a> shows the Layer&nbsp;1 body.</p>
     </div>
     <div class="card" style="--tc: var(--gone)">
       <h5>Not an export</h5><span class="role">do not invent</span>
@@ -1454,12 +1581,12 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note">
     <span class="lbl">Package docs must not fork the matrix</span>
-    <p>If a thin package lands, its README describes the wrappers and points at this atlas for which room. A second Talk / Room table in the package is how the convention splits. This page stays SSOT.</p>
+    <p>If a thin package lands, its README describes the wrappers and points at this atlas for which room. A second Talk / Room table in the package is how the convention splits. A second Agent type beside <code>AgentRegistry</code> is how the fence fails. This page stays SSOT. See <a href="#fence">&#167;03</a> proof&nbsp;C.</p>
   </div>
 </section>
 
 <section id="gaps">
-  <div class="sec-head"><span class="sec-num">14</span><h2>L1 gaps &#8212; prove against, don&#8217;t paper over</h2></div>
+  <div class="sec-head"><span class="sec-num">15</span><h2>L1 gaps &#8212; prove against, don&#8217;t paper over</h2></div>
   <p class="lede">A v1 helper may wrap only what is on this pin. If the body needs a door that is refused, missing, or first-registered-wrong, name the gap. Do not ship a pretend argument that hides it.</p>
 
   <figure>
@@ -1531,12 +1658,12 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note">
     <span class="lbl">What is not a gap</span>
-    <p>Same-flow N-rooms, <code>claim</code> exclusion, <code>task.deps</code>, <code>{ from: true }</code>, <code>create_session</code>, <code>readContent()</code> &#8212; those exist. Who may reply is proposed Layer&nbsp;2 policy, not missing substrate. Ordered multi-reply is a proposed wrapper over <code>claim</code> + <code>deps</code>, not a new lock type.</p>
+    <p>Same-flow N-rooms, <code>claim</code> exclusion, <code>task.deps</code>, <code>{ from: true }</code>, <code>create_session</code>, <code>readContent()</code>, <code>Agent</code> / <code>AgentRegistry</code> &#8212; those exist. Who may reply is proposed Layer&nbsp;2 policy, not missing substrate. Ordered multi-reply is a proposed wrapper over <code>claim</code> + <code>deps</code>, not a new lock type. Growing Agent is a different table &#8212; <a href="#fence">&#167;03</a>.</p>
   </div>
 </section>
 
 <section id="cuts">
-  <div class="sec-head"><span class="sec-num">15</span><h2>Cuts</h2></div>
+  <div class="sec-head"><span class="sec-num">16</span><h2>Cuts</h2></div>
   <p class="lede">Held on purpose. Do not invent these because the thought exists. A possible v1 kick is a thin wrapper over today&#8217;s Layer&nbsp;1. A second dispatch, session, or board surface is how that kick fails. Conductor does not wait on the package.</p>
 
   <div class="tension">
@@ -1551,12 +1678,12 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>No Layer 1 Channel, Team, Project, MessageBoard, or OKF packages</h5>
-    <p>Those words are convention over sessions, rosters, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms, or a shared group session several workers enter, is a second architecture. Same cut: no peer-edge graph, no second send door, no route-resolver under the matrix. Which room is Layer&nbsp;2 &#8212; see <a href="#channels">&#167;05</a>. OKF stays an example, not a Workforce dependency.</p>
+    <p>Those words are convention over sessions, rosters, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms, or a shared group session several workers enter, is a second architecture. Same cut: no peer-edge graph, no second send door, no route-resolver under the matrix. Which room is Layer&nbsp;2 &#8212; see <a href="#channels">&#167;06</a>. OKF stays an example, not a Workforce dependency.</p>
   </div>
 
   <div class="tension">
     <h5>No fake package export that is not a thin wrapper</h5>
-    <p>A proposed name must show the Layer&nbsp;1 call it wraps. <code>sendAt</code>, <code>flowKind</code> on a helper, or a cross-kind fan-out that hides the refuse are not wrappers. They are gaps. Package docs must not fork the &#167;05 matrix.</p>
+    <p>A proposed name must show the Layer&nbsp;1 call it wraps. <code>sendAt</code>, <code>flowKind</code> on a helper, or a cross-kind fan-out that hides the refuse are not wrappers. They are gaps. Package docs must not fork the &#167;06 matrix.</p>
   </div>
 
   <div class="tension">
@@ -1590,14 +1717,19 @@ const replyToSender = <b>dispatcher</b>({
   </div>
 
   <div class="tension">
+    <h5>No collaboration on Agent. No Team type. No second Agent model</h5>
+    <p>The minimum useful v1 is one roster that can share rooms. Agent is the participant you seat. Rooms are how they talk. Do not add <code>members</code>, <code>channels</code>, or <code>inbox</code> to <code>Agent</code>. Do not invent Team to hold a bind the roster row has not proved. Do not fork a participant type beside <code>AgentRegistry</code>. Prove <a href="#fence">&#167;03</a> A/B/C first &#8212; durable memory via <code>flowIsolation</code> versus persona-only, the Agent&#8594;harness&#8594;session bind, and that v1 thins the existing package.</p>
+  </div>
+
+  <div class="tension">
     <h5>Do not grow Agent until a factory needs a field</h5>
-    <p>Today&#8217;s <code>Agent</code> is a definition you materialize. The intended worker is a flow. Growing the type to look like the second, before a build that staffs flows, is how Layer&nbsp;1 absorbs a Workforce opinion.</p>
+    <p>Today&#8217;s <code>Agent</code> is a definition you materialize. The intended worker is a flow. Growing the type to look like a team, before the three proofs, is how Layer&nbsp;1 absorbs a Workforce opinion.</p>
     <span class="ask">When that build exists, the first question is still &#8220;is this a resource the worker&#8217;s flow declares, or a new field on Agent?&#8221; &#8212; and the cheaper answer is usually the resource.</span>
   </div>
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is one worker contract on Layer&nbsp;1. A possible v1 is only factory + files (role, personality, tools, skills) + roster/harness seat + room helpers that wrap <code>create_session</code>, <code>dispatcher()</code>, <code>taskBoard</code>, <code>claim</code>, and <code>readContent()</code>. Same-flow N-rooms exist; claim exclusion exists; who-may-reply and ordered multi-reply are proposed; cross-flow is still refused on this pin. SOP files are later. No second dispatch, session, or board. No Channel / Team / MessageBoard / OKF. Package docs must not fork the matrix. Today the package is a thin registry. This page names the kick. Conductor does not wait on it.</p>
+    <p>Workforce is one worker contract on Layer&nbsp;1. Agent exists as a participant you seat &#8212; not a room, not a team, no durable memory on the type. The minimum useful v1 is one real team that can collaborate: roster, DMs, project rooms, board fan-out, ordered replies. That is L2 over <code>create_session</code>, <code>dispatcher()</code>, <code>taskBoard</code>, <code>claim</code>, and the existing <code>AgentRegistry</code>. Collaboration stays on the rooms. No Team type. No second Agent. Prove memory, the roster bind, and the thinning before growing Agent. Cross-flow is still refused on this pin. Conductor does not wait.</p>
   </div>
 </section>
 

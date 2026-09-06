@@ -731,7 +731,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="855" y="332" text-anchor="middle">LOCKED</text>
       </svg>
     </div>
-    <figcaption><b>Seven built, two reserved, the team row closed.</b> <code>usesSkills</code> and <code>contextMode: "fork"</code> are declared on <code>Agent</code> and warn at materialization — deferred, not undecided. The team itself is not a first-class Layer&nbsp;1 object. It is a roster plus shared boards (sessions) as Layer&nbsp;2. See the <a href="workforce.html#teams">Workforce atlas §07</a>.</figcaption>
+    <figcaption><b>Seven built, two reserved, the team row closed.</b> <code>usesSkills</code> and <code>contextMode: "fork"</code> are declared on <code>Agent</code> and warn at materialization — deferred, not undecided. The team itself is not a first-class Layer&nbsp;1 object. It is a roster plus shared boards (sessions) as Layer&nbsp;2. See the <a href="workforce.html#fence">Workforce atlas §03</a>.</figcaption>
   </figure>
 
   <h3>What "a team" would mean, given what already exists</h3>
@@ -746,7 +746,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <h5>Closed: a team is not a Layer 1 type</h5>
     <p>Everything below workforce got built because a running system needed it. Workforce is the one layer specified top-down — the <code>Agent</code> type carries two fields nothing resolves, and its capability factory returns a name and a TODO. That is the shape tenet 3 warns about: a contract taken on before there was a caller.</p>
     <p>The generous reading is that it is a placeholder held deliberately while the layers underneath matured — and they did mature; seven of the ten needs above are now met by systems that did not exist when <code>Agent</code> was first written.</p>
-    <p>Closed: a team is <strong>not</strong> a first-class Layer&nbsp;1 primitive. It is a roster plus shared boards (sessions) as Layer&nbsp;2 convention on the dispatch spine. See the <a href="workforce.html#teams">Workforce atlas §07</a>. A possible v1 kick is named there as factory + files + roster/seat + room helpers over today&#8217;s Layer&nbsp;1 &#8212; not a Team type. The thin package stays <code>defineAgent</code> + <code>materializeAgent</code> until that kick.</p>
+    <p>Closed: a team is <strong>not</strong> a first-class Layer&nbsp;1 primitive. It is a roster plus shared rooms as Layer&nbsp;2. Agent stays the participant you seat &#8212; no collaboration fields on the type. See the <a href="workforce.html#fence">Workforce atlas §03</a>. A possible v1 is one collaborating team over today&#8217;s Layer&nbsp;1, thinning the existing registry, not a Team type.</p>
   </div>
 </section>
 
@@ -2121,7 +2121,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 <section id="lenses">
   <div class="sec-head"><span class="sec-num">27</span><h2>Refactor lenses</h2></div>
   <p class="lede">Nine tensions the inventory surfaces. None of these is a bug report — each is a place where the code and the stated grounding pull in slightly different directions, and where a decision would be worth more than another patch.</p>
-  <p>Two of them now have an owner's decision attached and live in <a href="#ledger">&sect;26</a> instead: the superseded paths, and the packages proposed for extraction, splitting, or merge. A tenth sat in <a href="#workforce-layer">&sect;04</a> and is closed: a team is not a first-class Layer&nbsp;1 primitive — it is a roster plus shared boards as Layer&nbsp;2. See the <a href="workforce.html#teams">Workforce atlas §07</a>.</p>
+  <p>Two of them now have an owner's decision attached and live in <a href="#ledger">&sect;26</a> instead: the superseded paths, and the packages proposed for extraction, splitting, or merge. A tenth sat in <a href="#workforce-layer">&sect;04</a> and is closed: a team is not a first-class Layer&nbsp;1 primitive — it is a roster plus shared boards as Layer&nbsp;2. See the <a href="workforce.html#fence">Workforce atlas §03</a>.</p>
 
   <div class="tension">
     <h5>1 · The two mega-packages</h5>
