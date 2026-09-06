@@ -55,24 +55,21 @@ posture the session is running — one row, for the whole session:
 | Anything else in `flow-state-dev` — plain lifecycle, ad-hoc, a direct request | `fsd-claude` |
 | Any session whose working repo is `orb-harness` | `orb-claude` |
 
+A handle's brief that names which role attaches is more specific than this table — follow the
+brief.
+
 `session:` distinguishes **live sessions sharing a `from:`** — two epics under `fsd-head-of-engineering`, a
 second Claude on the same handle. Pick a short stable label — **lowercase**, and keep it to
 letters, digits, `.`, `_`, `-` — on your first comment on a handle, and never change it there.
 Headers are read case-insensitively, so `A` and `a` are the *same* session: two labels that
 differ only in case are one identity, not two. Always set it — a later second session that
 collides with you is indistinguishable in the thread, and the header is the only identity
-there is.
+there is. For the same reason, read the thread before your first comment for a `from:` a live
+session is already using — the peer directing you holds one, and the role a brief pointed you
+at may already be taken.
 
 **Never invent a subscriber name**, and never add a row per epic — extra sessions use
 `session:`, not a new `from:`. The full subscriber table is the mailbox README's.
-
-**A handle's brief names your seat, and it beats the table.** The rows above are the default;
-a brief that says which role attaches is more specific, so take that one. Before your first
-comment, read the thread for a `from:` a live session is already using — the peer directing
-you holds one, and someone may already be sitting in the seat you were pointed at. Two
-sessions under one `from:` are a single identity to everyone else: the directing agent
-answers both as one, and neither can tell whose work is whose. Say which seat you are taking
-on your first comment, so a collision surfaces in minutes instead of hours.
 
 **Read the header, not the login.** Grok posts under the GitHub login `jhoffner`, the same
 login Jake uses. A comment with no valid header is not mail — ignore it.
