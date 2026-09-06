@@ -18,11 +18,11 @@ import {
 import {
   branchFor,
   checkoutPathFor,
+  encodeSegment,
+  harnessTaskId,
   type RunLocation,
   type RunPrincipal,
-  conductorTaskId,
-  encodeSegment,
-} from "../src/workspace";
+} from "@flow-state-dev/harness-manager/checkout";
 
 /** Temp trees this file made; removed after each test so none outlive the run. */
 const dirs: string[] = [];
@@ -604,21 +604,21 @@ describe("the board task's identity", () => {
     // Two rows for one issue-phase derive the same checkout, the same branch and
     // the same run record — so a duplicated seed charges two full coding runs
     // whose claims overwrite one shared record.
-    expect(conductorTaskId("FIX-1219", "implement")).toBe(
-      conductorTaskId("FIX-1219", "implement"),
+    expect(harnessTaskId("FIX-1219", "implement")).toBe(
+      harnessTaskId("FIX-1219", "implement"),
     );
-    expect(conductorTaskId("FIX-1219", "implement")).not.toBe(
-      conductorTaskId("FIX-1219", "review"),
+    expect(harnessTaskId("FIX-1219", "implement")).not.toBe(
+      harnessTaskId("FIX-1219", "review"),
     );
-    expect(conductorTaskId("FIX-1219", "implement")).not.toBe(
-      conductorTaskId("FIX-1220", "implement"),
+    expect(harnessTaskId("FIX-1219", "implement")).not.toBe(
+      harnessTaskId("FIX-1220", "implement"),
     );
   });
 
   it("is validated like a path segment, because it lands in the ledger's key space", () => {
     for (const bad of ["../escape", "a/b", "..", "", "with space"]) {
-      expect(() => conductorTaskId(bad, "implement")).toThrow(/not a usable identity segment/);
-      expect(() => conductorTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
+      expect(() => harnessTaskId(bad, "implement")).toThrow(/not a usable identity segment/);
+      expect(() => harnessTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
     }
   });
 
@@ -627,14 +627,14 @@ describe("the board task's identity", () => {
     // duplicate seed a duplicate of something rather than a second run.
     const config = { root: "/w", sourceRepo: "/r", baseRef: "main" };
     expect(checkoutPathFor(config, at("FIX-1219", "implement"))).toContain(
-      conductorTaskId("FIX-1219", "implement"),
+      harnessTaskId("FIX-1219", "implement"),
     );
     expect(branchFor(at("FIX-1219", "implement"))).toBe(
       // The principal segment is DERIVED, not spelled: it is a digest, and a
       // literal here would only pin how the digest happens to be computed
       // today. What this asserts is the SHAPE — untenanted tag, principal,
       // board identity, framed leaf.
-      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${conductorTaskId("FIX-1219", "implement")}`,
+      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${harnessTaskId("FIX-1219", "implement")}`,
     );
   });
 });

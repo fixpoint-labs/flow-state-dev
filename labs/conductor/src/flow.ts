@@ -8,10 +8,12 @@
  *
  * ## The board's own ledger is a deliverable, not a default
  *
- * A board that hands off refuses three things at construction, and a flow
- * that leaves any of them implicit throws before `seed` can run: an explicit
- * stable `boardId`, a durable `defineTaskCollection()` backing, and a ledger
- * the child session can reach.
+ * A board that hands off refuses FOUR things at construction, and a flow that
+ * leaves any of them implicit throws before `seed` can run: an explicit stable
+ * `boardId`, a durable `defineTaskCollection()` backing, a ledger the child
+ * session can reach, and a NAMED seat — because a hand-off is addressed by the
+ * seat name the row is routed by, so an unnamed one has no address to dispatch
+ * to.
  *
  * **`user`-scoped, no `sharedToLineage`.** The task row is where a human's
  * later answer lands, through a NEW request, so a parked row has to outlive the
@@ -54,6 +56,7 @@
  * authority on completion; the run record never is.**
  */
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import {
@@ -65,32 +68,41 @@ import {
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
-  RUNS,
-  readRunRow,
-  runRecordCollection,
-  runRecordStateSchema,
-  runTopic,
-  runTopicPrefix,
-} from "./run-record";
-import {
-  conductorDrainBudgetMs,
-  conductorTaskInputSchema,
+  assertBaseRefExists,
+  assertCheckoutRootUsable,
+  assertDistinctRepository,
+  assertPositiveInt,
   describeTenant,
+  harnessDrainBudgetMs,
   harnessManager,
-  requestTenant,
-  resolveOwnership,
-  type RequestIdentityContext,
-  type PhaseSpec,
-  type PhaseRunContext,
-  type PromptRunContext,
-} from "./manager";
-import { implementPhase } from "./implement";
-import {
+  harnessTaskInputSchema,
   INBOX,
   inboxCollection,
   listQuestions,
+  type PhaseRunContext,
+  type PhaseSpec,
+  type PromptRunContext,
+  readRunRow,
+  type RequestIdentityContext,
+  requestTenant,
+  resolveOwnership,
+  runRecordCollection,
+  runRecordStateSchema,
+  RUNS,
+  runTopic,
+  runTopicPrefix,
   withdrawQuestion,
-} from "./inbox";
+  type WorkspaceConfig,
+} from "@flow-state-dev/harness-manager";
+import {
+  assertSafeSegment,
+  canonicalSegment,
+  harnessTaskId,
+  joinIdentity,
+  sameSegment,
+  tenantSegment,
+} from "@flow-state-dev/harness-manager/checkout";
+import { implementPhase } from "./implement";
 import {
   answerInputSchema,
   answerOutputSchema,
@@ -98,21 +110,6 @@ import {
   type AnswerBoard,
   type AnswerOutput,
 } from "./answer";
-import {
-  assertBaseRefExists,
-  assertCheckoutRootUsable,
-  assertDistinctRepository,
-  assertPositiveInt,
-} from "./config-env";
-import {
-  canonicalSegment,
-  sameSegment,
-  assertSafeSegment,
-  conductorTaskId,
-  joinIdentity,
-  tenantSegment,
-  type WorkspaceConfig,
-} from "./workspace";
 
 /** The one assignee this board routes to. */
 export const ASSIGNEE = "harness" as const;
@@ -145,8 +142,18 @@ export interface ConductorFlowOptions {
   runTimeoutMs?: number;
   /** Defaults to the implement phase. Swapped by tests and by later phases. */
   phase?: PhaseSpec;
-  /** Forwarded to the coding agent (model, tools, permission mode, a test stub). */
-  agent?: Parameters<typeof harnessManager>[0]["agent"];
+  /**
+   * Forwarded to the coding agent (model, tools, permission mode, a test stub).
+   *
+   * This lab picks Claude Code, so this is `claudeCodeAgent`'s option surface
+   * minus the four the manager's slot supplies — see where the factory is
+   * written below. A host that wanted Codex would write a different factory and
+   * change nothing in `@flow-state-dev/harness-manager`.
+   */
+  agent?: Omit<
+    Parameters<typeof claudeCodeAgent>[0],
+    "detached" | "recordWork" | "cwd" | "resume" | "onSession"
+  >;
   ownership?: Parameters<typeof harnessManager>[0]["ownership"];
   /**
    * Told, after the park, that a question exists. Defaults to a no-op.
@@ -194,7 +201,7 @@ export const CONDUCTOR_FLOW_KIND = "conductor" as const;
  * different silent wrong answer.
  *
  * **Every way the derivation can fail answers `false`, including a throw.**
- * `conductorTaskId` validates the owned-segment grammar and RAISES on a
+ * `harnessTaskId` validates the owned-segment grammar and RAISES on a
  * violation, so a persisted row carrying `{ issue: "FIX.1" }` did not fail this
  * predicate, it failed the whole call — turning one malformed row into an error
  * for an entire `status` listing. Written as "anything other than a clean match
@@ -205,7 +212,7 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
   const found = task.input as { issue?: unknown; phase?: unknown } | undefined;
   if (typeof found?.issue !== "string" || typeof found?.phase !== "string") return false;
   try {
-    return conductorTaskId(found.issue, found.phase) === task.id;
+    return harnessTaskId(found.issue, found.phase) === task.id;
   } catch {
     return false;
   }
@@ -444,7 +451,9 @@ export function conductorFlow(options: ConductorFlowOptions) {
     }
   }
 
-  assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo);
+  // `process.cwd()` is this lab's answer to where its own code lives — see
+  // `requireSourceRepo`, which states the same thing at the environment door.
+  assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo, process.cwd());
   assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
   // The remaining half of the same rule. The two lines above reach the
   // filesystem with `sourceRepo`, so an unusable one fails here; `root` had
@@ -452,7 +461,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
   assertCheckoutRootUsable(workspace.root, "workspace.root");
 
   // **The phase NAME is an identity segment, and `epic` was the only one being
-  // validated here.** Both feed `conductorTaskId`, the checkout path and the
+  // validated here.** Both feed `harnessTaskId`, the checkout path and the
   // branch; `epic` is checked where the board id is built and the phase was
   // checked nowhere, so a conductor configured with `review.v2` or `""`
   // constructed without complaint and then threw from every `seed`. Worse
@@ -477,46 +486,11 @@ export function conductorFlow(options: ConductorFlowOptions) {
     );
   }
 
-  // **Above `validate`, and no longer for safety.** Under the previous design
-  // this ordering was load-bearing and got it wrong: `validate` stored what it
-  // found, so a construction that then failed here left the pin behind and the
-  // corrected retry was refused as already pinned. `validate` retains nothing
-  // now, so either order is correct — which is what makes the cheap check
-  // going first a plain economy rather than a fix. The implement phase's
-  // `validate` spawns `git` and `gh`; comparing a string to `""` does not.
-  //
-  // **Captured, not left in the phase.** What `validate` learns belongs to THIS
-  // conductor; a phase that stored it on itself would hand it to the next one.
-  const validated = phase.validate?.(workspace);
-
-  // The phase the manager actually runs: this conductor's `validated` bound
-  // into every run context, by a closure that belongs to this construction and
-  // nothing else. Two conductors from one `PhaseSpec` get two wrappers, so
-  // neither can reach the other's value — which is the property the phase
-  // could not give itself, since the snapshot above copies function references
-  // and not what they close over.
-  //
-  // Gated on the VALUE rather than on `validate` being defined, and the two are
-  // equivalent: binding `undefined` produces a run context whose `validated` is
-  // `undefined`, which is what an unwrapped phase already receives. A phase
-  // cannot distinguish "not bound" from "bound as undefined", so the wrapper
-  // would be a no-op — and this way a `validate` that only refuses, returning
-  // nothing, costs no allocation per run.
-  // **Both hooks, because the type promises both.** `validated` lives on
-  // `PhaseRunContext`, which `PromptRunContext` extends — so a phase's prompt
-  // builder is told it receives the value. Binding it into `isDone` alone made
-  // the type a lie for the other half: a custom phase whose prompt depends on
-  // what `validate` found would read `undefined` and build the wrong prompt,
-  // silently, after a construction that succeeded. The manager builds the two
-  // contexts separately, so one wrapper cannot cover both.
-  const runPhase: PhaseSpec =
-    validated === undefined
-      ? phase
-      : Object.freeze({
-          ...phase,
-          isDone: (run: PhaseRunContext) => phase.isDone({ ...run, validated }),
-          buildPrompt: (run: PromptRunContext) => phase.buildPrompt({ ...run, validated }),
-        });
+  // **The phase's own preconditions are the MANAGER's door now**, not this one.
+  // They used to be wired here, which meant a host building a manager directly
+  // — the documented way — skipped them. `harnessManager` runs `validate` and
+  // binds what it returns into both run contexts; this builder passes the phase
+  // through and no longer wraps it.
 
   // **An empty tenant is a mistake, and refusing it is not the same as
   // normalizing it.**
@@ -576,17 +550,39 @@ export function conductorFlow(options: ConductorFlowOptions) {
   const tasks = defineTaskCollection({
     id: collectionId,
     scope: "user",
-    stateSchema: conductorTaskInputSchema,
+    stateSchema: harnessTaskInputSchema,
   });
 
   const manager = harnessManager({
     boardCollectionId: collectionId,
     boardCollection: tasks,
     tenant,
-    phase: runPhase,
+    phase,
     workspace,
     runTimeoutMs,
-    ...(agent !== undefined ? { agent } : {}),
+    // **The slot, and the only place this repository names a coding harness.**
+    //
+    // The manager hands down three feeds and knows nothing else about what it
+    // is driving; everything Claude-specific is written here, where it belongs.
+    // Pointing this board at Codex is this one expression.
+    //
+    // `detached: true` is not decoration: the harness becomes a child block of
+    // the flow's gated task entry, and the claim gate refuses an entry that
+    // authors session state anywhere beneath it. A non-detached harness fails
+    // at `defineFlow`, naming the entry.
+    //
+    // `recordWork: true` keys the index of what the run touched to the run's
+    // own checkout — the other half of `cwd`, and doing only the first is the
+    // trap the option's own doc names.
+    harness: ({ cwd, resume, onSession }) =>
+      claudeCodeAgent({
+        ...(agent ?? {}),
+        cwd,
+        resume,
+        onSession,
+        detached: true,
+        recordWork: true,
+      }),
     ...(ownership !== undefined ? { ownership } : {}),
     ...(announce !== undefined ? { announce } : {}),
   });
@@ -603,7 +599,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
     concurrency: 1,
     workers: {
       // Hands off: each row runs in a child session of its own, keyed on the
-      // task id — which IS the issue-phase (`conductorTaskId`), so a retry
+      // task id — which IS the issue-phase (`harnessTaskId`), so a retry
       // re-enters the same child and its run record. The block that runs
       // there is the manager, declared on the flow's `task.actions` below.
       [ASSIGNEE]: dispatcher({
@@ -632,7 +628,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
     onReview: "exit",
   });
 
-  const seedInput = conductorTaskInputSchema;
+  const seedInput = harnessTaskInputSchema;
 
   /**
    * File one issue-phase as a durable row, with its retry budget on it.
@@ -674,7 +670,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
         );
       }
 
-      const taskId = conductorTaskId(input.issue, input.phase);
+      const taskId = harnessTaskId(input.issue, input.phase);
       const existing = await ctx.cap[boardId].getTask(taskId);
       if (existing !== undefined) {
         // **Idempotent means "this row IS the one asked for", not "a row exists
@@ -906,7 +902,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
       const tasksOnBoard = await ctx.cap[boardId].listTasks();
       const rows = [];
       for (const task of tasksOnBoard) {
-        const payload = conductorTaskInputSchema.safeParse(task.input);
+        const payload = harnessTaskInputSchema.safeParse(task.input);
         const issue = payload.success ? payload.data.issue : null;
         const phaseName = payload.success ? payload.data.phase : null;
         // **Compare the canonical form on both sides.** Identity derivation folds
@@ -941,7 +937,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
         const owns = issue !== null && phaseName !== null && rowOwnsItsIdentity(task);
 
         const record = owns
-          ? await readRunRow(ctx as never, runTopic(collectionId, issue, phaseName))
+          ? await readRunRow(ctx, runTopic(collectionId, issue, phaseName))
           : undefined;
 
         // **`status` RECONCILES what it reads.** The board's `cancel` writes the
@@ -1139,7 +1135,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
   // **The host's shutdown budget, derived rather than guessed.** Exposed
   // because only this module knows all four terms a worker spends, and a host
   // that picks its own number picks it from the one term it can see.
-  const drainBudgetMs = conductorDrainBudgetMs({
+  const drainBudgetMs = harnessDrainBudgetMs({
     runTimeoutMs,
     provisionTimeoutMs: workspace.provisionTimeoutMs,
     ownershipWaitMs: resolveOwnership({

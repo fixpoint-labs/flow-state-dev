@@ -111,8 +111,10 @@ import {
   parseQuestionTopic,
   readQuestion,
   withdrawQuestion,
-} from "./inbox";
-import { conductorTaskId } from "./workspace";
+} from "@flow-state-dev/harness-manager";
+import {
+  harnessTaskId,
+} from "@flow-state-dev/harness-manager/checkout";
 
 /** The task-board statuses from which nothing can be resumed. */
 const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
@@ -221,7 +223,7 @@ export async function decideAnswer(
   const row = await readQuestion(ctx, topic);
   if (row === undefined) return decline("unknown-question", null, null);
 
-  const taskId = conductorTaskId(issue, phase);
+  const taskId = harnessTaskId(issue, phase);
   const task = board.get(taskId);
   const taskStatus = task?.status ?? null;
 

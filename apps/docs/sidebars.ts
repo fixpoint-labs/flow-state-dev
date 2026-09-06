@@ -201,6 +201,7 @@ const sidebars: SidebarsConfig = {
         "orchestration/task-board",
         "orchestration/configuration",
         "orchestration/agents",
+        "orchestration/harness-manager",
         {
           type: "category",
           label: "Skills",

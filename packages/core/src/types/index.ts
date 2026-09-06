@@ -343,6 +343,7 @@ export { applyGetOrPatchState, defineResource, resource } from "./resource";
  */
 export type {
   HarnessBlock,
+  HarnessCallbackContext,
   HarnessCostBasis,
   HarnessResolver,
   HarnessRunCost,

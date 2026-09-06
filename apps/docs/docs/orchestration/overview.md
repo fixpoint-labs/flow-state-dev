@@ -33,6 +33,8 @@ Read it bottom-up.
 
 **Agents.** A worker can be a plain block, or it can be an agent: a named, reusable participant with a persona, a model, and a set of tools. Register an agent once and assign board tasks to it by name. See [Agents](./agents).
 
+**A worker built for coding agents.** Beside the patterns sits `@flow-state-dev/harness-manager`: a board worker that turns a row into a supervised coding run — its own checkout, a verdict read before the row settles, a question it can ask a person, and the coding agent itself as a slot you fill. See [Harness manager](./harness-manager).
+
 ## Two ways to drive a board
 
 Which path you take depends on who decides the shape of the work.
@@ -63,3 +65,4 @@ A drain runs inside the request that mounted it, so every worker's task finishes
 - [Patterns overview](../patterns/overview) — the coordination patterns built on the task board.
 - [Agents](./agents) — named participants you can assign work to.
 - [Delegation](../skills/delegation) — the agent-first path and the `taskTools` surface.
+- [Harness manager](./harness-manager) — a board worker that drives a coding agent to a settled verdict.

@@ -36,13 +36,16 @@ import {
   sequencer,
   type DefinedCapability,
   type PresetDef,
+  type UsesSlot,
 } from "@flow-state-dev/core";
 import { withTimeout } from "@flow-state-dev/core/helpers";
 import type {
   BlockContext,
   DeclaredResourceEntry,
+  HarnessBlock,
+  HarnessResolver,
+  HarnessSessionHook,
 } from "@flow-state-dev/core/types";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   getOrCreateTaskCollection,
@@ -54,7 +57,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS } from "./exec";
-import { MAX_TIMER_MS } from "./config-env";
+import { MAX_TIMER_MS } from "./guards";
 import {
   RUNS,
   openRunRow,
@@ -77,15 +80,15 @@ import {
   withdrawQuestion,
 } from "./inbox";
 import {
-  conductorTaskId,
+  harnessTaskId,
   sameSegment,
   acquireCheckout,
   branchFor,
   checkoutPathFor,
   provisionCheckout,
+  releaseCheckout,
   type RunLocation,
   type RunPrincipal,
-  type CheckoutLease,
   type OwnershipBounds,
   type WorkspaceConfig,
 } from "./workspace";
@@ -101,15 +104,6 @@ export interface PhaseRunContext {
   /** The run's own checkout. */
   workspacePath: string;
   branch: string;
-  /**
-   * The harness session the LAST attempt used, or `undefined` on attempt 1.
-   *
-   * Supplied by the manager, captured before this attempt's opening write
-   * cleared it. A phase must not read it off the run record: that row describes
-   * the attempt now running, and the clear has already been applied by the time
-   * a phase builds its prompt.
-   */
-  previousSessionId?: string;
   /**
    * Whatever this phase's own {@link PhaseSpec.validate} returned, for THIS
    * conductor.
@@ -170,22 +164,17 @@ export interface PhaseSpec {
    * Has the job actually been done? Re-evaluated now, and consulted ONLY after
    * a successful verdict — never as an alternative route to completion.
    *
-   * **The two carry-forward fields are prompt-time only: `feedback` and
-   * `previousSessionId` are absent here, deliberately and always.** They
-   * describe the attempt BEFORE this one, which is what a prompt needs and what
-   * a done-condition has no use for — the question is whether the job is done
-   * now, not how the last attempt went. `feedback` is also not reachable at this
-   * point: it arrives on the worker's input, and the verdict handler is handed
-   * the run's own result instead. A phase whose done-condition genuinely needs
-   * either wants them put on the manager's state first; do that when such a
-   * phase exists rather than plumbing a field nothing reads.
+   * **The carry-forward field is prompt-time only: `feedback` is absent here,
+   * deliberately and always.** It describes the attempt BEFORE this one, which
+   * is what a prompt needs and what a done-condition has no use for — the
+   * question is whether the job is done now, not how the last attempt went. It
+   * is also not reachable at this point: it arrives on the worker's input, and
+   * the verdict handler is handed the run's own result instead. A phase whose
+   * done-condition genuinely needs it wants it put on the manager's state
+   * first; do that when such a phase exists rather than plumbing a field
+   * nothing reads.
    */
   isDone(run: PhaseRunContext): boolean | Promise<boolean>;
-  /**
-   * Collections this phase's prompt builder may read, keyed by the accessor it
-   * reads them under. The manager declares them so `ctx.resources` resolves.
-   */
-  readable: Record<string, DeclaredResourceEntry>;
   /**
    * What this phase needs from the workspace, checked before anything is
    * claimed. Throws to refuse; absent means the phase needs nothing.
@@ -243,8 +232,49 @@ export interface ManagerOptions {
    * not the deadline alone.
    */
   ownership?: Partial<OwnershipBounds>;
-  /** Forwarded to the coding agent, so tests can script the SDK. */
-  agent?: Omit<Parameters<typeof claudeCodeAgent>[0], "detached" | "recordWork" | "cwd">;
+  /**
+   * **The slot.** How this manager is pointed at a coding harness.
+   *
+   * Called ONCE, at construction, with the three feeds the harness contract
+   * declares — and the harness package closes over all three. That is the whole
+   * coupling: this package imports no harness, names no vendor, and a second
+   * harness needs no edit here.
+   *
+   * ```ts
+   * harness: ({ cwd, resume, onSession }) =>
+   *   claudeCodeAgent({ cwd, resume, onSession, detached: true, recordWork: true }),
+   * ```
+   *
+   * **What the host writes inside the factory is the host's**, deliberately.
+   * `detached: true` is not decoration there: the harness becomes a child block
+   * of the flow's gated task entry, and the claim gate refuses an entry that
+   * authors session state anywhere beneath it. A non-detached harness therefore
+   * fails at `defineFlow`, naming the entry — at startup, where a host can act
+   * on it, rather than mid-run.
+   *
+   * **A factory rather than a block**, because the feeds are per-manager: they
+   * read and write THIS manager's own run state, and a block built before the
+   * manager exists cannot have been given them. Called once rather than per run
+   * for the same reason a flow is built once — the feeds resolve per run, the
+   * block does not.
+   */
+  harness: HarnessSlot;
+  /**
+   * Capabilities installed on the blocks whose contexts a phase sees — the same
+   * `uses` slot any other block takes.
+   *
+   * **This replaces a bespoke `PhaseSpec.readable` record**, which was a second
+   * way to say what the framework already says. A phase that reads its own
+   * collections ships them as a capability and the host puts it here; the
+   * manager spreads it onto the blocks a phase's hooks run inside (the prompt
+   * builder's and the done-condition's), so `ctx.resources` resolves for them
+   * exactly as it does anywhere else.
+   *
+   * The reserved-accessor guard is unchanged in effect and re-aimed at this:
+   * a capability claiming `runs`, `inbox` or the board's own accessor is
+   * refused at construction with the same message.
+   */
+  uses?: UsesSlot;
   /**
    * Tell the coordinator session a question exists, so it learns without
    * polling. Defaults to a no-op.
@@ -259,6 +289,46 @@ export interface ManagerOptions {
 }
 
 /**
+ * The three feeds a manager hands its harness, in one call.
+ *
+ * All three are **LAB-152's, declared in `@flow-state-dev/core`** and imported
+ * here rather than restated: what this package picks is the slot that bundles
+ * them, not the callbacks' names or their signatures.
+ *
+ * Why three and not two. A harness that throws on the manager's deadline
+ * returns no handle at all, and a status item is transient by contract — so
+ * neither can carry the session id to the next attempt in exactly the case
+ * resume exists for. Unless the harness hands the id to manager-owned durable
+ * state the MOMENT the run names it, the resume resolver reads nothing after a
+ * deadline kill. `onSession` is that write side.
+ */
+export interface HarnessFeeds {
+  /** Where this run works. Reads the checkout off the manager's own state. */
+  cwd: HarnessResolver<string>;
+  /**
+   * Which session this attempt continues, or `null` to start fresh.
+   *
+   * `null` on attempt 1, and on every attempt following one whose harness never
+   * confirmed a session — a resume the vendor refused, above all — so a dead id
+   * is asked for once rather than forever.
+   */
+  resume: HarnessResolver<string | null>;
+  /**
+   * Called by the harness the moment its vendor names the session, writing the
+   * id onto the run row. **The sole writer of that field.**
+   */
+  onSession: HarnessSessionHook;
+}
+
+/**
+ * The `harness` option: a factory the manager calls once with {@link HarnessFeeds}.
+ *
+ * Returns a block conforming to the harness contract — `HarnessBlock` is core's
+ * alias, and this slot is what makes that alias earn its place.
+ */
+export type HarnessSlot = (feeds: HarnessFeeds) => HarnessBlock;
+
+/**
  * What the announcement carries: **the row's key and nothing else.**
  *
  * The key already names the issue, the phase and the attempt, so a wider
@@ -271,7 +341,7 @@ export interface QuestionAnnouncement {
 }
 
 /** The typed payload a conductor task carries. Not model-writable — see `./workspace`. */
-export const conductorTaskInputSchema = z.object({
+export const harnessTaskInputSchema = z.object({
   /** The Linear issue this row drives. */
   issue: z.string(),
   /** Which phase of it. */
@@ -295,10 +365,28 @@ const managerStateSchema = z.object({
   workspacePath: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
   /**
-   * The harness session the LAST attempt used, captured before this attempt's
-   * opening write clears it. See `openRun`.
+   * The session the LAST attempt's harness confirmed it was in, captured before
+   * this attempt's opening write clears the row's copy (see `openRun`).
+   *
+   * Read by exactly one thing: the `resume` resolver handed to the harness. It
+   * reaches no phase and no prompt.
    */
   previousSessionId: z.string().nullable().default(null),
+  /**
+   * The checkout lease this attempt holds, as a VALUE — see
+   * `CheckoutLease.token`.
+   *
+   * It lives here rather than in a module-level table because the release has
+   * to be reachable from two exits that share nothing but this state: the
+   * harness step's settle hook (synchronous, handed only a context) and the
+   * chain's rescue. A live handle had nowhere to live but a process-wide map
+   * keyed by request; a value has the run's own state.
+   *
+   * `.nullable().default(null)` on both, so a run row persisted before this
+   * change still parses (BP-030).
+   */
+  lockPath: z.string().nullable().default(null),
+  leaseToken: z.string().nullable().default(null),
 });
 
 /** The manager's own result. Two outcomes; there is deliberately no third. */
@@ -312,10 +400,10 @@ const managerOutputSchema = z.object({
  * An attempt failed. Carries only a message — the board captures it as
  * `feedback`, which is how the next attempt is told why this one stopped.
  */
-export class ConductorAttemptFailed extends Error {
+export class HarnessAttemptFailed extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "ConductorAttemptFailed";
+    this.name = "HarnessAttemptFailed";
   }
 }
 
@@ -350,7 +438,7 @@ function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
   const userId = identity?.id;
   if (typeof userId !== "string" || userId === "") {
     throw new Error(
-      "[conductor] this request has no resolved user identity, so a run cannot be " +
+      "[harness-manager] this request has no resolved user identity, so a run cannot be " +
         "isolated to one. Refusing rather than sharing a checkout across principals.",
     );
   }
@@ -365,19 +453,19 @@ function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
 /**
  * This attempt is no longer the live one.
  *
- * Distinct from {@link ConductorAttemptFailed} because it is not a failed
+ * Distinct from {@link HarnessAttemptFailed} because it is not a failed
  * attempt — §9's taxonomy puts a lost claim in neither class: the attempt
  * writes nothing and leaves the row to be recovered. Throwing is still the
  * right exit, because the board's own fenced recorder declines a settlement
  * from a lost claim, so nothing is settled and no retry is spent.
  */
-export class ConductorAttemptSuperseded extends Error {
+export class HarnessAttemptSuperseded extends Error {
   constructor(where: string) {
     super(
-      `[conductor] this attempt was superseded before ${where}; stopping rather than ` +
+      `[harness-manager] this attempt was superseded before ${where}; stopping rather than ` +
         `continuing to work a row another attempt now holds.`,
     );
-    this.name = "ConductorAttemptSuperseded";
+    this.name = "HarnessAttemptSuperseded";
   }
 }
 
@@ -399,7 +487,7 @@ async function fenced(
   write: Promise<RunRowWrite>,
   where: string,
 ): Promise<void> {
-  if ((await write) === "refused") throw new ConductorAttemptSuperseded(where);
+  if ((await write) === "refused") throw new HarnessAttemptSuperseded(where);
 }
 
 /**
@@ -434,10 +522,10 @@ function taskPayload(input: { input?: unknown; taskId: string }): {
   issue: string;
   phase: string;
 } {
-  const parsed = conductorTaskInputSchema.safeParse(input.input);
+  const parsed = harnessTaskInputSchema.safeParse(input.input);
   if (!parsed.success) {
-    throw new ConductorAttemptFailed(
-      `[conductor] task ${input.taskId} carries no usable issue/phase payload: ` +
+    throw new HarnessAttemptFailed(
+      `[harness-manager] task ${input.taskId} carries no usable issue/phase payload: ` +
         `${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`,
     );
   }
@@ -457,7 +545,7 @@ function identityFrom(
 ): AttemptIdentity {
   if (state?.topic == null || state.taskId == null || state.attempt == null) {
     throw new Error(
-      "[conductor] the manager's sequencer state is empty — this block ran outside the " +
+      "[harness-manager] the manager's sequencer state is empty — this block ran outside the " +
         "manager, or before the row was opened.",
     );
   }
@@ -469,10 +557,32 @@ function identityFrom(
   };
 }
 
+/**
+ * The manager's state as a HARNESS's callback sees it.
+ *
+ * The harness is not one of our blocks, so its callbacks are handed the
+ * framework's DEFAULT sequencer state rather than this manager's — the cast is
+ * where that gap is crossed. One function rather than the same cast at each of
+ * the three feeds: three spellings of one assumption is the shape that drifts,
+ * and only one of them would be updated when the state grows.
+ *
+ * Typed by what it reads, like {@link RequestIdentityContext} above, so any
+ * context satisfies it structurally and no caller needs the harness alias.
+ *
+ * It asserts nothing. The manager owns this shape and the harness never learns
+ * it, which is the point of the channel; what each feed does about an empty
+ * state is the feed's own business, and they differ.
+ */
+function harnessCtxState(ctx: {
+  sequencer?: { state?: unknown } | undefined;
+}): ManagerState | undefined {
+  return ctx.sequencer?.state as ManagerState | undefined;
+}
+
 /** Read the manager's state, or throw rather than derive a wrong directory. */
 function managerState(state: ManagerState | undefined): ManagerState {
   if (state?.workspacePath == null) {
-    throw new Error("[conductor] the manager's sequencer state has no checkout on it.");
+    throw new Error("[harness-manager] the manager's sequencer state has no checkout on it.");
   }
   return state;
 }
@@ -512,7 +622,7 @@ function managerState(state: ManagerState | undefined): ManagerState {
  *
  * All this adds is *whose fault it is*: a hook that misses its deadline is a
  * failed attempt, not a conductor defect, so it rejects with
- * {@link ConductorAttemptFailed} and the board records that message as the next
+ * {@link HarnessAttemptFailed} and the board records that message as the next
  * attempt's feedback. The wording differs from core's for the same reason — a
  * person reading the feedback is being told the hook did not answer, not that a
  * timer expired.
@@ -527,11 +637,11 @@ export async function withDeadline<T>(
     ms,
     what,
     (label, timeoutMs) =>
-      new ConductorAttemptFailed(`${label} did not answer within ${timeoutMs}ms`),
+      new HarnessAttemptFailed(`${label} did not answer within ${timeoutMs}ms`),
   );
 }
 
-export function conductorDrainBudgetMs(options: {
+export function harnessDrainBudgetMs(options: {
   runTimeoutMs: number;
   provisionTimeoutMs?: number | undefined;
   ownershipWaitMs: number;
@@ -551,7 +661,7 @@ export function conductorDrainBudgetMs(options: {
 
   if (budget > MAX_TIMER_MS) {
     throw new Error(
-      `[conductor] the derived drain budget (${budget}ms) exceeds the largest delay a ` +
+      `[harness-manager] the derived drain budget (${budget}ms) exceeds the largest delay a ` +
         `timer honours (${MAX_TIMER_MS}ms). Lower runTimeoutMs, the ownership wait, or ` +
         `workspace.provisionTimeoutMs — a budget past the ceiling is silently clamped and ` +
         `would cancel every run immediately.`,
@@ -666,7 +776,7 @@ export function resolveOwnership(options: {
   const minimumWaitMs = ownership.staleAfterMs + ownership.pollMs;
   if (ownership.waitMs < minimumWaitMs) {
     throw new Error(
-      `[conductor] ownership.waitMs (${ownership.waitMs}ms) must exceed ` +
+      `[harness-manager] ownership.waitMs (${ownership.waitMs}ms) must exceed ` +
         `ownership.staleAfterMs (${ownership.staleAfterMs}ms) by at least one poll ` +
         `interval (${ownership.pollMs}ms), so at least ${minimumWaitMs}ms: a lock becomes ` +
         `stale-eligible only once its age is STRICTLY past the window, and eligibility is ` +
@@ -677,7 +787,7 @@ export function resolveOwnership(options: {
 
   if (ownership.staleAfterMs <= maxLockHeldMs) {
     throw new Error(
-      `[conductor] ownership.staleAfterMs (${ownership.staleAfterMs}ms) must exceed the ` +
+      `[harness-manager] ownership.staleAfterMs (${ownership.staleAfterMs}ms) must exceed the ` +
         `longest a live attempt can hold the lock (${maxLockHeldMs}ms = the provisioning ` +
         `budget ${provisionBudget}ms + whichever of runTimeoutMs ${runTimeoutMs}ms and the ` +
         `${CHECKOUT_CLEANUP_TIMEOUT_MS}ms to undo a checkout provisioning refused is ` +
@@ -710,13 +820,11 @@ export function resolveOwnership(options: {
  * `uses` side. The accessor set is genuinely open here (a phase brings its
  * own), so declaring it open is the honest type as well as the usable one.
  */
-function createConductorCapability(options: {
+function createManagerCapability(options: {
   /** The board's ledger collection id — also the accessor the fence reads it under. */
   boardCollectionId: string;
   /** The board's ledger declaration — the same object the board itself registers. */
   boardCollection: DefinedTaskCollection;
-  /** {@link PhaseSpec.readable}, already checked against the reserved accessors. */
-  readable: Record<string, DeclaredResourceEntry>;
 }): DefinedCapability<
   string,
   Record<string, never>,
@@ -725,11 +833,10 @@ function createConductorCapability(options: {
   undefined,
   Record<string, DeclaredResourceEntry>
 > {
-  const { boardCollectionId, boardCollection, readable } = options;
+  const { boardCollectionId, boardCollection } = options;
   return defineCapability({
-    name: `conductor:${boardCollectionId}`,
+    name: `harness-manager:${boardCollectionId}`,
     resources: {
-      ...readable,
       [RUNS]: runRecordCollection,
       // Where a question is posted, withdrawn, and read back as an answer. The
       // `answer` and `status` actions declare the same definition object, so the
@@ -750,13 +857,59 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     boardCollectionId,
     boardCollection,
     tenant,
-    phase,
+    phase: callerPhase,
     workspace,
     runTimeoutMs,
-    agent = {},
+    harness,
+    uses: hostUses,
     announce = () => {},
     name = "harness-manager",
   } = options;
+
+  // **A phase is caller-owned validated configuration, so it is snapshotted.**
+  // Held by reference, a host could swap `implement` for `review` after this
+  // returns and leave the implement prompt and completion check attached to
+  // rows both runtime guards now accept. Shallow, which is all the shape needs.
+  const phase: PhaseSpec = Object.freeze({ ...callerPhase });
+
+  // **The phase's own preconditions, at the manager's door.**
+  //
+  // This used to live in one host's flow builder, which meant a host
+  // constructing this manager directly — the documented way — silently skipped
+  // it. What that costs is exactly what `validate` exists to prevent: a
+  // permanent precondition failure landing AFTER a paid agent run, once per
+  // retry, until the budget is gone. A preflight only one caller runs is not a
+  // preflight.
+  //
+  // **Captured, not left on the phase.** What `validate` learns belongs to THIS
+  // manager; a phase that stored it on itself would hand it to the next one.
+  const validated = phase.validate?.(workspace);
+
+  // The phase this manager actually runs: this construction's `validated` bound
+  // into every run context, by a closure that belongs to it and nothing else.
+  // Two managers from one `PhaseSpec` get two wrappers, so neither can reach the
+  // other's value — the property the phase cannot give itself, since the
+  // snapshot above copies function references and not what they close over.
+  //
+  // Gated on the VALUE rather than on `validate` being defined, and the two are
+  // equivalent: binding `undefined` produces a context whose `validated` is
+  // `undefined`, which is what an unwrapped phase already receives. So a
+  // `validate` that only refuses costs no allocation per run.
+  //
+  // **Both hooks, because the type promises both.** `validated` lives on
+  // `PhaseRunContext`, which `PromptRunContext` extends — so a prompt builder is
+  // told it receives the value. Binding it into `isDone` alone made the type a
+  // lie for the other half: a phase whose prompt depends on what `validate`
+  // found would read `undefined` and build the wrong prompt, silently, after a
+  // construction that succeeded.
+  const runPhase: PhaseSpec =
+    validated === undefined
+      ? phase
+      : Object.freeze({
+          ...phase,
+          isDone: (run: PhaseRunContext) => phase.isDone({ ...run, validated }),
+          buildPrompt: (run: PromptRunContext) => phase.buildPrompt({ ...run, validated }),
+        });
 
   const { ownership } = resolveOwnership({
     runTimeoutMs,
@@ -781,25 +934,79 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // a phase re-declaring it would send the ask into a collection `answer` and
   // `status` never read, so a run would park on a question no operator could
   // ever see and no answer could ever reach.
+  // **Three accessors are the manager's and a capability may not claim them.**
+  //
+  // A capability whose resources carried `runs` would send this manager's
+  // bookkeeping into a collection the status surface never reads — the row
+  // would be written, and every read of it would answer nothing. One carrying
+  // the board's accessor is worse: the live-claim fence would consult unrelated
+  // rows, quietly defeating the whole attempt-fence mechanism while every test
+  // that does not stage two attempts still passes. `inbox` has a third harm of
+  // its own: a run would park on a question no operator could see and no answer
+  // could ever reach.
+  //
+  // Merging the manager's entries LAST would prevent all three, and it is the
+  // wrong fix: the host's declaration would simply not work, with nothing
+  // anywhere saying why. This fails loudly, naming the key.
   const RESERVED_ACCESSORS = new Set([RUNS, boardCollectionId, INBOX]);
-  const claimed = Object.keys(phase.readable).filter((key) =>
-    RESERVED_ACCESSORS.has(key),
-  );
-  if (claimed.length > 0) {
-    throw new Error(
-      `[conductor] the "${phase.phase}" phase declares readable collection(s) ` +
-        `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns — ` +
-        `"${RUNS}" is the run record, "${INBOX}" is the question inbox, and ` +
-        `"${boardCollectionId}" is the board ledger ` +
-        `the attempt fence reads. Both are already available to the phase; declaring ` +
-        `them again would replace the manager's own.`,
-    );
-  }
 
-  const conductor = createConductorCapability({
+  /** Refuse a capability set that claims one of the manager's accessors. */
+  const assertClaimsNothingReserved = (
+    entries: readonly unknown[],
+    when: string,
+  ): void => {
+    const claimed = [
+      ...new Set(
+        entries.flatMap((entry) =>
+          Object.keys(
+            (entry as { resources?: Record<string, unknown> })?.resources ?? {},
+          ),
+        ),
+      ),
+    ].filter((key) => RESERVED_ACCESSORS.has(key));
+    if (claimed.length === 0) return;
+    throw new Error(
+      `[harness-manager] a capability on \`uses\` declares collection(s) ` +
+        `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns (${when}) — ` +
+        `"${RUNS}" is the run record, "${INBOX}" is the question inbox, and ` +
+        `"${boardCollectionId}" is the board ledger the attempt fence reads. All ` +
+        `are already available to the phase; declaring them again would replace ` +
+        `the manager's own.`,
+    );
+  };
+
+  // **Static entries are checked here; DYNAMIC ones are checked when they
+  // resolve, and skipping them would have been a hole rather than a limit.**
+  //
+  // A dynamic `uses` entry is a function the framework calls per invocation, so
+  // its capabilities cannot be inspected at construction. Passing it through
+  // unchecked would let a host override `runs`, `inbox` or the board ledger at
+  // run time through a documented framework feature — a guard a host bypasses
+  // by using the framework normally is not a guard.
+  //
+  // Refusing dynamic `uses` outright would close it too, and costs more than it
+  // saves: conditional capabilities are a real thing hosts need. So each dynamic
+  // entry is wrapped instead, and the same rule runs on what it actually
+  // returns. The wrapper is transparent — it returns the entry's own value —
+  // and the cost is one array scan per invocation on a path that already builds
+  // a context.
+  const staticUses = (hostUses ?? []).filter((e) => typeof e !== "function");
+  assertClaimsNothingReserved(staticUses, "declared statically");
+
+  const guardedUses = (hostUses ?? []).map((entry) =>
+    typeof entry === "function"
+      ? (ctx: never) => {
+          const resolved = (entry as (c: never) => unknown)(ctx);
+          const list = Array.isArray(resolved) ? resolved : [resolved];
+          assertClaimsNothingReserved(list, "returned by a dynamic `uses` entry");
+          return resolved;
+        }
+      : entry,
+  ) as typeof hostUses;
+
+  const managerCapability = createManagerCapability({
     boardCollectionId,
     boardCollection,
-    readable: phase.readable,
   });
 
   /**
@@ -822,7 +1029,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const collection = resolveResourceCollection(ctx, boardCollectionId);
     if (collection === undefined) {
       throw new Error(
-        `[conductor] the board ledger "${boardCollectionId}" is not registered on this ` +
+        `[harness-manager] the board ledger "${boardCollectionId}" is not registered on this ` +
           `worker, so a run cannot be parked on a person — the question it just posted ` +
           `would sit open with the row still reading as running.`,
       );
@@ -844,11 +1051,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * same directory (see `./workspace`).
    */
   const openRun = handler({
-    name: "conductor-open-run",
+    name: "harness-manager-open-run",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.void(),
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
+    uses: [managerCapability],
     execute: async (input, ctx) => {
       const { issue, phase: phaseName } = taskPayload(input);
 
@@ -866,14 +1073,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // **Compared canonically, because the identity it guards is.** A durable
       // row outlives the process that filed it, so a restart with the phase
       // spelled differently — `IMPLEMENT` for `implement` — meets rows already
-      // on the board. `conductorTaskId` folds case, so those are the SAME task,
+      // on the board. `harnessTaskId` folds case, so those are the SAME task,
       // the same checkout and the same branch; a raw comparison here called them
       // different and refused, after `wake` had claimed the row and charged it.
       // Once per wake, until a valid task's budget was gone, for a mismatch its
       // own identity says does not exist.
       if (!sameSegment(phaseName, phase.phase)) {
-        throw new ConductorAttemptFailed(
-          `[conductor] task ${input.taskId} is a "${phaseName}" row on a manager ` +
+        throw new HarnessAttemptFailed(
+          `[harness-manager] task ${input.taskId} is a "${phaseName}" row on a manager ` +
             `configured for "${phase.phase}". Refusing rather than running ` +
             `${phase.phase}'s prompt and completion check against it.`,
         );
@@ -890,10 +1097,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // pull request satisfying the other's completion check. "Separate trees
       // pushing one ref is not isolation" is the rule `branchFor` states; this
       // is the same collapse reached through the row id instead.
-      const canonicalId = conductorTaskId(issue, phaseName);
+      const canonicalId = harnessTaskId(issue, phaseName);
       if (input.taskId !== canonicalId) {
-        throw new ConductorAttemptFailed(
-          `[conductor] task ${input.taskId} carries the payload for ${canonicalId}. ` +
+        throw new HarnessAttemptFailed(
+          `[harness-manager] task ${input.taskId} carries the payload for ${canonicalId}. ` +
             `Refusing: the checkout, the branch and the run record are all derived from ` +
             `that payload, so a second row under a different id would run the same work ` +
             `in the same tree.`,
@@ -909,8 +1116,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // same reason the phase is: this is where the wrong work would execute.
       const resolvedTenant = requestTenant(ctx);
       if (resolvedTenant !== tenant) {
-        throw new ConductorAttemptFailed(
-          `[conductor] this conductor serves ${describeTenant(tenant)}; the request resolved ` +
+        throw new HarnessAttemptFailed(
+          `[harness-manager] this conductor serves ${describeTenant(tenant)}; the request resolved ` +
             `to ${describeTenant(resolvedTenant)}. Refusing rather than running one tenant's ` +
             `task in another's workspace.`,
         );
@@ -942,20 +1149,23 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         branch,
       });
 
-      // **Read the previous attempt's session BEFORE opening clears it.**
+      // **Read the session the LAST attempt confirmed, before opening clears it.**
       //
-      // `openRunRow` applies the attempt-scoped clear, which sets `sessionId`
-      // to null — correctly, since the field describes the attempt now running
-      // and this one has not reported yet. But the next attempt's prompt wants
-      // to name the session the last one used, and reading the row after the
-      // clear always saw `null`. A rule and a reader that were each right on
-      // their own.
+      // `openRunRow` applies the attempt-scoped clear, which sets `sessionId` to
+      // null — correctly, since the field describes the attempt now running and
+      // this one has not reported yet. So the read has to happen here: after the
+      // open, it is always `null`.
       //
-      // Captured here and carried on the manager's own state, so the phase is
-      // handed the value rather than reaching into a record whose lifetime it
-      // would have to know about. That is why `PhaseRunContext` gained a field
-      // instead of `implement.ts` moving its read earlier: the same collision
-      // is unavailable to the next phase that wants carry-forward.
+      // What the value feeds is the harness's `resume` resolver at the bottom of
+      // this file, and nothing else. No phase is handed it and no prompt names
+      // it: a session id is not something a model can act on, and while the
+      // prompt carried one, "the run resumed" and "the run was told" were the
+      // same observation.
+      //
+      // `null` here is the whole self-heal. It means the previous attempt's
+      // harness never confirmed a session — it was never sent one, or it was
+      // sent one the vendor could not honour — so this attempt starts fresh
+      // rather than asking for a dead id again.
       const previousSessionId = (await readRunRow(ctx, topic))?.sessionId ?? null;
       await ctx.sequencer!.patchState({ previousSessionId });
 
@@ -1007,13 +1217,22 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * it, and it only fires once the step has been dispatched.
    */
   const prepare = handler({
-    name: "conductor-prepare",
+    name: "harness-manager-prepare",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.object({ prompt: z.string() }),
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
-    execute: async (input, ctx) => {
-      const state = managerState(ctx.sequencer?.state);
+    // The host's capabilities ride alongside the manager's own, so a phase's
+    // prompt builder reads its collections off `ctx.resources` like any block.
+    uses: [managerCapability, ...(guardedUses ?? [])],
+    // **`ctx` is annotated rather than inferred, and the annotation is
+    // load-bearing.** The host's `uses` widens the context `handler()` infers —
+    // its capabilities' resources and namespaces appear in it — and a narrowed
+    // `BlockContext` is not assignable to a plain one, so every helper called
+    // below would need a cast. Narrowing here keeps the option's cost at the
+    // option; `createManagerCapability` carries the long form of the same
+    // argument.
+    execute: async (input, ctx: BlockContext) => {
+      const state = managerState(harnessCtxState(ctx));
 
       // **Two channels, two meanings, and they never carry each other.** The
       // board's `feedback` says why the LAST ATTEMPT FAILED; these say what an
@@ -1037,9 +1256,6 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         workspacePath: state.workspacePath!,
         branch: state.branch!,
         ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
-        ...(state.previousSessionId != null
-          ? { previousSessionId: state.previousSessionId }
-          : {}),
         ctx,
         answers,
         // The prompt is the only place this path is named, which is what makes
@@ -1057,11 +1273,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // rule, one of them carried through.
       //
       // Unlike `isDone`, the derived budget did NOT already reserve time here,
-      // so `conductorDrainBudgetMs` gains the term. A bound the budget does not
+      // so `harnessDrainBudgetMs` gains the term. A bound the budget does not
       // account for would make the advertised number wrong in the other
       // direction, which is the defect being fixed, inverted.
       const prompt = await withDeadline(
-        async () => phase.buildPrompt(run),
+        async () => runPhase.buildPrompt(run),
         NETWORK_CALL_TIMEOUT_MS,
         `the ${state.phase} phase's prompt builder`,
       );
@@ -1077,20 +1293,26 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // Safe in this order because `acquireCheckout` needs only the path, not a
       // provisioned tree: it creates the parent directory and locks beside the
       // checkout.
-      leases.set(
-        leaseKey(ctx),
-        await acquireCheckout(
-          state.workspacePath!,
-          `${input.taskId}#${input.attempts}`,
-          ownership,
-          Date.now,
-          // Cancellation stops the WAIT. A cancelled attempt that kept polling
-          // could still acquire and provision a tree whose result it can no
-          // longer record — and the wait is now long enough for that to cost a
-          // replacement most of an hour.
-          ctx.signal,
-        ),
+      const lease = await acquireCheckout(
+        state.workspacePath!,
+        `${input.taskId}#${input.attempts}`,
+        ownership,
+        Date.now,
+        // Cancellation stops the WAIT. A cancelled attempt that kept polling
+        // could still acquire and provision a tree whose result it can no
+        // longer record — and the wait is now long enough for that to cost a
+        // replacement most of an hour.
+        ctx.signal,
       );
+      // **Persisted immediately, before anything that can throw.** The window
+      // between taking the lock and recording how to release it is a window in
+      // which a crash orphans the lock until the stale bound expires — the same
+      // exposure the module-level map had when the process died, now bounded to
+      // one `patchState` instead of the whole provisioning call.
+      await ctx.sequencer!.patchState({
+        lockPath: lease.lockPath,
+        leaseToken: lease.token,
+      });
       await provisionCheckout(workspace, {
         principal: runPrincipal(ctx),
         epic: boardCollectionId,
@@ -1166,38 +1388,70 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * would be a second answer to a question the board already answers.
    */
   const decide = handler({
-    name: "conductor-decide",
-    // Read off the handle. The verdict contract names FOUR optional fields —
-    // session id, terminal text, usage and cost — so this reads four. An
-    // attempt that reports three would otherwise leave the fourth showing the
-    // previous attempt's value, silently and only on the attempts that could
-    // not report it.
+    name: "harness-manager-decide",
+    // **The NEUTRAL contract's fields, and no vendor field at all.** This used
+    // to read `resultSubtype` — the SDK's own enum — so the manager could only
+    // classify runs from one vendor, which is the coupling the harness contract
+    // exists to remove. `outcome` is the framework's three-way reading of the
+    // same fact, and every harness owes it.
+    //
+    // The contract names four optional fields beyond identity and status —
+    // terminal text, usage, cost, outcome — so this reads four. An attempt that
+    // reports three would otherwise leave the fourth showing the previous
+    // attempt's value, silently and only on the attempts that could not report
+    // it.
+    //
+    // `sessionId` is read for nothing: it is on the handle, and it is
+    // deliberately NOT what the row records. See the write below.
     inputSchema: z.object({
       status: z.string(),
       sessionId: z.string().nullable(),
-      resultSubtype: z.string().nullable(),
+      // Which harness produced this handle. Recorded beside the session; the
+      // CHECK that a resumed session belongs to the harness now dispatched
+      // belongs to the issue that introduces per-task harness choice.
+      source: z.string(),
+      outcome: z.string().nullable(),
       finalMessage: z.string().nullable(),
       usage: z
         .object({ inputTokens: z.number(), outputTokens: z.number() })
         .nullable(),
-      costUsd: z.number().nullable(),
+      cost: z
+        .object({ usd: z.number(), basis: z.string() })
+        .nullable(),
     }),
     outputSchema: managerOutputSchema,
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
-    execute: async (handle, ctx) => {
-      const state = managerState(ctx.sequencer?.state);
-      const identity = identityFrom(ctx.sequencer?.state, boardCollectionId);
+    // The done-condition runs in here, and it sees a phase's collections too.
+    uses: [managerCapability, ...(guardedUses ?? [])],
+    // **`ctx` is annotated rather than inferred, and the annotation is
+    // load-bearing.** The host's `uses` widens the context `handler()` infers —
+    // its capabilities' resources and namespaces appear in it — and a narrowed
+    // `BlockContext` is not assignable to a plain one, so every helper called
+    // below would need a cast. Narrowing here keeps the option's cost at the
+    // option; `createManagerCapability` carries the long form of the same
+    // argument.
+    execute: async (handle, ctx: BlockContext) => {
+      const state = managerState(harnessCtxState(ctx));
+      const identity = identityFrom(harnessCtxState(ctx), boardCollectionId);
       const succeeded = handle.status === "completed";
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.
+      //
+      // **`sessionId` is deliberately absent from this write.** The row's
+      // session id means one thing — the session the harness CONFIRMED it was
+      // in — and the harness's own `onSession` hook is its sole writer, firing
+      // the moment the vendor names it. Writing the handle's id here would put
+      // back the path that re-persisted a dead one: a resume the vendor
+      // refuses can return a handle still carrying the id that was SENT, and
+      // recording that makes the next attempt resume it again, forever.
+      // Leaving it to the opening clear is what makes the retry self-heal.
       await fenced(
         writeRunRow(ctx, identity, {
-        sessionId: handle.sessionId,
+        source: handle.source,
         finalMessage: handle.finalMessage,
         usage: handle.usage,
-        costUsd: handle.costUsd,
+        costUsd: handle.cost?.usd ?? null,
         childSessionId: ctx.session.identity.id,
         requestId: ctx.request.identity.id,
         }),
@@ -1262,7 +1516,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // ── Arm 2: succeeded AND done ──────────────────────────────────────────
       if (succeeded) {
         // **Bounded, because the whole-worker budget already says it is.**
-        // `conductorDrainBudgetMs` reserves `NETWORK_CALL_TIMEOUT_MS` for this
+        // `harnessDrainBudgetMs` reserves `NETWORK_CALL_TIMEOUT_MS` for this
         // step. `isDone` is a public seam, so another phase's check was
         // unbounded and could outlive the budget a host sized its shutdown
         // from, leaving the row `in_progress` with nothing to settle it. The
@@ -1270,7 +1524,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // advertised number true rather than adding one.
         const done = await withDeadline(
           async () =>
-            phase.isDone({
+            runPhase.isDone({
               epic: boardCollectionId,
               issue: state.issue!,
               phase: state.phase!,
@@ -1301,11 +1555,22 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // ── Arm 3: anything else, INCLUDING a failed verdict with a question ───
       await withdrawOwnQuestion();
       if (!succeeded) {
-        throw new ConductorAttemptFailed(
-          `the run stopped without finishing: ${handle.resultSubtype ?? "no result reported"}`,
+        // **Named in the framework's vocabulary, plus whatever the run said.**
+        // The outcome word is what a reader can act on across harnesses; the
+        // closing text is the only part carrying what actually went wrong, and
+        // this string becomes the next attempt's feedback.
+        //
+        // `null` here is the contract's "no terminal result arrived" — a
+        // distinct fact from `"failed"`, which is a terminal result that
+        // failed, including one whose vendor subtype this framework version
+        // does not recognise.
+        const because = handle.outcome ?? "no result reported";
+        throw new HarnessAttemptFailed(
+          `the run stopped without finishing: ${because}` +
+            (handle.finalMessage === null ? "" : ` — ${handle.finalMessage}`),
         );
       }
-      throw new ConductorAttemptFailed(
+      throw new HarnessAttemptFailed(
         `the run finished cleanly and the ${state.phase} phase is still not done`,
       );
     },
@@ -1320,11 +1585,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * it here and the row would complete for an attempt that failed.
    */
   const recordFailure = handler({
-    name: "conductor-record-failure",
+    name: "harness-manager-record-failure",
     inputSchema: z.unknown(),
     outputSchema: z.never(),
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
+    uses: [managerCapability],
     execute: async (error: unknown, ctx): Promise<never> => {
       // **Release the tree on the way out, whatever failed.**
       //
@@ -1342,10 +1607,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // is the same fix aimed at the instance, and the next step added between
       // acquire and dispatch would not be covered.
       //
-      // Idempotent: `releaseLease` deletes the entry, so the agent path's
-      // `onSettled` having already released makes this a no-op, and `release()`
-      // is identity-guarded so it can never remove a replacement's lock.
-      releaseLease(ctx);
+      // Idempotent: the release is token-guarded, so the harness path's
+      // `onSettled` having already released makes this a no-op, and it can
+      // never remove a replacement's lock.
+      releaseLeaseFromState(ctx);
 
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state;
@@ -1371,6 +1636,41 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     },
   });
 
+  /**
+   * **The slot, called once.**
+   *
+   * Every feed reads or writes MANAGER state — never the block's input
+   * (BP-031). A model holding the harness as a tool can choose neither where
+   * the run writes nor what conversation it continues, and that is structural
+   * rather than a convention this manager keeps: a resolver is handed the
+   * context alone, so the caller's prompt is not reachable from here at all.
+   *
+   * All three reach the manager's state through `harnessCtxState`, which is
+   * where the cast lives and says why.
+   */
+  const harnessBlock = harness({
+    // The run edits ITS checkout, and the record of what it touched is keyed
+    // there too.
+    cwd: (ctx) => managerState(harnessCtxState(ctx)).workspacePath!,
+    // Which session this attempt continues. `null` on attempt 1, and on every
+    // attempt after one whose harness named no session — a resume the vendor
+    // refused, above all — so a dead id is not re-sent forever.
+    resume: (ctx) => harnessCtxState(ctx)?.previousSessionId ?? null,
+    // **Fenced like every other write.** A refusal here means a replacement
+    // holds the row, and recording this attempt's session onto it would hand
+    // the replacement's next attempt a conversation that belongs to a run
+    // nobody is waiting on. Stopping is also the right answer for the run
+    // itself: it is mid-stream in paid model work on a row it no longer owns.
+    onSession: async (sessionId, ctx) => {
+      await fenced(
+        writeRunRow(ctx, identityFrom(harnessCtxState(ctx), boardCollectionId), {
+          sessionId,
+        }),
+        "the harness named its session",
+      );
+    },
+  });
+
   const worker = sequencer({
     name,
     inputSchema: taskWorkerInputSchema,
@@ -1380,21 +1680,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .tap(openRun)
     .step(prepare)
     .step(
-      claudeCodeAgent({
-        ...agent,
-        // The hand-off shim: `defineFlow` refuses a handed-off worker whose block
-        // authors a session-state schema.
-        detached: true,
-        recordWork: true,
-        // The framework's one addition, and the reason this lab needs it: the
-        // run edits ITS checkout, and the record of what it touched is keyed
-        // there too.
-        // The one context this manager's `sequencerStateSchema` cannot reach:
-        // `claudeCodeAgent` is not one of our blocks, so its callback is handed
-        // the framework's default sequencer state rather than the manager's.
-        cwd: (_input, ctx) =>
-          managerState(ctx.sequencer?.state as ManagerState | undefined).workspacePath!,
-      }),
+      harnessBlock,
       {
         // The cancellable-under-a-deadline obligation, met by a primitive core
         // already has: this composes into the block's own signal, which the SDK
@@ -1403,7 +1689,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // Fires on every exit from the dispatch — returned, threw, or
         // suspended. The tree is only written by the agent, so releasing the
         // moment it stops is tighter than holding through the verdict.
-        onSettled: (ctx) => releaseLease(ctx),
+        onSettled: (ctx) => releaseLeaseFromState(ctx),
       },
     )
     .step(decide)
@@ -1414,30 +1700,33 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 }
 
 /**
- * Live checkout leases, keyed by the request holding them.
+ * **The one convergence point: release the checkout from state alone.**
  *
- * Module-level because `onSettled` must be synchronous and gets only a context:
- * there is nowhere else to put a value that `prepare` created and the harness
- * step's exit has to release. Keyed by request so two managers in one process
- * — the whole point of a board — never release each other's.
- */
-const leases = new Map<string, CheckoutLease>();
-
-function leaseKey(ctx: BlockContext): string {
-  return ctx.request.identity.id;
-}
-
-/**
- * Release this request's lease and forget it.
+ * Called from both exits — the harness step's `onSettled` and the chain's
+ * rescue — and neither of them passes anything but a context. That is what
+ * forces the lease to be a value: `onSettled` is synchronous and gets only a
+ * context, so a live handle had nowhere to live except a process-wide map, and
+ * the map existed only because a completion hook could not reach the run that
+ * took the lock.
  *
- * Deleting matters as much as releasing: the entry is what keeps the lease
- * reachable, and a map that only ever grows would hold one object per run for
- * the process's life.
+ * It reads `(lockPath, token)` off the run's own state and nothing else. **A
+ * second release path that read anything else is the defect this shape
+ * removes, coming back** — so if a third exit ever needs to release, it calls
+ * this.
+ *
+ * Idempotent: `releaseCheckout` removes a lock only when the token still
+ * matches, so a second call after the first succeeded finds nothing of ours and
+ * does nothing.
+ *
+ * No module-level state remains, so two managers in one process cannot touch
+ * each other's lock by construction rather than by keying a table correctly.
  */
-function releaseLease(ctx: BlockContext): void {
-  const key = leaseKey(ctx);
-  leases.get(key)?.release();
-  leases.delete(key);
+function releaseLeaseFromState(ctx: {
+  sequencer?: { state?: unknown } | undefined;
+}): void {
+  const state = harnessCtxState(ctx);
+  if (state?.lockPath == null || state.leaseToken == null) return;
+  releaseCheckout({ lockPath: state.lockPath, token: state.leaseToken });
 }
 
 export { RUNS };

@@ -143,6 +143,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/orchestration`     | Task substrate, dispatchers, the task-board primitive, and the skills runtime |
 | `@flow-state-dev/workforce`         | Agent registry, personas, and materialization (Layer 2 on orchestration) |
 | `@flow-state-dev/patterns`          | Higher-level composition patterns (built on the task board)             |
+| `@flow-state-dev/harness-manager`   | Task-board worker that turns a row into a supervised coding run — own checkout, verdict before settlement, question channel, and the coding harness as a slot |
 | `@flow-state-dev/memory`            | Cross-turn memory system (working / episodic / semantic / digest tiers) |
 | `@flow-state-dev/ui`                | Component registry for flow UIs                                         |
 | `@thought-fabric/core`              | Cognitive architecture primitives (attention, identity)                 |
