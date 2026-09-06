@@ -583,18 +583,20 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <tbody>
         <tr><td>A</td><td>Durable memory / identity across sessions</td><td><span class="tag t-prop">opinion</span> <code>flowIsolation</code> resources on the worker flow. Persona is a prompt source, not a store. Prove that isolated org/user rows outlive a DM and a project room. Prove they beat persona-only (a string or a template is not memory).</td><td><code>Agent.resources</code>, <code>Agent.memory</code>, a durable identity bag on the type. No such fields on this pin.</td></tr>
         <tr><td>B</td><td>Roster bind: Agent &#8594; harness &#8594; session, no Team type</td><td><span class="tag t-prop">proposed</span> A keyed row (<code>rosterId</code> + seat) names the agent, an optional harness, and the session the room helpers open. Same bind, three fields, plus the roster key. Prove one row can seat a participant into a DM and a project room without a Team object in the middle. Prove a second roster is another key, not a new type.</td><td>A Team type whose job is to hold the bind. A singleton roster with no key. <code>Agent.sessions</code>. A harness field on Agent. An org graph on Agent.</td></tr>
-        <tr><td>C</td><td>Foundation <em>is</em> thinning <code>@flow-state-dev/workforce</code></td><td><span class="tag t-prop">proposed</span> The package already exports <code>defineAgent</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code>, <code>agent-ref</code>. Foundation adds factory + keyed roster(s) + room helpers around that registry. Prove the kick extends this Agent, not a second participant model with a friendlier name.</td><td>A parallel <code>Worker</code> / <code>Member</code> type. A second registry. Package docs that describe a different Agent than <code>packages/core/src/types/agent.ts</code>.</td></tr>
+        <tr><td>C</td><td>Foundation <em>is</em> thinning <code>@flow-state-dev/workforce</code></td><td><span class="tag t-prop">proposed</span> The package already exports <code>defineAgent</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code>. Skills staff a seat via the <code>agent-ref</code> SKILL.md field &#8212; orchestration parses it; it is not a workforce export. Foundation adds factory + keyed roster(s) + room helpers around that registry. Prove the kick extends this Agent, not a second participant model with a friendlier name.</td><td>A parallel <code>Worker</code> / <code>Member</code> type. A second registry. Package docs that describe a different Agent than <code>packages/core/src/types/agent.ts</code>.</td></tr>
       </tbody>
     </table>
   </div>
 
-  <pre class="code"><i>// EXISTS &#8212; Agent is this, and only this. packages/core/src/types/agent.ts</i>
+  <pre class="code"><i>// EXISTS &#8212; public fields on packages/core/src/types/agent.ts</i>
 <i>// workforce supplies the registry + materialize. It does not grow these fields.</i>
 type Agent = {
   name: string;
   description: string;
   persona: PersonaSource;          <i>// prompt source. not a memory store</i>
   model?: string;
+  itemVisibility?: ItemVisibility;
+  outputSchema?: ZodTypeAny;       <i>// standalone only. workers emit text</i>
   allowedTools?: string[];
   usesCapabilities?: Array&lt;string | DefinedCapability&gt;;
   usesSkills?: string[];           <i>// RESERVED</i>
@@ -1179,7 +1181,8 @@ const room = {
     { roster: <em>"marketing"</em>, seat: <em>"bob"</em> },
   ],
 })
-<i>// &#8594; create rows with deps, then claim({ eligibility: (t) => t.id === postId })</i>
+<i>// &#8594; create rows with deps, then claim(workerId, { eligibility: (t) => t.id === postId })</i>
+<i>// workerId is attribution (a seat id), same as claim(subscriberId, …) above. Not an overload.</i>
 <i>// who-may-reply policy is still proposed L2. Do not invent a lock.</i>
 
 <b>openTeamInbox</b>({ roster: <em>"engineering"</em>, userId })
@@ -1383,7 +1386,7 @@ const board = <b>taskBoard</b>({
 <i>// Not a Team type. Not createWorkforceCapability (that is a stub).</i>
 <i>// The pattern already takes a key. Foundation uses that. Do not collapse to "roster".</i>
 const roster = <b>defineResourceCollection</b>({
-  pattern: <em>"rosters/[rosterId]/*"</em>,
+  pattern: <em>"rosters/[rosterId]/[seat]"</em>,
   scope: <em>"org"</em>,
   stateSchema: z.object({
     flowKind: z.string(),
@@ -1391,7 +1394,8 @@ const roster = <b>defineResourceCollection</b>({
   }),
 });
 <i>// Shared boards are the same move: a collection + N dispatcher() wakes.</i>
-<i>// Honest: defineResourceCollection exists. The [rosterId] key is proposed convention.</i></pre>
+<i>// Honest: defineResourceCollection exists. The [rosterId]/[seat] key is proposed convention.</i>
+<i>// Do not write rosters/[rosterId]/* — a parameterized matcher treats * as a literal segment.</i></pre>
 
   <pre class="code"><i>// PROPOSED &#8212; a field on the keyed roster row. Not a file. Not a Layer 1 Harness type.</i>
 <i>// The run rides Conductor&#8217;s harness-manager track when that path exists.</i>
@@ -1710,7 +1714,7 @@ const replyToSender = <b>dispatcher</b>({
     <table>
       <thead><tr><th>The piece</th><th>Status</th><th>What the source actually is</th></tr></thead>
       <tbody>
-        <tr><td><code>Agent</code> in core</td><td><span class="tag t-real">exists</span></td><td>Named participant: persona, model, tools, optional <code>outputSchema</code> and <code>usesCapabilities</code>. No <code>resources</code>, <code>members</code>, <code>channels</code>, <code>inbox</code>, or session field. <code>usesSkills</code> is RESERVED. <code>contextMode</code> documents that only <code>"inline"</code> is honored. Not a room. Not a team. <code>packages/core/src/types/agent.ts</code></td></tr>
+        <tr><td><code>Agent</code> in core</td><td><span class="tag t-real">exists</span></td><td>Named participant: persona, model, tools, optional <code>itemVisibility</code>, <code>outputSchema</code>, and <code>usesCapabilities</code>. No <code>resources</code>, <code>members</code>, <code>channels</code>, <code>inbox</code>, or session field. <code>usesSkills</code> is RESERVED. <code>contextMode</code> documents that only <code>"inline"</code> is honored. Not a room. Not a team. <code>packages/core/src/types/agent.ts</code></td></tr>
         <tr><td><code>defineAgent</code> / registry / <code>materializeAgent</code></td><td><span class="tag t-real">exists</span></td><td>Validate a config, hold it in a <code>Map</code>, turn it into a worker-shaped or standalone generator. Useful. Not a flow factory.</td></tr>
         <tr><td><code>agentBlock</code></td><td><span class="tag t-real">exists</span></td><td>Shorthand for the standalone shape. Used nowhere outside the workforce package.</td></tr>
         <tr><td><code>definePersona</code></td><td><span class="tag t-real">exists</span></td><td>Sugar over <code>defineResource</code> / <code>defineResourceCollection</code>. Collection default scope is <code>org</code>. Used nowhere outside the package.</td></tr>
