@@ -20,13 +20,21 @@
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { decideAnswer, type AnswerBoard, type AnswerOutput } from "../src/answer";
-import { askQuestion, answerQuestion, questionFingerprint, questionTopic, readQuestion } from "../src/inbox";
-import { conductorTaskId } from "../src/workspace";
-import { contextWithInbox, fakeInbox } from "./inbox-fake";
+import {
+  answerQuestion,
+  askQuestion,
+  questionFingerprint,
+  questionTopic,
+  readQuestion,
+} from "@flow-state-dev/harness-manager";
+import {
+  harnessTaskId,
+} from "@flow-state-dev/harness-manager/checkout";
+import { contextWithInbox, fakeInbox } from "../../../packages/harness-manager/test/inbox-fake";
 
 const ISSUE = "FIX-1166";
 const PHASE = "implement";
-const TASK_ID = conductorTaskId(ISSUE, PHASE);
+const TASK_ID = harnessTaskId(ISSUE, PHASE);
 
 /** A frozen "now", so a lease is either past it or not, with no wall clock. */
 const NOW = 1_700_000_000_000;

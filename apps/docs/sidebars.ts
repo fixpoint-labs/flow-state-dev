@@ -201,6 +201,7 @@ const sidebars: SidebarsConfig = {
         "orchestration/task-board",
         "orchestration/configuration",
         "orchestration/agents",
+        "orchestration/harness-manager",
         {
           type: "category",
           label: "Skills",
@@ -273,6 +274,7 @@ const sidebars: SidebarsConfig = {
             "tools/mcp",
             "tools/claude-code-cli",
             "tools/claude-code-sdk",
+            "tools/codex",
             "tools/workspace",
           ],
         },

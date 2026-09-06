@@ -605,7 +605,7 @@ export default defineFlow({
 | `type` | `"internal"` sends this request's own authority; `"task"` sends a claim on a durable row and is meaningful only as a task board seat. |
 | `target` | The entry name, resolved as `flow.internal.actions[target]` or `flow.task.actions[target]`. Checked when the flow is defined. |
 | `inputSchema` | `internal` only. What the block accepts. Defaults to `z.unknown()`. |
-| `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one. `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row), `"per-worker"` (one child per seat), or `{ key: (task, ctx) => string }` read from the row's worker input. |
+| `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one; `{ from: true }` delivers into the seam-stamped sender (refuses `no-sender` when this request was not dispatched). `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row), `"per-worker"` (one child per seat), or `{ key: (task, ctx) => string }` read from the row's worker input. |
 | `payload` | `internal` only. `(input, ctx) => unknown`, the entry's input. Defaults to the input itself. Validated by the entry's own schema on arrival. |
 | `transient` | Hide the block's trace from clients. Default `false`. |
 

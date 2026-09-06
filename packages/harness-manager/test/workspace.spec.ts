@@ -17,15 +17,16 @@ import {
   acquireCheckout,
   branchFor,
   checkoutPathFor,
-  conductorTaskId,
+  harnessTaskId,
   provisionCheckout,
   type RunLocation,
   type RunPrincipal,
   type WorkspaceConfig,
   encodeSegment,
   isStrictlyInside,
+  releaseCheckout,
 } from "../src/workspace";
-import { seedRepo } from "./harness";
+import { seedRepo } from "./fixtures";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE } from "../src/ask";
 
 const dirs: string[] = [];
@@ -118,7 +119,7 @@ describe("provisioning", () => {
       // literal here would only pin how the digest happens to be computed
       // today. What this asserts is the SHAPE — untenanted tag, principal,
       // board identity, framed leaf.
-      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${conductorTaskId("FIX-1219", "implement")}`,
+      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${harnessTaskId("FIX-1219", "implement")}`,
     );
   });
 
@@ -262,7 +263,7 @@ describe("a cancelled attempt stops waiting for the tree", () => {
     // The holder still owns the tree: a cancelled waiter must not have taken or
     // cleared anything on its way out.
     expect(existsSync(`${checkout}.lock`)).toBe(true);
-    held.release();
+    releaseCheckout(held);
   });
 
   it("does not wait at all when it is already cancelled", async () => {
@@ -319,7 +320,7 @@ describe("a cancelled attempt stops waiting for the tree", () => {
     // uncapped sleep would have taken.
     expect(elapsed).toBeLessThan(1_000);
 
-    held.release();
+    releaseCheckout(held);
   });
 
   it("observes the signal without waiting out the poll interval", async () => {
@@ -357,7 +358,7 @@ describe("a cancelled attempt stops waiting for the tree", () => {
     expect(Date.now() - startedAt).toBeLessThan(5_000);
 
     expect(existsSync(`${checkout}.lock`)).toBe(true);
-    held.release();
+    releaseCheckout(held);
   });
 });
 
@@ -756,8 +757,8 @@ describe("obligation B — one live attempt per tree", () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(secondProceeded).toBe(false);
 
-    held.release();
-    (await second).release();
+    releaseCheckout(held);
+    releaseCheckout(await second);
     expect(secondProceeded).toBe(true);
   });
 
@@ -808,7 +809,7 @@ describe("obligation B — one live attempt per tree", () => {
       pollMs: 10,
       staleAfterMs: 0,
     });
-    lease.release();
+    releaseCheckout(lease);
   });
 
   it("a late release from a displaced holder does not free the live attempt's tree", async () => {
@@ -822,7 +823,7 @@ describe("obligation B — one live attempt per tree", () => {
       staleAfterMs: 0,
     });
     // …and attempt 1 finally notices it is done.
-    stale.release();
+    releaseCheckout(stale);
 
     // Attempt 2 must still hold the tree. Releasing somebody else's lock is how
     // two coding agents end up in one checkout after the exclusion "worked".
@@ -834,11 +835,11 @@ describe("obligation B — one live attempt per tree", () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(third).toBe(false);
 
-    live.release();
+    releaseCheckout(live);
     // Awaited rather than abandoned: a poll loop left running past the test
     // outlives the temp directory and surfaces as an unhandled ENOENT that has
     // nothing to do with what is under test.
-    (await waiting).release();
+    releaseCheckout(await waiting);
     expect(third).toBe(true);
   });
 });
@@ -863,7 +864,7 @@ describe("obligation B — releasing is as guarded as stealing", () => {
     });
 
     // …and only now does attempt 1 notice it is done.
-    overrun.release();
+    releaseCheckout(overrun);
 
     // The replacement must still hold the tree. Asserted by a third attempt
     // NOT getting it — the observable form of "two agents in one checkout".
@@ -875,8 +876,8 @@ describe("obligation B — releasing is as guarded as stealing", () => {
     await new Promise((resolve) => setTimeout(resolve, 80));
     expect(third).toBe(false);
 
-    replacement.release();
-    (await waiting).release();
+    releaseCheckout(replacement);
+    releaseCheckout(await waiting);
     expect(third).toBe(true);
   });
 
@@ -887,13 +888,13 @@ describe("obligation B — releasing is as guarded as stealing", () => {
     const path = checkoutPathFor(config, at("FIX-1219", "implement"));
 
     const first = await acquireCheckout(path, "attempt#1", bounds);
-    first.release();
+    releaseCheckout(first);
 
     // Free immediately, without waiting out the bound.
     const started = Date.now();
     const second = await acquireCheckout(path, "attempt#2", bounds);
     expect(Date.now() - started).toBeLessThan(500);
-    second.release();
+    releaseCheckout(second);
   });
 });
 
@@ -984,7 +985,7 @@ describe("one job's state is isolated per principal", () => {
     // And the validated half is refused rather than silently truncated — a
     // truncation would map two distinct epics onto one directory, which is the
     // injectivity rule broken to fix a length.
-    expect(() => conductorTaskId("FIX-1", "a".repeat(65))).toThrow(
+    expect(() => harnessTaskId("FIX-1", "a".repeat(65))).toThrow(
       /not a usable identity segment/,
     );
   });
@@ -1467,7 +1468,7 @@ describe("the identity rule — case cannot split one tree in two", () => {
     // it makes the identity agree with the storage that has to hold it. And no
     // single canonical case could be required instead: real issue keys are
     // upper (`FIX-1219`) and phases are lower (`implement`).
-    expect(conductorTaskId("FIX-1", "implement")).toBe(conductorTaskId("fix-1", "IMPLEMENT"));
+    expect(harnessTaskId("FIX-1", "implement")).toBe(harnessTaskId("fix-1", "IMPLEMENT"));
     expect(checkoutPathFor(config, at("FIX-1", "implement"))).toBe(
       checkoutPathFor(config, at("fix-1", "IMPLEMENT")),
     );
@@ -1480,7 +1481,7 @@ describe("the identity rule — case cannot split one tree in two", () => {
     // in, so nothing we derive may depend on case.
     const location = at("FIX-1219", "Implement", { epic: "Conductor-Tasks-Alpha" });
     for (const derived of [
-      conductorTaskId("FIX-1219", "Implement"),
+      harnessTaskId("FIX-1219", "Implement"),
       checkoutPathFor(config, location),
       branchFor(location),
     ]) {
@@ -1491,8 +1492,8 @@ describe("the identity rule — case cannot split one tree in two", () => {
   it("keeps distinct ids distinct once folded", () => {
     // Folding must not become the collision it prevents: values that differ by
     // more than case still have to separate.
-    expect(conductorTaskId("FIX-1", "implement")).not.toBe(
-      conductorTaskId("FIX-2", "implement"),
+    expect(harnessTaskId("FIX-1", "implement")).not.toBe(
+      harnessTaskId("FIX-2", "implement"),
     );
     expect(checkoutPathFor(config, at("FIX-1", "implement"))).not.toBe(
       checkoutPathFor(config, at("FIX-11", "implement")),
@@ -1522,7 +1523,7 @@ describe("the identity rule — injective, and safe for every consumer", () => {
     ];
     const seen = new Map<string, string>();
     for (const [issue, phase] of tuples) {
-      const id = conductorTaskId(issue, phase);
+      const id = harnessTaskId(issue, phase);
       const previous = seen.get(id);
       expect(previous, `"${id}" is also (${previous})`).toBeUndefined();
       seen.set(id, `${issue} + ${phase}`);
@@ -1538,8 +1539,8 @@ describe("the identity rule — injective, and safe for every consumer", () => {
     // The other half: the join is only injective because no component can
     // contain the delimiter. That has to be enforced, not hoped for.
     for (const bad of ["a--b", "--a", "a--"]) {
-      expect(() => conductorTaskId(bad, "implement")).toThrow(/not a usable identity segment/);
-      expect(() => conductorTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
+      expect(() => harnessTaskId(bad, "implement")).toThrow(/not a usable identity segment/);
+      expect(() => harnessTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
     }
   });
 
@@ -1561,7 +1562,7 @@ describe("the identity rule — injective, and safe for every consumer", () => {
     for (const phase of corpus) {
       let accepted = true;
       try {
-        conductorTaskId("FIX-1219", phase);
+        harnessTaskId("FIX-1219", phase);
       } catch {
         accepted = false;
       }
@@ -1599,7 +1600,7 @@ describe("the identity rule — injective, and safe for every consumer", () => {
     // failure — the row is claimed, the attempt is charged, and the retry
     // budget is spent on a configuration error no retry can fix.
     for (const bad of ["thing.lock", "phase.", "a.b"]) {
-      expect(() => conductorTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
+      expect(() => harnessTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
     }
   });
 });
@@ -1676,6 +1677,6 @@ describe("the poll sleep observes a signal that already aborted", () => {
     expect(outcome).toBeInstanceOf(Error);
     // Well under one poll interval. Without the check this waits 30s.
     expect(Date.now() - started).toBeLessThan(5_000);
-    held.release();
+    releaseCheckout(held);
   }, 20_000);
 });

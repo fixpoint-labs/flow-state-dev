@@ -50,11 +50,14 @@ What crosses, exactly:
 - **Identity, server-derived.** The envelope's `source` is the dispatch type
   (`task` or `internal`) and its principal is the sending request's. A block
   supplies the *target* of a dispatch and never the *authority* for it.
-- **Provenance, as labels.** The child session record carries `topic` (the key
-  it was derived from) and `coordinate` (`<type>:<target>`); the child request
-  record carries `metadata.dispatch = { type, target, from, key?, taskId? }`.
-  All of it is display and correlation. Nothing routes, authorizes or settles
-  on it.
+- **Provenance.** The child session record carries `topic` (the key it was
+  derived from) and `coordinate` (`<type>:<target>`) as display labels. The
+  child request record carries `metadata.dispatch = { type, target, from,
+  key?, recipientLineageId?, taskId? }`. Read that bag only through
+  `readDispatchStamp`, which is gated on `source: "internal"` / `"task"`.
+  `{ from: true }` routes on the stamped sender (`from.sessionId`, and
+  `from.lineageId` when present). Everything else on the stamp is correlation.
+  `settleParentTask` does not read it.
 - **The sending request's runtime config**, in-process only. See
   [What cannot cross the queue](#what-cannot-cross-the-queue).
 

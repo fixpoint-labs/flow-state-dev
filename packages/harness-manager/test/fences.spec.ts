@@ -76,21 +76,23 @@ describe("every fence's refusal is read", () => {
  *
  * This exists because the rule kept reopening at new doors. It was applied in
  * `exec.ts`, then missed at the goal script's three `execFileSync` calls, then
- * missed again at the two startup git queries in `config-env.ts` — each found
+ * missed again at the two startup git queries in `guards.ts` — each found
  * by a review round rather than by the previous fix. A check over the set is
  * what makes the next door fail here instead.
  */
 const SPAWNING_FILES = [
-  join(__dirname, "..", "src", "config-env.ts"),
+  join(__dirname, "..", "src", "guards.ts"),
   join(__dirname, "..", "src", "exec.ts"),
+  // This package's own goal check. A goal script spawns git and it is not
+  // exempt: the sweep follows the files, not the directory.
   join(
     __dirname,
     "..",
     "..",
     "..",
     "goals",
-    "conductor",
-    "implement-phase-opens-a-pr",
+    "harness-manager",
+    "answered-run-continues-its-session",
     "run.mts",
   ),
 ];
@@ -98,10 +100,19 @@ const SPAWNING_FILES = [
 describe("every child process is bounded", () => {
   it("finds the spawning call sites at all", () => {
     // Or the assertion below examines nothing and passes vacuously.
+    //
+    // **The floor moved because the SUBJECTS split, and both halves are swept.**
+    // This list used to name a goal script belonging to `labs/conductor`. That
+    // script did not move with this package, so leaving it here was wrong and
+    // dropping it silently was worse — for the length of one PR nothing
+    // asserted it bounded its spawns at all, which is precisely the failure
+    // this file's header records happening three times. It is swept by
+    // `labs/conductor/test/spawn-bounds.spec.ts` now, and this package sweeps
+    // its own sources and its own goal.
     const total = SPAWNING_FILES.map((f) => readFileSync(f, "utf8"))
       .join("\n")
       .match(/execFileSync\s*\(|execFileAsync\s*\(/g);
-    expect(total?.length ?? 0).toBeGreaterThanOrEqual(5);
+    expect(total?.length ?? 0).toBeGreaterThanOrEqual(4);
   });
 
   it("gives every spawn a wall clock", () => {

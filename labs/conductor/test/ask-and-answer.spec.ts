@@ -20,7 +20,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { conductorFlow } from "../src/flow";
 import type { BlockContext } from "@flow-state-dev/core";
-import { askQuestion, questionFingerprint, questionTopic } from "../src/inbox";
+import {
+  askQuestion,
+  questionFingerprint,
+  questionTopic,
+} from "@flow-state-dev/harness-manager";
 import type { AnswerOutput } from "../src/answer";
 import {
   createConductorHarness,
@@ -521,13 +525,13 @@ describe("the answer — one action, and the run comes back holding it", () => {
     });
     const failed = await seedAndSettle(live);
     expect(failed.status).toBe("pending");
-    expect(failed.feedback).toContain("error_max_turns");
+    expect(failed.feedback).toContain("stopped-at-limit");
 
     await live.call("wake", {});
     const parked = await settle(live);
     expect(parked.status).toBe("parked");
     // Attempt 2 WAS told why attempt 1 stopped — that channel still works.
-    expect(seen.prompts[1]).toContain("error_max_turns");
+    expect(seen.prompts[1]).toContain("stopped-at-limit");
 
     await live.call("answer", {
       question: topicFor("which path?", 2),
@@ -541,7 +545,7 @@ describe("the answer — one action, and the run comes back holding it", () => {
     // … and NOT as this attempt's failure reason. `unpark` is called
     // with no feedback, which also clears the previous failure's.
     expect(resumed).not.toContain("The last attempt stopped for this reason");
-    expect(resumed).not.toContain("error_max_turns");
+    expect(resumed).not.toContain("stopped-at-limit");
   });
 });
 

@@ -82,15 +82,6 @@ export interface SdkAgentHandle extends HarnessRunHandle {
   resultSubtype: SdkResultSubtype | null;
   /** Distinct SDK tool names observed during the run, in first-seen order. */
   toolsObserved: string[];
-  /**
-   * The run's cost in USD — always equal to `cost?.usd ?? null`.
-   *
-   * @deprecated A dual carried beside the neutral `cost` so the conductor's
-   * existing read keeps type-checking and running with no edit. It comes off
-   * when the manager reads `cost` and `outcome` instead (LAB-154). Read `cost`
-   * in new code.
-   */
-  costUsd: number | null;
 }
 
 /**
@@ -99,6 +90,12 @@ export interface SdkAgentHandle extends HarnessRunHandle {
  * A handle persisted under the old `"sdk"` spelling reads through to the new
  * value, and one persisted before `outcome`/`cost` existed picks them up as
  * `null` from the neutral schema's defaults (BP-030).
+ *
+ * **`costUsd` is gone and is not rejected.** It was a dual carried beside the
+ * neutral `cost` for one release, while the run manager still read it; the
+ * manager reads `cost` now, so nothing reads the dual. Handles persisted with
+ * it still parse — zod strips the unknown key rather than failing — which is
+ * what BP-030 asks for on a field that was only ever a copy of one still here.
  */
 export const sdkAgentHandleSchema = harnessRunHandleSchema.extend({
   source: z.preprocess(
@@ -116,7 +113,6 @@ export const sdkAgentHandleSchema = harnessRunHandleSchema.extend({
     ])
     .nullable(),
   toolsObserved: z.array(z.string()),
-  costUsd: z.number().nullable(),
 });
 
 /**

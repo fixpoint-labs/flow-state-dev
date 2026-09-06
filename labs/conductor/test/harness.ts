@@ -21,9 +21,19 @@ import type {
 } from "@flow-state-dev/claude-code/sdk";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../src/flow";
 import { implementPhase } from "../src/implement";
-import { ASK_MARKER_IGNORE_RULE } from "../src/ask";
-import { CHECKOUT_CLEANUP_TIMEOUT_MS } from "../src/exec";
-import type { PhaseSpec, PromptRunContext } from "../src/manager";
+import {
+  ASK_MARKER_IGNORE_RULE,
+  type PhaseSpec,
+  type PromptRunContext,
+} from "@flow-state-dev/harness-manager";
+import {
+  CHECKOUT_CLEANUP_TIMEOUT_MS,
+} from "@flow-state-dev/harness-manager/checkout";
+// Re-exported: this lab's own specs import it from here, and the fixture it
+// stands for — a source repository with tracked content, a `.gitignore` and
+// an `origin` — is the package's, shared rather than copied.
+import { seedRepo } from "../../../packages/harness-manager/test/fixtures";
+export { seedRepo };
 
 export const USER_ID = "conductor-test-user";
 
@@ -43,15 +53,30 @@ export function sdkResult(
   } as SdkMessageLike;
 }
 
+/**
+ * What the scripted agents record about each call the manager made.
+ *
+ * `resumes` is optional so the tests that predate resume keep their two-field
+ * literals — the field is only interesting to the tests that assert on it, and
+ * widening thirty call sites to say nothing would be churn.
+ */
+export interface SeenCalls {
+  prompts: string[];
+  cwds: (string | undefined)[];
+  /** The `resume` the manager's resolver produced, per call. */
+  resumes?: (string | undefined)[];
+}
+
 /** A `query` that yields a fixed script, recording the prompt and options it saw. */
 export function scriptedAgent(
   script: SdkMessageLike[] | (() => SdkMessageLike[]),
-  seen: { prompts: string[]; cwds: (string | undefined)[] },
+  seen: SeenCalls,
 ): ResolveClaudeAgent {
   return () => ({
     query: async function* (args) {
       seen.prompts.push(String(args.prompt));
       seen.cwds.push(args.options?.cwd);
+      seen.resumes?.push(args.options?.resume);
       for (const message of typeof script === "function" ? script() : script) {
         yield message;
       }
@@ -75,7 +100,7 @@ export function scriptedAgent(
 export function askingAgent(
   question: string | (() => string | undefined),
   subtype: string,
-  seen: { prompts: string[]; cwds: (string | undefined)[] },
+  seen: SeenCalls,
 ): ResolveClaudeAgent {
   return () => ({
     query: async function* (args) {
@@ -83,6 +108,7 @@ export function askingAgent(
       seen.prompts.push(prompt);
       const cwd = args.options?.cwd;
       seen.cwds.push(cwd);
+      seen.resumes?.push(args.options?.resume);
       const text = typeof question === "function" ? question() : question;
       if (cwd !== undefined && text !== undefined) {
         // The path the PROMPT named, parsed back out of it — so a prompt that
@@ -103,12 +129,13 @@ export function askingAgent(
 /** A `query` that throws mid-stream, before any handle is constructed. */
 export function throwingAgent(
   message: string,
-  seen: { prompts: string[]; cwds: (string | undefined)[] },
+  seen: SeenCalls,
 ): ResolveClaudeAgent {
   return () => ({
     query: async function* (args) {
       seen.prompts.push(String(args.prompt));
       seen.cwds.push(args.options?.cwd);
+      seen.resumes?.push(args.options?.resume);
       throw new Error(message);
     },
   });
@@ -122,14 +149,12 @@ export function throwingAgent(
  * is the point — a stub that merely slept would time the test out instead of
  * proving the signal reached the query.
  */
-export function hangingAgent(seen: {
-  prompts: string[];
-  cwds: (string | undefined)[];
-}): ResolveClaudeAgent {
+export function hangingAgent(seen: SeenCalls): ResolveClaudeAgent {
   return () => ({
     query: async function* (args) {
       seen.prompts.push(String(args.prompt));
       seen.cwds.push(args.options?.cwd);
+      seen.resumes?.push(args.options?.resume);
       const signal = args.options?.abortController?.signal;
       await new Promise<never>((_resolve, reject) => {
         if (signal?.aborted === true) {
@@ -229,39 +254,6 @@ export interface HarnessOptions {
   announce?: NonNullable<Parameters<typeof conductorFlow>[0]["announce"]>;
 }
 
-/** A real git repository with one commit, so `worktree add` has something to cut. */
-export function seedRepo(dir: string): void {
-  const git = (...args: string[]) =>
-    execFileSync("git", args, { cwd: dir, stdio: "pipe", encoding: "utf8" });
-  git("init", "--initial-branch=main", ".");
-  git("config", "user.email", "conductor@example.test");
-  git("config", "user.name", "Conductor Test");
-  // **A stand-in repository has tracked content, because a real one does.**
-  // These fixtures committed nothing, so every worktree cut from them had zero
-  // tracked files — which makes a half-populated checkout indistinguishable from
-  // a complete one (`git ls-files --deleted` is empty either way), and that
-  // distinction is what the provisioning marker is now corroborated against.
-  // Another fixture that had drifted from the thing it stands for.
-  writeFileSync(join(dir, "tracked.txt"), "content the checkout should carry\n");
-  // **A stand-in source repository ignores the ask marker, because a real one
-  // has to.** The marker lands in the product checkout, so the rule that keeps
-  // it out of a commit belongs to THAT repository — and provisioning now
-  // refuses a checkout whose repository does not carry it, before the agent
-  // runs. Third fixture in this file that had drifted from the thing it stands
-  // for, and the same tell each time: the specs passed because nothing asked.
-  writeFileSync(join(dir, ".gitignore"), `${ASK_MARKER_IGNORE_RULE}\n`);
-  git("add", "tracked.txt", ".gitignore");
-  git("commit", "-m", "root");
-  // **A stand-in source repository has an `origin`, because a real one does.**
-  // The implement phase's completion probe reads it, and `conductorFlow` now
-  // refuses a source repo without one — a guard that exists because the failure
-  // otherwise lands after a paid agent run, once per retry. These fixtures had
-  // no remote at all, so every flow built here was one the probe could not have
-  // run against; the specs passed only because the probe is stubbed. Nothing
-  // resolves this URL: the phase's `gh` call is replaced in every test that
-  // reaches it.
-  git("remote", "add", "origin", "https://github.com/fixpoint-labs/conductor-fixture.git");
-}
 
 export function createConductorHarness(options: HarnessOptions): ConductorHarness {
   const dir = mkdtempSync(join(tmpdir(), "conductor-"));

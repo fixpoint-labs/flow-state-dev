@@ -23,7 +23,8 @@ issue identifiers; anything under `apps/docs/` is published and may not.
   questions. Its counts are measured against a commit rather than maintained,
   so read them as of the branch that last touched it.
 - `workforce.html` — Layer 2 convention: one worker contract, one flow per
-  worker, channels and projects as sessions, talk on the dispatch spine.
+  worker, DMs as static sessions, groups as a board plus one session
+  per subscriber, projects as dynamic sessions, talk on the dispatch spine.
   This cycle ships the page, not a Workforce runtime. Conductor does not wait.
 - `roadmap.html` — the public product horizon: three jobs (framework,
   Workforce as a component, Conductor as the user product), the clocks, and

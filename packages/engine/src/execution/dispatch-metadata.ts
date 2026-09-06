@@ -27,15 +27,25 @@ import { INTERNAL_SOURCE, TASK_SOURCE } from "./transport-sources";
 export type DispatchStamp = {
   readonly type: "internal" | "task";
   readonly target: string;
-  readonly from: { readonly block: string; readonly sessionId: string };
+  readonly from: {
+    readonly block: string;
+    readonly sessionId: string;
+    /**
+     * The sender incarnation at stamp time. Optional so a record written
+     * before the field shipped still parses (BP-030). `{ from: true }`
+     * compares it against the live session when present, so a deleted and
+     * recreated sender is not treated as who dispatched this request.
+     */
+    readonly lineageId?: string;
+  };
   readonly key?: string;
   /**
-   * The recipient incarnation the seam approved, present only for an `id`
-   * delivery. Acceptance and execution are not the same moment — a delivery
-   * can be accepted, wait behind a held concurrency key, and run later — and a
-   * recipient deleted and recreated under the same id in that window gets a new
-   * lineage that nothing downstream re-checks. `runAction`'s incarnation guard
-   * compares against this.
+   * The recipient incarnation the seam approved, present only for an
+   * existing-session delivery (`id` or `from`). Acceptance and execution are
+   * not the same moment — a delivery can be accepted, wait behind a held
+   * concurrency key, and run later — and a recipient deleted and recreated
+   * under the same id in that window gets a new lineage that nothing
+   * downstream re-checks. `runAction`'s incarnation guard compares against this.
    */
   readonly recipientLineageId?: string;
 };
@@ -66,6 +76,9 @@ export function readDispatchStamp(
     typeof candidate.from.block !== "string" ||
     typeof candidate.from.sessionId !== "string"
   ) {
+    return undefined;
+  }
+  if (candidate.from.lineageId !== undefined && typeof candidate.from.lineageId !== "string") {
     return undefined;
   }
   if (candidate.recipientLineageId !== undefined && typeof candidate.recipientLineageId !== "string") {

@@ -160,15 +160,23 @@ refuses a dispatcher whose target the flow does not declare. A `task`
 dispatcher is a seat on a task board; the board binds its id and claim gate
 onto it, and `defineFlow` puts the addressed entry behind that gate.
 
-**Two session targets, two guards.** `{ key }` derives a child of the running
-session (`deriveDispatchChildSessionId`, with the key framed under its own
-`dispatch` namespace) and adopts it on the same key; the adoption check includes
-the parent's lineage. `{ id }` delivers into an existing session of the same
-flow kind and principal — an unknown id, another principal's, or another
+**Three session targets, two delivery guards.** `{ key }` derives a child of the
+running session (`deriveDispatchChildSessionId`, with the key framed under its
+own `dispatch` namespace) and adopts it on the same key; the adoption check
+includes the parent's lineage. `{ id }` delivers into an existing session of the
+same flow kind and principal — an unknown id, another principal's, or another
 tenant's is `session-not-found`; another flow's or a mismatched org is
 `session-not-addressable` — and is refused under an external dispatcher
 (`usesExternalDispatcher`, refusal `external-dispatcher`) because the run
 would start on another process against a session this one cannot fence.
+`{ from: true }` is that same existing-session delivery, addressed at the
+seam-stamped sender (`readDispatchStamp` → `from.sessionId`). The author names
+no session. A request the runtime did not dispatch — including a public action
+whose HTTP body carries a perfectly shaped `metadata.dispatch.from` — refuses
+`no-sender`. Nested `{ from: true }` replies to the immediate stamped sender,
+not an oldest ancestor. `settleParentTask` stays the board-row close and is
+not this path.
+
 Acceptance happens at enqueue time; when the run starts, `runAction` re-reads
 the session and **drops** the delivery if the session was deleted and
 recreated in between (the incarnation guard), deleting the request row rather
