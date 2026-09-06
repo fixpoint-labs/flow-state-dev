@@ -1,5 +1,5 @@
 ---
-sidebar_position: 5
+sidebar_position: 6
 sidebar_label: Claude Code (remote dispatch)
 ---
 
@@ -118,6 +118,12 @@ const tasks = ctx.session.state.claudeRemoteTasks ?? [];
 No headless progress polling or streaming today — that waits on the CLI exposing
 a machine-readable cloud-task status surface. The persisted handle and its
 `status` field are shaped to absorb that follow-up without a breaking change.
+
+Dispatching and returning also puts this block outside the harness contract. Its
+handle is a dispatch record, not the run handle the harnesses share, so there is
+no outcome, usage or cost on it and the harness manager cannot drive it.
+[Not every dispatch is a harness](./coding-agents.md#not-every-dispatch-is-a-harness)
+sets the two side by side.
 
 For an agent that runs in-process and streams its work rather than dispatching to
 the cloud, see the [Claude Code SDK agent](./claude-code-sdk.md).

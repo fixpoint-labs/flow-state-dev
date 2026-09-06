@@ -6,6 +6,13 @@ entry dispatches a cloud coding task by shelling out to your local `claude` CLI
 in-process and streams its work through the flow's item stream, backed by the
 optional `@anthropic-ai/claude-agent-sdk` peer dependency.
 
+The `/sdk` entry is a **harness** — a coding agent driven as a block, returning
+the neutral run handle declared in `@flow-state-dev/core`.
+[`@flow-state-dev/codex`](../codex) is the other one, and
+[`@flow-state-dev/harness-manager`](../harness-manager) drives either from a task
+board. The `/cli` entry is not a harness: it is fire-and-forget, so there is no
+outcome, final message, usage or cost to report.
+
 ## Installation
 
 ```bash
@@ -538,3 +545,7 @@ for the full surface.
 ```bash
 pnpm --filter @flow-state-dev/claude-code test
 ```
+
+## Documentation
+
+[Coding agents](https://flow-state.dev/docs/tools/coding-agents) · [Claude Code SDK agent](https://flow-state.dev/docs/tools/claude-code-sdk) · [Claude Code remote dispatch](https://flow-state.dev/docs/tools/claude-code-cli) · [Harness manager](https://flow-state.dev/docs/orchestration/harness-manager)
