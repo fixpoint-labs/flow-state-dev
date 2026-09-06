@@ -395,26 +395,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="vision">
   <div class="sec-head"><span class="sec-num">03</span><h2>RC vision</h2></div>
-  <p class="lede">The target is the <strong>full RC collaboration story</strong>: more than one team, rooms they share, dispatch across those rosters. Atlas teaches that story. Implement stays phased. Foundation leaves the plural door open. A thin one-team demo that can only address &#8220;the&#8221; roster is the wrong first cut.</p>
-
-  <div class="cards">
-    <div class="card" style="--tc: var(--accent)">
-      <h5>1 &middot; Foundation</h5><span class="role">proposed · thin L2</span>
-      <p>Agent seat, roster(s), rooms, helpers over today&#8217;s L1. Every roster has a team intake seat &#8212; <a href="#intake">&#167;10</a>. The fence in <a href="#fence">&#167;04</a> holds. Helpers take a roster key. Rooms are addressable across rosters. You may ship one roster. You may not ship a one-team-only API.</p>
-    </div>
-    <div class="card" style="--tc: var(--accent)">
-      <h5>2 &middot; Teams plural</h5><span class="role">proposed · still L2</span>
-      <p>N rosters + shared rooms + cross-roster <code>dispatcher()</code>. Same helpers. Same Agent. Cross-flow when <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> lands &#8212; still refused on this pin. No Team substrate. No org graph on Agent.</p>
-    </div>
-    <div class="card" style="--tc: var(--prose)">
-      <h5>3 &middot; Identity depth</h5><span class="role">named gap first</span>
-      <p>Durable memory across sessions. That is <a href="#fence">&#167;04</a> proof&nbsp;A / <code>flowIsolation</code>, not a field on Agent. Name the gap. Prove isolation. Do not grow Agent to look like a person.</p>
-    </div>
-    <div class="card" style="--tc: var(--prose)">
-      <h5>4 &middot; Later</h5><span class="role">horizon · not foundation</span>
-      <p>OKF. Surfaces. Conductor-as-extension. SOP files until a process repeats. Not RC gates: OKF, a Slack-style web face, Pi, paid packaging. GTM timing is Strategy, not this page.</p>
-    </div>
-  </div>
+  <p class="lede">The target is the <strong>full RC collaboration story</strong>: more than one team, rooms they share, dispatch across those rosters. Atlas teaches that story. Implement stays phased. Foundation leaves the plural door open. A thin one-team demo that can only address &#8220;the&#8221; roster is the wrong first cut. Orientation cards live in <a href="#what">&#167;01</a>. This section is the phase table.</p>
 
   <figure>
     <div class="fig-body">
@@ -428,7 +409,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="32" y="152">MULTI-ROSTER FROM DAY ONE</text>
         <text class="t-xs" x="32" y="170">ONE ROSTER IN THE MAP IS FINE</text>
         <text class="t-xs" x="32" y="188">A SINGLETON API IS NOT</text>
-        <text class="t-xs" x="32" y="214">#1604 FENCE HOLDS</text>
+        <text class="t-xs" x="32" y="214">&#167;04 FENCE HOLDS</text>
         <text class="t-b f-accent" x="32" y="244">proposed. not built.</text>
 
         <rect class="n-prop" x="252" y="16" width="220" height="248" rx="5"/>
@@ -1764,63 +1745,11 @@ const replyToSender = <b>dispatcher</b>({
 
 <section id="api">
   <div class="sec-head"><span class="sec-num">16</span><h2>Programmatic API surface</h2></div>
-  <p class="lede">Two columns. <strong>Exists</strong> is a raw Layer&nbsp;1 call already on main &#8212; including today&#8217;s <code>Agent</code> / <code>AgentRegistry</code>. <strong>Proposed</strong> is a named thin helper that wraps one of those calls. Helpers take a roster key from day one. Foundation thins <code>@flow-state-dev/workforce</code>. It does not add a second participant type. Nothing in the proposed column is an export today.</p>
-
-  <figure>
-    <div class="fig-body">
-      <svg viewBox="0 0 940 380" role="img" aria-label="Two columns. Left solid: exists, raw Layer 1 — defineAgent registry, createSession, dispatcher, taskBoard, claim, from true, readContent. Right dashed: proposed helpers that wrap those, keyed by roster — createWorkerFlow, openDm, openProjectRoom, fanOutBoardPost, fileOrderedReplies. Bottom cut: no Channel export, no Team type, no one-team-only API, no second dispatcher.">
-        <rect class="n-code" x="16" y="16" width="448" height="260" rx="5"/>
-        <text class="t-lbl f-code" x="34" y="38">EXISTS &#183; RAW L1 &#183; THIS PIN</text>
-        <text class="t-s" x="34" y="68">defineAgent / registry / materializeAgent</text>
-        <text class="t-xs" x="34" y="86">@flow-state-dev/workforce &#183; THIN. NOT A FLOW FACTORY.</text>
-        <text class="t-s" x="34" y="114">createSession / createSessionClient</text>
-        <text class="t-xs" x="34" y="132">session-routes.ts &#183; packages/client</text>
-        <text class="t-s" x="34" y="160">dispatcher() &#183; session { key } | { id } | { from: true }</text>
-        <text class="t-xs" x="34" y="178">packages/core/src/blocks/dispatcher.ts</text>
-        <text class="t-s" x="34" y="206">taskBoard + TaskCollectionRef.claim + task.deps</text>
-        <text class="t-xs" x="34" y="224">packages/orchestration</text>
-        <text class="t-s" x="34" y="252">readContent()</text>
-        <text class="t-xs" x="34" y="270">packages/core/src/types/resource.ts</text>
-
-        <rect class="n-prop" x="480" y="16" width="444" height="260" rx="5"/>
-        <text class="t-lbl" x="498" y="38">PROPOSED &#183; THIN WRAPPERS &#183; KEYED</text>
-        <text class="t-s f-accent" x="498" y="68">createWorkerFlow</text>
-        <text class="t-xs" x="498" y="86">WRAPS defineFlow FROM THE FACTORY FILES</text>
-        <text class="t-s f-accent" x="498" y="114">openDm / openTeamInbox / openProjectRoom</text>
-        <text class="t-xs" x="498" y="132">{ roster, seat } &#183; INTAKE IS A SEAT</text>
-        <text class="t-s f-accent" x="498" y="160">fanOutBoardPost</text>
-        <text class="t-xs" x="498" y="178">WRAPS dispatcher() &#215; N &#183; FAN-OUT EXISTS</text>
-        <text class="t-s f-accent" x="498" y="206">fileOrderedReplies</text>
-        <text class="t-xs" x="498" y="224">ORDER NAMES { roster, seat }</text>
-        <text class="t-xs" x="498" y="252">NOT EXPORTS. NO ONE-TEAM-ONLY API.</text>
-
-        <rect class="n-prose" x="16" y="292" width="908" height="72" rx="5"/>
-        <text class="t-lbl" x="34" y="314">CUT / DO NOT FAKE</text>
-        <text class="t-s" x="34" y="338">No Channel / Team / TeamFlow / MessageBoard export. No one-team-only API. No inbox on Agent.</text>
-        <text class="t-xs" x="34" y="356">PACKAGE DOCS MUST NOT FORK THE &#167;07 MATRIX. A HELPER THAT NEEDS A GAP IS LISTED IN &#167;17, NOT SHIPPED AS AN ARGUMENT.</text>
-      </svg>
-    </div>
-    <figcaption><b>Exists is a call. Proposed is a name for that call.</b> If a row on the right cannot be written as a wrapper of a row on the left, it is not v1 &#8212; it is a Layer&nbsp;1 gap or a cut. Package README, if a kick lands, points here for the room matrix. It does not grow a second one.</figcaption>
-  </figure>
-
-  <div class="cards">
-    <div class="card" style="--tc: var(--code)">
-      <h5>Exists</h5><span class="role">raw L1, already shown</span>
-      <p><code>defineAgent</code> / registry (thin). <code>createSession</code>. <code>dispatcher()</code>. <code>taskBoard</code>. <code>claim</code>. <code>{ from: true }</code>. <code>readContent()</code>. Use these today.</p>
-    </div>
-    <div class="card" style="--tc: var(--accent)">
-      <h5>Proposed</h5><span class="role">named wrappers · keyed</span>
-      <p><code>createWorkerFlow</code>, <code>openDm({ roster, seat })</code>, <code>openTeamInbox({ roster })</code>, <code>openProjectRoom</code> with cross-roster subscribers, <code>fanOutBoardPost</code>, <code>fileOrderedReplies</code>. Each line in <a href="#channels">&#167;07</a>, <a href="#intake">&#167;10</a>, and <a href="#contract">&#167;05</a> shows the Layer&nbsp;1 body.</p>
-    </div>
-    <div class="card" style="--tc: var(--gone)">
-      <h5>Not an export</h5><span class="role">do not invent</span>
-      <p>No <code>resolveRoom()</code>. No <code>Channel</code>. No <code>TeamFlow</code>. No <code>theTeam</code>. No <code>sendAt</code> on a helper until due-ledger exists. No <code>flowKind</code> that hides the roster. No <code>fanOutAcrossTeams()</code> beside <code>fanOutBoardPost</code>.</p>
-    </div>
-  </div>
+  <p class="lede"><strong>Exists</strong> is a raw Layer&nbsp;1 call on main. <strong>Proposed</strong> is a named wrapper. Bodies live in <a href="#contract">&#167;05</a> (factory), <a href="#channels">&#167;07</a> (room helpers), and <a href="#intake">&#167;10</a> (team inbox). Nothing proposed is an export today. A helper that needs a missing door is a <a href="#gaps">&#167;17</a> gap, not an argument.</p>
 
   <div class="note">
     <span class="lbl">Package docs must not fork the matrix</span>
-    <p>If a thin package lands, its README describes the wrappers and points at this atlas for which room. A second Talk / Room table in the package is how the convention splits. A second Agent type beside <code>AgentRegistry</code> is how the fence fails. This page stays SSOT. See <a href="#fence">&#167;04</a> proof&nbsp;C.</p>
+    <p>If a thin package lands, its README describes the wrappers and points here for which room. A second Talk / Room table in the package is how the convention splits. A second Agent type beside <code>AgentRegistry</code> is how the fence fails. This page stays SSOT. See <a href="#fence">&#167;04</a> proof&nbsp;C.</p>
   </div>
 </section>
 
@@ -1830,7 +1759,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 320" role="img" aria-label="Four known Layer 1 gaps plus two found on this pin. Bare-kind first-registered, FIX-1315. No due-ledger or send-at, scheduled envelopes have no session. FIX-1246 same-session resume still backlog. Cross-flow refuse still on main, PR 1600 open. Extra: external-dispatcher on id past a queue. Extra: dispatcher has no delay field.">
+      <svg viewBox="0 0 940 320" role="img" aria-label="Five Layer 1 gaps. Bare-kind first-registered, FIX-1315. Send-at: no due-ledger, dispatcher has no delay, scheduled envelopes have no session. FIX-1246 same-session resume still backlog. Cross-flow refuse still on main, PR 1600 open. External-dispatcher on id past a queue.">
         <rect class="n-prose" x="16" y="16" width="220" height="140" rx="5"/>
         <text class="t-lbl" x="32" y="38">1 &#183; FIX-1315</text>
         <text class="t-b" x="32" y="64">bare-kind refuse</text>
@@ -1841,11 +1770,11 @@ const replyToSender = <b>dispatcher</b>({
 
         <rect class="n-prose" x="252" y="16" width="220" height="140" rx="5"/>
         <text class="t-lbl" x="268" y="38">2 &#183; SEND-AT</text>
-        <text class="t-b" x="268" y="64">due-ledger + cron</text>
+        <text class="t-b" x="268" y="64">due-ledger + delay</text>
         <text class="t-xs" x="268" y="88">NO due-ledger IN TREE</text>
-        <text class="t-xs" x="268" y="106">scheduled HAS NO SESSION</text>
-        <text class="t-xs" x="268" y="132">FIX-1233 BACKLOG</text>
-        <text class="t-xs" x="268" y="150">dispatcher HAS NO DELAY</text>
+        <text class="t-xs" x="268" y="106">dispatcher HAS NO DELAY</text>
+        <text class="t-xs" x="268" y="132">scheduled HAS NO SESSION</text>
+        <text class="t-xs" x="268" y="150">FIX-1233 BACKLOG</text>
 
         <rect class="n-prose" x="488" y="16" width="220" height="140" rx="5"/>
         <text class="t-lbl" x="504" y="38">3 &#183; FIX-1246</text>
@@ -1860,25 +1789,18 @@ const replyToSender = <b>dispatcher</b>({
         <text class="t-b" x="740" y="64">refuse still on pin</text>
         <text class="t-xs" x="740" y="88">#1600 OPEN, NOT MERGED</text>
         <text class="t-xs" x="740" y="106">session-not-addressable</text>
-        <text class="t-xs" x="740" y="132">DO NOT FLIP THIS ROW</text>
-        <text class="t-xs" x="740" y="150">UNTIL THE REFUSE IS GONE</text>
+        <text class="t-xs" x="740" y="132">PIN THE REFUSE HERE</text>
+        <text class="t-xs" x="740" y="150">LINK, DO NOT RE-LITIGATE</text>
 
-        <rect class="n-box" x="16" y="172" width="448" height="132" rx="5"/>
+        <rect class="n-box" x="16" y="172" width="908" height="132" rx="5"/>
         <text class="t-lbl" x="32" y="194">FOUND ON THIS PIN &#183; 5</text>
         <text class="t-b" x="32" y="220">external-dispatcher</text>
-        <text class="t-xs" x="32" y="244">{ id } PAST A QUEUE REFUSES</text>
-        <text class="t-xs" x="32" y="262">create-request-host.ts</text>
-        <text class="t-xs" x="32" y="280">openDm WAKE + fanOutBoardPost HIT THIS ON BULLMQ</text>
-
-        <rect class="n-box" x="480" y="172" width="444" height="132" rx="5"/>
-        <text class="t-lbl" x="496" y="194">FOUND ON THIS PIN &#183; 6</text>
-        <text class="t-b" x="496" y="220">no sendAt on dispatcher</text>
-        <text class="t-xs" x="496" y="244">OUTBOX / DUE-LEDGER ABSENT</text>
-        <text class="t-xs" x="496" y="262">scheduled envelopes have no session</text>
-        <text class="t-xs" x="496" y="280">A REPLY-AT-NINE HELPER IS THIS GAP, NOT V1</text>
+        <text class="t-xs" x="32" y="244">{ id } PAST A QUEUE REFUSES &#183; create-request-host.ts</text>
+        <text class="t-xs" x="32" y="262">openDm WAKE + fanOutBoardPost HIT THIS ON BULLMQ</text>
+        <text class="t-xs" x="32" y="280">THE HELPER MUST SURFACE THAT, NOT RETRY AS { key }</text>
       </svg>
     </div>
-    <figcaption><b>Prove the helper against the refuse.</b> Cross-flow stays proposed: <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> is open and <code>create-request-host</code> still throws <code>session-not-addressable</code> on this pin. Flip that one row only after the refuse is gone, and pin the merge SHA. The two extra rows are doors a room helper would otherwise pretend to have.</figcaption>
+    <figcaption><b>Prove the helper against the refuse.</b> This section is the pin for cross-flow: <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> is open and <code>create-request-host</code> still throws <code>session-not-addressable</code>. Flip that one row only after the refuse is gone, and pin the merge SHA. Elsewhere, link here.</figcaption>
   </figure>
 
   <div class="tw">
@@ -1886,18 +1808,17 @@ const replyToSender = <b>dispatcher</b>({
       <thead><tr><th>#</th><th>Gap</th><th>Status on this pin</th><th>What a helper must not pretend</th></tr></thead>
       <tbody>
         <tr><td>1</td><td><strong>FIX-1315</strong> bare-kind refuse (multi-instance)</td><td><span class="tag t-none">backlog</span></td><td><code>flow-registry.ts</code> <code>get(kind)</code> returns the first registered instance when no id is passed. Two workers of the same kind: a dispatch can land on the wrong instance. A roster of two <code>eng-manager</code>s needs instance id. Do not address by kind alone and call it done.</td></tr>
-        <tr><td>2</td><td>Deferred / send-at (due-ledger + cron)</td><td><span class="tag t-none">absent</span></td><td>No <code>due-ledger</code> / outbox symbol in the tree. <code>dispatcher()</code> has no delay field. <code>@flow-state-dev/scheduled</code> exists and stamps <code>source: "scheduled"</code>, but <em>scheduled envelopes have no session</em> (<code>packages/scheduled/src/routes.ts</code>). <strong>FIX-1233</strong> (addressed cron) is backlog. A <code>sendAt</code> helper is this gap, not v1.</td></tr>
+        <tr><td>2</td><td>Deferred / send-at (due-ledger, delay, cron)</td><td><span class="tag t-none">absent</span></td><td>No <code>due-ledger</code> / outbox in the tree. <code>dispatcher()</code> has no delay / <code>sendAt</code> field. <code>@flow-state-dev/scheduled</code> stamps <code>source: "scheduled"</code>, but <em>scheduled envelopes have no session</em> (<code>packages/scheduled/src/routes.ts</code>). <strong>FIX-1233</strong> is backlog. A <code>when</code> or <code>sendAt</code> helper is this gap, not Layer&nbsp;2.</td></tr>
         <tr><td>3</td><td><strong>FIX-1246</strong> same-session resume</td><td><span class="tag t-none">backlog</span></td><td>A parked harness run resumed from a second request must continue the same session. Restart is not success. A room helper that parks and later continues cannot treat a new session as resume.</td></tr>
         <tr><td>4</td><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">proposed</span></td><td>Refuse still on main: <code>create-request-host.ts</code> lines 179&#8211;184, <code>session-not-addressable</code>, <em>cross-flow delivery is not supported</em>. <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> is <strong>open, not merged</strong>. Keep proposed. Flip to exists only when that refuse is gone, and pin the merge SHA. Cross-kind <code>fanOutBoardPost</code> waits on this.</td></tr>
         <tr><td>5</td><td><code>external-dispatcher</code> on <code>{ id }</code></td><td><span class="tag t-real">exists as refuse</span></td><td>Found this pass. Existing-session delivery past an external queue refuses by name (<code>create-request-host.ts</code>). <code>openDm</code> wake and same-flow <code>fanOutBoardPost</code> use <code>{ id }</code>. On BullMQ they refuse. The helper must surface that, not retry as <code>{ key }</code>.</td></tr>
-        <tr><td>6</td><td>No <code>sendAt</code> / delay on <code>dispatcher()</code></td><td><span class="tag t-none">absent</span></td><td>Found this pass as the send-at half that is not cron. Conductor names an outbox row + host sweep; that row is not in the tree. Same gap as #2, different door. Listed so a helper cannot grow a <code>when</code> argument and call it Layer&nbsp;2.</td></tr>
       </tbody>
     </table>
   </div>
 
   <div class="note">
     <span class="lbl">What is not a gap</span>
-    <p>Same-flow N-rooms, <code>claim</code> exclusion, <code>task.deps</code>, <code>{ from: true }</code>, <code>create_session</code>, <code>readContent()</code>, <code>Agent</code> / <code>AgentRegistry</code> &#8212; those exist. Who may reply is proposed Layer&nbsp;2 policy, not missing substrate. Ordered multi-reply is a proposed wrapper over <code>claim</code> + <code>deps</code>, not a new lock type. Growing Agent is a different table &#8212; <a href="#fence">&#167;04</a>. Team intake that needs a team address type is a cut, not a sixth gap.</p>
+    <p>Same-flow N-rooms, <code>claim</code> exclusion, <code>task.deps</code>, <code>{ from: true }</code>, <code>create_session</code>, <code>readContent()</code>, <code>Agent</code> / <code>AgentRegistry</code> &#8212; those exist. Who may reply is proposed Layer&nbsp;2. Growing Agent is <a href="#fence">&#167;04</a>. A team address type is a cut, not a sixth gap.</p>
   </div>
 </section>
 
@@ -2067,8 +1988,8 @@ const replyToSender = <b>dispatcher</b>({
   </div>
 
   <div class="tension">
-    <h5>No collaboration on Agent. No Team type. No second Agent model. No org graph on Agent</h5>
-    <p>The target is teams, plural. That is still keyed rosters plus shared rooms. Agent is the participant you seat. Rooms are how they talk. Do not add <code>members</code>, <code>channels</code>, or <code>inbox</code> to <code>Agent</code>. Do not invent Team to hold a bind the roster row has not proved. Do not fork a participant type beside <code>AgentRegistry</code>. Prove <a href="#fence">&#167;04</a> A/B/C first &#8212; durable memory via <code>flowIsolation</code> versus persona-only, the keyed Agent&#8594;harness&#8594;session bind, and that foundation thins the existing package.</p>
+    <h5>No collaboration on Agent. No Team type. No second Agent model</h5>
+    <p>See <a href="#fence">&#167;04</a> proofs A/B/C. Do not re-litigate the fence here.</p>
   </div>
 
   <div class="tension">
