@@ -161,11 +161,12 @@ surface.
 
 `@flow-state-dev/harness-manager/checkout` is how a run gets a directory:
 `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the
-path grammar. Reach for it when you need to resolve or inspect a run's checkout
-from outside the manager — a status page that wants the path, a cleanup job. It
-is git-worktree-specific, and a second checkout strategy would put it behind a
-seam, so build on `harnessManager({ harness })` and let the manager own the
-checkout wherever you can.
+path grammar. It is here for this repository's own consumer and its goal checks,
+and it is not part of the versioned contract. Everything in it is
+git-worktree-specific, and a second checkout strategy would put it behind a seam.
+Build on `harnessManager({ harness })` and let the manager own the checkout. A
+status page or a cleanup job reads `workspacePath` and `branch` off the run
+record instead of deriving them again.
 
 ## Limits
 

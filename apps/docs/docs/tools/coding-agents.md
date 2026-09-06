@@ -23,13 +23,16 @@ Either one is a block, so a sequencer can step it:
 ```ts
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 
-const agent = claudeCodeAgent({ cwd: () => "/var/agent-checkouts/run-1" });
+const agent = claudeCodeAgent();
 // seq.step(agent) with input { prompt: "Tidy the imports in src/." }
 ```
 
 Swap `claudeCodeAgent` for `codexAgent` and the surrounding step is unchanged.
-Each page covers the options that agent takes, the items it emits, and the errors
-it raises. This page is what they have in common.
+Where the run works, and which conversation it continues, are
+[configuration](#the-prompt-is-the-input-everything-else-is-configuration) you
+resolve per run rather than fix when the flow is built. Each page covers the
+options that agent takes, the items it emits, and the errors it raises. This page
+is what they have in common.
 
 ## The handle
 
@@ -46,7 +49,10 @@ agent produced the run:
 | `usage` | Input and output tokens, or `null` when the agent reports none. |
 | `cost` | `{ usd, basis }`, where `basis` says whether the number was `reported` by the agent or `estimated` from the model price table. `null` when neither is known. |
 
-Nothing is invented: a field the agent did not report reads `null`.
+A field the agent did not report reads `null`, with two exceptions: `cost` can
+hold a figure derived from the model price table, which `basis: "estimated"`
+marks, and a resumed run's `sessionId` starts as the id you asked for, so
+`onSession` firing is what tells you the agent confirmed it.
 
 Each harness adds its own fields beside these — Claude Code carries the SDK's
 terminal result code and the tool names the run exercised, Codex carries its full
