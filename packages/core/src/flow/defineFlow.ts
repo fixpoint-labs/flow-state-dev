@@ -617,6 +617,13 @@ function validateEntryMaps(
  * address; caught at run time, a claimed row would be handed off to nothing and
  * wait out its lease.
  *
+ * The one address this walk cannot answer is a **cross-flow** one
+ * (`internal` with a `flowKind`): it names an entry on a flow registered
+ * independently of this one, and a `defineFlow` holding one flow's maps has
+ * nothing to look it up in. Those are skipped here and resolved by the seam,
+ * against the flows the running process registered — still one keyed lookup
+ * with no fallback, still a refusal by name, just one layer later.
+ *
  * A task entry is declared as a plain block, and a `task` dispatch may only
  * ever reach it through its board's gate — the row re-read, the claim verified,
  * the task scope marked, the ticket re-minted. The board cannot install that
@@ -657,6 +664,12 @@ function resolveDispatchTargets(
     const label = `${address.type}:"${address.target}"`;
 
     if (address.type === "internal") {
+      // A cross-flow address names an entry on a flow this `defineFlow` does
+      // not hold, so there is nothing here to resolve it against. Skipped
+      // rather than guessed: the seam resolves it against the flows the
+      // process actually registered and refuses by name — `flow-not-found`
+      // or `no-entry` — which is the same rule, checked where the answer is.
+      if (address.flowKind !== undefined) continue;
       if (internal !== undefined && Object.hasOwn(internal, address.target)) continue;
       throw new Error(
         `Flow "${kind}" reaches block "${block.name}", which dispatches to ${label}, but the ` +

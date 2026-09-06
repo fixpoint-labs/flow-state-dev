@@ -43,6 +43,26 @@
  * });
  * ```
  *
+ * **Another flow is an address, not another mechanism.** Add `flowKind` and the
+ * entry resolves on that flow instead of this one. The dispatch is still
+ * fire-and-forget, and a reply is still the same `{ from: true }` block —
+ * pointed back at the sender's flow.
+ *
+ * ```ts
+ * const notifyBilling = dispatcher({
+ *   name: "notify-billing",
+ *   type: "internal",
+ *   flowKind: "billing",                               // resolves on the billing flow
+ *   target: "invoice-ready",
+ *   inputSchema: z.object({ invoiceId: z.string() }),
+ *   session: { key: (input) => input.invoiceId },
+ * });
+ * ```
+ *
+ * `defineFlow` holds one flow's entry maps, so it cannot check that address.
+ * The seam does, against the flows the process registered, and refuses by name:
+ * `flow-not-found` or `no-entry`, thrown as `DispatchRefusedError`.
+ *
  * A `task` dispatcher is a **seat on a task board**: put it under `workers`
  * where an inline worker would go, and the board hands each row it routes
  * there off to `flow.task.actions[target]` in the child session the policy names.
@@ -118,8 +138,29 @@ export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodT
   name: string;
   description?: string;
   type: "internal";
-  /** The entry name — resolves `flow.internal.actions[target]`. Verified at `defineFlow`. */
+  /**
+   * The entry name — resolves `flow.internal.actions[target]` on the flow
+   * {@link InternalDispatcherConfig.flowKind} names. Verified at `defineFlow`
+   * for a same-flow address, at the seam for a cross-flow one.
+   */
   target: string;
+  /**
+   * The **other flow** this dispatcher sends to. Omit for the sending flow's
+   * own entry, which is the ordinary case.
+   *
+   * A cross-flow dispatch is fire-and-forget in the same sense a same-flow one
+   * is — it starts a request over there and returns the handle, it does not
+   * wait for a result. Getting one back is the same three-request shape it is
+   * within a flow: the recipient replies with a `{ from: true }` dispatcher of
+   * its own, pointed back at `flowKind: <the sender's flow>`.
+   *
+   * `defineFlow` cannot check this target — it holds one flow's entry maps and
+   * this names another's. The check runs at the seam instead, against what the
+   * process actually registered, and refuses by name: `flow-not-found` for an
+   * unregistered flow, `no-entry` for a flow that declares no such entry.
+   * Both reach this block as a thrown `DispatchRefusedError`.
+   */
+  flowKind?: string;
   /** What this block accepts. Defaults to `z.unknown()`. */
   inputSchema?: TInputSchema;
   /** Which session the dispatch runs in. */
@@ -184,6 +225,17 @@ export function dispatcher(
   };
 
   if (config.type === "task") {
+    // A board's claim gate is installed by the `defineFlow` that owns the task
+    // entry, and a cross-flow hand-off would put the ledger on one side of the
+    // boundary and the gate on the other. Refused rather than ignored: a
+    // silently dropped `flowKind` is a seat handing rows to the wrong flow.
+    if ((config as { flowKind?: unknown }).flowKind !== undefined) {
+      throw new Error(
+        `[dispatcher] "${name}" declares a flowKind, but only an "internal" dispatcher may ` +
+          `address another flow. A task seat settles against the board's own ledger, and the ` +
+          `claim gate that fronts its entry is installed by the flow that declares it.`
+      );
+    }
     const session = config.session;
     if (!isTaskSessionPolicy(session)) {
       throw new Error(
@@ -215,8 +267,19 @@ export function dispatcher(
     return markDispatcher(block, address);
   }
 
-  const { session, payload } = config;
-  const address: DispatchAddress = { type: "internal", target };
+  const { session, payload, flowKind } = config;
+  if (flowKind !== undefined && (typeof flowKind !== "string" || flowKind.length === 0)) {
+    throw new Error(
+      `[dispatcher] "${name}" declares an empty flowKind (${JSON.stringify(flowKind)}). ` +
+        `A cross-flow address names the flow to resolve the entry on; omit it to address ` +
+        `this flow's own entry.`
+    );
+  }
+  const address: DispatchAddress = {
+    type: "internal",
+    target,
+    ...(flowKind !== undefined ? { flowKind } : {})
+  };
   const inputSchema = config.inputSchema ?? z.unknown();
   const block = handler({
     ...common,

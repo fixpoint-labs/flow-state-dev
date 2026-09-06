@@ -936,6 +936,12 @@ class InternalFlowState<TSettings extends object>
       maxChildSessionListLimit: this.#options.maxChildSessionListLimit,
       requestHost: {
         staleThresholdMs,
+        // The seam's flow lookup, for a cross-flow dispatch address. Stamped
+        // here for the same reason `dispatchOperation` is installed below —
+        // this config is the one a colocated worker and the router both copy,
+        // so wiring it anywhere later leaves one of them unable to resolve a
+        // flow the process has plainly registered.
+        resolveFlow: (kind: string) => this.#registry.get(kind),
         ...(this.#routerRequested ? { staleSweepIntervalMs } : {})
       }
     });

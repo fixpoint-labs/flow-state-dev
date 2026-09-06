@@ -160,6 +160,16 @@ refuses a dispatcher whose target the flow does not declare. A `task`
 dispatcher is a seat on a task board; the board binds its id and claim gate
 onto it, and `defineFlow` puts the addressed entry behind that gate.
 
+**An `internal` address may name another flow** — `flowKind` on the block,
+making the address `(type, target, flowKind)`. It is as static as the pair it
+extends, but `defineFlow` holds one flow's entry maps and cannot resolve
+another's, so the walk skips it and the seam resolves it at run time against
+the flows the process registered. Same rule, one keyed lookup with no
+fallback; the miss just gets its own name, `flow-not-found`, beside the
+`no-entry` a registered flow with no such entry still gives. A `task` address
+takes no `flowKind` — see [Dispatched Work](./dispatched-work.md) →
+*Dispatching into another flow*.
+
 **Three session targets, two delivery guards.** `{ key }` derives a child of the
 running session (`deriveDispatchChildSessionId`, with the key framed under its
 own `dispatch` namespace) and adopts it on the same key; the adoption check
