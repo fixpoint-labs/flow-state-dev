@@ -71,7 +71,7 @@ export type DispatchOperation = (spec: {
    */
   delivery: "child" | "existing";
   input: unknown;
-  /** The flow the request belongs to — always the sender's own (same-flow v1). */
+  /** The target flow this request is addressed to (the sender's own when same-flow). */
   flowKind: string;
   /**
    * The request's principal, tenant and org.

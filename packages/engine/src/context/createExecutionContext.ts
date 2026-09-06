@@ -759,6 +759,7 @@ export async function createExecutionContext<
             lineageId
           },
           dispatchOperation: options.requestHost.dispatchOperation,
+          resolveFlow: options.requestHost.resolveFlow,
           parentTask: options.requestHost.parentTask,
           effectiveRuntimeConfig: options.effectiveRuntimeConfig,
           dispatchStamp: readDispatchStamp(options.source, options.metadata),

@@ -117,9 +117,10 @@ A refusal at run time throws `DispatchRefusedError`, with `code:
 
 | `refused` | Meaning |
 |---|---|
-| `no-entry` | The flow declares no entry at that address |
+| `no-entry` | The addressed flow declares no entry at that address |
+| `flow-not-found` | A `flowKind` names a flow this server has not registered |
 | `session-not-found` | An `id` names a session that does not exist, or one that belongs to another user |
-| `session-not-addressable` | An `id` names a session on another flow |
+| `session-not-addressable` | An `id` names a session on a flow other than the one addressed |
 | `key-occupied` | The `key` derived a session id already held by something that is not this conversation's child |
 | `no-dispatch-operation` | This process runs requests but was not set up to dispatch one |
 | `dispatch-rejected` | The entry's `concurrency` policy is `reject` and its key is held |
@@ -134,6 +135,59 @@ A task board seat can start a job the same way: a `dispatcher({ type: "task"
 })` under `workers` sends each claimed row to one of the flow's `task.actions`
 entries, and the child session lands in the same listing. See [Task board →
 Seats that hand off](../orchestration/task-board.md#seats-that-hand-off).
+
+### Starting a job on another flow
+
+A server usually runs more than one flow. Add `flowKind` and the dispatcher
+resolves its `target` on that flow's `internal.actions` instead of its own:
+
+```ts
+const notifyBilling = dispatcher({
+  name: "notify-billing",
+  type: "internal",
+  flowKind: "billing",                          // the other flow
+  target: "charge",                             // billing's internal.actions.charge
+  inputSchema: z.object({ orderId: z.string() }),
+  session: { key: (input) => input.orderId },
+});
+```
+
+The job still starts and returns immediately, and the child session still hangs
+off the conversation that started it — but it belongs to the flow it was sent
+to. It runs that flow's entry, starts with that flow's session-state defaults,
+and its `flowKind` in the listing is that flow's. Whatever the job needs travels
+in the payload; the two flows share no state.
+
+`defineFlow` can't check this address the way it checks a same-flow one. It sees
+one flow at a time, and the flow you named is defined somewhere else. So the
+check happens when the dispatch runs, against the flows the server has
+registered: `flow-not-found` if there is no such flow, `no-entry` if there is
+and it declares no such entry. Both are ordinary `DispatchRefusedError`
+refusals — nothing retries, and nothing quietly falls back to an entry of the
+same name on the sending flow.
+
+Both flows have to be registered on the same server. This addresses another
+flow, not another service.
+
+To hear back, the other flow replies the same way it would within one flow —
+a `{ from: true }` dispatcher — pointed at your `flowKind`:
+
+```ts
+// on the billing flow
+const confirmToSender = dispatcher({
+  name: "confirm-to-sender",
+  type: "internal",
+  flowKind: "orders",
+  target: "confirm",
+  inputSchema: z.object({ orderId: z.string() }),
+  session: { from: true },
+});
+```
+
+The runtime supplies the session to reply into, from the dispatch it stamped;
+you supply the flow. If they disagree — the sender's session is not on the flow
+you named — the reply is refused `session-not-addressable` rather than
+delivered somewhere else. A `task` dispatcher takes no `flowKind`.
 
 ## Listing a session's children
 
