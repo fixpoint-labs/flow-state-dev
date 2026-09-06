@@ -34,6 +34,13 @@
  *   inputSchema: z.object({ documentId: z.string() }),
  *   session: { key: (input) => input.documentId },     // one child per document, adopted on retry
  * });
+ *
+ * const replyToSender = dispatcher({
+ *   name: "reply-to-sender",
+ *   type: "internal",
+ *   target: "receive-reply",
+ *   session: { from: true },                           // stamped sender, not a caller-named id
+ * });
  * ```
  *
  * A `task` dispatcher is a **seat on a task board**: put it under `workers`
@@ -97,10 +104,14 @@ export type DispatchHandle = z.infer<typeof dispatchHandleSchema>;
  *   that names the unit of work — a document id, an issue key.
  * - `id` — an existing session. Delivered into it when it exists and belongs
  *   to this principal on this flow; refused by name otherwise. Never created.
+ * - `from: true` — the seam-stamped sender. The block names no session id;
+ *   the runtime delivers into `metadata.dispatch.from.sessionId`. Use this to
+ *   reply, not `{ id: (input) => input.replyTo }`.
  */
 export type DispatcherSession<TInput> =
   | { readonly key: (input: TInput, ctx: BlockContext) => string }
-  | { readonly id: (input: TInput, ctx: BlockContext) => string };
+  | { readonly id: (input: TInput, ctx: BlockContext) => string }
+  | { readonly from: true };
 
 /** An `internal` dispatcher: sends this request's authority to `flow.internal.actions[target]`. */
 export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny> {
@@ -253,6 +264,9 @@ function resolveSessionTarget<TInput>(
   input: TInput,
   ctx: BlockContext
 ): SessionTarget {
+  if ("from" in session) {
+    return { from: true };
+  }
   if ("key" in session) {
     const key = session.key(input, ctx);
     if (typeof key !== "string" || key.length === 0) {

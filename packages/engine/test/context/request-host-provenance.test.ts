@@ -83,7 +83,7 @@ describe("the provenance a dispatch stamps on the request record", () => {
       dispatch: {
         type: "internal",
         target: "work",
-        from: { block: "board-drain", sessionId: "s_parent" },
+        from: { block: "board-drain", sessionId: "s_parent", lineageId: "lin_parent" },
         key: "review",
         taskId: "task_7f3"
       }
@@ -101,7 +101,7 @@ describe("the provenance a dispatch stamps on the request record", () => {
       dispatch: {
         type: "internal",
         target: "work",
-        from: { block: "board-drain", sessionId: "s_parent" },
+        from: { block: "board-drain", sessionId: "s_parent", lineageId: "lin_parent" },
         key: "review"
       }
     });
@@ -124,7 +124,7 @@ describe("the provenance a dispatch stamps on the request record", () => {
       dispatch: {
         type: "internal",
         target: "work",
-        from: { block: "board-drain", sessionId: "s_parent" },
+        from: { block: "board-drain", sessionId: "s_parent", lineageId: "lin_parent" },
         key: "review"
       }
     });

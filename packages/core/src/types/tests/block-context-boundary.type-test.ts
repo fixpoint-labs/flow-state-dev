@@ -100,6 +100,14 @@ void dispatched;
 
 void dispatchThroughSeam(ctx, {
   type: "internal",
+  target: "receive-reply",
+  session: { from: true },
+  payload: {},
+  from: "reply-to-sender"
+});
+
+void dispatchThroughSeam(ctx, {
+  type: "internal",
   target: "wake",
   // @ts-expect-error a caller supplies the target session, never the principal.
   session: { id: "s_epic", userId: "u_other" },
