@@ -4,7 +4,7 @@ sidebar_label: Harness manager
 
 # Harness manager
 
-A *harness* is a coding agent driven as a block: you hand it a prompt, it works in its own agentic loop, and it hands back a handle describing what it did. `@flow-state-dev/harness-manager` is a task-board worker that turns a row on a board into a supervised run of one.
+A [harness](/docs/tools/coding-agents) is a coding agent driven as a block: you hand it a prompt, it works in its own agentic loop, and it hands back a handle describing what it did. `@flow-state-dev/harness-manager` is a task-board worker that turns a row on a board into a supervised run of one.
 
 Supervised means four things it does that dispatching a coding agent yourself does not. The run gets **its own checkout**, not whatever directory your server happens to sit in. A **verdict is read before the row settles**, so a run that produced nothing can never close as done. The run can **ask a question** and park until a person answers, and the answer continues the same conversation. And **which harness runs is yours to choose** — the manager imports none of them.
 
@@ -54,24 +54,26 @@ const manager = harnessManager({
 });
 ```
 
-Pointing the same manager at a different agent is that one line. Whatever
-harness you swap in, the manager is unchanged — it never learns which one it is
-driving:
+Swapping Claude Code for Codex is that one line. Same manager, same board, same
+three feeds — it never learns which agent it is driving:
 
 ```ts
-  // Same manager, same board, a different coding agent.
-  harness: ({ cwd, resume, onSession }) =>
-    someOtherHarness({ cwd, resume, onSession }),
+import { codexAgent } from "@flow-state-dev/codex";
+
+harness: ({ cwd, resume, onSession }) =>
+  codexAgent({ cwd, resume, onSession, thread: { sandboxMode: "workspace-write" } }),
 ```
 
-The three feeds are the whole contract. A harness that takes them and returns a
-run handle is one this manager can drive.
+What the factory passes on differs, because that part belongs to the agent. Claude
+Code needs `detached: true` — it keeps session state by default, and a handed-off
+row refuses a block that does. Codex keeps none, so it needs no equivalent. Each
+spells its sandbox its own way. None of it reaches the manager.
 
-**What the manager hands down.** `cwd` says where this run works. `resume` says which conversation it continues, or `null` for a fresh one. `onSession` is what the harness calls when it names its session, so the manager can record it.
+**What the manager hands down.** `cwd` says where this run works — the checkout it derived and provisioned. `resume` says which conversation this attempt continues, or `null` for a fresh one. `onSession` is what the harness calls when it names its session, so the manager can record it.
 
-**What the manager never does.** It does not read anything vendor-specific off the handle, and it does not tell the harness what model to use, what tools to allow, or how to sandbox itself. Those are yours, written inside the factory, where the harness's own options live.
+**What the manager never does.** It does not read anything vendor-specific off the handle, and it does not tell the harness what model to use, what tools to allow, or how to sandbox itself. Those are yours, written inside the factory.
 
-All three feeds are handed the block's context and nothing else — never the prompt. That is deliberate: the prompt is something a caller, or a model calling the harness as a tool, can set, and these three decide where a run writes and what it continues.
+The three feeds are declared in `@flow-state-dev/core`, not here, which is what lets a harness and a manager agree on one spelling. Any block that takes them and returns a conforming run handle is one this manager can drive. [Coding agents](/docs/tools/coding-agents) is the contract in full, including why a resolver is handed the block's context and never the prompt.
 
 ## What a phase is
 
@@ -101,8 +103,6 @@ A run that needs a decision writes its question to a path the prompt names. When
 
 Answer it and the run picks up **the same coding session** — not a new one told what was answered. Everything the first attempt had worked out is still there.
 
-Two things are worth knowing before you rely on it.
-
 **An answer spends a retry.** Parking and resuming is an attempt, so budget for questions as well as failures.
 
 **A lost session heals rather than failing.** The manager records the session the harness *confirmed* it was in, clears it at the start of every attempt, and never writes back an id it merely sent. So if the agent can no longer find a session, that attempt ends without naming one, and the next starts fresh instead of asking for a dead conversation forever.
@@ -113,7 +113,7 @@ Each task gets its own directory, derived from who the run belongs to plus the b
 
 A **lease** keeps two attempts out of one tree: a lock file beside the checkout, taken before the tree is provisioned and released on every exit. It carries a token unique to the acquisition, so a replacement's lock is never removed by a process the replacement displaced.
 
-Be honest about what the lease is: checking the lock and removing it are two steps, not one, so a lock whose holder has died is reclaimed after a stale window rather than instantly. That window is sized past the longest a live attempt could legitimately hold it, which is why the manager refuses a configuration that shortens it below that.
+The lease is not a mutex. Checking the lock and removing it are two steps, not one, so a lock whose holder has died is reclaimed after a stale window rather than instantly. That window is sized past the longest a live attempt could legitimately hold it, which is why the manager refuses a configuration that shortens it below that.
 
 ## The deadline
 
@@ -144,7 +144,27 @@ in precisely the deployments where nobody looks.
 
 The manager runs a claimed row. Everything around that is the host's: putting rows on the board in the first place, waking it, reading status back, and whatever check tells a phase the job is done.
 
-That split is deliberate. Seeding a row means knowing what your issues are called; a completion check means knowing what "finished" looks like in your world. Neither is something a published package can guess.
+Seeding a row means knowing what your issues are called; a completion check means knowing what "finished" looks like in your world. Neither is something a published package can guess.
+
+## What you import
+
+The package has two entry points, and the difference is what it promises to keep
+stable.
+
+`@flow-state-dev/harness-manager` is the supported host API — everything above,
+plus the pieces you need around it: `harnessManager` and its options, `PhaseSpec`
+and the run-context types, `WorkspaceConfig`, the construction-time guards
+(`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`,
+`assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing
+your own shutdown, and the run-record and inbox collections for building a status
+surface.
+
+`@flow-state-dev/harness-manager/checkout` is how a run gets a directory:
+`provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the
+path grammar. It is a separate entry point rather than a note in the docs because
+that is the only way the two halves are actually different — these are
+git-worktree-specific, and a second checkout strategy would put them behind a
+seam. Build on `harnessManager({ harness })` and let it own the checkout.
 
 ## Limits
 
@@ -156,4 +176,6 @@ That split is deliberate. Seeding a row means knowing what your issues are calle
 
 - [Task board](./task-board) — the primitive this worker runs on.
 - [Work that outlives the turn](/guides/background-work) — how a claimed row reaches a session of its own.
-- [Claude Code SDK](../tools/claude-code-sdk) — one harness, and the `resume` / `onSession` options the slot feeds.
+- [Coding agents](../tools/coding-agents) — the harness contract, and the handle the verdict is read from.
+- [Claude Code SDK agent](../tools/claude-code-sdk) — one harness, and the `cwd` / `resume` / `onSession` options the slot feeds.
+- [Codex SDK agent](../tools/codex) — the other one.

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 7
+sidebar_position: 8
 sidebar_label: Codex (SDK agent)
 ---
 
@@ -10,10 +10,10 @@ prompt, it works in a directory you point it at, and it hands back a handle
 describing the run. What it says, what it runs, and what it changes show up in
 your flow's item stream as it goes.
 
-A *harness* is a coding agent driven as a block like this. flow-state-dev ships
-two, and they agree on the handle they return: the same `status`, `outcome`,
-`sessionId`, `usage` and `cost` fields, whichever one ran. The companion page is
-[Claude Code SDK agent](./claude-code-sdk.md).
+This is one of two harnesses flow-state-dev ships. [Coding agents](./coding-agents.md)
+covers what they have in common — the handle they both return, and the
+configuration contract underneath `cwd`, `resume` and `onSession`. This page is
+the Codex half.
 
 ## When to use it
 
@@ -113,16 +113,20 @@ The format is experimental, so unknown output doesn't fail the run.
 ## Where the run works
 
 `cwd` is a function you write. It is called once per run, before anything is
-spawned, and its answer becomes the directory Codex works in.
-
-It is handed the block context and nothing else. The prompt is not available to
-it, deliberately: the prompt is the one thing a model controls, so a directory
-derived from it would be a path the model chose.
+spawned, and its answer becomes the directory Codex works in. It is handed the
+block context and never the prompt, for the reason
+[Coding agents](./coding-agents.md#the-prompt-is-the-input-everything-else-is-configuration)
+gives.
 
 It is a working directory, not a fence: the run can still address paths outside
-it. The sandbox setting is the fence. The Claude Code page's
-[Where the run works](./claude-code-sdk.md#where-the-run-works) section derives a
-safe path for a run and applies here unchanged.
+it. `sandboxMode` on `thread` is the fence.
+
+Deriving a safe directory per run is a recipe rather than a one-liner, and the
+Claude Code page works one through in
+[Reusing a directory across runs](./claude-code-sdk.md#reusing-a-directory-across-runs).
+It applies here unchanged. If your work arrives as rows on a task board, the
+[harness manager](/docs/orchestration/harness-manager) derives and provisions the
+checkout for you.
 
 ## Continuing a thread
 
@@ -138,16 +142,17 @@ codexAgent({
 
 This package keeps no session state of its own. `resume` reads the thread id from
 wherever you keep it, and `onSession` is called with the id the moment the run
-names it, which is before the run does any work.
-
-A run that is cancelled or dies partway through returns no handle at all, so a
-host that only learned the thread id from the returned handle would have nothing
-to continue. Because `onSession` fires during the run, the conversation is still
-resumable.
+names it, which is before the run does any work — early enough that a run which is
+later cancelled is still resumable. [Coding agents](./coding-agents.md#the-prompt-is-the-input-everything-else-is-configuration)
+covers why the hook exists alongside the handle's own `sessionId`.
 
 `onSession` fires only when Codex actually names a thread. If you resume an id
 Codex no longer has, it names none, the run fails, and the id you already hold is
 left exactly as it was rather than being overwritten with a dead one.
+
+Keeping no session state also means the block declares none, which is what lets a
+task board hand it off without any further option. The Claude Code harness needs
+`detached: true` for the same effect.
 
 ## Cancelling
 
@@ -201,6 +206,9 @@ A turn the model itself fails is not in that list. It comes back as a handle wit
 
 ## Related
 
+- [Coding agents](./coding-agents.md) — the harness contract both agents implement
 - [Claude Code SDK agent](./claude-code-sdk.md) — the other harness, same handle
+- [Harness manager](/docs/orchestration/harness-manager) — driving this one from a
+  task board, with a checkout and a verdict
 - [Background work](../server/background-work.md) — running either one off the
   request path

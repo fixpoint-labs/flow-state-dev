@@ -5,7 +5,13 @@ a directory, get back the framework's neutral harness handle. It is the same sha
 `@flow-state-dev/claude-code` returns, so a caller that reads the handle can
 drive either.
 
-Full guide: [Codex SDK agent](https://flow-state.dev/docs/tools/codex).
+[`@flow-state-dev/claude-code`](../claude-code) is the other harness, and
+[`@flow-state-dev/harness-manager`](../harness-manager) drives either from a task
+board without knowing which one it has.
+
+Full guide: [Codex SDK agent](https://flow-state.dev/docs/tools/codex). The
+contract both harnesses implement is
+[Coding agents](https://flow-state.dev/docs/tools/coding-agents).
 
 ## Install
 
