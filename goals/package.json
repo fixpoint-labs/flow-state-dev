@@ -12,6 +12,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.3.234",
     "@electric-sql/pglite": "^0.5.4",
     "@flow-state-dev/claude-code": "workspace:*",
+    "@flow-state-dev/codex": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/harness-manager": "workspace:*",
@@ -20,6 +21,7 @@
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
+    "@openai/codex-sdk": "0.152.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {

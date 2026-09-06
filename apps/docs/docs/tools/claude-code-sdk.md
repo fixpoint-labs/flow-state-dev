@@ -14,6 +14,9 @@ This is the companion to [Claude Code remote dispatch](./claude-code-cli.md). Th
 page hands a task to a cloud session and returns a handle. This page runs the
 agent locally, in your process, and streams everything it does.
 
+It is not the only coding agent you can run this way. [Codex](./codex.md) is the
+other, and both return the same handle, so a step that reads one can drive either.
+
 ## When to use it
 
 Reach for this when a flow needs a real agent in the loop, not a fire-and-forget
