@@ -43,7 +43,7 @@ export type DerivationIdentity = {
 const CHILD_ID_PREFIX = "dsx_";
 
 // Fields are length-framed with core's codec so field boundaries cannot be
-// confused: without it `("u_ab", "c") and `("u_a", "bc")` hash identically,
+// confused: without it `("u_ab", "c")` and `("u_a", "bc")` hash identically,
 // and since the parent session id is one of the fields that is a cross-lineage
 // collision reachable by choosing ids — exactly what the derivation exists to
 // prevent. An absent tenant frames as the empty field.
