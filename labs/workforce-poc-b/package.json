@@ -1,0 +1,28 @@
+{
+  "name": "@flow-state-dev/workforce-poc-b",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "description": "Throwaway Workforce L2-on-L1 POC lab B: reply-storm policy via existing task-board claim. Never-merge.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root ."
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/orchestration": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
