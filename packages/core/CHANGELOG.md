@@ -1,5 +1,76 @@
 # @flow-state-dev/core
 
+## 0.1.0
+
+### Minor Changes
+
+- 3cbc411: A shared contract for coding-agent harnesses (LAB-152), so a harness package no
+  longer has to be built against another vendor's internals.
+
+  `@flow-state-dev/core` now exports the shape a harness block is handed and the
+  handle it returns — `harnessRunInputSchema` and `harnessRunHandleSchema` (plus
+  `harnessRunEnvelopeSchema` for a fire-and-forget dispatch), with
+  `HarnessRunInput`, `HarnessRunHandle`, `HarnessBlock`, `HarnessResolver` and
+  `HarnessSessionHook` on `@flow-state-dev/core/types`. The handle names how a run
+  ended (`outcome`: finished, stopped at a limit, or failed), its final message,
+  usage, and cost — including whether that cost was reported by the agent or
+  estimated. The input is the prompt alone: a working directory or a session to
+  resume reaches a harness through a resolver the host supplies, not through a
+  schema a model calling the block as a tool can see.
+
+  `@flow-state-dev/claude-code`'s handles are the neutral ones plus Claude's own
+  `resultSubtype` and `toolsObserved`. Two visible changes: `source` now reads
+  `claude-code/sdk` and `claude-code/cli-remote` (the `<package>/<door>`
+  convention every harness follows) and handles saved under the old `sdk` /
+  `cli-remote` spellings still load; and the SDK handle carries `outcome` and
+  `cost` alongside the existing `costUsd`, which stays for now. The package's
+  `RemoteAgentTaskHandle`, `RemoteAgentSource`, `RemoteAgentStatus` and
+  `remoteAgentTaskHandleSchema` are deprecated aliases of the core shapes.
+
+- b3e6e22: Initial release (FIX-1187).
+- 1b94521: Background Claude Code runs can continue a previous conversation (LAB-154).
+
+  `claudeCodeAgent` and `createClaudeCodeAgentCapability` take `resume` (which
+  session this run continues — return `null` to start fresh) and `onSession`
+  (called during the run when the agent names its session, so a cancelled run's id
+  is not lost). Both are background-path only and throw at construction without
+  `detached: true`.
+
+  Three things existing code can trip over:
+
+  - **Every resolver option is now handed the block context alone.** `cwd`,
+    `sandbox` and `resume` on `claudeCodeAgent`, and `root` on
+    `createWorkspaceAgentCapability`, used to receive the run's input as a first
+    argument. Drop it: `cwd: (_input, ctx) => …` becomes `cwd: (ctx) => …`.
+  - **`costUsd` is gone from the SDK handle.** Read `cost.usd`. Handles already
+    persisted with the old field still load.
+  - **`HarnessResolver` in `@flow-state-dev/core/types` matches**, and its context
+    keeps its types where it previously widened them to `any` — a resolver body
+    reading an undeclared scope-state field no longer compiles.
+
+- 5fa52aa: One dispatch protocol: every arrival at a flow — a caller's action, a chat event, a webhook, a schedule, a task hand-off, an internal dispatch — is a dispatch of one type delivered to one entry addressed by `(type, name)`, with no fallback between types (FIX-1302).
+
+  - **`defineFlow` gains `internal` and `task` entries, nested under their type.** `internal: { actions: { wake: { block } } }` and `task: { actions: { implement: { block } } }` are declared like actions and are definition-only, like the transport maps; the flat `internal: { wake }` / `tasks: { implement }` spelling is refused by name. An `internal` entry is reachable only from a `dispatcher()` inside the flow; a `task` entry is reachable only from a `dispatcher({ type: "task" })` seat on a task board the flow reaches, and `defineFlow` puts each one behind that board's claim gate (the row re-read, the claim verified, the task scope marked, the ticket re-minted) before the block runs. A task entry no board addresses, a task dispatcher no board holds, and two boards addressing one entry are refused at definition. Every entry, of every type, accepts its own `concurrency` (`ActionCore.concurrency`).
+  - **`dispatcher()` is the block that sends.** `dispatcher({ name, type: "internal", target, session: { key } | { id }, payload? })` (`InternalDispatcherConfig`) returns a handler carrying its static address, and `defineFlow` refuses an address the flow does not declare — through composition, rescue handlers, and a generator's static `tools`. `{ key }` derives a child session of the running one (minted, then adopted on the same key); `{ id }` delivers into an existing session of the same flow and principal, refuses an unknown id rather than creating one, and is dropped if that session was deleted and recreated between acceptance and the run. A refusal throws `DispatchRefusedError` naming the refusal (`no-entry`, `session-not-found`, `session-not-addressable`, `key-occupied`, `no-dispatch-operation`, `dispatch-rejected`, `external-dispatcher`).
+  - **`.forEach()` and `.forEachSideChain()` accept `blocks`.** A per-item factory declares the blocks it can produce, so they are walked for dispatch addresses and merged for resources like a block-shaped call's element. A task board's drain uses it, which is what lets `defineFlow` refuse a flow that reaches a board with a hand-off seat but never declares the entry it addresses.
+  - **A task board hands off through a dispatcher seat.** A seat under `workers` is a block; a `dispatcher({ name, type: "task", target, session: "per-task" | "per-worker" | { key: (task) => string } })` (`TaskDispatcherConfig`) in that position hands the seat's rows off to `flow.task.actions[target]` in the child session the policy names. A `task` dispatch carries `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, payload }` (`taskDispatchInputSchema`, `TaskDispatchInput` from core), and the entry's gate re-reads the row and verifies the claim before the block runs. A refused hand-off throws the same `DispatchRefusedError` a `dispatcher()` block throws. An entry a `per-worker` or `key` seat hands off to defaults to `concurrency: "queue"` (an explicit policy wins); a `per-task` seat keeps the flow default. `board.handedOff` lists the seats that hand off; `createTaskGate`, `createHandOff`, `StaleTaskClaimError` and the `TaskSeatRegistry` type are exported from `@flow-state-dev/orchestration/task-board`. `TaskSessionPolicy`, `taskSessionKeyFor`, `bindTaskDispatcher` and `taskBindingOf` are exported from core for substrate code.
+  - **A dispatched request is stamped.** It records `metadata.dispatch = { type, target, from, key?, ... }` under `source: "internal"` or `"task"`; the child session it runs in carries `topic` (the key) and `coordinate` (`"<type>:<target>"`) and is listed by `GET /sessions/:sessionId/children` like any other child of its parent.
+  - **`task` and `internal` dispatches can never be re-entered** from a public route: retry, continue and resume refuse them, and `publicReentrySources` cannot re-open them.
+  - **`createMockTransportHost` publishes `usesExternalDispatcher: false`**, matching the widened `InboundTransportHost` contract.
+  - **The dispatch seam is not a named member of the block context** — reach it with `dispatcher()`, or in substrate code with `dispatchThroughSeam` and `markDispatcher`. The Workstream surface this protocol replaces is removed in the same release; see the Workstream-removal note for the renames.
+
+- 4054c64: `dispatcher()` can reply to who dispatched it: `session: { from: true }` delivers into the seam-stamped sender, and a request with no trusted stamp refuses `no-sender` (FIX-1312, FIX-1171).
+- fda9b15: Background work is declared with a task-board dispatcher seat and read back as child sessions: a session's children are listed at `GET /sessions/:sessionId/children` through `listChildSessions()` and `useSession`'s `childSessions` / `childSessionsStale`, session-scoped resources shared with them use `sharedToLineage`, and the two `createFlowState` options are `dispatchDrainTimeoutMs` and `maxChildSessionListLimit`; the Workstream surface they replace is removed, `ctx.requestHost.startDetached` and `dispatch: { mode: "detached" }` with it (FIX-1308). From `@flow-state-dev/orchestration/task-board` that removes the detached-mode helpers (`assertDetachedBoardSupported`, `detachedTaskPredicate`, `coordinateKey`, `coordinateLabel`, `workstreamRoutingSeed`, `WorkerCoordinate`, `TaskWorkerDispatch`, `TaskWorkerSlot`, `TaskWorkerSlotRegistry`, `TaskWorkerEntry`, `isTaskWorkerEntry`) and `board.detachedWorkers`; a seat is a block or a `dispatcher({ type: "task" })`, and `resolveWorkerSlots` now returns the bare blocks plus the `HandOffSeat`s (`name`, `label`, `dispatch`) in one walk from the hand-off module. A `{ worker, dispatch }` or `{ block, session }` seat is refused by name at construction. The DevTool's Children panel pairs a child with its task from the dispatch key a `per-task` or `per-worker` seat derives (a `{ key }` policy pairs nothing) and shows the entry it was dispatched for.
+
+### Patch Changes
+
+- d7208f7: LAB-153: the model price table now knows OpenAI's Codex models, so a Codex run can be priced.
+
+  `gpt-5.4-codex-mini` previously matched the `gpt-5.4` row and was estimated at the full model's rate. Cost estimates for that model change; the other Codex names were unpriced before and are priced now.
+
+- Updated dependencies [b3e6e22]
+  - @flow-state-dev/contracts@0.1.0
+
 ## Pre-1.0 history
 
 Captured from the project's pre-Changesets development log (root `changelog.md`,

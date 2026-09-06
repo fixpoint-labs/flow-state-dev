@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/workforce",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Agent registry and materialization for flow-state-dev.",
   "keywords": [
     "ai",

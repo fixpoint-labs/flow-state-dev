@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/client",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Isomorphic API client for flow-state-dev actions, sessions, and streams.",
   "keywords": [
     "ai",

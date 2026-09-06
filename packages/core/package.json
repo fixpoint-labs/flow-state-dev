@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Isomorphic builders, type contracts, and item taxonomy for the flow-state-dev block framework.",
   "keywords": [
     "ai",

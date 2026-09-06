@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/chat-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Chat SDK inbound transport for flow-state-dev.",
   "keywords": [
     "ai",

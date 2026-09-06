@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/voice-openai",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "OpenAI voice transport for flow-state-dev.",
   "keywords": [
     "ai",

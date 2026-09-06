@@ -1,4 +1,4 @@
-# @flow-state-dev/bullmq
+# @flow-state-dev/voice-openai
 
 ## 0.1.0
 
@@ -16,5 +16,3 @@
 - Updated dependencies [4054c64]
 - Updated dependencies [fda9b15]
   - @flow-state-dev/core@0.1.0
-  - @flow-state-dev/engine@0.1.0
-  - @flow-state-dev/scheduled@0.1.0

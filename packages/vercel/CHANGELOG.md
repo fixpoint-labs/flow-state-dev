@@ -1,5 +1,21 @@
 # @flow-state-dev/vercel
 
+## 0.1.0
+
+### Minor Changes
+
+- b3e6e22: Initial release (FIX-1187).
+
+### Patch Changes
+
+- Updated dependencies [b3e6e22]
+- Updated dependencies [5fa52aa]
+- Updated dependencies [4054c64]
+- Updated dependencies [fda9b15]
+  - @flow-state-dev/engine@0.1.0
+  - @flow-state-dev/scheduled@0.1.0
+  - @flow-state-dev/store-postgres@0.1.0
+
 ## Pre-1.0 history
 
 Captured from the project's pre-Changesets development log (root `changelog.md`,

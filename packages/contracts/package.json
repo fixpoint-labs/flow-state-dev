@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/contracts",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Zero-dependency shared contracts layer (item taxonomy, leaf types, block-instance-id) for the flow-state-dev block framework.",
   "keywords": [
     "ai",
