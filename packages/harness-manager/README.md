@@ -7,7 +7,7 @@ A *harness* is a coding agent driven as a block — you hand it a prompt, it wor
 ## Installation
 
 ```bash
-npm install @flow-state-dev/harness-manager
+pnpm add @flow-state-dev/harness-manager
 ```
 
 Peer of `@flow-state-dev/core` and `@flow-state-dev/orchestration`. You install a harness separately — `@flow-state-dev/claude-code`, `@flow-state-dev/codex`, or your own.
@@ -115,8 +115,9 @@ place. **Pass `[]` if this host genuinely has no repository of its own** — a
 built artifact, compiled output in an image with no `.git` anywhere. That case
 is real and supported; it just has to be said.
 
-There is no default. A default is a guess, and the wrong guess is silent: this guard refuses only on a *match*, so a host it cannot identify would
-match nothing and pass, leaving the fence off in exactly the deployment shapes
+There is no default. A default is a guess, and the wrong guess is silent: this
+guard refuses only on a *match*, so a host it cannot identify would match
+nothing and pass, leaving the fence off in exactly the deployment shapes
 where nobody would notice — a container whose `WORKDIR` sits outside the source
 tree, a service unit, a process launched from `/`. Given a location it cannot
 resolve, it refuses and names the option.

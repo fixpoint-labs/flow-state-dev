@@ -410,8 +410,7 @@ code assigned over one that arrived with the request.
 
 ## Configuring the run
 
-Four options travel with `cwd`. All are unset by default, so a run that ignores
-them behaves exactly as it did before you knew they existed.
+These options travel with `cwd`. All are unset by default.
 
 ```ts
 // One checkout per invocation, shared by both resolvers. They receive the same

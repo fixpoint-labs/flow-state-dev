@@ -18,8 +18,18 @@ reads the handle can drive either:
 | [Claude Code SDK agent](./claude-code-sdk.md) | `@flow-state-dev/claude-code/sdk` | The Claude Code Agent SDK, in your process |
 | [Codex SDK agent](./codex.md) | `@flow-state-dev/codex` | The Codex CLI, in a subprocess |
 
-Each page covers the options, the items it emits, and the errors it raises. This
-page is what they have in common.
+Either one is a block, so a sequencer can step it:
+
+```ts
+import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+
+const agent = claudeCodeAgent({ cwd: () => "/var/agent-checkouts/run-1" });
+// seq.step(agent) with input { prompt: "Tidy the imports in src/." }
+```
+
+Swap `claudeCodeAgent` for `codexAgent` and the surrounding step is unchanged.
+Each page covers the options that agent takes, the items it emits, and the errors
+it raises. This page is what they have in common.
 
 ## The handle
 
@@ -29,7 +39,7 @@ agent produced the run:
 | Field | What it holds |
 |---|---|
 | `source` | Which agent and entry point produced the run, as `<package>/<door>` — `claude-code/sdk`, `codex/sdk`. |
-| `status` | `running`, `completed`, or `errored`. |
+| `status` | `running`, `completed`, or `errored`. The schema also admits `dispatched`, which only a fire-and-forget door reports — see [below](#not-every-dispatch-is-a-harness). Switch exhaustively on all four. |
 | `sessionId`, `url`, `dispatchedAt` | The run's own id, a link to it when there is one, and when it started. |
 | `outcome` | How it ended: `finished`, `stopped-at-limit` (it hit a turn or budget cap), or `failed`. `null` while unknown. |
 | `finalMessage` | The last assistant message, or `null`. |

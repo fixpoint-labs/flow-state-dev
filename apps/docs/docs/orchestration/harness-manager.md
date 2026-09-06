@@ -6,10 +6,10 @@ sidebar_label: Harness manager
 
 A [harness](/docs/tools/coding-agents) is a coding agent driven as a block: you hand it a prompt, it works in its own agentic loop, and it hands back a handle describing what it did. `@flow-state-dev/harness-manager` is a task-board worker that turns a row on a board into a supervised run of one.
 
-Supervised means four things it does that dispatching a coding agent yourself does not. The run gets **its own checkout**, not whatever directory your server happens to sit in. A **verdict is read before the row settles**, so a run that produced nothing can never close as done. The run can **ask a question** and park until a person answers, and the answer continues the same conversation. And **which harness runs is yours to choose** — the manager imports none of them.
+Supervised means it does what dispatching a coding agent yourself does not. The run gets **its own checkout**, not whatever directory your server happens to sit in. A **verdict is read before the row settles**, so a run that produced nothing can never close as done. The run can **ask a question** and park until a person answers, and the answer continues the same conversation. And **which harness runs is yours to choose** — the manager imports none of them.
 
 ```bash
-npm install @flow-state-dev/harness-manager
+pnpm add @flow-state-dev/harness-manager
 ```
 
 ## What it does
@@ -161,10 +161,11 @@ surface.
 
 `@flow-state-dev/harness-manager/checkout` is how a run gets a directory:
 `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the
-path grammar. It is a separate entry point rather than a note in the docs because
-that is the only way the two halves are actually different — these are
-git-worktree-specific, and a second checkout strategy would put them behind a
-seam. Build on `harnessManager({ harness })` and let it own the checkout.
+path grammar. Reach for it when you need to resolve or inspect a run's checkout
+from outside the manager — a status page that wants the path, a cleanup job. It
+is git-worktree-specific, and a second checkout strategy would put it behind a
+seam, so build on `harnessManager({ harness })` and let the manager own the
+checkout wherever you can.
 
 ## Limits
 
