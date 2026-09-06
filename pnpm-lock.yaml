@@ -796,6 +796,31 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  labs/workforce-poc-a:
+    dependencies:
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@flow-state-dev/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
+
   packages/bullmq:
     dependencies:
       '@flow-state-dev/core':
