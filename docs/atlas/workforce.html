@@ -548,7 +548,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="channels">
   <div class="sec-head"><span class="sec-num">05</span><h2>Channels</h2></div>
-  <p class="lede">Two channel kinds. A <strong>DM</strong> is one static session with that one worker, opened at bootstrap. A <strong>group</strong> is a message board plus one subscription session per subscribed member. A group post wakes those sessions. <strong>Who answers is proposed Layer&nbsp;2 policy</strong>, not a new primitive and not a shared room. <strong>Which room a talk enters is a proposed Layer&nbsp;2 matrix</strong> &#8212; not a third channel kind, not a peer-edge graph, not a second bus. Neither channel is a seed-session field on <code>defineFlow</code>. That field does not exist, and this convention does not add it. There is no shared group session.</p>
+  <p class="lede">Two channel kinds. A <strong>DM</strong> is one static session with that one worker, opened at bootstrap. A <strong>group</strong> is a message board plus one subscription session per subscribed member. A group post wakes those sessions. <strong>Who answers is proposed Layer&nbsp;2 policy</strong>, not a new primitive and not a shared room.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
@@ -641,7 +641,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>Seed / nonstandard sessions on <code>defineFlow</code></td><td><span class="tag t-gone">cut</span></td><td>No such field. Do not add one so a flow can declare its rooms. That is bootstrap&#8217;s job.</td></tr>
         <tr><td>One shared / multiparty group session</td><td><span class="tag t-gone">cut</span></td><td>Do not invent a session type several workers enter. Fan-out is N dispatches into N sessions that already exist.</td></tr>
         <tr><td>Group reply discipline</td><td><span class="tag t-prop">proposed</span></td><td>Layer&nbsp;2 policy on the existing fan-out. Who may reply (role / <code>@</code> / coordinator). One claim or turn per post. Default quiet unless addressed. Not a Layer&nbsp;1 board-lock. A later POC may reuse existing task/resource claim/lease; wake Architect only if that invents substrate.</td></tr>
-        <tr><td>Which room (routing matrix)</td><td><span class="tag t-prop">proposed</span></td><td>Roster + context resolve a session, then <code>dispatcher()</code>. Four rooms: DM, topic/task, worker&#8596;worker ad-hoc, team broadcast. Prefer project/task over a new pairwise or DM. Not a peer-edge graph. Marked proposed until reverse and cross-flow land.</td></tr>
+        <tr><td>Which room (routing matrix)</td><td><span class="tag t-prop">proposed</span></td><td>Roster + context, then this door. See the Talk / Room table below. Marked proposed until cross-flow lands.</td></tr>
         <tr><td>Peer-edge graph / second bus / route-resolver</td><td><span class="tag t-gone">cut</span></td><td>Do not draw edges between workers. Do not add a send door beside <code>dispatcher()</code>. Do not invent a Layer&nbsp;1 resolver that mints routes. Address is a session id or a known channel.</td></tr>
       </tbody>
     </table>
@@ -685,80 +685,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   </figure>
 
   <h3>Which room</h3>
-  <p>Every talk is still <code>dispatcher()</code> into a session. The proposed Layer&nbsp;2 matrix is <em>which</em> session. Roster plus context &#8212; who is on the seat, which project or task is active &#8212; resolve a room, then dispatch. Default: the project or task room, not a new pairwise or a DM. A coordinator or parent-star is optional policy, not Layer&nbsp;1 law. Marked <strong>proposed</strong> until reverse <code>{ from: true }</code> and cross-flow land. Reverse is what makes a worker&#8594;worker reply a real dispatch, not a side channel.</p>
-
-  <figure>
-    <div class="fig-body">
-      <svg viewBox="0 0 940 500" role="img" aria-label="Proposed Layer 2 routing matrix. Top: roster plus context resolve a room, then dispatcher delivers into that session. Four rooms: user to worker is a static DM; topic, task, or project is a dynamic session; worker to worker ad-hoc opens or reuses a pairwise or small dynamic session addressed by session id, not a peer edge; team broadcast is a group board fanning out to N subscriber sessions with reply-storm policy. Default prefers the project or task room over a new pairwise or DM. Coordinator or parent-star is optional policy. Cut: no peer-edge graph, no second bus, no Channel or MessageBoard Layer 1, no route-resolver substrate. Marked proposed until reverse and cross-flow land.">
-        <rect class="n-prop" x="16" y="16" width="280" height="112" rx="5"/>
-        <text class="t-lbl" x="34" y="38">ROSTER + CONTEXT &#183; PROPOSED</text>
-        <text class="t-b f-accent" x="34" y="64">who, and which work</text>
-        <text class="t-xs" x="34" y="88">ACTIVE PROJECT / TASK</text>
-        <text class="t-xs" x="34" y="106">THE SEAT ON THE ROSTER</text>
-
-        <path class="ln" d="M296,72 L328,72"/>
-
-        <rect class="n-prop" x="328" y="16" width="280" height="112" rx="5"/>
-        <text class="t-lbl" x="346" y="38">RESOLVE ROOM &#183; PROPOSED</text>
-        <text class="t-b f-accent" x="346" y="64">pick a session</text>
-        <text class="t-xs" x="346" y="88">PREFER PROJECT / TASK</text>
-        <text class="t-xs" x="346" y="106">OVER NEW PAIRWISE / DM</text>
-
-        <path class="ln" d="M608,72 L640,72"/>
-
-        <rect class="n-code" x="640" y="16" width="284" height="112" rx="5"/>
-        <text class="t-lbl f-code" x="658" y="38">DISPATCH &#183; EXISTS</text>
-        <text class="t-b" x="658" y="64">dispatcher()</text>
-        <text class="t-xs" x="658" y="88">INTO THAT SESSION</text>
-        <text class="t-xs" x="658" y="106">ONE DOOR. NO SECOND BUS.</text>
-
-        <rect class="n-prop" x="16" y="148" width="220" height="168" rx="5"/>
-        <text class="t-lbl" x="32" y="170">1 &#183; USER&#8596;WORKER</text>
-        <text class="t-b f-accent" x="32" y="196">static DM</text>
-        <text class="t-xs" x="32" y="220">ONE SESSION PER WORKER</text>
-        <text class="t-xs" x="32" y="238">OPENED AT BOOTSTRAP</text>
-        <text class="t-xs" x="32" y="264">ADDRESS BY { id }</text>
-        <text class="t-xs" x="32" y="290">THE TALK-TO-X ROOM</text>
-
-        <rect class="n-prop" x="248" y="148" width="220" height="168" rx="5"/>
-        <text class="t-lbl" x="264" y="170">2 &#183; TOPIC / TASK</text>
-        <text class="t-b f-accent" x="264" y="196">dynamic session</text>
-        <text class="t-xs" x="264" y="220">ONE ROOM PER WORK ITEM</text>
-        <text class="t-xs" x="264" y="238">COLLABORATORS ADDRESS IT</text>
-        <text class="t-xs" x="264" y="264">OR THEIR SUBSCRIBE</text>
-        <text class="t-xs" x="264" y="282">SESSION ON ITS BOARD</text>
-        <text class="t-xs" x="264" y="300">SEE &#167;06</text>
-
-        <rect class="n-prop" x="480" y="148" width="220" height="168" rx="5"/>
-        <text class="t-lbl" x="496" y="170">3 &#183; WORKER&#8596;WORKER</text>
-        <text class="t-b f-accent" x="496" y="196">ad-hoc session</text>
-        <text class="t-xs" x="496" y="220">OPEN OR REUSE</text>
-        <text class="t-xs" x="496" y="238">PAIRWISE OR SMALL</text>
-        <text class="t-xs" x="496" y="264">ADDRESS BY SESSION ID</text>
-        <text class="t-xs" x="496" y="282">OR A KNOWN CHANNEL</text>
-        <text class="t-xs" x="496" y="300">NOT A PEER EDGE</text>
-
-        <rect class="n-prop" x="712" y="148" width="212" height="168" rx="5"/>
-        <text class="t-lbl" x="728" y="170">4 &#183; TEAM BROADCAST</text>
-        <text class="t-b f-accent" x="728" y="196">board + N</text>
-        <text class="t-xs" x="728" y="220">GROUP FAN-OUT</text>
-        <text class="t-xs" x="728" y="238">N SUBSCRIBER SESSIONS</text>
-        <text class="t-xs" x="728" y="264">REPLY-STORM POLICY</text>
-        <text class="t-xs" x="728" y="282">ALREADY LOCKED</text>
-        <text class="t-xs" x="728" y="300">SEE ABOVE</text>
-
-        <rect class="n-box" x="16" y="336" width="908" height="56" rx="5"/>
-        <text class="t-s" x="34" y="358">Coordinator / parent-star is optional policy, not Layer&nbsp;1 law.</text>
-        <text class="t-xs" x="34" y="378">PROPOSED UNTIL REVERSE { from: true } AND CROSS-FLOW LAND. REVERSE MAKES WORKER&#8594;WORKER REPLY REAL WITHOUT A SIDE CHANNEL.</text>
-
-        <rect class="n-prose" x="16" y="408" width="908" height="76" rx="5"/>
-        <text class="t-lbl" x="34" y="430">CUT</text>
-        <text class="t-s" x="34" y="454">no peer-edge graph &#183; no second bus &#183; no Channel / MessageBoard L1 &#183; no route-resolver</text>
-        <text class="t-xs" x="34" y="472">EVERY TALK IS dispatcher() INTO A SESSION. ADDRESS THE SESSION. DO NOT DRAW EDGES BETWEEN WORKERS.</text>
-      </svg>
-    </div>
-    <figcaption><b>Which room, then the same door.</b> Roster plus context resolve a session. <code>dispatcher()</code> delivers into it. Default: the project or task room, not a new pairwise or DM. Worker&#8596;worker is a session you open or reuse, addressed by id &#8212; not an edge on a graph. Marked proposed until reverse and cross-flow land.</figcaption>
-  </figure>
+  <p>Every talk is still <code>dispatcher()</code> into a session. The proposed Layer&nbsp;2 matrix is <em>which</em> session &#8212; not a third channel kind, not a peer-edge graph, not a second bus. Roster plus context &#8212; who is on the seat, which project or task is active &#8212; resolve a room, then dispatch. Default: the project or task room, not a new pairwise or a DM. A coordinator or parent-star is optional policy, not Layer&nbsp;1 law.</p>
 
   <div class="tw">
     <table>
@@ -773,8 +700,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   </div>
 
   <div class="note">
-    <span class="lbl">Proposed until reverse and cross-flow land</span>
-    <p>The matrix does not wait on a new primitive. It waits on the rest of the same door: reverse <code>{ from: true }</code> so a worker can reply to a worker without a side channel, and cross-flow so the door crosses a flow kind. Until then it is the lock, not the runtime. Do not invent a peer-edge graph, a route-resolver substrate, or a Layer&nbsp;1 Channel / MessageBoard package to fill the wait.</p>
+    <span class="lbl">Proposed until cross-flow lands</span>
+    <p>The matrix does not wait on a new primitive. Reverse <code>{ from: true }</code> already exists &#8212; reply to the stamped sender, same door. Cross-flow is still outstanding so the door crosses a flow kind. Until then it is the lock, not the runtime. Do not invent a peer-edge graph, a route-resolver substrate, or a Layer&nbsp;1 Channel / MessageBoard package to fill the wait.</p>
   </div>
 </section>
 
@@ -1031,11 +958,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="collab">
   <div class="sec-head"><span class="sec-num">10</span><h2>Collaboration</h2></div>
-  <p class="lede">Workers talk on the <strong>dispatch spine</strong>. Reverse address is <code>{ from: true }</code> when it lands. Cross-flow is the same door, when it lands. Which room is proposed Layer&nbsp;2 &#8212; roster + context, then this door. See <a href="#channels">&#167;05</a>. Not a peer-edge graph. The epic name Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> handler. Do not grow a second bus beside it.</p>
+  <p class="lede">Workers talk on the <strong>dispatch spine</strong>. Reverse address is <code>{ from: true }</code> &#8212; it exists. Cross-flow is the same door, when it lands. Which room is proposed Layer&nbsp;2 &#8212; roster + context, then this door. See <a href="#channels">&#167;05</a>. The epic name Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> handler. Do not grow a second bus beside it.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 360" role="img" aria-label="Three columns on one dispatch spine. Left, solid: same-flow dispatch as it exists, internal or task, session key or id, from as provenance. Centre, dashed: reverse address from true, reply to the sender, not in the tree. Right, dashed: cross-flow fire and forget, engine still refuses at create-request-host. Bottom band: Relay FIX-1197 is the historical name of dispatcher, no second bus.">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Three columns on one dispatch spine. Left, solid: same-flow dispatch as it exists, internal or task, session key or id, from as provenance. Centre, solid: reverse address from true, reply to the stamped sender, exists. Right, dashed: cross-flow fire and forget, engine still refuses at create-request-host. Bottom band: Relay FIX-1197 is the historical name of dispatcher, no second bus.">
         <rect class="n-code" x="16" y="16" width="292" height="220" rx="5"/>
         <text class="t-lbl f-code" x="34" y="38">SAME-FLOW &#183; EXISTS</text>
         <text class="t-s" x="34" y="68">dispatcher()</text>
@@ -1046,15 +973,15 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="34" y="170">NOT A REPLY ADDRESS</text>
         <text class="t-b f-code" x="34" y="208">the door that shipped</text>
 
-        <rect class="n-prop" x="324" y="16" width="292" height="220" rx="5"/>
-        <text class="t-lbl" x="342" y="38">REVERSE &#183; PROPOSED</text>
-        <text class="t-s f-accent" x="342" y="68">{ from: true }</text>
+        <rect class="n-code" x="324" y="16" width="292" height="220" rx="5"/>
+        <text class="t-lbl f-code" x="342" y="38">REVERSE &#183; EXISTS</text>
+        <text class="t-s f-code" x="342" y="68">{ from: true }</text>
         <text class="t-xs" x="342" y="90">REPLY TO THE SENDER</text>
-        <text class="t-xs" x="342" y="108">SAME SPINE. NEW TARGET.</text>
-        <text class="t-xs" x="342" y="134">NOT IN dispatcher.ts</text>
-        <text class="t-xs" x="342" y="152">TODAY from IS A STRING</text>
-        <text class="t-xs" x="342" y="170">PROVENANCE, NOT A SESSION</text>
-        <text class="t-b f-accent" x="342" y="208">when it lands, use it</text>
+        <text class="t-xs" x="342" y="108">SAME SPINE. STAMPED SESSION</text>
+        <text class="t-xs" x="342" y="134">dispatcher.ts</text>
+        <text class="t-xs" x="342" y="152">SEAM-STAMPED SENDER</text>
+        <text class="t-xs" x="342" y="170">NOT A CALLER-NAMED ID</text>
+        <text class="t-b f-code" x="342" y="208">the door that shipped</text>
 
         <rect class="n-prop" x="632" y="16" width="292" height="220" rx="5"/>
         <text class="t-lbl" x="650" y="38">CROSS-FLOW &#183; THIS CYCLE</text>
@@ -1072,7 +999,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="34" y="322">DO NOT REINTRODUCE A SECOND SEND DOOR BESIDE dispatcher().</text>
       </svg>
     </div>
-    <figcaption><b>One door, three times.</b> Same-flow dispatch shipped. Reverse <code>{ from: true }</code> is a target the spine does not yet have &#8212; today <code>from</code> is the sending block&#8217;s name. Cross-flow is still refused at <code>packages/engine/src/context/create-request-host.ts</code> (<code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>). The convention waits on those landings. It does not invent a messenger while it waits.</figcaption>
+    <figcaption><b>One door, three times.</b> Same-flow dispatch shipped. Reverse <code>{ from: true }</code> is existing-session delivery addressed at the stamped sender &#8212; <code>packages/core/src/blocks/dispatcher.ts</code>. Cross-flow is still refused at <code>packages/engine/src/context/create-request-host.ts</code> (<code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>). The convention waits on that landing. It does not invent a messenger while it waits.</figcaption>
   </figure>
 
   <div class="tw">
@@ -1081,12 +1008,10 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <tbody>
         <tr><td><code>dispatcher()</code> is the send door</td><td><span class="tag t-real">exists</span></td><td><code>packages/core/src/blocks/dispatcher.ts</code>. Handler. Address is <code>(type, target)</code>. Session is <code>{ key }</code> or <code>{ id }</code>.</td></tr>
         <tr><td><code>from</code> on the envelope</td><td><span class="tag t-real">exists</span></td><td>Provenance string: the dispatching block&#8217;s name. Not a session target. <code>DispatchSpec.from</code>.</td></tr>
-        <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-prop">proposed</span></td><td>Zero hits on <code>origin/main</code>. When it lands, Workforce replies on this spine. Do not add a side channel.</td></tr>
+        <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-real">exists</span></td><td><code>packages/core/src/blocks/dispatcher.ts</code>. Existing-session delivery to the seam-stamped sender. Refuses <code>no-sender</code> if this request was not dispatched. Same spine. Do not add a side channel.</td></tr>
         <tr><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">this cycle</span></td><td><code>packages/engine/src/context/create-request-host.ts</code> refuses with <code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>. Convention uses it when the refuse goes away.</td></tr>
         <tr><td>A second send door</td><td><span class="tag t-gone">cut</span></td><td>No <code>packages/relay</code>. No message-board package. Message board is Layer&nbsp;2 convention only. Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> &#8212; not a second bus.</td></tr>
         <tr><td>Group reply discipline</td><td><span class="tag t-prop">proposed</span></td><td>Same spine. Policy says who may reply (role / <code>@</code> / coordinator), one claim or turn per post, default quiet unless addressed. Not a second bus. Not a Layer&nbsp;1 board-lock.</td></tr>
-        <tr><td>Which room (routing matrix)</td><td><span class="tag t-prop">proposed</span></td><td>Roster + context resolve a session, then <code>dispatcher()</code>. Prefer project/task over a new pairwise or DM. Coordinator / parent-star is optional policy, not Layer&nbsp;1 law. Marked proposed until reverse and cross-flow land. See <a href="#channels">&#167;05</a>.</td></tr>
-        <tr><td>Peer-edge graph / second bus / route-resolver</td><td><span class="tag t-gone">cut</span></td><td>No worker-to-worker edge type. No second send door. No Layer&nbsp;1 resolver that mints routes. Address is a session id or a known channel.</td></tr>
       </tbody>
     </table>
   </div>
@@ -1159,8 +1084,9 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td><code>taskBoard</code> + <code>taskSchema</code></td><td><span class="tag t-real">exists</span></td><td>Unified plan/task primitive. Status set includes <code>parked</code>. Content for the prose half is <code>readContent()</code>.</td></tr>
         <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed</span></td><td>This page. No <code>createWorkerFlow</code>. No <code>workers/</code> tree. <code>workforce.config</code> is not a file in the repo.</td></tr>
         <tr><td>Roster-named harness + inherited subscriptions</td><td><span class="tag t-prop">proposed</span></td><td>A seat can name which harness it runs on and inherit that harness&#8217;s subscriptions when they exist. The consumer is Conductor&#8217;s harness-manager track. No second manager. No new Layer&nbsp;1 harness or subscription type. Not on main. Marked proposed until that path exists.</td></tr>
-        <tr><td>L2 routing matrix (which room)</td><td><span class="tag t-prop">proposed</span></td><td>Four rooms, one door. Roster + context &#8594; session &#8594; <code>dispatcher()</code>. Prefer project/task. Marked proposed until reverse and cross-flow land. No peer-edge graph. See <a href="#channels">&#167;05</a>.</td></tr>
-        <tr><td>Reverse <code>{ from: true }</code> / cross-flow</td><td><span class="tag t-prop">proposed</span></td><td>Cross-flow refused at <code>packages/engine/src/context/create-request-host.ts</code>. Reverse address not in the tree.</td></tr>
+        <tr><td>L2 routing matrix (which room)</td><td><span class="tag t-prop">proposed</span></td><td>Four rooms, one door. Roster + context &#8594; session &#8594; <code>dispatcher()</code>. Prefer project/task. Marked proposed until cross-flow lands. No peer-edge graph. See <a href="#channels">&#167;05</a>.</td></tr>
+        <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-real">exists</span></td><td>Existing-session delivery to the seam-stamped sender. <code>packages/core/src/blocks/dispatcher.ts</code>. Documented in <code>docs/architecture/action-forms.md</code>.</td></tr>
+        <tr><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">this cycle</span></td><td>Refused at <code>packages/engine/src/context/create-request-host.ts</code> (<code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>). Outstanding for worker&#8596;worker reply across flows.</td></tr>
         <tr><td>Published agents doc</td><td><span class="tag t-prose">docs</span></td><td><code>apps/docs/docs/orchestration/agents.md</code> describes today&#8217;s named participant. It is not this convention.</td></tr>
       </tbody>
     </table>
@@ -1183,7 +1109,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div class="tension">
     <h5>No Layer 1 Channel, Team, Project, or MessageBoard packages</h5>
-    <p>Those words are convention over sessions, rosters, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms, or a shared group session several workers enter, is a second architecture.</p>
+    <p>Those words are convention over sessions, rosters, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms, or a shared group session several workers enter, is a second architecture. Same cut: no peer-edge graph, no second send door, no route-resolver under the matrix. Which room is Layer&nbsp;2 &#8212; see <a href="#channels">&#167;05</a>.</p>
   </div>
 
   <div class="tension">
@@ -1214,11 +1140,6 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   <div class="tension">
     <h5>No second harness-manager. No Layer 1 harness type</h5>
     <p>A roster seat may name a harness and inherit subscriptions that already exist. The consumer is Conductor&#8217;s harness-manager track &#8212; one stack. Workforce does not get its own manager, and it does not invent a harness or subscription primitive. Marked proposed until that path exists. Triangulate; do not merge Conductor and Workforce harnesses on this page into one product.</p>
-  </div>
-
-  <div class="tension">
-    <h5>No peer-edge graph. No second bus. No route-resolver substrate</h5>
-    <p>Every talk is <code>dispatcher()</code> into a session. Worker&#8596;worker is a pairwise or small dynamic session addressed by id, not an edge between workers. A Layer&nbsp;1 Channel / MessageBoard package, a second send door, or a route-resolver under the matrix would be a second architecture. Coordinator / parent-star is optional Layer&nbsp;2 policy, not a law of the substrate.</p>
   </div>
 
   <div class="tension">
