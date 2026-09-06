@@ -34,7 +34,10 @@ A child session is a separate `session` cell: its own state, items, history,
 journal, metadata and session-scoped resources. It inherits the parent's
 principal, tenant, org and flow kind, records `parentSessionId`, and carries
 the parent's `lineageId` verbatim so a `sharedToLineage` resource resolves to
-the same storage in both. Nothing else is shared. There is no handle to the
+the same storage in both. (A child of a **cross-flow** dispatch takes the
+*addressed* flow's kind and roots its own lineage — see
+[Dispatching into another flow](#dispatching-into-another-flow).) Nothing else
+is shared. There is no handle to the
 parent's state and no cross-session read path; what the child needs arrives
 with the dispatch, and what the child produces lands on durable rows both can
 address.
@@ -89,6 +92,67 @@ parent that owns it. The derivation is deterministic, which is what makes
 and `evaluateAdoption` re-checks flow kind, principal, tenant, org, parent and
 lineage before adopting, because the public session-create route lets a
 same-principal caller pre-create a record at that deterministic id.
+
+### Dispatching into another flow
+
+An `internal` dispatcher may name a different flow — `flowKind` on the block.
+Nothing about the mechanism changes: one envelope, one door, one request
+record, the same session policies, the same handle back. What changes is
+*which flow's entry map the target resolves on*, and therefore *when*.
+
+`defineFlow` resolves a same-flow address, because it holds that flow's maps.
+It cannot resolve a cross-flow one — the flow named is registered
+independently — so the walk skips it and the seam does the lookup instead,
+against the flows this process registered. The rule is unchanged, one keyed
+lookup with no fallback; only the moment moves, and so does the shape of a
+miss: `flow-not-found` for a flow this process does not have, `no-entry` for
+one that has no such entry, both reaching the sending block as
+`DispatchRefusedError`. Neither retries, queues, nor resolves the sender's own
+map. The seam's flow lookup is wired from the host's registry
+(`RequestHostConstructionInputs.resolveFlow`); a process without one refuses
+every cross-flow address as `flow-not-found`, which is what it can honestly
+say.
+
+Two things about the child differ from a same-flow one, and both follow from
+the boundary being a **storage** boundary as much as a routing one:
+
+- **It belongs to the addressed flow.** Its record carries that flow's
+  `flowKind` and its session-state defaults come from that flow's
+  `stateSchema`, not the sender's. `parentSessionId` still names the sender's
+  session.
+- **It roots its own lineage** instead of inheriting the sender's. A
+  `sharedToLineage` resource stores under `scopeType: "lineage"` at the lineage
+  id, with no flow anywhere in the key — so handing a cross-flow child the
+  sender's lineage would put two flows' declarations on one durable cell. The
+  registry validates exactly that hazard at user and org scope, where it can
+  see both schemas side by side; it cannot see it here. Data crosses in the
+  payload, which the entry's own schema validates, and that is the whole of the
+  channel.
+
+The target flow kind also joins the child-key material, so one parent
+dispatching the same key to two flows gets a child for each rather than a
+`key-occupied` collision between two unrelated addresses. It is appended only
+for a cross-flow address, so same-flow children keep the ids they already
+derive.
+
+Two consequences worth naming. **A cross-flow child is not a descendant for
+the verbs that authorise by descent** — `isDescendantSession` re-checks the flow
+kind at every hop, so `livenessOf` will not answer for one. And **addressing is
+by flow kind**: both flows must be registered in the same process, and the
+resolved instance's `flow.id` is stamped onto `metadata.dispatch.flowId` as
+provenance rather than being addressable.
+
+**Replies work the same way across the boundary.** The recipient answers with
+its own `{ from: true }` dispatcher pointed at the sender's `flowKind` — the
+same three requests as within one flow. The stamp supplies the session id and
+the address supplies the flow; a delivery happens only when they agree, and a
+sender session on some other flow is `session-not-addressable`.
+
+A `task` dispatcher takes no `flowKind`. Its rows settle against its board's
+ledger and the claim gate fronting a task entry is installed by the flow that
+declares that entry, so a cross-flow hand-off would put the ledger on one side
+of the boundary and the gate on the other. `dispatcher()` throws rather than
+ignoring the field.
 
 ## The claim gate and the fence ticket
 
