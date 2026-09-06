@@ -873,7 +873,11 @@ describe("a hand-off request record names the task it was spawned for", () => {
         dispatch: {
           type: "task",
           target: "background",
-          from: { block: expect.any(String), sessionId: "s_parent" },
+          from: {
+            block: expect.any(String),
+            sessionId: "s_parent",
+            lineageId: expect.any(String),
+          },
           key: expect.any(String),
           taskId: "t1",
         },
