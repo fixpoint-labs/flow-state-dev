@@ -436,7 +436,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="34" y="376">THE FACTORY IS THE DEFAULT. THE CONTRACT IS THE LAW. NOT A MODULE-SWAP HOOK.</text>
       </svg>
     </div>
-    <figcaption><b>Same shape, then compose.</b> The factory is how most workers are born. The contract is what a worker <em>is</em>. A hand-written flow that keeps the contract is still a worker. A folder that does not emit that shape is not.</figcaption>
+    <figcaption><b>Same shape, then compose.</b> The factory is how most workers are born. The contract is what a worker <em>is</em>. A hand-written flow that keeps the contract is still a worker. A folder that does not emit that shape is not. Which harness a worker runs on is a <strong>roster field</strong>, proposed &#8212; not a file in the folder. See <a href="#teams">&#167;07</a>.</figcaption>
   </figure>
 
   <figure>
@@ -747,7 +747,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="teams">
   <div class="sec-head"><span class="sec-num">07</span><h2>Teams and roster</h2></div>
-  <p class="lede">A team is a <strong>roster plus shared boards</strong>. The board is the shared working set. Delivery is N dispatches into N per-subscriber sessions on each worker&#8217;s flow. Built-ins &#8212; librarian, chief of staff, team coordinator &#8212; are roster entries, not packages. Cross-team work goes through those boards, not through a shared session.</p>
+  <p class="lede">A team is a <strong>roster plus shared boards</strong>. The board is the shared working set. Delivery is N dispatches into N per-subscriber sessions on each worker&#8217;s flow. Built-ins &#8212; librarian, chief of staff, team coordinator &#8212; are roster entries, not packages. Cross-team work goes through those boards, not through a shared session. A seat can <strong>name which harness it runs on</strong> and inherit that harness&#8217;s subscriptions when those exist &#8212; proposed Layer&nbsp;2, and only once Conductor&#8217;s manager path exists.</p>
 
   <figure>
     <div class="fig-body">
@@ -792,6 +792,58 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <figcaption><b>Roster plus boards.</b> A team is who is on it and which boards they share. The board is the shared working set. Delivery is N dispatches into N per-subscriber sessions on each worker&#8217;s flow. A built-in is a worker like any other, registered on the roster. Cross-team is not a new edge type &#8212; it is a board more than one roster can subscribe to, never one room they all enter.</figcaption>
   </figure>
 
+  <div class="cards">
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Harness on the seat</h5><span class="role">proposed layer 2</span>
+      <p>A roster entry can name which harness that worker runs on. Not a file in the worker folder. Not a third member kind.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Inherit subscriptions</h5><span class="role">when those exist</span>
+      <p>If that harness already has subscriptions, the seat inherits them. No new subscription primitive.</p>
+    </div>
+    <div class="card" style="--tc: var(--prose)">
+      <h5>One manager stack</h5><span class="role">conductor track</span>
+      <p>The consumer path is Conductor&#8217;s harness-manager. Workforce does not get a second one. Proposed until that path exists.</p>
+    </div>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 280" role="img" aria-label="Proposed Layer 2: a roster seat names which harness the worker runs on, and inherits that harness's subscriptions when those exist. The consumer is Conductor's harness-manager track, one stack. A cut box refuses a second Workforce harness-manager and a new Layer 1 harness or subscription type. The two products stay triangulated: same stack, different consumer, not one product.">
+        <rect class="n-prop" x="16" y="16" width="292" height="176" rx="5"/>
+        <text class="t-lbl" x="34" y="38">ROSTER SEAT &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="34" y="64">names a harness</text>
+        <text class="t-s" x="34" y="92">claude-code &#183; codex &#183; &#8230;</text>
+        <text class="t-xs" x="34" y="114">INHERIT THAT HARNESS&#8217;S</text>
+        <text class="t-xs" x="34" y="132">SUBSCRIPTIONS WHEN THEY EXIST</text>
+        <text class="t-xs" x="34" y="158">NOT A FILE IN THE FOLDER</text>
+        <text class="t-xs" x="34" y="176">A FIELD ON THE SEAT</text>
+
+        <rect class="n-prop" x="324" y="16" width="292" height="176" rx="5"/>
+        <text class="t-lbl" x="342" y="38">ONE STACK &#183; CONDUCTOR TRACK</text>
+        <text class="t-b f-accent" x="342" y="64">harness-manager</text>
+        <text class="t-s" x="342" y="92">the L1 consumer path</text>
+        <text class="t-xs" x="342" y="114">PROPOSED UNTIL THAT PATH EXISTS</text>
+        <text class="t-xs" x="342" y="132">WORKFORCE CONSUMES. IT DOES NOT BUILD.</text>
+        <text class="t-xs" x="342" y="158">SAME STACK. DIFFERENT CONSUMER.</text>
+        <text class="t-xs" x="342" y="176">NOT ONE PRODUCT.</text>
+
+        <rect class="n-prose" x="632" y="16" width="292" height="176" rx="5"/>
+        <text class="t-lbl" x="650" y="38">CUT</text>
+        <text class="t-b" x="650" y="64">no second manager</text>
+        <text class="t-xs" x="650" y="92">NO WORKFORCE HARNESS-MANAGER</text>
+        <text class="t-xs" x="650" y="114">NO NEW L1 HARNESS TYPE</text>
+        <text class="t-xs" x="650" y="132">NO NEW L1 SUBSCRIPTION TYPE</text>
+        <text class="t-xs" x="650" y="158">INHERIT WHAT EXISTS</text>
+        <text class="t-xs" x="650" y="176">DO NOT INVENT THE DOOR</text>
+
+        <rect class="n-box" x="16" y="208" width="908" height="56" rx="5"/>
+        <text class="t-s" x="34" y="242">Conductor chooses a harness per task. Workforce names one per roster seat. One manager stack. Two consumers.</text>
+      </svg>
+    </div>
+    <figcaption><b>The seat names the harness.</b> Proposed Layer&nbsp;2: a roster entry can name which harness that worker runs on, and inherit that harness&#8217;s subscriptions when those exist. The consumer path is Conductor&#8217;s harness-manager track &#8212; one stack. Workforce does not get a second manager, and this page does not invent a Layer&nbsp;1 harness or subscription type. Marked proposed until that path exists. Same stack, different consumer; not one product.</figcaption>
+  </figure>
+
   <div class="tw">
     <table>
       <thead><tr><th>What the team buys</th><th>Why it is not a Layer 1 type</th></tr></thead>
@@ -799,6 +851,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>A default answer to &#8220;who does this?&#8221;</td><td>The roster is a list of worker flow kinds. Layer&nbsp;1 already addresses a flow and a session.</td></tr>
         <tr><td>Shared boards</td><td>The board is the working set. Each subscriber is woken in their own session via <code>dispatcher()</code>. No Team primitive, and no shared group session.</td></tr>
         <tr><td>Built-ins</td><td>Librarian, chief of staff, team coordinator: same contract, shipped as roster rows when the factory exists.</td></tr>
+        <tr><td>A named harness on the seat</td><td>The roster is still a list of worker flow kinds. Naming a harness is Layer&nbsp;2 convention on that row. The run rides Conductor&#8217;s harness-manager track. No Harness type, and no second manager. Proposed until that path exists.</td></tr>
         <tr><td><strong>When it is not a team</strong></td><td>One worker and no shared board. Then the folder buys nothing and should not exist.</td></tr>
       </tbody>
     </table>
@@ -807,7 +860,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="members">
   <div class="sec-head"><span class="sec-num">08</span><h2>Sequencer vs agent</h2></div>
-  <p class="lede">A roster seat is either a <strong>deterministic sequencer</strong> or a <strong>non-deterministic agent</strong>. Same contract. Different member. Do not pretend they are the same just because both are workers.</p>
+  <p class="lede">A roster seat is either a <strong>deterministic sequencer</strong> or a <strong>non-deterministic agent</strong>. Same contract. Different member. Do not pretend they are the same just because both are workers. Which harness a seat runs on is a separate proposed field on the roster, not a third member kind. See <a href="#teams">&#167;07</a>.</p>
 
   <figure>
     <div class="fig-body">
@@ -944,7 +997,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="conductor">
   <div class="sec-head"><span class="sec-num">11</span><h2>Conductor</h2></div>
-  <p class="lede">This cycle, Conductor is a <strong>thin shell on Layer&nbsp;1 dispatch</strong>. It does not wait on a Workforce product. Conductor-as-a-coding-extension-on-Workforce is a later horizon, not a dependency arrow.</p>
+  <p class="lede">This cycle, Conductor is a <strong>thin shell on Layer&nbsp;1 dispatch</strong>. It does not wait on a Workforce product. Conductor-as-a-coding-extension-on-Workforce is a later horizon, not a dependency arrow. If a roster seat names a harness, it rides Conductor&#8217;s harness-manager track &#8212; same stack, different consumer &#8212; once that path exists. The two products stay triangulated.</p>
 
   <figure>
     <div class="fig-body">
@@ -982,6 +1035,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>A worker is a flow; memory is isolated resources</td><td>Workforce convention</td><td>Do not replace it with a second memory system, or with a field on <code>Agent</code>.</td></tr>
         <tr><td>Talk is <code>dispatcher()</code></td><td>Layer 1, already true</td><td>A Workforce-shaped messenger beside <code>dispatcher()</code> is a second send door. Relay (<strong>FIX-1197</strong>) is that same door, not a new one.</td></tr>
         <tr><td>Conductor waits on Workforce</td><td>False this cycle</td><td>The coding product stalls on a factory that is not being built. Horizon only.</td></tr>
+        <tr><td>A roster seat names a harness</td><td>Workforce convention, proposed</td><td>Same manager stack as Conductor. Different consumer. Wait until that path exists. Do not merge the two products, and do not invent a second manager.</td></tr>
       </tbody>
     </table>
   </div>
@@ -1007,6 +1061,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td><code>flowIsolation</code></td><td><span class="tag t-real">exists</span></td><td>User/org resources key per flow when true. Default false. Rejected at session scope.</td></tr>
         <tr><td><code>taskBoard</code> + <code>taskSchema</code></td><td><span class="tag t-real">exists</span></td><td>Unified plan/task primitive. Status set includes <code>parked</code>. Content for the prose half is <code>readContent()</code>.</td></tr>
         <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed</span></td><td>This page. No <code>createWorkerFlow</code>. No <code>workers/</code> tree. <code>workforce.config</code> is not a file in the repo.</td></tr>
+        <tr><td>Roster-named harness + inherited subscriptions</td><td><span class="tag t-prop">proposed</span></td><td>A seat can name which harness it runs on and inherit that harness&#8217;s subscriptions when they exist. The consumer is Conductor&#8217;s harness-manager track. No second manager. No new Layer&nbsp;1 harness or subscription type. Not on main. Marked proposed until that path exists.</td></tr>
         <tr><td>Reverse <code>{ from: true }</code> / cross-flow</td><td><span class="tag t-prop">proposed</span></td><td>Cross-flow refused at <code>packages/engine/src/context/create-request-host.ts</code>. Reverse address not in the tree.</td></tr>
         <tr><td>Published agents doc</td><td><span class="tag t-prose">docs</span></td><td><code>apps/docs/docs/orchestration/agents.md</code> describes today&#8217;s named participant. It is not this convention.</td></tr>
       </tbody>
@@ -1059,6 +1114,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   </div>
 
   <div class="tension">
+    <h5>No second harness-manager. No Layer 1 harness type</h5>
+    <p>A roster seat may name a harness and inherit subscriptions that already exist. The consumer is Conductor&#8217;s harness-manager track &#8212; one stack. Workforce does not get its own manager, and it does not invent a harness or subscription primitive. Marked proposed until that path exists. Triangulate; do not merge Conductor and Workforce harnesses on this page into one product.</p>
+  </div>
+
+  <div class="tension">
     <h5>Do not grow Agent until a factory needs a field</h5>
     <p>Today&#8217;s <code>Agent</code> is a definition you materialize. The intended worker is a flow. Growing the type to look like the second, before a build that staffs flows, is how Layer&nbsp;1 absorbs a Workforce opinion.</p>
     <span class="ask">When that build exists, the first question is still &#8220;is this a resource the worker&#8217;s flow declares, or a new field on Agent?&#8221; &#8212; and the cheaper answer is usually the resource.</span>
@@ -1066,7 +1126,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is one worker contract on Layer&nbsp;1: a flow per worker, files for tools, skills, personality, and role, memory via isolation, DMs as static sessions, groups as a board plus one session per subscriber, group replies as proposed Layer&nbsp;2 policy (who may speak; one turn; quiet unless addressed), projects as dynamic ones, teams as roster plus shared boards, plans as board plus resource text, talk as dispatch. Today it is a thin registry. This cycle writes the convention. Conductor does not wait.</p>
+    <p>Workforce is one worker contract on Layer&nbsp;1: a flow per worker, files for tools, skills, personality, and role, memory via isolation, DMs as static sessions, groups as a board plus one session per subscriber, group replies as proposed Layer&nbsp;2 policy (who may speak; one turn; quiet unless addressed), projects as dynamic ones, teams as roster plus shared boards (a seat may name a harness and inherit that harness&#8217;s subscriptions; one manager stack, Conductor&#8217;s), plans as board plus resource text, talk as dispatch. Today it is a thin registry. This cycle writes the convention. Conductor does not wait.</p>
   </div>
 </section>
 
