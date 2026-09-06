@@ -209,16 +209,18 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <a href="#channels">07 &middot; Channels</a>
     <a href="#projects">08 &middot; Projects and tasks</a>
     <a href="#teams">09 &middot; Teams and roster</a>
-    <a href="#members">10 &middot; Sequencer vs agent</a>
-    <a href="#plan">11 &middot; The plan</a>
-    <a href="#collab">12 &middot; Collaboration</a>
+    <a href="#intake">10 &middot; Team intake</a>
+    <a href="#members">11 &middot; Sequencer vs agent</a>
+    <a href="#plan">12 &middot; The plan</a>
+    <a href="#collab">13 &middot; Collaboration</a>
     <a class="grp">The split</a>
-    <a href="#conductor">13 &middot; Conductor</a>
+    <a href="#conductor">14 &middot; Conductor</a>
     <a class="grp">The ground</a>
-    <a href="#exists">14 &middot; What exists today</a>
-    <a href="#api">15 &middot; API surface</a>
-    <a href="#gaps">16 &middot; L1 gaps</a>
-    <a href="#cuts">17 &middot; Cuts</a>
+    <a href="#exists">15 &middot; What exists today</a>
+    <a href="#api">16 &middot; API surface</a>
+    <a href="#gaps">17 &middot; L1 gaps</a>
+    <a href="#gates">18 &middot; RC gates</a>
+    <a href="#cuts">19 &middot; Cuts</a>
   </nav>
 </aside>
 
@@ -226,7 +228,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <header class="masthead">
   <p class="eyebrow">Living design</p>
   <h1>One worker contract. Then compose.</h1>
-  <p class="standfirst">Workforce is the general Layer&nbsp;2 convention: <strong>one worker shape, one flow per worker</strong>. The target is the <strong>RC collaboration story &#8212; teams, plural</strong>. N rosters, shared rooms, cross-roster dispatch. Agent already exists as the seat. Collaboration stays on the rooms, not on Agent, and not on a Team type. Implement is phased. Foundation leaves the plural door open. This page teaches the target. It does not ship it. Conductor does not wait on it. GTM timing is Strategy, not this page.</p>
+  <p class="standfirst">Workforce is the general Layer&nbsp;2 convention: <strong>one worker shape, one flow per worker</strong>. The target is the <strong>RC collaboration story &#8212; teams, plural</strong>. N rosters, shared rooms, cross-roster dispatch. Address-the-team is an <strong>intake seat</strong>, not a TeamFlow. Agent already exists as the seat. Collaboration stays on the rooms, not on Agent, and not on a Team type. Implement is phased. Foundation leaves the plural door open. RC gates are proposed until they are true. This page teaches the target. It does not ship it. Conductor does not wait on it. GTM timing is Strategy, not this page.</p>
   <div class="key">
     <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
     <span><i class="sw-dash"></i> proposed &#8212; named, not built</span>
@@ -246,7 +248,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Foundation</h5><span class="role">proposed · thin L2</span>
-      <p>Agent seat, roster(s), rooms, helpers on today&#8217;s L1. Helpers are <strong>multi-roster from day one</strong> &#8212; keyed roster, rooms addressable across rosters. One roster in the map is fine. A one-team-only API is not.</p>
+      <p>Agent seat, roster(s), rooms, helpers on today&#8217;s L1. Every roster has a <strong>team intake</strong> seat. Helpers are <strong>multi-roster from day one</strong> &#8212; keyed roster, rooms addressable across rosters. One roster in the map is fine. A one-team-only API is not.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Teams plural</h5><span class="role">target · still L2</span>
@@ -254,7 +256,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <div class="card" style="--tc: var(--gone)">
       <h5>Not</h5><span class="role">invent kills</span>
-      <p>No Channel / Team / MessageBoard L1. No second Agent model. No fake package surface. No members, channels, or inbox on <code>Agent</code>. See <a href="#fence">&#167;04</a>.</p>
+      <p>No Channel / Team / TeamFlow / MessageBoard L1. No second Agent model. No fake package surface. No members, channels, or inbox on <code>Agent</code>. See <a href="#fence">&#167;04</a> and <a href="#intake">&#167;10</a>.</p>
     </div>
   </div>
 
@@ -398,7 +400,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   <div class="cards">
     <div class="card" style="--tc: var(--accent)">
       <h5>1 &middot; Foundation</h5><span class="role">proposed · thin L2</span>
-      <p>Agent seat, roster(s), rooms, helpers over today&#8217;s L1. The fence in <a href="#fence">&#167;04</a> holds. Helpers take a roster key. Rooms are addressable across rosters. You may ship one roster. You may not ship a one-team-only API.</p>
+      <p>Agent seat, roster(s), rooms, helpers over today&#8217;s L1. Every roster has a team intake seat &#8212; <a href="#intake">&#167;10</a>. The fence in <a href="#fence">&#167;04</a> holds. Helpers take a roster key. Rooms are addressable across rosters. You may ship one roster. You may not ship a one-team-only API.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>2 &middot; Teams plural</h5><span class="role">proposed · still L2</span>
@@ -410,7 +412,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <div class="card" style="--tc: var(--prose)">
       <h5>4 &middot; Later</h5><span class="role">horizon · not foundation</span>
-      <p>OKF. Surfaces. Conductor-as-extension. SOP files until a process repeats. GTM timing is Strategy, not this page.</p>
+      <p>OKF. Surfaces. Conductor-as-extension. SOP files until a process repeats. Not RC gates: OKF, a Slack-style web face, Pi, paid packaging. GTM timing is Strategy, not this page.</p>
     </div>
   </div>
 
@@ -422,7 +424,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-b f-accent" x="32" y="64">thin L2 on today&#8217;s L1</text>
         <text class="t-xs" x="32" y="90">AGENT SEAT &#183; EXISTS</text>
         <text class="t-xs" x="32" y="108">ROSTER(S) &#183; KEYED</text>
-        <text class="t-xs" x="32" y="126">ROOMS + HELPERS</text>
+        <text class="t-xs" x="32" y="126">ROOMS + INTAKE SEAT</text>
         <text class="t-xs" x="32" y="152">MULTI-ROSTER FROM DAY ONE</text>
         <text class="t-xs" x="32" y="170">ONE ROSTER IN THE MAP IS FINE</text>
         <text class="t-xs" x="32" y="188">A SINGLETON API IS NOT</text>
@@ -480,7 +482,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <table>
       <thead><tr><th>Phase</th><th>Status</th><th>What is true</th><th>What would fake it</th></tr></thead>
       <tbody>
-        <tr><td>Foundation</td><td><span class="tag t-prop">proposed</span></td><td>Agent exists. Sessions, <code>dispatcher()</code>, <code>taskBoard</code>, <code>claim</code> exist. Helpers and keyed roster(s) are names over those calls. A map may hold one roster.</td><td>A helper that takes &#8220;the team.&#8221; A singleton <code>roster</code> with no key. Channel / Team / MessageBoard L1. A second Agent model. An export that is not a wrapper.</td></tr>
+        <tr><td>Foundation</td><td><span class="tag t-prop">proposed</span></td><td>Agent exists. Sessions, <code>dispatcher()</code>, <code>taskBoard</code>, <code>claim</code> exist. Helpers and keyed roster(s) are names over those calls. Every roster names an intake seat. A map may hold one roster.</td><td>A helper that takes &#8220;the team.&#8221; A singleton <code>roster</code> with no key. A <code>TeamFlow</code>. Channel / Team / MessageBoard L1. A second Agent model. An export that is not a wrapper.</td></tr>
         <tr><td>Teams plural</td><td><span class="tag t-prop">proposed</span></td><td>N keyed rosters, rooms more than one roster can subscribe to, cross-roster <code>dispatcher()</code>. Same L2. Cross-kind still refused on this pin (<a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open).</td><td>A Team substrate. An org graph on Agent. A new edge type for cross-team. Pretending cross-flow already landed.</td></tr>
         <tr><td>Identity depth</td><td><span class="tag t-prose">named gap</span></td><td><code>flowIsolation</code> exists. Persona is a prompt source. Durable memory across sessions is unproved. See <a href="#fence">&#167;04</a> proof&nbsp;A.</td><td><code>Agent.resources</code>, <code>Agent.memory</code>, a durable identity bag on the type.</td></tr>
         <tr><td>Later</td><td><span class="tag t-gone">horizon</span></td><td>OKF stays an example. Surfaces and Conductor-as-extension wait. SOP files wait until a process repeats. Strategy owns GTM.</td><td>Pulling any of these into foundation so the atlas looks finished.</td></tr>
@@ -1095,7 +1097,7 @@ const room = {
 <i>// worker&#8596;worker reply across flows still waits on cross-flow (#1600 open)</i></pre>
 
   <h3>Room helpers &#8212; proposed wrappers, multi-roster from day one</h3>
-  <p>Same-flow N-rooms exist. Claim exclusion exists. Who may reply is proposed Layer&nbsp;2. Ordered multi-reply is proposed. The helpers below wrap those facts. They take a <strong>roster key</strong>. Rooms are addressable across rosters. They are not a second session model, not a Channel package, and not a one-team-only API. If a helper would need a door that is still refused, it is a gap &#8212; see <a href="#gaps">&#167;16</a> &#8212; not a pretend export.</p>
+  <p>Same-flow N-rooms exist. Claim exclusion exists. Who may reply is proposed Layer&nbsp;2. Ordered multi-reply is proposed. The helpers below wrap those facts. They take a <strong>roster key</strong>. Rooms are addressable across rosters. They are not a second session model, not a Channel package, and not a one-team-only API. If a helper would need a door that is still refused, it is a gap &#8212; see <a href="#gaps">&#167;17</a> &#8212; not a pretend export.</p>
 
   <figure>
     <div class="fig-body">
@@ -1157,10 +1159,11 @@ const room = {
     <table>
       <thead><tr><th>Helper</th><th>Status</th><th>Wraps, narrowly</th></tr></thead>
       <tbody>
-        <tr><td><code>openDm</code></td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ roster, seat, userId, title }</code>. Wraps <code>createSessionClient().createSession</code> for that seat&#8217;s flow. The session <em>is</em> the DM. Wake with <code>dispatcher({ session: { id } })</code>. On a queue host that wake is <code>external-dispatcher</code> &#8212; see <a href="#gaps">&#167;16</a>. No implicit &#8220;the team.&#8221;</td></tr>
+        <tr><td><code>openDm</code></td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ roster, seat, userId, title }</code>. Wraps <code>createSessionClient().createSession</code> for that seat&#8217;s flow. The session <em>is</em> the DM. Wake with <code>dispatcher({ session: { id } })</code>. On a queue host that wake is <code>external-dispatcher</code> &#8212; see <a href="#gaps">&#167;17</a>. No implicit &#8220;the team.&#8221;</td></tr>
         <tr><td><code>openProjectRoom</code> / task room</td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ room, subscribers: [{ roster, seat }] }</code>. Subscribers may come from more than one roster. Wraps <code>create_session</code> or <code>dispatcher({ session: { key } })</code> / <code>TaskSessionPolicy</code>. Not a Layer&nbsp;1 Project type. Not &#8220;this team&#8217;s rooms.&#8221;</td></tr>
         <tr><td><code>fanOutBoardPost</code></td><td><span class="tag t-prop">proposed</span></td><td>Same-flow fan-out <strong>exists</strong> under Layer&nbsp;1 (<code>dispatcher()</code> &#215; N). The helper is the named loop over subscriber sessions, addressed across rosters. Cross-kind still refused at <code>create-request-host</code>. Same <code>external-dispatcher</code> limit on <code>{ id }</code>.</td></tr>
         <tr><td><code>fileOrderedReplies</code></td><td><span class="tag t-prop">proposed</span></td><td>Coordinator over existing <code>claim</code> (exclusion) and <code>task.deps</code> (order). Order names seats as <code>{ roster, seat }</code>. Who may attempt the claim stays proposed Layer&nbsp;2. Not a board-lock type. Not a multiparty session.</td></tr>
+        <tr><td><code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ roster }</code>. Looks up that roster&#8217;s intake seat, then <code>openDm</code>. Address-the-team without picking a person. See <a href="#intake">&#167;10</a>. Not a <code>TeamFlow</code>. Not a team address type.</td></tr>
       </tbody>
     </table>
   </div>
@@ -1196,7 +1199,11 @@ const room = {
   ],
 })
 <i>// &#8594; create rows with deps, then claim({ eligibility: (t) => t.id === postId })</i>
-<i>// who-may-reply policy is still proposed L2. Do not invent a lock.</i></pre>
+<i>// who-may-reply policy is still proposed L2. Do not invent a lock.</i>
+
+<b>openTeamInbox</b>({ roster: <em>"engineering"</em>, userId })
+<i>// &#8594; openDm({ roster, seat: intakeSeat, userId, title: "talk-to-eng" })</i>
+<i>// intake is a worker on that roster. Not a TeamFlow. See §10.</i></pre>
 </section>
 
 <section id="projects">
@@ -1280,7 +1287,7 @@ const board = <b>taskBoard</b>({
 
 <section id="teams">
   <div class="sec-head"><span class="sec-num">09</span><h2>Teams and roster</h2></div>
-  <p class="lede">A team is a <strong>keyed roster plus shared rooms</strong>, not a Layer&nbsp;1 type. The target is <strong>teams, plural</strong> &#8212; N rosters, rooms more than one roster can subscribe to, cross-roster dispatch when the refuse is gone. Agent is who you seat. Same-flow delivery is N dispatches into N per-subscriber sessions &#8212; that exists. Cross-kind stays proposed until cross-flow lands. Built-ins are roster entries, not packages. Foundation may hold one roster in the map. The key is still there. See <a href="#vision">&#167;03</a> and <a href="#fence">&#167;04</a>.</p>
+  <p class="lede">A team is a <strong>keyed roster plus shared rooms</strong>, not a Layer&nbsp;1 type. Address-the-team is the <strong>intake seat</strong> &#8212; <a href="#intake">&#167;10</a> &#8212; not a TeamFlow. The target is <strong>teams, plural</strong> &#8212; N rosters, rooms more than one roster can subscribe to, cross-roster dispatch when the refuse is gone. Agent is who you seat. Same-flow delivery is N dispatches into N per-subscriber sessions &#8212; that exists. Cross-kind stays proposed until cross-flow lands. Built-ins are roster entries, not packages. Foundation may hold one roster in the map. The key is still there. See <a href="#vision">&#167;03</a> and <a href="#fence">&#167;04</a>.</p>
 
   <figure>
     <div class="fig-body">
@@ -1291,8 +1298,8 @@ const board = <b>taskBoard</b>({
         <text class="t-xs" x="28" y="76">WORKER FLOW</text>
         <text class="t-s f-accent" x="28" y="100">api-designer</text>
         <text class="t-xs" x="28" y="116">WORKER FLOW</text>
-        <text class="t-s f-accent" x="28" y="140">team coordinator</text>
-        <text class="t-xs" x="28" y="156">BUILT-IN &#183; ROSTER ENTRY</text>
+        <text class="t-s f-accent" x="28" y="140">team intake</text>
+        <text class="t-xs" x="28" y="156">INTAKE SEAT &#183; TALK TO ENG</text>
 
         <rect class="n-prop" x="324" y="16" width="292" height="168" rx="4"/>
         <text class="t-lbl" x="336" y="36">marketing</text>
@@ -1383,7 +1390,8 @@ const board = <b>taskBoard</b>({
       <tbody>
         <tr><td>A default answer to &#8220;who does this?&#8221;</td><td>A keyed roster is a list of worker flow kinds. Layer&nbsp;1 already addresses a flow and a session. N rosters are N keys, not a Team type.</td></tr>
         <tr><td>Shared boards</td><td>The board is the working set. Each subscriber is woken in their own session via <code>dispatcher()</code>. No Team primitive, and no shared group session.</td></tr>
-        <tr><td>Built-ins</td><td>Librarian, chief of staff, team coordinator: same contract, shipped as roster rows when the factory exists.</td></tr>
+        <tr><td>Address the team</td><td>An intake seat on that roster &#8212; a worker with a static DM. See <a href="#intake">&#167;10</a>. Not a TeamFlow. Not a new address type.</td></tr>
+        <tr><td>Built-ins</td><td>Librarian, chief of staff, intake coordinator: same contract, shipped as roster rows when the factory exists.</td></tr>
         <tr><td>A named harness on the seat</td><td>The roster is still a list of worker flow kinds. Naming a harness is Layer&nbsp;2 convention on that row. The run rides Conductor&#8217;s harness-manager track. No Harness type, and no second manager. Proposed until that path exists.</td></tr>
         <tr><td><strong>When it is not a team</strong></td><td>One worker and no shared board. Then the folder buys nothing and should not exist.</td></tr>
       </tbody>
@@ -1414,9 +1422,114 @@ const roster = <b>defineResourceCollection</b>({
 }</pre>
 </section>
 
+<section id="intake">
+  <div class="sec-head"><span class="sec-num">10</span><h2>Team intake</h2></div>
+  <p class="lede">Address-the-team without picking a person. That is a <strong>capability</strong>, not a new flow kind. Every keyed roster has a <strong>team intake</strong> seat &#8212; a coordinator or a thin sequencer &#8212; with a static DM. &#8220;Talk to eng&#8221; is that session. The intake worker routes with claim, ordered replies, or fan-out. The team board stays for broadcast. Still one flow per worker. The intake <em>is</em> a worker.</p>
+
+  <div class="cards">
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Intake seat</h5><span class="role">proposed · a worker</span>
+      <p>A roster row. Coordinator or thin sequencer. Same contract as every other seat. It has a static inbox session, opened the way a DM is opened.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Talk to eng</h5><span class="role">that session</span>
+      <p>Address is a session id or a known channel key on the intake flow. Not a team address type. Not a person. The capability looks the session up from the roster key.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Intake routes</h5><span class="role">existing helpers</span>
+      <p>Claim, <code>fileOrderedReplies</code>, <code>fanOutBoardPost</code>. Policy is Layer&nbsp;2. The board is still broadcast. Do not turn the inbox into a second board.</p>
+    </div>
+    <div class="card" style="--tc: var(--gone)">
+      <h5>Not</h5><span class="role">cut</span>
+      <p>No <code>TeamFlow</code>. No team-as-flow substrate. No second dispatch model. No inbox on Agent. No team address beyond session id or a known channel.</p>
+    </div>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 400" role="img" aria-label="Team intake. Left: talk to engineering arrives at a static intake session, not a person. Centre dashed: the intake worker, a coordinator or thin sequencer on that roster, routes with claim, ordered replies, or fan-out. Right solid: the team board stays for broadcast, N subscriber sessions. Bottom cut: no TeamFlow, no team-as-flow substrate, no second dispatch, no inbox on Agent, no team address type beyond session id or known channel.">
+        <rect class="n-prop" x="16" y="16" width="292" height="220" rx="5"/>
+        <text class="t-lbl" x="34" y="38">TALK TO ENG &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="34" y="64">intake session</text>
+        <text class="t-xs" x="34" y="90">STATIC DM / INBOX</text>
+        <text class="t-xs" x="34" y="108">OPENED LIKE ANY DM</text>
+        <text class="t-xs" x="34" y="126">ADDRESSED BY { id } OR { key }</text>
+        <text class="t-s" x="34" y="156">openTeamInbox({ roster })</text>
+        <text class="t-xs" x="34" y="180">WRAPS openDm OF THE INTAKE SEAT</text>
+        <text class="t-xs" x="34" y="198">NOT A PERSON. NOT A TeamFlow.</text>
+        <text class="t-b f-accent" x="34" y="220">capability, not a kind</text>
+
+        <rect class="n-prop" x="324" y="16" width="292" height="220" rx="5"/>
+        <text class="t-lbl" x="342" y="38">INTAKE WORKER &#183; A SEAT</text>
+        <text class="t-b f-accent" x="342" y="64">one flow per worker</text>
+        <text class="t-xs" x="342" y="90">COORDINATOR OR SEQUENCER</text>
+        <text class="t-xs" x="342" y="108">SAME CONTRACT AS ANY SEAT</text>
+        <text class="t-xs" x="342" y="132">ROUTES VIA</text>
+        <text class="t-xs" x="342" y="150">claim &#183; ordered replies &#183; fan-out</text>
+        <text class="t-xs" x="342" y="180">POLICY IS L2</text>
+        <text class="t-xs" x="342" y="198">THE INTAKE IS THE WORKER</text>
+        <text class="t-b f-accent" x="342" y="220">not a fifth block kind</text>
+
+        <rect class="n-code" x="632" y="16" width="292" height="220" rx="5"/>
+        <text class="t-lbl f-code" x="650" y="38">BOARD &#183; BROADCAST &#183; EXISTS</text>
+        <text class="t-b" x="650" y="64">stays the board</text>
+        <text class="t-xs" x="650" y="90">fanOutBoardPost</text>
+        <text class="t-xs" x="650" y="108">N SESSIONS, ONE PER SUBSCRIBER</text>
+        <text class="t-xs" x="650" y="132">NOT THE INBOX</text>
+        <text class="t-xs" x="650" y="150">INBOX IS ONE SESSION</text>
+        <text class="t-xs" x="650" y="180">BOARD IS A WORKING SET</text>
+        <text class="t-xs" x="650" y="198">TWO JOBS. TWO DOORS.</text>
+        <text class="t-b f-code" x="650" y="220">do not merge them</text>
+
+        <rect class="n-prose" x="16" y="252" width="908" height="128" rx="5"/>
+        <text class="t-lbl" x="34" y="274">CUT</text>
+        <text class="t-s" x="34" y="298">no TeamFlow type &#183; no team-as-flow substrate &#183; no second dispatch model</text>
+        <text class="t-s" x="34" y="320">no inbox on Agent &#183; no team address type beyond session id or a known channel</text>
+        <text class="t-xs" x="34" y="348">createTeamIntakeCapability IS A PROPOSED FACTORY OVER THE INTAKE SEAT. createWorkforceCapability IS A STUB. DO NOT PRETEND THE STUB IS THIS.</text>
+      </svg>
+    </div>
+    <figcaption><b>Talk to the seat, not the type.</b> &#8220;Talk to eng&#8221; is the intake worker&#8217;s static session. The capability names that session from the roster key. Routing is the helpers already on this page. Inventing <code>TeamFlow</code> so a team looks like a flow is the expensive skip.</figcaption>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th></th><th>Status</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td>Intake worker</td><td><span class="tag t-prop">proposed</span></td><td>A roster seat. Coordinator or thin sequencer. One <code>defineFlow</code>. Not a new kind. Not a field on Agent.</td></tr>
+        <tr><td>Static inbox session</td><td><span class="tag t-prop">proposed</span></td><td>Same door as <code>openDm</code>: <code>create_session</code>, then <code>dispatcher({ session: { id } })</code> or a known <code>{ key }</code>. <code>create_session</code> exists. The convention that every roster has one is proposed.</td></tr>
+        <tr><td><code>openTeamInbox({ roster })</code></td><td><span class="tag t-prop">proposed</span></td><td>Looks up the intake seat on that keyed roster, then calls <code>openDm</code>. Multi-roster from day one. No <code>theTeam</code>.</td></tr>
+        <tr><td><code>createTeamIntakeCapability</code></td><td><span class="tag t-prop">proposed</span></td><td>A factory: roster key in, the intake worker&#8217;s session as context/tools. Same shape as other capability factories. <code>createWorkforceCapability</code> today is a stub that returns a name. It is not this.</td></tr>
+        <tr><td>Routing</td><td><span class="tag t-prop">proposed</span></td><td>Claim (exclusion exists), ordered replies (proposed), fan-out (same-flow exists). Who may reply is proposed Layer&nbsp;2.</td></tr>
+        <tr><td>Team board</td><td><span class="tag t-real">exists as pattern</span></td><td>Broadcast. N subscriber sessions. Not the inbox. Do not merge the two jobs.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <pre class="code"><i>// PROPOSED &#8212; capability, not a flow kind. Not an export today.</i>
+<i>// createWorkforceCapability is a stub. This is not that stub with a new name.</i>
+
+<b>createTeamIntakeCapability</b>({ roster: <em>"engineering"</em> })
+<i>// &#8594; uses the intake seat on that roster</i>
+<i>// &#8594; the static inbox session is the known channel</i>
+
+<b>openTeamInbox</b>({ roster: <em>"engineering"</em>, userId })
+<i>// &#8594; openDm({ roster, seat: intakeSeat, userId, title: "talk-to-eng" })</i>
+<i>// &#8594; createSessionClient().createSession(...) for that worker flow</i>
+<i>// address stays session { id } or a known { key }. No TeamAddress type.</i>
+
+<i>// intake then routes with helpers already named:</i>
+<i>// fileOrderedReplies / fanOutBoardPost / claim</i>
+<i>// the board is still broadcast. the inbox is still one session.</i></pre>
+
+  <div class="note">
+    <span class="lbl">If intake needs a door Layer 1 does not have, name the gap</span>
+    <p>Same-flow wake into a known session exists. Reverse <code>{ from: true }</code> exists. Cross-flow from another worker flow is still refused &#8212; gap 4, <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open. <code>{ id }</code> past a queue is <code>external-dispatcher</code> &#8212; gap 5. Two intake workers of the same kind need instance id &#8212; gap 1 (FIX-1315). Who may reply is proposed Layer&nbsp;2, not missing substrate. A team address that is not a session id or a known channel is a cut, not a gap. Do not invent one to hide those rows.</p>
+  </div>
+</section>
+
 <section id="members">
-  <div class="sec-head"><span class="sec-num">10</span><h2>Sequencer vs agent</h2></div>
-  <p class="lede">A roster seat is either a <strong>deterministic sequencer</strong> or a <strong>non-deterministic agent</strong>. Same contract. Different member. The agent member is today&#8217;s <code>Agent</code> seated into a room &#8212; not a second participant type. Do not put members, channels, or an inbox on that type. Which harness a seat runs on is a roster field, not a third kind. See <a href="#fence">&#167;04</a> and <a href="#teams">&#167;09</a>.</p>
+  <div class="sec-head"><span class="sec-num">11</span><h2>Sequencer vs agent</h2></div>
+  <p class="lede">A roster seat is either a <strong>deterministic sequencer</strong> or a <strong>non-deterministic agent</strong>. Same contract. Different member. Team intake is usually the sequencer member. The agent member is today&#8217;s <code>Agent</code> seated into a room &#8212; not a second participant type. Do not put members, channels, or an inbox on that type. Which harness a seat runs on is a roster field, not a third kind. See <a href="#fence">&#167;04</a>, <a href="#teams">&#167;09</a>, and <a href="#intake">&#167;10</a>.</p>
 
   <figure>
     <div class="fig-body">
@@ -1447,7 +1560,7 @@ const roster = <b>defineResourceCollection</b>({
 </section>
 
 <section id="plan">
-  <div class="sec-head"><span class="sec-num">11</span><h2>The plan</h2></div>
+  <div class="sec-head"><span class="sec-num">12</span><h2>The plan</h2></div>
   <p class="lede">The plan capability <strong>is</strong> the existing task board. The spec is resource text. The tasks are the structured half of that same plan. No second planner. No separate doc store.</p>
 
   <figure>
@@ -1491,7 +1604,7 @@ const roster = <b>defineResourceCollection</b>({
 </section>
 
 <section id="collab">
-  <div class="sec-head"><span class="sec-num">12</span><h2>Collaboration</h2></div>
+  <div class="sec-head"><span class="sec-num">13</span><h2>Collaboration</h2></div>
   <p class="lede">Workers talk on the <strong>dispatch spine</strong>. Reverse address is <code>{ from: true }</code> &#8212; it exists. Cross-flow is the same door, when it lands. Which room is proposed Layer&nbsp;2 &#8212; roster + context, then this door. See <a href="#channels">&#167;07</a>. The epic name Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> handler. Do not grow a second bus beside it.</p>
 
   <figure>
@@ -1563,7 +1676,7 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="conductor">
-  <div class="sec-head"><span class="sec-num">13</span><h2>Conductor</h2></div>
+  <div class="sec-head"><span class="sec-num">14</span><h2>Conductor</h2></div>
   <p class="lede">This cycle, Conductor is a <strong>thin shell on Layer&nbsp;1 dispatch</strong>. It does not wait on a Workforce package, including a foundation kick. Conductor-as-a-coding-extension-on-Workforce is phase 4 of the vision, not a dependency arrow. If a roster seat names a harness, it rides Conductor&#8217;s harness-manager track &#8212; same stack, different consumer &#8212; once that path exists. The two products stay triangulated. GTM timing is Strategy.</p>
 
   <figure>
@@ -1609,7 +1722,7 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="exists">
-  <div class="sec-head"><span class="sec-num">14</span><h2>What exists today</h2></div>
+  <div class="sec-head"><span class="sec-num">15</span><h2>What exists today</h2></div>
   <p class="lede">A package, a type, a dispatcher, session routes, a board. Nothing below is the factory. Read every &#8220;Workforce&#8221; claim against this inventory, not against the intended harness.</p>
 
   <div class="tw">
@@ -1631,8 +1744,10 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td>Reply-storm exclusion via <code>TaskCollectionRef.claim</code></td><td><span class="tag t-real">exists</span></td><td>One holder per post. Same CAS <code>taskBoard</code> drain uses. Eligibility narrows to that post. Who may attempt the claim is proposed Layer&nbsp;2. No board-lock type.</td></tr>
         <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed</span></td><td>This page. No <code>createWorkerFlow</code> export. No <code>workers/</code> tree. <code>workforce.config</code> is not a file in the repo. Role / personality / tools / skills are the foundation inputs. SOP is later.</td></tr>
         <tr><td>Keyed roster(s) + harness on the seat</td><td><span class="tag t-prop">proposed</span></td><td>A seat is <code>rosterId</code> + row. It can name a harness and inherit that harness&#8217;s subscriptions when they exist. One roster in the map is fine. A singleton with no key is not. The consumer is Conductor&#8217;s harness-manager track. No second manager. No Team type. Not on main.</td></tr>
-        <tr><td>Room helpers (<code>openDm</code>, <code>fanOutBoardPost</code>, &#8230;)</td><td><span class="tag t-prop">proposed</span></td><td>Named wrappers over Layer&nbsp;1 already in this table. Multi-roster from day one: <code>{ roster, seat }</code>, rooms addressable across rosters. Not exports. See <a href="#api">&#167;15</a>. Same-flow fan-out exists; the helper is the name.</td></tr>
+        <tr><td>Room helpers (<code>openDm</code>, <code>fanOutBoardPost</code>, &#8230;)</td><td><span class="tag t-prop">proposed</span></td><td>Named wrappers over Layer&nbsp;1 already in this table. Multi-roster from day one: <code>{ roster, seat }</code>, rooms addressable across rosters. Not exports. See <a href="#api">&#167;16</a>. Same-flow fan-out exists; the helper is the name.</td></tr>
+        <tr><td>Team intake seat + <code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Every roster names an intake worker with a static DM. Address-the-team is that session. Capability, not a <code>TeamFlow</code>. See <a href="#intake">&#167;10</a>. <code>createWorkforceCapability</code> is still a stub &#8212; do not read it as this.</td></tr>
         <tr><td>RC vision / teams plural</td><td><span class="tag t-prop">proposed</span></td><td>The target this page teaches. N keyed rosters + shared rooms + cross-roster dispatch. Still L2. Cross-flow refused on this pin. See <a href="#vision">&#167;03</a>.</td></tr>
+        <tr><td>Strategy RC gates</td><td><span class="tag t-prop">proposed</span></td><td>Five gates, taught until they are true. Not a calendar. GTM stays Strategy. See <a href="#gates">&#167;18</a>.</td></tr>
         <tr><td>L2 routing matrix (which room)</td><td><span class="tag t-prop">proposed</span></td><td>See <a href="#channels">&#167;07</a>. Package docs must not fork this matrix. Marked proposed until cross-flow lands.</td></tr>
         <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-real">exists</span></td><td>Existing-session delivery to the seam-stamped sender. <code>packages/core/src/blocks/dispatcher.ts</code>. Documented in <code>docs/architecture/action-forms.md</code>.</td></tr>
         <tr><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">proposed</span></td><td>Refuse still on this pin. <code>create-request-host.ts</code> (<code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>). <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open, not merged. Do not flip until the refuse is gone.</td></tr>
@@ -1648,7 +1763,7 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="api">
-  <div class="sec-head"><span class="sec-num">15</span><h2>Programmatic API surface</h2></div>
+  <div class="sec-head"><span class="sec-num">16</span><h2>Programmatic API surface</h2></div>
   <p class="lede">Two columns. <strong>Exists</strong> is a raw Layer&nbsp;1 call already on main &#8212; including today&#8217;s <code>Agent</code> / <code>AgentRegistry</code>. <strong>Proposed</strong> is a named thin helper that wraps one of those calls. Helpers take a roster key from day one. Foundation thins <code>@flow-state-dev/workforce</code>. It does not add a second participant type. Nothing in the proposed column is an export today.</p>
 
   <figure>
@@ -1671,8 +1786,8 @@ const replyToSender = <b>dispatcher</b>({
         <text class="t-lbl" x="498" y="38">PROPOSED &#183; THIN WRAPPERS &#183; KEYED</text>
         <text class="t-s f-accent" x="498" y="68">createWorkerFlow</text>
         <text class="t-xs" x="498" y="86">WRAPS defineFlow FROM THE FACTORY FILES</text>
-        <text class="t-s f-accent" x="498" y="114">openDm / openProjectRoom</text>
-        <text class="t-xs" x="498" y="132">{ roster, seat } &#183; ROOMS ACROSS ROSTERS</text>
+        <text class="t-s f-accent" x="498" y="114">openDm / openTeamInbox / openProjectRoom</text>
+        <text class="t-xs" x="498" y="132">{ roster, seat } &#183; INTAKE IS A SEAT</text>
         <text class="t-s f-accent" x="498" y="160">fanOutBoardPost</text>
         <text class="t-xs" x="498" y="178">WRAPS dispatcher() &#215; N &#183; FAN-OUT EXISTS</text>
         <text class="t-s f-accent" x="498" y="206">fileOrderedReplies</text>
@@ -1681,8 +1796,8 @@ const replyToSender = <b>dispatcher</b>({
 
         <rect class="n-prose" x="16" y="292" width="908" height="72" rx="5"/>
         <text class="t-lbl" x="34" y="314">CUT / DO NOT FAKE</text>
-        <text class="t-s" x="34" y="338">No Channel / Team / MessageBoard / OKF export. No one-team-only API. No second dispatcher.</text>
-        <text class="t-xs" x="34" y="356">PACKAGE DOCS MUST NOT FORK THE &#167;07 MATRIX. A HELPER THAT NEEDS A GAP IS LISTED IN &#167;16, NOT SHIPPED AS AN ARGUMENT.</text>
+        <text class="t-s" x="34" y="338">No Channel / Team / TeamFlow / MessageBoard export. No one-team-only API. No inbox on Agent.</text>
+        <text class="t-xs" x="34" y="356">PACKAGE DOCS MUST NOT FORK THE &#167;07 MATRIX. A HELPER THAT NEEDS A GAP IS LISTED IN &#167;17, NOT SHIPPED AS AN ARGUMENT.</text>
       </svg>
     </div>
     <figcaption><b>Exists is a call. Proposed is a name for that call.</b> If a row on the right cannot be written as a wrapper of a row on the left, it is not v1 &#8212; it is a Layer&nbsp;1 gap or a cut. Package README, if a kick lands, points here for the room matrix. It does not grow a second one.</figcaption>
@@ -1695,11 +1810,11 @@ const replyToSender = <b>dispatcher</b>({
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Proposed</h5><span class="role">named wrappers · keyed</span>
-      <p><code>createWorkerFlow</code>, <code>openDm({ roster, seat })</code>, <code>openProjectRoom</code> with cross-roster subscribers, <code>fanOutBoardPost</code>, <code>fileOrderedReplies</code>. Each line in <a href="#channels">&#167;07</a> and <a href="#contract">&#167;05</a> shows the Layer&nbsp;1 body.</p>
+      <p><code>createWorkerFlow</code>, <code>openDm({ roster, seat })</code>, <code>openTeamInbox({ roster })</code>, <code>openProjectRoom</code> with cross-roster subscribers, <code>fanOutBoardPost</code>, <code>fileOrderedReplies</code>. Each line in <a href="#channels">&#167;07</a>, <a href="#intake">&#167;10</a>, and <a href="#contract">&#167;05</a> shows the Layer&nbsp;1 body.</p>
     </div>
     <div class="card" style="--tc: var(--gone)">
       <h5>Not an export</h5><span class="role">do not invent</span>
-      <p>No <code>resolveRoom()</code>. No <code>Channel</code>. No <code>theTeam</code>. No <code>sendAt</code> on a helper until due-ledger exists. No <code>flowKind</code> that hides the roster. No <code>fanOutAcrossTeams()</code> beside <code>fanOutBoardPost</code>.</p>
+      <p>No <code>resolveRoom()</code>. No <code>Channel</code>. No <code>TeamFlow</code>. No <code>theTeam</code>. No <code>sendAt</code> on a helper until due-ledger exists. No <code>flowKind</code> that hides the roster. No <code>fanOutAcrossTeams()</code> beside <code>fanOutBoardPost</code>.</p>
     </div>
   </div>
 
@@ -1710,7 +1825,7 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="gaps">
-  <div class="sec-head"><span class="sec-num">16</span><h2>L1 gaps &#8212; prove against, don&#8217;t paper over</h2></div>
+  <div class="sec-head"><span class="sec-num">17</span><h2>L1 gaps &#8212; prove against, don&#8217;t paper over</h2></div>
   <p class="lede">A helper may wrap only what is on this pin. If the body needs a door that is refused, missing, or first-registered-wrong, name the gap. Do not ship a pretend argument that hides it. Cross-roster dispatch that needs another flow is gap 4, not a Phase 2 export.</p>
 
   <figure>
@@ -1782,13 +1897,109 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note">
     <span class="lbl">What is not a gap</span>
-    <p>Same-flow N-rooms, <code>claim</code> exclusion, <code>task.deps</code>, <code>{ from: true }</code>, <code>create_session</code>, <code>readContent()</code>, <code>Agent</code> / <code>AgentRegistry</code> &#8212; those exist. Who may reply is proposed Layer&nbsp;2 policy, not missing substrate. Ordered multi-reply is a proposed wrapper over <code>claim</code> + <code>deps</code>, not a new lock type. Growing Agent is a different table &#8212; <a href="#fence">&#167;04</a>.</p>
+    <p>Same-flow N-rooms, <code>claim</code> exclusion, <code>task.deps</code>, <code>{ from: true }</code>, <code>create_session</code>, <code>readContent()</code>, <code>Agent</code> / <code>AgentRegistry</code> &#8212; those exist. Who may reply is proposed Layer&nbsp;2 policy, not missing substrate. Ordered multi-reply is a proposed wrapper over <code>claim</code> + <code>deps</code>, not a new lock type. Growing Agent is a different table &#8212; <a href="#fence">&#167;04</a>. Team intake that needs a team address type is a cut, not a sixth gap.</p>
+  </div>
+</section>
+
+<section id="gates">
+  <div class="sec-head"><span class="sec-num">18</span><h2>RC gates</h2></div>
+  <p class="lede">Strategy&#8217;s gates for Workforce RC. Taught here as <strong>proposed until they are true</strong>. Not a calendar. Timing is after foundation plus teams-plural dogfood &#8212; FSD and one client-shaped use. GTM timing stays Strategy. Conductor triangulation does not move.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 380" role="img" aria-label="Five Strategy RC gates, all proposed until true. One: teams plural dogfood, N rosters plus shared rooms plus cross-roster dispatch. Two: reverse plus cross-flow fire-and-forget on the floor. Three: honest exists versus proposed, no fake Layer 1. Four: an outsider can install multi-team without babysitting substrate. Five: Conductor-as-extension stays proposed; RC does not wait on Conductor, Conductor thin shell does not wait on full Workforce RC. A cut band lists what is not an RC gate: OKF, Slack-style web face, Pi, paid packaging.">
+        <rect class="n-prop" x="16" y="16" width="176" height="200" rx="5"/>
+        <text class="t-lbl" x="28" y="38">1</text>
+        <text class="t-b f-accent" x="28" y="64">teams plural</text>
+        <text class="t-xs" x="28" y="90">N ROSTERS</text>
+        <text class="t-xs" x="28" y="108">SHARED ROOMS</text>
+        <text class="t-xs" x="28" y="126">CROSS-ROSTER DISPATCH</text>
+        <text class="t-xs" x="28" y="152">DOGFOOD</text>
+        <text class="t-xs" x="28" y="184">PROPOSED UNTIL TRUE</text>
+
+        <rect class="n-prop" x="204" y="16" width="176" height="200" rx="5"/>
+        <text class="t-lbl" x="216" y="38">2</text>
+        <text class="t-b f-accent" x="216" y="64">reverse + F&amp;F</text>
+        <text class="t-xs" x="216" y="90">FROM TRUE &#183; EXISTS</text>
+        <text class="t-xs" x="216" y="108">CROSS-FLOW &#183; REFUSED</text>
+        <text class="t-xs" x="216" y="126">#1600 STILL OPEN</text>
+        <text class="t-xs" x="216" y="152">BOTH ON THE FLOOR</text>
+        <text class="t-xs" x="216" y="184">GATE IS NOT MET</text>
+
+        <rect class="n-prop" x="392" y="16" width="176" height="200" rx="5"/>
+        <text class="t-lbl" x="404" y="38">3</text>
+        <text class="t-b f-accent" x="404" y="64">honest tags</text>
+        <text class="t-xs" x="404" y="90">EXISTS VS PROPOSED</text>
+        <text class="t-xs" x="404" y="108">NO FAKE L1</text>
+        <text class="t-xs" x="404" y="126">THIS PAGE IS THE DRILL</text>
+        <text class="t-xs" x="404" y="152">THE GATE IS THAT</text>
+        <text class="t-xs" x="404" y="170">IT HOLDS AT RC</text>
+        <text class="t-xs" x="404" y="184">PROPOSED UNTIL TRUE</text>
+
+        <rect class="n-prop" x="580" y="16" width="168" height="200" rx="5"/>
+        <text class="t-lbl" x="592" y="38">4</text>
+        <text class="t-b f-accent" x="592" y="64">outsider install</text>
+        <text class="t-xs" x="592" y="90">MULTI-TEAM</text>
+        <text class="t-xs" x="592" y="108">NO BABYSITTING</text>
+        <text class="t-xs" x="592" y="126">THE SUBSTRATE</text>
+        <text class="t-xs" x="592" y="152">NOT TRUE TODAY</text>
+        <text class="t-xs" x="592" y="184">PROPOSED UNTIL TRUE</text>
+
+        <rect class="n-prop" x="760" y="16" width="164" height="200" rx="5"/>
+        <text class="t-lbl" x="772" y="38">5</text>
+        <text class="t-b f-accent" x="772" y="64">stay triangulated</text>
+        <text class="t-xs" x="772" y="90">RC DOES NOT WAIT</text>
+        <text class="t-xs" x="772" y="108">ON CONDUCTOR</text>
+        <text class="t-xs" x="772" y="126">CONDUCTOR SHELL</text>
+        <text class="t-xs" x="772" y="144">DOES NOT WAIT ON</text>
+        <text class="t-xs" x="772" y="162">FULL WORKFORCE RC</text>
+        <text class="t-xs" x="772" y="184">EXTENSION STAYS PROPOSED</text>
+
+        <rect class="n-box" x="16" y="232" width="908" height="48" rx="5"/>
+        <text class="t-s" x="34" y="262">Timing: after foundation + teams-plural dogfood (FSD + one client-shaped use). Not a calendar. GTM is Strategy.</text>
+
+        <rect class="n-prose" x="16" y="296" width="908" height="68" rx="5"/>
+        <text class="t-lbl" x="34" y="318">NOT RC GATES</text>
+        <text class="t-s" x="34" y="344">OKF &#183; Slack-style web face &#183; Pi &#183; paid packaging. Later / Strategy. Do not stall RC on them.</text>
+      </svg>
+    </div>
+    <figcaption><b>Gates are claims. Mark them proposed until they hold.</b> Reverse already exists. Cross-flow does not. Gate 2 is therefore unmet. Gate 5 is a stay-true, not a ship-Conductor-as-extension. OKF, a Slack-style face, Pi, and paid packaging are not on this list.</figcaption>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>#</th><th>Gate</th><th>Status</th><th>What is true on this pin</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Teams plural dogfood &#8212; N rosters + shared rooms + cross-roster dispatch</td><td><span class="tag t-prop">proposed</span></td><td>The convention is named. Same-flow N-rooms exist. Cross-roster dispatch that crosses flows waits on #1600. No dogfood of N rosters on this pin.</td></tr>
+        <tr><td>2</td><td>Reverse + cross-flow fire-and-forget on the floor</td><td><span class="tag t-prop">proposed</span></td><td>Reverse <code>{ from: true }</code> <strong>exists</strong>. Cross-flow is still refused. The gate needs both. Do not call it met.</td></tr>
+        <tr><td>3</td><td>Honest exists-vs-proposed &#8212; no fake Layer&nbsp;1</td><td><span class="tag t-prop">proposed</span></td><td>This page is the drill. The gate is that the tags still match the tree at RC. Teaching it now is not the same as holding it at ship.</td></tr>
+        <tr><td>4</td><td>An outsider can install multi-team without babysitting substrate</td><td><span class="tag t-prop">proposed</span></td><td>Not true. Helpers are names. The factory is not an export. Kitchen-sink does not import the package.</td></tr>
+        <tr><td>5</td><td>Conductor-as-extension stays proposed</td><td><span class="tag t-prop">proposed</span></td><td>RC does not wait on Conductor. The Conductor thin shell does not wait on full Workforce RC. Extension is phase 4. Do not invert either arrow to close a gate.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Not an RC gate</th><th>Where it lives</th></tr></thead>
+      <tbody>
+        <tr><td>OKF</td><td>Later. An example, not a Workforce dependency.</td></tr>
+        <tr><td>Slack-style web face</td><td>Later. Surfaces. Not this page.</td></tr>
+        <tr><td>Pi</td><td>Later / Strategy. Not a Workforce RC gate.</td></tr>
+        <tr><td>Paid packaging</td><td>Strategy. GTM timing is not this page.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="lbl">Timing is a sequence, not a date</span>
+    <p>Foundation, then teams-plural dogfood on FSD plus one client-shaped use, then ask whether the five gates hold. Do not put a quarter on this page. Do not stall those gates on OKF, a web face, Pi, or a price.</p>
   </div>
 </section>
 
 <section id="cuts">
-  <div class="sec-head"><span class="sec-num">17</span><h2>Cuts</h2></div>
-  <p class="lede">Held on purpose. Do not invent these because the thought exists. Foundation is a thin wrapper over today&#8217;s Layer&nbsp;1, keyed for N rosters. A second dispatch, session, or board surface is how that kick fails. A one-team-only API is how Phase 2 becomes a rewrite. Conductor does not wait on the package. GTM is not this page.</p>
+  <div class="sec-head"><span class="sec-num">19</span><h2>Cuts</h2></div>
+  <p class="lede">Held on purpose. Do not invent these because the thought exists. Foundation is a thin wrapper over today&#8217;s Layer&nbsp;1, keyed for N rosters, with an intake seat on each. A <code>TeamFlow</code> or a second dispatch surface is how that kick fails. A one-team-only API is how Phase 2 becomes a rewrite. RC gates stay proposed until they are true. Conductor does not wait on the package. GTM is not this page.</p>
 
   <div class="tension">
     <h5>This page teaches the RC target. It does not ship the package</h5>
@@ -1801,8 +2012,13 @@ const replyToSender = <b>dispatcher</b>({
   </div>
 
   <div class="tension">
+    <h5>No TeamFlow. No team-as-flow substrate. No team address type</h5>
+    <p>Address-the-team is the intake seat&#8217;s static session. The intake <em>is</em> a worker. Do not add a <code>TeamFlow</code> kind, a team-as-flow substrate, or an address that is not a session id or a known channel. An inbox field on Agent is the same cut. See <a href="#intake">&#167;10</a>.</p>
+  </div>
+
+  <div class="tension">
     <h5>No second dispatch, session, or board model</h5>
-    <p>v1 helpers wrap <code>dispatcher()</code>, <code>create_session</code>, and <code>taskBoard</code>. They do not grow a Workforce inbox, a Workforce session type, or a Workforce board. A second surface would have to be unwound against the spine that already exists.</p>
+    <p>Helpers wrap <code>dispatcher()</code>, <code>create_session</code>, and <code>taskBoard</code>. The intake inbox is that session, not a Workforce inbox product. They do not grow a Workforce session type or a Workforce board. A second surface would have to be unwound against the spine that already exists.</p>
   </div>
 
   <div class="tension">
@@ -1846,6 +2062,11 @@ const replyToSender = <b>dispatcher</b>({
   </div>
 
   <div class="tension">
+    <h5>OKF, a Slack-style web face, Pi, and paid packaging are not RC gates</h5>
+    <p>They are later or Strategy. Do not stall <a href="#gates">&#167;18</a> on them. GTM timing stays off this page.</p>
+  </div>
+
+  <div class="tension">
     <h5>No collaboration on Agent. No Team type. No second Agent model. No org graph on Agent</h5>
     <p>The target is teams, plural. That is still keyed rosters plus shared rooms. Agent is the participant you seat. Rooms are how they talk. Do not add <code>members</code>, <code>channels</code>, or <code>inbox</code> to <code>Agent</code>. Do not invent Team to hold a bind the roster row has not proved. Do not fork a participant type beside <code>AgentRegistry</code>. Prove <a href="#fence">&#167;04</a> A/B/C first &#8212; durable memory via <code>flowIsolation</code> versus persona-only, the keyed Agent&#8594;harness&#8594;session bind, and that foundation thins the existing package.</p>
   </div>
@@ -1858,7 +2079,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is one worker contract on Layer&nbsp;1. The target is RC collaboration: teams, plural &#8212; N keyed rosters, shared rooms, cross-roster dispatch. Agent exists as the seat, not a room, not a team, no durable memory on the type. Foundation is thin L2 over <code>create_session</code>, <code>dispatcher()</code>, <code>taskBoard</code>, <code>claim</code>, and <code>AgentRegistry</code>, with helpers that take a roster key from day one. Identity depth is the named memory gap. Later is OKF, surfaces, Conductor-as-extension. No Team type. No second Agent. No one-team-only API. Cross-flow is still refused on this pin. Conductor does not wait. GTM is Strategy.</p>
+    <p>Workforce is one worker contract on Layer&nbsp;1. The target is RC collaboration: teams, plural &#8212; N keyed rosters, shared rooms, cross-roster dispatch. Address-the-team is an intake seat, a worker with a static DM, not a TeamFlow. Agent exists as the seat, not a room, not a team, no inbox on the type. Foundation is thin L2 over <code>create_session</code>, <code>dispatcher()</code>, <code>taskBoard</code>, <code>claim</code>, and <code>AgentRegistry</code>, with helpers that take a roster key from day one. RC gates are proposed until they are true. Identity depth is the named memory gap. Later is OKF, surfaces, Conductor-as-extension &#8212; not RC gates. No Team type. No second Agent. No one-team-only API. Cross-flow is still refused on this pin. Conductor does not wait. GTM is Strategy.</p>
   </div>
 </section>
 
