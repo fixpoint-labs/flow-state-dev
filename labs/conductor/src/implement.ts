@@ -12,9 +12,17 @@
  * exhaust its turn budget.
  */
 import { execFileSync } from "node:child_process";
-import type { PhaseRunContext, PhaseSpec, PromptRunContext } from "./manager";
-import type { WorkspaceConfig } from "./workspace";
-import { GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS, run } from "./exec";
+import {
+  type PhaseRunContext,
+  type PhaseSpec,
+  type PromptRunContext,
+  type WorkspaceConfig,
+} from "@flow-state-dev/harness-manager";
+import {
+  GIT_TIMEOUT_MS,
+  NETWORK_CALL_TIMEOUT_MS,
+  run,
+} from "@flow-state-dev/harness-manager/checkout";
 import {
   API_PORT_SCHEMES,
   GIT_SUFFIX,
@@ -475,18 +483,6 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
             assertCompletionProbeUsable(workspace),
         }
       : {}),
-    // Empty, and that is not an oversight: this phase reads no collection of its
-    // own. It does not read the run record either — everything it needs about
-    // the previous attempt arrives on `PhaseRunContext`, because that row
-    // describes the attempt now running and has already been cleared by the
-    // time a prompt is built.
-    //
-    // `runs` is the MANAGER's collection regardless — always declared, and
-    // reserved, because a phase re-declaring it would replace the manager's own
-    // and send its bookkeeping somewhere `status` never reads. `readable` is for
-    // collections a phase brings of its own.
-    readable: {},
-
     buildPrompt(ctx: PromptRunContext): string {
       const lines = [
         `Implement Linear issue ${ctx.issue}.`,

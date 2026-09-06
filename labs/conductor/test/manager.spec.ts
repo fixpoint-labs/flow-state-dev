@@ -21,7 +21,12 @@ import {
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireCheckout, conductorTaskId, encodeSegment } from "../src/workspace";
+import {
+  acquireCheckout,
+  encodeSegment,
+  harnessTaskId,
+  releaseCheckout,
+} from "@flow-state-dev/harness-manager/checkout";
 import {
   createConductorHarness,
   USER_ID,
@@ -195,10 +200,10 @@ describe("the manager — the verdict at each exit", () => {
     // The run was given a checkout that is not the server's directory, and the
     // row records the one it was given.
     expect(seen.cwds[0]).toBe(row.run?.workspacePath);
-    expect(row.run?.workspacePath).toContain(conductorTaskId(ISSUE, PHASE));
+    expect(row.run?.workspacePath).toContain(harnessTaskId(ISSUE, PHASE));
     // Principal- and epic-namespaced: two users, or two epics, never share a ref.
     expect(row.run?.branch).toBe(
-      `conductor/t0/${encodeSegment(USER_ID)}/${COLLECTION_ID}/${conductorTaskId(ISSUE, PHASE)}`,
+      `conductor/t0/${encodeSegment(USER_ID)}/${COLLECTION_ID}/${harnessTaskId(ISSUE, PHASE)}`,
     );
   });
 
@@ -625,13 +630,13 @@ describe("the manager — contention, and what it must not cost", () => {
       ownership: { waitMs: 65_000, pollMs: 20, staleAfterMs: 64_000 },
     });
 
-    const checkout = join(live.workspaceRoot, conductorTaskId(ISSUE, PHASE));
+    const checkout = join(live.workspaceRoot, harnessTaskId(ISSUE, PHASE));
     const held = await acquireCheckout(checkout, "a displaced attempt", {
       waitMs: 1_000,
       pollMs: 20,
       staleAfterMs: 60_000,
     });
-    setTimeout(() => held.release(), 250);
+    setTimeout(() => releaseCheckout(held), 250);
 
     const row = await seedAndDrain(live);
 
@@ -697,7 +702,6 @@ describe("the manager — the phase surface", () => {
       workspace: { root: h.workspaceRoot, sourceRepo: h.sourceRepo, baseRef: "main" },
       phase: {
         phase: "review",
-        readable: {},
         buildPrompt: () => "review it",
         isDone: () => true,
       },
@@ -746,7 +750,7 @@ describe("the flow — seeding twice", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     // Named, not merely equal — see the concurrent case below.
-    expect(first.taskId).toBe(conductorTaskId(ISSUE, PHASE));
+    expect(first.taskId).toBe(harnessTaskId(ISSUE, PHASE));
     expect(second.taskId).toBe(first.taskId);
 
     const { rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE });
@@ -777,7 +781,7 @@ describe("the flow — seeding twice", () => {
           const ledger = (run.ctx as unknown as {
             resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
           }).resources[COLLECTION_ID];
-          await ledger.upsert(conductorTaskId(ISSUE, PHASE), {
+          await ledger.upsert(harnessTaskId(ISSUE, PHASE), {
             input: { issue: "FIX-SOMEONE-ELSE", phase: PHASE },
           });
           corrupted = true;
@@ -840,7 +844,7 @@ describe("the flow — seeding twice", () => {
     // the id exists and equals the derived identity before asserting agreement —
     // a check that cannot tell one row from no rows is not a check.
     for (const id of ids) {
-      expect(id).toBe(conductorTaskId(ISSUE, PHASE));
+      expect(id).toBe(harnessTaskId(ISSUE, PHASE));
     }
     expect(new Set(ids).size).toBe(1);
 
@@ -961,7 +965,7 @@ describe("the git inputs are validated at the programmatic door too", () => {
     // what makes this the real case rather than a staged one.
     expect(() =>
       conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: process.cwd() } }),
-    ).toThrow(/is the repository this process is itself running from/);
+    ).toThrow(/is the repository the host itself lives in/);
   });
 
   it("refuses a source repo that is not a git repository at all", async () => {
@@ -1152,7 +1156,7 @@ describe("the drain budget covers the whole worker", () => {
     // pass just as happily for a budget that forgot a term.
     const runTimeoutMs = 1_800_000;
     const budget = await budgetFor();
-    const { resolveOwnership } = await import("../src/manager");
+    const { resolveOwnership } = await import("@flow-state-dev/harness-manager");
     const { ownership } = resolveOwnership({ runTimeoutMs });
 
     expect(budget).toBeGreaterThan(runTimeoutMs);
@@ -1345,7 +1349,7 @@ describe("the flow — one board, one phase", () => {
             >;
           }
         ).resources[COLLECTION_ID];
-        const taskId = conductorTaskId(ISSUE, PHASE);
+        const taskId = harnessTaskId(ISSUE, PHASE);
         const row = (await ledger.getOptional(taskId))?.state as { input?: unknown };
         await ledger.upsert(taskId, {
           ...row,
@@ -1469,7 +1473,7 @@ describe("the ledger is partitioned by tenant", () => {
     // The run topic leads with the collection identity, so partitioning that
     // partitions the run record as well — one change, both stores.
     const { conductorFlow } = await import("../src/flow");
-    const { runTopic } = await import("../src/run-record");
+    const { runTopic } = await import("@flow-state-dev/harness-manager");
     const acme = conductorFlow({ ...base, tenant: "acme" });
     const globex = conductorFlow({ ...base, tenant: "globex" });
 
@@ -1485,7 +1489,7 @@ describe("the ledger is partitioned by tenant", () => {
     // one run topic. A test over two obviously-different tenants cannot fail on
     // that, which is why this one redistributes the delimiter instead.
     const { conductorFlow } = await import("../src/flow");
-    const { runTopic } = await import("../src/run-record");
+    const { runTopic } = await import("@flow-state-dev/harness-manager");
     const left = conductorFlow({ ...base, tenant: "a-b", epic: "c" });
     const right = conductorFlow({ ...base, tenant: "a", epic: "b-c" });
 
@@ -1533,7 +1537,7 @@ describe("the ledger is partitioned by tenant", () => {
     const implement = conductorFlow({ ...base, phase: implementPhase() });
     const review = conductorFlow({
       ...base,
-      phase: { phase: "review", readable: {}, buildPrompt: () => "r", isDone: () => true },
+      phase: { phase: "review", buildPrompt: () => "r", isDone: () => true },
     });
 
     expect(review.collectionId).toBe(implement.collectionId);
@@ -1543,7 +1547,7 @@ describe("the ledger is partitioned by tenant", () => {
     const separated = conductorFlow({
       ...base,
       epic: "shared-epic-review",
-      phase: { phase: "review", readable: {}, buildPrompt: () => "r", isDone: () => true },
+      phase: { phase: "review", buildPrompt: () => "r", isDone: () => true },
     });
     expect(separated.collectionId).not.toBe(implement.collectionId);
     expect(separated.boardId).not.toBe(implement.boardId);
@@ -1799,16 +1803,16 @@ describe("the ledger is partitioned by tenant", () => {
         undefined,
         OTHER,
       );
-      expect(taskId).toBe(conductorTaskId(ISSUE, PHASE));
+      expect(taskId).toBe(harnessTaskId(ISSUE, PHASE));
     });
   });
 });
 
 describe("the completion check is bounded", () => {
   it("gives up on a hook that never answers, and leaves no timer behind", async () => {
-    const { withDeadline } = await import("../src/manager");
+    const { withDeadline } = await import("@flow-state-dev/harness-manager");
 
-    // The gap this closes: `conductorDrainBudgetMs` sums four terms and spends
+    // The gap this closes: `harnessDrainBudgetMs` sums four terms and spends
     // `NETWORK_CALL_TIMEOUT_MS` on the completion check — a number taken from the
     // built-in probe, which bounds its own `gh` call. `isDone` is a public seam,
     // so any other phase's check was unbounded and could outlive the budget a
@@ -1870,7 +1874,7 @@ describe("status attributes a run record to the row that owns it", () => {
     // Not `seedAndDrain`: its helper reads `rows[0]`, and planting a second row
     // for this issue makes that ambiguous. Waited on the genuine row by id.
     await live.call("seed", { issue: ISSUE, phase: PHASE });
-    const canonical = conductorTaskId(ISSUE, PHASE);
+    const canonical = harnessTaskId(ISSUE, PHASE);
     const deadline = Date.now() + 10_000;
     let rows: StatusRow[] = [];
     for (;;) {
@@ -1895,7 +1899,7 @@ describe("status attributes a run record to the row that owns it", () => {
 
     // And the genuine row is unaffected: this must not become a blanket refusal
     // that hides real records.
-    expect(rows.find((r) => r.taskId === conductorTaskId(ISSUE, PHASE))?.run?.sessionId).toBe(
+    expect(rows.find((r) => r.taskId === harnessTaskId(ISSUE, PHASE))?.run?.sessionId).toBe(
       "sess_stub",
     );
   }, 20_000);
@@ -1903,7 +1907,7 @@ describe("status attributes a run record to the row that owns it", () => {
 
 describe("status survives a row whose identity cannot be derived at all", () => {
   it("returns the listing instead of throwing on one malformed neighbour", async () => {
-    // `conductorTaskId` VALIDATES the owned-segment grammar and raises on a
+    // `harnessTaskId` VALIDATES the owned-segment grammar and raises on a
     // violation. The identity predicate checked the field types and stopped
     // there — so a persisted row carrying `{ issue: "FIX.1" }` did not fail the
     // predicate, it failed the whole `status` call, hiding every valid row
@@ -1939,7 +1943,7 @@ describe("status survives a row whose identity cannot be derived at all", () => 
     });
 
     await live.call("seed", { issue: ISSUE, phase: PHASE });
-    const canonical = conductorTaskId(ISSUE, PHASE);
+    const canonical = harnessTaskId(ISSUE, PHASE);
     const deadline = Date.now() + 10_000;
     let rows: StatusRow[] = [];
     for (;;) {
@@ -1962,7 +1966,7 @@ describe("a phase spelled differently is the same phase", () => {
   it("does not charge a durable row for a casing change in the config", async () => {
     // A row is durable and outlives the process that filed it. Restart the
     // conductor with the phase spelled `IMPLEMENT` and it meets rows already on
-    // the board carrying `implement` — and `conductorTaskId` FOLDS case, so
+    // the board carrying `implement` — and `harnessTaskId` FOLDS case, so
     // those are the same task, the same checkout and the same branch.
     //
     // A raw comparison in the guard called them different, and did so after
@@ -2083,7 +2087,6 @@ describe("the phase's own precondition is refused at the same door", () => {
       workspace: mutable,
       phase: {
         phase: "implement",
-        readable: {},
         buildPrompt: () => "p",
         isDone: () => true,
         validate: (w) => {
@@ -2223,8 +2226,8 @@ describe("a row is only ours if its routing is ours too", () => {
           const ledger = (run.ctx as unknown as {
             resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
           }).resources[COLLECTION_ID];
-          await ledger.upsert(conductorTaskId("FIX-OTHER", PHASE), {
-            id: conductorTaskId("FIX-OTHER", PHASE),
+          await ledger.upsert(harnessTaskId("FIX-OTHER", PHASE), {
+            id: harnessTaskId("FIX-OTHER", PHASE),
             goal: "filed by somebody else's worker",
             input: { issue: "FIX-OTHER", phase: PHASE },
             status: "pending",
@@ -2275,8 +2278,8 @@ describe("a row is only ours if its retry budget is ours too", () => {
           const ledger = (run.ctx as unknown as {
             resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
           }).resources[COLLECTION_ID];
-          await ledger.upsert(conductorTaskId("FIX-NOBUDGET", PHASE), {
-            id: conductorTaskId("FIX-NOBUDGET", PHASE),
+          await ledger.upsert(harnessTaskId("FIX-NOBUDGET", PHASE), {
+            id: harnessTaskId("FIX-NOBUDGET", PHASE),
             goal: "filed with no retry budget",
             input: { issue: "FIX-NOBUDGET", phase: PHASE },
             status: "pending",
@@ -2324,8 +2327,8 @@ describe("a row is only ours if its retry budget is ours too", () => {
           const ledger = (run.ctx as unknown as {
             resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
           }).resources[COLLECTION_ID];
-          await ledger.upsert(conductorTaskId("FIX-RUNNING", PHASE), {
-            id: conductorTaskId("FIX-RUNNING", PHASE),
+          await ledger.upsert(harnessTaskId("FIX-RUNNING", PHASE), {
+            id: harnessTaskId("FIX-RUNNING", PHASE),
             goal: "already being worked",
             input: { issue: "FIX-RUNNING", phase: PHASE },
             // Claimed and live: a lease well into the future.
@@ -2352,7 +2355,7 @@ describe("a row is only ours if its retry budget is ours too", () => {
 
     await expect(
       live.call("seed", { issue: "FIX-RUNNING", phase: PHASE }),
-    ).resolves.toMatchObject({ taskId: conductorTaskId("FIX-RUNNING", PHASE) });
+    ).resolves.toMatchObject({ taskId: harnessTaskId("FIX-RUNNING", PHASE) });
   }, 20_000);
 
   it("refuses an active-looking row that carries no lease", async () => {
@@ -2370,8 +2373,8 @@ describe("a row is only ours if its retry budget is ours too", () => {
           const ledger = (run.ctx as unknown as {
             resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
           }).resources[COLLECTION_ID];
-          await ledger.upsert(conductorTaskId("FIX-NOLEASE", PHASE), {
-            id: conductorTaskId("FIX-NOLEASE", PHASE),
+          await ledger.upsert(harnessTaskId("FIX-NOLEASE", PHASE), {
+            id: harnessTaskId("FIX-NOLEASE", PHASE),
             goal: "in_progress with nobody on it",
             input: { issue: "FIX-NOLEASE", phase: PHASE },
             // Everything else correct; no `leaseUntil` at all.
@@ -2417,8 +2420,8 @@ describe("a row is only ours if its retry budget is ours too", () => {
           const ledger = (run.ctx as unknown as {
             resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
           }).resources[COLLECTION_ID];
-          await ledger.upsert(conductorTaskId("FIX-FINISHED", PHASE), {
-            id: conductorTaskId("FIX-FINISHED", PHASE),
+          await ledger.upsert(harnessTaskId("FIX-FINISHED", PHASE), {
+            id: harnessTaskId("FIX-FINISHED", PHASE),
             goal: "finished under another budget",
             input: { issue: "FIX-FINISHED", phase: PHASE },
             // Terminal, and filed under a budget this conductor is not running.
@@ -2445,7 +2448,7 @@ describe("a row is only ours if its retry budget is ours too", () => {
     // Reused, not refused, and it is the same row rather than a new one.
     await expect(
       live.call("seed", { issue: "FIX-FINISHED", phase: PHASE }),
-    ).resolves.toMatchObject({ taskId: conductorTaskId("FIX-FINISHED", PHASE) });
+    ).resolves.toMatchObject({ taskId: harnessTaskId("FIX-FINISHED", PHASE) });
   }, 20_000);
 });
 
@@ -2475,7 +2478,7 @@ describe("status attribution does not depend on the retry policy", () => {
           const ledger = (run.ctx as unknown as {
             resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
           }).resources[COLLECTION_ID];
-          await ledger.upsert(conductorTaskId(ISSUE, PHASE), { maxAttempts: 5 });
+          await ledger.upsert(harnessTaskId(ISSUE, PHASE), { maxAttempts: 5 });
           moved = true;
         }
         return true;
@@ -2487,13 +2490,13 @@ describe("status attribution does not depend on the retry policy", () => {
     let rows: StatusRow[] = [];
     for (;;) {
       ({ rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE }));
-      const mine = rows.find((r) => r.taskId === conductorTaskId(ISSUE, PHASE));
+      const mine = rows.find((r) => r.taskId === harnessTaskId(ISSUE, PHASE));
       if (moved && mine !== undefined && mine.status !== "in_progress") break;
       if (Date.now() >= deadline) throw new Error(`never settled: ${JSON.stringify(rows)}`);
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
 
-    const mine = rows.find((r) => r.taskId === conductorTaskId(ISSUE, PHASE));
+    const mine = rows.find((r) => r.taskId === harnessTaskId(ISSUE, PHASE));
     expect(mine?.attempts, "the budget really did move off the configured one").toBeDefined();
     // The record is still attributed: the identity never moved, only the policy.
     expect(mine?.run?.sessionId).toBe("sess_stub");
@@ -2503,7 +2506,7 @@ describe("status attribution does not depend on the retry policy", () => {
 describe("the phase name is an identity segment, refused at construction", () => {
   it("refuses a phase name that cannot become a task id, path or branch", async () => {
     // `epic` was validated where the board id is built; the phase name was
-    // validated nowhere. Both feed `conductorTaskId`, the checkout path and the
+    // validated nowhere. Both feed `harnessTaskId`, the checkout path and the
     // branch — so a conductor configured with `review.v2` constructed without
     // complaint and then threw from every `seed`.
     //
@@ -2553,8 +2556,8 @@ describe("a reused row must be one a drain can actually claim", () => {
           const ledger = (run.ctx as unknown as {
             resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
           }).resources[COLLECTION_ID];
-          await ledger.upsert(conductorTaskId("FIX-BLOCKED", PHASE), {
-            id: conductorTaskId("FIX-BLOCKED", PHASE),
+          await ledger.upsert(harnessTaskId("FIX-BLOCKED", PHASE), {
+            id: harnessTaskId("FIX-BLOCKED", PHASE),
             goal: "filed with a dependency this conductor never sets",
             input: { issue: "FIX-BLOCKED", phase: PHASE },
             status: "pending",

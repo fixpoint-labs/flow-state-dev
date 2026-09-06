@@ -56,12 +56,16 @@ import {
   conductorFlow,
   CONDUCTOR_FLOW_KIND,
 } from "../../../labs/conductor/src/flow.ts";
-import type { PhaseSpec } from "../../../labs/conductor/src/manager.ts";
+import {
+  type PhaseSpec,
+} from "@flow-state-dev/harness-manager";
+import {
+  GIT_TIMEOUT_MS,
+} from "@flow-state-dev/harness-manager/checkout";
 import {
   positiveIntFromEnv,
   requireSourceRepo,
 } from "../../../labs/conductor/src/config-env.ts";
-import { GIT_TIMEOUT_MS } from "../../../labs/conductor/src/exec.ts";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 
 interface Fixture {
@@ -193,7 +197,6 @@ await runGoal(async () => {
      */
     const phase: PhaseSpec = {
       phase: fixture.phase,
-      readable: {},
       buildPrompt: (run) => {
         const target = join(run.workspacePath, fixture.factFileName);
         factFile = target;

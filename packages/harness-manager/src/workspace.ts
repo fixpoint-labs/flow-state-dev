@@ -43,12 +43,12 @@
  * future caller that skips the schema still cannot escape the root.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run } from "./exec";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
-import { identityFromCommonDir } from "./config-env";
-import { DERIVED_IDENTITY, OWNED_SEGMENT } from "./patterns";
+import { identityFromCommonDir } from "./guards";
+import { DERIVED_IDENTITY, OWNED_SEGMENT } from "./identity";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
 export interface WorkspaceConfig {
@@ -113,7 +113,7 @@ export interface Checkout {
  * Two mechanisms serve the one rule, chosen by who owns the identifier:
  *
  * - Identifiers **we** issue (epics, issue keys, phase names) are *validated*
- *   against `OWNED_SEGMENT` (in `./patterns`, with the grammar's own rationale).
+ *   against `OWNED_SEGMENT` (in `./identity`, with the grammar's own rationale).
  *   The grammar is ours to set, a malformed issue key is a real signal, and the
  *   value stays readable in a path.
  * - Identifiers **someone else** issues (user ids, tenant ids) are *encoded*
@@ -165,7 +165,7 @@ export function assertSafeSegment(label: string, value: string): string {
   // comes from the task payload and keeps its own case.
   if (!OWNED_SEGMENT.test(value) || value.length > MAX_OWNED_SEGMENT) {
     throw new Error(
-      `[conductor] ${label} "${value}" is not a usable identity segment — ` +
+      `[harness-manager] ${label} "${value}" is not a usable identity segment — ` +
         `at most ${MAX_OWNED_SEGMENT} letters and digits, separated by single \`-\` or ` +
         `\`_\`. No dots (a git ref may not end in "." or ".lock"), no ` +
         `"${IDENTITY_DELIMITER}" (it is the component frame), nothing that could climb out ` +
@@ -200,7 +200,7 @@ export function joinIdentity(...parts: string[]): string {
  *
  * `joinIdentity`'s output satisfies this by construction; this exists for the
  * identities that arrive from elsewhere already built. The grammar itself is
- * `DERIVED_IDENTITY` in `./patterns`, beside `OWNED_SEGMENT` so the single `+`
+ * `DERIVED_IDENTITY` in `./identity`, beside `OWNED_SEGMENT` so the single `+`
  * that separates them is visible rather than looking like a typo.
  */
 
@@ -210,7 +210,7 @@ export function assertDerivedIdentity(label: string, value: string): string {
   // that reintroduces case into the derivation.
   if (!DERIVED_IDENTITY.test(value)) {
     throw new Error(
-      `[conductor] ${label} "${value}" is not a usable identity segment — ` +
+      `[harness-manager] ${label} "${value}" is not a usable identity segment — ` +
         `letters and digits, separated by \`-\` or \`_\`. No dots (a git ref may not ` +
         `end in "." or ".lock"), and nothing that could climb out of a directory.`,
     );
@@ -415,7 +415,7 @@ function locationSegments(location: RunLocation): string[] {
 
 /** The issue-phase leaf, shared by the path, the branch, and the board task id. */
 function issuePhaseSegment(location: RunLocation): string {
-  return conductorTaskId(location.issue, location.phase);
+  return harnessTaskId(location.issue, location.phase);
 }
 
 /**
@@ -456,7 +456,7 @@ export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation):
  * the same reason: the value lands in the ledger's key space, and a separator or
  * a traversal there is the identical class of problem it would be in a path.
  */
-export function conductorTaskId(issue: string, phase: string): string {
+export function harnessTaskId(issue: string, phase: string): string {
   return joinIdentity(assertSafeSegment("issue", issue), assertSafeSegment("phase", phase));
 }
 
@@ -507,7 +507,7 @@ function remainingBudget(deadline: number, now: () => number): number {
   const left = deadline - now();
   if (left <= 0) {
     throw new Error(
-      "[conductor] provisioning exceeded its budget (workspace.provisionTimeoutMs) before " +
+      "[harness-manager] provisioning exceeded its budget (workspace.provisionTimeoutMs) before " +
         "it finished. The lock is held across provisioning, so a longer one would risk " +
         "being declared stale while this attempt is still legitimately working.",
     );
@@ -577,7 +577,7 @@ async function assertAskMarkerIgnored(
     .filter((line) => line !== "" && isAskMarkerPath(line));
   if (tracked.length > 0) {
     throw new Error(
-      `[conductor] the repository behind ${checkoutPath} already tracks question markers ` +
+      `[harness-manager] the repository behind ${checkoutPath} already tracks question markers ` +
         `under ${ASK_MARKER_DIR}: ` +
         `${tracked.join(", ")}. An ignore rule does not un-track a file — the ` +
         `agent's \`git add -A\` stages a change to a tracked path regardless — so a run's ` +
@@ -619,7 +619,7 @@ async function assertAskMarkerIgnored(
     if (!gitAnsweredNo(error)) throw error;
   }
   throw new Error(
-    `[conductor] the repository behind ${checkoutPath} does not ignore the directory ` +
+    `[harness-manager] the repository behind ${checkoutPath} does not ignore the directory ` +
       `"${probe}". A run writes the question it needs answered to a file named for its ` +
       `attempt inside that directory, and nothing here can stop the coding agent's ` +
       `\`git add -A\` from staging a file git does not already ignore — so the question ` +
@@ -820,7 +820,7 @@ async function branchExists(
   } catch (err) {
     if (gitAnsweredNo(err)) return false;
     throw new Error(
-      `[conductor] could not determine whether branch "${branch}" exists in ` +
+      `[harness-manager] could not determine whether branch "${branch}" exists in ` +
         `${config.sourceRepo}: the probe failed for a reason other than the ref being ` +
         `absent. Not reporting that as a deleted branch — see the cause below.`,
       { cause: err },
@@ -937,7 +937,7 @@ export async function provisionCheckout(
 
   if (existsSync(marker) && !interrupted && existsSync(join(path, ".git"))) {
     throw new Error(
-      `[conductor] ${marker} says a provision was interrupted, but the checkout at ${path} ` +
+      `[harness-manager] ${marker} says a provision was interrupted, but the checkout at ${path} ` +
         `is complete — every tracked file is present. One of the two is lying, and this ` +
         `will not guess: the marker can be created by anything with write access to the ` +
         `workspace root, including the coding agent, and the tree may hold real work. ` +
@@ -949,7 +949,7 @@ export async function provisionCheckout(
   if (!interrupted && existsSync(join(path, ".git"))) {
     if (!(await branchExists(config, branch, left()))) {
       throw new Error(
-        `[conductor] the checkout at ${path} is on branch "${branch}", which no longer ` +
+        `[harness-manager] the checkout at ${path} is on branch "${branch}", which no longer ` +
           `exists in ${config.sourceRepo}. Refusing to recreate it: the tree may hold ` +
           `uncommitted work, and a fresh branch off ${config.baseRef} would diverge from ` +
           `whatever the deleted one pointed at.`,
@@ -973,7 +973,7 @@ export async function provisionCheckout(
     const head = await currentBranch(path, left());
     if (head !== branch) {
       throw new Error(
-        `[conductor] the checkout at ${path} is on branch "${head}", not the expected ` +
+        `[harness-manager] the checkout at ${path} is on branch "${head}", not the expected ` +
           `"${branch}". Refusing to use it: a run told it is on "${branch}" would commit ` +
           `to "${head}" while the record says otherwise. Restore the branch or remove the ` +
           `checkout by hand — nothing here resets a tree.`,
@@ -1011,7 +1011,7 @@ export async function provisionCheckout(
     ]);
     if (mine === undefined || theirs === undefined || mine !== theirs) {
       throw new Error(
-        `[conductor] the checkout at ${path} does not belong to ${config.sourceRepo}. ` +
+        `[harness-manager] the checkout at ${path} does not belong to ${config.sourceRepo}. ` +
           `Refusing to reuse it: the branch name matches, but a run given this tree would ` +
           `commit and open a pull request in another repository. It may hold uncommitted ` +
           `work, so nothing here removes it — move or delete it by hand, or point ` +
@@ -1070,7 +1070,7 @@ export async function provisionCheckout(
     // is to keep them.
     if (!interrupted) {
       throw new Error(
-        `[conductor] the checkout at ${path} has no \`.git\` and no record of an ` +
+        `[harness-manager] the checkout at ${path} has no \`.git\` and no record of an ` +
           `interrupted provision, so it is not a half-created checkout and this will not ` +
           `clear it — it may hold work. Inspect it and remove it by hand if it is junk.`,
       );
@@ -1082,7 +1082,7 @@ export async function provisionCheckout(
     const root = resolve(config.root);
     if (!isStrictlyInside(path, root)) {
       throw new Error(
-        `[conductor] refusing to clear ${path}: it is not inside the workspace root ` +
+        `[harness-manager] refusing to clear ${path}: it is not inside the workspace root ` +
           `${root}. A half-created checkout is only ever removed from the directory this ` +
           `lab owns.`,
       );
@@ -1146,7 +1146,7 @@ export async function provisionCheckout(
     // there after all. Saying so beats a refusal that describes a tree the
     // operator will not find, and beats replacing the diagnosis entirely.
     throw new Error(
-      `${(refusal as Error).message}\n\n[conductor] and the checkout this call created ` +
+      `${(refusal as Error).message}\n\n[harness-manager] and the checkout this call created ` +
         `could not be removed, so ${path}${branchPreexisted ? "" : ` and branch "${branch}"`} ` +
         `are still there. Fixing the repository will not be enough on its own — delete ` +
         `them by hand, or the next attempt reuses a tree cut before the fix and fails the ` +
@@ -1280,7 +1280,73 @@ export function isStrictlyInside(candidate: string, root: string): boolean {
 
 /** A held checkout. Release it on every exit from the attempt that took it. */
 export interface CheckoutLease {
-  release(): void;
+  /** The lock file this acquisition created. */
+  lockPath: string;
+  /**
+   * A token written INTO that lock file, unique to this acquisition.
+   *
+   * **It does the inode's job, and survives being written down.** The release
+   * has to establish that the lock it is about to remove is still the one this
+   * acquisition created — a run that overruns the whole hold budget becomes
+   * stale-eligible while its process is alive, so a replacement can steal the
+   * path and a careless release would then remove the REPLACEMENT'S lock. The
+   * inode answered that, and could not be serialised: it is a fact about a live
+   * filesystem handle, so it forced a module-level table to keep the closure
+   * that held it alive. A token is a value, so the lease can live in the run's
+   * own state and release itself from there.
+   *
+   * An owner string alone is not enough, which is why this is not just the
+   * owner: a same-owner re-delivery creating a new lock with identical bytes
+   * must not be released by the old process.
+   *
+   * **What it does NOT buy**, stated plainly because the shape invites the
+   * assumption: compare-then-unlink is no more atomic for a token than it was
+   * for an inode. The stale-lock window this file already documents is
+   * unchanged. The token replaces the inode for serialisation and for
+   * same-owner re-delivery — not for stronger cross-process exclusion.
+   */
+  token: string;
+}
+
+/**
+ * Release a checkout lease — **the one place a lock this process took is
+ * removed**, called from every exit.
+ *
+ * A function of the lease VALUE rather than a method on a live object, which is
+ * what lets the lease live in the run's own state: the manager patches
+ * `{ lockPath, token }` onto its state when it acquires, and both exits (the
+ * harness step's settle hook and the chain's rescue) call this with what they
+ * read back. No module-level table of live closures remains, so two managers in
+ * one process cannot touch each other's lock by construction rather than by
+ * keying.
+ *
+ * **Never unlinks a lock without establishing it is still ours.** Same rule as
+ * the steal in `acquireCheckout`, and it has to be here too — this is the other
+ * place that unlinks. The case it closes is reachable, and the construction
+ * check is what makes it reachable rather than preventing it: a run that
+ * overruns the whole hold budget becomes stale-eligible while its process is
+ * still alive. Another attempt steals the lock and takes the tree; then this
+ * release fires and, checking nothing, removes THE REPLACEMENT'S lock. A third
+ * attempt acquires the path while the replacement is mid-edit — two agents in
+ * one tree, which is the whole thing the lock prevents.
+ *
+ * Synchronous, because the settle hook that calls it is: every operation here
+ * is a sync filesystem call. Idempotent, so the rescue calling it after the
+ * settle hook already did is a read.
+ */
+export function releaseCheckout(lease: CheckoutLease | undefined): void {
+  if (lease === undefined) return;
+  try {
+    const held = JSON.parse(readFileSync(lease.lockPath, "utf8")) as {
+      token?: string;
+    };
+    if (held.token === lease.token) {
+      rmSync(lease.lockPath, { force: true });
+    }
+  } catch {
+    // Already gone, or unreadable. Either way there is nothing of ours left to
+    // release, and a cleanup failure must never fail a run.
+  }
 }
 
 /** How ownership is bounded. Sized against the renewal lag that causes overlap. */
@@ -1413,7 +1479,7 @@ export async function acquireCheckout(
   const stopIfCancelled = (): void => {
     if (signal?.aborted !== true) return;
     throw new Error(
-      `[conductor] the attempt waiting for the checkout at ${checkoutPath} was cancelled ` +
+      `[harness-manager] the attempt waiting for the checkout at ${checkoutPath} was cancelled ` +
         "before it acquired the lock. Stopping rather than taking a tree whose result " +
         "this attempt can no longer record.",
     );
@@ -1424,39 +1490,13 @@ export async function acquireCheckout(
 
   for (;;) {
     try {
-      writeFileSync(lock, JSON.stringify({ owner, at: now() }), { flag: "wx" });
-      // The identity of the file we just created, captured rather than re-derived.
-      // See `release`.
-      const mine = statSync(lock).ino;
-      return {
-        release() {
-          // **Never unlink a lock without establishing it is still the one we
-          // hold.** Same rule as the steal above, and it has to be here too —
-          // this is the other place that unlinks.
-          //
-          // The case it closes is reachable, and the construction check is what
-          // makes it reachable rather than preventing it: a run that overruns
-          // the whole hold budget becomes stale-eligible while its process is still
-          // alive. Another attempt steals the lock and takes the tree; then this
-          // release fires and, checking nothing, removes THE REPLACEMENT'S lock.
-          // A third attempt acquires the path while the replacement is mid-edit —
-          // two agents in one tree, which is the whole thing the lock prevents.
-          //
-          // So both the inode and the owner must still be ours. The inode is the
-          // load-bearing half: an owner string alone cannot tell our lock from a
-          // later file that happens to carry the same bytes.
-          try {
-            const current = statSync(lock);
-            const held = JSON.parse(readFileSync(lock, "utf8")) as { owner?: string };
-            if (current.ino === mine && held.owner === owner) {
-              rmSync(lock, { force: true });
-            }
-          } catch {
-            // Already gone, or unreadable. Either way there is nothing of ours
-            // left to release, and a cleanup failure must never fail a run.
-          }
-        },
-      };
+      // **Unique per ACQUISITION, not per owner.** The owner is
+      // `<taskId>#<attempt>`, which a re-delivery of the same attempt repeats;
+      // the token is what tells this acquisition's lock from an identical-looking
+      // one a replacement created. See `CheckoutLease.token`.
+      const token = randomUUID();
+      writeFileSync(lock, JSON.stringify({ owner, token, at: now() }), { flag: "wx" });
+      return { lockPath: lock, token };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
@@ -1514,7 +1554,7 @@ export async function acquireCheckout(
 
     if (now() >= deadline) {
       throw new Error(
-        `[conductor] waited ${bounds.waitMs}ms for the checkout at ${checkoutPath} and it ` +
+        `[harness-manager] waited ${bounds.waitMs}ms for the checkout at ${checkoutPath} and it ` +
           `is still held. Treating that as a wedged process rather than a race: an ` +
           `ordinary reclaim resolves well inside this bound.`,
       );

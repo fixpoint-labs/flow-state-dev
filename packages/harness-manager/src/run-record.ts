@@ -125,6 +125,24 @@ export const runRecordStateSchema = z.object({
    * incidental — see the module header.
    */
   sessionId: z.string().nullable().default(null),
+  /**
+   * WHICH harness produced the session beside it — `claude-code/sdk`,
+   * `codex/sdk`, the `<package>/<door>` value the handle reported.
+   *
+   * Recorded rather than checked, deliberately. When a harness is chosen per
+   * task, the previous attempt's session can belong to a DIFFERENT harness, and
+   * "hand the id down only when the source matches" is what makes a per-task
+   * switch start fresh instead of resuming a foreign session. That check needs
+   * to know which harness a row is bound to, which this manager does not — one
+   * harness per manager here — so the field is written now and the check
+   * belongs to the issue that introduces the choice. One nullable column today
+   * versus a run-record migration later.
+   *
+   * A widened string, not an enum, so a handle persisted before the
+   * `<package>/<door>` convention still parses (BP-030), and a harness we do not
+   * ship can name itself.
+   */
+  source: z.string().nullable().default(null),
   /** The run's closing text, when it got far enough to produce one. */
   finalMessage: z.string().nullable().default(null),
   /**
@@ -214,6 +232,7 @@ export function runTopicPrefix(epic: string, issue: string): string {
  */
 const ATTEMPT_SCOPED_CLEAR = {
   sessionId: null,
+  source: null,
   finalMessage: null,
   usage: null,
   costUsd: null,
@@ -478,7 +497,7 @@ export function collectionRef(
   const ref = (ctx.resources as Record<string, unknown> | undefined)?.[accessor];
   if (ref === undefined || typeof (ref as ReadableCollection).upsert !== "function") {
     throw new Error(
-      `[conductor] the "${accessor}" collection is not registered on this flow — ` +
+      `[harness-manager] the "${accessor}" collection is not registered on this flow — ` +
         `the run record cannot be written, and a silent miss here is the lying ` +
         `status row this lab exists to remove.`,
     );
