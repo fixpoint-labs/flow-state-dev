@@ -227,7 +227,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
     <span><i class="sw-dash"></i> proposed &#8212; design, not built</span>
   </div>
-  <p class="sib">Pinned to <code>origin/main</code> at <code>b91c638cc</code>. Sibling: <a href="conductor.html">Conductor</a> &#8212; this-cycle coding product on the same dispatch spine.</p>
+  <p class="sib">Pinned to <code>origin/main</code> at <code>2a44dbb14</code>. Sibling: <a href="conductor.html">Conductor</a> &#8212; this-cycle coding product on the same dispatch spine.</p>
 </header>
 
 <section id="what">
@@ -562,7 +562,7 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
 
 <section id="channels">
   <div class="sec-head"><span class="sec-num">05</span><h2>Channels</h2></div>
-  <p class="lede">Two channel kinds. A <strong>DM</strong> is one static session with that one worker, opened at bootstrap. A <strong>group</strong> is a message board plus one subscription session per subscribed member. A group post wakes those sessions. <strong>Who answers is proposed Layer&nbsp;2 policy</strong>, not a new primitive and not a shared room.</p>
+  <p class="lede">Two channel kinds. A <strong>DM</strong> is one static session with that one worker, opened at bootstrap. A <strong>group</strong> is a message board plus one subscription session per subscribed member. A group post wakes those sessions. <strong>A wake is not a turn.</strong> Reply-storm exclusion <strong>exists</strong> via <code>TaskCollectionRef.claim</code>. Who may reply is <strong>proposed</strong> Layer&nbsp;2 policy. Ordered multi-reply is <strong>proposed</strong> Layer&nbsp;2: a board coordinator &#8212; a roster role, not a primitive &#8212; files N reply tasks with <code>deps</code>; settle unlocks the next; only an idle chain looks at newer posts. Cross-flow stays proposed. Not a new primitive and not a shared room.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
@@ -573,9 +573,17 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
       <h5>Group</h5><span class="role">board + N sessions</span>
       <p>The board is the shared working set. Each subscribed member has their own session on their flow. A post wakes those sessions via <code>dispatcher()</code>. Not one room they all enter.</p>
     </div>
+    <div class="card" style="--tc: var(--code)">
+      <h5>Reply-storm exclusion</h5><span class="role">claim exists</span>
+      <p>A wake is not a turn. One holder per post is today&#8217;s <code>TaskCollectionRef.claim</code>. Eligibility narrows to that post. Not a Layer&nbsp;1 lock. Not a room.</p>
+    </div>
     <div class="card" style="--tc: var(--accent)">
-      <h5>Reply discipline</h5><span class="role">proposed layer 2 policy</span>
-      <p>A wake is not a turn. Who may reply: role, <code>@</code>, or the coordinator. One claim or turn per post. Default quiet unless addressed. Not a Layer&nbsp;1 lock. Not a room.</p>
+      <h5>Who may reply</h5><span class="role">proposed layer 2 policy</span>
+      <p>Role, <code>@</code>, or the coordinator. Default quiet unless addressed. Who may <em>attempt</em> the claim, not a new primitive.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Ordered multi-reply</h5><span class="role">proposed layer 2</span>
+      <p>A board coordinator &#8212; roster role, L2 worker &#8212; reads a post, files N reply tasks with <code>deps</code>. Each task&#8217;s work is <code>dispatcher()</code> into that subscriber&#8217;s session. Settle unlocks the next. Idle before newer posts.</p>
     </div>
   </div>
 
@@ -654,7 +662,9 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <tr><td>Group as board + N subscriber sessions</td><td><span class="tag t-prop">proposed</span></td><td>The board is the shared working set. Each subscribed member has their own session on their flow. Not one session the group sits in.</td></tr>
         <tr><td>Seed / nonstandard sessions on <code>defineFlow</code></td><td><span class="tag t-gone">cut</span></td><td>No such field. Do not add one so a flow can declare its rooms. That is bootstrap&#8217;s job.</td></tr>
         <tr><td>One shared / multiparty group session</td><td><span class="tag t-gone">cut</span></td><td>Do not invent a session type several workers enter. Fan-out is N dispatches into N sessions that already exist.</td></tr>
-        <tr><td>Group reply discipline</td><td><span class="tag t-prop">proposed</span></td><td>Layer&nbsp;2 policy on the existing fan-out. Who may reply (role / <code>@</code> / coordinator). One claim or turn per post. Default quiet unless addressed. Not a Layer&nbsp;1 board-lock. A later POC may reuse existing task/resource claim/lease; wake Architect only if that invents substrate.</td></tr>
+        <tr><td>Reply-storm exclusion via existing claim</td><td><span class="tag t-real">exists</span></td><td><code>TaskCollectionRef.claim</code> (<code>packages/orchestration/src/tasks/collection/types.ts</code>). One holder per post across N subscriber sessions. Eligibility narrows to that post; it does not replace <code>isClaimable</code>. Not a Layer&nbsp;1 board-lock.</td></tr>
+        <tr><td>Who may reply (role / <code>@</code> / coordinator)</td><td><span class="tag t-prop">proposed</span></td><td>Layer&nbsp;2 policy on that claim. Default quiet unless addressed. Who may <em>attempt</em> the claim, not a new primitive and not a future lock type.</td></tr>
+        <tr><td>Ordered multi-reply via board coordinator</td><td><span class="tag t-prop">proposed</span></td><td>Roster role, L2 worker &#8212; not a coordinator Layer&nbsp;1 type. Reads one post, files N reply tasks with <code>deps</code> (order). Each task&#8217;s work is <code>dispatcher()</code> into that subscriber&#8217;s session. Settle unlocks the next (<code>isClaimable</code> already waits on <code>deps[]</code>). Idle chain before newer posts. Broke path is the existing lease / <code>parked</code> / retry. No MessageBoard sequencer. No new lease type. Cross-flow still proposed.</td></tr>
         <tr><td>Which room (routing matrix)</td><td><span class="tag t-prop">proposed</span></td><td>Roster + context, then this door. See the Talk / Room table below. Marked proposed until cross-flow lands.</td></tr>
         <tr><td>Peer-edge graph / second bus / route-resolver</td><td><span class="tag t-gone">cut</span></td><td>Do not draw edges between workers. Do not add a send door beside <code>dispatcher()</code>. Do not invent a Layer&nbsp;1 resolver that mints routes. Address is a session id or a known channel.</td></tr>
       </tbody>
@@ -663,39 +673,152 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 280" role="img" aria-label="Group fan-out wakes N subscriber sessions. Proposed Layer 2 reply policy then says who may answer: role, at-mention, or the coordinator; one claim or turn per post; default quiet unless addressed. A cut box refuses a multiparty session and a Layer 1 board-lock type. A later proof of concept may reuse existing task or resource claim and lease.">
-        <rect class="n-code" x="16" y="16" width="292" height="176" rx="5"/>
+      <svg viewBox="0 0 940 360" role="img" aria-label="A wake is not a turn. Group fan-out wakes N subscriber sessions via dispatcher times N. Reply-storm exclusion exists via TaskCollectionRef.claim, one holder per post. Who may attempt that claim is proposed Layer 2 policy: role, at-mention, or the coordinator; default quiet unless addressed. A cut box refuses a multiparty session, a Layer 1 board-lock type, and a later invented lease. Cross-flow stays proposed.">
+        <rect class="n-code" x="16" y="16" width="292" height="196" rx="5"/>
         <text class="t-lbl f-code" x="34" y="38">WAKE &#183; FAN-OUT</text>
         <text class="t-b" x="34" y="64">a post wakes N sessions</text>
         <text class="t-s" x="34" y="92">dispatcher() &#215; N</text>
         <text class="t-xs" x="34" y="114">ONE DELIVERY PER SUBSCRIBER</text>
         <text class="t-xs" x="34" y="132">THE BOARD IS THE WORKING SET</text>
         <text class="t-xs" x="34" y="158">A WAKE IS NOT A TURN</text>
-        <text class="t-xs" x="34" y="176">EVERYONE HEARS. NOT EVERYONE SPEAKS.</text>
+        <text class="t-xs" x="34" y="176">EVERYONE HEARS.</text>
+        <text class="t-xs" x="34" y="194">NOT EVERYONE SPEAKS.</text>
 
-        <rect class="n-prop" x="324" y="16" width="292" height="176" rx="5"/>
-        <text class="t-lbl" x="342" y="38">REPLY &#183; PROPOSED L2 POLICY</text>
-        <text class="t-b f-accent" x="342" y="64">who may reply</text>
-        <text class="t-s" x="342" y="92">role &#183; @ &#183; coordinator</text>
-        <text class="t-xs" x="342" y="114">ONE CLAIM OR TURN PER POST</text>
-        <text class="t-xs" x="342" y="132">DEFAULT QUIET UNLESS ADDRESSED</text>
-        <text class="t-xs" x="342" y="158">NOT A NEW PRIMITIVE</text>
-        <text class="t-xs" x="342" y="176">NOT A MULTIPARTY SESSION</text>
+        <rect class="n-code" x="324" y="16" width="292" height="196" rx="5"/>
+        <text class="t-lbl f-code" x="342" y="38">EXCLUSION &#183; CLAIM EXISTS</text>
+        <text class="t-b" x="342" y="64">one holder per post</text>
+        <text class="t-s" x="342" y="92">TaskCollectionRef.claim</text>
+        <text class="t-xs" x="342" y="114">ELIGIBILITY NARROWS TO THAT POST</text>
+        <text class="t-xs" x="342" y="132">IT DOES NOT REPLACE isClaimable</text>
+        <text class="t-xs" x="342" y="158">types.ts &#183; orchestration</text>
+        <text class="t-xs" x="342" y="176">NOT A BOARD-LOCK TYPE</text>
+        <text class="t-xs" x="342" y="194">NOT A NEW LEASE</text>
 
-        <rect class="n-prose" x="632" y="16" width="292" height="176" rx="5"/>
-        <text class="t-lbl" x="650" y="38">CUT</text>
-        <text class="t-b" x="650" y="64">no L1 board-lock</text>
-        <text class="t-xs" x="650" y="92">DO NOT INVENT A LOCK TYPE</text>
-        <text class="t-xs" x="650" y="114">DO NOT INVENT A GROUP ROOM</text>
-        <text class="t-xs" x="650" y="140">LATER POC MAY REUSE</text>
-        <text class="t-xs" x="650" y="158">TASK / RESOURCE CLAIM / LEASE</text>
-        <text class="t-xs" x="650" y="176">WAKE ARCHITECT ONLY IF NEW SUBSTRATE</text>
+        <rect class="n-prop" x="632" y="16" width="292" height="196" rx="5"/>
+        <text class="t-lbl" x="650" y="38">WHO &#183; PROPOSED L2 POLICY</text>
+        <text class="t-b f-accent" x="650" y="64">who may attempt</text>
+        <text class="t-s" x="650" y="92">role &#183; @ &#183; coordinator</text>
+        <text class="t-xs" x="650" y="114">DEFAULT QUIET UNLESS ADDRESSED</text>
+        <text class="t-xs" x="650" y="132">POLICY ON THAT CLAIM</text>
+        <text class="t-xs" x="650" y="158">NOT A NEW PRIMITIVE</text>
+        <text class="t-xs" x="650" y="176">NOT A MULTIPARTY SESSION</text>
+        <text class="t-xs" x="650" y="194">CROSS-FLOW STILL PROPOSED</text>
 
-        <rect class="n-box" x="16" y="208" width="908" height="56" rx="5"/>
-        <text class="t-s" x="34" y="242">Fan-out is delivery. Reply discipline is who takes a turn. Same dispatcher spine. Policy, not a primitive.</text>
+        <rect class="n-prose" x="16" y="228" width="908" height="56" rx="5"/>
+        <text class="t-lbl" x="34" y="250">CUT</text>
+        <text class="t-s" x="34" y="270">no L1 board-lock &#183; no group room &#183; no invented lease. Exclusion is the claim that exists. Wake Architect only if new substrate.</text>
       </svg>
     </div>
-    <figcaption><b>A wake is not a turn.</b> Group fan-out already wakes N subscriber sessions. If they all answer, that is a reply storm. The proposed Layer&nbsp;2 policy is who may reply, one claim or turn per post, and quiet unless addressed. It does not invent a multiparty session or a Layer&nbsp;1 board-lock. A later POC may reuse the existing task/resource claim/lease; only inventing substrate wakes Architect.</figcaption>
+    <figcaption><b>A wake is not a turn.</b> Group fan-out already wakes N subscriber sessions. If they all answer, that is a reply storm. Exclusion is today&#8217;s <code>TaskCollectionRef.claim</code> &#8212; one holder per post. The proposed Layer&nbsp;2 policy is who may attempt that claim (role / <code>@</code> / coordinator; quiet unless addressed). It does not invent a multiparty session or a Layer&nbsp;1 board-lock. Cross-flow stays proposed. Only inventing substrate wakes Architect.</figcaption>
+  </figure>
+
+  <h3>Ordered multi-reply</h3>
+  <p>Who may speak is policy. <em>In what order</em> they speak is a chain of tasks. The proposed Layer&nbsp;2 worker is a <strong>board coordinator</strong> &#8212; a roster role, the same kind of built-in as librarian, not a Layer&nbsp;1 type. It reads one post. It files N reply tasks with <code>deps</code>. Each task&#8217;s work is <code>dispatcher()</code> into that subscriber&#8217;s session. Settle marks the row <code>completed</code>; <code>isClaimable</code> already waits on <code>deps[]</code>, so the next reply unlocks. Only when that chain is idle does the coordinator look at newer posts. The broke path is the existing machine: a lapsed lease is reclaimed, <code>parked</code> waits on a person, <code>fail()</code> retries when budget remains. Do not invent a MessageBoard sequencer, a coordinator Layer&nbsp;1 type, or a new lease type to hold this.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 500" role="img" aria-label="Proposed ordered multi-reply. A board post is read by a board coordinator, a roster role, which files N reply tasks with dependencies. Alice has no deps, Bob depends on Alice, Cara depends on Bob. Each task's work is dispatcher into that subscriber session. Completing a task unlocks the next because isClaimable already waits on deps. Only an idle chain looks at newer posts. Cut: no MessageBoard sequencer, no coordinator Layer 1 type, no new lease type. Cross-flow stays proposed.">
+        <rect class="n-code" x="16" y="16" width="200" height="120" rx="5"/>
+        <text class="t-lbl f-code" x="32" y="38">POST &#183; BOARD</text>
+        <text class="t-b" x="32" y="64">one post</text>
+        <text class="t-xs" x="32" y="88">WORKING SET</text>
+        <text class="t-xs" x="32" y="106">NOT A SESSION</text>
+        <text class="t-xs" x="32" y="122">NOT A ROOM</text>
+
+        <path class="ln" d="M216,76 L248,76"/>
+
+        <rect class="n-prop" x="248" y="16" width="248" height="120" rx="5"/>
+        <text class="t-lbl" x="264" y="38">COORDINATOR &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="264" y="64">roster role</text>
+        <text class="t-xs" x="264" y="88">L2 WORKER. NOT A TYPE.</text>
+        <text class="t-xs" x="264" y="106">READS THE POST</text>
+        <text class="t-xs" x="264" y="122">FILES N REPLY TASKS</text>
+
+        <path class="ln" d="M496,76 L528,76"/>
+
+        <rect class="n-code" x="528" y="16" width="396" height="120" rx="5"/>
+        <text class="t-lbl f-code" x="544" y="38">ORDER &#183; deps[] EXISTS</text>
+        <text class="t-b" x="544" y="64">addTasks with deps</text>
+        <text class="t-xs" x="544" y="88">isClaimable WAITS ON deps[]</text>
+        <text class="t-xs" x="544" y="106">SETTLE = completed. NEXT UNLOCKS.</text>
+        <text class="t-xs" x="544" y="122">task.ts &#183; collection/internal.ts</text>
+
+        <rect class="n-prop" x="16" y="156" width="292" height="168" rx="5"/>
+        <text class="t-lbl" x="32" y="178">1 &#183; REPLY-ALICE</text>
+        <text class="t-b f-accent" x="32" y="204">no deps</text>
+        <text class="t-s" x="32" y="228">dispatcher() &#8594; session</text>
+        <text class="t-xs" x="32" y="252">INTO THAT SESSION</text>
+        <text class="t-xs" x="32" y="270">SETTLE UNLOCKS BOB</text>
+        <text class="t-xs" x="32" y="296">CLAIM EXCLUSION STILL HOLDS</text>
+
+        <path class="ln" d="M308,240 L340,240"/>
+
+        <rect class="n-prop" x="340" y="156" width="260" height="168" rx="5"/>
+        <text class="t-lbl" x="356" y="178">2 &#183; REPLY-BOB</text>
+        <text class="t-b f-accent" x="356" y="204">deps: alice</text>
+        <text class="t-s" x="356" y="228">dispatcher() &#8594; session</text>
+        <text class="t-xs" x="356" y="252">NOT CLAIMABLE UNTIL 1 SETTLES</text>
+        <text class="t-xs" x="356" y="270">SETTLE UNLOCKS CARA</text>
+        <text class="t-xs" x="356" y="296">SAME DOOR. SAME CLAIM.</text>
+
+        <path class="ln" d="M600,240 L632,240"/>
+
+        <rect class="n-prop" x="632" y="156" width="292" height="168" rx="5"/>
+        <text class="t-lbl" x="648" y="178">3 &#183; REPLY-CARA</text>
+        <text class="t-b f-accent" x="648" y="204">deps: bob</text>
+        <text class="t-s" x="648" y="228">dispatcher() &#8594; session</text>
+        <text class="t-xs" x="648" y="252">CHAIN GOES IDLE HERE</text>
+        <text class="t-xs" x="648" y="270">THEN NEWER POSTS</text>
+        <text class="t-xs" x="648" y="296">NOT A SECOND BUS</text>
+
+        <rect class="n-prop" x="16" y="344" width="440" height="72" rx="5"/>
+        <text class="t-lbl" x="32" y="366">IDLE BEFORE NEWER &#183; PROPOSED</text>
+        <text class="t-s" x="32" y="394">The coordinator looks at the next post only when this chain is idle.</text>
+
+        <rect class="n-code" x="472" y="344" width="452" height="72" rx="5"/>
+        <text class="t-lbl f-code" x="488" y="366">WORK PER TASK &#183; EXISTS</text>
+        <text class="t-s" x="488" y="394">dispatcher({ session: { id } }) into that subscriber. Same spine.</text>
+
+        <rect class="n-prose" x="16" y="432" width="908" height="52" rx="5"/>
+        <text class="t-lbl" x="32" y="454">CUT</text>
+        <text class="t-s" x="32" y="472">no MessageBoard sequencer &#183; no coordinator L1 type &#183; no new lease type &#183; cross-flow still proposed</text>
+      </svg>
+    </div>
+    <figcaption><b>Order is <code>deps[]</code>. The coordinator is a worker.</b> Proposed Layer&nbsp;2: a roster role reads one post and files N reply tasks. The field that orders them already exists &#8212; <code>task.deps</code> &#8212; and <code>isClaimable</code> already refuses a row whose deps are not <code>completed</code> (<code>packages/orchestration/src/tasks/collection/internal.ts</code>). Each task&#8217;s work is <code>dispatcher()</code> into that subscriber&#8217;s session. A MessageBoard sequencer, a coordinator type, or a new lease would be substrate. Do not invent them. Cross-flow stays proposed.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 250" role="img" aria-label="The broke path for an ordered reply chain is the existing task machine. A lapsed lease is reclaimed. Parked waits on a person. Fail with budget remaining re-pends for retry. Do not invent a new lease type, a MessageBoard sequencer, or a coordinator Layer 1 type to hold a timeout.">
+        <rect class="n-code" x="16" y="16" width="292" height="152" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="38">LEASE &#183; EXISTS</text>
+        <text class="t-b" x="34" y="64">claim times out</text>
+        <text class="t-s" x="34" y="92">leaseUntil lapses</text>
+        <text class="t-xs" x="34" y="114">isClaimable ADMITS THE ROW</text>
+        <text class="t-xs" x="34" y="132">reclaim() TAKES IT BACK</text>
+        <text class="t-xs" x="34" y="150">FIX-1005 &#183; NO NEW LEASE TYPE</text>
+
+        <rect class="n-code" x="324" y="16" width="292" height="152" rx="5"/>
+        <text class="t-lbl f-code" x="342" y="38">PARKED &#183; EXISTS</text>
+        <text class="t-b" x="342" y="64">a person decides</text>
+        <text class="t-s" x="342" y="92">awaitReview / unpark</text>
+        <text class="t-xs" x="342" y="114">LEASE DOES NOT GOVERN PARKED</text>
+        <text class="t-xs" x="342" y="132">DO NOT REDO THE WORK</text>
+        <text class="t-xs" x="342" y="150">task-status.ts</text>
+
+        <rect class="n-code" x="632" y="16" width="292" height="152" rx="5"/>
+        <text class="t-lbl f-code" x="650" y="38">RETRY &#183; EXISTS</text>
+        <text class="t-b" x="650" y="64">fail() with budget</text>
+        <text class="t-s" x="650" y="92">re-pends to pending</text>
+        <text class="t-xs" x="650" y="114">maxAttempts STILL OPEN</text>
+        <text class="t-xs" x="650" y="132">ELSE TERMINAL errored</text>
+        <text class="t-xs" x="650" y="150">SAME MACHINE. NO NEW PATH.</text>
+
+        <rect class="n-box" x="16" y="184" width="908" height="50" rx="5"/>
+        <text class="t-s" x="34" y="214">Broke is the task machine you already have. Do not invent a lease, a sequencer, or a coordinator type to hold a timeout.</text>
+      </svg>
+    </div>
+    <figcaption><b>Broke is already a status.</b> A timed-out reply is a lapsed lease &#8212; <code>isClaimable</code> admits it and the next claim takes it. A reply that needs a person is <code>parked</code>. A reply that failed with budget left is <code>fail()</code> back to <code>pending</code>. The ordered chain does not get its own recovery primitive.</figcaption>
   </figure>
 
   <h3>Which room</h3>
@@ -703,7 +826,7 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 500" role="img" aria-label="Proposed Layer 2 routing matrix. Top: roster plus context pick a session, then dispatcher delivers into it. Four rooms: user to worker is a static DM; topic, task, or project is a dynamic session; worker to worker ad-hoc opens or reuses a pairwise or small dynamic session addressed by session id, not a peer edge; team broadcast is a group board fanning out to N subscriber sessions with reply-storm policy. Default prefers the project or task room over a new pairwise or DM. Coordinator or parent-star is optional policy. Cut: no peer-edge graph, no second bus, no Channel or MessageBoard Layer 1, no route-resolver substrate. Reverse from true exists. Marked proposed until cross-flow lands.">
+      <svg viewBox="0 0 940 500" role="img" aria-label="Proposed Layer 2 routing matrix. Top: roster plus context pick a session, then dispatcher delivers into it. Four rooms: user to worker is a static DM; topic, task, or project is a dynamic session; worker to worker ad-hoc opens or reuses a pairwise or small dynamic session addressed by session id, not a peer edge; team broadcast is a group board fanning out to N subscriber sessions — claim exclusion exists, who-may-reply and ordered multi-reply stay proposed, cross-flow stays proposed. Default prefers the project or task room over a new pairwise or DM. Coordinator or parent-star is optional policy. Cut: no peer-edge graph, no second bus, no Channel or MessageBoard Layer 1, no route-resolver substrate. Reverse from true exists. Matrix marked proposed until cross-flow lands.">
         <rect class="n-prop" x="16" y="16" width="280" height="112" rx="5"/>
         <text class="t-lbl" x="34" y="38">ROSTER + CONTEXT &#183; PROPOSED</text>
         <text class="t-b f-accent" x="34" y="64">who, and which work</text>
@@ -755,15 +878,15 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <rect class="n-prop" x="712" y="148" width="212" height="168" rx="5"/>
         <text class="t-lbl" x="728" y="170">4 &#183; TEAM BROADCAST</text>
         <text class="t-b f-accent" x="728" y="196">board + N</text>
-        <text class="t-xs" x="728" y="220">GROUP FAN-OUT</text>
-        <text class="t-xs" x="728" y="238">N SUBSCRIBER SESSIONS</text>
-        <text class="t-xs" x="728" y="264">REPLY-STORM POLICY</text>
-        <text class="t-xs" x="728" y="282">ALREADY LOCKED</text>
-        <text class="t-xs" x="728" y="300">SEE ABOVE</text>
+        <text class="t-xs" x="728" y="220">N SUBSCRIBER SESSIONS</text>
+        <text class="t-xs" x="728" y="238">CLAIM EXCLUSION EXISTS</text>
+        <text class="t-xs" x="728" y="264">WHO-MAY-REPLY PROPOSED</text>
+        <text class="t-xs" x="728" y="282">ORDERED CHAIN PROPOSED</text>
+        <text class="t-xs" x="728" y="300">CROSS-FLOW PROPOSED</text>
 
         <rect class="n-box" x="16" y="336" width="908" height="56" rx="5"/>
         <text class="t-s" x="34" y="358">Coordinator / parent-star is optional policy, not Layer&nbsp;1 law.</text>
-        <text class="t-xs" x="34" y="378">PROPOSED UNTIL CROSS-FLOW LANDS. REVERSE { from: true } EXISTS &#8212; REPLY TO THE STAMPED SENDER.</text>
+        <text class="t-xs" x="34" y="378">MATRIX PROPOSED UNTIL CROSS-FLOW. CLAIM EXCLUSION EXISTS. REVERSE { from: true } EXISTS.</text>
 
         <rect class="n-prose" x="16" y="408" width="908" height="76" rx="5"/>
         <text class="t-lbl" x="34" y="430">CUT</text>
@@ -771,7 +894,7 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <text class="t-xs" x="34" y="472">EVERY TALK IS dispatcher() INTO A SESSION. ADDRESS THE SESSION. DO NOT DRAW EDGES BETWEEN WORKERS.</text>
       </svg>
     </div>
-    <figcaption><b>Which room, then the same door.</b> Roster plus context pick a session. <code>dispatcher()</code> delivers into it. Default: the project or task room, not a new pairwise or DM. Worker&#8596;worker is a session you open or reuse, addressed by id &#8212; not an edge on a graph. Reverse <code>{ from: true }</code> exists. Marked proposed until cross-flow lands.</figcaption>
+    <figcaption><b>Which room, then the same door.</b> Roster plus context pick a session. <code>dispatcher()</code> delivers into it. Default: the project or task room, not a new pairwise or DM. Worker&#8596;worker is a session you open or reuse, addressed by id &#8212; not an edge on a graph. Reply-storm exclusion exists. Ordered multi-reply is proposed Layer&nbsp;2 on that claim. Reverse <code>{ from: true }</code> exists. The matrix and cross-flow stay proposed until cross-flow lands.</figcaption>
   </figure>
 
   <div class="tw">
@@ -781,14 +904,14 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <tr><td>User&#8596;worker</td><td>One static DM session per worker</td><td>That session&#8217;s <code>{ id }</code>. Bootstrap opens it. Already the DM lock.</td></tr>
         <tr><td>Topic / task / project</td><td>A dynamic session for that work item</td><td>That session, or the collaborator&#8217;s subscription session on its board. See <a href="#projects">&#167;06</a>.</td></tr>
         <tr><td>Worker&#8596;worker ad-hoc</td><td>Open or reuse a pairwise or small dynamic session</td><td>Session id or a known channel. Not a peer edge. Not a second bus.</td></tr>
-        <tr><td>Team broadcast</td><td>Group board &#8594; N subscriber sessions</td><td>Fan-out plus reply-storm policy. Already locked above.</td></tr>
+        <tr><td>Team broadcast</td><td>Group board &#8594; N subscriber sessions</td><td>Fan-out plus reply-storm. Exclusion exists (<code>TaskCollectionRef.claim</code>). Who-may-reply and ordered multi-reply stay proposed. Cross-flow still proposed.</td></tr>
       </tbody>
     </table>
   </div>
 
   <div class="note">
-    <span class="lbl">Proposed until cross-flow lands</span>
-    <p>The matrix does not wait on a new primitive. Reverse <code>{ from: true }</code> already exists &#8212; reply to the stamped sender, same door. Cross-flow is still outstanding so the door crosses a flow kind. Until then it is the lock, not the runtime. Do not invent a peer-edge graph, a route-resolver substrate, or a Layer&nbsp;1 Channel / MessageBoard package to fill the wait.</p>
+    <span class="lbl">Matrix proposed until cross-flow lands</span>
+    <p>The matrix does not wait on a new primitive. Reply-storm exclusion already exists &#8212; <code>TaskCollectionRef.claim</code>. Reverse <code>{ from: true }</code> already exists &#8212; reply to the stamped sender, same door. Ordered multi-reply is proposed composition on those pins, not a sequencer. Cross-flow is still outstanding so the door crosses a flow kind. Do not invent a peer-edge graph, a route-resolver substrate, or a Layer&nbsp;1 Channel / MessageBoard package to fill that wait.</p>
   </div>
 
   <pre class="code"><i>// EXISTS &#8212; open a DM. createSessionClient, packages/client.</i>
@@ -806,7 +929,27 @@ const wakeDm = <b>dispatcher</b>({
   type: <em>"internal"</em>,
   target: <em>"receive"</em>,              <i>// an entry the worker flow declares</i>
   session: { id: (input) => input.dmSessionId },
+});
+
+<i>// EXISTS &#8212; reply-storm exclusion. TaskCollectionRef.claim, orchestration.</i>
+<i>// One holder per post. Eligibility narrows; it does not replace isClaimable.</i>
+<i>// Who may attempt the claim is proposed L2 (role / @ / quiet).</i>
+const claimed = await collection.<b>claim</b>(subscriberId, {
+  eligibility: (task) => task.id === postId,
 });</pre>
+
+  <pre class="code"><i>// PROPOSED &#8212; board coordinator files N reply tasks with deps.</i>
+<i>// Roster role, L2 worker. Not a package API. Not a coordinator L1 type.</i>
+<i>// Order is task.deps + isClaimable. Work is dispatcher() into that session.</i>
+<i>// Idle chain before newer posts. Broke path = lease / parked / retry.</i>
+await collection.<b>addTasks</b>([
+  { id: <em>"reply-alice"</em>, goal: <em>"reply as alice"</em>, assignee: <em>"alice"</em> },
+  { id: <em>"reply-bob"</em>,   goal: <em>"reply as bob"</em>,   assignee: <em>"bob"</em>,   deps: [<em>"reply-alice"</em>] },
+  { id: <em>"reply-cara"</em>,  goal: <em>"reply as cara"</em>,  assignee: <em>"cara"</em>,  deps: [<em>"reply-bob"</em>] },
+]);
+<i>// each task's work is dispatcher({ session: { id: thatSubscriber } })</i>
+<i>// Same flow, same principal. Cross-flow is still refused.</i>
+<i>// Only an idle chain looks at newer posts.</i></pre>
 
   <pre class="code"><i>// PROPOSED &#8212; which-room is convention config, not a package API.</i>
 <i>// No resolveRoom(). No @flow-state-dev/workforce channel helper.</i>
@@ -822,7 +965,7 @@ const room = {
 
 <section id="projects">
   <div class="sec-head"><span class="sec-num">06</span><h2>Projects and tasks</h2></div>
-  <p class="lede">Projects and tasks are <strong>dynamic sessions</strong>. Every message-board subscription gets its own action and its own session. A group channel is this pattern &#8212; the board plus one session per subscribed member &#8212; not a third session type. A post on that board wakes N subscribers. Who replies is the proposed Layer&nbsp;2 policy in <a href="#channels">&#167;05</a>, not a Layer&nbsp;1 board-lock and not a shared room. That is a convention on the dispatch spine, not a second messaging product.</p>
+  <p class="lede">Projects and tasks are <strong>dynamic sessions</strong>. Every message-board subscription gets its own action and its own session. A group channel is this pattern &#8212; the board plus one session per subscribed member &#8212; not a third session type. A post on that board wakes N subscribers. Exclusion is today&#8217;s <code>claim</code>. Who may reply, and ordered multi-reply via a board coordinator, are the proposed Layer&nbsp;2 policy in <a href="#channels">&#167;05</a> &#8212; not a Layer&nbsp;1 board-lock, not a MessageBoard sequencer, and not a shared room. That is a convention on the dispatch spine, not a second messaging product.</p>
 
   <figure>
     <div class="fig-body">
@@ -1004,7 +1147,7 @@ const board = <b>taskBoard</b>({
       <tbody>
         <tr><td>A default answer to &#8220;who does this?&#8221;</td><td>The roster is a list of worker flow kinds. Layer&nbsp;1 already addresses a flow and a session.</td></tr>
         <tr><td>Shared boards</td><td>The board is the working set. Each subscriber is woken in their own session via <code>dispatcher()</code>. No Team primitive, and no shared group session.</td></tr>
-        <tr><td>Built-ins</td><td>Librarian, chief of staff, team coordinator: same contract, shipped as roster rows when the factory exists.</td></tr>
+        <tr><td>Built-ins</td><td>Librarian, chief of staff, team coordinator: same contract, shipped as roster rows when the factory exists. The board coordinator that files ordered reply tasks is this kind of row, not a new type. See <a href="#channels">&#167;05</a>.</td></tr>
         <tr><td>A named harness on the seat</td><td>The roster is still a list of worker flow kinds. Naming a harness is Layer&nbsp;2 convention on that row. The run rides Conductor&#8217;s harness-manager track. No Harness type, and no second manager. Proposed until that path exists.</td></tr>
         <tr><td><strong>When it is not a team</strong></td><td>One worker and no shared board. Then the folder buys nothing and should not exist.</td></tr>
       </tbody>
@@ -1163,7 +1306,9 @@ const roster = <b>defineResourceCollection</b>({
         <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-real">exists</span></td><td><code>packages/core/src/blocks/dispatcher.ts</code>. Existing-session delivery to the seam-stamped sender. Refuses <code>no-sender</code> if this request was not dispatched. Same spine. Do not add a side channel.</td></tr>
         <tr><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">this cycle</span></td><td><code>packages/engine/src/context/create-request-host.ts</code> refuses with <code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>. Convention uses it when the refuse goes away.</td></tr>
         <tr><td>A second send door</td><td><span class="tag t-gone">cut</span></td><td>No <code>packages/relay</code>. No message-board package. Message board is Layer&nbsp;2 convention only. Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> &#8212; not a second bus.</td></tr>
-        <tr><td>Group reply discipline</td><td><span class="tag t-prop">proposed</span></td><td>Same spine. Policy says who may reply (role / <code>@</code> / coordinator), one claim or turn per post, default quiet unless addressed. Not a second bus. Not a Layer&nbsp;1 board-lock.</td></tr>
+        <tr><td>Reply-storm exclusion via existing claim</td><td><span class="tag t-real">exists</span></td><td><code>TaskCollectionRef.claim</code>. One holder per post across N subscriber sessions. Same spine. Not a second bus. Not a Layer&nbsp;1 board-lock.</td></tr>
+        <tr><td>Who may reply</td><td><span class="tag t-prop">proposed</span></td><td>Layer&nbsp;2 policy on that claim (role / <code>@</code> / coordinator; default quiet unless addressed). Who may attempt, not a new primitive.</td></tr>
+        <tr><td>Ordered multi-reply via board coordinator</td><td><span class="tag t-prop">proposed</span></td><td>Roster role files N reply tasks with <code>deps</code>. Work is <code>dispatcher()</code> into that session. Settle unlocks the next. Idle before newer posts. Same spine. No MessageBoard sequencer. Cross-flow still proposed.</td></tr>
       </tbody>
     </table>
   </div>
@@ -1245,6 +1390,8 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td><code>taskBoard</code> + <code>taskSchema</code></td><td><span class="tag t-real">exists</span></td><td>Unified plan/task primitive. Status set includes <code>parked</code>. Content for the prose half is <code>readContent()</code>.</td></tr>
         <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed</span></td><td>This page. No <code>createWorkerFlow</code>. No <code>workers/</code> tree. <code>workforce.config</code> is not a file in the repo.</td></tr>
         <tr><td>Roster-named harness + inherited subscriptions</td><td><span class="tag t-prop">proposed</span></td><td>A seat can name which harness it runs on and inherit that harness&#8217;s subscriptions when they exist. The consumer is Conductor&#8217;s harness-manager track. No second manager. No new Layer&nbsp;1 harness or subscription type. Not on main. Marked proposed until that path exists.</td></tr>
+        <tr><td>Reply-storm exclusion via <code>TaskCollectionRef.claim</code></td><td><span class="tag t-real">exists</span></td><td>One holder per post. Same CAS <code>taskBoard</code> drain uses. Eligibility narrows to that post. Who may attempt the claim is proposed Layer&nbsp;2. No board-lock type.</td></tr>
+        <tr><td>Ordered multi-reply via board coordinator</td><td><span class="tag t-prop">proposed</span></td><td>Roster role, L2 worker. Files N reply tasks with <code>deps</code>. Work is <code>dispatcher()</code> into that subscriber session. Idle chain before newer posts. Broke path is lease / <code>parked</code> / retry. No MessageBoard sequencer. No coordinator Layer&nbsp;1 type. No new lease type. See <a href="#channels">&#167;05</a>.</td></tr>
         <tr><td>L2 routing matrix (which room)</td><td><span class="tag t-prop">proposed</span></td><td>See <a href="#channels">&#167;05</a>. Marked proposed until cross-flow lands.</td></tr>
         <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-real">exists</span></td><td>Existing-session delivery to the seam-stamped sender. <code>packages/core/src/blocks/dispatcher.ts</code>. Documented in <code>docs/architecture/action-forms.md</code>.</td></tr>
         <tr><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">this cycle</span></td><td>Refused at <code>packages/engine/src/context/create-request-host.ts</code> (<code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>). Outstanding for worker&#8596;worker reply across flows.</td></tr>
@@ -1270,12 +1417,12 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>No Layer 1 Channel, Team, Project, or MessageBoard packages</h5>
-    <p>Those words are convention over sessions, rosters, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms, or a shared group session several workers enter, is a second architecture. Same cut: no peer-edge graph, no second send door, no route-resolver under the matrix. Which room is Layer&nbsp;2 &#8212; see <a href="#channels">&#167;05</a>.</p>
+    <p>Those words are convention over sessions, rosters, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms, a MessageBoard sequencer, or a shared group session several workers enter, is a second architecture. Same cut: no peer-edge graph, no second send door, no route-resolver under the matrix, no coordinator Layer&nbsp;1 type. Which room is Layer&nbsp;2 &#8212; see <a href="#channels">&#167;05</a>.</p>
   </div>
 
   <div class="tension">
-    <h5>No Layer 1 board-lock type</h5>
-    <p>Group fan-out already wakes N sessions. Reply discipline is proposed Layer&nbsp;2 policy: who may reply, one claim or turn per post, quiet unless addressed. If a later POC needs mutual exclusion, reuse the existing task/resource claim/lease. Inventing a board-lock primitive is a Layer&nbsp;1 gap &#8212; wake Architect then, not now.</p>
+    <h5>No Layer 1 board-lock type. No MessageBoard sequencer. No coordinator type</h5>
+    <p>Group fan-out already wakes N sessions. Mutual exclusion is today&#8217;s <code>TaskCollectionRef.claim</code> &#8212; one holder per post. Who may attempt that claim is proposed Layer&nbsp;2 (role / <code>@</code> / coordinator; quiet unless addressed). Ordered multi-reply is proposed composition: a roster-role coordinator files N reply tasks with <code>deps</code>; settle unlocks the next; idle before newer posts. The broke path is the existing lease / <code>parked</code> / retry. Inventing a board-lock, a MessageBoard sequencer, a coordinator Layer&nbsp;1 type, or a new lease is a Layer&nbsp;1 gap &#8212; wake Architect then, not now. Cross-flow stays proposed.</p>
   </div>
 
   <div class="tension">
@@ -1311,7 +1458,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is one worker contract on Layer&nbsp;1: a flow per worker, files for tools, skills, personality, and role, memory via isolation, DMs as static sessions, groups as a board plus one session per subscriber, group replies as proposed Layer&nbsp;2 policy (who may speak; one turn; quiet unless addressed), which room as proposed Layer&nbsp;2 (roster + context; prefer the project room; no peer-edge graph), projects as dynamic ones, teams as roster plus shared boards (a seat may name a harness and inherit that harness&#8217;s subscriptions; one manager stack, Conductor&#8217;s), plans as board plus resource text, talk as dispatch. Today it is a thin registry. This cycle writes the convention. Conductor does not wait.</p>
+    <p>Workforce is one worker contract on Layer&nbsp;1: a flow per worker, files for tools, skills, personality, and role, memory via isolation, DMs as static sessions, groups as a board plus one session per subscriber, reply-storm exclusion via existing <code>claim</code> (exists), who may reply as proposed Layer&nbsp;2 (role / <code>@</code> / quiet unless addressed), ordered multi-reply as proposed Layer&nbsp;2 (a board coordinator files N reply tasks with <code>deps</code>; settle unlocks the next; idle before newer posts; no MessageBoard sequencer), which room as proposed Layer&nbsp;2 (roster + context; prefer the project room; no peer-edge graph), projects as dynamic ones, teams as roster plus shared boards (a seat may name a harness and inherit that harness&#8217;s subscriptions; one manager stack, Conductor&#8217;s), plans as board plus resource text, talk as dispatch. Today it is a thin registry. This cycle writes the convention. Conductor does not wait.</p>
   </div>
 </section>
 
