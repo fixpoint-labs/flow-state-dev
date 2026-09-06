@@ -43,7 +43,7 @@ export type DerivationIdentity = {
 const CHILD_ID_PREFIX = "dsx_";
 
 // Fields are length-framed with core's codec so field boundaries cannot be
-// confused: without it `("u_ab", "c")` and `("u_a", "bc")` hash identically,
+// confused: without it `("u_ab", "c") and `("u_a", "bc")` hash identically,
 // and since the parent session id is one of the fields that is a cross-lineage
 // collision reachable by choosing ids — exactly what the derivation exists to
 // prevent. An absent tenant frames as the empty field.
@@ -66,15 +66,31 @@ const DISPATCH_NAMESPACE = "dispatch";
  * discriminates among a parent's dispatched children, so two dispatchers in one
  * flow that compute the same key share one child — a board that wants its
  * per-task children apart from another board's frames its own id into the key.
+ *
+ * `targetFlowKind` is the **other** flow a cross-flow dispatch addresses, and is
+ * part of the material precisely because the key alone discriminates: without
+ * it, one parent dispatching key `"job"` to two different flows derives one
+ * child id for both, and the second dispatch meets a record whose `flowKind`
+ * does not match and is refused `key-occupied` — a collision between two
+ * addresses that have nothing to do with each other. Appended rather than
+ * folded into the existing fields, so a same-flow derivation (which omits it)
+ * still produces the id it produced before this shipped: an in-flight retry
+ * across the upgrade re-enters the child it started, rather than minting a
+ * second one beside it.
  */
-export function deriveDispatchChildSessionId(identity: DerivationIdentity, key: string): string {
+export function deriveDispatchChildSessionId(
+  identity: DerivationIdentity,
+  key: string,
+  targetFlowKind?: string
+): string {
   const material = [
     framed(identity.tenantId ?? ""),
     framed(identity.userId),
     framed(identity.parentSessionId),
     framed(identity.lineageId),
     framed(DISPATCH_NAMESPACE),
-    framed(key)
+    framed(key),
+    ...(targetFlowKind !== undefined ? [framed(targetFlowKind)] : [])
   ].join("|");
 
   const digest = createHash("sha256").update(material, "utf8").digest("hex");
