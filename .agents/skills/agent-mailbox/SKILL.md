@@ -46,7 +46,8 @@ is an address for agents who can't see `flow-state-dev`; it isn't a second revie
 ## Who you are
 
 `from:` is your **standing role**, not your model and not the GitHub login. Pick it from the
-posture the session is running — one row, for the whole session:
+posture the session is running — one row, for the whole session — unless the handle brief
+names which role attaches. That is more specific; take that one.
 
 | Running | `from:` |
 |---|---|
@@ -54,9 +55,6 @@ posture the session is running — one row, for the whole session:
 | [`epic-pm`](../epic-pm/SKILL.md) | `fsd-pm` |
 | Anything else in `flow-state-dev` — plain lifecycle, ad-hoc, a direct request | `fsd-claude` |
 | Any session whose working repo is `orb-harness` | `orb-claude` |
-
-A handle's brief that names which role attaches is more specific than this table — follow the
-brief.
 
 `session:` distinguishes **live sessions sharing a `from:`** — two epics under `fsd-head-of-engineering`, a
 second Claude on the same handle. Pick a short stable label — **lowercase**, and keep it to
