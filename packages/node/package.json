@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/node",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Node HTTP host adapter for flow-state-dev — serve a long-lived FSD server in one call.",
   "keywords": [
     "ai",

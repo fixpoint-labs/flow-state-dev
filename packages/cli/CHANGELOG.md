@@ -1,5 +1,28 @@
 # @flow-state-dev/fsdev
 
+## 0.1.0
+
+### Minor Changes
+
+- b3e6e22: Initial release (FIX-1187).
+
+### Patch Changes
+
+- Updated dependencies [3cbc411]
+- Updated dependencies [b3e6e22]
+- Updated dependencies [d7208f7]
+- Updated dependencies [1b94521]
+- Updated dependencies [5fa52aa]
+- Updated dependencies [229da65]
+- Updated dependencies [4054c64]
+- Updated dependencies [fda9b15]
+  - @flow-state-dev/core@0.1.0
+  - @flow-state-dev/devtool@0.1.0
+  - @flow-state-dev/engine@0.1.0
+  - @flow-state-dev/node@0.1.0
+  - @flow-state-dev/store-sqlite@0.1.0
+  - @flow-state-dev/testing@0.1.0
+
 ## Pre-1.0 history
 
 Captured from the project's pre-Changesets development log (root `changelog.md`,
