@@ -225,7 +225,7 @@ export function createWorkerFlow(config: WorkerConfig): FlowInstance {
         postId,
         body: input.body,
         fromSessionId,
-        wakes: current.subscribers.map((sessionId) => ({
+        wakes: current.subscribers.map((sessionId: string) => ({
           sessionId,
           postId,
           body: input.body,

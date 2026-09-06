@@ -18,8 +18,8 @@ const host = await bootLab({ [clerk.kind]: clerk, [editor.kind]: editor });
 
 try {
   const dm = await host.createSession(clerk.kind, "talk-to-clerk", "talk-to-clerk");
-  const subscriberIds = ["sub-alice", "sub-bob", "sub-cara"];
-  const subs = [];
+  const subscriberIds = ["sub-alice", "sub-bob", "sub-cara"] as const;
+  const subs: Array<{ id: string; flowKind: string; title?: string }> = [];
   for (const id of subscriberIds) {
     subs.push(await host.createSession(clerk.kind, id, id));
   }

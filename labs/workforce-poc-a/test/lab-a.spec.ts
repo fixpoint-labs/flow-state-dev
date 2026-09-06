@@ -63,7 +63,7 @@ describe("lab A — factory / DM / group fan-out", () => {
     const host = await bootLab({ [clerk.kind]: clerk });
     try {
       const dm = await host.createSession(clerk.kind, "talk-to-clerk", "talk-to-clerk");
-      const subs = [];
+      const subs: Array<{ id: string; flowKind: string; title?: string }> = [];
       for (const id of SUBSCRIBERS) {
         subs.push(await host.createSession(clerk.kind, id, id));
       }
