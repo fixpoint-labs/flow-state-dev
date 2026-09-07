@@ -212,9 +212,11 @@ It released child spec authoring and FIX-1322's pre-code route assessment;
 it is **not individual spec approval or merge authorization**.
 The owner subsequently added FIX-1324's Devtool outcome as the fourth
 required issue (quote and durable record above), superseding only its earlier
-deferral. The original objective approval stands. The three core specs are
-open awaiting their own approvals; FIX-1324 is authoring its own spec.
-No individual spec is approved; no implementation or goal proof exists.
+deferral. The original objective approval stands. All four specs are published.
+FIX-1321 is individually approved at `8b56dbde459a6081469bf6b9d2f9bb1f4a9f64c5`
+by the [human comment](https://github.com/fixpoint-labs/flow-state-dev/pull/1631#issuecomment-5575463631);
+its spec PR is closed and that approved snapshot remains frozen. FIX-1322,
+FIX-1323 and FIX-1324 await individual approval. No implementation or goal proof exists.
 All four specs must clear individual approval, then the owner must separately
 authorize cross-spec coherence. `crossSpecCleared=false`.
 EM's sequencing resolution changes no runtime contract. Neither it nor the
@@ -433,18 +435,21 @@ Placeholder names INST-1..5 remain the epic labels; the filed ids are below.
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 | --- | --- | --- | --- | --- | --- |
-| [FIX-1321](https://linear.app/fixpoint-labs/issue/FIX-1321) INST-1 | Cardinality on `defineFlow` + registry: `singleton` or `collection`; id rules; reject duplicate global ids; exact-id index; custom-id-without-collection refuse; no first-wins `get(kind)` | spec (Feature) | [#1631](https://github.com/fixpoint-labs/flow-state-dev/pull/1631) | — (future shared PR with FIX-1322; integration owner FIX-1322) | In Spec Review — awaiting individual approval; no independent semantic-switch landing |
+| [FIX-1321](https://linear.app/fixpoint-labs/issue/FIX-1321) INST-1 | Cardinality on `defineFlow` + registry: `singleton` or `collection`; id rules; reject duplicate global ids; exact-id index; custom-id-without-collection refuse; no first-wins `get(kind)` | spec (Feature) | [#1631](https://github.com/fixpoint-labs/flow-state-dev/pull/1631) (closed; approved `8b56dbde`) | — (future shared PR with FIX-1322; integration owner FIX-1322) | Individually approved by human comment; held for remaining specs and cross-spec gate; no independent semantic-switch landing |
 | [FIX-1322](https://linear.app/fixpoint-labs/issue/FIX-1322) INST-2 | Dispatch / envelope: explicitly declared recipient instance; exact-id precedence then bare-kind refuse; minimal instance-address compatibility, no chat redesign; persist owning instance id on sessions/requests; adoption/re-entry check; same-kind cross-instance = `#1600` cross-flow; carry `flow.id` (align #1600); reshape FIX-1315 | spec (Feature) | [#1633](https://github.com/fixpoint-labs/flow-state-dev/pull/1633) | — (single integration owner of future shared FIX-1321 + FIX-1322 PR) | In Spec Review — awaiting individual approval; independent historical-child migration question unresolved |
 | [FIX-1323](https://linear.app/fixpoint-labs/issue/FIX-1323) INST-3 | Isolation: scope-keys + resource `flowIsolation` key on instance id; dual-read only where owner is known (theme 5) | spec (Feature) | [#1632](https://github.com/fixpoint-labs/flow-state-dev/pull/1632) | — (separate; requires identity/owner prerequisites) | In Spec Review — awaiting individual approval |
-| [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) INST-4 | Devtool: distinguish/list same-kind instances; explicit instance selection; own sessions/request inspection; minimal read-path plumbing and correct existing-control addressing | spec (Feature) | — (authoring) | — | In Spec Dev — fourth required outcome; own individual approval pending |
+| [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) INST-4 | Devtool: distinguish/list same-kind instances; explicit instance selection; own sessions/request inspection; minimal read-path plumbing and correct existing-control addressing | spec (Feature) | [#1634](https://github.com/fixpoint-labs/flow-state-dev/pull/1634) (`733b0e042`) | — | In Spec Review — fourth required outcome; awaiting individual approval; real UI proof planned, not run |
 
 FIX-1322's pre-code assessment promoted Bug → Feature because the work
 changes the public and persisted owner contract; it therefore follows the
 spec route. No implementation PRs exist.
 Separate acceptance and goal accountability remain for all four issues.
 FIX-1321 and FIX-1322 share only the future atomic implementation landing;
-each still requires its own spec approval, followed by the separately
-approved cross-spec pass before implementation.
+each has its own spec gate (FIX-1321 satisfied, FIX-1322 pending), followed
+by the separately approved cross-spec pass before implementation.
+FIX-1321's approved snapshot predates the Devtool scope expansion; its
+historical deferral is superseded by this current epic and Linear FIX-1321
+comment `340d9e06-f497-49a0-96fd-ea6df0d791e8`, without rewriting that snapshot.
 
 **FIX-1322 row blocker, not a new epic decision:** if historical custom-ID
 cross-flow children exist, new child-key derivation conflicts with
