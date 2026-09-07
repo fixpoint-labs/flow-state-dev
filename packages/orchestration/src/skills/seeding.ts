@@ -146,7 +146,7 @@ async function seedOne(
   skill: InitialSkill,
 ): Promise<void> {
   // Validate the SKILL.md text up front so we never half-write a broken skill.
-  const parsed = parseSkillMd(skill.skillMd);
+  const parsed = parseSkillMd(skill.skillMd, { expectedName: skill.name });
   parsed.state._seededAt = new Date().toISOString();
 
   const manifestKey = skillManifestKey(skill.name);

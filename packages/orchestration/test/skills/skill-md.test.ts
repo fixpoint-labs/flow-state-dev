@@ -72,8 +72,16 @@ describe("parseSkillMd", () => {
     const text = `---\ndescription: x\nlicense: MIT\nmy-custom-field: hello\n---\n\nbody`;
     const { state } = parseSkillMd(text);
     expect(state._preservedFields).toBeDefined();
-    expect(state._preservedFields!.license).toBe("MIT");
     expect(state._preservedFields!.myCustomField).toBe("hello");
+    // Spec fields are typed, not preserved-as-unknown.
+    expect(state._preservedFields!.license).toBeUndefined();
+    expect(state.license).toBe("MIT");
+  });
+
+  it("accepts the spec's space-separated allowed-tools form", () => {
+    const text = `---\ndescription: x\nallowed-tools: Bash(git:*) Bash(jq:*) Read\n---\n\nbody`;
+    const { state } = parseSkillMd(text);
+    expect(state.allowedTools).toEqual(["Bash(git:*)", "Bash(jq:*)", "Read"]);
   });
 
   it("captures Claude-Code allowed-tools=['Read'] as both additive and restrictive", () => {
@@ -117,6 +125,90 @@ describe("parseSkillMd", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Agent Skills spec fields — https://agentskills.io/specification
+// ---------------------------------------------------------------------------
+
+describe("parseSkillMd — Agent Skills spec fields", () => {
+  it("parses the spec's minimal example (name + description)", () => {
+    const text = `---\nname: skill-name\ndescription: A description of what this skill does and when to use it.\n---\n`;
+    const { state, warnings } = parseSkillMd(text);
+    expect(state.name).toBe("skill-name");
+    expect(warnings).toEqual([]);
+  });
+
+  it("parses the spec's optional fields as typed state", () => {
+    const text = [
+      "---",
+      "name: pdf-processing",
+      "description: Extract PDF text, fill forms, merge files. Use when handling PDFs.",
+      "license: Apache-2.0",
+      "compatibility: Requires Python 3.14+ and uv",
+      "metadata:",
+      "  author: example-org",
+      '  version: "1.0"',
+      "---",
+      "",
+      "body",
+    ].join("\n");
+    const { state, warnings } = parseSkillMd(text);
+    expect(state.license).toBe("Apache-2.0");
+    expect(state.compatibility).toBe("Requires Python 3.14+ and uv");
+    expect(state.metadata).toEqual({ author: "example-org", version: "1.0" });
+    expect(state._preservedFields).toBeUndefined();
+    expect(warnings).toEqual([]);
+  });
+
+  it("validates a declared name against the folder it lives in", () => {
+    const text = `---\nname: pdf-processing\ndescription: x\n---\n\nbody`;
+    expect(() => parseSkillMd(text, { expectedName: "pdf-processing" })).not.toThrow();
+    expect(() => parseSkillMd(text, { expectedName: "other-folder" })).toThrow(
+      /must match its folder "other-folder"/,
+    );
+    // Without a folder to compare against, the name only has to be valid.
+    expect(() => parseSkillMd(text)).not.toThrow();
+  });
+
+  it("rejects a declared name that breaks the naming rules", () => {
+    expect(() => parseSkillMd(`---\nname: PDF-Processing\ndescription: x\n---\n`)).toThrow(/lowercase/);
+    expect(() => parseSkillMd(`---\nname: pdf--processing\ndescription: x\n---\n`)).toThrow(/hyphen/);
+    expect(() => parseSkillMd(`---\nname: 42\ndescription: x\n---\n`)).toThrow(/must be a string/);
+  });
+
+  it("rejects compatibility over 500 chars", () => {
+    const text = `---\ndescription: x\ncompatibility: ${"c".repeat(501)}\n---\n`;
+    expect(() => parseSkillMd(text)).toThrow(/compatibility exceeds 500/);
+    const ok = `---\ndescription: x\ncompatibility: ${"c".repeat(500)}\n---\n`;
+    expect(parseSkillMd(ok).state.compatibility).toHaveLength(500);
+  });
+
+  it("stringifies scalar metadata values and drops nested ones with a warning", () => {
+    const text = [
+      "---",
+      "description: x",
+      "metadata:",
+      "  version: 2",
+      "  beta: true",
+      "  nested:",
+      "    deep: value",
+      "---",
+      "",
+    ].join("\n");
+    const { state, warnings } = parseSkillMd(text);
+    expect(state.metadata).toEqual({ version: "2", beta: "true" });
+    expect(warnings.some((w) => w.includes("metadata.nested"))).toBe(true);
+  });
+
+  it("warns and ignores mistyped license / compatibility / metadata", () => {
+    const text = `---\ndescription: x\nlicense: [MIT]\ncompatibility: 3\nmetadata: just-a-string\n---\n`;
+    const { state, warnings } = parseSkillMd(text);
+    expect(state.license).toBeUndefined();
+    expect(state.compatibility).toBeUndefined();
+    expect(state.metadata).toBeUndefined();
+    expect(warnings.filter((w) => /license|compatibility|metadata/.test(w))).toHaveLength(3);
+  });
+});
+
 describe("serializeSkillMd", () => {
   it("round-trips the documented fields", () => {
     const text = `---\ndescription: round trip\nallowed-tools: [bash, Read]\ncontext: inline\ndisable-model-invocation: true\n---\n\nThe body lives here.\n`;
@@ -131,11 +223,38 @@ describe("serializeSkillMd", () => {
   });
 
   it("round-trips preserved unknown fields", () => {
-    const text = `---\ndescription: x\nlicense: MIT\n---\n\nbody`;
+    const text = `---\ndescription: x\nmy-custom-field: hello\n---\n\nbody`;
     const parsed = parseSkillMd(text);
     const out = serializeSkillMd(parsed.state, parsed.body);
     const reparsed = parseSkillMd(out);
-    expect(reparsed.state._preservedFields?.license).toBe("MIT");
+    expect(reparsed.state._preservedFields?.myCustomField).toBe("hello");
+  });
+
+  it("round-trips the Agent Skills spec fields, writing allowed-tools in the spec form", () => {
+    const text = [
+      "---",
+      "name: pdf-processing",
+      "description: x",
+      "license: Apache-2.0",
+      "compatibility: Requires git and jq",
+      "metadata:",
+      "  author: example-org",
+      '  version: "1.0"',
+      "allowed-tools: [search, fetch]",
+      "---",
+      "",
+      "body",
+    ].join("\n");
+    const parsed = parseSkillMd(text);
+    const out = serializeSkillMd(parsed.state, parsed.body);
+    expect(out.startsWith("---\nname: pdf-processing\ndescription: x\n")).toBe(true);
+    expect(out).toContain("allowed-tools: search fetch");
+    const reparsed = parseSkillMd(out, { expectedName: "pdf-processing" });
+    expect(reparsed.state.name).toBe("pdf-processing");
+    expect(reparsed.state.license).toBe("Apache-2.0");
+    expect(reparsed.state.compatibility).toBe("Requires git and jq");
+    expect(reparsed.state.metadata).toEqual({ author: "example-org", version: "1.0" });
+    expect(reparsed.state.allowedTools).toEqual(["search", "fetch"]);
   });
 
   it("round-trips the keywords field", () => {
@@ -196,6 +315,12 @@ describe("validateSkillName", () => {
   });
   it("rejects names exceeding 64 chars", () => {
     expect(() => validateSkillName("a".repeat(65))).toThrow();
+  });
+  it("rejects leading, trailing, and consecutive hyphens (Agent Skills rule)", () => {
+    expect(() => validateSkillName("-pdf")).toThrow();
+    expect(() => validateSkillName("pdf-")).toThrow();
+    expect(() => validateSkillName("pdf--processing")).toThrow();
+    expect(() => validateSkillName("pdf-processing")).not.toThrow();
   });
 });
 

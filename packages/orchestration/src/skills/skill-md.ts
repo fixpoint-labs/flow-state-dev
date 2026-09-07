@@ -1,11 +1,15 @@
 /**
  * SKILL.md parser/serializer and runtime substitution helpers.
  *
- * The SKILL.md format is YAML frontmatter (kebab-case) followed by Markdown
- * body. Frontmatter is converted to camelCase for TypeScript ergonomics; the
- * inverse mapping is preserved so we can round-trip back to disk without
- * losing fields. Unknown frontmatter keys are preserved on
- * `state._preservedFields` so user data survives a parse/serialize cycle.
+ * The SKILL.md format is the Agent Skills format (https://agentskills.io):
+ * YAML frontmatter (kebab-case) followed by a Markdown body. The spec's
+ * fields — `name`, `description`, `license`, `compatibility`, `metadata`,
+ * `allowed-tools` — are parsed and validated to its rules; the framework's own
+ * fields (`keywords`, `agents`, `context`, …) are additive. Frontmatter is
+ * converted to camelCase for TypeScript ergonomics; the inverse mapping is
+ * preserved so we can round-trip back to disk without losing fields. Unknown
+ * frontmatter keys are preserved on `state._preservedFields` so user data
+ * survives a parse/serialize cycle.
  *
  * Substitution is intentionally separated from parsing — the body is stored
  * verbatim, and `$ARGUMENTS` / `${SKILL_DIR}` are resolved per-invocation
@@ -24,17 +28,26 @@ import type {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Maximum allowed `description` length, mirroring Claude's contract. */
+/** Maximum allowed `description` length (Agent Skills spec). */
 export const MAX_DESCRIPTION_LENGTH = 1024;
 
-/** Maximum allowed skill name length. */
+/** Maximum allowed skill name length (Agent Skills spec). */
 export const MAX_NAME_LENGTH = 64;
+
+/** Maximum allowed `compatibility` length (Agent Skills spec). */
+export const MAX_COMPATIBILITY_LENGTH = 500;
 
 /** Names disallowed as skill names (reserved by the framework). */
 const RESERVED_NAMES = new Set(["_meta", ""]);
 
-/** Pattern a valid skill name must match. */
-const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+/**
+ * Pattern a valid skill name must match: lowercase `a-z`/`0-9` runs joined by
+ * single hyphens — so no leading, trailing, or consecutive hyphens, per the
+ * Agent Skills spec. The spec admits any Unicode lowercase letter; this
+ * implementation keeps to ASCII because the name doubles as a resource key,
+ * a `/slash` command, and a workspace mount path.
+ */
+const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
  * Frontmatter keys the framework knows about. All other keys are preserved
@@ -57,7 +70,7 @@ const KNOWN_KEYS = new Set([
   "shell",
   "model",
   "effort",
-  // Open-standard fields preserved as metadata
+  // Agent Skills spec fields (typed on SkillState)
   "name",
   "license",
   "compatibility",
@@ -98,6 +111,15 @@ const WARN_IGNORED_KEYS = new Set([
 // Types
 // ---------------------------------------------------------------------------
 
+/** Options for `parseSkillMd`. */
+export interface ParseSkillMdOptions {
+  /**
+   * The folder the manifest lives in. When set and the frontmatter declares
+   * `name`, the two must match (Agent Skills spec) — a mismatch throws.
+   */
+  expectedName?: string;
+}
+
 /** Result of parsing a SKILL.md text. */
 export interface ParsedSkillMd {
   /** Parsed state — the camelCase frontmatter representation. */
@@ -125,7 +147,8 @@ export function validateSkillName(name: string): void {
   }
   if (!NAME_PATTERN.test(name)) {
     throw new Error(
-      `Skill name "${name}" must match /^[a-z0-9][a-z0-9-]*$/`,
+      `Skill name "${name}" must be lowercase letters, digits, and single hyphens ` +
+        `(not at the start or end)`,
     );
   }
 }
@@ -825,11 +848,16 @@ export function camelToKebab(key: string): string {
 /**
  * Parse a SKILL.md text into structured state + raw body.
  *
- * Required field: `description`. Throws if missing or invalid.
+ * Required field: `description`. Throws if missing or invalid. The spec's
+ * `name` is optional here (the folder is the identity) but validated when
+ * present, and checked against `options.expectedName` when one is given.
  * Unknown frontmatter keys are preserved (camelCased) under `_preservedFields`.
  * Claude-Code-only keys we don't honor at runtime produce warnings.
  */
-export function parseSkillMd(text: string): ParsedSkillMd {
+export function parseSkillMd(
+  text: string,
+  options: ParseSkillMdOptions = {},
+): ParsedSkillMd {
   const { yaml, body } = splitFrontmatter(text);
   const warnings: string[] = [];
 
@@ -856,14 +884,77 @@ export function parseSkillMd(text: string): ParsedSkillMd {
 
   const state: SkillState = { description };
 
+  // Agent Skills spec fields. `name` is the folder's identity in this
+  // framework, so it is optional in the manifest — but when declared it must
+  // be a valid name and match the folder (`expectedName`) it lives in.
+  if ("name" in raw && raw["name"] !== null && raw["name"] !== undefined) {
+    const v = raw["name"];
+    if (typeof v !== "string") {
+      throw new Error("SKILL.md `name` must be a string");
+    }
+    validateSkillName(v);
+    if (options.expectedName !== undefined && v !== options.expectedName) {
+      throw new Error(
+        `SKILL.md \`name: ${v}\` must match its folder "${options.expectedName}"`,
+      );
+    }
+    state.name = v;
+  }
+
+  if ("license" in raw && raw["license"] !== null && raw["license"] !== undefined) {
+    const v = raw["license"];
+    if (typeof v === "string") {
+      state.license = v;
+    } else {
+      warnings.push("`license` must be a string — ignored");
+    }
+  }
+
+  if (
+    "compatibility" in raw &&
+    raw["compatibility"] !== null &&
+    raw["compatibility"] !== undefined
+  ) {
+    const v = raw["compatibility"];
+    if (typeof v !== "string") {
+      warnings.push("`compatibility` must be a string — ignored");
+    } else if (v.length > MAX_COMPATIBILITY_LENGTH) {
+      throw new Error(
+        `SKILL.md compatibility exceeds ${MAX_COMPATIBILITY_LENGTH} chars`,
+      );
+    } else {
+      state.compatibility = v;
+    }
+  }
+
+  if ("metadata" in raw && raw["metadata"] !== null && raw["metadata"] !== undefined) {
+    const v = raw["metadata"];
+    if (typeof v === "object" && !Array.isArray(v)) {
+      // A string → string map. Scalar values are stringified (`version: 1.0`
+      // is a common unquoted form); nested values don't fit the spec's shape.
+      const out: Record<string, string> = {};
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") {
+          out[k] = String(val);
+        } else {
+          warnings.push(`\`metadata.${k}\` must be a string — ignored`);
+        }
+      }
+      state.metadata = out;
+    } else {
+      warnings.push("`metadata` must be a mapping of string keys to string values — ignored");
+    }
+  }
+
   if ("allowed-tools" in raw) {
     const v = raw["allowed-tools"];
     if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
       state.allowedTools = v as string[];
     } else if (typeof v === "string") {
-      // Accept comma-separated form for forward-compat with Claude variants
+      // The spec form is a space-separated string (`Bash(git:*) Read`); the
+      // comma-separated form is accepted too for hand-written frontmatter.
       state.allowedTools = v
-        .split(",")
+        .split(/[\s,]+/)
         .map((s) => s.trim())
         .filter(Boolean);
     } else if (v !== undefined && v !== null) {
@@ -957,7 +1048,7 @@ export function parseSkillMd(text: string): ParsedSkillMd {
 
   // Preserve unknown fields (and the ignored ones we still want round-tripped)
   // under camelCase keys. Required/known fields above are NOT preserved.
-  const preservedKnownButNotMapped = new Set(["user-invocable", "name", "license", "compatibility", "metadata", ...WARN_IGNORED_KEYS]);
+  const preservedKnownButNotMapped = new Set(["user-invocable", ...WARN_IGNORED_KEYS]);
   const preserved: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw)) {
     if (!KNOWN_KEYS.has(k) || preservedKnownButNotMapped.has(k)) {
@@ -981,10 +1072,30 @@ export function parseSkillMd(text: string): ParsedSkillMd {
  * `_preservedFields` (camelCase → kebab-case).
  */
 export function serializeSkillMd(state: SkillState, body: string): string {
-  const lines: string[] = ["---", `description: ${yamlScalar(state.description)}`];
+  const lines: string[] = ["---"];
+  if (state.name !== undefined) {
+    lines.push(`name: ${yamlScalar(state.name)}`);
+  }
+  lines.push(`description: ${yamlScalar(state.description)}`);
+  if (state.license !== undefined) {
+    lines.push(`license: ${yamlScalar(state.license)}`);
+  }
+  if (state.compatibility !== undefined) {
+    lines.push(`compatibility: ${yamlScalar(state.compatibility)}`);
+  }
+  if (state.metadata && Object.keys(state.metadata).length > 0) {
+    lines.push("metadata:");
+    for (const [k, v] of Object.entries(state.metadata)) {
+      // Values are strings by spec; quote the ones YAML would otherwise read
+      // as a number/boolean/null (`version: 1.0`) so they round-trip as strings.
+      const scalar = typeof parseScalar(v) === "string" ? yamlScalar(v) : `"${v.replace(/"/g, '\\"')}"`;
+      lines.push(`  ${k}: ${scalar}`);
+    }
+  }
 
   if (state.allowedTools && state.allowedTools.length > 0) {
-    lines.push(`allowed-tools: [${state.allowedTools.map((t: string) => yamlScalar(t)).join(", ")}]`);
+    // The spec's form: one space-separated string.
+    lines.push(`allowed-tools: ${yamlScalar(state.allowedTools.join(" "))}`);
   }
   if (state.contextMode) {
     lines.push(`context: ${state.contextMode}`);
@@ -1059,7 +1170,7 @@ function serializeAgents(
 }
 
 function yamlScalar(value: string): string {
-  if (/^[a-zA-Z0-9 _.,/?!@#$%^&*()=+:;]+$/.test(value) && !/^[\-?:]/.test(value)) {
+  if (/^[a-zA-Z0-9 _.,/?!@#$%^&*()=+:;-]+$/.test(value) && !/^[\-?:]/.test(value)) {
     return value;
   }
   // Quote strings containing special chars; escape embedded quotes.
@@ -1124,6 +1235,9 @@ export function toSkill(name: string, state: SkillState, body: string): Skill {
     name,
     body,
     description: state.description,
+    license: state.license,
+    compatibility: state.compatibility,
+    metadata: state.metadata,
     allowedTools: state.allowedTools,
     contextMode: state.contextMode,
     disableModelInvocation: state.disableModelInvocation,

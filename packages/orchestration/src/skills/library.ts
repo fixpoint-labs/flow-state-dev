@@ -205,7 +205,7 @@ function indexInitialSkills(
       // pass build validation but never get seeded, and the reader would omit
       // the skill, leaving the generator without its instructions.
       validateSkillName(skill.name);
-      const parsed = parseSkillMd(skill.skillMd);
+      const parsed = parseSkillMd(skill.skillMd, { expectedName: skill.name });
       index.set(skill.name, {
         allowedTools: parsed.state.allowedTools,
         contextMode: parsed.state.contextMode ?? "inline",
