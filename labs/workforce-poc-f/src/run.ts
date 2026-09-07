@@ -47,19 +47,19 @@ try {
   );
   if (ordered.error) throw new Error(ordered.error.message ?? "ordered talk failed");
 
+  const bobBeforeAlice = await host.call(
+    MEMBER_KIND,
+    "pickup",
+    { seat: "bob", taskId: "p-ordered:bob" },
+    "dm-bob",
+  );
   const aliceOrdered = await host.call(
     MEMBER_KIND,
     "pickup",
     { seat: "alice", taskId: "p-ordered:alice" },
     "dm-alice",
   );
-  const bobBefore = await host.call(
-    MEMBER_KIND,
-    "pickup",
-    { seat: "bob", taskId: "p-ordered:bob" },
-    "dm-bob",
-  );
-  const bobAfter = await host.call(
+  const bobAfterAlice = await host.call(
     MEMBER_KIND,
     "pickup",
     { seat: "bob", taskId: "p-ordered:bob" },
@@ -102,8 +102,8 @@ try {
         alicePickup: alicePickup.output,
         ordered: ordered.output,
         aliceOrdered: aliceOrdered.output,
-        bobBlockedUntilAlice: bobBefore.output,
-        bobAfterAlice: bobAfter.output,
+        bobBlockedUntilAlice: bobBeforeAlice.output,
+        bobAfterAlice: bobAfterAlice.output,
         fanout: fanout.output,
         crossFlowWake: {
           refused: Boolean(wake.error),
