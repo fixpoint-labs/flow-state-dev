@@ -1,8 +1,8 @@
 # Epic-spec — flow instance addressing
 
-**In one line:** a flow instance is addressed by a global `id`; kind is the shape;
-isolation follows the instance — so a second copy of the same kind is a real
-copy, not a silent alias of the first.
+**In one line:** a flow instance is addressed by a global `id`; kind is the
+shape; isolation and durable ownership follow the instance — so a second copy
+of the same kind is a real copy, not a silent alias of the first.
 
 ## The 60-second version
 
@@ -21,13 +21,18 @@ Isolation has the same hole one layer down. User/org scope keys and resource
 `flow.id` is unused in storage. Two collection instances that "isolate" share
 the isolated bucket.
 
+Ownership has the same hole one layer further. `SessionRecord` and
+`RequestRecord` persist only `flowKind`. Adoption, re-entry, and `#1600`
+child/reply/lineage treat "same flow" as "same kind." Two instances of one
+kind can enter each other's sessions.
+
 ```text
   today                         after the floor
   ─────                         ───────────────
   dispatch("engineer")          dispatch("engineer-a")
        │                             │
        ▼                             ▼
-  registry.get(kind)            registry by global id
+  registry.get(kind)            exact id, else bare-kind rules
        │                             │
        ▼                             ▼
   first registered              the instance you named
@@ -39,64 +44,36 @@ the isolated bucket.
 Jake + Architect already locked the shape the same day. The cut: cardinality,
 global id address, no first-wins, isolation on instance id, envelope carries
 `flow.id` — ship with [#1600](https://github.com/fixpoint-labs/flow-state-dev/pull/1600)
-/ Atlas slice 1 / FIX-1315 reshape.
+/ Atlas slice 1 / FIX-1315 reshape. Architect revised-clear the same day:
+direction holds; the shared contract was incomplete until themes 4–6
+(ownership, migration, kind/id collision) landed here.
 
 **Later, not this-cycle Proof (D-10):** Devtool instance switcher; Workforce
 hire/mint as collection kinds (L2, not Conductor Proof). Full epic-as-one is
 cut.
 
-> **Filing note (delete once the epic issue exists).** Convention:
-> `spec/_epics/<name>.md` on branch `epic/flow-instances`, never-merged epic
-> PR, Linear parent with the `Epic` label. Issue IDs below are placeholders
-> (`INST-1` … `INST-5`) until the Linear epic is filed. Decision of record:
-> [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616) /
-> [FIX-1319](https://linear.app/fixpoint-labs/issue/FIX-1319).
-
----
-
-## How to review this
-
-*(Paste verbatim into the epic PR description's collapsed `<details>` block.)*
-
-This is an **epic-spec**: the shared objective and cross-cutting decisions for a *set* of
-issues. It is not an implementation plan and it is not any one issue's design.
-
-**In scope to challenge:**
-
-- The objective — is this body of work worth doing, and is the outcome the right one?
-- **Whether the set overbuilds.** Each issue can earn its place while the whole is too much.
-- A cross-cutting decision in §2 — shared surface, naming, sequencing, contracts.
-- A missing issue the objective implies, or one in the set that doesn't serve it.
-
-**Out of scope — owned by the individual issue specs:**
-
-- Any single issue's approach, architecture, file layout, or test plan.
-- Anything that touches exactly one issue. It belongs on that issue's spec PR.
-- **Any POC files on this branch, entirely.**
-
-Feedback in the second list is routed to the issue it concerns as an implementer note,
-not folded in here.
+**Linear parent:** [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320).
+Floor children FIX-1321..1323; later FIX-1324 / FIX-1325. Decision of record:
+[D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616) /
+[FIX-1319](https://linear.app/fixpoint-labs/issue/FIX-1319). This file lives on
+branch `epic/flow-instances`; the PR never merges.
 
 ---
 
 ## Parts worth reviewing closely
 
-> **1. §1 — whether isolation is this-cycle Proof.** The floor is three issues
-> because an address that lands on the right instance and then reads the other
-> instance's "isolated" state is still the bug. If you think isolation can wait
-> until someone actually ships a collection kind, that cuts the Proof to INST-1
-> and INST-2.
+> **1. Theme 4 — durable instance ownership.** Lookup plus isolation keys are
+> not enough. Sessions and requests must persist the owning instance id and
+> refuse a wrong-instance re-entry. Same-kind cross-instance child/reply/lineage
+> is `#1600`'s cross-flow boundary, not "same kind, so same flow."
 >
-> **2. Theme 1 — public address is the instance id, not `(kind, id)`.** This
-> supersedes FIX-1315's written desired outcome (`get(kind, id)`). Jake rejected
-> a durable public pair ("two engineers of different kinds"). An implementer who
-> only reads FIX-1315 will rebuild the thing this epic exists to kill.
+> **2. Theme 5 — migration without inventing owners.** Dual-read of a kind-only
+> key cannot assign that data to a collection instance. Conductor already
+> ships custom `id: boardId`; omit→singleton must not rewrite or guess that id.
 >
-> **Where I'm unsure:** the HTTP path segment is still named `:flowKind`
-> (`packages/engine/src/routes/router.ts`). For every flow that exists today
-> `id === kind`, so the bytes on the wire do not have to change. INST-2 owns
-> whether the slot is an id lookup with a legacy name, or a rename. I have not
-> seen a reason to rename this cycle.
+> **3. Theme 1 — exact-id precedence on a colliding string.** Input
+> `"engineer"` can be a bare kind or a registered instance id. One rule for
+> register and dispatch; the collision example is in theme 1.
 
 ---
 
@@ -104,22 +81,29 @@ not folded in here.
 
 **Objective.** Make multi-instance flows first-class and addressable, without
 the bare-kind first-wins bug (FIX-1315). The public dispatch address is a
-universal flow instance `id`. Kind is the shape. Isolation follows the
-instance.
+universal flow instance `id`. Kind is the shape. Isolation and durable
+ownership follow the instance.
 
 Today you can register two instances of one kind and the runtime will still
-treat them as one: dispatch picks the first, and "isolated" user/org state is
-keyed on kind, so both copies share it. When this epic's floor lands, naming
+treat them as one: dispatch picks the first, "isolated" user/org state is
+keyed on kind, and sessions record only the kind, so both copies share the
+bucket and can enter each other's work. When this epic's floor lands, naming
 an instance runs that instance, a bare kind that would be ambiguous refuses,
-and isolated state does not leak across copies.
+isolated state does not leak across copies, and a session owned by one
+instance refuses the other.
 
-**Holistic necessity.** Three this-cycle issues, and the honest question is
-whether it is two. INST-1 (cardinality + registry) and INST-2 (dispatch /
-envelope) are the same lie on two doors: if either keeps `get(kind)`
-first-wins, FIX-1315 is not closed. INST-3 (isolation) is kept on the floor
-because a collection kind that isolates on `kind` still shares the bucket —
-addressing without isolation is a successful lookup into the wrong durable
-cell. [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616)
+**Holistic necessity.** Three this-cycle issues. INST-1 (cardinality +
+registry) and INST-2 (dispatch / envelope / ownership stamp) are the same lie
+on two doors: if either keeps `get(kind)` first-wins, FIX-1315 is not closed.
+**INST-3 stays on the floor.** Architect closed the Proof fork
+(2026-09-07): D-10 already locked isolation-on-instance-id as Proof. A
+collection kind that isolates on `kind` still shares the bucket — addressing
+without isolation is a successful lookup into the wrong durable cell. Do not
+cut INST-3 to later.
+
+Ownership, migration, and kind/id collision complete that same floor. They
+are shared contract (themes 1, 4, 5), not a fourth issue and not left for
+each INST spec to invent. [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616)
 already cut the other inflation: **full epic-as-one (Devtool + mint in the
 same ship) is not this cycle.** Devtool (INST-4) is how an operator looks at
 instances, not whether dispatch is true. Workforce hire/mint (INST-5) is an
@@ -129,9 +113,14 @@ build them.
 **Proof.** INST-2 + INST-3 goal check, runnable, not an assertion: two
 registered instances of one `collection` kind, each with `isolateUserState`.
 Dispatch by instance id runs the named copy and each copy's isolated user
-state is distinct. A bare-kind dispatch against that pair refuses. Existing
-singleton flows (`id === kind`, cardinality omitted or `singleton`) keep
-today's URLs and today's isolated buckets.
+state is distinct. A later state/resource read on A sees only A's writes; B
+does not. A session minted under A refuses when B tries to re-enter it
+(wrong-instance session refuse). A bare-kind dispatch against that pair
+refuses unless some registered instance claims that exact id (theme 1).
+Existing singleton flows (`id === kind`, cardinality omitted or `singleton`)
+keep today's URLs and today's isolated buckets. Existing custom-id flows
+(Conductor `id: boardId`) keep those ids via an explicit `collection`
+declaration — the upgrade does not invent a singleton owner for them.
 
 **Lead measure.** The set's goal-proven floor issues, named each report.
 
@@ -150,13 +139,16 @@ already ships cross-flow dispatch whose address is kind-only.
 - **A second registry.** One registry; resolve by id.
 - **Team / Channel / MessageBoard / a second Agent as L1.** Workforce
   consumes collection kinds. It does not invent new L1 nouns.
+- **A fourth floor issue for ownership.** Themes 4–5 constrain INST-1..3.
 
 **Provenance.** Shape: Jake + FSD Architect, 2026-09-07 (address, cardinality,
 invent kill). Phase: [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616),
 Architect + Cycle PM the same day, recorded without Jake — not an owner
 leftover. D-10's published objectives are Goal 1 (validate through real usage:
 Conductor and Workforce multi-seat same-kind) and Goal 4 (keep the foundation
-honest: no first-wins; isolation keys on instance id).
+honest: no first-wins; isolation keys on instance id). Contract completion:
+Architect revised-clear the same day — direction holds; themes 4–6 were the
+missing shared contract.
 
 ---
 
@@ -166,99 +158,172 @@ honest: no first-wins; isolation keys on instance id).
 > expensive to change once issues start landing. Skim the bold sentence of
 > each; read the body only for the ones you want to challenge.**
 >
-> 1. Address is the instance id · 2. Cardinality · 3. No first-wins ·
-> 4. Isolation follows the instance · 5. Envelope carries `flow.id` ·
+> 1. Address and resolve by global instance id (exact-id precedence) ·
+> 2. Cardinality · 3. Isolation follows the instance ·
+> 4. Durable instance ownership · 5. Migration without inventing owners ·
 > 6. Floor vs later · 7. Invent kill · 8. Sequencing
 
-1. **The public address is the instance `id`. Kind is the shape.** Not a
-   durable public `(kind, id)` pair — Jake's cut (2026-09-07): that is "two
-   engineers of different kinds." FIX-1315's written desired outcome was
-   `get(kind, id)` plus "bare-kind remains valid when only one instance is
-   registered." The pair as a *public* address is what this epic supersedes.
-   The registry may still *index* by kind internally. Callers, envelopes, and
-   HTTP address by `id`. `#1600` related: a cross-flow address that names only
-   a kind is the same hole on a second door.
+1. **The public address is the instance `id`. Kind is the shape. Exact
+   global-id match wins; otherwise apply bare-kind rules.** Not a durable
+   public `(kind, id)` pair — Jake's cut (2026-09-07): that is "two engineers
+   of different kinds." FIX-1315's written desired outcome was `get(kind, id)`
+   plus "bare-kind remains valid when only one instance is registered." The
+   pair as a *public* address is what this epic supersedes. The registry may
+   still *index* by kind internally. Callers, envelopes, and HTTP address by
+   `id`. `#1600` related: a cross-flow address that names only a kind is the
+   same hole on a second door.
 
-2. **`defineFlow` declares `singleton | collection`.** Names may be bikeshed
-   in INST-1's spec; the two cardinalities may not. **Singleton:** instance
-   `id` is forced equal to `kind` (already the default: `id: options?.id ?? kind`
-   in `defineFlow`). Bare-kind dispatch is unambiguous because it *is* the id.
-   Mint-once / get-or-create is fine. **Collection:** mint requires a unique
-   **global** `id`. Dispatch primary is `id` only. Bare kind never means "pick
-   an instance." Omit the field → `singleton` (BP-030: every flow that exists
-   today). Duplicate global ids refuse at register — today's check is
-   `(kind, id)` only, which still allows `engineer`/`a` and `billing`/`a` to
-   collide once id is the public address.
+   **One namespace, register and dispatch.** Duplicate global ids refuse at
+   register — today's check is `(kind, id)` only, which still allows
+   `engineer`/`a` and `billing`/`a` to collide once id is the public address.
 
-3. **Resolve by id. Kill first-wins `get(kind)`.** Bare kind + 0 instances:
-   refuse on the floor (mint-new is INST-5, later). Bare kind + >1: **refuse**,
-   never first-wins (BP-030: do not keep the silent pick as a dual-read). Bare
-   kind + exactly one **singleton**: the id is the kind, so this is the id
-   lookup. A lone collection instance is still addressed by its minted id;
-   bare kind does not pick it. This sugar stays for singletons — it is not a
-   second address, and deleting it later would break every existing URL for
-   no customer gain.
+   **Resolve an untagged string:**
+   1. If a registered instance has that exact global `id`, that instance
+      wins — even when the string is also some kind's name.
+   2. Otherwise apply bare-kind rules to that string as a kind:
+      - 0 instances: refuse on the floor (mint-new is INST-5, later).
+      - \>1 instances: **refuse**, never first-wins (BP-030: do not keep the
+        silent pick as a dual-read).
+      - exactly one **singleton**: the id is the kind, so this is the id
+        lookup.
+      - a lone collection instance is still addressed by its minted id;
+        bare kind does not pick it.
 
-4. **Isolation follows the instance.** `resolveUserStorageKey`,
+   Singleton bare-kind sugar stays — it is not a second address, and deleting
+   it later would break every existing URL for no customer gain.
+
+   **Collision example.** Kind `engineer` registers collection instances
+   `engineer-a` and `engineer-b`. Kind `billing` registers collection
+   instance id `engineer`.
+   - Input `"engineer"` → exact-id match → the billing instance. Not a
+     bare-kind refuse, even though kind `engineer` has two instances.
+   - Input `"engineer-a"` → the engineer-a instance.
+   - Input `"engineer"` with only `engineer-a` and `engineer-b` registered
+     (no instance claims id `"engineer"`) → kind `engineer` has \>1 → refuse.
+
+   The envelope, inbound host, and `#1600` cross-flow stamp `flowKind` today
+   and resolve with `registry.get(kind)`. INST-2 makes the stamped address
+   the instance id. `#1600`'s authored field may keep the name `flowKind`
+   for a cycle if INST-2 dual-reads it as an id (singleton: same string); it
+   may not keep first-wins. A miss is still a named refuse (`flow-not-found`
+   / `no-entry`). HTTP `/:flowKind/...` is the same address slot — INST-2
+   decides lookup, not a decorative rename.
+
+2. **`defineFlow` declares `singleton | collection`.** Locked with Jake.
+   Names may be bikeshed in INST-1's spec; the two cardinalities may not.
+   Do not defer the enum off the floor. **Singleton:** instance `id` is
+   forced equal to `kind` (already the default: `id: options?.id ?? kind`
+   in `defineFlow`). Bare-kind dispatch is unambiguous because it *is* the
+   id. Mint-once / get-or-create is fine. **Collection:** mint requires a
+   unique **global** `id`. Dispatch primary is `id` only. Bare kind never
+   means "pick an instance."
+
+   **Omit → singleton only when ownership is already known.** BP-030:
+   omit the field → `singleton` for every flow that exists today *and*
+   uses the default `id === kind`. Conductor already uses custom
+   `id: boardId` (`labs/conductor/src/flow.ts`). Omit→singleton must not
+   rewrite that id to `kind`, must not guess a singleton owner, and must
+   not invent collection. Preserve those ids via an **explicit
+   `collection` declaration**. Custom `id` ≠ `kind` with cardinality
+   omitted refuses at register (named: collection declaration required).
+
+3. **Isolation follows the instance.** `resolveUserStorageKey`,
    `resolveOrgStorageKey`, and resource `flowIsolation` keys
-   (`resolveResourceScopeId`) use instance `id`, not `kind`. Singletons keep
-   today's buckets because `id === kind`. Session-scoped resources stay
-   session-bound, as today. INST-3 owns the key change and the dual-read of
-   records written under the kind-only key (BP-030: singleton legacy keys are
-   the same string; collection kinds that isolated on kind were already
-   sharing, and that share is the bug).
+   (`resolveResourceScopeId`) use instance `id`, not `kind`. Singletons
+   keep today's buckets because `id === kind`. Session-scoped resources
+   stay session-bound, as today — the instance check is which instance
+   owns that session (theme 4), not a remapping of session resource keys.
+   INST-3 owns the key change. Dual-read is theme 5, not "fall back to the
+   kind bucket."
 
-5. **The envelope and host carry instance id.** In-process dispatch, inbound
-   host, and `#1600` cross-flow all stamp `flowKind` today and resolve with
-   `registry.get(kind)`. INST-2 makes the stamped address the instance id.
-   `#1600`'s authored field may keep the name `flowKind` for a cycle if INST-2
-   dual-reads it as an id (singleton: same string); it may not keep
-   first-wins. A miss is still a named refuse (`flow-not-found` / `no-entry`).
-   HTTP `/:flowKind/...` is the same address slot — INST-2 decides lookup,
-   not a decorative rename.
+4. **Durable instance ownership.** An instance is an owner, not only a
+   lookup key. Persist the owning instance id on sessions and requests
+   (today `SessionRecord` / `RequestRecord` carry only `flowKind`). Check
+   it on adoption and re-entry. A stored owner that does not match the
+   instance being entered is a named refuse (wrong-instance session).
+   Field name is INST-2; the persist + check is not.
+
+   **Same-kind cross-instance is `#1600` cross-flow, not same-flow.**
+   `#1600` currently means different **kinds**: child-session derivation,
+   adoption (`evaluateAdoption` matches `flowKind`), reply/`id` delivery
+   (`session-not-addressable` when `record.flowKind !== flow.kind`), and
+   whether lineage is shared. Two instances of one kind fail that test
+   today — they look like the same flow. After this floor, the owner is
+   the instance id:
+   - Same instance: today's child derivation, adoption, lineage inherit,
+     and reply-to-session, plus the owner-id check (same id, so it
+     passes).
+   - Different instance ids, including two of the same kind: the same
+     refusals `#1600` uses for different kinds. No shared child
+     keyspace, no shared lineage, no same-session delivery. Owner
+     instance id is part of expected adoption identity.
+
+   Session resources stay session-bound. Enforce which instance owns
+   that session; do not re-key session resources by instance.
+
+5. **Migration without inventing owners.** Dual-read of records written
+   under a kind-only key cannot invent an owner that was never stored.
+   Blanket collection fallback to kind-owned data restores the share
+   this epic kills. Copy-on-first-read duplicates the contents; it does
+   not establish who owns them.
+
+   - **Singleton legacy** where `id === kind`: the kind-only key *is*
+     the instance key. Dual-read is identity. Those buckets stay.
+   - **Ambiguous collection data** (old `user:<kind>` / kind-only
+     session or request records, no stored owner): an explicit owner
+     map (this legacy cell belongs to instance X) or a named
+     `migration-required` refuse. Not a silent fallback to every
+     instance of that kind.
+   - **Existing custom-id flows** (Conductor `id: boardId`): theme 2.
+     Preserve the id via explicit `collection`. Do not treat omit as
+     singleton and guess.
+
+   INST-3 owns isolation-key migration; INST-2 owns kind-only
+   session/request records. Both obey this rule.
 
 6. **Proof is the floor. Later issues do not gate wrap.** [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616)
-   cut the full epic-as-one. INST-1..3 are the Conductor / `#1600` / FIX-1315
-   cluster. INST-4 (Devtool) and INST-5 (mint + Workforce hire) stay in this
-   epic's index so the direction is one place; they are **not** this-cycle
-   Proof. The epic may wrap when the floor has merged.
-   Workforce, when it comes: a standard hireable member is a `collection` kind
-   plus minted global ids (YAML/factory); a custom one-off is usually a
-   `singleton`; a seat binds a worker **flow id**, not a kind. No issue in
-   this epic invents that surface early.
+   cut the full epic-as-one. INST-1..3 are the Conductor / `#1600` /
+   FIX-1315 cluster. INST-4 (Devtool) and INST-5 (mint + Workforce hire)
+   stay in this epic's index so the direction is one place; they are
+   **not** this-cycle Proof. The epic may wrap when the floor has
+   merged. Workforce, when it comes: a hireable member is a `collection`
+   kind plus minted global ids; a seat binds a worker **flow id**, not a
+   kind. No issue in this epic invents that surface early.
 
-7. **Invent kill — three things, not a mood.** No new Team / Channel /
+7. **Invent kill — four things, not a mood.** No new Team / Channel /
    MessageBoard L1. No durable public `(kind, id)` address. No second
-   registry. No second Agent. An issue that finds itself designing any of
-   these has hit a cross-cutting question — comment up here rather than
-   deciding it locally.
+   registry. No second Agent. An issue that finds itself designing any
+   of these has hit a cross-cutting question — comment up here rather
+   than deciding it locally.
 
-8. **Sequencing: INST-1 merges first.** INST-2 and INST-3 spec in parallel
-   against the cardinality and resolve rules; they cannot merge first.
-   `#1600` can land before INST-2 — it already says FIX-1315 owns instance
-   addressing. INST-2 then reshapes that address. INST-4 and INST-5 do not
-   start this cycle unless the owner pulls them.
+8. **Sequencing: INST-1 merges first.** INST-2 and INST-3 spec in
+   parallel against the cardinality, resolve, ownership, and migration
+   rules; they cannot merge first. `#1600` can land before INST-2 — it
+   already says FIX-1315 owns instance addressing. INST-2 then reshapes
+   that address. INST-4 and INST-5 do not start this cycle unless the
+   owner pulls them.
 
 ---
 
 ## 4. Running index
 
-Issue IDs are placeholders until Linear is filed.
+Linear parent [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320).
+Placeholder names INST-1..5 remain the epic labels; the filed ids are below.
 
 ### This-cycle floor — Proof (with the #1600 cluster)
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 | --- | --- | --- | --- | --- | --- |
-| INST-1 | Cardinality on `defineFlow` + registry: `singleton` \| `collection`; id rules; reject duplicate global ids; no first-wins `get(kind)` | spec | — | — | Needs spec |
-| INST-2 | Dispatch / envelope: address by id; bare-kind refuse rules; carry `flow.id` on the cross-flow path (align #1600); reshape FIX-1315 | spec | — | — | Needs spec |
-| INST-3 | Isolation: scope-keys + resource `flowIsolation` key on instance id | spec | — | — | Needs spec |
+| [FIX-1321](https://linear.app/fixpoint-labs/issue/FIX-1321) INST-1 | Cardinality on `defineFlow` + registry: `singleton` \| `collection`; id rules; reject duplicate global ids; exact-id index; custom-id-without-collection refuse; no first-wins `get(kind)` | spec | — | — | Needs spec |
+| [FIX-1322](https://linear.app/fixpoint-labs/issue/FIX-1322) INST-2 | Dispatch / envelope: exact-id precedence then bare-kind refuse; persist owning instance id on sessions/requests; adoption/re-entry check; same-kind cross-instance = `#1600` cross-flow; carry `flow.id` (align #1600); reshape FIX-1315 | spec | — | — | Needs spec |
+| [FIX-1323](https://linear.app/fixpoint-labs/issue/FIX-1323) INST-3 | Isolation: scope-keys + resource `flowIsolation` key on instance id; dual-read only where owner is known (theme 5) | spec | — | — | Needs spec |
 
 ### Later — not this-cycle Proof
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 | --- | --- | --- | --- | --- | --- |
-| INST-4 | Devtool: list/switch/sessions by instance id; kind as grouping | spec | — | — | Later (debug, not Proof) |
-| INST-5 | Mint-on-bare-kind for collection kinds + Workforce hire helper | spec | — | — | Later (L2 slice 2/3) |
+| [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) INST-4 | Devtool: list/switch/sessions by instance id; kind as grouping | spec | — | — | Later (debug, not Proof) |
+| [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) INST-5 | Mint-on-bare-kind for collection kinds + Workforce hire helper | spec | — | — | Later (L2 slice 2/3) |
 
 FIX-1315 stays related until INST-2 files; it is reshaped, not implemented as
 written. `#1600` is related, not owned. Decision of record:
@@ -271,39 +336,37 @@ this cycle), [D-9](https://github.com/Fixpoint-labs/flow-state-dev/issues/1562),
 
 ## 5. Open cross-cutting questions
 
-- **~~Is INST-5 this epic or later?~~** *Resolved by [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616)
-  (2026-09-07, Architect + Cycle PM, recorded without Jake):* later. Not
-  this-cycle Proof. L2, not the Conductor floor. Stays in the Later table so
-  the direction is one place.
+- **~~Is INST-3 this-cycle Proof?~~** *Resolved (Architect, 2026-09-07):*
+  yes. Stays on the floor with INST-1/2. Do not cut.
 
-- **~~Is Devtool (INST-4) this-cycle Proof?~~** *Resolved by D-10:* no. Debug,
-  like an inline expand — not the Proof gate. Full epic-as-one is cut.
+- **~~Kind / id collision precedence?~~** *Resolved here (theme 1):* exact
+  global-id match wins; otherwise apply bare-kind rules. Register and
+  dispatch honor the same rule.
+
+- **~~Is INST-5 this epic or later?~~** *Resolved by [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616):*
+  later. Not this-cycle Proof.
+
+- **~~Is Devtool (INST-4) this-cycle Proof?~~** *Resolved by D-10:* no.
 
 - **`singleton | collection` as the exported names?** Raised in the owner
   lock ("name ok to bikeshed in issue specs"). Blocks nothing. INST-1
   proceeds on these two words. A rename that keeps the two cardinalities is
-  not a theme change; a third cardinality is.
+  not a theme change; a third cardinality is. The enum stays on the floor.
 
-- **Does singleton bare-kind sugar stay forever?** Decided here (theme 3):
-  yes. For a singleton it *is* the id. Removing it later is a break of every
-  existing `/api/flows/:flowKind/...` caller for no customer-visible gain.
-  Reopen here if a partner has been told kind will stop being an address.
+- **Does singleton bare-kind sugar stay forever?** Decided here (theme 1):
+  yes. For a singleton it *is* the id.
 
 - **Does `#1600` rename `flowKind` this cycle, or dual-read it as an id?**
-  Raised while scoping INST-2. Singleton makes the strings equal, so a rename
-  is documentation. Collection makes a kind-only `#1600` stamp a refuse.
-  INST-2 decides; theme 5 constrains the outcome (carry instance id, no
-  first-wins), not the field name.
+  INST-2 decides the field name; theme 1 constrains the outcome (carry
+  instance id, exact-id precedence, no first-wins). Theme 4 constrains
+  persist + check of the owner.
 
 ---
 
 ## Epic evolution
 
-- **Epic drafted (2026-09-07)** — Jake + FSD Architect lock: address by
-  global id, `singleton | collection`, isolation follows instance, invent
-  kill. Phase split recorded as [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616)
-  the same day: Architect + Cycle PM agreed, recorded without Jake. INST-1..3
-  are the this-cycle floor and Proof (with the #1600 cluster / FIX-1315
-  reshape); INST-4 Devtool and INST-5 Workforce hire/mint are later, not the
-  Proof gate. Full epic-as-one is cut. FIX-1315's written `get(kind, id)`
-  public address is superseded by theme 1.
+- **2026-09-07** — drafted. Jake + Architect lock; D-10 phase split;
+  INST-1..3 floor / INST-4–5 later.
+- **2026-09-07** — Architect revised-clear: direction holds; fold durable
+  ownership, migration-without-inventing-owners, and exact-id collision
+  precedence into the shared contract before INST-1..3 specs.
