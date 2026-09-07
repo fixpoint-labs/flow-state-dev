@@ -36,3 +36,17 @@ const agent = cursorAgent({
 // Red if the Cursor harness drifts off the contract in either direction.
 const conforms: HarnessBlock = agent;
 void conforms;
+
+// Red if a public seam for the version reader ever appears on the options. The
+// gate is one of the three things this package promises; an option a host could
+// answer with the tested version would make it a claim rather than a guarantee.
+// The runtime half — a plausible spelling is ignored, and the private symbol is
+// not exported from the root — lives in `version-gate.spec.ts`.
+const noPublicReaderSeam: "readInstalledSdkVersion" extends keyof CursorAgentOptions
+  ? never
+  : true = true;
+const noSymbolOnTheType: typeof INTERNAL_SDK_VERSION_READER extends keyof CursorAgentOptions
+  ? never
+  : true = true;
+void noPublicReaderSeam;
+void noSymbolOnTheType;

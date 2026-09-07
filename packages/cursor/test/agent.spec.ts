@@ -844,11 +844,4 @@ describe("cursorAgent — the version gate seam", () => {
   it("builds against the tested version through the private symbol", () => {
     expect(() => cursorAgent(GATE_OFF)).not.toThrow();
   });
-
-  it("does not treat a public-looking reader option as the gate", () => {
-    // The guarantee this package sells is that a host cannot run an unvalidated
-    // wire. A public seam would make that a claim rather than a guarantee.
-    const publicOptions: CursorAgentOptions = {};
-    expect(Object.keys(publicOptions)).not.toContain("readInstalledSdkVersion");
-  });
 });

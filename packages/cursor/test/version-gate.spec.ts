@@ -76,15 +76,18 @@ describe("the installed-SDK version gate", () => {
     expect(message).toContain(TESTED_SDK_VERSION);
   });
 
-  it("the version reader is NOT reachable from the public options", () => {
+  it("a public-looking reader option is ignored — the host gets the REAL gate, not their answer", () => {
     // The guarantee this package sells is that a host cannot run an unvalidated
-    // wire. A public seam would make that a claim rather than a guarantee, so the
-    // option must not exist under any plausible spelling.
-    const publicOptions: CursorAgentOptions = {};
-    expect(Object.keys(publicOptions)).not.toContain("readInstalledSdkVersion");
+    // wire. A public seam would make that a claim rather than a guarantee. That
+    // the option does not exist on the type is asserted at compile time in
+    // `harness-conformance.test-d.ts`; this is the runtime half.
     expect(() =>
-      // A host passing a plausible option name gets the REAL gate, not their answer.
       cursorAgent({ readInstalledSdkVersion: () => ({ kind: "absent" }) } as CursorAgentOptions),
     ).not.toThrow();
+  });
+
+  it("the private seam is not exported from the package root under any name", async () => {
+    const root = await import("../src/index");
+    expect(Object.values(root)).not.toContain(INTERNAL_SDK_VERSION_READER);
   });
 });
