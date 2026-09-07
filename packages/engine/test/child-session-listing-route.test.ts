@@ -518,13 +518,14 @@ describe("the identity boundary", () => {
   });
 
   /**
-   * Without the flow-kind conjunction an anonymous caller reads summaries out
-   * of a flow that authenticates, by going through one that does not — hop 1
-   * allows, hop 2 rejects, and the row has already been handed over. Paired
-   * with hop 2 refusing the same caller, so the test shows the two routes
-   * agreeing rather than each being separately plausible.
+   * Cross-flow dispatch writes the child with the *target* flow's kind and
+   * keeps the sender as `parentSessionId`. Filtering this list by the
+   * parent's kind hid every such child, so a conversation could not
+   * rediscover the work it started. Owner / org / tenant still constrain.
+   * Hop 2 still authenticates against the child's own flow — listing is
+   * authorized on the parent; the child's own reads are not.
    */
-  it("does not return a child stamped with another flow's kind", async () => {
+  it("returns a child stamped with another flow's kind, including its status", async () => {
     const { router, stores } = buildRouter([openFlow("chat"), secureFlow("secure")]);
     await seedSession(stores, "parent", { flowKind: "chat" });
     await seedSession(stores, "ours", { parentSessionId: "parent", flowKind: "chat" });
@@ -532,12 +533,54 @@ describe("the identity boundary", () => {
       parentSessionId: "parent",
       flowKind: "secure"
     });
+    await seedRequest(stores, {
+      sessionId: "theirs",
+      status: "completed",
+      flowKind: "secure"
+    });
 
-    expect((await children(router, "parent")).map((r) => r.id)).toEqual(["ours"]);
+    const rows = await children(router, "parent");
+    expect(rows.map((r) => r.id).sort()).toEqual(["ours", "theirs"]);
+    expect(rows.find((r) => r.id === "theirs")?.status).toBe("completed");
 
-    // Hop 2 on the same child, same anonymous caller, refuses.
     const hop2 = await call(router, ["sessions", "theirs", "requests"]);
     expect(hop2.status).toBe(401);
+  });
+
+  it("lists a child the seam wrote onto another flow", async () => {
+    const billing = dispatchableFlow("billing");
+    const { router, stores } = buildRouter([openFlow("chat"), openFlow("billing")]);
+    await seedSession(stores, "parent");
+
+    const outcome = await dispatchChild(stores, DISPATCH_FLOW, "ord_1", {
+      identity: PARENT_IDENTITY,
+      flowKind: "billing",
+      resolveFlow: (kind) =>
+        kind === "billing" ? billing : kind === "chat" ? DISPATCH_FLOW : undefined,
+      dispatchOperation: async ({ sessionId, metadata, flowKind }) => {
+        const requestId = `req_${sessionId}`;
+        await seedRequest(stores, {
+          id: requestId,
+          sessionId,
+          status: "in_progress",
+          source: "internal",
+          flowKind,
+          ...(metadata !== undefined ? { metadata } : {})
+        });
+        return { requestId };
+      }
+    });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+
+    const child = await stores.session.get(outcome.sessionId);
+    expect(child?.flowKind).toBe("billing");
+    expect(child?.parentSessionId).toBe("parent");
+
+    const rows = await children(router, "parent");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(outcome.sessionId);
+    expect(rows[0]?.status).toBe("active");
   });
 
   it("does not return a cross-org child, and treats unbound as its own value", async () => {

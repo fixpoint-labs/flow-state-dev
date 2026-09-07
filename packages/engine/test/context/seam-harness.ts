@@ -47,6 +47,9 @@ export type DispatchChildOptions = {
   /** Server-derived facts to stamp beside the address. */
   provenance?: Record<string, unknown>;
   payload?: unknown;
+  /** Address another registered flow — the seam resolves it via `resolveFlow`. */
+  flowKind?: string;
+  resolveFlow?: RequestHostInputs["resolveFlow"];
 };
 
 /**
@@ -66,14 +69,16 @@ export function dispatchChild(
     dispatchOperation: options.dispatchOperation ?? (async () => ({ requestId: "req_child" })),
     // Healthy gate inputs; the in-memory registry is per-process, so liveness
     // is refused regardless — it plays no part in a dispatch.
-    liveness: { staleThresholdMs: 60_000, heartbeatIntervalMs: 10_000, staleSweepIntervalMs: 30_000 }
+    liveness: { staleThresholdMs: 60_000, heartbeatIntervalMs: 10_000, staleSweepIntervalMs: 30_000 },
+    ...(options.resolveFlow !== undefined ? { resolveFlow: options.resolveFlow } : {})
   });
   return seam({
     ...CHILD_ENTRY,
     session: { key },
     payload: options.payload ?? {},
     from: "test-dispatcher",
-    ...(options.provenance !== undefined ? { provenance: options.provenance } : {})
+    ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
+    ...(options.flowKind !== undefined ? { flowKind: options.flowKind } : {})
   });
 }
 

@@ -170,8 +170,10 @@ export type ChildSessionSummary = {
   /** The entry the child was dispatched for, as `<type>:<target>`. Written by the dispatch seam. */
   coordinate?: string;
   /**
-   * Absent when the job has no run of this conversation's identity at all —
-   * absence is not a status and is deliberately not defaulted to anything.
+   * Absent when the job has no run under the parent's owner / org / tenant
+   * at all — absence is not a status and is deliberately not defaulted to
+   * anything. The child's own flowKind is not part of that identity: a
+   * cross-flow child still reports the status of the run the parent started.
    */
   status?: ChildSessionStatus;
 };
@@ -197,11 +199,15 @@ type ChildSessionRouteContext = {
  *
  * Route authorization checks the *parent* only, and the parentage predicate
  * matches on parentage and tenant alone; nothing constrains a child to share
- * its parent's owner, org or flow. Without these clauses a child written by
- * any second writer of `parentSessionId` would be returned across a boundary
- * nothing checked — and the flow-kind one is an *authentication* boundary: a
- * public parent authorizes anonymously, so a child stamped with a protected
- * flow's kind would be handed to a caller hop 2 refuses.
+ * its parent's owner, org or flow. Owner and tenant still constrain: without
+ * those clauses a child written by any second writer of `parentSessionId`
+ * would be returned across a boundary nothing checked.
+ *
+ * `flowKind` is deliberately **not** here. A cross-flow dispatch writes the
+ * child with the target flow's kind and keeps the sender as `parentSessionId`.
+ * Conjoining the parent's kind hid every such child, so a conversation could
+ * not rediscover the work it started. Hop 2 still authenticates against the
+ * child's own flow; listing is authorized on the parent.
  *
  * Every key is present, including when its value is `undefined`: an absent
  * `tenantId` or `orgId` key applies **no** filter, while an explicit
@@ -210,7 +216,6 @@ type ChildSessionRouteContext = {
  */
 type ParentIdentity = {
   userId: string;
-  flowKind: string;
   orgId: string | undefined;
   tenantId: string | undefined;
 };
@@ -221,7 +226,6 @@ function parentIdentity(
 ): ParentIdentity {
   return {
     userId: parent.userId,
-    flowKind: parent.flowKind,
     orgId: parent.orgId,
     tenantId
   };
