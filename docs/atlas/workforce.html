@@ -470,7 +470,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <thead><tr><th>Slice</th><th>Status</th><th>What is true on this pin</th><th>What would fake it</th></tr></thead>
       <tbody>
         <tr><td>1. L1 unblockers</td><td><span class="tag t-prose">blocked-on / gap</span></td><td>Cross-flow still refused (<a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open). FIX-1246 and FIX-1315 are backlog. Member memory is a named scope gap &#8212; identity lives on agent/member, not on the seat. Same-flow DM address and <code>claim</code> already exist. Conductor cares about this slice too.</td><td>Pretending cross-flow landed. A hot-dynamic kind or TeamFlow so two seats of one kind can talk. Putting memory on the seat to skip the member-scope gap.</td></tr>
-        <tr><td>2. Workforce foundation L2</td><td><span class="tag t-prop">proposed</span></td><td>File conventions are this page (<code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>). No such tree on main. Scan&#8594;<code>AgentRegistry</code> + <code>defineFlow</code> is a named gap &#8212; no <code>loadWorkforce()</code>. Seat&#8594;worker factory is a proposed wrapper. Thin Agent opinion sits on the existing core seam; <code>defineAgent</code> impl is already L2.</td><td>A second Agent type in the Workforce package. Nesting today&#8217;s L1 under Workforce as if foundation shipped. Inventing the loader as an export.</td></tr>
+        <tr><td>2. Workforce foundation L2</td><td><span class="tag t-prop">proposed</span></td><td>File conventions are this page (<code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>). No such tree on main. Scan&#8594;<code>defineFlow</code> is a named gap &#8212; no <code>loadWorkforce()</code>. Thin seats (intake, coordinator) stop there and skip <code>AgentRegistry</code>. <code>defineAgent</code> / registry only when the seat is an opinionated agent. Seat&#8594;worker factory is a proposed wrapper. Thin Agent opinion sits on the existing core seam; impl is already L2.</td><td>A second Agent type in the Workforce package. Scanning every seat into <code>AgentRegistry</code>. Nesting today&#8217;s L1 under Workforce as if foundation shipped. Inventing the loader as an export.</td></tr>
         <tr><td>3. Collab RC</td><td><span class="tag t-prop">proposed</span></td><td>Teams plural, intake, room helpers: proposed. Same-flow DM / group fan-out and <code>claim</code> exist. Ordered reply is proposed. User and org resource scopes exist. Team knowledge is proposed convention. Member memory waits on slice&nbsp;1.</td><td>A one-team-only API. A <code>TeamFlow</code>. Channel / MessageBoard L1. Cross-team dispatch that hides the #1600 refuse.</td></tr>
         <tr><td>4. Later</td><td><span class="tag t-gone">horizon</span></td><td>OKF is retrieval / graph over the stores in <a href="#memory">&#167;07</a>. Hot-dynamic flow kinds after boot stay a named gap. Knowledge Hub is not a store and not an RC gate. Surfaces and Conductor-as-extension wait. Strategy owns GTM.</td><td>Pulling OKF, a knowledge hub, or hot-dynamic kinds into foundation so the atlas looks finished.</td></tr>
       </tbody>
@@ -747,15 +747,17 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
 })
 <i>// &#8594; one defineFlow({ kind: "eng-manager", ... }) of the contract shape</i>
 <i>// Seat path is teams/&lt;teamId&gt;/workers/&lt;name&gt;/ — see &#167;06</i>
-<i>// a hand-written defineFlow + defineAgent is the escape hatch — same shapes</i>
+<i>// a hand-written defineFlow is the thin-seat escape hatch — same contract</i>
+<i>// defineAgent joins only when that seat is an opinionated agent</i>
 <i>// SOP paths are not inputs. Roster / harness seat live outside this call.</i>
-<i>// A directory scan that fills AgentRegistry + defineFlow is a named gap. &#167;06</i>
+<i>// A directory scan that fills defineFlow is a named gap. &#167;06</i>
+<i>// AgentRegistry / defineAgent only when that seat is an opinionated agent.</i>
 <i>// Do not write loadWorkforce() here as if it shipped.</i></pre>
 </section>
 
 <section id="files">
   <div class="sec-head"><span class="sec-num">06</span><h2>File conventions</h2></div>
-  <p class="lede">The product folders are <strong><code>teams/</code></strong>. A <strong>roster</strong> is a seat-list &#8212; a team roster today, later a project roster if one earns it. A <strong>team</strong> is the Layer&nbsp;2 product: that roster plus shared rooms plus dispatch. Not an L1 <code>Team</code> type. Not a TeamFlow. <strong>Projects are not a folder.</strong> They live as resources, boards, sessions, and content &#8212; the same move as plan = board + <code>readContent()</code>. Scan feeds today&#8217;s <code>AgentRegistry</code> and <code>defineFlow</code> only. A TypeScript escape hatch emits those same shapes. A workforce tree loader is a named gap. Do not invent <code>loadWorkforce()</code>.</p>
+  <p class="lede">The product folders are <strong><code>teams/</code></strong>. A <strong>roster</strong> is a seat-list &#8212; a team roster today, later a project roster if one earns it. A <strong>team</strong> is the Layer&nbsp;2 product: that roster plus shared rooms plus dispatch. Not an L1 <code>Team</code> type. Not a TeamFlow. <strong>Projects are not a folder.</strong> They live as resources, boards, sessions, and content &#8212; the same move as plan = board + <code>readContent()</code>. Scan feeds today&#8217;s <code>defineFlow</code> for every seat. Thin seats (intake, coordinator) stop there and skip <code>AgentRegistry</code>. <code>defineAgent</code> / registry only when the seat is an opinionated agent. A TypeScript escape hatch emits those same shapes. A workforce tree loader is a named gap. Do not invent <code>loadWorkforce()</code>.</p>
 
   <figure>
     <div class="fig-body">
@@ -807,28 +809,28 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <text class="t-b" x="610" y="280">named gap</text>
         <text class="t-xs" x="610" y="304">NO LOADER ON MAIN</text>
         <text class="t-xs" x="610" y="322">DO NOT INVENT loadWorkforce()</text>
-        <text class="t-xs" x="610" y="348">IF A SCAN LANDS IT CALLS</text>
-        <text class="t-xs" x="610" y="366">AgentRegistry + defineFlow ONLY</text>
+        <text class="t-xs" x="610" y="348">defineFlow EVERY SEAT</text>
+        <text class="t-xs" x="610" y="366">AgentRegistry ONLY IF AGENT</text>
 
         <rect class="n-prop" x="592" y="400" width="332" height="104" rx="5"/>
         <text class="t-lbl" x="610" y="422">TS ESCAPE &#183; PROPOSED</text>
-        <text class="t-xs" x="610" y="444">HAND-WRITTEN defineAgent</text>
-        <text class="t-xs" x="610" y="462">+ defineFlow. SAME SHAPES.</text>
+        <text class="t-xs" x="610" y="444">HAND-WRITTEN defineFlow</text>
+        <text class="t-xs" x="610" y="462">+ defineAgent ONLY IF AGENT</text>
         <text class="t-xs" x="610" y="480">NOT A PARALLEL API.</text>
       </svg>
     </div>
-    <figcaption><b>The tree is the scope story.</b> Product folders stay <code>teams/</code>. Workers nest under the team they seat. There is no <code>projects/</code> tree and no <code>agents/</code> sibling. <code>createAgentRegistry</code> and <code>defineFlow</code> exist and take in-memory values. <code>readSkillsDirectory</code> exists and walks <code>SKILL.md</code> only. A scan that feeds those two registries from this tree is a named gap.</figcaption>
+    <figcaption><b>The tree is the scope story.</b> Product folders stay <code>teams/</code>. Workers nest under the team they seat. There is no <code>projects/</code> tree and no <code>agents/</code> sibling. <code>createAgentRegistry</code> and <code>defineFlow</code> exist and take in-memory values. <code>readSkillsDirectory</code> exists and walks <code>SKILL.md</code> only. A scan that feeds <code>defineFlow</code> from this tree is a named gap. It adds a registry entry only when that seat is an opinionated agent.</figcaption>
   </figure>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 300" role="img" aria-label="A new seat is a new file on the same scan path as bootstrap. Left: bootstrap walks teams slash teamId slash workers and feeds AgentRegistry plus defineFlow. Centre: adding copy-editor means adding that folder. Right: not a runtime API, not hot-dynamic flow kinds after boot — that stays a named gap. Load-time file plus scan, not kinds minted after boot.">
+      <svg viewBox="0 0 940 300" role="img" aria-label="A new seat is a new file on the same scan path as bootstrap. Left: bootstrap walks teams slash teamId slash workers and feeds defineFlow for every seat. AgentRegistry only when that seat is an opinionated agent. Thin seats skip the registry. Centre: adding copy-editor means adding that folder. Right: not a runtime API, not hot-dynamic flow kinds after boot — that stays a named gap. Load-time file plus scan, not kinds minted after boot.">
         <rect class="n-prop" x="16" y="16" width="292" height="200" rx="5"/>
         <text class="t-lbl" x="34" y="38">BOOTSTRAP &#183; PROPOSED</text>
         <text class="t-b f-accent" x="34" y="64">scan the tree</text>
         <text class="t-xs" x="34" y="90">teams/&lt;teamId&gt;/workers/*</text>
-        <text class="t-xs" x="34" y="108">&#8594; AgentRegistry</text>
-        <text class="t-xs" x="34" y="126">&#8594; defineFlow</text>
+        <text class="t-xs" x="34" y="108">&#8594; defineFlow EVERY SEAT</text>
+        <text class="t-xs" x="34" y="126">&#8594; AgentRegistry IF AGENT</text>
         <text class="t-xs" x="34" y="152">LOAD TIME. SAME PATH</text>
         <text class="t-xs" x="34" y="170">EVERY SEAT ALREADY ON DISK</text>
         <text class="t-xs" x="34" y="196">THE SCAN ITSELF IS THE GAP</text>
@@ -888,8 +890,10 @@ const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });
 <i>// readSkillsDirectory(root) exists and walks SKILL.md only.</i></pre>
 
   <pre class="code"><i>// PROPOSED &#8212; TypeScript escape hatch. Same shapes. Not a parallel API.</i>
-<i>// A hand-written defineAgent + defineFlow is still a seat if it keeps the contract.</i>
-<i>// A scan, if it lands, calls these two. It does not mint Team or Project types.</i>
+<i>// A hand-written defineFlow is a thin seat if it keeps the contract.</i>
+<i>// defineAgent + registry only when that seat is an opinionated agent.</i>
+<i>// A scan, if it lands, calls defineFlow for every seat. Registry only if agent.</i>
+<i>// It does not mint Team or Project types.</i>
 <i>// Do not write loadWorkforce() here as if it shipped.</i></pre>
 </section>
 
@@ -1636,7 +1640,7 @@ const room = {
 <b>fanOutBoardPost</b>({ subscriberSessionIds, target: <em>"receive"</em>, payload })
 <i>// &#8594; for (id of subscriberSessionIds) dispatcher({ session: { id } })</i>
 <i>// same-flow only. Cross-kind / cross-team-flow is still session-not-addressable.</i>
-<i>// Phase 2 uses this same helper once #1600 lands. Do not add fanOutAcrossTeams().</i>
+<i>// Slice 3 uses this same helper once #1600 lands. Do not add fanOutAcrossTeams().</i>
 
 <b>fileOrderedReplies</b>({
   collection, postId,
@@ -2212,7 +2216,7 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td>Ordered multi-reply via board coordinator</td><td><span class="tag t-prop">proposed</span></td><td>Team role, L2 worker. Files N reply tasks with <code>deps</code>. Work is <code>dispatcher()</code> into that subscriber session. Idle chain before newer posts. Broke path is lease / <code>parked</code> / retry. No MessageBoard sequencer. No coordinator Layer&nbsp;1 type. No new lease type. See <a href="#channels">&#167;08</a>.</td></tr>
         <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed</span></td><td>This page. No <code>createWorkerFlow</code> export. No <code>org/</code> · <code>teams/</code> · <code>workers/</code> tree in the repo. <code>workforce.config</code> is not a file. Seat path is <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. SOP is later. See <a href="#files">&#167;06</a>.</td></tr>
         <tr><td><code>readSkillsDirectory</code></td><td><span class="tag t-real">exists</span></td><td>Walks <code>&lt;root&gt;/&lt;skill&gt;/SKILL.md</code> (depth 1) into <code>createSkillsCapability</code> <code>initialSkills</code>. <code>packages/orchestration/src/skills/read-directory.ts</code>. Skills wiring, not a workforce tree scan.</td></tr>
-        <tr><td>Workforce tree scan into <code>AgentRegistry</code> + <code>defineFlow</code></td><td><span class="tag t-prose">named gap</span></td><td><code>createAgentRegistry</code> takes an in-memory <code>Agent[]</code>. <code>defineFlow</code> is explicit. No directory loader on main feeds those two from <code>org/</code> · <code>teams/</code> · <code>workers/</code>. Do not invent <code>loadWorkforce()</code>. If a scan lands, it calls the two registries that exist. No second registry. No auto-reg of Team / Channel / Project / MessageBoard types. See <a href="#files">&#167;06</a>.</td></tr>
+        <tr><td>Workforce tree scan into <code>defineFlow</code></td><td><span class="tag t-prose">named gap</span></td><td><code>defineFlow</code> is explicit. <code>createAgentRegistry</code> takes an in-memory <code>Agent[]</code>. No directory loader on main walks <code>org/</code> · <code>teams/</code> · <code>workers/</code>. Do not invent <code>loadWorkforce()</code>. If a scan lands, every seat calls <code>defineFlow</code>. Thin seats skip the registry. <code>defineAgent</code> / <code>AgentRegistry</code> only when that seat is an opinionated agent. No second registry. No auto-reg of Team / Channel / Project / MessageBoard types. See <a href="#files">&#167;06</a>.</td></tr>
         <tr><td>New seat = add the file</td><td><span class="tag t-prop">proposed</span></td><td>A new team seat is a folder on the same path bootstrap would scan. Not a runtime join API. Hot-dynamic flow kinds after boot are a named gap. Architect: load-time file + scan.</td></tr>
         <tr><td><code>projects/</code> code tree / <code>Project</code> L1 type</td><td><span class="tag t-gone">cut</span></td><td>Does not exist. Projects are resources / boards / sessions / content. Same pattern as plan = board + <code>readContent()</code>. No folder beside <code>teams/</code>.</td></tr>
         <tr><td>Keyed teams + harness on the seat</td><td><span class="tag t-prop">proposed</span></td><td>A seat is <code>teamId</code> + row. It can name a harness and inherit that harness&#8217;s subscriptions when they exist. One team in the map is fine. A singleton with no key is not. The consumer is Conductor&#8217;s harness-manager track. No second manager. No Team type. Not on main.</td></tr>
@@ -2246,7 +2250,7 @@ const replyToSender = <b>dispatcher</b>({
 
 <section id="gaps">
   <div class="sec-head"><span class="sec-num">18</span><h2>L1 gaps &#8212; prove against, don&#8217;t paper over</h2></div>
-  <p class="lede">A helper may wrap only what is on this pin. If the body needs a door that is refused, missing, or first-registered-wrong, name the gap. Do not ship a pretend argument that hides it. Cross-team dispatch that needs another flow is gap 4, not a Phase 2 export.</p>
+  <p class="lede">A helper may wrap only what is on this pin. If the body needs a door that is refused, missing, or first-registered-wrong, name the gap. Do not ship a pretend argument that hides it. Cross-team dispatch that needs another flow is gap 4, not a slice 3 export.</p>
 
   <figure>
     <div class="fig-body">
@@ -2441,12 +2445,12 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>No fake package export that is not a thin wrapper</h5>
-    <p>A proposed name must show the Layer&nbsp;1 call it wraps. <code>sendAt</code>, <code>flowKind</code> on a helper, or a cross-kind fan-out that hides the refuse are not wrappers. They are gaps. Package docs must not fork the &#167;08 matrix. A <code>loadWorkforce()</code> that is not a call into <code>createAgentRegistry</code> + <code>defineFlow</code> is the same cut.</p>
+    <p>A proposed name must show the Layer&nbsp;1 call it wraps. <code>sendAt</code>, <code>flowKind</code> on a helper, or a cross-kind fan-out that hides the refuse are not wrappers. They are gaps. Package docs must not fork the &#167;08 matrix. A <code>loadWorkforce()</code> that is not a call into <code>defineFlow</code> (plus <code>createAgentRegistry</code> only for opinionated-agent seats) is the same cut.</p>
   </div>
 
   <div class="tension">
     <h5>No second registry. No auto-reg of Team, Channel, or MessageBoard types. No sequencer-vs-agent as two types</h5>
-    <p>Files declare into today&#8217;s <code>AgentRegistry</code> and <code>defineFlow</code> only. A TypeScript escape hatch emits those same shapes. The worker is a sequencer flow; generator calls do not mint a second type. See <a href="#contract">&#167;05</a> fences and <a href="#members">&#167;12</a>.</p>
+    <p>Files declare into today&#8217;s <code>defineFlow</code>. Thin seats skip <code>AgentRegistry</code>. An opinionated-agent seat may also call <code>defineAgent</code>. A TypeScript escape hatch emits those same shapes. The worker is a sequencer flow; generator calls do not mint a second type. See <a href="#contract">&#167;05</a> fences and <a href="#members">&#167;12</a>.</p>
   </div>
 
   <div class="tension">
@@ -2507,7 +2511,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is one worker contract on Layer&nbsp;1 &#8212; a sequencer flow; generator calls do not mint a second type. A seat is a roster slot that binds a worker, not an Agent. Thin seats skip <code>AgentRegistry</code> and member memory. Product Agent is L2 opinion (sequencer + generators + persona + member memory). The core <code>Agent</code> / <code>AgentRegistry</code> types are the thin seam; do not grow them; do not delete them; engine never sees the registry as product. The target is RC collaboration: teams, plural. Build-out is 1&#8594;4. A roster is a seat-list. A team is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders are <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. Projects live as resources, boards, sessions, and content &#8212; no <code>projects/</code> tree, no <code>Project</code> type. A new seat is a file on that path. Scan feeds today&#8217;s <code>AgentRegistry</code> and <code>defineFlow</code>. A tree scan is a named gap. Hot-dynamic kinds after boot are a named gap. Address-the-team is an intake seat, a worker with a static DM. Identity lives on agent/member scope, not on the seat. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources. Member identity is the named gap &#8212; prove <code>flowIsolation</code> first. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2. RC gates are proposed until they are true. No second Agent. No second registry. No one-team-only API. Cross-flow is still refused on this pin. Conductor does not wait. GTM is Strategy.</p>
+    <p>Workforce is one worker contract on Layer&nbsp;1 &#8212; a sequencer flow; generator calls do not mint a second type. A seat is a roster slot that binds a worker, not an Agent. Thin seats skip <code>AgentRegistry</code> and member memory. Product Agent is L2 opinion (sequencer + generators + persona + member memory). The core <code>Agent</code> / <code>AgentRegistry</code> types are the thin seam; do not grow them; do not delete them; engine never sees the registry as product. The target is RC collaboration: teams, plural. Build-out is 1&#8594;4. A roster is a seat-list. A team is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders are <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. Projects live as resources, boards, sessions, and content &#8212; no <code>projects/</code> tree, no <code>Project</code> type. A new seat is a file on that path. Scan feeds today&#8217;s <code>defineFlow</code> for every seat; <code>AgentRegistry</code> only when that seat is an opinionated agent. A tree scan is a named gap. Hot-dynamic kinds after boot are a named gap. Address-the-team is an intake seat, a worker with a static DM. Identity lives on agent/member scope, not on the seat. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources. Member identity is the named gap &#8212; prove <code>flowIsolation</code> first. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2. RC gates are proposed until they are true. No second Agent. No second registry. No one-team-only API. Cross-flow is still refused on this pin. Conductor does not wait. GTM is Strategy.</p>
   </div>
 </section>
 
