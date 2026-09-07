@@ -1,9 +1,7 @@
 /**
- * One coding flow. Four static doors. One Cursor harness.
- *
- * No Conductor, no Workforce, no board, no dynamic dispatcher address.
- * Each door is a sequencer that stamps a prefix onto `{ prompt }` and
- * hands that to the same `cursorAgent` instance.
+ * One coding flow. Four static doors. One Cursor harness
+ * (`@flow-state-dev/cursor`). Each door stamps a prefix onto `{ prompt }`
+ * and hands that to the same `cursorAgent` instance.
  */
 import { defineFlow, sequencer } from "@flow-state-dev/core";
 import { cursorAgent, type CursorAgentOptions } from "@flow-state-dev/cursor";
@@ -28,7 +26,6 @@ export interface FsdCodingHostOptions extends HostResolverOptions {
    * Host-owned keys (`cwd` / `resume` / `onSession`) still win after the spread.
    */
   cursor?: CursorAgentOptions;
-  instanceId?: string;
 }
 
 function wrapTaskDoor(
@@ -82,5 +79,5 @@ export function createFsdCodingFlow(options: FsdCodingHostOptions) {
     session: { stateSchema: sessionStateSchema },
   });
 
-  return definition({ id: options.instanceId ?? "default" });
+  return definition({ id: "default" });
 }

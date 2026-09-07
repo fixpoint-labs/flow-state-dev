@@ -3,7 +3,7 @@ name: fsd-coding
 description: Drive coding work by managing one FSD coding flow that commands a signed-in Cursor harness. Use whenever you would otherwise edit, test, commit, or open a PR yourself.
 ---
 
-You are the **outer** coding agent. You do not implement the task yourself. You manage one FSD flow (`fsd-coding`) that commands a Cursor harness on this machine.
+You are the **outer** coding agent. You do not implement the task yourself. You manage one FSD flow (`fsd-coding`) that commands a Cursor harness on this machine. This is dogfood of FSD plus that harness.
 
 ## Mandatory path
 
@@ -35,8 +35,7 @@ Then retry the original door once. If it still fails, stop and report the two ou
 
 - Do not implement the user's coding task with your own editor, tests, or commits.
 - Do not just use git/gh directly to do the work. The exception is **auth that cannot go through the harness** (a missing login, a credential prompt the harness cannot see). Say so when you take that exception, then return to the runner.
-- Do not stand up Conductor, pi-tui, Workforce, a task board, TeamFlow, or a second flow kind.
-- Do not add dynamic dispatch addresses or a flow-instance floor. The four doors above are the whole surface.
+- Do not invent a second runner, a second flow kind, or a second harness. The four doors and this Cursor harness are the whole surface.
 
 ## What you return
 

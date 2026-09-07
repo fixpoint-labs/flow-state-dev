@@ -1,8 +1,8 @@
 # FSD coding skill — POC
 
 Throwaway lab. Proves an outer coding agent can be forced through **one FSD
-flow** that commands a declared Cursor harness. No Conductor. No Workforce.
-No board. No dynamic address.
+flow** that commands the existing Cursor harness. Dogfood of FSD plus that
+harness — not a new product surface.
 
 **Do not merge this as product API.**
 
@@ -22,13 +22,13 @@ Skill the outer agent reads: [`.agents/skills/fsd-coding/SKILL.md`](../../.agent
 
 1. One flow kind (`fsd-coding`) with four **static** doors: `implement`, `fix`,
    `openPr`, `fixFsd`. Each door is a sequencer that stamps a prefix and hands
-   `{ prompt }` to the same `cursorAgent` instance.
+   `{ prompt }` to the same `cursorAgent` instance from `@flow-state-dev/cursor`.
 2. `cwd` / `resume` / `onSession` are host resolvers. A smuggled `cwd` on
    action input does not move the working directory (BP-031).
 3. `onSession` writes the Cursor agent id onto session state. A later door
    on the same stores **resumes** that agent.
 4. The skill-facing CLI maps kebab names onto those doors and refuses
-   anything else (`conductor`, `workforce`, …).
+   anything else.
 5. `fixFsd` is a real entry: it sends the repro through Cursor under a
    self-heal prefix, not the original task.
 
@@ -49,13 +49,12 @@ Skill the outer agent reads: [`.agents/skills/fsd-coding/SKILL.md`](../../.agent
 |---|---|
 | A durable host the skill can leave running | Today's runner is one `runAction` per invocation. A long-lived process / `fsdev serve` is existing substrate, not wired here. |
 | Auth that cannot go through the harness | The skill names the exception. No FSD door for "log into gh". |
-| Multi-harness routing | Cursor only. A Codex door would be a second declared block, not a dynamic address — cheap, not done. |
-| Flow instances / multi-hire | FIX-1320. One flow, session id distinguishes turns. |
-| Conductor-shaped supervision | Out of scope on purpose. This is closer to a single coding flow than a board. |
+
+One harness stack. Session id distinguishes turns on this one flow. This lab
+does not add an instance floor.
 
 ## What this is not
 
-- Not Conductor (`labs/conductor`). No pi-tui, no operator board, no harness-manager seat.
-- Not Workforce L2. No `defineAgent`, no Atlas, no TeamFlow, no MessageBoard.
-- Not chat-sdk (FIX-1330).
-- No changeset. Private lab.
+Dogfood of FSD plus the Cursor harness. Not a product surface, not a second
+harness stack, not a team or channel. The four doors are the whole surface.
+No changeset. Private lab.

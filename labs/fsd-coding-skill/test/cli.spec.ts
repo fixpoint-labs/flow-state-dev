@@ -21,8 +21,8 @@ describe("parseArgs", () => {
   });
 
   it("refuses an undeclared door instead of inventing a path", () => {
-    expect(() => parseArgs(["conductor", "--task", "x"])).toThrow(CliUsageError);
-    expect(() => parseArgs(["workforce", "--task", "x"])).toThrow(/unknown door/);
+    expect(() => parseArgs(["invented-door", "--task", "x"])).toThrow(CliUsageError);
+    expect(() => parseArgs(["invented-door", "--task", "x"])).toThrow(/unknown door/);
   });
 
   it("refuses to run a task door without --task, or fix-fsd without --repro", () => {

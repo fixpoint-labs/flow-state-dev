@@ -22,8 +22,7 @@ describe("fsd-coding skill", () => {
   it("forbids escaping around FSD except where auth cannot go through the harness", () => {
     expect(SKILL).toMatch(/do not (just )?use git\/gh directly/i);
     expect(SKILL).toMatch(/auth/i);
-    expect(SKILL).not.toMatch(/fall back to Conductor/i);
-    expect(SKILL).not.toMatch(/use Workforce/i);
+    expect(SKILL).toMatch(/Do not invent a second runner, a second flow kind, or a second harness/);
   });
 
   it("requires fixFsd with a repro before retrying a failed door", () => {

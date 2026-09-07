@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Throwaway POC: one coding flow the outer agent must drive. Cursor harness, static doors, no Conductor/Workforce. Never merges as product API.",
+  "description": "Throwaway POC: one coding flow the outer agent must drive through the Cursor harness. Never merges as product API.",
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
