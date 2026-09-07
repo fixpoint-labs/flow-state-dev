@@ -199,6 +199,13 @@ describe("parseSkillMd — Agent Skills spec fields", () => {
     expect(warnings.some((w) => w.includes("metadata.nested"))).toBe(true);
   });
 
+  it("accepts the flow-style inline metadata mapping", () => {
+    const text = `---\ndescription: x\nmetadata: { author: example-org, version: "1.0", beta: true }\n---\n`;
+    const { state, warnings } = parseSkillMd(text);
+    expect(state.metadata).toEqual({ author: "example-org", version: "1.0", beta: "true" });
+    expect(warnings).toEqual([]);
+  });
+
   it("leaves metadata undefined when every value is invalid", () => {
     const text = `---\ndescription: x\nmetadata:\n  nested:\n    deep: value\n---\n`;
     const { state, warnings } = parseSkillMd(text);
@@ -270,6 +277,26 @@ describe("serializeSkillMd", () => {
     const out = serializeSkillMd(parsed.state, parsed.body);
     const reparsed = parseSkillMd(out);
     expect(reparsed.state.keywords).toEqual(["tag1", "tag2"]);
+  });
+});
+
+describe("serializeSkillMd — YAML safety", () => {
+  it("keeps the list form for an allowed-tools entry that contains a delimiter", () => {
+    const out = serializeSkillMd({ description: "x", allowedTools: ["my tool", "Read"] }, "body");
+    expect(out).toContain("allowed-tools: [my tool, Read]");
+    expect(parseSkillMd(out).state.allowedTools).toEqual(["my tool", "Read"]);
+  });
+
+  it("quotes scalars a strict YAML parser would read as structure", () => {
+    const out = serializeSkillMd(
+      { description: "Use when: the user asks", compatibility: "Requires: git # and jq" },
+      "body",
+    );
+    expect(out).toContain('description: "Use when: the user asks"');
+    expect(out).toContain('compatibility: "Requires: git # and jq"');
+    const { state } = parseSkillMd(out);
+    expect(state.description).toBe("Use when: the user asks");
+    expect(state.compatibility).toBe("Requires: git # and jq");
   });
 });
 

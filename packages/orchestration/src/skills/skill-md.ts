@@ -749,6 +749,28 @@ function parseScalar(raw: string): unknown {
   return text;
 }
 
+/**
+ * Parse a flow-style mapping (`{ a: 1, b: "two" }`) into an object of parsed
+ * scalars. Returns `null` when the text isn't a well-formed mapping (a bare
+ * `{`, an entry without a key), so callers can fall through to their
+ * mistyped-field handling.
+ */
+function parseInlineMapping(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
+  const inner = trimmed.slice(1, -1).trim();
+  const out: Record<string, unknown> = {};
+  if (inner.length === 0) return out;
+  for (const entry of splitTopLevelCommas(inner)) {
+    const colon = findKeyColon(entry);
+    if (colon === -1) return null;
+    const key = entry.slice(0, colon).trim().replace(/^["']|["']$/g, "");
+    if (key.length === 0) return null;
+    out[key] = parseScalar(entry.slice(colon + 1));
+  }
+  return out;
+}
+
 /** Split a string on commas not inside brackets/braces/quotes. */
 function splitTopLevelCommas(input: string): string[] {
   const out: string[] = [];
@@ -928,7 +950,13 @@ export function parseSkillMd(
   }
 
   if ("metadata" in raw && raw["metadata"] !== null && raw["metadata"] !== undefined) {
-    const v = raw["metadata"];
+    // The spec's example is a block mapping; the flow style
+    // (`metadata: { author: x, version: "1.0" }`) is equally valid YAML, and
+    // the scalar parser hands it over as a string — parse it here.
+    const v =
+      typeof raw["metadata"] === "string" && raw["metadata"].trim().startsWith("{")
+        ? parseInlineMapping(raw["metadata"])
+        : raw["metadata"];
     if (typeof v === "object" && !Array.isArray(v)) {
       // A string → string map. Scalar values are stringified (`version: 1.0`
       // is a common unquoted form); nested values don't fit the spec's shape.
@@ -1094,8 +1122,15 @@ export function serializeSkillMd(state: SkillState, body: string): string {
   }
 
   if (state.allowedTools && state.allowedTools.length > 0) {
-    // The spec's form: one space-separated string.
-    lines.push(`allowed-tools: ${yamlScalar(state.allowedTools.join(" "))}`);
+    // The spec's form is one space-separated string. An entry that itself
+    // contains a delimiter (whitespace or a comma) would be split on re-parse,
+    // so those fall back to the list form, which keeps entry boundaries.
+    const tools = state.allowedTools;
+    lines.push(
+      tools.some((t) => /[\s,]/.test(t))
+        ? `allowed-tools: [${tools.map((t) => yamlScalar(t)).join(", ")}]`
+        : `allowed-tools: ${yamlScalar(tools.join(" "))}`,
+    );
   }
   if (state.contextMode) {
     lines.push(`context: ${state.contextMode}`);
@@ -1170,7 +1205,15 @@ function serializeAgents(
 }
 
 function yamlScalar(value: string): string {
-  if (/^[a-zA-Z0-9 _.,/?!@#$%^&*()=+:;-]+$/.test(value) && !/^[\-?:]/.test(value)) {
+  // A plain (unquoted) scalar is safe only when nothing in it reads as YAML
+  // structure to a strict parser: no leading indicator, no `: ` (a nested
+  // mapping), no ` #` (a comment), and no trailing `:`.
+  if (
+    /^[a-zA-Z0-9 _.,/?!@#$%^&*()=+:;-]+$/.test(value) &&
+    !/^[\-?:]/.test(value) &&
+    !/:(\s|$)/.test(value) &&
+    !/\s#/.test(value)
+  ) {
     return value;
   }
   // Quote strings containing special chars; escape embedded quotes.
