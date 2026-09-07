@@ -35,9 +35,14 @@ pnpm --filter @flow-state-dev/workforce-poc-board-notify demo
    not invent a second bus. Cross-flow waits on #1600.
 5. Existing-session create is still 409 (FIX-1246). Not papered over.
 6. Prune on `no-entry` / `session-not-found` only. Never on
-   `dispatch-rejected` (poster subscribed to their own board — the in-flight
-   post holds the session, `onNotify` is `concurrency: "reject"`). Never on
-   `session-not-addressable` until that refusal is split.
+   `dispatch-rejected` (classifier; the live hop did not produce that
+   refusal — see below). Never on `session-not-addressable` until that
+   refusal is split.
+
+Same-session notify from `reactTo` **lands**. A poster who is also a
+subscriber gets `onNotify` in their own session. `concurrency: "reject"`
+on the entry does not treat the originating turn as a competing holder.
+Do not read that as `dispatch-rejected`, and do not prune it.
 
 ## What was faked with static targets
 

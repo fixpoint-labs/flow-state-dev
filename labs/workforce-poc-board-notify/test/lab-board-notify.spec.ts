@@ -206,7 +206,7 @@ describe("lab — static board notify (FIX-1311)", () => {
     }
   });
 
-  it("does not prune the poster when same-session notify is dispatch-rejected", async () => {
+  it("same-session notify from reactTo lands — and the poster stays subscribed", async () => {
     const host = await bootLab();
     try {
       const { poster, bob } = await openSubscribedBoard(host, { posterAsAlice: true });
@@ -214,18 +214,18 @@ describe("lab — static board notify (FIX-1311)", () => {
       const posted = await host.call(
         FLOW_KIND,
         "post",
-        { topic: TOPIC, body: "poster is busy" },
+        { topic: TOPIC, body: "poster is also a subscriber" },
         poster.id
       );
       expect(posted.error).toBeUndefined();
 
       await until(async () => {
-        const state = await host.sessionState(bob.id);
-        return state?.lastNotify != null;
-      }, "bob to wake");
-
-      const posterState = await host.sessionState(poster.id);
-      expect(posterState?.lastNotify ?? null).toBeNull();
+        const [p, b] = await Promise.all([
+          host.sessionState(poster.id),
+          host.sessionState(bob.id)
+        ]);
+        return p?.lastNotify != null && b?.lastNotify != null;
+      }, "poster and bob to wake");
 
       const read = await host.call(FLOW_KIND, "read", { topic: TOPIC }, poster.id);
       const board = read.output as { subscribers: Array<{ sessionId: string; seat: string }> };

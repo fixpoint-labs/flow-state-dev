@@ -139,30 +139,60 @@ function notifySeat(seat: Seat) {
 export const notifyAlice = notifySeat("alice");
 export const notifyBob = notifySeat("bob");
 
-const recordRefusal = handler({
-  name: "record-notify-refusal",
-  inputSchema: z.any(),
-  outputSchema: z.object({
-    ok: z.literal(false),
-    refused: z.string()
-  }),
-  execute: (err: unknown) => ({
-    ok: false as const,
-    refused: err instanceof DispatchRefusedError ? err.refused : "dispatch-rejected"
-  })
+const notifyOutcomeSchema = z.object({
+  ok: z.boolean(),
+  topic: z.string(),
+  seat: seatSchema,
+  sessionId: z.string(),
+  refused: z.string().nullable()
 });
+type NotifyOutcome = z.infer<typeof notifyOutcomeSchema>;
 
 const notifyRouter = router({
   name: "notify-router",
   inputSchema: wakeSchema,
   routes: [notifyAlice, notifyBob],
   execute: (input) => (input.seat === "alice" ? notifyAlice : notifyBob)
-}).rescue([
-  {
-    when: [DispatchRefusedError],
-    block: recordRefusal
-  }
-]);
+});
+
+/**
+ * Select a declared dispatcher for this wake. The factory closes over the
+ * subscriber identity so a refusal still names who to prune — it does not
+ * construct a dispatcher from `entry` data. `blocks` keeps both addresses
+ * on the `defineFlow` walk.
+ */
+function deliverWake(wake: Wake) {
+  return sequencer({
+    name: `deliver-${wake.seat}`,
+    inputSchema: wakeSchema,
+    outputSchema: notifyOutcomeSchema
+  })
+    .step(notifyRouter)
+    .map(() => ({
+      ok: true as const,
+      topic: wake.topic,
+      seat: wake.seat,
+      sessionId: wake.sessionId,
+      refused: null
+    }))
+    .rescue([
+      {
+        when: [DispatchRefusedError],
+        block: handler({
+          name: `refuse-${wake.seat}`,
+          inputSchema: z.any(),
+          outputSchema: notifyOutcomeSchema,
+          execute: (err: unknown): NotifyOutcome => ({
+            ok: false,
+            topic: wake.topic,
+            seat: wake.seat,
+            sessionId: wake.sessionId,
+            refused: err instanceof DispatchRefusedError ? err.refused : "dispatch-rejected"
+          })
+        })
+      }
+    ]);
+}
 
 const packNotifies = handler({
   name: "pack-notifies",
@@ -176,42 +206,30 @@ const packNotifies = handler({
 
 const pruneDead = handler({
   name: "prune-dead",
-  inputSchema: z.array(z.unknown()),
+  inputSchema: z.array(notifyOutcomeSchema),
   outputSchema: z.object({
     topic: z.string(),
     pruned: z.array(z.string())
   }),
   execute: async (outcomes, ctx) => {
-    const change = ctx.sequencer?.input as ResourceChange<BoardState> | undefined;
-    const topic = change?.key ?? "";
-    const wakes = change ? wakesFrom(change) : [];
     const sessionIds = new Set<string>();
-    for (let i = 0; i < outcomes.length; i += 1) {
-      const refused = refusedOf(outcomes[i]);
-      const wake = wakes[i];
-      if (refused !== undefined && shouldPruneSubscription(refused) && wake !== undefined) {
-        sessionIds.add(wake.sessionId);
+    let topic = "";
+    for (const outcome of outcomes) {
+      if (outcome.topic.length > 0) topic = outcome.topic;
+      if (outcome.refused !== null && shouldPruneSubscription(outcome.refused as Parameters<typeof shouldPruneSubscription>[0])) {
+        sessionIds.add(outcome.sessionId);
       }
     }
     if (sessionIds.size === 0 || topic.length === 0) {
       return { topic, pruned: [] };
     }
-    const boards = ctx.resources.boards as unknown as ResourceCollectionRef<BoardState>;
-    const board = await boards.get(topic);
+    const collection = ctx.resources.boards as unknown as ResourceCollectionRef<BoardState>;
+    const board = await collection.get(topic);
     const next = board.state.subscribers.filter((sub) => !sessionIds.has(sub.sessionId));
     await board.patchState({ subscribers: next });
     return { topic, pruned: [...sessionIds] };
   }
 });
-
-function refusedOf(outcome: unknown): Parameters<typeof shouldPruneSubscription>[0] | undefined {
-  if (outcome === null || typeof outcome !== "object" || !("refused" in outcome)) {
-    return undefined;
-  }
-  const refused = (outcome as { refused: unknown }).refused;
-  if (typeof refused !== "string") return undefined;
-  return refused as Parameters<typeof shouldPruneSubscription>[0];
-}
 
 /**
  * Bound on the collection and declared as an internal entry so `defineFlow`
@@ -222,7 +240,7 @@ export const notifyOnChange = sequencer({
   inputSchema: resourceChangeSchema(boardStateSchema)
 })
   .step(packNotifies)
-  .forEach((packed) => packed.wakes, notifyRouter, {
+  .forEach((packed) => packed.wakes, deliverWake, {
     blocks: [notifyAlice, notifyBob]
   })
   .step(pruneDead);
@@ -390,8 +408,7 @@ export const boardNotifyFlow = defineFlow({
   internal: {
     actions: {
       [NOTIFY_ENTRY]: {
-        block: onNotify,
-        concurrency: "reject"
+        block: onNotify
       },
       notifyOnChange: { block: notifyOnChange }
     }
