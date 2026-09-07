@@ -51,6 +51,7 @@
       "@flow-state-dev/tools/fetch": ["packages/tools/src/fetch/index.ts"],
       "@flow-state-dev/tools/crawl": ["packages/tools/src/crawl/index.ts"],
       "@flow-state-dev/tools/bash": ["packages/tools/src/bash/index.ts"],
+      "@flow-state-dev/cursor": ["packages/cursor/src/index.ts"],
       "@flow-state-dev/ui/generative/renderers": ["packages/ui/src/generative/renderers.ts"],
       "@flow-state-dev/ui/generative/tools": ["packages/ui/src/generative/tools.ts"],
       "@flow-state-dev/devtool": ["packages/devtool/src/index.ts"],
