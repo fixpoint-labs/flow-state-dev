@@ -265,7 +265,12 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
           resolveCursorClient,
         });
         sessionId = agent.agentId;
-        const run = await sendPrompt(agent, prompt, sendOptions, ctx);
+        // An already-fired deadline must not start a run it will immediately
+        // have to cancel — the resolvers, the client, create/resume and
+        // `onSession` all await before this, and a signal that is already
+        // aborted never fires `abort` again.
+        if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId);
+        const run = await agent.send(prompt, sendOptions);
         const mirrored = await mirrorRun(run, ctx, emitState, name);
         const settled = await settleRun(run, mirrored, ctx.signal);
         // A call still `running` when the stream closed has no result coming,
@@ -371,22 +376,6 @@ function mergeCreateOptions(
     ...(agentOptions ?? {}),
     ...(hasLocal ? { local } : {}),
   };
-}
-
-/**
- * Send the prompt. An already-fired deadline must not start a run it will
- * immediately have to cancel — the resolvers, the client, create/resume and
- * `onSession` all await before this, and a signal that is already aborted
- * never fires `abort` again.
- */
-async function sendPrompt(
-  agent: CursorAgentLike,
-  prompt: string,
-  sendOptions: CursorSendOptions | undefined,
-  ctx: AgentCallbackContext,
-): Promise<CursorRunLike> {
-  if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId);
-  return agent.send(prompt, sendOptions);
 }
 
 /**
