@@ -1,8 +1,9 @@
 # Epic-spec — flow instance addressing
 
 **In one line:** a flow instance is addressed by a global `id`; kind is the
-shape; isolation and durable ownership follow the instance — so a second copy
-of the same kind is a real copy, not a silent alias of the first.
+shape; every delivery has an explicitly declared recipient instance; isolation
+and durable ownership follow that instance — so a second copy of the same kind
+is a real copy, not a silent alias of the first.
 
 ## The 60-second version
 
@@ -48,6 +49,11 @@ global id address, no first-wins, isolation on instance id, envelope carries
 direction holds; the shared contract was incomplete until themes 4–6
 (ownership, migration, kind/id collision) landed here.
 
+**Owner recipient decision (2026-09-07):** declare the target flow instance.
+Chat does not shape or gate this epic: the owner wants it removed in separate
+work, not optimized here. INST-2 owns only the minimal compatibility needed
+for instance addressing. Message boards remain outside scope.
+
 **Later, not this-cycle Proof (D-10):** Devtool instance switcher; Workforce
 hire/mint as collection kinds (L2, not Conductor Proof). Full epic-as-one is
 cut.
@@ -71,9 +77,10 @@ branch `epic/flow-instances`; the PR never merges.
 > key cannot assign that data to a collection instance. Conductor already
 > ships custom `id: boardId`; omit→singleton must not rewrite or guess that id.
 >
-> **3. Theme 1 — exact-id precedence on a colliding string.** Input
-> `"engineer"` can be a bare kind or a registered instance id. One rule for
-> register and dispatch; the collision example is in theme 1.
+> **3. Theme 1 — declared recipient and exact-id precedence.** Matching an
+> action handler does not select its recipient instance. Check that the
+> declared id wins, including collisions, without inventing a chat-routing
+> feature; otherwise another copy can receive work meant for one instance.
 
 ---
 
@@ -88,9 +95,9 @@ Today you can register two instances of one kind and the runtime will still
 treat them as one: dispatch picks the first, "isolated" user/org state is
 keyed on kind, and sessions record only the kind, so both copies share the
 bucket and can enter each other's work. When this epic's floor lands, naming
-an instance runs that instance, a bare kind that would be ambiguous refuses,
-isolated state does not leak across copies, and a session owned by one
-instance refuses the other.
+an explicitly declared instance runs that instance, a bare kind that would be
+ambiguous refuses, isolated state does not leak across copies, and a session
+owned by one instance refuses the other.
 
 **Holistic necessity.** Three this-cycle issues. INST-1 (cardinality +
 registry) and INST-2 (dispatch / envelope / ownership stamp) are the same lie
@@ -101,9 +108,10 @@ collection kind that isolates on `kind` still shares the bucket — addressing
 without isolation is a successful lookup into the wrong durable cell. Do not
 cut INST-3 to later.
 
-Ownership, migration, and kind/id collision complete that same floor. They
-are shared contract (themes 1, 4, 5), not a fourth issue and not left for
-each INST spec to invent. [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616)
+Declared recipients, ownership, migration, and kind/id collision complete
+that same floor. They are shared contract (themes 1, 4, 5), not a fourth issue
+and not left for each INST spec to invent. INST-2 owns recipient addressing.
+[D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616)
 already cut the other inflation: **full epic-as-one (Devtool + mint in the
 same ship) is not this cycle.** Devtool (INST-4) is how an operator looks at
 instances, not whether dispatch is true. Workforce hire/mint (INST-5) is an
@@ -112,8 +120,9 @@ build them.
 
 **Proof.** INST-2 + INST-3 goal check, runnable, not an assertion: two
 registered instances of one `collection` kind, each with `isolateUserState`.
-Dispatch by instance id runs the named copy and each copy's isolated user
-state is distinct. A later state/resource read on A sees only A's writes; B
+Dispatch with A explicitly declared as recipient runs A, not B; changing the
+declared recipient to B runs B, not A. Each copy's isolated user state is
+distinct. A later state/resource read on A sees only A's writes; B
 does not. A session minted under A refuses when B tries to re-enter it
 (wrong-instance session refuse). A bare-kind dispatch against that pair
 refuses unless some registered instance claims that exact id (theme 1).
@@ -139,7 +148,12 @@ already ships cross-flow dispatch whose address is kind-only.
 - **A second registry.** One registry; resolve by id.
 - **Team / Channel / MessageBoard / a second Agent as L1.** Workforce
   consumes collection kinds. It does not invent new L1 nouns.
-- **A fourth floor issue for ownership.** Themes 4–5 constrain INST-1..3.
+- **Chat optimization or removal.** Removal is separate future work, not a
+  deprecation shipped by this epic. No chat-targeting feature, selection
+  configuration, or broadcast-policy redesign; chat does not gate Proof.
+- **Message-board delivery or a new fan-out mode.** Neither is in this epic.
+- **A fourth floor issue for recipients or ownership.** INST-2 owns addressing;
+  themes 4–5 constrain INST-1..3.
 
 **Provenance.** Shape: Jake + FSD Architect, 2026-09-07 (address, cardinality,
 invent kill). Phase: [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616),
@@ -149,6 +163,9 @@ Conductor and Workforce multi-seat same-kind) and Goal 4 (keep the foundation
 honest: no first-wins; isolation keys on instance id). Contract completion:
 Architect revised-clear the same day — direction holds; themes 4–6 were the
 missing shared contract.
+The owner's recipient decision and subsequent instruction not to optimize
+around chat are folded below. **Objective approval remains pending**; these
+decisions do not authorize child specs or implementation to start.
 
 ---
 
@@ -158,7 +175,7 @@ missing shared contract.
 > expensive to change once issues start landing. Skim the bold sentence of
 > each; read the body only for the ones you want to challenge.**
 >
-> 1. Address and resolve by global instance id (exact-id precedence) ·
+> 1. Declared recipient and global instance id (exact-id precedence) ·
 > 2. Cardinality · 3. Isolation follows the instance ·
 > 4. Durable instance ownership · 5. Migration without inventing owners ·
 > 6. Floor vs later · 7. Invent kill · 8. Sequencing
@@ -172,6 +189,23 @@ missing shared contract.
    still *index* by kind internally. Callers, envelopes, and HTTP address by
    `id`. `#1600` related: a cross-flow address that names only a kind is the
    same hole on a second door.
+
+   **Every delivery has an explicitly declared recipient instance.** Target
+   declaration may be resolved at application/adapter binding; this does not
+   require a new payload field or targeting API. Selecting an action handler
+   is distinct from selecting its recipient. A match or an inherited
+   subscription is not permission to choose the first copy or implicitly
+   address every collection copy. INST-2 (FIX-1322) owns the instance-address
+   contract and its minimal compatibility work; exact mechanics belong there.
+
+   **Do not optimize around chat.** The owner intends to remove chat in
+   separate work. Existing [chat architecture](../../docs/architecture/chat-transport.md#fan-out-semantics)
+   intentionally broadcasts to matching subscriptions; the declared-recipient
+   direction is a contract change, not a claim that today's runtime already
+   selects one instance. The existing chat binding supplies the action handler,
+   not an explicit recipient decision. This epic does not design a replacement
+   chat model, selection configuration, or broadcast policy, and chat does not
+   shape or gate its Proof. Message boards and new fan-out modes are out of scope.
 
    **One namespace, register and dispatch.** Duplicate global ids refuse at
    register — today's check is `(kind, id)` only, which still allows
@@ -315,7 +349,7 @@ Placeholder names INST-1..5 remain the epic labels; the filed ids are below.
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 | --- | --- | --- | --- | --- | --- |
 | [FIX-1321](https://linear.app/fixpoint-labs/issue/FIX-1321) INST-1 | Cardinality on `defineFlow` + registry: `singleton` \| `collection`; id rules; reject duplicate global ids; exact-id index; custom-id-without-collection refuse; no first-wins `get(kind)` | spec | — | — | Needs spec |
-| [FIX-1322](https://linear.app/fixpoint-labs/issue/FIX-1322) INST-2 | Dispatch / envelope: exact-id precedence then bare-kind refuse; persist owning instance id on sessions/requests; adoption/re-entry check; same-kind cross-instance = `#1600` cross-flow; carry `flow.id` (align #1600); reshape FIX-1315 | spec | — | — | Needs spec |
+| [FIX-1322](https://linear.app/fixpoint-labs/issue/FIX-1322) INST-2 | Dispatch / envelope: explicitly declared recipient instance; exact-id precedence then bare-kind refuse; minimal instance-address compatibility, no chat redesign; persist owning instance id on sessions/requests; adoption/re-entry check; same-kind cross-instance = `#1600` cross-flow; carry `flow.id` (align #1600); reshape FIX-1315 | spec | — | — | Needs spec |
 | [FIX-1323](https://linear.app/fixpoint-labs/issue/FIX-1323) INST-3 | Isolation: scope-keys + resource `flowIsolation` key on instance id; dual-read only where owner is known (theme 5) | spec | — | — | Needs spec |
 
 ### Later — not this-cycle Proof
@@ -348,6 +382,19 @@ this cycle), [D-9](https://github.com/Fixpoint-labs/flow-state-dev/issues/1562),
 
 - **~~Is Devtool (INST-4) this-cycle Proof?~~** *Resolved by D-10:* no.
 
+- **~~Must a recipient instance be declared, and should chat routing shape this epic?~~**
+  *Resolved (owner, 2026-09-07), following [the inbound-chat review](https://github.com/fixpoint-labs/flow-state-dev/pull/1617#discussion_r3950802895):*
+  "A flow instance must be declared (unless we are talking about a message board,
+  in which case the message board must be indicated – but I dont think message
+  boards are covered in this epic)". The owner then narrowed the response:
+  "I actually want to remove chat. I think that implementation is creating
+  friction and its not a good model for our framework anyway, so we will just
+  deal with it the best we can for now (removing it is a separate task) but
+  don't optimize around chat." Keep the general declared-instance contract;
+  only minimal compatibility belongs to FIX-1322. No chat-targeting feature
+  or chat-specific Proof gate. Message boards are excluded. Chat removal is
+  separate future work, not an API deprecation delivered here.
+
 - **`singleton | collection` as the exported names?** Raised in the owner
   lock ("name ok to bikeshed in issue specs"). Blocks nothing. INST-1
   proceeds on these two words. A rename that keeps the two cardinalities is
@@ -370,3 +417,7 @@ this cycle), [D-9](https://github.com/Fixpoint-labs/flow-state-dev/issues/1562),
 - **2026-09-07** — Architect revised-clear: direction holds; fold durable
   ownership, migration-without-inventing-owners, and exact-id collision
   precedence into the shared contract before INST-1..3 specs.
+- **2026-09-07 — owner recipient answer, then scope clarification** — require
+  an explicitly declared instance; keep only minimal instance-address
+  compatibility in INST-2. Do not optimize around chat; removal is separate,
+  message boards are excluded, and objective approval remains pending.
