@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, win32 } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
-import { defineCapability } from "@flow-state-dev/core";
+import { defineCapability, isAbortLike } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   claudeCodeAgent,
@@ -447,6 +447,357 @@ describe("claudeCodeAgent", () => {
   it("tolerates an absent ctx.signal without throwing", () => {
     const controller = forwardSignalToController(undefined);
     expect(controller.signal.aborted).toBe(false);
+  });
+
+  // FIX-1301: a fired deadline must stop the run when `ctx.signal` fires, not
+  // when the SDK's own stream eventually settles. The SDK's `abortController`
+  // forwarding still tells the vendor to stop (the test above proves it is
+  // still wired), but LAB-153's POC found a vendor cancel can wait for its
+  // stdout to close, and the Claude Code SDK path has the same shape — so the
+  // block must stop WAITING on its own signal rather than on the SDK's
+  // generator settling.
+  describe("stops on ctx.signal firing, not on the SDK stream settling", () => {
+    /** A `query` whose generator never advances past its first message, abort
+     * or no abort — the fake vendor stream that never closes. */
+    function hangingQueryAfterFirstMessage(onFirstMessage: () => void): ResolveClaudeAgent {
+      return () => ({
+        query: async function* () {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "sess_seen_before_abort",
+          } as SdkMessageLike;
+          onFirstMessage();
+          await new Promise(() => {}); // never resolves, abort or not
+        },
+      });
+    }
+
+    /** Races `promise` against a short real-time bound so a hang fails fast
+     * with a clear message instead of vitest's own (much longer) test timeout. */
+    async function withRaceTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+      const TIMED_OUT = Symbol("timed-out");
+      const winner = await Promise.race([
+        promise,
+        new Promise<typeof TIMED_OUT>((resolve) => setTimeout(() => resolve(TIMED_OUT), ms)),
+      ]);
+      if (winner === TIMED_OUT) {
+        throw new Error(
+          `did not settle within ${ms}ms — still waiting on the vendor stream instead of ctx.signal`,
+        );
+      }
+      return winner as T;
+    }
+
+    it("rejects promptly with an abort-like error when ctx.signal fires mid-stream", async () => {
+      let sawFirstMessage: () => void = () => {};
+      const firstMessageSeen = new Promise<void>((resolve) => {
+        sawFirstMessage = resolve;
+      });
+      const block = claudeCodeAgent({
+        resolveClaudeAgent: hangingQueryAfterFirstMessage(() => sawFirstMessage()),
+      });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      const controller = new AbortController();
+      (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      await firstMessageSeen;
+      controller.abort();
+
+      let caught: unknown = null;
+      await expect(
+        withRaceTimeout(runPromise!.catch((err) => {
+          caught = err;
+          throw err;
+        }), 500),
+      ).rejects.toBeTruthy();
+      expect(isAbortLike(caught)).toBe(true);
+    });
+
+    it("still writes the session id observed before the abort into session state", async () => {
+      let sawFirstMessage: () => void = () => {};
+      const firstMessageSeen = new Promise<void>((resolve) => {
+        sawFirstMessage = resolve;
+      });
+      const block = claudeCodeAgent({
+        resolveClaudeAgent: hangingQueryAfterFirstMessage(() => sawFirstMessage()),
+      });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      const controller = new AbortController();
+      (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      await firstMessageSeen;
+      controller.abort();
+      await withRaceTimeout(runPromise!.catch(() => {}), 500);
+
+      expect(
+        (runtime.ctx.session.state as Record<string, unknown>)[SDK_SESSION_ID_KEY],
+      ).toBe("sess_seen_before_abort");
+    });
+
+    it("rejects immediately when ctx.signal is already aborted before the first message", async () => {
+      let neverCalled = true;
+      const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+        query: async function* () {
+          neverCalled = false;
+          await new Promise(() => {}); // never resolves
+        },
+      });
+      const block = claudeCodeAgent({ resolveClaudeAgent });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      (runtime.ctx as unknown as { signal: AbortSignal }).signal = AbortSignal.abort();
+
+      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const caught = await withRaceTimeout(
+        runPromise!.then(
+          () => null,
+          (err) => err,
+        ),
+        500,
+      );
+      expect(isAbortLike(caught)).toBe(true);
+      // Whether the fake generator ever got a chance to run is not the point
+      // of this test (queueMicrotask ordering can go either way); the point
+      // is that the block does not WAIT for it.
+      void neverCalled;
+    });
+
+    it("does not double-settle when ctx.signal aborts after the run already completed", async () => {
+      const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK]) });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      const controller = new AbortController();
+      (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+      const handle = (await block.config.execute?.(
+        { prompt: "go" },
+        runtime.ctx as never,
+      )) as SdkAgentHandle;
+      expect(handle.status).toBe("completed");
+
+      const onUnhandledRejection = vi.fn();
+      process.on("unhandledRejection", onUnhandledRejection);
+      controller.abort();
+      // Let any dangling abort listener's rejection surface as an unhandled
+      // rejection if it is going to.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      process.off("unhandledRejection", onUnhandledRejection);
+      expect(onUnhandledRejection).not.toHaveBeenCalled();
+    });
+
+    it("stops touching items/records once the abort branch has already torn them down", async () => {
+      // A vendor stream that keeps yielding buffered messages for a while
+      // AFTER the kill — the interleaving this fix has to survive, not just
+      // the "hangs forever" shape above. The second message is held behind a
+      // gate the test only opens once the abort branch's own cleanup
+      // (`finalizeOpenItems`, session-id persistence) has already run.
+      let sawFirstMessage: () => void = () => {};
+      const firstMessageSeen = new Promise<void>((resolve) => {
+        sawFirstMessage = resolve;
+      });
+      let releaseSecondMessage: () => void = () => {};
+      const canYieldSecondMessage = new Promise<void>((resolve) => {
+        releaseSecondMessage = resolve;
+      });
+      const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+        query: async function* () {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "sess_seen_before_abort",
+          } as SdkMessageLike;
+          sawFirstMessage();
+          await canYieldSecondMessage;
+          yield {
+            type: "assistant",
+            message: { content: [{ type: "text", text: "should never surface" }] },
+          } as SdkMessageLike;
+          await new Promise(() => {}); // then hangs forever
+        },
+      });
+
+      const block = claudeCodeAgent({
+        resolveClaudeAgent,
+        includePartialMessages: false,
+      });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      const controller = new AbortController();
+      (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      await firstMessageSeen;
+      controller.abort();
+      await withRaceTimeout(runPromise!.catch(() => {}), 500);
+
+      // The abort branch's cleanup has now run. Only NOW let the abandoned
+      // loop see the second message.
+      releaseSecondMessage();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(runtime.getItems().some((i) => i.type === "message")).toBe(false);
+    });
+
+    it("waits for its OWN in-flight item write before finalizing — never leaving an item in_progress or writing a delta after its close", async () => {
+      // The gap Bugbot's review named: `raced` was previously checked only
+      // BEFORE `emitTranslatedEvent`/`closeStreamingItems`, not after those
+      // awaits return, so an abort landing WHILE one of those calls is still
+      // resolving let the abort branch's `finalizeOpenItems` run past a
+      // `state.message` that hadn't been set yet — and then the abandoned
+      // write set it anyway, immediately after, with nobody left to close it.
+      //
+      // The partials (streaming) path is what exercises this: the first
+      // `content_block_delta` opens the message item via a SEQUENCE of
+      // `ctx.response.emit` calls (`item.added` → `content.added` →
+      // `content.delta`) inside ONE `emitTranslatedEvent` call — held open
+      // here by intercepting the FIRST `emit` so the abort fires mid-write.
+      const messages: SdkMessageLike[] = [
+        {
+          type: "stream_event",
+          event: { type: "content_block_delta", delta: { type: "text_delta", text: "Hel" } },
+        },
+        // A second delta right behind it: with the fix, `raced` stops the
+        // loop before this one is ever touched — proving no delta lands
+        // after the close, not merely that the first one gets closed.
+        {
+          type: "stream_event",
+          event: { type: "content_block_delta", delta: { type: "text_delta", text: "lo" } },
+        },
+      ];
+      const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      const controller = new AbortController();
+      (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+      const originalEmit = runtime.response.emit.bind(runtime.response);
+      let releaseFirstEmit: () => void = () => {};
+      const firstEmitHeld = new Promise<void>((resolve) => {
+        releaseFirstEmit = resolve;
+      });
+      let sawFirstEmit: () => void = () => {};
+      const firstEmitStarted = new Promise<void>((resolve) => {
+        sawFirstEmit = resolve;
+      });
+      let emitCount = 0;
+      (runtime.response as { emit: typeof originalEmit }).emit = async (event) => {
+        emitCount += 1;
+        if (emitCount === 1) {
+          sawFirstEmit();
+          await firstEmitHeld;
+        }
+        return originalEmit(event);
+      };
+
+      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      await firstEmitStarted;
+      controller.abort();
+
+      // While OUR OWN write is still held open, the run must not settle —
+      // that would mean the abort branch finalized past it, exactly the bug.
+      let settledEarly = false;
+      runPromise!.catch(() => {}).then(() => {
+        settledEarly = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(settledEarly).toBe(false);
+
+      releaseFirstEmit();
+      const caught = await withRaceTimeout(
+        runPromise!.then(
+          () => null,
+          (err) => err,
+        ),
+        500,
+      );
+      expect(isAbortLike(caught)).toBe(true);
+
+      // No message item is left `in_progress` — the interrupted write got a
+      // terminal `item.done`, not an orphaned open item.
+      const messageItems = runtime.getItems().filter((i) => i.type === "message") as Array<{
+        status: string;
+      }>;
+      expect(messageItems.some((i) => i.status === "in_progress")).toBe(false);
+
+      // No `content.delta` was ever written after the item's terminal
+      // `item.done` — including the second delta, which never lands at all.
+      const events = runtime.response.getEvents();
+      const doneIndex = events.findIndex(
+        (e) => e.type === "item.done" && (e as { item?: { type?: string } }).item?.type === "message",
+      );
+      expect(doneIndex).toBeGreaterThan(-1);
+      expect(events.slice(doneIndex + 1).some((e) => e.type === "content.delta")).toBe(false);
+    });
+
+    it("classifies the abort branch by which racer won, not by the reason's error shape — a TimeoutError reason still gets the in-flight-write wait and an unwrapped rethrow", async () => {
+      // A caller-supplied `AbortSignal.timeout(...)` rejects with a
+      // `TimeoutError` DOMException, which `isAbortLike` does not recognize
+      // (it only matches `AbortError`-shaped reasons). Deciding the abort
+      // branch from `isAbortLike(err)` therefore misses this signal
+      // entirely — skipping the in-flight-write wait and wrapping the
+      // reason as `ClaudeAgentRunError` instead of handing it back
+      // unwrapped. The branch must be decided by which racer won
+      // (`ctx.signal.aborted`), never by the reason's shape.
+      const messages: SdkMessageLike[] = [
+        {
+          type: "stream_event",
+          event: { type: "content_block_delta", delta: { type: "text_delta", text: "Hel" } },
+        },
+      ];
+      const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      const controller = new AbortController();
+      (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+      const originalEmit = runtime.response.emit.bind(runtime.response);
+      let releaseFirstEmit: () => void = () => {};
+      const firstEmitHeld = new Promise<void>((resolve) => {
+        releaseFirstEmit = resolve;
+      });
+      let sawFirstEmit: () => void = () => {};
+      const firstEmitStarted = new Promise<void>((resolve) => {
+        sawFirstEmit = resolve;
+      });
+      (runtime.response as { emit: typeof originalEmit }).emit = async (event) => {
+        sawFirstEmit();
+        await firstEmitHeld;
+        return originalEmit(event);
+      };
+
+      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      await firstEmitStarted;
+      const timeoutReason = new DOMException("The operation timed out.", "TimeoutError");
+      controller.abort(timeoutReason);
+
+      // While our own write is still held open, the run must not settle —
+      // proves the in-flight-write wait still runs for a TimeoutError reason.
+      let settledEarly = false;
+      runPromise!.catch(() => {}).then(() => {
+        settledEarly = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(settledEarly).toBe(false);
+
+      releaseFirstEmit();
+      const caught = await withRaceTimeout(
+        runPromise!.then(
+          () => null,
+          (err) => err,
+        ),
+        500,
+      );
+
+      // Rethrown unwrapped: the caller gets its own TimeoutError back,
+      // never a ClaudeAgentRunError — and never mind that isAbortLike
+      // doesn't recognize it.
+      expect(caught).toBe(timeoutReason);
+      expect(caught).not.toBeInstanceOf(ClaudeAgentRunError);
+      expect(isAbortLike(caught)).toBe(false);
+
+      const messageItems = runtime.getItems().filter((i) => i.type === "message") as Array<{
+        status: string;
+      }>;
+      expect(messageItems.some((i) => i.status === "in_progress")).toBe(false);
+    });
   });
 
   it("routes onToolApproval deny onto canUseTool and emits a status item", async () => {
@@ -1047,7 +1398,15 @@ describe("claudeCodeAgent — resume and onSession", () => {
       configurable: true,
     });
 
-    await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+    // This was a bare `await` when the test was written, because on that base
+    // an already-fired signal still let the run finish. FIX-1301 makes it
+    // REJECT instead — that is the point of the change, and this run rejecting
+    // is expected, not a failure. Asserted rather than swallowed, so the merge
+    // pins BOTH behaviours here: the run ends on its own signal, AND the host
+    // still learned the session before it did.
+    await expect(
+      block.config.execute?.({ prompt: "go" }, runtime.ctx as never),
+    ).rejects.toThrow();
 
     // However the run ends, the host was told which session it was in.
     expect(onSession).toHaveBeenCalledWith("sess_named", expect.anything());
