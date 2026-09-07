@@ -2,8 +2,8 @@
 
 **In one line:** a flow instance is addressed by a global `id`; kind is the
 shape; every delivery has an explicitly declared recipient instance; isolation
-and durable ownership follow that instance — so a second copy of the same kind
-is a real copy, not a silent alias of the first.
+and durable ownership follow that instance; Devtool shows the selected copy's
+own work — so a second copy is real, not a silent alias of the first.
 
 ## The 60-second version
 
@@ -40,7 +40,7 @@ kind can enter each other's sessions.
   (FIX-1315)                    (or a loud refuse)
 ```
 
-**This-cycle floor (Proof) is [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616)
+**Original this-cycle floor (Proof): [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616)
 (#1616).** Architect + Cycle PM agreed 2026-09-07; recorded without Jake.
 Jake + Architect already locked the shape the same day. The cut: cardinality,
 global id address, no first-wins, isolation on instance id, envelope carries
@@ -60,16 +60,24 @@ semantic switch and FIX-1322's full consumer/owner cutover land atomically
 in one shared future implementation PR, with FIX-1322 as the single
 integration owner. Registry is a logical prerequisite, not a separately
 merged step. FIX-1323 remains separate; safe rollout still requires the
-complete floor proof, including isolation.
+complete floor proof, including isolation and the Devtool outcome below.
 
-**Later, not this-cycle Proof (D-10):** Devtool instance switcher; Workforce
-hire/mint as collection kinds (L2, not Conductor Proof). Full epic-as-one is
-cut.
+**Owner scope expansion (2026-09-07):** "I'm reading through the specs now.
+BTW I think we also need to at least update Devtool. I'm not sure what other
+"workplace helpers" were listed but Devtool needs to properly support viewing
+different flow instances." Recorded on Linear FIX-1320 comment
+`0c020ff0-433e-4a92-9e4b-68f1ef59e8c6`. Existing FIX-1324 is now the fourth
+required outcome: distinguish/list same-kind instances, explicitly select one,
+and inspect its own sessions and requests. This authorizes the scope addition
+and its own spec/gate, not individual spec approval, implementation, or merge.
+
+**Later, not this-cycle Proof:** only FIX-1325, Workforce hire/mint as
+collection kinds (L2). Devtool no longer shares D-10's original deferral.
 
 **Linear parent:** [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320).
-Floor children FIX-1321..1323; later FIX-1324 / FIX-1325. Decision of record:
+Floor children FIX-1321..1324; later FIX-1325. Original decision of record:
 [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616) /
-[FIX-1319](https://linear.app/fixpoint-labs/issue/FIX-1319). This file lives on
+[FIX-1319](https://linear.app/fixpoint-labs/issue/FIX-1319), expanded by the owner above. This file lives on
 branch `epic/flow-instances`; the PR never merges.
 
 ---
@@ -85,10 +93,10 @@ branch `epic/flow-instances`; the PR never merges.
 > key cannot assign that data to a collection instance. Conductor already
 > ships custom `id: boardId`; omit→singleton must not rewrite or guess that id.
 >
-> **3. Theme 1 — declared recipient and exact-id precedence.** Matching an
-> action handler does not select its recipient instance. Check that the
-> declared id wins, including collisions, without inventing a chat-routing
-> feature; otherwise another copy can receive work meant for one instance.
+> **3. Theme 6 — four outcomes, no lifecycle UI.** Does the Devtool view
+> distinguish same-kind copies and keep inspection and existing controls on
+> the selected instance? CLI proof cannot establish that UI result. Wrong
+> scope either leaves operators on the wrong copy or invents admin tooling.
 
 ---
 
@@ -97,7 +105,7 @@ branch `epic/flow-instances`; the PR never merges.
 **Objective.** Make multi-instance flows first-class and addressable, without
 the bare-kind first-wins bug (FIX-1315). The public dispatch address is a
 universal flow instance `id`. Kind is the shape. Isolation and durable
-ownership follow the instance.
+ownership follow the instance; Devtool makes the distinct copies inspectable.
 
 Today you can register two instances of one kind and the runtime will still
 treat them as one: dispatch picks the first, "isolated" user/org state is
@@ -105,9 +113,10 @@ keyed on kind, and sessions record only the kind, so both copies share the
 bucket and can enter each other's work. When this epic's floor lands, naming
 an explicitly declared instance runs that instance, a bare kind that would be
 ambiguous refuses, isolated state does not leak across copies, and a session
-owned by one instance refuses the other.
+owned by one instance refuses the other. An operator can list both copies,
+select either explicitly, and inspect that instance's sessions and requests.
 
-**Holistic necessity.** Three this-cycle issues. INST-1 (cardinality +
+**Holistic necessity.** Four this-cycle issues. INST-1 (cardinality +
 registry) and INST-2 (dispatch / envelope / ownership stamp) are the same lie
 on two doors: if either keeps `get(kind)` first-wins, FIX-1315 is not closed.
 They therefore land atomically in one implementation PR owned by FIX-1322,
@@ -121,14 +130,15 @@ without isolation is a successful lookup into the wrong durable cell. Do not
 cut INST-3 to later.
 
 Declared recipients, ownership, migration, and kind/id collision complete
-that same floor. They are shared contract (themes 1, 4, 5), not a fourth issue
-and not left for each INST spec to invent. INST-2 owns recipient addressing.
-[D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616)
-already cut the other inflation: **full epic-as-one (Devtool + mint in the
-same ship) is not this cycle.** Devtool (INST-4) is how an operator looks at
-instances, not whether dispatch is true. Workforce hire/mint (INST-5) is an
-L2 consumer, not the Conductor floor. The floor unblocks both; it does not
-build them.
+that same core floor. They are shared contract (themes 1, 4, 5), not extra
+issues and not left for each INST spec to invent. INST-2 owns recipient addressing.
+**INST-4 is now required by the owner:** correct execution alone is not enough
+if Devtool hides the second copy or inspects the first copy's work. It owns
+instance list/select/session/request viewing and the minimum existing
+client/server read-path plumbing needed for it. Existing visible controls
+must target the selected instance, not a different copy. It does not add
+instance mint/create/rename/delete/admin lifecycle UX or a generic UI overhaul.
+Workforce hire/mint (INST-5) remains the deferred L2 consumer.
 
 **Proof.** INST-2 + INST-3 goal check, runnable, not an assertion: two
 registered instances of one `collection` kind, each with `isolateUserState`.
@@ -142,11 +152,23 @@ Existing singleton flows (`id === kind`, cardinality omitted or `singleton`)
 keep today's URLs and today's isolated buckets. Existing custom-id flows
 (Conductor `id: boardId`) keep those ids via an explicit `collection`
 declaration — the upgrade does not invent a singleton owner for them.
-The shared INST-1 + INST-2 landing does not prove a safe partial rollout:
-INST-3's isolation and migration prerequisites must be satisfied, and the
-complete floor check above must pass before rollout is claimed safe.
 
-**Lead measure.** The set's goal-proven floor issues, named each report.
+**Devtool Proof (INST-4), planned, not executed:** on the real Devtool UI
+connected to two registered instances of one collection kind with distinct
+sessions and requests, visually verify both instances are distinguishable.
+Select A, inspect A's sessions and a request, switch to B and inspect B's work,
+then return to A without wrong-copy lookup or stale B content. Exercise
+existing visible controls affected by selection and verify their target is
+that instance. Verify singleton viewing remains compatible. Capture actual
+UI observations; a CLI core goal, API response, or mocked component is not
+proof of the operator-facing result.
+
+The shared INST-1 + INST-2 landing does not prove a safe partial rollout:
+INST-3's isolation and migration prerequisites must be satisfied. Complete
+epic rollout/wrap requires all four outcomes and both core and Devtool proofs.
+
+**Lead measure.** The four goal-proven floor issues, named each report;
+Devtool counts only with real-surface UI evidence, not the core CLI proof.
 
 **Kill line.** If the only reason to register two instances of one kind is a
 product we have decided not to build, this is a rename of `get` and the epic
@@ -156,7 +178,8 @@ already ships cross-flow dispatch whose address is kind-only.
 
 **Not doing this cycle:**
 
-- **Devtool instance list/switch/sessions.** INST-4, later. Debug, not Proof.
+- **Devtool instance lifecycle/admin UX or generic UI overhaul.** No new
+  mint/create/rename/delete surface; existing controls remain correctly addressed.
 - **Workforce hire helper, mint-on-bare-kind for collection kinds.** INST-5,
   later. L2 slice 2/3, not the Conductor floor.
 - **A durable public `(kind, id)` address.** Jake rejected it (2026-09-07).
@@ -167,7 +190,7 @@ already ships cross-flow dispatch whose address is kind-only.
   deprecation shipped by this epic. No chat-targeting feature, selection
   configuration, or broadcast-policy redesign; chat does not gate Proof.
 - **Message-board delivery or a new fan-out mode.** Neither is in this epic.
-- **A fourth floor issue for recipients or ownership.** INST-2 owns addressing;
+- **An extra floor issue for recipients or ownership.** INST-2 owns addressing;
   themes 4–5 constrain INST-1..3.
 
 **Provenance.** Shape: Jake + FSD Architect, 2026-09-07 (address, cardinality,
@@ -187,12 +210,16 @@ and Linear FIX-1320 (comment `4a714d24-2f94-4066-af07-15a74e7355ab`).
 This closes only the §1 objective gate under D-10 / FIX-1319.
 It released child spec authoring and FIX-1322's pre-code route assessment;
 it is **not individual spec approval or merge authorization**.
-All three specs are now open awaiting their own approvals. No implementation
-or goal proof exists. Cross-spec coherence still requires all individual
-spec approvals and then separate owner approval to run that pass.
-EM's sequencing resolution changes neither that objective nor any runtime
-contract. It is not whole-spec approval or the gated cross-spec review;
-this direct decision fold consumes zero automatic review rounds.
+The owner subsequently added FIX-1324's Devtool outcome as the fourth
+required issue (quote and durable record above), superseding only its earlier
+deferral. The original objective approval stands. The three core specs are
+open awaiting their own approvals; FIX-1324 is authoring its own spec.
+No individual spec is approved; no implementation or goal proof exists.
+All four specs must clear individual approval, then the owner must separately
+authorize cross-spec coherence. `crossSpecCleared=false`.
+EM's sequencing resolution changes no runtime contract. Neither it nor the
+owner-directed scope/index folds is a review round: zero automatic rounds
+spent; historic epic review counters remain unknown and are not reset.
 
 ---
 
@@ -342,16 +369,20 @@ this direct decision fold consumes zero automatic review rounds.
    INST-3 owns isolation-key migration; INST-2 owns kind-only
    session/request records. Both obey this rule.
 
-6. **Proof is the floor. Later issues do not gate wrap.** [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616)
-   cut the full epic-as-one. INST-1..3 are the Conductor / `#1600` /
-   FIX-1315 cluster. INST-4 (Devtool) and INST-5 (mint + Workforce hire)
-   stay in this epic's index so the direction is one place; they are
-   **not** this-cycle Proof. The epic may wrap when all three floor issues
-   have merged and the full-floor goal is proven, including isolation.
+6. **Four required outcomes; Workforce helpers stay later.** The owner
+   expanded D-10's original cut: INST-1..3 remain the Conductor / `#1600` /
+   FIX-1315 core cluster; INST-4 adds correct Devtool viewing this cycle.
+   Devtool consumes the same exact instance identity and durable-owner
+   read paths, with kind for description/grouping, never wrong-copy selection.
+   Minimal existing client/server read plumbing and correct addressing of
+   existing visible controls belong to this outcome; new instance lifecycle
+   or admin UX does not. The epic may wrap only when all four issues have
+   merged and the full-floor core and real-Devtool UI goals are proven.
    The shared INST-1 + INST-2 PR alone is not a safe-rollout proof.
+   Only INST-5 (mint + Workforce hire) remains deferred and does not gate wrap.
    Workforce, when it comes: a hireable member is a `collection` kind plus
    minted global ids; a seat binds a worker **flow id**, not a kind. No
-   issue in this epic invents that surface early.
+   issue in this cycle invents that surface early.
 
 7. **Invent kill — four things, not a mood.** No new Team / Channel /
    MessageBoard L1. No durable public `(kind, id)` address. No second
@@ -374,10 +405,22 @@ this direct decision fold consumes zero automatic review rounds.
    instance-identity and durable-owner prerequisites from the shared
    landing before its dependent paths can land. Specs may proceed in
    parallel; that is not permission to merge prerequisites separately.
-   Full-floor proof includes INST-3 before rollout is claimed safe.
+   INST-4 is a separate required outcome consuming the same identity and
+   durable-owner prerequisites; its spec owns the minimal Devtool changes.
+   The later owner-gated cross-spec pass checks any shared read-path boundary.
+   Full-floor proof includes INST-3 and INST-4 before rollout is complete.
    `#1600` can land before the shared PR — it already says FIX-1315 owns
-   instance addressing, which INST-2 then reshapes. INST-4 and INST-5 do
-   not start this cycle unless the owner pulls them.
+   instance addressing, which INST-2 then reshapes. INST-5 does not start
+   this cycle; the owner has pulled INST-4 only.
+
+   ```mermaid
+   flowchart TD
+     A["FIX-1321 + FIX-1322: one atomic implementation PR; owner FIX-1322"]
+     A --> B["FIX-1323: isolated state + attributable migration"]
+     A --> C["FIX-1324: Devtool instance list/select/inspection"]
+     B --> D["Complete floor: core proof + real Devtool UI proof"]
+     C --> D
+   ```
 
 ---
 
@@ -393,11 +436,12 @@ Placeholder names INST-1..5 remain the epic labels; the filed ids are below.
 | [FIX-1321](https://linear.app/fixpoint-labs/issue/FIX-1321) INST-1 | Cardinality on `defineFlow` + registry: `singleton` or `collection`; id rules; reject duplicate global ids; exact-id index; custom-id-without-collection refuse; no first-wins `get(kind)` | spec (Feature) | [#1631](https://github.com/fixpoint-labs/flow-state-dev/pull/1631) | — (future shared PR with FIX-1322; integration owner FIX-1322) | In Spec Review — awaiting individual approval; no independent semantic-switch landing |
 | [FIX-1322](https://linear.app/fixpoint-labs/issue/FIX-1322) INST-2 | Dispatch / envelope: explicitly declared recipient instance; exact-id precedence then bare-kind refuse; minimal instance-address compatibility, no chat redesign; persist owning instance id on sessions/requests; adoption/re-entry check; same-kind cross-instance = `#1600` cross-flow; carry `flow.id` (align #1600); reshape FIX-1315 | spec (Feature) | [#1633](https://github.com/fixpoint-labs/flow-state-dev/pull/1633) | — (single integration owner of future shared FIX-1321 + FIX-1322 PR) | In Spec Review — awaiting individual approval; independent historical-child migration question unresolved |
 | [FIX-1323](https://linear.app/fixpoint-labs/issue/FIX-1323) INST-3 | Isolation: scope-keys + resource `flowIsolation` key on instance id; dual-read only where owner is known (theme 5) | spec (Feature) | [#1632](https://github.com/fixpoint-labs/flow-state-dev/pull/1632) | — (separate; requires identity/owner prerequisites) | In Spec Review — awaiting individual approval |
+| [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) INST-4 | Devtool: distinguish/list same-kind instances; explicit instance selection; own sessions/request inspection; minimal read-path plumbing and correct existing-control addressing | spec (Feature) | — (authoring) | — | In Spec Dev — fourth required outcome; own individual approval pending |
 
 FIX-1322's pre-code assessment promoted Bug → Feature because the work
 changes the public and persisted owner contract; it therefore follows the
 spec route. No implementation PRs exist.
-Separate acceptance and goal accountability remain for all three issues.
+Separate acceptance and goal accountability remain for all four issues.
 FIX-1321 and FIX-1322 share only the future atomic implementation landing;
 each still requires its own spec approval, followed by the separately
 approved cross-spec pass before implementation.
@@ -420,7 +464,6 @@ approval into another's gate.
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 | --- | --- | --- | --- | --- | --- |
-| [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) INST-4 | Devtool: list/switch/sessions by instance id; kind as grouping | spec | — | — | Later (debug, not Proof) |
 | [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) INST-5 | Mint-on-bare-kind for collection kinds + Workforce hire helper | spec | — | — | Later (L2 slice 2/3) |
 
 FIX-1315 is reshaped by INST-2, not implemented as written.
@@ -452,7 +495,10 @@ this cycle), [D-9](https://github.com/Fixpoint-labs/flow-state-dev/issues/1562),
 - **~~Is INST-5 this epic or later?~~** *Resolved by [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616):*
   later. Not this-cycle Proof.
 
-- **~~Is Devtool (INST-4) this-cycle Proof?~~** *Resolved by D-10:* no.
+- **~~Is Devtool (INST-4) this-cycle Proof?~~** *Resolved by owner expansion
+  (2026-09-07):* yes. The quote above supersedes D-10's Devtool deferral,
+  not the Workforce deferral. FIX-1324 has its own spec/approval gate;
+  real Devtool UI verification is required proof, not claimed executed.
 
 - **~~Must a recipient instance be declared, and should chat routing shape this epic?~~**
   *Resolved (owner, 2026-09-07), following [the inbound-chat review](https://github.com/fixpoint-labs/flow-state-dev/pull/1617#discussion_r3950802895):*
@@ -506,3 +552,9 @@ this cycle), [D-9](https://github.com/Fixpoint-labs/flow-state-dev/issues/1562),
   prerequisite-dependent isolation delivery and full-floor proof. Objective
   and runtime contracts unchanged; zero automatic review rounds. FIX-1322's
   independent historical-child migration question remains unresolved.
+- **2026-09-07 — owner adds Devtool outcome** — existing FIX-1324 joins
+  FIX-1321..1323 as the fourth required outcome, with its own spec gate and
+  planned real-Devtool UI proof. Only FIX-1325 remains deferred. Preserve the
+  objective approval, atomic FIX-1321 + FIX-1322 plan, singleton compatibility,
+  isolation floor and historical-child migration blocker. No individual
+  approval or implementation authorization; zero automatic review rounds.
