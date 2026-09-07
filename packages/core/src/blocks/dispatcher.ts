@@ -71,7 +71,6 @@
  *     triage: triageWorker,                                   // inline
  *     implement: dispatcher({                                 // hands off
  *       name: "hand-off-implement",
- *       type: "task",
  *       action: "implement",                                  // flow.task.actions.implement
  *       session: "per-task",
  *     }),
@@ -134,8 +133,8 @@ export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodT
   name: string;
   description?: string;
   /**
-   * Discriminant. Omit it — `internal` is the default. Only a task-board seat
-   * sets `type: "task"`.
+   * Discriminant. Omit it — `internal` is the default. A task-board seat is
+   * a dispatcher whose `session` is a task policy; do not set `type` there.
    */
   type?: "internal";
   /**
@@ -182,7 +181,12 @@ export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodT
 export interface TaskDispatcherConfig<TPayload = unknown> {
   name: string;
   description?: string;
-  type: "task";
+  /**
+   * Discriminant. Omit it — a `"per-task"` / `"per-worker"` / `{ key }`
+   * session is already a task seat. The board reads `dispatch.type === "task"`
+   * off the block; callers do not set this.
+   */
+  type?: "task";
   /** The entry name — resolves `flow.task.actions[action]`. Verified at `defineFlow` for a same-flow address, at the seam for a cross-flow one. */
   action: string;
   /**
@@ -197,23 +201,23 @@ export interface TaskDispatcherConfig<TPayload = unknown> {
   transient?: boolean;
 }
 
-/** Either dispatcher config; the `type` field discriminates. */
+/** Either dispatcher config; `session` (and an explicit `type`) discriminates. */
 export type DispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny, TPayload = unknown> =
   | InternalDispatcherConfig<TInputSchema>
   | TaskDispatcherConfig<TPayload>;
 
 /** Build a dispatcher block. See the module header. */
-export function dispatcher<TInputSchema extends ZodTypeAny = ZodTypeAny>(
-  config: InternalDispatcherConfig<TInputSchema>
-): BlockDefinition<TInputSchema, typeof dispatchHandleSchema>;
 export function dispatcher<TPayload = unknown>(
   config: TaskDispatcherConfig<TPayload>
 ): BlockDefinition<typeof taskDispatchInputSchema, typeof dispatchHandleSchema>;
+export function dispatcher<TInputSchema extends ZodTypeAny = ZodTypeAny>(
+  config: InternalDispatcherConfig<TInputSchema>
+): BlockDefinition<TInputSchema, typeof dispatchHandleSchema>;
 export function dispatcher(
   config: DispatcherConfig
 ): BlockDefinition<any, typeof dispatchHandleSchema> {
   const { name, description, action, transient } = config;
-  const type = config.type ?? "internal";
+  const type = resolveDispatcherType(config);
   if (typeof action !== "string" || action.length === 0) {
     throw new Error(`[dispatcher] "${name}" must name a non-empty action entry`);
   }
@@ -240,7 +244,7 @@ export function dispatcher(
     );
   }
 
-  if (config.type === "task") {
+  if (type === "task") {
     const session = config.session;
     if (!isTaskSessionPolicy(session)) {
       throw new Error(
@@ -278,13 +282,14 @@ export function dispatcher(
     return markDispatcher(block, address);
   }
 
-  const { session, payload } = config;
+  const internal = config as InternalDispatcherConfig;
+  const { session, payload } = internal;
   const address: DispatchAddress = {
     type: "internal",
     action,
     ...(flowKind !== undefined ? { flowKind } : {})
   };
-  const inputSchema = config.inputSchema ?? z.unknown();
+  const inputSchema = internal.inputSchema ?? z.unknown();
   const block = handler({
     ...common,
     inputSchema,
@@ -318,6 +323,27 @@ function isTaskSessionPolicy(value: unknown): value is TaskSessionPolicy<any> {
     value !== null &&
     typeof (value as { key?: unknown }).key === "function"
   );
+}
+
+/**
+ * `type` is optional. A task-board session policy (`"per-task"`,
+ * `"per-worker"`, or a bare `{ key }` with no internal fields) is a task
+ * seat. Everything else — including `{ key }` plus `inputSchema` / `payload`
+ * — is `internal`.
+ */
+function resolveDispatcherType(config: DispatcherConfig): string {
+  if (config.type !== undefined) return config.type;
+  const session = config.session;
+  if (session === "per-task" || session === "per-worker") return "task";
+  if (typeof session === "object" && session !== null) {
+    if ("id" in session || "from" in session) return "internal";
+    if (typeof (session as { key?: unknown }).key === "function") {
+      const keyed = config as InternalDispatcherConfig;
+      if (keyed.inputSchema != null || keyed.payload != null) return "internal";
+      return "task";
+    }
+  }
+  return "internal";
 }
 
 /**

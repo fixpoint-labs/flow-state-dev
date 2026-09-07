@@ -90,6 +90,44 @@ describe("dispatcher — the definition", () => {
     expect(seat.dispatch).toEqual({ type: "task", action: "implement", session: "per-task" });
   });
 
+  it("is a task seat from the session policy when type is omitted", () => {
+    const perTask = dispatcher({
+      name: "hand-off-implement",
+      action: "implement",
+      session: "per-task"
+    });
+    expect(perTask.dispatch).toEqual({ type: "task", action: "implement", session: "per-task" });
+
+    const byKey = dispatcher({
+      name: "hand-off-by-topic",
+      action: "implement",
+      session: { key: (task: { taskId: string }) => task.taskId }
+    });
+    expect(byKey.dispatch).toEqual({
+      type: "task",
+      action: "implement",
+      session: { key: expect.any(Function) }
+    });
+  });
+
+  it("stays internal when a keyed session carries inputSchema or an explicit type", () => {
+    const withSchema = dispatcher({
+      name: "run-in-background",
+      action: "analyze",
+      inputSchema: z.object({ documentId: z.string() }),
+      session: { key: (input) => input.documentId }
+    });
+    expect(withSchema.dispatch).toEqual({ type: "internal", action: "analyze" });
+
+    const explicit = dispatcher({
+      name: "run-in-background",
+      type: "internal",
+      action: "analyze",
+      session: { key: () => "doc:1" }
+    });
+    expect(explicit.dispatch).toEqual({ type: "internal", action: "analyze" });
+  });
+
   it("lets a task seat name another flow", () => {
     const seat = dispatcher({
       name: "hand-off-billing",

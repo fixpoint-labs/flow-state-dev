@@ -738,7 +738,7 @@ function resolveDispatchTargets(
       `Flow "${kind}" declares task entry "${name}", but no task board reachable from the ` +
         `flow hands off to it. Only a board can dispatch a task — it mints the claim the entry ` +
         `runs under — so an entry without one could never be reached. Add a ` +
-        `\`dispatcher({ type: "task", action: "${name}" })\` seat to a board the flow ` +
+        `\`dispatcher({ action: "${name}", session })\` seat to a board the flow ` +
         `reaches, or remove the entry.`
     );
   }

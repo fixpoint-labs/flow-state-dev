@@ -5,7 +5,7 @@ implementation that takes an hour, a research pass, a draft nobody is waiting
 on. The framework runs that work in a **child session** of the session that
 started it, on a request of its own, and calls it *dispatched*. A flow hands it
 off in one of two ways: a `dispatcher()` block in a running request, or a task
-board whose seat holds a `dispatcher({ type: "task" })`, which hands each row
+board whose seat holds a `dispatcher({ action, session })`, which hands each row
 it claims to a worker declared under `flow.task.actions`.
 
 This document owns one question the other docs each answer a slice of: **what

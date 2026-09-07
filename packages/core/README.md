@@ -530,7 +530,7 @@ Every arrival at a flow is a **dispatch** of one **type**, delivered to one **en
 |---|---|---|
 | `public` | `actions` | A caller over HTTP, MCP, voice, or a custom transport |
 | `internal` | `internal.actions` | A `dispatcher()` block in one of the flow's own running requests |
-| `task` | `task.actions` | A task board handing a claimed row to a child session, from a `dispatcher({ type: "task" })` seat |
+| `task` | `task.actions` | A task board handing a claimed row to a child session, from a `dispatcher({ action, session })` seat (stamped `type: "task"`) |
 | `chat` | `chat.on` | The chat adapter |
 | `webhook` | `webhooks.<provider>.on` | The webhook adapter |
 | `schedule` | `schedules.static` | The host scheduler |
@@ -543,7 +543,7 @@ A `task` entry is declared as a plain block, but a `task` dispatch does not run 
 
 ### `dispatcher(config)`
 
-A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `action`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes, told apart by `type`: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[action]`, and a `task` dispatcher (`TaskDispatcherConfig`) is a seat on a task board that hands the board's rows to `flow.task.actions[action]`. Omit `type` for `internal` — only a task-board seat sets `type: "task"`.
+A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `action`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[action]`, and a `task` dispatcher (`TaskDispatcherConfig`) is a seat on a task board that hands the board's rows to `flow.task.actions[action]`. Omit `type` in both cases — ordinary dispatchers default to `internal`, and a task-board seat is a dispatcher whose `session` is `"per-task"`, `"per-worker"`, or `{ key }`. The stamped address on a seat is still `type: "task"`.
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -600,7 +600,7 @@ export default defineFlow({
 
 | Field | What it does |
 |---|---|
-| `type` | Omit it to send `internal` (this request's own authority). `"task"` sends a claim on a durable row and is meaningful only as a task board seat. |
+| `type` | Omit it. Ordinary dispatchers send `internal`. A task-board seat stamps `type: "task"` from its session policy. An explicit `"task"` is still accepted. |
 | `action` | The entry name, resolved as `flow.internal.actions[action]` or `flow.task.actions[action]`. Checked when the flow is defined, unless `flowKind` names another flow. |
 | `flowKind` | The **other flow** the entry lives on, on an `internal` or `task` dispatcher. Omit to address this flow's own entry. Checked at run time, not when the flow is defined — see [Dispatching to another flow](#dispatching-to-another-flow). |
 | `inputSchema` | `internal` only. What the block accepts. Defaults to `z.unknown()`. |
@@ -622,7 +622,6 @@ const board = taskBoard({
     triage: triageWorker,                        // runs inline, in the drain
     implement: dispatcher({                      // hands off
       name: "hand-off-implement",
-      type: "task",
       action: "implement",                       // flow.task.actions.implement
       session: "per-task",
     }),

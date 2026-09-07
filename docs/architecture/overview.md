@@ -121,7 +121,7 @@ Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicSt
 
 ### Dispatched work — outliving the request
 
-Work a flow hands off — through a `dispatcher()` block, or a task board seat holding a `dispatcher({ type: "task" })` — runs in a **child session** that keeps going after the request that started it has returned. Where it runs, whether it survives the process, and what recovers it if the process stops all depend on the deployment topology. See [Dispatched Work](./dispatched-work.md).
+Work a flow hands off — through a `dispatcher()` block, or a task board seat holding a `dispatcher({ action, session })` — runs in a **child session** that keeps going after the request that started it has returned. Where it runs, whether it survives the process, and what recovers it if the process stops all depend on the deployment topology. See [Dispatched Work](./dispatched-work.md).
 
 ### Streaming — resilient by default
 

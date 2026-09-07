@@ -126,7 +126,7 @@ Read next: **[Starting a job from a flow](/docs/server/background-work#starting-
 
 ### From a task board seat
 
-A board is a list of tasks plus a set of named workers that claim them. A seat normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ type: "task" })` in the seat's position instead and the board hands each claimed row to a worker running in a child session. The worker is declared once on the flow, under `task.actions`, and the seat names it with `action`:
+A board is a list of tasks plus a set of named workers that claim them. A seat normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ action, session })` in the seat's position instead and the board hands each claimed row to a worker running in a child session. The worker is declared once on the flow, under `task.actions`, and the seat names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -142,7 +142,6 @@ const board = taskBoard({
   workers: {
     investigate: dispatcher({
       name: "hand-off-investigate",
-      type: "task",
       action: "investigate",      // flow.task.actions.investigate
       session: "per-task",        // one child session per row
     }),

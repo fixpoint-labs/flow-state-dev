@@ -92,7 +92,6 @@ await runGoal(async () => {
       // below declares what runs there.
       [fixture.seat]: dispatcher({
         name: `${BOARD_ID}-hand-off`,
-        type: "task",
         action: fixture.entry,
         session: "per-task",
       }) as unknown as TaskWorker,

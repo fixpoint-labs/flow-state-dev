@@ -604,7 +604,6 @@ export function conductorFlow(options: ConductorFlowOptions) {
       // there is the manager, declared on the flow's `task.actions` below.
       [ASSIGNEE]: dispatcher({
         name: `${boardId}-hand-off`,
-        type: "task",
         action: ASSIGNEE,
         session: "per-task",
       }),

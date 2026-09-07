@@ -330,7 +330,7 @@ describe("task entries", () => {
   });
 
   it("refuses a task dispatcher no board holds", () => {
-    // An authored `dispatcher({ type: "task" })` that is reachable from an
+    // An authored task dispatcher that is reachable from an
     // action without sitting on a board: nothing minted a claim for it, so
     // the entry it names would run against a row nothing verified.
     const loose = dispatcher({ name: "loose", type: "task", action: "implement", session: "per-task" });

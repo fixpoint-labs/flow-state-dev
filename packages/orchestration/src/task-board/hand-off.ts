@@ -103,7 +103,7 @@ export function resolveWorkerSlot(
   }
   const fix =
     `A seat is a block. To run it inline, put the block there; to hand it off, put a ` +
-    `\`dispatcher({ type: "task", action, session })\` there and declare the block on the flow ` +
+    `\`dispatcher({ action, session })\` there and declare the block on the flow ` +
     `as \`tasks: { [target]: { block } }\`.`;
   if (typeof slot === "object" && slot !== null) {
     const keys = Object.keys(slot);
@@ -309,7 +309,7 @@ export function assertHandOffBoardSupported(options: {
     throw new Error(
       `[task-board] "${name}" holds a task dispatcher at ${unnamed.map((s) => s.label).join(", ")}, ` +
         `but only a named seat can hand off — its name is the assignee the row is routed by. ` +
-        `Declare it under \`workers: { <name>: dispatcher({ type: "task", … }) }\`.`
+        `Declare it under \`workers: { <name>: dispatcher({ action, session }) }\`.`
     );
   }
 

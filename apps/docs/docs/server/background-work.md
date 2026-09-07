@@ -129,7 +129,7 @@ dispatcher can branch on `refused` knowing no child is running. A `key` or
 `id` function that returns an empty string throws a plain `Error` naming the
 block.
 
-A task board seat can start a job the same way: a `dispatcher({ type: "task"
+A task board seat can start a job the same way: a `dispatcher({ action, session
 })` under `workers` sends each claimed row to one of the flow's `task.actions`
 entries, and the child session lands in the same listing. See [Task board →
 Seats that hand off](../orchestration/task-board.md#seats-that-hand-off).
