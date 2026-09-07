@@ -235,7 +235,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <span><i class="sw-dash"></i> proposed &#8212; named, not built</span>
     <span><i class="sw" style="background: var(--prose-soft); border: 1.2px solid var(--prose)"></i> later / cut &#8212; not foundation</span>
   </div>
-  <p class="sib">Pinned to <code>origin/main</code> at <code>746d91095</code> (2026-09-07). Sibling: <a href="conductor.html">Conductor</a> &#8212; this-cycle coding product on the same dispatch spine. Cross-flow PR <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> is open; the refuse is still on this pin.</p>
+  <p class="sib">Pinned to <code>origin/main</code> at <code>d8899c9b5</code> (2026-09-07, #1614). Sibling: <a href="conductor.html">Conductor</a> &#8212; this-cycle coding product on the same dispatch spine. Cross-flow PR <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> is open; the refuse is still on this pin.</p>
 </header>
 
 <section id="what">
@@ -388,7 +388,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>What it is</td><td>Substrate. Composable primitives with almost no product opinion.</td><td>Conventions. A default way to use the substrate.</td></tr>
         <tr><td>Who it is for</td><td>Authors who will compose their own harness.</td><td>Authors who want to get going, and still extend everything.</td></tr>
         <tr><td>What it must not do</td><td>Absorb one product&#8217;s knowledge. That is tenet&nbsp;4.</td><td>Invent a primitive the substrate does not have. Compose, or file a Layer&nbsp;1 gap.</td></tr>
-        <tr><td>Phased implement</td><td>Unblockers first: cross-flow, same-session resume, bare-kind / per-seat, member memory scope. Cross-flow still refused on this pin.</td><td>This page names the 1&#8594;4 build-out. Conductor also cares about the L1 slice. It does not wait on Workforce product.</td></tr>
+        <tr><td>Phased implement</td><td>Unblockers first: instances (FIX-1320 INST-1..3), then conversation + board proofs, then durable delegation, then the materializer. Cross-flow still refused on this pin. Persona FIX-796 is independent.</td><td>This page names the 1&#8594;4 build-out. The readiness sequence is named gaps on that inventory &#8212; not a fifth slice. Conductor also cares about the L1 slice. It does not wait on Workforce product.</td></tr>
       </tbody>
     </table>
   </div>
@@ -400,16 +400,16 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 460" role="img" aria-label="Four-slice proposed roadmap. One: Layer 1 unblockers Conductor also cares about — cross-flow blocked on pull 1600, same-session resume FIX-1246 backlog, bare-kind per-seat FIX-1315 backlog, member memory scope named gap. Two: Workforce foundation Layer 2 — file conventions proposed, scan to registries named gap, seat-to-worker factory proposed, thin Agent opinion on the existing seam. Three: Collab RC — teams plural, intake, DM and group, claim exists and ordered reply proposed, memory scopes user and org exist, team proposed, member after slice one. Four: later, not foundation — OKF, hot-dynamic flow kinds, Knowledge Hub. Cut band: no TeamFlow, Channel, MessageBoard, second Agent, or hot-dynamic kinds to paper over Layer 1 gaps.">
+      <svg viewBox="0 0 940 544" role="img" aria-label="Four-slice proposed roadmap. One: Layer 1 unblockers Conductor also cares about — flow instances FIX-1320 INST-1 through 3 first, FIX-1315 absorbed, cross-flow blocked on pull 1600, same-session resume FIX-1246 backlog and separate from FIX-957, member memory scope named gap. Two: Workforce foundation Layer 2 — file conventions proposed, scan to registries named gap, seat-to-worker factory proposed, thin Agent opinion on the existing seam. Three: Collab RC — teams plural, intake, DM and group, claim exists and ordered reply proposed, memory scopes user and org exist, team proposed, member after slice one. Four: later, not foundation — OKF, hot-dynamic flow kinds, Knowledge Hub. Sequence band: instances, then conversation and board proofs, then durable delegation, then materializer. Persona FIX-796 independent. Cut band: no TeamFlow, Channel, MessageBoard, second Agent, or hot-dynamic kinds to paper over Layer 1 gaps.">
         <rect class="n-prose" x="16" y="16" width="220" height="288" rx="5"/>
         <text class="t-lbl" x="32" y="38">1 &#183; L1 UNBLOCKERS</text>
         <text class="t-b" x="32" y="64">Conductor also cares</text>
-        <text class="t-xs" x="32" y="90">CROSS-FLOW #1600</text>
-        <text class="t-xs" x="32" y="108">OPEN. REFUSE STILL ON PIN</text>
-        <text class="t-xs" x="32" y="132">FIX-1246 SAME-SESSION</text>
-        <text class="t-xs" x="32" y="150">RESUME &#183; BACKLOG</text>
-        <text class="t-xs" x="32" y="174">FIX-1315 BARE-KIND</text>
-        <text class="t-xs" x="32" y="192">PER-SEAT &#183; BACKLOG</text>
+        <text class="t-xs" x="32" y="90">FIX-1320 INSTANCES</text>
+        <text class="t-xs" x="32" y="108">INST-1..3 FIRST. 1315 ABSORBED</text>
+        <text class="t-xs" x="32" y="132">CROSS-FLOW #1600</text>
+        <text class="t-xs" x="32" y="150">OPEN. REFUSE STILL ON PIN</text>
+        <text class="t-xs" x="32" y="174">FIX-1246 SAME-SESSION</text>
+        <text class="t-xs" x="32" y="192">RESUME &#183; SEPARATE FROM 957</text>
         <text class="t-xs" x="32" y="216">MEMBER MEMORY SCOPE</text>
         <text class="t-xs" x="32" y="234">NAMED GAP. NOT ON SEAT</text>
         <text class="t-b" x="32" y="280">blocked / gap. not L2.</text>
@@ -457,20 +457,25 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-box" x="16" y="320" width="908" height="48" rx="5"/>
         <text class="t-s" x="34" y="350">Teach 1&#8594;4. Implement the next slice. Do not nest Layer 1 under Workforce as if the product shipped.</text>
 
-        <rect class="n-prose" x="16" y="380" width="908" height="64" rx="5"/>
-        <text class="t-lbl" x="34" y="402">CUT &#183; KILL INVENT</text>
-        <text class="t-s" x="34" y="426">no TeamFlow / Channel / MessageBoard L1 &#183; no second Agent &#183; no hot-dynamic kinds to paper over L1 gaps</text>
+        <rect class="n-prose" x="16" y="380" width="908" height="72" rx="5"/>
+        <text class="t-lbl" x="34" y="402">READINESS SEQUENCE &#183; NAMED GAPS, NOT A FIFTH SLICE</text>
+        <text class="t-s" x="34" y="426">instances FIX-1320 INST-1..3 &#8594; conversation + board proofs &#8594; durable delegation FIX-957 &#8594; materializer FIX-1327</text>
+        <text class="t-xs" x="34" y="444">Persona FIX-796 independent. Multi-hire also waits on instances. See &#167;18. Do not invent a delivery bus, dynamic dispatcher, or second task store.</text>
+
+        <rect class="n-prose" x="16" y="464" width="908" height="64" rx="5"/>
+        <text class="t-lbl" x="34" y="486">CUT &#183; KILL INVENT</text>
+        <text class="t-s" x="34" y="510">no TeamFlow / Channel / MessageBoard L1 &#183; no second Agent &#183; no hot-dynamic kinds to paper over L1 gaps</text>
       </svg>
     </div>
-    <figcaption><b>One roadmap. Honest tags.</b> Slice 1 is Layer&nbsp;1 work Conductor also needs. Slice 2 is the Workforce foundation kick. Slice 3 is collab RC on that foundation. Slice 4 stays later. Harness-manager is one stack: Conductor owns the Layer&nbsp;1 path; a team/roster only names the harness as Layer&nbsp;2 config.</figcaption>
+    <figcaption><b>One roadmap. Honest tags.</b> Slice 1 is Layer&nbsp;1 work Conductor also needs. Slice 2 is the Workforce foundation kick. Slice 3 is collab RC on that foundation. Slice 4 stays later. The readiness sequence sits on this inventory &#8212; named gaps, not a fifth slice. Harness-manager is one stack: Conductor owns the Layer&nbsp;1 path; a team/roster only names the harness as Layer&nbsp;2 config.</figcaption>
   </figure>
 
   <div class="tw">
     <table>
       <thead><tr><th>Slice</th><th>Status</th><th>What is true on this pin</th><th>What would fake it</th></tr></thead>
       <tbody>
-        <tr><td>1. L1 unblockers</td><td><span class="tag t-prose">blocked-on / gap</span></td><td>Cross-flow still refused (<a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open). FIX-1246 and FIX-1315 are backlog. Member memory is a named scope gap &#8212; identity lives on agent/member, not on the seat. Same-flow DM address and <code>claim</code> already exist. Conductor cares about this slice too.</td><td>Pretending cross-flow landed. A hot-dynamic kind or TeamFlow so two seats of one kind can talk. Putting memory on the seat to skip the member-scope gap.</td></tr>
-        <tr><td>2. Workforce foundation L2</td><td><span class="tag t-prop">proposed</span></td><td>File conventions are this page (<code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>). No such tree on main. Scan&#8594;<code>defineFlow</code> is a named gap &#8212; no <code>loadWorkforce()</code>. Thin seats (intake, coordinator) stop there and skip <code>AgentRegistry</code>. <code>defineAgent</code> / registry only when the seat is an opinionated agent. Seat&#8594;worker factory is a proposed wrapper. Thin Agent opinion sits on the existing core seam; impl is already L2.</td><td>A second Agent type in the Workforce package. Scanning every seat into <code>AgentRegistry</code>. Nesting today&#8217;s L1 under Workforce as if foundation shipped. Inventing the loader as an export.</td></tr>
+        <tr><td>1. L1 unblockers</td><td><span class="tag t-prose">blocked-on / gap</span></td><td>Instances first: <a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a> INST-1..3 (FIX-1315 absorbed / duplicate). Cross-flow still refused (<a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open). FIX-1246 resume is backlog and <em>separate</em> from FIX-957 durable delegation. Member memory is a named scope gap &#8212; identity lives on agent/member, not on the seat. Same-flow DM address, reverse <code>{ from: true }</code>, and <code>claim</code> already exist. Conductor cares about this slice too.</td><td>Pretending cross-flow landed. A hot-dynamic kind or TeamFlow so two seats of one kind can talk. Putting memory on the seat to skip the member-scope gap. Inventing a delivery bus, a dynamic dispatcher, or a second Workforce task store.</td></tr>
+        <tr><td>2. Workforce foundation L2</td><td><span class="tag t-prop">proposed</span></td><td>File conventions are this page (<code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>). No such tree on main. Scan&#8594;<code>defineFlow</code> is a named gap &#8212; no <code>loadWorkforce()</code>. Thin seats (intake, coordinator) stop there and skip <code>AgentRegistry</code>. <code>defineAgent</code> / registry only when the seat is an opinionated agent. Seat&#8594;worker factory is a proposed wrapper. Thin Agent opinion sits on the existing core seam; impl is already L2. Clean <code>materializeAgent</code> (FIX-1327) before teams harden.</td><td>A second Agent type in the Workforce package. Scanning every seat into <code>AgentRegistry</code>. Nesting today&#8217;s L1 under Workforce as if foundation shipped. Inventing the loader as an export. Hardening teams on the skill-forced materializer.</td></tr>
         <tr><td>3. Collab RC</td><td><span class="tag t-prop">proposed</span></td><td>Teams plural, intake, room helpers: proposed. Same-flow DM / group fan-out and <code>claim</code> exist. Ordered reply is proposed. User and org resource scopes exist. Team knowledge is proposed convention. Member memory waits on slice&nbsp;1.</td><td>A one-team-only API. A <code>TeamFlow</code>. Channel / MessageBoard L1. Cross-team dispatch that hides the #1600 refuse.</td></tr>
         <tr><td>4. Later</td><td><span class="tag t-gone">horizon</span></td><td>OKF is retrieval / graph over the stores in <a href="#memory">&#167;07</a>. Hot-dynamic flow kinds after boot stay a named gap. Knowledge Hub is not a store and not an RC gate. Surfaces and Conductor-as-extension wait. Strategy owns GTM.</td><td>Pulling OKF, a knowledge hub, or hot-dynamic kinds into foundation so the atlas looks finished.</td></tr>
       </tbody>
@@ -480,6 +485,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   <div class="note">
     <span class="lbl">The plural door still holds</span>
     <p>If adding a second team requires a new argument, a new helper, or a Team type, foundation shipped the wrong API. Key the team on day one. Address a room by the seats that subscribe to it, not by &#8220;this team&#8217;s rooms.&#8221; Slice 3 is then more rows in the map, plus cross-team dispatch when the refuse is gone &#8212; not a rewrite.</p>
+  </div>
+
+  <div class="note">
+    <span class="lbl">POC-ready, taught honestly</span>
+    <p>Board notification with <strong>static</strong> targets can lab now &#8212; collections + subscriptions in state + <code>reactTo</code> (FIX-1311). A multi-instance conversation POC waits on INST-1..3. Dynamic-address composition needs a thin Layer&nbsp;1 proof POC once #1600 is green. Do not mint a &#8220;dynamic dispatcher&#8221; in Workforce to skip that proof. Detail: <a href="#gaps">&#167;18</a>.</p>
   </div>
 </section>
 
@@ -1980,7 +1990,7 @@ const team = <b>defineResourceCollection</b>({
 
   <div class="note">
     <span class="lbl">If intake needs a door Layer 1 does not have, name the gap</span>
-    <p>Same-flow wake into a known session exists. Reverse <code>{ from: true }</code> exists. Cross-flow from another worker flow is still refused &#8212; gap 4, <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open. <code>{ id }</code> past a queue is <code>external-dispatcher</code> &#8212; gap 5. Two intake workers of the same kind need instance id &#8212; gap 1 (FIX-1315). Who may reply is proposed Layer&nbsp;2, not missing substrate. A team address that is not a session id or a known channel is a cut, not a gap. Do not invent one to hide those rows.</p>
+    <p>Same-flow wake into a known session exists. Reverse <code>{ from: true }</code> exists. Cross-flow from another worker flow is still refused &#8212; gap 4, <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open. <code>{ id }</code> past a queue is <code>external-dispatcher</code> &#8212; gap 5. Two intake workers of the same kind need instance id &#8212; gap 1 (<a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a> INST-1..3; FIX-1315 absorbed). Who may reply is proposed Layer&nbsp;2, not missing substrate. A team address that is not a session id or a known channel is a cut, not a gap. Do not invent one to hide those rows.</p>
   </div>
 </section>
 
@@ -2198,11 +2208,11 @@ const replyToSender = <b>dispatcher</b>({
       <thead><tr><th>The piece</th><th>Status</th><th>What the source actually is</th></tr></thead>
       <tbody>
         <tr><td>Thin <code>Agent</code> / <code>AgentRegistry</code> types in core</td><td><span class="tag t-real">exists</span></td><td>Type seam only. Skills / orchestration type <code>agent-ref</code> and <code>materializeAgent</code> without importing Workforce. Named participant fields: persona, model, tools, optional <code>itemVisibility</code>, <code>outputSchema</code>, <code>usesCapabilities</code>. No <code>resources</code>, <code>members</code>, <code>channels</code>, <code>inbox</code>, session, or memory. <code>usesSkills</code> is RESERVED. <code>contextMode</code> documents that only <code>"inline"</code> is honored. Not a room. Not a team. Not the product Agent. Engine has no <code>AgentRegistry</code> import. <code>packages/core/src/types/agent.ts</code></td></tr>
-        <tr><td><code>defineAgent</code> / registry impl / <code>materializeAgent</code></td><td><span class="tag t-real">exists · L2</span></td><td>Workforce package. Validate a config, hold it in a <code>Map</code>, turn it into a worker-shaped or standalone generator. Useful. Not a flow factory. Not a second Agent type. Not the product Agent (no member memory, no seat bind).</td></tr>
+        <tr><td><code>defineAgent</code> / registry impl / <code>materializeAgent</code></td><td><span class="tag t-real">exists · L2</span></td><td>Workforce package. Validate a config, hold it in a <code>Map</code>, turn it into a worker-shaped or standalone generator. Worker shape still requires <code>skillName</code> / <code>workerKey</code>, forces <code>z.string()</code> even when <code>outputSchema</code> is set, and can skip capabilities silently with no catalog (FIX-1327). Useful. Not a flow factory. Not a second Agent type. Not the product Agent (no member memory, no seat bind).</td></tr>
         <tr><td>Product Agent (sequencer + generators + persona + member memory)</td><td><span class="tag t-prop">proposed · L2</span></td><td>The Workforce opinion on the worker contract. A seat may be this, or a thin sequencer. Thin seats skip the registry and member memory. Do not grow the core type to look like this.</td></tr>
         <tr><td>Minimum seat contract</td><td><span class="tag t-real">exists as L1 pieces</span></td><td>Named worker flow + static session + dispatcher / settle / claim. Same-flow DM address exists. The roster row that binds them is proposed convention. Cross-flow seat wake is proposed, blocked on #1600.</td></tr>
         <tr><td><code>agentBlock</code></td><td><span class="tag t-real">exists</span></td><td>Shorthand for the standalone shape. Used nowhere outside the workforce package.</td></tr>
-        <tr><td><code>definePersona</code></td><td><span class="tag t-real">exists</span></td><td>Sugar over <code>defineResource</code> / <code>defineResourceCollection</code>. Collection default scope is <code>org</code>. Used nowhere outside the package.</td></tr>
+        <tr><td><code>definePersona</code></td><td><span class="tag t-real">exists</span></td><td>Sugar over <code>defineResource</code> / <code>defineResourceCollection</code>. Collection default scope is <code>org</code>. Used nowhere outside the package. FIX-796 (inline <code>contentTemplate</code> treated as a file path) is an independent backlog bug &#8212; not on the readiness sequence.</td></tr>
         <tr><td><code>createWorkforceCapability</code></td><td><span class="tag t-none">stub</span></td><td>A <code>// TODO</code> that returns <code>defineCapability({ name: "workforce" })</code> after a duplicate-name check. No presets.</td></tr>
         <tr><td><code>examples/guides/research-team</code></td><td><span class="tag t-real">exists</span></td><td>The only caller. One <code>defineAgent</code> + registry + <code>materializeAgent</code> seats a skill via <code>agent-ref</code>. Inline persona, session scope, a single flow.</td></tr>
         <tr><td>Kitchen-sink</td><td><span class="tag t-gone">unused</span></td><td>Depends on the package in <code>package.json</code>. Imports it in zero source files.</td></tr>
@@ -2250,18 +2260,18 @@ const replyToSender = <b>dispatcher</b>({
 
 <section id="gaps">
   <div class="sec-head"><span class="sec-num">18</span><h2>L1 gaps &#8212; prove against, don&#8217;t paper over</h2></div>
-  <p class="lede">A helper may wrap only what is on this pin. If the body needs a door that is refused, missing, or first-registered-wrong, name the gap. Do not ship a pretend argument that hides it. Cross-team dispatch that needs another flow is gap 4, not a slice 3 export.</p>
+  <p class="lede">A helper may wrap only what is on this pin. If the body needs a door that is refused, missing, or first-registered-wrong, name the gap. Do not ship a pretend argument that hides it. Cross-team dispatch that needs another flow is gap 4, not a slice 3 export. Workforce readiness is more named gaps on this inventory &#8212; not a new foundation, not new Layer&nbsp;1 nouns. Sequence: instances (gap&nbsp;1) &#8594; conversation + board proofs (gaps 4, 5, 7, 8) &#8594; durable delegation (gap&nbsp;9) &#8594; materializer (gap&nbsp;10). Persona FIX-796 is independent.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 320" role="img" aria-label="Five Layer 1 gaps. Bare-kind first-registered, FIX-1315. Send-at: no due-ledger, dispatcher has no delay, scheduled envelopes have no session. FIX-1246 same-session resume still backlog. Cross-flow refuse still on main, PR 1600 open. External-dispatcher on id past a queue.">
+      <svg viewBox="0 0 940 320" role="img" aria-label="Five Layer 1 gaps. Flow instances FIX-1320 INST-1 through 3, FIX-1315 absorbed. Send-at: no due-ledger, dispatcher has no delay, scheduled envelopes have no session. FIX-1246 same-session resume still backlog. Cross-flow refuse still on main, PR 1600 open. External-dispatcher on id past a queue.">
         <rect class="n-prose" x="16" y="16" width="220" height="140" rx="5"/>
-        <text class="t-lbl" x="32" y="38">1 &#183; FIX-1315</text>
-        <text class="t-b" x="32" y="64">bare-kind refuse</text>
-        <text class="t-xs" x="32" y="88">registry.get(kind) FALLS TO</text>
-        <text class="t-xs" x="32" y="106">FIRST REGISTERED INSTANCE</text>
-        <text class="t-xs" x="32" y="132">MULTI-INSTANCE SAME KIND</text>
-        <text class="t-xs" x="32" y="150">BACKLOG. NOT STARTED.</text>
+        <text class="t-lbl" x="32" y="38">1 &#183; FIX-1320</text>
+        <text class="t-b" x="32" y="64">instances first</text>
+        <text class="t-xs" x="32" y="88">INST-1..3 THIS-CYCLE FLOOR</text>
+        <text class="t-xs" x="32" y="106">get(kind) STILL FIRST-WINS</text>
+        <text class="t-xs" x="32" y="132">FIX-1315 ABSORBED / DUP</text>
+        <text class="t-xs" x="32" y="150">TODO. NOT STARTED.</text>
 
         <rect class="n-prose" x="252" y="16" width="220" height="140" rx="5"/>
         <text class="t-lbl" x="268" y="38">2 &#183; SEND-AT</text>
@@ -2302,19 +2312,63 @@ const replyToSender = <b>dispatcher</b>({
     <table>
       <thead><tr><th>#</th><th>Gap</th><th>Status on this pin</th><th>What a helper must not pretend</th></tr></thead>
       <tbody>
-        <tr><td>1</td><td><strong>FIX-1315</strong> bare-kind refuse (multi-instance)</td><td><span class="tag t-none">backlog</span></td><td><code>flow-registry.ts</code> <code>get(kind)</code> returns the first registered instance when no id is passed. Two workers of the same kind: a dispatch can land on the wrong instance. A team of two <code>eng-manager</code>s needs instance id. Do not address by kind alone and call it done.</td></tr>
+        <tr><td>1</td><td><strong>FIX-1320</strong> flow instances (INST-1..3)</td><td><span class="tag t-none">todo</span></td><td>Epic. This-cycle floor: INST-1 cardinality on <code>defineFlow</code> + registry; INST-2 dispatch/envelope address by id; INST-3 user/org + <code>flowIsolation</code> on instance id. On this pin <code>flow-registry.ts</code> <code>get(kind)</code> still falls to the first registered instance. FIX-1315 is absorbed / duplicate &#8212; do not schedule it. Multi-hire and multi-instance conversation wait here. Do not address by kind alone and call it done.</td></tr>
         <tr><td>2</td><td>Deferred / send-at (due-ledger, delay, cron)</td><td><span class="tag t-none">absent</span></td><td>No <code>due-ledger</code> / outbox in the tree. <code>dispatcher()</code> has no delay / <code>sendAt</code> field. <code>@flow-state-dev/scheduled</code> stamps <code>source: "scheduled"</code>, but <em>scheduled envelopes have no session</em> (<code>packages/scheduled/src/routes.ts</code>). <strong>FIX-1233</strong> is backlog. A <code>when</code> or <code>sendAt</code> helper is this gap, not Layer&nbsp;2.</td></tr>
-        <tr><td>3</td><td><strong>FIX-1246</strong> same-session resume</td><td><span class="tag t-none">backlog</span></td><td>A parked harness run resumed from a second request must continue the same session. Restart is not success. A room helper that parks and later continues cannot treat a new session as resume.</td></tr>
+        <tr><td>3</td><td><strong>FIX-1246</strong> same-session resume</td><td><span class="tag t-none">backlog</span></td><td>A parked harness run resumed from a second request must continue the same session. Restart is not success. A room helper that parks and later continues cannot treat a new session as resume. <em>Separate</em> from gap 9 (FIX-957) &#8212; that is the delegation board surviving a turn, not the worker session.</td></tr>
         <tr><td>4</td><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">proposed</span></td><td>Refuse still on main: <code>create-request-host.ts</code> lines 179&#8211;184, <code>session-not-addressable</code>, <em>cross-flow delivery is not supported</em>. <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> is <strong>open, not merged</strong>. Keep proposed. Flip to exists only when that refuse is gone, and pin the merge SHA. Cross-kind <code>fanOutBoardPost</code> waits on this.</td></tr>
-        <tr><td>5</td><td><code>external-dispatcher</code> on <code>{ id }</code></td><td><span class="tag t-real">exists as refuse</span></td><td>Found this pass. Existing-session delivery past an external queue refuses by name (<code>create-request-host.ts</code>). <code>openDm</code> wake and same-flow <code>fanOutBoardPost</code> use <code>{ id }</code>. On BullMQ they refuse. The helper must surface that, not retry as <code>{ key }</code>.</td></tr>
+        <tr><td>5</td><td><code>external-dispatcher</code> on <code>{ id }</code></td><td><span class="tag t-real">exists as refuse</span></td><td>Existing-session delivery past an external queue refuses by name (<code>create-request-host.ts</code> / <code>dispatch-operation</code>). <code>openDm</code> wake and same-flow <code>fanOutBoardPost</code> use <code>{ id }</code>. On BullMQ they refuse. The helper must surface that, not retry as <code>{ key }</code>. This is the session-addressability half of gap 7.</td></tr>
         <tr><td>6</td><td>Member memory scope</td><td><span class="tag t-prose">named gap</span></td><td>Identity / memory live on agent/member scope, not on the seat. <code>flowIsolation</code> exists and keys per flow kind, not per seat. Thin seats do not need this. Prove isolation first &#8212; slice&nbsp;1. Do not put <code>memory</code> on the core <code>Agent</code> type or on the seat to close it. See <a href="#memory">&#167;07</a>.</td></tr>
+        <tr><td>7</td><td>Full conversation through dispatch</td><td><span class="tag t-prose">blocked-on</span></td><td>The proof is A &#8594; B &#8594; <code>{ from: true }</code> reply &#8594; later messages into the <em>existing</em> session. Layer&nbsp;1 path: FIX-1312 reverse <strong>exists</strong> + #1600 (gap 4) + existing-session via external queue (gap 5). Workforce must <strong>not</strong> invent a delivery bus. Blocked on #1600 + session addressability. Multi-hire also blocked on FIX-1320.</td></tr>
+        <tr><td>8</td><td>Board as address-model test</td><td><span class="tag t-prop">proposed · L2</span></td><td>FIX-1311 stays Layer&nbsp;2 assembly: collections + subscriptions in state + <code>reactTo</code>. <code>reactTo</code> exists (in-session, inline). Pressure: addresses-as-data vs statically declared dispatch targets &#8212; <code>dispatch.ts</code> says a target chosen from data is a router over declared dispatchers, not a dynamic address. Need that Layer&nbsp;1 composition explicit before Workforce mints a &#8220;dynamic dispatcher.&#8221; Teams = roster (FIX-1310). Static-target notify can lab now.</td></tr>
+        <tr><td>9</td><td>Durable task collections for delegation</td><td><span class="tag t-none">backlog</span></td><td><a href="https://linear.app/fixpoint-labs/issue/FIX-957">FIX-957</a>. Skills delegation still constructs the board with <code>backing: "sequencer"</code> (<code>delegation-surface.ts</code>) &#8212; turn-scoped. A hand-built durable collection already exists. Standing teams must not get a second Workforce task store. Separate from FIX-1246 (gap 3).</td></tr>
+        <tr><td>10</td><td><code>materializeAgent</code> cleanup</td><td><span class="tag t-none">backlog</span></td><td><a href="https://linear.app/fixpoint-labs/issue/FIX-1327">FIX-1327</a>. Before teams harden: worker shape still requires <code>skillName</code> / <code>workerKey</code>, forces <code>z.string()</code> even when <code>outputSchema</code> is set, and can skip capabilities silently when no catalog is present (BP-030 refuse, not a quiet drop). Separate skills-adapter policy from reusable materialization. Persona FIX-796 is independent &#8212; do not sequence it here.</td></tr>
       </tbody>
     </table>
   </div>
 
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 280" role="img" aria-label="Readiness sequence on the existing gap inventory. First instances FIX-1320. Then conversation through dispatch plus board notification proofs. Then durable delegation FIX-957. Then materializeAgent cleanup FIX-1327. Persona FIX-796 sits aside, independent. POC-ready: static board notify can lab now; multi-instance conversation waits on INST-1 through 3; dynamic-address composition waits on pull 1600.">
+        <rect class="n-prose" x="16" y="16" width="214" height="148" rx="5"/>
+        <text class="t-lbl" x="28" y="38">1ST</text>
+        <text class="t-b" x="28" y="64">instances</text>
+        <text class="t-xs" x="28" y="88">FIX-1320 INST-1..3</text>
+        <text class="t-xs" x="28" y="106">GAP 1</text>
+        <text class="t-xs" x="28" y="132">MULTI-HIRE WAITS HERE</text>
+
+        <rect class="n-prose" x="246" y="16" width="214" height="148" rx="5"/>
+        <text class="t-lbl" x="258" y="38">THEN</text>
+        <text class="t-b" x="258" y="64">conversation + board</text>
+        <text class="t-xs" x="258" y="88">GAPS 4 + 5 + 7 + 8</text>
+        <text class="t-xs" x="258" y="106">NO DELIVERY BUS</text>
+        <text class="t-xs" x="258" y="132">NO DYNAMIC DISPATCHER</text>
+
+        <rect class="n-prose" x="476" y="16" width="214" height="148" rx="5"/>
+        <text class="t-lbl" x="488" y="38">THEN</text>
+        <text class="t-b" x="488" y="64">durable delegation</text>
+        <text class="t-xs" x="488" y="88">FIX-957 &#183; GAP 9</text>
+        <text class="t-xs" x="488" y="106">NOT A SECOND STORE</text>
+        <text class="t-xs" x="488" y="132">NOT FIX-1246</text>
+
+        <rect class="n-prose" x="706" y="16" width="218" height="148" rx="5"/>
+        <text class="t-lbl" x="718" y="38">THEN</text>
+        <text class="t-b" x="718" y="64">materializer</text>
+        <text class="t-xs" x="718" y="88">FIX-1327 &#183; GAP 10</text>
+        <text class="t-xs" x="718" y="106">BEFORE TEAMS HARDEN</text>
+        <text class="t-xs" x="718" y="132">FIX-796 INDEPENDENT</text>
+
+        <rect class="n-box" x="16" y="180" width="908" height="84" rx="5"/>
+        <text class="t-lbl" x="34" y="202">POC-READY &#183; TEACH HONESTLY</text>
+        <text class="t-s" x="34" y="226">Static-target board notify can lab now. Multi-instance conversation POC waits on INST-1..3.</text>
+        <text class="t-xs" x="34" y="248">Dynamic-address composition needs a thin L1 proof POC once #1600 is green. Do not mint a Workforce bus to skip it.</text>
+      </svg>
+    </div>
+    <figcaption><b>Named gaps. Same inventory.</b> Sequence the proofs, do not add a noun. Reverse <code>{ from: true }</code> already exists. Cross-flow and existing-session-past-a-queue do not. A board with static targets can lab; a conversation across instances cannot.</figcaption>
+  </figure>
+
   <div class="note">
     <span class="lbl">What is not a gap</span>
-    <p>Same-flow N-rooms, <code>claim</code> exclusion, <code>task.deps</code>, <code>{ from: true }</code>, <code>create_session</code>, <code>readContent()</code>, the thin <code>Agent</code> / <code>AgentRegistry</code> types &#8212; those exist. Who may reply is proposed Layer&nbsp;2. Growing the core Agent type is <a href="#fence">&#167;04</a>. Member memory scope is gap 6. A team address type is a cut, not a seventh gap.</p>
+    <p>Same-flow N-rooms, <code>claim</code> exclusion, <code>task.deps</code>, <code>{ from: true }</code> (FIX-1312), <code>create_session</code>, <code>readContent()</code>, <code>reactTo</code>, the thin <code>Agent</code> / <code>AgentRegistry</code> types, a hand-built durable task collection &#8212; those exist. Who may reply is proposed Layer&nbsp;2. Growing the core Agent type is <a href="#fence">&#167;04</a>. Member memory scope is gap 6. A team address type, a delivery bus, a dynamic dispatcher, or a second Workforce task store is a cut, not an eleventh gap. Persona FIX-796 is a real backlog bug and is <em>not</em> on this sequence.</p>
   </div>
 </section>
 
@@ -2511,7 +2565,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is one worker contract on Layer&nbsp;1 &#8212; a sequencer flow; generator calls do not mint a second type. A seat is a roster slot that binds a worker, not an Agent. Thin seats skip <code>AgentRegistry</code> and member memory. Product Agent is L2 opinion (sequencer + generators + persona + member memory). The core <code>Agent</code> / <code>AgentRegistry</code> types are the thin seam; do not grow them; do not delete them; engine never sees the registry as product. The target is RC collaboration: teams, plural. Build-out is 1&#8594;4. A roster is a seat-list. A team is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders are <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. Projects live as resources, boards, sessions, and content &#8212; no <code>projects/</code> tree, no <code>Project</code> type. A new seat is a file on that path. Scan feeds today&#8217;s <code>defineFlow</code> for every seat; <code>AgentRegistry</code> only when that seat is an opinionated agent. A tree scan is a named gap. Hot-dynamic kinds after boot are a named gap. Address-the-team is an intake seat, a worker with a static DM. Identity lives on agent/member scope, not on the seat. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources. Member identity is the named gap &#8212; prove <code>flowIsolation</code> first. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2. RC gates are proposed until they are true. No second Agent. No second registry. No one-team-only API. Cross-flow is still refused on this pin. Conductor does not wait. GTM is Strategy.</p>
+    <p>Workforce is one worker contract on Layer&nbsp;1 &#8212; a sequencer flow; generator calls do not mint a second type. A seat is a roster slot that binds a worker, not an Agent. Thin seats skip <code>AgentRegistry</code> and member memory. Product Agent is L2 opinion (sequencer + generators + persona + member memory). The core <code>Agent</code> / <code>AgentRegistry</code> types are the thin seam; do not grow them; do not delete them; engine never sees the registry as product. The target is RC collaboration: teams, plural. Build-out is 1&#8594;4. Readiness is named gaps on that inventory &#8212; instances, then conversation + board proofs, then durable delegation, then the materializer. A roster is a seat-list. A team is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders are <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. Projects live as resources, boards, sessions, and content &#8212; no <code>projects/</code> tree, no <code>Project</code> type. A new seat is a file on that path. Scan feeds today&#8217;s <code>defineFlow</code> for every seat; <code>AgentRegistry</code> only when that seat is an opinionated agent. A tree scan is a named gap. Hot-dynamic kinds after boot are a named gap. Address-the-team is an intake seat, a worker with a static DM. Identity lives on agent/member scope, not on the seat. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources. Member identity is the named gap &#8212; prove <code>flowIsolation</code> first. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2. RC gates are proposed until they are true. No second Agent. No second registry. No one-team-only API. Cross-flow is still refused on this pin. Conductor does not wait. GTM is Strategy.</p>
   </div>
 </section>
 
