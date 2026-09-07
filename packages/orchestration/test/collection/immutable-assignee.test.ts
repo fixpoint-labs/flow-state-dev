@@ -44,7 +44,7 @@ function seat(name: string): TaskWorker {
   return dispatcher({
     name,
     type: "task",
-    target: "implement",
+    action: "implement",
     session: "per-task",
   }) as unknown as TaskWorker;
 }

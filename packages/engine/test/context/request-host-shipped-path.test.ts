@@ -77,7 +77,7 @@ function probeFlow(kind: string, seen: Seen, ask: string[]) {
         seen.answers = await host.livenessOf?.(ask);
         seen.dispatch = await dispatchThroughSeam(ctx, {
           type: "internal",
-          target: "work",
+          action: "work",
           session: { key: "t" },
           payload: {},
           from: "probe"

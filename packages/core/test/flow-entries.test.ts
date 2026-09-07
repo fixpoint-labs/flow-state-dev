@@ -14,7 +14,7 @@ const wake = handler({ name: "wake", inputSchema: z.object({ reason: z.string() 
 const wakeEpic = dispatcher({
   name: "wake-epic",
   type: "internal",
-  target: "wake",
+  action: "wake",
   session: { id: () => "s_epic" }
 });
 
@@ -65,7 +65,7 @@ describe("internal entries", () => {
 });
 
 describe("the address walk", () => {
-  it("accepts a dispatcher whose target the flow declares", () => {
+  it("accepts a dispatcher whose action the flow declares", () => {
     expect(() =>
       defineFlow({
         kind: "resolves",
@@ -75,7 +75,7 @@ describe("the address walk", () => {
     ).not.toThrow();
   });
 
-  it("refuses a dispatcher whose target the flow does not declare, naming both", () => {
+  it("refuses a dispatcher whose action the flow does not declare, naming both", () => {
     expect(() =>
       defineFlow({
         kind: "unresolved",
@@ -165,7 +165,7 @@ describe("the address walk", () => {
     const chained = dispatcher({
       name: "chain",
       type: "internal",
-      target: "missing",
+      action: "missing",
       session: { key: () => "k" }
     });
     expect(() =>
@@ -175,6 +175,22 @@ describe("the address walk", () => {
         internal: { actions: { wake: { block: sequencer({ name: "wake-seq" }).step(chained) } } }
       })
     ).toThrow(/internal:"missing"/);
+  });
+
+  it("skips a task address that names another flow", () => {
+    const seat = dispatcher({
+      name: "hand-off-billing",
+      type: "task",
+      flowKind: "billing",
+      action: "charge",
+      session: "per-task"
+    });
+    expect(() =>
+      defineFlow({
+        kind: "shipping",
+        actions: { run: { block: seat } }
+      })
+    ).not.toThrow();
   });
 });
 
@@ -203,7 +219,7 @@ describe("task entries", () => {
   const handOff = (target: string, boardId: string, seat = target) => {
     const block = markDispatcher(
       handler({ name: `hand-off-${boardId}-${seat}`, inputSchema: z.unknown(), execute: () => null }),
-      { type: "task", target, session: "per-task" }
+      { type: "task", action: target, session: "per-task" }
     );
     bindTaskDispatcher(block, bindingFor(boardId));
     return block;
@@ -230,7 +246,7 @@ describe("task entries", () => {
     // every row its own session, so nothing there needs serialising.
     const shared = markDispatcher(
       handler({ name: "hand-off-shared", inputSchema: z.unknown(), execute: () => null }),
-      { type: "task", target: "implement", session: "per-worker" }
+      { type: "task", action: "implement", session: "per-worker" }
     );
     bindTaskDispatcher(shared, bindingFor("issues"));
     const flow = defineFlow({
@@ -247,7 +263,7 @@ describe("task entries", () => {
   it("keeps an author's explicit concurrency on a shared-child entry", () => {
     const keyed = markDispatcher(
       handler({ name: "hand-off-keyed", inputSchema: z.unknown(), execute: () => null }),
-      { type: "task", target: "implement", session: { key: () => "k" } }
+      { type: "task", action: "implement", session: { key: () => "k" } }
     );
     bindTaskDispatcher(keyed, bindingFor("issues"));
     const flow = defineFlow({
@@ -290,7 +306,7 @@ describe("task entries", () => {
     // the entry. The rule keys on the gate the board bound, not the string.
     const other = markDispatcher(
       handler({ name: "hand-off-other", inputSchema: z.unknown(), execute: () => null }),
-      { type: "task", target: "implement", session: "per-task" }
+      { type: "task", action: "implement", session: "per-task" }
     );
     bindTaskDispatcher(other, { boardId: "issues", gate: (entry) => entry });
     expect(() =>
@@ -317,7 +333,7 @@ describe("task entries", () => {
     // An authored `dispatcher({ type: "task" })` that is reachable from an
     // action without sitting on a board: nothing minted a claim for it, so
     // the entry it names would run against a row nothing verified.
-    const loose = dispatcher({ name: "loose", type: "task", target: "implement", session: "per-task" });
+    const loose = dispatcher({ name: "loose", type: "task", action: "implement", session: "per-task" });
     expect(() =>
       defineFlow({
         kind: "no-board",
@@ -383,7 +399,7 @@ describe("resolveEntry — one lookup, no fallback", () => {
   // entry's block stays observable as the one declared.
   const handOff = markDispatcher(
     handler({ name: "hand-off-implement", inputSchema: z.unknown(), execute: () => null }),
-    { type: "task", target: "implement", session: "per-task" }
+    { type: "task", action: "implement", session: "per-task" }
   );
   bindTaskDispatcher(handOff, { boardId: "issues", gate: (entry) => entry });
 

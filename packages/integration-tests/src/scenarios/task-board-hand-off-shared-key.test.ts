@@ -54,7 +54,7 @@ function buildFlow(kind: string, concurrency: "allow" | "queue" | "reject") {
       background: dispatcher({
         name: `${kind}-hand-off`,
         type: "task",
-        target: "background",
+        action: "background",
         session: "per-task",
       }),
     },

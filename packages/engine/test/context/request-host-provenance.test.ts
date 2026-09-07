@@ -82,7 +82,7 @@ describe("the provenance a dispatch stamps on the request record", () => {
     expect(metadata).toEqual({
       dispatch: {
         type: "internal",
-        target: "work",
+        action: "work",
         from: { block: "board-drain", sessionId: "s_parent", lineageId: "lin_parent" },
         key: "review",
         taskId: "task_7f3"
@@ -100,7 +100,7 @@ describe("the provenance a dispatch stamps on the request record", () => {
     expect(metadata).toEqual({
       dispatch: {
         type: "internal",
-        target: "work",
+        action: "work",
         from: { block: "board-drain", sessionId: "s_parent", lineageId: "lin_parent" },
         key: "review"
       }
@@ -123,7 +123,7 @@ describe("the provenance a dispatch stamps on the request record", () => {
     expect(metadata).toEqual({
       dispatch: {
         type: "internal",
-        target: "work",
+        action: "work",
         from: { block: "board-drain", sessionId: "s_parent", lineageId: "lin_parent" },
         key: "review"
       }

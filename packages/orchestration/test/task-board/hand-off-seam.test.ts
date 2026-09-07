@@ -61,7 +61,7 @@ function handOffWith(session: "per-task" | "per-worker" | { key: (task: TaskWork
     name: "issue-work-hand-off-implement",
     boardId: "issue-work",
     seat: "implement",
-    address: { type: "task", target: "implement", session },
+    address: { type: "task", action: "implement", session },
     binding: BINDING,
   });
 }
@@ -161,7 +161,7 @@ describe("the parent releases its claim before the dispatch it cannot take back"
 
     expect(harness.spec()).toMatchObject({
       type: "task",
-      target: "implement",
+      action: "implement",
       session: { key: "task|10:issue-work|2:t1" },
       from: "issue-work-hand-off-implement",
       provenance: { taskId: "t1" },
@@ -211,7 +211,7 @@ describe("the parent releases its claim before the dispatch it cannot take back"
       name: "DispatchRefusedError",
       code: "dispatch-refused",
       refused: "no-entry",
-      address: { type: "task", target: "implement" },
+      address: { type: "task", action: "implement" },
     });
 
     expect(harness.timeline).toEqual(["release", "dispatch", "restore"]);

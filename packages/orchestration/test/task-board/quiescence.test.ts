@@ -392,7 +392,7 @@ describe("handedOffTaskPredicate", () => {
   const seat = (name: string): HandOffSeat => ({
     name,
     label: `assignee:${name}`,
-    dispatch: { type: "task", target: "t", session: "per-task" },
+    dispatch: { type: "task", action: "t", session: "per-task" },
   });
 
   it("is absent for a board with no dispatcher seat", () => {

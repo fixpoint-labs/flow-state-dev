@@ -2,7 +2,7 @@
  * Cross-flow dispatch (FIX-1171 family / Architect D-8): one flow starts work
  * on another, fire-and-forget, and a miss is a **named runtime refusal**.
  *
- * The address is declared — `flowKind` + `target` on the `dispatcher()` block —
+ * The address is declared — `flowKind` + `action` on the `dispatcher()` block —
  * but `defineFlow` holds one flow's entry maps and cannot resolve another's, so
  * the check lands at the seam against the flows the process registered. The
  * three ways that goes are all here: it resolves, the flow is not registered
@@ -44,7 +44,7 @@ const orderInput = z.object({ orderId: z.string() });
  * like the failing addresses below — what separates them is what the process
  * has registered, which is the whole point.
  */
-function senderFlow(observed: Observed, options: { flowKind?: string; target?: string } = {}) {
+function senderFlow(observed: Observed, options: { flowKind?: string; action?: string } = {}) {
   const receive = handler({
     name: "receive-confirmation",
     inputSchema: orderInput,
@@ -63,7 +63,7 @@ function senderFlow(observed: Observed, options: { flowKind?: string; target?: s
     name: "notify-billing",
     type: "internal",
     flowKind: options.flowKind ?? RECIPIENT,
-    target: options.target ?? "charge",
+    action: options.action ?? "charge",
     inputSchema: orderInput,
     session: { key: (input) => input.orderId }
   });
@@ -84,7 +84,7 @@ function recipientFlow(observed: Observed, options: { replyTo?: string } = {}) {
     name: "confirm-to-sender",
     type: "internal",
     flowKind: options.replyTo ?? SENDER,
-    target: "confirm",
+    action: "confirm",
     inputSchema: orderInput,
     session: { from: true }
   });
@@ -225,7 +225,7 @@ describe("cross-flow fire-and-forget", () => {
       expect(record?.flowKind).toBe(RECIPIENT);
       expect(readDispatchStamp(record?.source, record?.metadata)).toMatchObject({
         type: "internal",
-        target: "charge",
+        action: "charge",
         flowKind: RECIPIENT,
         flowId: RECIPIENT,
         from: { block: "notify-billing", sessionId: "s_sender" }
@@ -254,7 +254,7 @@ describe("cross-flow fire-and-forget", () => {
 
   it("refuses no-entry when the addressed flow declares no such entry", async () => {
     const seen = observed();
-    const sender = senderFlow(seen, { target: "refund" });
+    const sender = senderFlow(seen, { action: "refund" });
     const { runtime, state } = await boot([sender, recipientFlow(seen)]);
     try {
       const sent = await run(runtime, sender, "notify", { orderId: "ord_3" });
@@ -271,7 +271,7 @@ describe("cross-flow fire-and-forget", () => {
     const seen = observed();
     // `confirm` exists here — on the sender. The recipient declares no such
     // entry, and resolution must not walk back to the flow that dispatched.
-    const sender = senderFlow(seen, { target: "confirm" });
+    const sender = senderFlow(seen, { action: "confirm" });
     const { runtime, state } = await boot([sender, recipientFlow(seen)]);
     try {
       const sent = await run(runtime, sender, "notify", { orderId: "ord_4" });
@@ -307,7 +307,7 @@ describe("three-request reverse delivery across flows", () => {
       expect(replyRecord?.flowKind).toBe(SENDER);
       expect(readDispatchStamp(replyRecord?.source, replyRecord?.metadata)).toMatchObject({
         type: "internal",
-        target: "confirm",
+        action: "confirm",
         flowKind: SENDER,
         from: { block: "confirm-to-sender", sessionId: handle.sessionId }
       });

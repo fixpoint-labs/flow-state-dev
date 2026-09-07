@@ -162,13 +162,13 @@ describe("decodeChildSessionEntry", () => {
   it("splits the dispatch type from the entry name at the first colon", () => {
     expect(decodeChildSessionEntry("task:implement")).toEqual({
       type: "task",
-      target: "implement",
+      action: "implement",
     });
-    expect(decodeChildSessionEntry("internal:wake")).toEqual({ type: "internal", target: "wake" });
+    expect(decodeChildSessionEntry("internal:wake")).toEqual({ type: "internal", action: "wake" });
     // A dispatch type never contains `:`; a target may.
     expect(decodeChildSessionEntry("task:ns:implement")).toEqual({
       type: "task",
-      target: "ns:implement",
+      action: "ns:implement",
     });
   });
 

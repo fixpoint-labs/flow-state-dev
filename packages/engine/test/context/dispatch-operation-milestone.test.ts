@@ -33,7 +33,7 @@ import type { DispatchHandle, InboundTransportHost } from "../../src/transports/
 
 const SPEC = {
   source: "internal" as const,
-  target: "runner",
+  action: "runner",
   sessionId: "s_child",
   delivery: "child" as const,
   input: { note: "hand-off" },

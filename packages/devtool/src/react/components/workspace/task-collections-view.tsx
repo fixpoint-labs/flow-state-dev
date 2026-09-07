@@ -270,7 +270,7 @@ function ChildSessionLink({
   // A linked child's key names this very row or its seat, so repeating it here
   // says nothing the row does not; the entry is the part that is new. The id
   // stands in when no entry was stamped.
-  const label = decodeChildSessionEntry(childSession.coordinate)?.target ?? childSession.id;
+  const label = decodeChildSessionEntry(childSession.coordinate)?.action ?? childSession.id;
   // A match is page-local. `linkChildSessionsToTasks` establishes that the
   // pairing is unambiguous IN THE LOADED PAGE; an older unlisted ChildSession
   // whose key names the same task id or seat would fit too, and it would belong

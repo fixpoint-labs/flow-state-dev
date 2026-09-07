@@ -366,8 +366,8 @@ a named field set, not a session record.
 
 `topic` and `coordinate` are stamped when the child session is created, from the
 values the child's id was derived from: `topic` is the session key, `coordinate`
-is the entry the dispatch was addressed to (`internal:<target>` or
-`task:<target>`). Both are display only — nothing routes, authorizes or adopts
+is the entry the dispatch was addressed to (`internal:<action>` or
+`task:<action>`). Both are display only — nothing routes, authorizes or adopts
 on them — and both are optional, so guard with `== null`.
 
 The route is session-addressed: the parent is loaded and ownership-checked
@@ -377,7 +377,7 @@ tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
 `/sessions/:id/requests` endpoint to read that child's history.
 
 Those runs carry a `metadata.dispatch` bag on the request record: `type` and
-`target` for the entry, `from` naming the block and session that dispatched,
+`action` for the entry, `from` naming the block and session that dispatched,
 `key` for the derived session key, and `taskId` naming the task-board row on a
 task hand-off. Read the bag at all only when the record's `source` is
 `"internal"` or `"task"` — `metadata` is caller-writable on an ordinary request,

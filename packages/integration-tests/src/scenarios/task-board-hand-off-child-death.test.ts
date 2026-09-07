@@ -59,7 +59,7 @@ function buildFlow() {
       background: dispatcher({
         name: `${KIND}-hand-off`,
         type: "task",
-        target: "background",
+        action: "background",
         session: "per-task",
       }),
     },
@@ -124,7 +124,7 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
         ...baseRuntimeConfig(),
         requestHost: {
           dispatchOperation: async (spec: RecordedDispatch) => {
-            dispatched.push({ sessionId: spec.sessionId, target: spec.target, input: spec.input });
+            dispatched.push({ sessionId: spec.sessionId, target: spec.action, input: spec.input });
             return { requestId: "child_never_runs" };
           },
         },
@@ -159,7 +159,7 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
           // hand below: a recovery that only re-dispatched forever would look
           // identical up to this point.
           dispatchOperation: async (spec: RecordedDispatch) => {
-            dispatched.push({ sessionId: spec.sessionId, target: spec.target, input: spec.input });
+            dispatched.push({ sessionId: spec.sessionId, target: spec.action, input: spec.input });
             return { requestId: "child_2" };
           },
         },

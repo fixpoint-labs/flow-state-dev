@@ -5,12 +5,12 @@
  * run *elsewhere*: in a child session it derives, or in a session that already
  * exists. It is a handler under the hood — its body puts a typed envelope
  * through the runtime's dispatch seam and returns the handle the seam gives
- * back — and it carries its `(type, target)` on the block definition, so
- * `defineFlow` can check the target resolves and a task board can read which
+ * back — and it carries its `(type, action)` on the block definition, so
+ * `defineFlow` can check the action resolves and a task board can read which
  * of its seats hand off without running anything.
  *
  * **The address is static so it can be verified; the envelope is dynamic so it
- * can be useful.** `type` and `target` never vary — that pair is exactly what
+ * can be useful.** `type` and `action` never vary — that pair is exactly what
  * `defineFlow`'s walk checks. The session and the payload are computed per
  * invocation from the block's input. When the *address* genuinely varies, that
  * is a `router` over declared dispatchers: the reachable set stays declared,
@@ -20,8 +20,7 @@
  * ```ts
  * const wakeEpic = dispatcher({
  *   name: "wake-epic",
- *   type: "internal",
- *   target: "wake",                                    // flow.internal.actions.wake
+ *   action: "wake",                                    // flow.internal.actions.wake
  *   inputSchema: z.object({ epicSessionId: z.string(), reason: z.string() }),
  *   session: { id: (input) => input.epicSessionId },   // deliver into an existing session
  *   payload: (input) => ({ reason: input.reason }),
@@ -29,16 +28,14 @@
  *
  * const runInBackground = dispatcher({
  *   name: "run-in-background",
- *   type: "internal",
- *   target: "analyze",
+ *   action: "analyze",
  *   inputSchema: z.object({ documentId: z.string() }),
  *   session: { key: (input) => input.documentId },     // one child per document, adopted on retry
  * });
  *
  * const replyToSender = dispatcher({
  *   name: "reply-to-sender",
- *   type: "internal",
- *   target: "receive-reply",
+ *   action: "receive-reply",
  *   session: { from: true },                           // stamped sender, not a caller-named id
  * });
  * ```
@@ -52,7 +49,7 @@
  * const notifyBilling = dispatcher({
  *   name: "notify-billing",
  *   flowKind: "billing",                               // resolves on the billing flow
- *   target: "invoice-ready",
+ *   action: "invoice-ready",
  *   inputSchema: z.object({ invoiceId: z.string() }),
  *   session: { key: (input) => input.invoiceId },
  * });
@@ -64,7 +61,7 @@
  *
  * A `task` dispatcher is a **seat on a task board**: put it under `workers`
  * where an inline worker would go, and the board hands each row it routes
- * there off to `flow.task.actions[target]` in the child session the policy names.
+ * there off to `flow.task.actions[action]` in the child session the policy names.
  *
  * ```ts
  * const board = taskBoard({
@@ -75,7 +72,7 @@
  *     implement: dispatcher({                                 // hands off
  *       name: "hand-off-implement",
  *       type: "task",
- *       target: "implement",                                  // flow.task.actions.implement
+ *       action: "implement",                                  // flow.task.actions.implement
  *       session: "per-task",
  *     }),
  *   },
@@ -132,7 +129,7 @@ export type DispatcherSession<TInput> =
   | { readonly id: (input: TInput, ctx: BlockContext) => string }
   | { readonly from: true };
 
-/** An `internal` dispatcher: sends this request's authority to `flow.internal.actions[target]`. */
+/** An `internal` dispatcher: sends this request's authority to `flow.internal.actions[action]`. */
 export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny> {
   name: string;
   description?: string;
@@ -142,11 +139,11 @@ export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodT
    */
   type?: "internal";
   /**
-   * The entry name — resolves `flow.internal.actions[target]` on the flow
+   * The entry name — resolves `flow.internal.actions[action]` on the flow
    * {@link InternalDispatcherConfig.flowKind} names. Verified at `defineFlow`
    * for a same-flow address, at the seam for a cross-flow one.
    */
-  target: string;
+  action: string;
   /**
    * The **other flow** this dispatcher sends to. Omit for the sending flow's
    * own entry, which is the ordinary case.
@@ -157,7 +154,7 @@ export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodT
    * within a flow: the recipient replies with a `{ from: true }` dispatcher of
    * its own, pointed back at `flowKind: <the sender's flow>`.
    *
-   * `defineFlow` cannot check this target — it holds one flow's entry maps and
+   * `defineFlow` cannot check this address — it holds one flow's entry maps and
    * this names another's. The check runs at the seam instead, against what the
    * process actually registered, and refuses by name: `flow-not-found` for an
    * unregistered flow, `no-entry` for a flow that declares no such entry.
@@ -179,15 +176,21 @@ export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodT
 
 /**
  * A `task` dispatcher: a board seat that hands its rows off to
- * `flow.task.actions[target]`. `TPayload` is the worker input a `key` policy reads —
+ * `flow.task.actions[action]`. `TPayload` is the worker input a `key` policy reads —
  * a task board's `TaskWorkerInput`.
  */
 export interface TaskDispatcherConfig<TPayload = unknown> {
   name: string;
   description?: string;
   type: "task";
-  /** The entry name — resolves `flow.task.actions[target]`. Verified at `defineFlow`. */
-  target: string;
+  /** The entry name — resolves `flow.task.actions[action]`. Verified at `defineFlow` for a same-flow address, at the seam for a cross-flow one. */
+  action: string;
+  /**
+   * The **other flow** this seat hands off to. Omit for this flow's own
+   * task entry. Same skip as an `internal` cross-flow address: `defineFlow`
+   * cannot see the other flow's map, so the seam resolves it.
+   */
+  flowKind?: string;
   /** Which child session each row runs in. See {@link TaskSessionPolicy}. */
   session: TaskSessionPolicy<TPayload>;
   /** Hide this block's trace from clients. Default: false. */
@@ -209,10 +212,10 @@ export function dispatcher<TPayload = unknown>(
 export function dispatcher(
   config: DispatcherConfig
 ): BlockDefinition<any, typeof dispatchHandleSchema> {
-  const { name, description, target, transient } = config;
+  const { name, description, action, transient } = config;
   const type = config.type ?? "internal";
-  if (typeof target !== "string" || target.length === 0) {
-    throw new Error(`[dispatcher] "${name}" must name a non-empty target entry`);
+  if (typeof action !== "string" || action.length === 0) {
+    throw new Error(`[dispatcher] "${name}" must name a non-empty action entry`);
   }
   if (type !== "internal" && type !== "task") {
     throw new Error(
@@ -228,18 +231,16 @@ export function dispatcher(
     ...(transient !== undefined ? { transient } : {})
   };
 
+  const flowKind = config.flowKind;
+  if (flowKind !== undefined && (typeof flowKind !== "string" || flowKind.length === 0)) {
+    throw new Error(
+      `[dispatcher] "${name}" declares an empty flowKind (${JSON.stringify(flowKind)}). ` +
+        `A cross-flow address names the flow to resolve the entry on; omit it to address ` +
+        `this flow's own entry.`
+    );
+  }
+
   if (config.type === "task") {
-    // A board's claim gate is installed by the `defineFlow` that owns the task
-    // entry, and a cross-flow hand-off would put the ledger on one side of the
-    // boundary and the gate on the other. Refused rather than ignored: a
-    // silently dropped `flowKind` is a seat handing rows to the wrong flow.
-    if ((config as { flowKind?: unknown }).flowKind !== undefined) {
-      throw new Error(
-        `[dispatcher] "${name}" declares a flowKind, but only an "internal" dispatcher may ` +
-          `address another flow. A task seat settles against the board's own ledger, and the ` +
-          `claim gate that fronts its entry is installed by the flow that declares it.`
-      );
-    }
     const session = config.session;
     if (!isTaskSessionPolicy(session)) {
       throw new Error(
@@ -247,7 +248,12 @@ export function dispatcher(
           `or { key: (task) => string }.`
       );
     }
-    const address: DispatchAddress = { type: "task", target, session };
+    const address: DispatchAddress = {
+      type: "task",
+      action,
+      session,
+      ...(flowKind !== undefined ? { flowKind } : {})
+    };
     const block = handler({
       ...common,
       inputSchema: taskDispatchInputSchema,
@@ -256,11 +262,12 @@ export function dispatcher(
         const key = taskSessionKeyFor(name, session, envelope, ctx);
         const outcome = await dispatchThroughSeam(ctx, {
           type: "task",
-          target,
+          action,
           session: { key },
           payload: envelope,
           from: name,
-          provenance: { taskId: envelope.taskId }
+          provenance: { taskId: envelope.taskId },
+          ...(flowKind !== undefined ? { flowKind } : {})
         });
         if (!outcome.ok) {
           throw new DispatchRefusedError(name, address, outcome.refused, outcome.detail);
@@ -271,17 +278,10 @@ export function dispatcher(
     return markDispatcher(block, address);
   }
 
-  const { session, payload, flowKind } = config;
-  if (flowKind !== undefined && (typeof flowKind !== "string" || flowKind.length === 0)) {
-    throw new Error(
-      `[dispatcher] "${name}" declares an empty flowKind (${JSON.stringify(flowKind)}). ` +
-        `A cross-flow address names the flow to resolve the entry on; omit it to address ` +
-        `this flow's own entry.`
-    );
-  }
+  const { session, payload } = config;
   const address: DispatchAddress = {
     type: "internal",
-    target,
+    action,
     ...(flowKind !== undefined ? { flowKind } : {})
   };
   const inputSchema = config.inputSchema ?? z.unknown();

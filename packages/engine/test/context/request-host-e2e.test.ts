@@ -206,7 +206,7 @@ describe("request-host seam, end to end", () => {
           type: "internal",
           // Collides with the flow's own public action name on purpose: a
           // resolution that fell through to `flow.actions` would find it.
-          target: "run",
+          action: "run",
           session: { key: "review" },
           payload: {},
           from: "probe-dispatch"

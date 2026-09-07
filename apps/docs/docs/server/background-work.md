@@ -48,8 +48,7 @@ const acknowledge = handler({
 // lands on the same job.
 const summarizeInBackground = dispatcher({
   name: "summarize-in-background",
-  type: "internal",
-  target: "summarize",
+  action: "summarize",
   inputSchema: z.object({ documentId: z.string() }),
   session: { key: (input) => input.documentId },
 });
@@ -57,8 +56,7 @@ const summarizeInBackground = dispatcher({
 // Deliver into a session that already exists.
 const nudgeCoordinator = dispatcher({
   name: "nudge-coordinator",
-  type: "internal",
-  target: "acknowledge",
+  action: "acknowledge",
   inputSchema: z.object({ coordinatorSessionId: z.string(), reason: z.string() }),
   session: { id: (input) => input.coordinatorSessionId },
   payload: (input) => ({ reason: input.reason }),
@@ -80,7 +78,7 @@ export default defineFlow({
 ```
 
 A dispatcher is a handler. Run it, in a sequencer step, as a generator's tool,
-or as an action's root block, and it sends one request to `target` and returns
+or as an action's root block, and it sends one request to `action` and returns
 as soon as the runtime has accepted it. It does not wait for the work.
 
 ```ts
@@ -108,7 +106,7 @@ child. An `id` target has to be a session of this flow kind that belongs to
 this user.
 
 `defineFlow` checks every dispatcher it can reach and throws at definition time
-when `target` names an entry the flow does not declare. An action named
+when `action` names an entry the flow does not declare. An action named
 `summarize` does not stand in for `internal.actions.summarize`; each map is
 looked up on its own.
 
@@ -139,13 +137,13 @@ Seats that hand off](../orchestration/task-board.md#seats-that-hand-off).
 ### Starting a job on another flow
 
 A server usually runs more than one flow. Add `flowKind` and the dispatcher
-resolves its `target` on that flow's `internal.actions` instead of its own:
+resolves its `action` on that flow's `internal.actions` instead of its own:
 
 ```ts
 const notifyBilling = dispatcher({
   name: "notify-billing",
   flowKind: "billing",                          // the other flow
-  target: "charge",                             // billing's internal.actions.charge
+  action: "charge",                             // billing's internal.actions.charge
   inputSchema: z.object({ orderId: z.string() }),
   session: { key: (input) => input.orderId },
 });
@@ -176,7 +174,7 @@ a `{ from: true }` dispatcher — pointed at your `flowKind`:
 const confirmToSender = dispatcher({
   name: "confirm-to-sender",
   flowKind: "orders",
-  target: "confirm",
+  action: "confirm",
   inputSchema: z.object({ orderId: z.string() }),
   session: { from: true },
 });
@@ -185,7 +183,7 @@ const confirmToSender = dispatcher({
 The runtime supplies the session to reply into, from the dispatch it stamped;
 you supply the flow. If they disagree — the sender's session is not on the flow
 you named — the reply is refused `session-not-addressable` rather than
-delivered somewhere else. A `task` dispatcher takes no `flowKind`.
+delivered somewhere else. A `task` dispatcher may take `flowKind` the same way.
 
 ## Listing a session's children
 
@@ -349,7 +347,7 @@ bag:
   "metadata": {
     "dispatch": {
       "type": "task",
-      "target": "implement",
+      "action": "implement",
       "from": { "block": "hand-off-implement", "sessionId": "sess_abc" },
       "key": "task|10:issue-work|3:t42",
       "taskId": "t42"
@@ -358,7 +356,7 @@ bag:
 }
 ```
 
-`type` and `target` are the entry the run executes, `from` names the block that
+`type` and `action` are the entry the run executes, `from` names the block that
 sent it and the session it was running in, `key` is the session key the child
 was derived from, and `taskId` the board row on a task hand-off. `key` is absent
 when the dispatcher delivered into an existing session by `id`, and `taskId` is

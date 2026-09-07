@@ -95,7 +95,7 @@ same-principal caller pre-create a record at that deterministic id.
 
 ### Dispatching into another flow
 
-An `internal` dispatcher may name a different flow — `flowKind` on the block.
+An `internal` or `task` dispatcher may name a different flow — `flowKind` on the block.
 Nothing about the mechanism changes: one envelope, one door, one request
 record, the same session policies, the same handle back. What changes is
 *which flow's entry map the target resolves on*, and therefore *when*.
@@ -148,11 +148,8 @@ same three requests as within one flow. The stamp supplies the session id and
 the address supplies the flow; a delivery happens only when they agree, and a
 sender session on some other flow is `session-not-addressable`.
 
-A `task` dispatcher takes no `flowKind`. Its rows settle against its board's
-ledger and the claim gate fronting a task entry is installed by the flow that
-declares that entry, so a cross-flow hand-off would put the ledger on one side
-of the boundary and the gate on the other. `dispatcher()` throws rather than
-ignoring the field.
+A `task` dispatcher may take `flowKind` the same way: `defineFlow` skips the
+other-flow address and the seam resolves it, with the same named miss.
 
 ## The claim gate and the fence ticket
 

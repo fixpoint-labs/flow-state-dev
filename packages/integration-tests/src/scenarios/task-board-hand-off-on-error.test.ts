@@ -54,7 +54,7 @@ function buildFlow(kind: string, onError: "skip" | "fail") {
       background: dispatcher({
         name: `${kind}-hand-off`,
         type: "task",
-        target: "background",
+        action: "background",
         session: "per-task",
       }),
     },
@@ -102,7 +102,7 @@ async function handOffAndRunChild(kind: string, onError: "skip" | "fail") {
         }) => {
           dispatched.push({
             sessionId: spec.sessionId,
-            actionName: spec.target,
+            actionName: spec.action,
             input: spec.input,
           });
           return { requestId: "child_req_1" };

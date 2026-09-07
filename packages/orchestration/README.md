@@ -331,9 +331,9 @@ the limit in force. See the
 
 #### Handing tasks off through a dispatcher seat
 
-A seat under `workers` is a block. Put a `dispatcher({ type: "task", target, session })`
+A seat under `workers` is a block. Put a `dispatcher({ type: "task", action, session })`
 in that position and the seat hands its tasks off: the drain claims a row, sends a
-`task` dispatch to the flow's `task.actions[target]` entry, and moves on, while the
+`task` dispatch to the flow's `task.actions[action]` entry, and moves on, while the
 entry's block runs in a **child session** of the session that drained — on a request
 of its own — and settles the row itself. Any other block in that position runs
 inline in the drain. The worker is declared once, on the flow, exactly like an
@@ -362,7 +362,7 @@ const board = taskBoard({
     implement: dispatcher({            // hands off to flow.task.actions.implement
       name: "hand-off-implement",
       type: "task",
-      target: "implement",
+      action: "implement",
       session: "per-task",
     }),
   },

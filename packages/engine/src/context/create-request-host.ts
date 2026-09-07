@@ -245,7 +245,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
    */
   const resolveChildSession = async (
     key: string,
-    address: { type: string; target: string },
+    address: { type: string; action: string },
     targetFlow: FlowInstance
   ): Promise<ResolvedSession> => {
     const crossFlow = targetFlow.kind !== flow.kind;
@@ -332,7 +332,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // is what keeps them safe (see `SessionRecord.topic`). They are the two
       // fields the children listing reads.
       ...label("topic", key),
-      ...label("coordinate", `${address.type}:${address.target}`)
+      ...label("coordinate", `${address.type}:${address.action}`)
     };
 
     // Reclaim the id's resource-state tombstones before the create (FIX-1258).
@@ -415,17 +415,17 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       return refuse(
         "flow-not-found",
         `no flow "${spec.flowKind}" is registered in this process, so the ${spec.type} entry ` +
-          `"${spec.target}" cannot be resolved`
+          `"${spec.action}" cannot be resolved`
       );
     }
 
     // Admission: the address must resolve on its own type's map, on the flow it
     // named. Never falls through to another type — a `task` dispatch cannot
     // reach an action — and never to another flow's map.
-    if (resolveEntry(targetFlow, spec.type, spec.target) === undefined) {
+    if (resolveEntry(targetFlow, spec.type, spec.action) === undefined) {
       return refuse(
         "no-entry",
-        `flow "${targetFlow.kind}" declares no ${spec.type} entry "${spec.target}"`
+        `flow "${targetFlow.kind}" declares no ${spec.type} entry "${spec.action}"`
       );
     }
 
@@ -447,7 +447,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     // it would race a concurrent adopter.
     const started = await inputs.dispatchOperation({
       source: spec.type,
-      target: spec.target,
+      action: spec.action,
       sessionId: session.sessionId,
       delivery: session.delivery,
       input: spec.payload,
@@ -467,7 +467,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       metadata: {
         dispatch: {
           type: spec.type,
-          target: spec.target,
+          action: spec.action,
           // The flow the entry was resolved on, stamped only when the dispatch
           // actually crossed a flow boundary — so a reader can tell a
           // cross-flow arrival from an ordinary one without inferring it, and

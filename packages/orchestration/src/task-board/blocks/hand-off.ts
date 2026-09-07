@@ -148,7 +148,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
 
       const outcome = await dispatchThroughSeam(ctx, {
         type: "task",
-        target: address.target,
+        action: address.action,
         session: { key },
         payload: envelope,
         from: name,

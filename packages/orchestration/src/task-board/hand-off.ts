@@ -5,7 +5,7 @@
  * A seat under `workers` is a block. A `dispatcher({ type: "task" })` in that
  * position is the seat that **hands off**: the board routes each row it claims
  * for the seat to that dispatcher, and the row runs in a child session, in the
- * block the flow declares at `flow.task.actions[target]`. A worker is just a
+ * block the flow declares at `flow.task.actions[action]`. A worker is just a
  * block; to run it elsewhere instead of inline, the seat holds a dispatcher.
  * This module owns three things and nothing else:
  *
@@ -103,7 +103,7 @@ export function resolveWorkerSlot(
   }
   const fix =
     `A seat is a block. To run it inline, put the block there; to hand it off, put a ` +
-    `\`dispatcher({ type: "task", target, session })\` there and declare the block on the flow ` +
+    `\`dispatcher({ type: "task", action, session })\` there and declare the block on the flow ` +
     `as \`tasks: { [target]: { block } }\`.`;
   if (typeof slot === "object" && slot !== null) {
     const keys = Object.keys(slot);

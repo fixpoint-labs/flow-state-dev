@@ -1220,7 +1220,7 @@ describe("provenance", () => {
     // `metadata.dispatch`.
     const stamp = {
       type: "task",
-      target: "implement",
+      action: "implement",
       from: { block: "board-drain", sessionId: "parent" },
       key: "t1",
       taskId: "task_7f3"

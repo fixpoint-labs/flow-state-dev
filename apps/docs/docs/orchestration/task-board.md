@@ -309,7 +309,7 @@ A registry seat can also run its tasks somewhere other than the request that cla
 
 A seat in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. A seat can instead hand each claimed row to a worker running in a **child session** of the one draining, and move on. The drain finishes with the row still `in_progress`, and the child settles it when the worker is done.
 
-A seat hands off when it holds a `dispatcher({ type: "task" })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the seat names it by `target`. A board can mix seats that hand off with seats that run inline:
+A seat hands off when it holds a `dispatcher({ type: "task" })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the seat names it by `action`. A board can mix seats that hand off with seats that run inline:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -333,7 +333,7 @@ const board = taskBoard({
     implement: dispatcher({              // hands off to flow.task.actions.implement
       name: "hand-off-implement",
       type: "task",
-      target: "implement",
+      action: "implement",
       session: "per-task",
     }),
   },
@@ -370,7 +370,7 @@ import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 implement: dispatcher({
   name: "hand-off-implement",
   type: "task",
-  target: "implement",
+  action: "implement",
   session: { key: (task: TaskWorkerInput) => (task.input as { issueKey: string }).issueKey },
 }),
 ```
@@ -390,7 +390,7 @@ task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } 
 - **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the child resolves an empty ledger and never finds its row. `user` and `org` scope need nothing extra.
 - **The seat is a named registry entry.** A uniform `workers` block and `defaultWorker` have no assignee to route by, so neither can be a dispatcher.
 
-`defineFlow()` throws for a dispatcher seat whose `target` the flow does not declare under `task.actions`, for a `task.actions` entry no board hands off to, for a `dispatcher({ type: "task" })` reachable from an action without sitting on a board, for two boards handing off to the same entry, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a handed-off worker's state on the task.
+`defineFlow()` throws for a dispatcher seat whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board hands off to, for a `dispatcher({ type: "task" })` reachable from an action without sitting on a board, for two boards handing off to the same entry, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a handed-off worker's state on the task.
 
 A board with any seat that hands off fixes each task's assignee at admission: `setAssignee` declines with reason `immutable-assignee`. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value declines too.
 

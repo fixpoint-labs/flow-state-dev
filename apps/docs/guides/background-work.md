@@ -108,8 +108,7 @@ const investigate = generator({
 
 const investigateInBackground = dispatcher({
   name: "investigate-in-background",
-  type: "internal",
-  target: "investigate",
+  action: "investigate",
   inputSchema: z.object({ company: z.string() }),
   session: { key: (input) => input.company },
 });
@@ -121,13 +120,13 @@ export default defineFlow({
 })();
 ```
 
-Run the dispatcher and it sends one request to the `investigate` entry and returns `{ sessionId, requestId, adopted }` as soon as the runtime accepts it, without waiting for the work. With `session: { key }` the work runs in a child of the running session, created on first use; the same key from the same conversation lands on the same child again, with `adopted: true`. With `session: { id }` it is delivered into a session that already exists, and refused if it doesn't. `defineFlow` throws at definition time when `target` names an entry the flow doesn't declare.
+Run the dispatcher and it sends one request to the `investigate` entry and returns `{ sessionId, requestId, adopted }` as soon as the runtime accepts it, without waiting for the work. With `session: { key }` the work runs in a child of the running session, created on first use; the same key from the same conversation lands on the same child again, with `adopted: true`. With `session: { id }` it is delivered into a session that already exists, and refused if it doesn't. `defineFlow` throws at definition time when `action` names an entry the flow doesn't declare.
 
 Read next: **[Starting a job from a flow](/docs/server/background-work#starting-a-job-from-a-flow)** for the `session` policies, the return shape, and every refusal by name.
 
 ### From a task board seat
 
-A board is a list of tasks plus a set of named workers that claim them. A seat normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ type: "task" })` in the seat's position instead and the board hands each claimed row to a worker running in a child session. The worker is declared once on the flow, under `task.actions`, and the seat names it with `target`:
+A board is a list of tasks plus a set of named workers that claim them. A seat normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ type: "task" })` in the seat's position instead and the board hands each claimed row to a worker running in a child session. The worker is declared once on the flow, under `task.actions`, and the seat names it with `action`:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -144,7 +143,7 @@ const board = taskBoard({
     investigate: dispatcher({
       name: "hand-off-investigate",
       type: "task",
-      target: "investigate",      // flow.task.actions.investigate
+      action: "investigate",      // flow.task.actions.investigate
       session: "per-task",        // one child session per row
     }),
     summarize: summarizeBlock,    // a bare block runs inline, in the request that claimed the row

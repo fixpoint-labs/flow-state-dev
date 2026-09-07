@@ -238,11 +238,11 @@ function assertDispatchersRoutable(
 
     const address = block.dispatch;
     if (address !== undefined) {
-      const entry = resolveTypedEntry(flow, address.type, address.target);
+      const entry = resolveTypedEntry(flow, address.type, address.action);
       if (entry === undefined) {
         throw new ValidationError(
           `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
-            `dispatches to ${address.type}:"${address.target}", which the flow does not declare. ` +
+            `dispatches to ${address.type}:"${address.action}", which the flow does not declare. ` +
             `The core was produced at dispatch time — a dynamic schedule's resolver — so its ` +
             `dispatcher never reached the flow definition. Declare the entry on the flow, or ` +
             `drop the dispatch from the resolver's block.`,
@@ -255,7 +255,7 @@ function assertDispatchersRoutable(
         if (binding === undefined || gatedBy === undefined || gatedBy.gate !== binding.gate) {
           throw new ValidationError(
             `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
-              `hands off to task:"${address.target}", which is gated for board ` +
+              `hands off to task:"${address.action}", which is gated for board ` +
               `"${gatedBy?.boardId ?? "<none>"}", but the seat is held by ` +
               (binding === undefined ? "no board" : `board "${binding.boardId}"`) +
               `. One entry settles against one ledger; a row claimed on another board's ledger ` +

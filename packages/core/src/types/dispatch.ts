@@ -14,9 +14,9 @@
  *
  * ## One flow, or another one
  *
- * An `internal` address may name a **different flow** — `flowKind` on the
- * address. Delivery is the same door; what changes is which flow's entry map
- * the target is resolved on, and therefore *when*. A same-flow address is
+ * An `internal` or `task` address may name a **different flow** — `flowKind`
+ * on the address. Delivery is the same door; what changes is which flow's
+ * entry map the target is resolved on, and therefore *when*. A same-flow address is
  * resolved by `defineFlow`, which holds the map. A cross-flow address cannot
  * be: the flow it names is registered separately, so the entry check happens
  * at the seam, on the target flow the process actually has. That is a **miss
@@ -86,9 +86,9 @@ export type TaskSessionPolicy<TPayload = unknown> =
   | { readonly key: (task: TPayload, ctx: BlockContext) => string };
 
 /**
- * Where a dispatcher sends. Static by construction: `(type, target, flowKind)`
+ * Where a dispatcher sends. Static by construction: `(type, action, flowKind)`
  * is what the block declares, so its reachable set is declared rather than
- * computed at run time. A target chosen from data is a router over declared
+ * computed at run time. An action chosen from data is a router over declared
  * dispatchers, not a dynamic address.
  *
  * `defineFlow` verifies the same-flow pair. A cross-flow address is equally
@@ -102,8 +102,8 @@ export type TaskSessionPolicy<TPayload = unknown> =
 export type DispatchAddress =
   | {
       readonly type: "internal";
-      /** The entry name — `flow.internal.actions[target]`. */
-      readonly target: string;
+      /** The entry name — `flow.internal.actions[action]`. */
+      readonly action: string;
       /**
        * The flow the entry lives on, when it is **not this one**. Absent is
        * same-flow, which is the whole of what `defineFlow` can check.
@@ -120,9 +120,15 @@ export type DispatchAddress =
     }
   | {
       readonly type: "task";
-      /** The entry name — `flow.task.actions[target]`. */
-      readonly target: string;
+      /** The entry name — `flow.task.actions[action]`. */
+      readonly action: string;
       readonly session: TaskSessionPolicy<any>;
+      /**
+       * The flow the entry lives on, when it is **not this one**. Same skip
+       * as an `internal` cross-flow address: `defineFlow` cannot see the
+       * other flow's map, so the seam resolves it.
+       */
+      readonly flowKind?: string;
     };
 
 /**
@@ -246,7 +252,7 @@ export type SessionTarget =
 /** What a dispatcher hands the seam. Every field is computed by the block that dispatches. */
 export type DispatchSpec = {
   readonly type: BlockDispatchType;
-  readonly target: string;
+  readonly action: string;
   /** The flow the entry lives on, when it is not the sending request's own. */
   readonly flowKind?: string;
   readonly session: SessionTarget;
@@ -268,7 +274,7 @@ export type DispatchSpec = {
  * dispatched, so a refused caller still owns whatever it was handing over.
  */
 export type DispatchRefusal =
-  /** The flow declares no entry at `(type, target)`. Resolution never falls through. */
+  /** The flow declares no entry at `(type, action)`. Resolution never falls through. */
   | "no-entry"
   /**
    * A cross-flow address names a flow this process has not registered. The
@@ -360,7 +366,7 @@ export class DispatchRefusedError extends Error {
     readonly detail: string
   ) {
     super(
-      `Block "${blockName}" could not dispatch to ${address.type}:"${address.target}": ` +
+      `Block "${blockName}" could not dispatch to ${address.type}:"${address.action}": ` +
         `${refused} — ${detail}`
     );
     this.name = "DispatchRefusedError";
@@ -440,7 +446,7 @@ export type TaskEntry = ActionCore & {
  */
 export type TaskBinding = {
   readonly boardId: string;
-  /** Wrap an entry in this board's claim gate. `target` is the entry's name on the flow. */
+  /** Wrap an entry in this board's claim gate. The second argument is the entry's name on the flow. */
   readonly gate: (entry: ActionCore, target: string) => ActionCore;
 };
 

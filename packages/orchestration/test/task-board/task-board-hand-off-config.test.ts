@@ -122,7 +122,7 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
     expect(board.handedOff.map((slot) => slot.label)).toEqual(["assignee:implement"]);
     expect(board.handedOff[0]?.dispatch).toEqual({
       type: "task",
-      target: "implement",
+      action: "implement",
       session: "per-task",
     });
   });
@@ -138,7 +138,7 @@ describe("isTaskDispatcher", () => {
     expect(isTaskDispatcher(undefined)).toBe(false);
     expect(
       isTaskDispatcher(
-        dispatcher({ name: "internal", type: "internal", target: "x", session: { key: () => "k" } })
+        dispatcher({ name: "internal", type: "internal", action: "x", session: { key: () => "k" } })
       )
     ).toBe(false);
   });

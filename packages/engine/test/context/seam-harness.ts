@@ -18,7 +18,7 @@ import { createRequestHost, type RequestHostInputs } from "../../src/context/cre
 import type { DispatchOperation } from "../../src/context/dispatch-operation";
 
 /** The entry every child dispatched through this harness is addressed to. */
-export const CHILD_ENTRY = { type: "internal", target: "work" } as const;
+export const CHILD_ENTRY = { type: "internal", action: "work" } as const;
 
 /**
  * A flow with one public action and one `internal` entry, `work` — the

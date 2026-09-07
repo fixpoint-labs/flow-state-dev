@@ -5,7 +5,7 @@
  * A dynamic schedule (`schedules.resolve`) produces its handler block at
  * dispatch time, so that block is not reachable from the flow definition and
  * `defineFlow`'s address walk never sees it. If it contains a `dispatcher()`
- * whose target the flow does not declare, nothing catches that until the
+ * whose action the flow does not declare, nothing catches that until the
  * dispatcher actually runs and the seam refuses `no-entry` — after the
  * request has already been admitted and, for a task hand-off, after a row has
  * already been claimed. That is the class this epic keeps closing: work that
@@ -28,12 +28,12 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const SCHEDULED_SOURCE = "scheduled";
 
-/** A dispatcher whose target no flow in this file declares. */
+/** A dispatcher whose action no flow in this file declares. */
 function missingDispatch() {
   return dispatcher({
     name: "wake-missing",
     type: "internal",
-    target: "missing",
+    action: "missing",
     session: { key: () => "k" }
   });
 }
@@ -136,7 +136,7 @@ describe("a dispatch-time core carrying an unroutable dispatch is refused by nam
     );
   });
 
-  it("allows a carried core whose dispatcher target the flow already declares", async () => {
+  it("allows a carried core whose dispatcher action the flow already declares", async () => {
     // THE CONTROL, and the reason the check compares the resolved address
     // rather than merely asking "does this core carry any dispatch". A
     // resolver may legitimately return a core built around a dispatcher whose
@@ -150,7 +150,7 @@ describe("a dispatch-time core carrying an unroutable dispatch is refused by nam
         block: dispatcher({
           name: "wake-work",
           type: "internal",
-          target: "work",
+          action: "work",
           session: { key: () => "k" }
         })
       }
@@ -193,7 +193,7 @@ describe("a carried task dispatcher must be held by the board that gates its ent
     return dispatcher({
       name: `${name}-${seats}`,
       type: "task",
-      target: "implement",
+      action: "implement",
       session: "per-task"
     });
   }

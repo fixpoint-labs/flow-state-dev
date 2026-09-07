@@ -543,7 +543,7 @@ A `task` entry is declared as a plain block, but a `task` dispatch does not run 
 
 ### `dispatcher(config)`
 
-A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `target`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes, told apart by `type`: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[target]`, and a `task` dispatcher (`TaskDispatcherConfig`) is a seat on a task board that hands the board's rows to `flow.task.actions[target]`.
+A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `action`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes, told apart by `type`: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[action]`, and a `task` dispatcher (`TaskDispatcherConfig`) is a seat on a task board that hands the board's rows to `flow.task.actions[action]`. Omit `type` for `internal` — only a task-board seat sets `type: "task"`.
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -569,8 +569,7 @@ const acknowledge = handler({
 // session lands on the same child, adopted rather than created.
 const summarizeInBackground = dispatcher({
   name: "summarize-in-background",
-  type: "internal",
-  target: "summarize",
+  action: "summarize",
   inputSchema: z.object({ documentId: z.string() }),
   session: { key: (input) => input.documentId },
 });
@@ -578,8 +577,7 @@ const summarizeInBackground = dispatcher({
 // Deliver into a session that already exists. An unknown id is refused, never created.
 const wakeCoordinator = dispatcher({
   name: "wake-coordinator",
-  type: "internal",
-  target: "acknowledge",
+  action: "acknowledge",
   inputSchema: z.object({ coordinatorSessionId: z.string(), reason: z.string() }),
   session: { id: (input) => input.coordinatorSessionId },
   payload: (input) => ({ reason: input.reason }),
@@ -602,9 +600,9 @@ export default defineFlow({
 
 | Field | What it does |
 |---|---|
-| `type` | `"internal"` sends this request's own authority; `"task"` sends a claim on a durable row and is meaningful only as a task board seat. |
-| `target` | The entry name, resolved as `flow.internal.actions[target]` or `flow.task.actions[target]`. Checked when the flow is defined, unless `flowKind` names another flow. |
-| `flowKind` | `internal` only. The **other flow** the entry lives on. Omit to address this flow's own entry. Checked at run time, not when the flow is defined — see [Dispatching to another flow](#dispatching-to-another-flow). |
+| `type` | Omit it to send `internal` (this request's own authority). `"task"` sends a claim on a durable row and is meaningful only as a task board seat. |
+| `action` | The entry name, resolved as `flow.internal.actions[action]` or `flow.task.actions[action]`. Checked when the flow is defined, unless `flowKind` names another flow. |
+| `flowKind` | The **other flow** the entry lives on, on an `internal` or `task` dispatcher. Omit to address this flow's own entry. Checked at run time, not when the flow is defined — see [Dispatching to another flow](#dispatching-to-another-flow). |
 | `inputSchema` | `internal` only. What the block accepts. Defaults to `z.unknown()`. |
 | `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one; `{ from: true }` delivers into the seam-stamped sender (refuses `no-sender` when this request was not dispatched). `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row), `"per-worker"` (one child per seat), or `{ key: (task, ctx) => string }` read from the row's worker input. |
 | `payload` | `internal` only. `(input, ctx) => unknown`, the entry's input. Defaults to the input itself. Validated by the entry's own schema on arrival. |
@@ -625,7 +623,7 @@ const board = taskBoard({
     implement: dispatcher({                      // hands off
       name: "hand-off-implement",
       type: "task",
-      target: "implement",                       // flow.task.actions.implement
+      action: "implement",                       // flow.task.actions.implement
       session: "per-task",
     }),
   },
@@ -646,14 +644,13 @@ The same key from a different parent session, user, or tenant is a different chi
 
 ### Dispatching to another flow
 
-An `internal` dispatcher can name a different flow with `flowKind`. Everything else is the same: the dispatch is fire-and-forget, the session policy still decides where it runs, and the block still returns a `DispatchHandle`.
+An `internal` or `task` dispatcher can name a different flow with `flowKind`. Everything else is the same: the dispatch is fire-and-forget, the session policy still decides where it runs, and the block still returns a `DispatchHandle`.
 
 ```ts
 const notifyBilling = dispatcher({
   name: "notify-billing",
-  type: "internal",
   flowKind: "billing",                          // resolves on the billing flow
-  target: "charge",                             // billing's flow.internal.actions.charge
+  action: "charge",                             // billing's flow.internal.actions.charge
   inputSchema: z.object({ orderId: z.string() }),
   session: { key: (input) => input.orderId },
 });
@@ -669,21 +666,20 @@ The `key` child belongs to the flow it was dispatched to: its session record car
 // declared on the billing flow
 const confirmToSender = dispatcher({
   name: "confirm-to-sender",
-  type: "internal",
   flowKind: "orders",
-  target: "confirm",
+  action: "confirm",
   inputSchema: z.object({ orderId: z.string() }),
   session: { from: true },
 });
 ```
 
-Cross-flow addressing resolves by flow **kind**, and both flows have to be registered in the same process — a flow served by some other host is `flow-not-found`, not a network hop. A `task` dispatcher takes no `flowKind` and throws if given one: its rows settle against its board's ledger, and the claim gate that fronts a task entry is installed by the flow that declares it.
+Cross-flow addressing resolves by flow **kind**, and both flows have to be registered in the same process — a flow served by some other host is `flow-not-found`, not a network hop. A `task` dispatcher may take `flowKind` the same way.
 
 At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-refused"`), carrying `blockName`, `address`, `detail`, and `refused`:
 
 | `refused` | Meaning |
 |---|---|
-| `no-entry` | The addressed flow declares no entry at `(type, target)`. |
+| `no-entry` | The addressed flow declares no entry at `(type, action)`. |
 | `flow-not-found` | A `flowKind` names a flow this process has not registered. |
 | `session-not-found` | An `id` names a session that does not exist, or that belongs to another principal or another tenant. |
 | `session-not-addressable` | An `id` (or `{ from: true }`) names a session on a flow other than the one addressed, or one bound to a different org. |
