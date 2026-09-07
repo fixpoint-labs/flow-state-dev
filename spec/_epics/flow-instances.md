@@ -55,6 +55,13 @@ in [FIX-1330](https://linear.app/fixpoint-labs/issue/FIX-1330/remove-the-framewo
 not optimized here. INST-2 owns only the minimal compatibility needed
 for instance addressing. Message boards remain outside scope.
 
+**EM delivery sequence (2026-09-07):** FIX-1321's registry/cardinality
+semantic switch and FIX-1322's full consumer/owner cutover land atomically
+in one shared future implementation PR, with FIX-1322 as the single
+integration owner. Registry is a logical prerequisite, not a separately
+merged step. FIX-1323 remains separate; safe rollout still requires the
+complete floor proof, including isolation.
+
 **Later, not this-cycle Proof (D-10):** Devtool instance switcher; Workforce
 hire/mint as collection kinds (L2, not Conductor Proof). Full epic-as-one is
 cut.
@@ -103,6 +110,10 @@ owned by one instance refuses the other.
 **Holistic necessity.** Three this-cycle issues. INST-1 (cardinality +
 registry) and INST-2 (dispatch / envelope / ownership stamp) are the same lie
 on two doors: if either keeps `get(kind)` first-wins, FIX-1315 is not closed.
+They therefore land atomically in one implementation PR owned by FIX-1322,
+while retaining separate issue acceptance, goal accountability, and spec
+approval gates. A registry-only semantic switch cannot land ahead of its
+live kind-addressed consumers.
 **INST-3 stays on the floor.** Architect closed the Proof fork
 (2026-09-07): D-10 already locked isolation-on-instance-id as Proof. A
 collection kind that isolates on `kind` still shares the bucket — addressing
@@ -131,6 +142,9 @@ Existing singleton flows (`id === kind`, cardinality omitted or `singleton`)
 keep today's URLs and today's isolated buckets. Existing custom-id flows
 (Conductor `id: boardId`) keep those ids via an explicit `collection`
 declaration — the upgrade does not invent a singleton owner for them.
+The shared INST-1 + INST-2 landing does not prove a safe partial rollout:
+INST-3's isolation and migration prerequisites must be satisfied, and the
+complete floor check above must pass before rollout is claimed safe.
 
 **Lead measure.** The set's goal-proven floor issues, named each report.
 
@@ -176,6 +190,9 @@ it is **not individual spec approval or merge authorization**.
 All three specs are now open awaiting their own approvals. No implementation
 or goal proof exists. Cross-spec coherence still requires all individual
 spec approvals and then separate owner approval to run that pass.
+EM's sequencing resolution changes neither that objective nor any runtime
+contract. It is not whole-spec approval or the gated cross-spec review;
+this direct decision fold consumes zero automatic review rounds.
 
 ---
 
@@ -329,10 +346,12 @@ spec approvals and then separate owner approval to run that pass.
    cut the full epic-as-one. INST-1..3 are the Conductor / `#1600` /
    FIX-1315 cluster. INST-4 (Devtool) and INST-5 (mint + Workforce hire)
    stay in this epic's index so the direction is one place; they are
-   **not** this-cycle Proof. The epic may wrap when the floor has
-   merged. Workforce, when it comes: a hireable member is a `collection`
-   kind plus minted global ids; a seat binds a worker **flow id**, not a
-   kind. No issue in this epic invents that surface early.
+   **not** this-cycle Proof. The epic may wrap when all three floor issues
+   have merged and the full-floor goal is proven, including isolation.
+   The shared INST-1 + INST-2 PR alone is not a safe-rollout proof.
+   Workforce, when it comes: a hireable member is a `collection` kind plus
+   minted global ids; a seat binds a worker **flow id**, not a kind. No
+   issue in this epic invents that surface early.
 
 7. **Invent kill — four things, not a mood.** No new Team / Channel /
    MessageBoard L1. No durable public `(kind, id)` address. No second
@@ -340,12 +359,25 @@ spec approvals and then separate owner approval to run that pass.
    of these has hit a cross-cutting question — comment up here rather
    than deciding it locally.
 
-8. **Sequencing: INST-1 merges first.** INST-2 and INST-3 spec in
-   parallel against the cardinality, resolve, ownership, and migration
-   rules; they cannot merge first. `#1600` can land before INST-2 — it
-   already says FIX-1315 owns instance addressing. INST-2 then reshapes
-   that address. INST-4 and INST-5 do not start this cycle unless the
-   owner pulls them.
+8. **Sequencing: INST-1 + INST-2 land atomically in one implementation PR;
+   FIX-1322 is the single integration owner.** Registry/cardinality is a
+   logical prerequisite for consumer addressing, not an earlier merge.
+   The exact-id semantic switch cannot safely precede its live
+   kind-addressed consumers: include the full consumer/owner cutover in
+   the same landing. Retain separate FIX-1321 and FIX-1322 acceptance,
+   goal accountability, and individual spec gates; do not dispatch
+   duplicate implementation workers to land them independently.
+   No alias, first-wins fallback, temporary collection ban, new child,
+   or public `(kind, id)` pair bridges the sequence.
+
+   INST-3 stays a separate issue/implementation PR. It requires the
+   instance-identity and durable-owner prerequisites from the shared
+   landing before its dependent paths can land. Specs may proceed in
+   parallel; that is not permission to merge prerequisites separately.
+   Full-floor proof includes INST-3 before rollout is claimed safe.
+   `#1600` can land before the shared PR — it already says FIX-1315 owns
+   instance addressing, which INST-2 then reshapes. INST-4 and INST-5 do
+   not start this cycle unless the owner pulls them.
 
 ---
 
@@ -358,18 +390,31 @@ Placeholder names INST-1..5 remain the epic labels; the filed ids are below.
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 | --- | --- | --- | --- | --- | --- |
-| [FIX-1321](https://linear.app/fixpoint-labs/issue/FIX-1321) INST-1 | Cardinality on `defineFlow` + registry: `singleton` or `collection`; id rules; reject duplicate global ids; exact-id index; custom-id-without-collection refuse; no first-wins `get(kind)` | spec (Feature) | [#1631](https://github.com/fixpoint-labs/flow-state-dev/pull/1631) | — | In Spec Review — awaiting individual approval |
-| [FIX-1322](https://linear.app/fixpoint-labs/issue/FIX-1322) INST-2 | Dispatch / envelope: explicitly declared recipient instance; exact-id precedence then bare-kind refuse; minimal instance-address compatibility, no chat redesign; persist owning instance id on sessions/requests; adoption/re-entry check; same-kind cross-instance = `#1600` cross-flow; carry `flow.id` (align #1600); reshape FIX-1315 | spec (Feature) | [#1633](https://github.com/fixpoint-labs/flow-state-dev/pull/1633) | — | In Spec Review — awaiting individual approval |
-| [FIX-1323](https://linear.app/fixpoint-labs/issue/FIX-1323) INST-3 | Isolation: scope-keys + resource `flowIsolation` key on instance id; dual-read only where owner is known (theme 5) | spec (Feature) | [#1632](https://github.com/fixpoint-labs/flow-state-dev/pull/1632) | — | In Spec Review — awaiting individual approval |
+| [FIX-1321](https://linear.app/fixpoint-labs/issue/FIX-1321) INST-1 | Cardinality on `defineFlow` + registry: `singleton` or `collection`; id rules; reject duplicate global ids; exact-id index; custom-id-without-collection refuse; no first-wins `get(kind)` | spec (Feature) | [#1631](https://github.com/fixpoint-labs/flow-state-dev/pull/1631) | — (future shared PR with FIX-1322; integration owner FIX-1322) | In Spec Review — awaiting individual approval; no independent semantic-switch landing |
+| [FIX-1322](https://linear.app/fixpoint-labs/issue/FIX-1322) INST-2 | Dispatch / envelope: explicitly declared recipient instance; exact-id precedence then bare-kind refuse; minimal instance-address compatibility, no chat redesign; persist owning instance id on sessions/requests; adoption/re-entry check; same-kind cross-instance = `#1600` cross-flow; carry `flow.id` (align #1600); reshape FIX-1315 | spec (Feature) | [#1633](https://github.com/fixpoint-labs/flow-state-dev/pull/1633) | — (single integration owner of future shared FIX-1321 + FIX-1322 PR) | In Spec Review — awaiting individual approval; independent historical-child migration question unresolved |
+| [FIX-1323](https://linear.app/fixpoint-labs/issue/FIX-1323) INST-3 | Isolation: scope-keys + resource `flowIsolation` key on instance id; dual-read only where owner is known (theme 5) | spec (Feature) | [#1632](https://github.com/fixpoint-labs/flow-state-dev/pull/1632) | — (separate; requires identity/owner prerequisites) | In Spec Review — awaiting individual approval |
 
 FIX-1322's pre-code assessment promoted Bug → Feature because the work
 changes the public and persisted owner contract; it therefore follows the
 spec route. No implementation PRs exist.
+Separate acceptance and goal accountability remain for all three issues.
+FIX-1321 and FIX-1322 share only the future atomic implementation landing;
+each still requires its own spec approval, followed by the separately
+approved cross-spec pass before implementation.
+
+**FIX-1322 row blocker, not a new epic decision:** if historical custom-ID
+cross-flow children exist, new child-key derivation conflicts with
+preserve-old-record-ID backfill. Offline re-key versus legacy adoption
+remains an unresolved owner trade-off. No affected deployment history has
+been established; this sequencing resolution does not decide that question.
 
 **Current Linear edges (2026-09-07):** FIX-1323 is blocked by FIX-1321.
 FIX-1322 is related to FIX-1321 and FIX-1323, with no hard blocked-by edge.
-Theme 8 still sequences registry before dispatch/isolation implementation;
-these edges do not turn one issue's pending spec approval into another's gate.
+These recorded edges express neither a registry-first merge nor separate
+implementation ownership. Theme 8 governs the atomic FIX-1321 + FIX-1322
+landing and FIX-1323's required identity/owner prerequisites. The issue
+relations and logical prerequisites do not turn one issue's pending spec
+approval into another's gate.
 
 ### Later — not this-cycle Proof
 
@@ -392,6 +437,13 @@ this cycle), [D-9](https://github.com/Fixpoint-labs/flow-state-dev/issues/1562),
 
 - **~~Is INST-3 this-cycle Proof?~~** *Resolved (Architect, 2026-09-07):*
   yes. Stays on the floor with INST-1/2. Do not cut.
+
+- **~~May INST-1's registry semantic switch merge before INST-2?~~**
+  *Resolved (EM sequencing, 2026-09-07):* no. Theme 8 requires one atomic
+  FIX-1321 + FIX-1322 implementation PR with FIX-1322 as integration owner.
+  Per-issue acceptance and spec gates stay separate; INST-3 stays on the
+  floor with its prerequisites. This absorbed engineering call needs no
+  renewed objective approval and grants no individual spec approval.
 
 - **~~Kind / id collision precedence?~~** *Resolved here (theme 1):* exact
   global-id match wins; otherwise apply bare-kind rules. Register and
@@ -447,3 +499,10 @@ this cycle), [D-9](https://github.com/Fixpoint-labs/flow-state-dev/issues/1562),
   [PR #1617](https://github.com/fixpoint-labs/flow-state-dev/pull/1617#issuecomment-5574969785)
   and Linear FIX-1320. Individual spec approvals and merge authorization
   remain separate; no scoped decision changed.
+- **2026-09-07 — EM delivery-sequencing resolution** — replace registry-first
+  merge with one atomic FIX-1321 + FIX-1322 implementation PR owned by
+  FIX-1322: exact-ID lookup cannot safely land ahead of kind-addressed
+  consumers. Keep separate issue/spec/goal accountability and FIX-1323's
+  prerequisite-dependent isolation delivery and full-floor proof. Objective
+  and runtime contracts unchanged; zero automatic review rounds. FIX-1322's
+  independent historical-child migration question remains unresolved.
