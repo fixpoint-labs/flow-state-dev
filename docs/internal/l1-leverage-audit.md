@@ -618,6 +618,86 @@ Worth recording so the next audit doesn't re-scan it.
   substrate; transports hold no scope-shaped private state; the concurrency arbiter is
   in-process by documented design.
 
+## Disposition after review (2026-09-07)
+
+Jake's review on the PR (drafted with ChatGPT) reranked the audit around Workforce:
+dispatch admission, instance addressing, and collaboration paths first; trading-desk
+work deferred except where it demonstrates a reusable L1 need. Every code claim in
+that review was re-verified against `main`; every Linear issue it cited was read. This
+section records the outcome. Part 1 and Part 2 above are the scan record and are left
+as written; where this section disagrees with them, this section wins.
+
+### Revised top three
+
+1. **Dispatch admission enforced once per inbound door.** Confirmed defect, bounded,
+   independent of the scheduled-dispatch refactor. MCP and scheduled are each one line
+   (`await host.validateDispatch(envelope)` after the principal is resolved and before
+   `host.dispatch`); nothing downstream re-checks `requiresOrg`, so today an
+   org-required flow runs org-less through those doors. Chat is *not* one line: it
+   cannot route through `host.resolvePrincipal` because the host's default resolver
+   reads an HTTP body and the only override slot is per-flow
+   (`pickPrincipalResolver`), so the missing contract is an adapter-supplied identity
+   mapping on `PrincipalResolutionContext`. Once that exists chat's `platform:userId`
+   mapping becomes the fallback and the host applies `authentication.resolvePrincipal`,
+   `requireUser`, and `defaultUserId` once. Scheduled already separates the gateway
+   principal (caller) from `schedule.principal ?? gateway` (execution target) and
+   builds the envelope from the target, which is the right input for `validateDispatch`.
+   **Gate:** the transport conformance harness in
+   `packages/testing/src/transports/conformance.ts` stubs `validateDispatch` as a no-op
+   today, which is how three doors drifted. Make it table-driven: a `requiresOrg` flow ×
+   {org on principal, org absent, org via bound session} × each adapter → admitted or
+   refused by name; a `requireUser` flow × a chat event with no author → refused.
+   **Related:** FIX-1328 is the same omission at the cross-flow seam and is the same fix
+   class; FIX-722 (done) moved the check into the host, and this is its residue.
+2. **A per-execution ephemeral slot, split from the scope-lived live handle.** Missing
+   L1 contract. FIX-1289 already asks for exactly this in its smallest form (a
+   request-scoped side-channel so `onSettled` has somewhere to read from); the three
+   hidden `__fsd_*` bags and the worker `AsyncLocalStorage` in the board are its
+   in-tree consumers and should widen that issue's scope, not spawn a second one.
+   FIX-1250 (workers get no claim identity) is the per-iteration identity half.
+   The scope-lived live handle (bash sandbox, MCP client, chat `Thread`) has different
+   lifetime and cross-process guarantees and stays a separate, later gap.
+   **Gate for FIX-1289:** a board drain at concurrency 4 where each worker reads its
+   own claim, cache store, and ledger through the slot; `ctx.request` carries no
+   `__fsd_` property; the duplicated slot-name strings are gone from orchestration.
+3. **One adapter item emitter in core.** Missing L1 contract, and the drift it causes
+   is already in production: LAB-160 (codex rebuilds a settled tool item with the
+   current item count, claude-code does not) is this class. Smallest slice:
+   `createAdapterEmitter(ctx, { blockName })` over the internal envelope helpers,
+   stamping provenance plus `taskId`/`ownedBy`; both harness packages consume it and
+   delete their `emit.ts`. **Gate:** a golden test feeds one translated event sequence
+   through both harnesses and asserts identical item envelopes (ids aside), `taskId`/
+   `ownedBy` present when dispatched from a board seat, and stable item indices.
+   This is what Workforce harness seats need for attribution.
+
+### Where the rest of the gaps land
+
+| Audit item | Disposition |
+| --- | --- |
+| Gap 8, instance addressing (kind-only dispatch, first-wins registry) | Already active work: FIX-1320 epic. INST-1 (FIX-1321) kills first-wins `get(kind)`; INST-2 (FIX-1322) puts `flow.id` on the envelope. FIX-1315 is superseded by them. Not a new gap. |
+| Gap 8, user scope keyed on the bare user id across tenants | Open question on FIX-1320: INST-3 keys isolation on instance id, and FIX-1022 is about the session key's principal. Neither states the tenant-qualified user-scope key. Hold as a question there rather than file. |
+| Gap 8, the `announce` callback and "watch" | Three different asks, only one of which needs a seam. Reply to the sender → FIX-1312 (in development); the manager runs as a task dispatch from the coordinator's seat, so `announce` is exactly `dispatcher({ session: { from: true } })` and should be deleted when 1312 lands. Notify declared subscribers → FIX-1311, an L2 composition over collections, `reactTo`, and dispatch. Observe arbitrary task settlement → the one new seam: a board-level settle/cancel hook or `reactTo` on task collections, which Conductor's `status` read-that-writes also needs. Keep it off Workforce's path. Delivery into an existing session refuses under an external queue (`dispatch-operation.ts:190`); recorded as a limit, not bypassed. |
+| Theme 3, the blanket `sessionStateSchema` refusal | Keep until proven. It is blanket because it runs at `defineFlow` (`task-entry.ts:184`), where the seat's session policy is not yet known. Narrowing means moving the refusal to `taskBoard()`, where the policy is, and keeping a warning at `defineFlow`. Proof before removal: two rows → two `per-task` children each holding session state with no cross-talk; a retried row lands in the same child with state intact; a composed capability schema is walked (`nestedSessionStateSchema` already does); a `per-worker` seat with a session-state entry is still refused. |
+| Theme 3, harness session id on a board-owned `runs/**` row | FIX-1246 (resume the same external session from a second request) and FIX-1250 (claim identity). Workforce must not equate restart with resume or add a second task store. |
+| Theme 4, delegation board `backing: "sequencer"` and the in-memory observation ledger | FIX-957 owns durable board backing and turn-scoped settlement; the ledger is a note on it. |
+| Theme 4, `dispatchAndExecuteBlock` vs the keyed-router path | Downgraded to Low. No production callers (tests only); its header's claim that patterns compose it is doc drift. Consolidation or deprecation candidate. |
+| Theme 7, `materializeAgent` | Confirmed: worker shape requires `skillName` (`:119`), worker output is forced to `z.string()` (`:140`), string capabilities are skipped silently without a catalog (`:39`). Split the legacy skill-adapter policy from general worker materialization before teams (FIX-1310). FIX-796 (persona template treated as a path) is already filed. |
+| Gap 14, `repairOutput` composition | Already filed as FIX-1326. Dropped here. |
+| Gap 2, scheduled dispatch as a function | Still L1 work, kept fourth. The function must *be* the pipeline (idempotency, overlap, admission inside it) so a colocated host cannot skip steps; the HTTP route stays for external schedulers. FIX-1219 is adjacent. |
+| Gap 1, action return value over HTTP | Still a gap, deprioritized: trading-desk CRUD volume no longer sets priority, and Workforce collaboration ("A dispatches to B, B replies") is dispatch, not action output. |
+
+### Corrections to the scan record
+
+- Theme 8 cites FIX-1109 for the `BackgroundWorkRefresh` effect; that issue is
+  canceled, and the kitchen-sink comment naming it is stale. FIX-1079 (done) addressed
+  the parent's read mirror never refreshing, so the `background-work.ts` comment saying
+  the parent cannot observe the child's write in-turn should be re-verified before it
+  is relied on.
+- Theme 2 quotes harness-manager's "Relay (FIX-1230) is not in tree"; FIX-1230 is
+  canceled, the send half shipped as `dispatcher()`, and the reply half is FIX-1312.
+  The comment should point there.
+- "Three one-line `validateDispatch` fixes" overstated it: two are, chat is a seam.
+
 ## Method
 
 Ten parallel read-only scans, one per area (trading-desk flows; trading-desk app side;
