@@ -276,6 +276,7 @@ const sidebars: SidebarsConfig = {
             "tools/claude-code-cli",
             "tools/claude-code-sdk",
             "tools/codex",
+            "tools/cursor",
             "tools/workspace",
           ],
         },

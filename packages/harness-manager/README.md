@@ -10,7 +10,7 @@ A *harness* is a coding agent driven as a block — you hand it a prompt, it wor
 pnpm add @flow-state-dev/harness-manager
 ```
 
-Peer of `@flow-state-dev/core` and `@flow-state-dev/orchestration`. You install a harness separately — `@flow-state-dev/claude-code`, `@flow-state-dev/codex`, or your own.
+Peer of `@flow-state-dev/core` and `@flow-state-dev/orchestration`. You install a harness separately — `@flow-state-dev/claude-code`, `@flow-state-dev/codex`, `@flow-state-dev/cursor`, or your own.
 
 ## Quick start
 
@@ -55,9 +55,16 @@ harness: ({ cwd, resume, onSession }) =>
   codexAgent({ cwd, resume, onSession, thread: { sandboxMode: "workspace-write" } }),
 ```
 
+```ts
+import { cursorAgent } from "@flow-state-dev/cursor";
+
+harness: ({ cwd, resume, onSession }) =>
+  cursorAgent({ cwd, resume, onSession, agent: { model: { id: "composer-2.5" } } }),
+```
+
 Any block that takes the three feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
 
-The vendor options differ because they are the factory's business, not the manager's. `detached: true` is not decoration in the Claude Code example: the harness becomes a child block of a gated task entry, and the claim gate refuses an entry that keeps session state anywhere beneath it. Get it wrong and your flow fails to build, naming the entry. Codex keeps no session state, so it needs no equivalent.
+The vendor options differ because they are the factory's business, not the manager's. `detached: true` is not decoration in the Claude Code example: the harness becomes a child block of a gated task entry, and the claim gate refuses an entry that keeps session state anywhere beneath it. Get it wrong and your flow fails to build, naming the entry. Codex and Cursor keep no session state, so neither needs an equivalent.
 
 ## What a phase supplies
 

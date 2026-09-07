@@ -10,13 +10,14 @@ its own agentic loop in a directory you point it at, and it hands back a handle
 describing what it did. What it says, what it runs, and what it changes arrive in
 your flow's item stream as it goes.
 
-flow-state-dev ships two, and they agree on the handle they return, so a step that
-reads the handle can drive either:
+flow-state-dev ships three, and they agree on the handle they return, so a step
+that reads the handle can drive any of them:
 
 | Harness | Package | Runs |
 |---|---|---|
 | [Claude Code SDK agent](./claude-code-sdk.md) | `@flow-state-dev/claude-code/sdk` | The Claude Code Agent SDK, in your process |
 | [Codex SDK agent](./codex.md) | `@flow-state-dev/codex` | The Codex CLI, in a subprocess |
+| [Cursor SDK agent](./cursor.md) | `@flow-state-dev/cursor` | Cursor's local runtime, via the Cursor SDK |
 
 Either one is a block, so a sequencer can step it:
 
@@ -27,7 +28,8 @@ const agent = claudeCodeAgent();
 // seq.step(agent) with input { prompt: "Tidy the imports in src/." }
 ```
 
-Swap `claudeCodeAgent` for `codexAgent` and the surrounding step is unchanged.
+Swap `claudeCodeAgent` for `codexAgent` or `cursorAgent` and the surrounding step
+is unchanged.
 Where the run works, and which conversation it continues, are
 [configuration](#the-prompt-is-the-input-everything-else-is-configuration) you
 resolve per run rather than fix when the flow is built. Each page covers the
@@ -40,8 +42,8 @@ Every harness returns the same shape. Code that reads it works the same whicheve
 agent produced the run:
 
 | Field | What it holds |
-|---|---|
-| `source` | Which agent and entry point produced the run, as `<package>/<door>` — `claude-code/sdk`, `codex/sdk`. |
+|---|---|---|
+| `source` | Which agent and entry point produced the run, as `<package>/<door>` — `claude-code/sdk`, `codex/sdk`, `cursor/sdk`. |
 | `status` | `running`, `completed`, or `errored`. The schema also admits `dispatched`, which only a fire-and-forget door reports — see [below](#not-every-dispatch-is-a-harness). Switch exhaustively on all four. |
 | `sessionId`, `url`, `dispatchedAt` | The run's own id, a link to it when there is one, and when it started. |
 | `outcome` | How it ended: `finished`, `stopped-at-limit` (it hit a turn or budget cap), or `failed`. `null` while unknown. |
@@ -55,9 +57,14 @@ marks, and a resumed run's `sessionId` starts as the id you asked for, so
 `onSession` firing is what tells you the agent confirmed it.
 
 Each harness adds its own fields beside these — Claude Code carries the SDK's
-terminal result code and the tool names the run exercised, Codex carries its full
-token breakdown and its failure message. Read those when you know which harness
-ran. Read the table above when you don't.
+terminal result code and the tool names the run exercised, Codex and Cursor each
+carry their full token breakdown and a failure message. Read those when you know
+which harness ran. Read the table above when you don't.
+
+One thing the shared `sessionId` does not settle is what the id names. For Claude
+Code and Codex it is the conversation. For Cursor it is the *agent*, which is the
+conversation, and each prompt is one run inside it. Either way it is the value
+`resume` takes.
 
 The shapes are declared in `@flow-state-dev/core` as `harnessRunInputSchema` and
 `harnessRunHandleSchema`, and a block that conforms is a `HarnessBlock`.
@@ -76,7 +83,7 @@ Those values are resolvers rather than constants, because one flow build serves
 many runs:
 
 | Option | What it decides |
-|---|---|
+|---|---|---|
 | `cwd` | The directory this run works in. |
 | `resume` | Which conversation this run continues, or `null` for a fresh one. |
 | `onSession` | Called by the harness the moment it names its session, so you can record it. |
@@ -120,6 +127,7 @@ handle above, and the harness manager cannot drive it.
 
 - [Claude Code SDK agent](./claude-code-sdk.md) — the in-process Claude Code harness
 - [Codex SDK agent](./codex.md) — the Codex harness
+- [Cursor SDK agent](./cursor.md) — the Cursor harness
 - [Harness manager](/docs/orchestration/harness-manager) — a board worker that supervises either
 - [Workspace projection](./workspace.md) — carrying a run's files back to durable storage
 - [Work that outlives the turn](/guides/background-work) — running one off the request path
