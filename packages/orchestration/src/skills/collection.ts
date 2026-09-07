@@ -35,7 +35,11 @@ import { z } from "zod";
  * brittle and the parser is the contract surface.
  */
 export const skillStateSchema = z.object({
+  name: z.string().optional(),
   description: z.string().optional(),
+  license: z.string().optional(),
+  compatibility: z.string().optional(),
+  metadata: z.record(z.string()).optional(),
   allowedTools: z.array(z.string()).optional(),
   contextMode: z.enum(["inline", "fork", "pattern"]).optional(),
   disableModelInvocation: z.boolean().optional(),

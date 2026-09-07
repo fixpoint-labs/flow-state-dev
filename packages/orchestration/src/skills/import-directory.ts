@@ -61,7 +61,7 @@ async function writeSkill(
   collection: ResourceCollectionRef,
   skill: InitialSkill,
 ): Promise<void> {
-  const parsed = parseSkillMd(skill.skillMd);
+  const parsed = parseSkillMd(skill.skillMd, { expectedName: skill.name });
   const manifestKey = skillManifestKey(skill.name);
   const stateRecord = parsed.state as unknown as Record<string, unknown>;
   const manifest = await collection.create(

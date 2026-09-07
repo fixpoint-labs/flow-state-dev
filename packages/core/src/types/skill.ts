@@ -104,8 +104,24 @@ export interface AgentSpec {
  * for forward-compatibility and round-trip fidelity.
  */
 export interface SkillState {
+  /**
+   * Optional `name` frontmatter (required by the Agent Skills spec). The
+   * framework derives a skill's identity from its folder; when the manifest
+   * also declares `name`, it must be valid and match the folder it lives in.
+   */
+  name?: string;
+
   /** Required. Used in the runSkill tool description and (truncated) in `<ActiveSkills>` UI. */
   description: string;
+
+  /** Optional spec `license`: a license name or the name of a bundled license file. */
+  license?: string;
+
+  /** Optional spec `compatibility`: environment requirements, ≤500 chars. */
+  compatibility?: string;
+
+  /** Optional spec `metadata`: a string → string map for client-defined properties. */
+  metadata?: Record<string, string>;
 
   /** From `allowed-tools`. Both additive (introduces) and restrictive (gates). */
   allowedTools?: string[];
@@ -159,12 +175,21 @@ export interface SkillState {
  * body, and the `name` derived from the parent directory.
  */
 export interface Skill {
-  /** Skill name = parent directory name. Validated `[a-z0-9-]`, ≤64 chars. */
+  /**
+   * Skill name = parent directory name. 1–64 chars of lowercase `a-z`, `0-9`
+   * and single hyphens, never at the start or end (the Agent Skills rule).
+   */
   name: string;
   /** SKILL.md body (without frontmatter). */
   body: string;
   /** From frontmatter. */
   description: string;
+  /** From frontmatter `license`. */
+  license?: string;
+  /** From frontmatter `compatibility`. */
+  compatibility?: string;
+  /** From frontmatter `metadata`. */
+  metadata?: Record<string, string>;
   /** From frontmatter `allowed-tools`. */
   allowedTools?: string[];
   /** From frontmatter `context:`. Default `"inline"`. */
@@ -207,7 +232,7 @@ export interface SkillFile {
 
 /** A code-authored skill, seeded into the org-scoped collection on startup. */
 export interface InitialSkill {
-  /** Skill name. Must match `[a-z0-9-]+`. */
+  /** Skill name — the folder name. Same rules as `Skill.name`. */
   name: string;
   /** Full SKILL.md text including YAML frontmatter. */
   skillMd: string;

@@ -95,6 +95,16 @@ describe("readSkillsDirectory", () => {
     expect(excluded.skills.map((s) => s.name).sort()).toEqual(["a", "c"]);
   });
 
+  it("rejects a manifest whose declared name does not match its folder", async () => {
+    await writeSkill("pdf-processing", `---\nname: pdf-processing\ndescription: ok\n---\n\nbody`);
+    await writeSkill("mismatched", `---\nname: something-else\ndescription: bad\n---\n\nbody`);
+    const { skills, errors } = await readSkillsDirectory(tmp);
+    expect(skills.map((s) => s.name)).toEqual(["pdf-processing"]);
+    expect(errors.find((e) => e.name === "mismatched")?.error.message).toMatch(
+      /must match its folder "mismatched"/,
+    );
+  });
+
   it("rejects skill names not matching [a-z0-9-]", async () => {
     await writeSkill("BadName", `---\ndescription: bad\n---\n\nbody`);
     const { skills, errors } = await readSkillsDirectory(tmp);

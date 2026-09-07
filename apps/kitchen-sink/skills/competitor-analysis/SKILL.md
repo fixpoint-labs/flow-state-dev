@@ -1,4 +1,5 @@
 ---
+name: competitor-analysis
 description: Produce a competitor analysis as a comparison matrix plus a synthesized read. Use when the user asks who competes with a product, how one stacks up against another, what the landscape looks like for a category, or wants a comparison matrix. A discoverer picks the competitors and fans out one analyzer per competitor on your board; a synthesizer waits on all of them.
 keywords: [competitor, competitors, competition, compare, versus, landscape, market]
 argument-hint: <product, company, or market>

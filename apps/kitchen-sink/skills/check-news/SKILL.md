@@ -1,4 +1,5 @@
 ---
+name: check-news
 description: Answer questions about current events, breaking news, or "what's happening with X". Use when the user asks about recent news, a developing story, someone's current status, or anything where freshness matters. Enforces recency discipline and source hygiene so answers don't quietly rely on stale material.
 keywords: [news, latest, breaking, today, current, happening, recent]
 ---
