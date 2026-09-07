@@ -1,0 +1,5 @@
+{
+  "//": "POC scratch. These files are not part of the build: auth-probe.ts and probe.ts are pi EXTENSIONS, loaded by pi's own jiti runtime, which resolves @earendil-works/* at run time. They are excluded so the repo's type-checker does not chase a dependency the repo does not (and should not) have.",
+  "files": [],
+  "include": []
+}
