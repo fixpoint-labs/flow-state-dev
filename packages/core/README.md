@@ -535,7 +535,7 @@ Every arrival at a flow is a **dispatch** of one **type**, delivered to one **en
 |---|---|---|
 | `public` | `actions` | A caller over HTTP, MCP, voice, or a custom transport |
 | `internal` | `internal.actions` | A `dispatcher()` block in one of the flow's own running requests |
-| `task` | `task.actions` | A task board handing a claimed row to a child session, from a `dispatcher({ type: "task" })` seat |
+| `task` | `task.actions` | A task board handing a claimed row to a child session, from a `dispatcher({ action, session })` seat (stamped `type: "task"`) |
 | `chat` | `chat.on` | The chat adapter |
 | `webhook` | `webhooks.<provider>.on` | The webhook adapter |
 | `schedule` | `schedules.static` | The host scheduler |
@@ -548,7 +548,7 @@ A `task` entry is declared as a plain block, but a `task` dispatch does not run 
 
 ### `dispatcher(config)`
 
-A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `target`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes, told apart by `type`: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[target]`, and a `task` dispatcher (`TaskDispatcherConfig`) is a seat on a task board that hands the board's rows to `flow.task.actions[target]`.
+A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `action`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[action]`, and a `task` dispatcher (`TaskDispatcherConfig`) is a seat on a task board that hands the board's rows to `flow.task.actions[action]`. Omit `type` in both cases — ordinary dispatchers default to `internal`, and a task-board seat is a dispatcher whose `session` is `"per-task"`, `"per-worker"`, or `{ key }`. The stamped address on a seat is still `type: "task"`.
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -574,8 +574,7 @@ const acknowledge = handler({
 // session lands on the same child, adopted rather than created.
 const summarizeInBackground = dispatcher({
   name: "summarize-in-background",
-  type: "internal",
-  target: "summarize",
+  action: "summarize",
   inputSchema: z.object({ documentId: z.string() }),
   session: { key: (input) => input.documentId },
 });
@@ -583,8 +582,7 @@ const summarizeInBackground = dispatcher({
 // Deliver into a session that already exists. An unknown id is refused, never created.
 const wakeCoordinator = dispatcher({
   name: "wake-coordinator",
-  type: "internal",
-  target: "acknowledge",
+  action: "acknowledge",
   inputSchema: z.object({ coordinatorSessionId: z.string(), reason: z.string() }),
   session: { id: (input) => input.coordinatorSessionId },
   payload: (input) => ({ reason: input.reason }),
@@ -607,8 +605,9 @@ export default defineFlow({
 
 | Field | What it does |
 |---|---|
-| `type` | `"internal"` sends this request's own authority; `"task"` sends a claim on a durable row and is meaningful only as a task board seat. |
-| `target` | The entry name, resolved as `flow.internal.actions[target]` or `flow.task.actions[target]`. Checked when the flow is defined. |
+| `type` | Omit it. Ordinary dispatchers send `internal`. A task-board seat stamps `type: "task"` from its session policy. An explicit `"task"` is still accepted. |
+| `action` | The entry name, resolved as `flow.internal.actions[action]` or `flow.task.actions[action]`. Checked when the flow is defined, unless `flowKind` names another flow. |
+| `flowKind` | The **other flow** the entry lives on, on an `internal` or `task` dispatcher. Omit to address this flow's own entry. Checked at run time, not when the flow is defined — see [Dispatching to another flow](#dispatching-to-another-flow). |
 | `inputSchema` | `internal` only. What the block accepts. Defaults to `z.unknown()`. |
 | `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one; `{ from: true }` delivers into the seam-stamped sender (refuses `no-sender` when this request was not dispatched). `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row), `"per-worker"` (one child per seat), or `{ key: (task, ctx) => string }` read from the row's worker input. |
 | `payload` | `internal` only. `(input, ctx) => unknown`, the entry's input. Defaults to the input itself. Validated by the entry's own schema on arrival. |
@@ -628,8 +627,7 @@ const board = taskBoard({
     triage: triageWorker,                        // runs inline, in the drain
     implement: dispatcher({                      // hands off
       name: "hand-off-implement",
-      type: "task",
-      target: "implement",                       // flow.task.actions.implement
+      action: "implement",                       // flow.task.actions.implement
       session: "per-task",
     }),
   },
@@ -646,15 +644,49 @@ The block returns a `DispatchHandle` (`dispatchHandleSchema`): `{ sessionId, req
 
 The same key from a different parent session, user, or tenant is a different child. A caller cannot address another user's child by key. The child's session record carries `parentSessionId`, `topic` (the key), and `coordinate` (`"internal:summarize"`). An `id` target must exist, belong to this flow kind, this principal, and this tenant, and not be bound to a different org.
 
-`defineFlow` checks every block it can reach (sequencer steps, rescue handlers, a generator's `tools`, the `blocks` a `forEach` / `forEachSideChain` factory declares, and the blocks behind `internal` and `task` entries) and throws when a dispatcher names an entry the flow does not declare, naming the block and the address. A target chosen from data is a `router` over declared dispatchers, not a dynamic string.
+`defineFlow` checks every block it can reach (sequencer steps, rescue handlers, a generator's `tools`, the `blocks` a `forEach` / `forEachSideChain` factory declares, and the blocks behind `internal` and `task` entries) and throws when a dispatcher names an entry the flow does not declare, naming the block and the address. A target chosen from data is a `router` over declared dispatchers, not a dynamic string. The one address it cannot check is a cross-flow one, which names an entry on a flow it does not hold.
+
+### Dispatching to another flow
+
+An `internal` or `task` dispatcher can name a different flow with `flowKind`. Everything else is the same: the dispatch is fire-and-forget, the session policy still decides where it runs, and the block still returns a `DispatchHandle`.
+
+```ts
+const notifyBilling = dispatcher({
+  name: "notify-billing",
+  flowKind: "billing",                          // resolves on the billing flow
+  action: "charge",                             // billing's flow.internal.actions.charge
+  inputSchema: z.object({ orderId: z.string() }),
+  session: { key: (input) => input.orderId },
+});
+```
+
+The address is as declared as any other — a string on the block, not a value computed from data — but `defineFlow` holds one flow's entry maps and cannot resolve another's. That check moves to run time, against the flows the process has registered, and stays a refusal by name: `flow-not-found` when no such flow is registered, `no-entry` when the flow is registered and declares no such entry. Neither retries, queues, nor falls back to the sending flow's own map.
+
+The `key` child belongs to the flow it was dispatched to: its session record carries that flow's `flowKind`, its session-state defaults come from that flow's schema, and it roots its own lineage rather than inheriting the sender's — a `sharedToLineage` resource is addressed by lineage with no flow in the key, so sharing one across flows would put two schemas on one durable cell. Data crosses in the payload, which the entry's own schema validates. Two flows addressed with the same key from the same parent get their own child each.
+
+**Getting an answer back** is the same three-request shape it is within one flow: the recipient replies with its own `{ from: true }` dispatcher, pointed at the sender's flow. `{ from: true }` supplies the session id from the runtime's stamp and `flowKind` supplies the flow; a delivery happens only when they agree, and `session-not-addressable` names it when they do not.
+
+```ts
+// declared on the billing flow
+const confirmToSender = dispatcher({
+  name: "confirm-to-sender",
+  flowKind: "orders",
+  action: "confirm",
+  inputSchema: z.object({ orderId: z.string() }),
+  session: { from: true },
+});
+```
+
+Cross-flow addressing resolves by flow **kind**, and both flows have to be registered in the same process — a flow served by some other host is `flow-not-found`, not a network hop. A `task` dispatcher may take `flowKind` the same way.
 
 At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-refused"`), carrying `blockName`, `address`, `detail`, and `refused`:
 
 | `refused` | Meaning |
 |---|---|
-| `no-entry` | The flow declares no entry at `(type, target)`. |
+| `no-entry` | The addressed flow declares no entry at `(type, action)`. |
+| `flow-not-found` | A `flowKind` names a flow this process has not registered. |
 | `session-not-found` | An `id` names a session that does not exist, or that belongs to another principal or another tenant. |
-| `session-not-addressable` | An `id` names a session on another flow, or one bound to a different org. |
+| `session-not-addressable` | An `id` (or `{ from: true }`) names a session on a flow other than the one addressed, or one bound to a different org. |
 | `key-occupied` | A `key` derived a child id already held by a record that is not this request's child. |
 | `no-dispatch-operation` | This process executes requests but was not wired to dispatch one. |
 | `dispatch-rejected` | The host refused before starting, such as a `reject` concurrency policy whose key is held. |

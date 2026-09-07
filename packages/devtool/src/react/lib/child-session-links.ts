@@ -121,7 +121,7 @@ export type ChildSessionEntry = {
   /** The dispatch type — `task` for a board's hand-off, `internal` otherwise. */
   type: string;
   /** The entry name on that type's map, e.g. `implement`. */
-  target: string;
+  action: string;
 };
 
 /**
@@ -186,7 +186,7 @@ export function decodeChildSessionEntry(
   if (coordinate == null || coordinate.length === 0) return null;
   const separator = coordinate.indexOf(":");
   if (separator <= 0 || separator === coordinate.length - 1) return null;
-  return { type: coordinate.slice(0, separator), target: coordinate.slice(separator + 1) };
+  return { type: coordinate.slice(0, separator), action: coordinate.slice(separator + 1) };
 }
 
 /** A task and the board it was rendered under, so a link can name both. */

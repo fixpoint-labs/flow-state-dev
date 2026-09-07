@@ -320,7 +320,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
 
   /**
    * Explicit, stable identifier for this board. **Required when any seat
-   * holds a `dispatcher({ type: "task" })`**, optional otherwise.
+   * holds a task dispatcher (`dispatcher({ action, session })`)**, optional otherwise.
    *
    * A handed-off row's child session is keyed on this value together with the
    * seat and the row, so it lands in a persisted key. It cannot be derived
@@ -360,9 +360,10 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * are standard `BlockDefinition`s consuming the substrate's
    * `TaskWorkerInput` shape.
    *
-   * A registry value may also be a `dispatcher({ type: "task" })` block — a
-   * **seat that hands off**: the row is dispatched to the `task` entry the
-   * dispatcher names, and the flow that declares that entry owns the worker.
+   * A registry value may also be a `dispatcher({ action, session })` block — a
+   * **seat that hands off**: the stamped address is `type: "task"`, the row is
+   * dispatched to the `task` entry the dispatcher names, and the flow that
+   * declares that entry owns the worker.
    * The board runs the hand-off through its own claim gate, so the child
    * settles the same row this drain claimed.
    */
@@ -613,7 +614,7 @@ export interface TaskBoardHandle<
    */
   boardId?: string;
   /**
-   * The seats holding a `dispatcher({ type: "task" })`, in declaration order.
+   * The seats holding a task dispatcher, in declaration order.
    * Empty on every board that declares no dispatcher seat.
    */
   handedOff: readonly HandOffSeat[];

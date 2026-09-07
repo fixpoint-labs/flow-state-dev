@@ -223,7 +223,7 @@ function ChildSessionRow({
           </span>
         ) : (
           <span className="font-mono text-[10px]" title={`${entry.type} entry`}>
-            {entry.target}
+            {entry.action}
           </span>
         )}
       </td>

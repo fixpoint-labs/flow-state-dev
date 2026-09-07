@@ -80,7 +80,7 @@ function detachingFlow(
       try {
         observed.start = await dispatchThroughSeam(ctx, {
           type: "internal",
-          target: "core",
+          action: "core",
           session: { key: "background" },
           payload: { note: "dispatched-payload" },
           from: "launch"
@@ -98,7 +98,7 @@ function detachingFlow(
   });
   // Declared, so `defineFlow`'s address walk sees the dispatch and verifies
   // the entry resolves.
-  markDispatcher(launcher, { type: "internal", target: "core" });
+  markDispatcher(launcher, { type: "internal", action: "core" });
 
   const core = handler({
     name: "core",

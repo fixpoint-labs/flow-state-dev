@@ -50,7 +50,7 @@ function replyFlow(kind: string, observed: Observed) {
   const reply = dispatcher({
     name: "reply-to-sender",
     type: "internal",
-    target: "receive",
+    action: "receive",
     inputSchema: z.object({ note: z.string() }),
     session: { from: true },
     payload: (input) => ({ note: input.note })
@@ -77,7 +77,7 @@ function replyFlow(kind: string, observed: Observed) {
   const start = dispatcher({
     name: "start-work",
     type: "internal",
-    target: "work",
+    action: "work",
     inputSchema: z.object({ note: z.string() }),
     session: { key: () => "job" },
     payload: (input) => ({ note: input.note })
@@ -112,7 +112,7 @@ function nestedReplyFlow(kind: string, observed: Observed) {
   const reply = dispatcher({
     name: "reply-to-sender",
     type: "internal",
-    target: "receive",
+    action: "receive",
     inputSchema: z.object({ note: z.string() }),
     session: { from: true },
     payload: (input) => ({ note: input.note })
@@ -136,7 +136,7 @@ function nestedReplyFlow(kind: string, observed: Observed) {
   const fan = dispatcher({
     name: "fan-to-leaf",
     type: "internal",
-    target: "leaf",
+    action: "leaf",
     inputSchema: z.object({ note: z.string() }),
     session: { key: () => "nested" },
     payload: (input) => ({ note: input.note })
@@ -147,7 +147,7 @@ function nestedReplyFlow(kind: string, observed: Observed) {
   const start = dispatcher({
     name: "start-mid",
     type: "internal",
-    target: "mid",
+    action: "mid",
     inputSchema: z.object({ note: z.string() }),
     session: { key: () => "job" },
     payload: (input) => ({ note: input.note })
@@ -241,7 +241,7 @@ describe("three-request reverse delivery (FIX-1312 / FIX-1171)", () => {
       const stamp = readDispatchStamp(replyRecord?.source, replyRecord?.metadata);
       expect(stamp).toMatchObject({
         type: "internal",
-        target: "receive",
+        action: "receive",
         from: { block: "reply-to-sender", sessionId: child.sessionId }
       });
       expect(stamp?.recipientLineageId).toEqual(expect.any(String));
@@ -262,7 +262,7 @@ describe("three-request reverse delivery (FIX-1312 / FIX-1171)", () => {
         {
           dispatch: {
             type: "internal",
-            target: "receive",
+            action: "receive",
             from: { block: "forged", sessionId: "s_parent" }
           }
         }
@@ -375,7 +375,7 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
 
   const replySpec = {
     type: "internal" as const,
-    target: "receive",
+    action: "receive",
     session: { from: true as const },
     payload: { note: "back" },
     from: "reply-to-sender"
@@ -388,7 +388,7 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
       metadata: {
         dispatch: {
           type: "internal",
-          target: "receive",
+          action: "receive",
           from: { block: "forged", sessionId: "s_sender" }
         }
       }
@@ -405,7 +405,7 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
       metadata: {
         dispatch: {
           type: "internal",
-          target: "work",
+          action: "work",
           from: { block: "start-work", sessionId: "s_other" }
         }
       }
@@ -422,7 +422,7 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
       metadata: {
         dispatch: {
           type: "internal",
-          target: "work",
+          action: "work",
           from: { block: "start-work", sessionId: "s_sender" }
         }
       }
@@ -445,7 +445,7 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
       metadata: {
         dispatch: {
           type: "internal",
-          target: "work",
+          action: "work",
           from: { block: "start-work", sessionId: "s_sender", lineageId: "lin_original" }
         }
       }

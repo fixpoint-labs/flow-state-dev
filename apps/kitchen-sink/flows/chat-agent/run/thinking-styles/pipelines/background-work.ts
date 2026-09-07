@@ -235,8 +235,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
       // row with no topic gets a child of its own.
       [ASSIGNEE]: dispatcher<TaskWorkerInput>({
         name: "background-work-hand-off",
-        type: "task",
-        target: ASSIGNEE,
+        action: ASSIGNEE,
         session: {
           key: (task) =>
             typeof task.metadata?.topic === "string" ? task.metadata.topic : task.taskId,

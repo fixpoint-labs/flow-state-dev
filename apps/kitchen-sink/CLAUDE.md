@@ -91,7 +91,7 @@ what came back.
 - Flow: `flows/chat-agent/run/thinking-styles/pipelines/background-work.ts`.
   Durable ledger (`defineTaskCollection`, session-scoped, `sharedToLineage:
   true`), an explicit `boardId`, and one seat holding a
-  `dispatcher({ type: "task", session: { key } })` so tasks that share a topic
+  `dispatcher({ action, session: { key } })` so tasks that share a topic
   share one child session. The block that runs there (`briefWorker`) is exported
   as the task entry `backgroundWorkTasks` and declared on the flow as
   `task: { actions: backgroundWorkTasks }` (`flows/chat-agent/flow.ts`) —

@@ -62,7 +62,7 @@ const internalBlock = handler({
 function boundHandOff(target: string) {
   const block = markDispatcher(
     handler({ name: `hand-off-${target}`, inputSchema: z.unknown(), execute: () => undefined }),
-    { type: "task", target, session: "per-task" }
+    { type: "task", action: target, session: "per-task" }
   );
   bindTaskDispatcher(block, { boardId: "b", gate: (entry) => entry });
   return block;

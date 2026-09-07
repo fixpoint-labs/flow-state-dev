@@ -46,6 +46,26 @@ describe("child session derivation", () => {
     expect(a).toBe(b);
   });
 
+  it("gives two target flows different children for an identical key from one parent", () => {
+    // Otherwise a parent dispatching "job" to two flows derives one child id
+    // for both, and the second meets a record whose flowKind does not match and
+    // is refused `key-occupied` — a collision between unrelated addresses.
+    const billing = deriveDispatchChildSessionId(base, "job", "billing");
+    const shipping = deriveDispatchChildSessionId(base, "job", "shipping");
+    expect(billing).not.toBe(shipping);
+  });
+
+  it("leaves a same-flow child on the id it derived before cross-flow shipped", () => {
+    // Pinned, not recomputed: an in-flight retry across the upgrade must
+    // re-enter the child it started rather than mint a second one beside it.
+    expect(deriveDispatchChildSessionId(base, "review")).toBe(
+      "dsx_1b1b460597b7af771a2e4d6e9b9d1f5d"
+    );
+    expect(deriveDispatchChildSessionId(base, "review")).not.toBe(
+      deriveDispatchChildSessionId(base, "review", "billing")
+    );
+  });
+
   it("gives two principals different children for an identical key", () => {
     const alice = deriveDispatchChildSessionId(base, "review");
     const bob = deriveDispatchChildSessionId({ ...base, userId: "u_bob" }, "review");

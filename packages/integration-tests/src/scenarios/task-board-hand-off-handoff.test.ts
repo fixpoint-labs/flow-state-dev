@@ -141,7 +141,7 @@ function buildFlow(options: {
           ? dispatcher<TaskWorkerInput>({
               name: `${options.kind}-hand-off`,
               type: "task",
-              target: "background",
+              action: "background",
               session: options.session ?? "per-task",
             })
           : background,
@@ -315,7 +315,7 @@ describe("a hand-off board's launching request returns while the work is outstan
           dispatchOperation: async (spec) => {
             dispatched.push({
               sessionId: spec.sessionId,
-              actionName: spec.target,
+              actionName: spec.action,
               input: spec.input,
             });
             return { requestId: `child_req_${dispatched.length}` };
@@ -412,7 +412,7 @@ describe("a hand-off board's launching request returns while the work is outstan
           dispatchOperation: async (spec) => {
             dispatched.push({
               sessionId: spec.sessionId,
-              actionName: spec.target,
+              actionName: spec.action,
               input: spec.input,
             });
             return { requestId: "child_req_1" };
@@ -494,7 +494,7 @@ describe("a hand-off board's launching request returns while the work is outstan
           dispatchOperation: async (spec) => {
             dispatched.push({
               sessionId: spec.sessionId,
-              actionName: spec.target,
+              actionName: spec.action,
               input: spec.input,
             });
             return { requestId: "child_req_1" };
@@ -569,7 +569,7 @@ describe("a hand-off board's launching request returns while the work is outstan
           dispatchOperation: async (spec) => {
             dispatched.push({
               sessionId: spec.sessionId,
-              actionName: spec.target,
+              actionName: spec.action,
               input: spec.input,
             });
             return { requestId: "child_req_1" };
@@ -626,12 +626,12 @@ describe("a hand-off board's launching request returns while the work is outstan
     const recorder = {
       dispatchOperation: async (spec: {
         sessionId: string;
-        target: string;
+        action: string;
         input: unknown;
       }) => {
         dispatched.push({
           sessionId: spec.sessionId,
-          actionName: spec.target,
+          actionName: spec.action,
           input: spec.input,
         });
         return { requestId: `child_req_${dispatched.length}` };
@@ -745,7 +745,7 @@ describe("a hand-off board's launching request returns while the work is outstan
  * having the board's own ledger open beside it.
  *
  * `metadata.dispatch.taskId` closes that. It is stamped in the same seam call
- * that assembles `metadata.dispatch.type` / `.target` / `.from` / `.key`, from
+ * that assembles `metadata.dispatch.type` / `.action` / `.from` / `.key`, from
  * server-derived material only, and it decides nothing — see
  * `DispatchSpec.provenance`.
  */
@@ -872,7 +872,7 @@ describe("a hand-off request record names the task it was spawned for", () => {
       expect(handedOff.metadata).toEqual({
         dispatch: {
           type: "task",
-          target: "background",
+          action: "background",
           from: {
             block: expect.any(String),
             sessionId: "s_parent",

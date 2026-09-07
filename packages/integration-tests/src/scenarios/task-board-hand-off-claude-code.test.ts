@@ -57,7 +57,7 @@ function flowHandingOffTo(kind: string, block: TaskWorker) {
       implement: dispatcher({
         name: `${kind}-hand-off`,
         type: "task",
-        target: "implement",
+        action: "implement",
         session: "per-task",
       }),
     },

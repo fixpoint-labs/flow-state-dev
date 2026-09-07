@@ -91,7 +91,7 @@ void seam;
 // The substrate call takes the whole spec, and identity is never a field of it.
 const dispatched: Promise<DispatchOutcome> = dispatchThroughSeam(ctx, {
   type: "internal",
-  target: "wake",
+  action: "wake",
   session: { id: "s_epic" },
   payload: { reason: "answered" },
   from: "wake-epic"
@@ -100,7 +100,7 @@ void dispatched;
 
 void dispatchThroughSeam(ctx, {
   type: "internal",
-  target: "receive-reply",
+  action: "receive-reply",
   session: { from: true },
   payload: {},
   from: "reply-to-sender"
@@ -108,7 +108,7 @@ void dispatchThroughSeam(ctx, {
 
 void dispatchThroughSeam(ctx, {
   type: "internal",
-  target: "wake",
+  action: "wake",
   // @ts-expect-error a caller supplies the target session, never the principal.
   session: { id: "s_epic", userId: "u_other" },
   payload: {},
@@ -118,7 +118,7 @@ void dispatchThroughSeam(ctx, {
 void dispatchThroughSeam(ctx, {
   // @ts-expect-error a block cannot dispatch a type whose trust it does not hold.
   type: "webhook",
-  target: "github/push",
+  action: "github/push",
   session: { key: "k" },
   payload: {},
   from: "forged"

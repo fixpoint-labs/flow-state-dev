@@ -37,7 +37,7 @@ const KIND = "hand-off-child-death";
 const TASK_SOURCE = "task";
 
 /** What a hand-off dispatch was asked to do. Recorded, replayed by hand. */
-type RecordedDispatch = { sessionId: string; target: string; input: unknown };
+type RecordedDispatch = { sessionId: string; action: string; input: unknown };
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
 
 function buildFlow() {
@@ -59,7 +59,7 @@ function buildFlow() {
       background: dispatcher({
         name: `${KIND}-hand-off`,
         type: "task",
-        target: "background",
+        action: "background",
         session: "per-task",
       }),
     },
@@ -124,7 +124,7 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
         ...baseRuntimeConfig(),
         requestHost: {
           dispatchOperation: async (spec: RecordedDispatch) => {
-            dispatched.push({ sessionId: spec.sessionId, target: spec.target, input: spec.input });
+            dispatched.push({ sessionId: spec.sessionId, action: spec.action, input: spec.input });
             return { requestId: "child_never_runs" };
           },
         },
@@ -159,7 +159,7 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
           // hand below: a recovery that only re-dispatched forever would look
           // identical up to this point.
           dispatchOperation: async (spec: RecordedDispatch) => {
-            dispatched.push({ sessionId: spec.sessionId, target: spec.target, input: spec.input });
+            dispatched.push({ sessionId: spec.sessionId, action: spec.action, input: spec.input });
             return { requestId: "child_2" };
           },
         },
@@ -180,7 +180,7 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
     const second = dispatched[1]!;
     const child = await runAction({
       flow,
-      actionName: second.target as never,
+      actionName: second.action as never,
       input: second.input,
       userId: USER_ID,
       sessionId: second.sessionId,
@@ -201,7 +201,7 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
     const first = dispatched[0]!;
     const stale = await runAction({
       flow,
-      actionName: first.target as never,
+      actionName: first.action as never,
       input: first.input,
       userId: USER_ID,
       sessionId: first.sessionId,

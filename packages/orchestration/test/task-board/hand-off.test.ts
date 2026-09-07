@@ -52,7 +52,7 @@ function ledger() {
 
 /** A seat that hands off to the task entry `target`. */
 function seat(target: string) {
-  return dispatcher({ name: `seat-${target}`, type: "task", target, session: "per-task" }) as unknown as TaskWorker;
+  return dispatcher({ name: `seat-${target}`, type: "task", action: target, session: "per-task" }) as unknown as TaskWorker;
 }
 
 describe("a handed-off seat routes to the dispatch seam, not to the worker", () => {
@@ -93,7 +93,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
         modelResolver: createMockModelResolver({}),
         requestHost: {
           dispatchOperation: async (spec) => {
-            dispatched.push({ target: spec.target, sessionId: spec.sessionId, source: spec.source });
+            dispatched.push({ action: spec.action, sessionId: spec.sessionId, source: spec.source });
             return { requestId: "req_child" };
           },
         },
@@ -103,7 +103,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
     expect(result.error).toBeUndefined();
     // The route taken: a task dispatch to the "implement" entry...
     expect(dispatched).toHaveLength(1);
-    expect(dispatched[0]).toMatchObject({ target: "implement", source: "task" });
+    expect(dispatched[0]).toMatchObject({ action: "implement", source: "task" });
     // ...and NOT a call into the worker's own body. A regression that put the
     // worker back on the routing table would still resolve `result.error` as
     // undefined — this is the assertion that actually catches it.
@@ -127,7 +127,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
 
     expect(board.handedOff).toHaveLength(1);
     expect(board.handedOff[0]!.label).toBe("assignee:background");
-    expect(board.handedOff[0]!.dispatch?.target).toBe("shared-entry");
+    expect(board.handedOff[0]!.dispatch?.action).toBe("shared-entry");
   });
 
   it("still installs a resource only the handed-off entry block declares", () => {

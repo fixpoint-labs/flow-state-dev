@@ -7,7 +7,7 @@
  * with the process. So the flow has to be able to answer "which block runs
  * this row?" from strings alone, which is what a task entry is for: a plain
  * `{ block }` under `defineFlow({ tasks })`, addressed by the
- * `dispatcher({ type: "task", target })` the board holds at the seat.
+ * `dispatcher({ type: "task", action })` the board holds at the seat.
  *
  * **The gate.** The flow's entry is a plain block, but a `task` dispatch never
  * reaches it directly: `defineFlow` rebuilds every entry a reachable hand-off
@@ -48,7 +48,7 @@ function seat(target: string, session: "per-task" | "per-worker" = "per-task"): 
   return dispatcher({
     name: `seat-${target}-${seatCount}`,
     type: "task",
-    target,
+    action: target,
     session,
   }) as unknown as TaskWorker;
 }
@@ -108,7 +108,7 @@ describe("the gated task entry — what the flow carries for a handed-off seat",
       task: { actions: { implement: { block: worker("implement") } } },
     });
 
-    expect(board.handedOff[0]?.dispatch?.target).toBe("implement");
+    expect(board.handedOff[0]?.dispatch?.action).toBe("implement");
     expect(flow.task?.actions.implement.block.name).toBe("issue-work-implement-gate");
   });
 

@@ -144,6 +144,13 @@ export type RequestHostConstructionInputs = {
    * there explicitly.
    */
   dispatchOperation?: DispatchOperation;
+  /**
+   * Resolves another registered flow by kind, for a cross-flow dispatch
+   * address. Wired from the host's flow registry. Absent → every cross-flow
+   * address refuses `flow-not-found`, the same fail-closed shape
+   * `dispatchOperation` has.
+   */
+  resolveFlow?: (kind: string) => FlowInstance | undefined;
   /** The parent-board row this request was dispatched for, stamped at spawn. */
   parentTask?: ParentTaskBinding;
   /** The stale-request sweeper's threshold. */

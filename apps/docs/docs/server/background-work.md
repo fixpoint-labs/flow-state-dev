@@ -48,8 +48,7 @@ const acknowledge = handler({
 // lands on the same job.
 const summarizeInBackground = dispatcher({
   name: "summarize-in-background",
-  type: "internal",
-  target: "summarize",
+  action: "summarize",
   inputSchema: z.object({ documentId: z.string() }),
   session: { key: (input) => input.documentId },
 });
@@ -57,8 +56,7 @@ const summarizeInBackground = dispatcher({
 // Deliver into a session that already exists.
 const nudgeCoordinator = dispatcher({
   name: "nudge-coordinator",
-  type: "internal",
-  target: "acknowledge",
+  action: "acknowledge",
   inputSchema: z.object({ coordinatorSessionId: z.string(), reason: z.string() }),
   session: { id: (input) => input.coordinatorSessionId },
   payload: (input) => ({ reason: input.reason }),
@@ -80,7 +78,7 @@ export default defineFlow({
 ```
 
 A dispatcher is a handler. Run it, in a sequencer step, as a generator's tool,
-or as an action's root block, and it sends one request to `target` and returns
+or as an action's root block, and it sends one request to `action` and returns
 as soon as the runtime has accepted it. It does not wait for the work.
 
 ```ts
@@ -108,7 +106,7 @@ child. An `id` target has to be a session of this flow kind that belongs to
 this user.
 
 `defineFlow` checks every dispatcher it can reach and throws at definition time
-when `target` names an entry the flow does not declare. An action named
+when `action` names an entry the flow does not declare. An action named
 `summarize` does not stand in for `internal.actions.summarize`; each map is
 looked up on its own.
 
@@ -117,9 +115,10 @@ A refusal at run time throws `DispatchRefusedError`, with `code:
 
 | `refused` | Meaning |
 |---|---|
-| `no-entry` | The flow declares no entry at that address |
+| `no-entry` | The addressed flow declares no entry at that address |
+| `flow-not-found` | A `flowKind` names a flow this server has not registered |
 | `session-not-found` | An `id` names a session that does not exist, or one that belongs to another user |
-| `session-not-addressable` | An `id` names a session on another flow |
+| `session-not-addressable` | An `id` names a session on a flow other than the one addressed |
 | `key-occupied` | The `key` derived a session id already held by something that is not this conversation's child |
 | `no-dispatch-operation` | This process runs requests but was not set up to dispatch one |
 | `dispatch-rejected` | The entry's `concurrency` policy is `reject` and its key is held |
@@ -130,10 +129,61 @@ dispatcher can branch on `refused` knowing no child is running. A `key` or
 `id` function that returns an empty string throws a plain `Error` naming the
 block.
 
-A task board seat can start a job the same way: a `dispatcher({ type: "task"
+A task board seat can start a job the same way: a `dispatcher({ action, session
 })` under `workers` sends each claimed row to one of the flow's `task.actions`
 entries, and the child session lands in the same listing. See [Task board →
 Seats that hand off](../orchestration/task-board.md#seats-that-hand-off).
+
+### Starting a job on another flow
+
+A server usually runs more than one flow. Add `flowKind` and the dispatcher
+resolves its `action` on that flow's `internal.actions` instead of its own:
+
+```ts
+const notifyBilling = dispatcher({
+  name: "notify-billing",
+  flowKind: "billing",                          // the other flow
+  action: "charge",                             // billing's internal.actions.charge
+  inputSchema: z.object({ orderId: z.string() }),
+  session: { key: (input) => input.orderId },
+});
+```
+
+The job still starts and returns immediately, and the child session still hangs
+off the conversation that started it — but it belongs to the flow it was sent
+to. It runs that flow's entry, starts with that flow's session-state defaults,
+and its `flowKind` in the listing is that flow's. Whatever the job needs travels
+in the payload; the two flows share no state.
+
+`defineFlow` can't check this address the way it checks a same-flow one. It sees
+one flow at a time, and the flow you named is defined somewhere else. So the
+check happens when the dispatch runs, against the flows the server has
+registered: `flow-not-found` if there is no such flow, `no-entry` if there is
+and it declares no such entry. Both are ordinary `DispatchRefusedError`
+refusals — nothing retries, and nothing quietly falls back to an entry of the
+same name on the sending flow.
+
+Both flows have to be registered on the same server. This addresses another
+flow, not another service.
+
+To hear back, the other flow replies the same way it would within one flow —
+a `{ from: true }` dispatcher — pointed at your `flowKind`:
+
+```ts
+// on the billing flow
+const confirmToSender = dispatcher({
+  name: "confirm-to-sender",
+  flowKind: "orders",
+  action: "confirm",
+  inputSchema: z.object({ orderId: z.string() }),
+  session: { from: true },
+});
+```
+
+The runtime supplies the session to reply into, from the dispatch it stamped;
+you supply the flow. If they disagree — the sender's session is not on the flow
+you named — the reply is refused `session-not-addressable` rather than
+delivered somewhere else. A `task` dispatcher may take `flowKind` the same way.
 
 ## Listing a session's children
 
@@ -297,7 +347,7 @@ bag:
   "metadata": {
     "dispatch": {
       "type": "task",
-      "target": "implement",
+      "action": "implement",
       "from": { "block": "hand-off-implement", "sessionId": "sess_abc" },
       "key": "task|10:issue-work|3:t42",
       "taskId": "t42"
@@ -306,7 +356,7 @@ bag:
 }
 ```
 
-`type` and `target` are the entry the run executes, `from` names the block that
+`type` and `action` are the entry the run executes, `from` names the block that
 sent it and the session it was running in, `key` is the session key the child
 was derived from, and `taskId` the board row on a task hand-off. `key` is absent
 when the dispatcher delivered into an existing session by `id`, and `taskId` is

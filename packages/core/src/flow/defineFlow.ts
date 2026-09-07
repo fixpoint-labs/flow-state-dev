@@ -610,12 +610,19 @@ function validateEntryMaps(
  * of the board that hands off to it.
  *
  * This is the definition-time half of the no-fallback rule. A dispatcher's
- * address is static — `(type, target)` on the block definition — so the check
+ * address is static — `(type, action)` on the block definition — so the check
  * is a lookup, not an inference: `internal:"wake"` must be
  * `flow.internal.actions.wake`; `task:"implement"` must be
  * `flow.task.actions.implement`. Caught here, the author sees the block and the
  * address; caught at run time, a claimed row would be handed off to nothing and
  * wait out its lease.
+ *
+ * The one address this walk cannot answer is a **cross-flow** one
+ * (`flowKind` on `internal` or `task`): it names an entry on a flow registered
+ * independently of this one, and a `defineFlow` holding one flow's maps has
+ * nothing to look it up in. Those are skipped here and resolved by the seam,
+ * against the flows the running process registered — still one keyed lookup
+ * with no fallback, still a refusal by name, just one layer later.
  *
  * A task entry is declared as a plain block, and a `task` dispatch may only
  * ever reach it through its board's gate — the row re-read, the claim verified,
@@ -654,26 +661,32 @@ function resolveDispatchTargets(
   for (const block of reachable) {
     const address = block.dispatch;
     if (address === undefined) continue;
-    const label = `${address.type}:"${address.target}"`;
+    const label = `${address.type}:"${address.action}"`;
+
+    // A cross-flow address names an entry on a flow this `defineFlow` does
+    // not hold — `internal` or `task`. Skipped rather than guessed: the seam
+    // resolves it against the flows the process actually registered and
+    // refuses by name — `flow-not-found` or `no-entry`.
+    if (address.flowKind !== undefined) continue;
 
     if (address.type === "internal") {
-      if (internal !== undefined && Object.hasOwn(internal, address.target)) continue;
+      if (internal !== undefined && Object.hasOwn(internal, address.action)) continue;
       throw new Error(
         `Flow "${kind}" reaches block "${block.name}", which dispatches to ${label}, but the ` +
-          `flow declares no such entry. Add \`internal: { actions: { ${address.target}: { block } } }\` ` +
+          `flow declares no such entry. Add \`internal: { actions: { ${address.action}: { block } } }\` ` +
           `to the flow, or point the dispatcher at an entry it declares. A dispatch never resolves ` +
           `another type's map, so this dispatch could not run.`
       );
     }
 
     if (address.type === "task") {
-      const entry = tasks !== undefined && Object.hasOwn(tasks, address.target)
-        ? tasks[address.target]
+      const entry = tasks !== undefined && Object.hasOwn(tasks, address.action)
+        ? tasks[address.action]
         : undefined;
       if (entry === undefined) {
         throw new Error(
           `Flow "${kind}" reaches block "${block.name}", which hands off to ${label}, but the ` +
-            `flow declares no such task entry. Add \`task: { actions: { ${address.target}: { block } } }\` ` +
+            `flow declares no such task entry. Add \`task: { actions: { ${address.action}: { block } } }\` ` +
             `to the flow — the block that runs each row this seat hands off.`
         );
       }
@@ -685,23 +698,23 @@ function resolveDispatchTargets(
             `\`workers\`, which is the only place a claim on a durable row is minted.`
         );
       }
-      const holder = gatedBy.get(address.target);
+      const holder = gatedBy.get(address.action);
       if (holder !== undefined && holder.gate !== binding.gate) {
         throw new Error(
           holder.boardId === binding.boardId
-            ? `Flow "${kind}" task entry "${address.target}" is handed off to by two boards ` +
+            ? `Flow "${kind}" task entry "${address.action}" is handed off to by two boards ` +
                 `that both declare boardId "${binding.boardId}". A boardId names one board and ` +
                 `one ledger; give the second board its own boardId and its own entry.`
-            : `Flow "${kind}" task entry "${address.target}" is handed off to by two boards, ` +
+            : `Flow "${kind}" task entry "${address.action}" is handed off to by two boards, ` +
                 `"${holder.boardId}" and "${binding.boardId}". One entry settles against one ` +
                 `ledger; declare a second entry for the second board.`
         );
       }
       if (holder === undefined) {
-        gatedBy.set(address.target, binding);
-        gated[address.target] = { ...binding.gate(entry, address.target), gatedBy: binding };
+        gatedBy.set(address.action, binding);
+        gated[address.action] = { ...binding.gate(entry, address.action), gatedBy: binding };
       }
-      if (address.session !== "per-task") sharedChild.add(address.target);
+      if (address.session !== "per-task") sharedChild.add(address.action);
       continue;
     }
 
@@ -725,7 +738,7 @@ function resolveDispatchTargets(
       `Flow "${kind}" declares task entry "${name}", but no task board reachable from the ` +
         `flow hands off to it. Only a board can dispatch a task — it mints the claim the entry ` +
         `runs under — so an entry without one could never be reached. Add a ` +
-        `\`dispatcher({ type: "task", target: "${name}" })\` seat to a board the flow ` +
+        `\`dispatcher({ action: "${name}", session })\` seat to a board the flow ` +
         `reaches, or remove the entry.`
     );
   }

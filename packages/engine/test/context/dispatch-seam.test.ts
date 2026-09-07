@@ -44,7 +44,7 @@ function messagingFlow(kind: string, observed: Observed) {
   const spawn = dispatcher({
     name: "spawn-work",
     type: "internal",
-    target: "work",
+    action: "work",
     inputSchema: z.object({ key: z.string(), note: z.string() }),
     session: { key: (input) => input.key },
     payload: (input) => ({ note: input.note })
@@ -53,7 +53,7 @@ function messagingFlow(kind: string, observed: Observed) {
   const deliver = dispatcher({
     name: "deliver-work",
     type: "internal",
-    target: "work",
+    action: "work",
     inputSchema: z.object({ to: z.string(), note: z.string() }),
     session: { id: (input) => input.to },
     payload: (input) => ({ note: input.note })
@@ -167,7 +167,7 @@ describe("a dispatcher spawning a child session (the `key` policy)", () => {
         metadata: {
           dispatch: {
             type: "internal",
-            target: "work",
+            action: "work",
             from: { block: "spawn-work", sessionId: "s_parent" },
             key: "doc-1"
           }

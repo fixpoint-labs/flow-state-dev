@@ -290,6 +290,17 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.dispatchOperation = createDispatchOperation({ host });
   }
 
+  // Same last-resort terms, one field over: the flow lookup a cross-flow
+  // dispatch address resolves through. A router mounted without a `FlowState`
+  // has a registry of its own, and without this every cross-flow address it
+  // serves would refuse `flow-not-found` for flows sitting in that registry.
+  if (
+    runtimeConfig.requestHost !== undefined &&
+    runtimeConfig.requestHost.resolveFlow === undefined
+  ) {
+    runtimeConfig.requestHost.resolveFlow = (kind: string) => options.registry.get(kind);
+  }
+
   // Detect interrupted requests from previous runs on startup
   if (options.detectInterruptedOnStartup !== false) {
     void detectInterruptedRequests({

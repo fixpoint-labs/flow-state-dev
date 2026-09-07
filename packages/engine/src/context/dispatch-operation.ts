@@ -61,7 +61,7 @@ export type DispatchOperation = (spec: {
   /** The dispatch type, stamped as the envelope's `source`. */
   source: BlockDispatchType;
   /** The entry name — the envelope's `action`, resolved on the type's own map. */
-  target: string;
+  action: string;
   sessionId: string;
   /**
    * Whether `sessionId` is a child the seam derived (`"child"`) or a session
@@ -71,7 +71,7 @@ export type DispatchOperation = (spec: {
    */
   delivery: "child" | "existing";
   input: unknown;
-  /** The flow the request belongs to — always the sender's own (same-flow v1). */
+  /** The target flow this request is addressed to (the sender's own when same-flow). */
   flowKind: string;
   /**
    * The request's principal, tenant and org.
@@ -214,7 +214,7 @@ export function createDispatchOperation(inputs: DispatchOperationInputs): Dispat
       handle = inputs.host.dispatch({
         source: spec.source,
         flowKind: spec.flowKind,
-        action: spec.target,
+        action: spec.action,
         input: spec.input,
         sessionId: spec.sessionId,
         principal: { userId: spec.userId },
