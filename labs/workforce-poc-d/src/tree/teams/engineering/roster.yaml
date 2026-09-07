@@ -1,0 +1,4 @@
+# Roster metadata only. Not a Team type, not a flow, not an Agent.
+# The loader skips anything without name + persona.
+rosterId: engineering
+intake: intake
