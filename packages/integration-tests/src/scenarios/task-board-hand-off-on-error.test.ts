@@ -97,7 +97,7 @@ async function handOffAndRunChild(kind: string, onError: "skip" | "fail") {
       requestHost: {
         dispatchOperation: async (spec: {
           sessionId: string;
-          target: string;
+          action: string;
           input: unknown;
         }) => {
           dispatched.push({

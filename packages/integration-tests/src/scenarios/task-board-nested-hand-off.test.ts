@@ -142,7 +142,7 @@ describe("a handed-off worker can run its own handed-off board", () => {
 
     const dispatched: RecordedDispatch[] = [];
     const record = {
-      dispatchOperation: async (spec: { sessionId: string; target: string; input: unknown }) => {
+      dispatchOperation: async (spec: { sessionId: string; action: string; input: unknown }) => {
         dispatched.push({
           sessionId: spec.sessionId,
           actionName: spec.action,

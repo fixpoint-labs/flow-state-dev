@@ -626,7 +626,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     const recorder = {
       dispatchOperation: async (spec: {
         sessionId: string;
-        target: string;
+        action: string;
         input: unknown;
       }) => {
         dispatched.push({
@@ -745,7 +745,7 @@ describe("a hand-off board's launching request returns while the work is outstan
  * having the board's own ledger open beside it.
  *
  * `metadata.dispatch.taskId` closes that. It is stamped in the same seam call
- * that assembles `metadata.dispatch.type` / `.target` / `.from` / `.key`, from
+ * that assembles `metadata.dispatch.type` / `.action` / `.from` / `.key`, from
  * server-derived material only, and it decides nothing — see
  * `DispatchSpec.provenance`.
  */
