@@ -605,7 +605,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
       [ASSIGNEE]: dispatcher({
         name: `${boardId}-hand-off`,
         type: "task",
-        target: ASSIGNEE,
+        action: ASSIGNEE,
         session: "per-task",
       }),
     },

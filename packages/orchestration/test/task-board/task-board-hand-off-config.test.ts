@@ -45,12 +45,12 @@ function worker(name: string, extra?: Record<string, unknown>): TaskWorker {
 
 let seatCount = 0;
 /** A seat that hands off: the dispatcher a board reads its address from. */
-function seat(target = "implement"): TaskWorker {
+function seat(action = "implement"): TaskWorker {
   seatCount += 1;
   return dispatcher({
-    name: `seat-${target}-${seatCount}`,
+    name: `seat-${action}-${seatCount}`,
     type: "task",
-    target,
+    action,
     session: "per-task",
   }) as unknown as TaskWorker;
 }
