@@ -53,7 +53,6 @@ export interface ConcurrencyFlowView {
   actions: Record<string, EntryPolicyView>;
   internal?: { actions?: Record<string, EntryPolicyView> };
   task?: { actions?: Record<string, EntryPolicyView> };
-  chat?: { on?: Record<string, EntryPolicyView> };
   webhooks?: Record<string, { on?: Record<string, EntryPolicyView> } | undefined>;
   schedules?: { static?: Record<string, EntryPolicyView> };
   request?: { concurrency?: ConcurrencyConfig };
@@ -147,7 +146,7 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
       // `source` (set by the adapter or the dispatch seam, never the caller)
       // decides the type, and the type's own map is read — `flow.actions` by
       // name for a `public` dispatch, the adapter's namespaced coordinate for
-      // chat / webhook / schedule, the entry name for task / internal. A forged
+      // webhook / schedule, the entry name for task / internal. A forged
       // `metadata.webhook` on an HTTP dispatch therefore still resolves the
       // named action's policy, and a task hand-off whose name collides with a
       // public action never inherits that action's `queue` / `reject` — each

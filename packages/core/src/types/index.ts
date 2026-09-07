@@ -131,9 +131,7 @@ export { validateConcurrencyConfig } from "./concurrency";
 
 export type { TTSConfig, VoiceConfig } from "./speech";
 
-export type { ChatConfig, ChatEventBinding } from "./chat";
 
-export { validateChatConfig } from "./chat";
 
 export type {
   WebhookConfig,

@@ -26,14 +26,6 @@ const generateInvoices = handler<{ topic?: string }, { ok: true }>({
   execute: () => ({ ok: true })
 });
 
-// A chat-form handler on the same flow, used only to prove the exposure
-// invariant: an event-addressed chat handler is also absent from `flow.actions`.
-const replyInChat = handler({
-  name: "reply-in-chat",
-  inputSchema: z.object({}).passthrough(),
-  execute: () => undefined
-});
-
 const sendDigest = handler<Record<string, never>, { ok: true }>({
   name: "send-digest",
   inputSchema: z.object({}),
@@ -62,9 +54,8 @@ function buildRouter() {
           }
         }
       },
-      // A chat-form handler declared alongside the schedule, both event-only:
-      // neither appears in `actions`, so neither is exposed to HTTP/MCP.
-      chat: { on: { mention: { block: replyInChat, input: (e) => e } } },
+      // Event-only: the schedule handler never appears in `actions`, so it is
+      // not exposed to HTTP/MCP.
       actions: {}
     })()
   );
@@ -202,11 +193,10 @@ describe("scheduled adapter — end-to-end", () => {
       };
       const billing = flows.find((f) => f.kind === "billing");
       expect(billing).toBeDefined();
-      // No caller actions declared, and the event-addressed handlers
-      // (generate-invoices, reply-in-chat) are absent from the surface.
+      // No caller actions declared, and the event-addressed handler
+      // (generate-invoices) is absent from the surface.
       expect(billing!.actions).toEqual([]);
       expect(billing!.actions).not.toContain("generate-invoices");
-      expect(billing!.actions).not.toContain("reply-in-chat");
     } finally {
       await disposeFlowApiRouter(router);
     }

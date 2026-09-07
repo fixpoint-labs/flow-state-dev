@@ -326,7 +326,6 @@ describe("the stamp is trusted only under a seam-stamped source", () => {
     expect(dispatchTypeOf("task")).toBe("task");
     expect(dispatchTypeOf("internal")).toBe("internal");
     expect(dispatchTypeOf("webhook")).toBe("webhook");
-    expect(dispatchTypeOf("chat")).toBe("chat");
     expect(dispatchTypeOf("scheduled")).toBe("schedule");
     // Every caller-facing transport — including one the framework has never
     // heard of — delivers `public`; nothing in a body can pick another type.

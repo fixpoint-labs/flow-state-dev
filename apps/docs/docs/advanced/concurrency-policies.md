@@ -45,7 +45,7 @@ defineFlow({
 
 Resolution is per-action-wins: `action.concurrency ?? flow.request.concurrency ?? "allow"`.
 
-The policy is enforced once, at the shared dispatch seam every transport funnels through. So the same declaration governs HTTP, chat, webhooks, and MCP — you don't wire it per transport.
+The policy is enforced once, at the shared dispatch seam every transport funnels through. So the same declaration governs HTTP, webhooks, scheduled, and MCP — you don't wire it per transport.
 
 ## The policies
 

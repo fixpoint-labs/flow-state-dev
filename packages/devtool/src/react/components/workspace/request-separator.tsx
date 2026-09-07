@@ -22,8 +22,8 @@ type RequestSeparatorProps = {
   /**
    * Adapter-stamped provenance bag. Event transports namespace their
    * coordinate under a single slot — scheduled requests carry
-   * `metadata.schedule.{scheduleId, origin, …}`, chat `metadata.chat.{eventKey, …}`,
-   * webhooks `metadata.webhook.{provider, eventType}` (FIX-838). Other sources
+   * `metadata.schedule.{scheduleId, origin, …}`, webhooks
+   * `metadata.webhook.{provider, eventType}` (FIX-838). Other sources
    * may carry their own keys without affecting rendering here.
    */
   metadata?: Record<string, unknown>;
@@ -58,8 +58,7 @@ const SOURCE_LABELS: Record<string, { label: string; className: string }> = {
   mcp: { label: "MCP", className: "border-purple-700 text-purple-300" },
   webhook: { label: "Webhook", className: "border-amber-700 text-amber-300" },
   scheduled: { label: "Scheduled", className: "border-cyan-700 text-cyan-300" },
-  notification: { label: "Notification", className: "border-fuchsia-700 text-fuchsia-300" },
-  chat: { label: "Chat", className: "border-emerald-700 text-emerald-300" }
+  notification: { label: "Notification", className: "border-fuchsia-700 text-fuchsia-300" }
 };
 
 function formatDuration(ms?: number, isActive?: boolean): string {
@@ -243,10 +242,10 @@ function ProvenanceDetails({
   for (const [key, value] of Object.entries(metadata)) {
     if (value === undefined) continue;
     // Event transports namespace their coordinate under a single slot
-    // (`metadata.webhook` / `metadata.chat` / `metadata.schedule`; FIX-838).
-    // Flatten it so operators see `scheduleId`, `cron`, `eventKey`, … as
+    // (`metadata.webhook` / `metadata.schedule`; FIX-838).
+    // Flatten it so operators see `scheduleId`, `cron`, `eventType`, … as
     // individual rows rather than one JSON blob.
-    if ((key === "webhook" || key === "chat" || key === "schedule") &&
+    if ((key === "webhook" || key === "schedule") &&
         value !== null && typeof value === "object") {
       for (const [innerKey, innerValue] of Object.entries(value)) {
         if (innerValue === undefined) continue;

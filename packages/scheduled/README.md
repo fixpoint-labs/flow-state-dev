@@ -59,8 +59,8 @@ export const billing = defineFlow({
 ```
 
 A static schedule carries its handler `block` inline (the shared action core),
-not a name pointing into `flow.actions`. Same model the webhook and chat
-transports use. `defineScheduleBinding` (exported from `@flow-state-dev/core`)
+not a name pointing into `flow.actions`. Same model the webhook transport
+uses. `defineScheduleBinding` (exported from `@flow-state-dev/core`)
 is the optional typed constructor. A scheduled handler has no HTTP or MCP caller
 surface; declare a block in both `schedules.static` and `flow.actions` (same
 reference) to expose it both ways.

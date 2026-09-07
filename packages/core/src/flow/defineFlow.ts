@@ -32,7 +32,6 @@ import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
 import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } from "../types/schedules";
 import { validateConcurrencyConfig } from "../types/concurrency";
-import { validateChatConfig, type ChatConfig, type ChatEventBinding } from "../types/chat";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
 import { introspectStateKeys } from "../helpers/zod-introspect";
 
@@ -142,6 +141,24 @@ function rejectRemovedWork(value: object | undefined, location: string): void {
 }
 
 /**
+ * Reject the removed `chat` transport config (FIX-1330). The chat transport and
+ * its `@flow-state-dev/chat-sdk` adapter are gone, so a flow that still declares
+ * `chat.on` bindings would otherwise register with those handlers silently
+ * unreachable — nothing dispatches to them any more. Fail at definition time
+ * with the disposition instead (BP-030: reject removed keys loudly).
+ */
+function rejectRemovedChat(value: object | undefined, location: string): void {
+  if (value !== undefined && Object.hasOwn(value, "chat")) {
+    throw new Error(
+      `${location} uses the removed "chat" option. ` +
+      "The chat transport (@flow-state-dev/chat-sdk) was removed and no adapter dispatches chat " +
+      "events any more. Drive conversational bots through a caller-addressed action in `actions`, " +
+      "or through the webhook transport (`webhooks`) for platform events."
+    );
+  }
+}
+
+/**
  * Reject the removed scope-config `clientData` option.
  *
  * `clientData` was the legacy authoring shape for a scope's client-facing
@@ -169,7 +186,6 @@ function rejectRemovedClientData(value: object | undefined, flowKind: string, sc
 /** The definition-only options {@link rejectDefinitionOnlyOptions} refuses. */
 const DEFINITION_ONLY_INSTANCE_OPTIONS = [
   "webhooks",
-  "chat",
   "schedules",
   "mcp",
   "internal",
@@ -187,8 +203,8 @@ const DEFINITION_ONLY_INSTANCE_OPTIONS = [
  * (plain JS, or an `as any` cast): fail loudly rather than accept-and-ignore.
  *
  * Being definition-only is also what makes the transport validation in
- * `createFlowInstance` complete rather than partial: `validateChatConfig` /
- * `validateWebhookConfig` / `validateSchedulesConfig` read `definition.*` rather
+ * `createFlowInstance` complete rather than partial: `validateWebhookConfig` /
+ * `validateSchedulesConfig` read `definition.*` rather
  * than a merge, and with no instance-side source left there is no config that
  * could slip past them.
  */
@@ -352,25 +368,6 @@ function withFlowToolsWebhooks(
 }
 
 /**
- * Apply the flow's `tools` config to every chat handler block, mirroring
- * `withFlowToolsWebhooks`. A chat binding is an action in chat form, so a
- * generator handler must see the flow-level `tools` exactly as a caller action
- * would. No-op when the flow declares no chat subscriptions or no tools (same
- * object identity). Assumes `validateChatConfig` already ran.
- */
-function withFlowToolsChat(
-  chat: ChatConfig | undefined,
-  flowTools: ToolsConfig | undefined
-): ChatConfig | undefined {
-  if (chat?.on === undefined || flowTools === undefined) return chat;
-  const on: Record<string, ChatEventBinding> = {};
-  for (const [eventKey, binding] of Object.entries(chat.on)) {
-    on[eventKey] = { ...binding, block: withFlowTools(binding.block, flowTools) };
-  }
-  return { ...chat, on };
-}
-
-/**
  * Apply the flow's `tools` config to every static schedule handler block,
  * mirroring `withFlowToolsWebhooks`. Dynamic schedules (`resolve`) produce
  * their block at dispatch time and are not rewritten here — consistent with
@@ -423,8 +420,8 @@ function actionCoreBlocks(core: {
 /**
  * Every statically-declared block in the flow.
  *
- * Six entry families all carry the shared `ActionCore` (caller actions,
- * internal and task entries, and the webhook, chat and static schedule
+ * Five entry families all carry the shared `ActionCore` (caller actions,
+ * internal and task entries, and the webhook and static schedule
  * bindings), so each contributes its root and its observers. The flow-level
  * `request` hooks are blocks too, and are declared once for the whole flow
  * rather than per entry.
@@ -438,7 +435,6 @@ function actionBlocks(
   internal: Record<string, InternalEntry> | undefined,
   tasks: Record<string, TaskEntry> | undefined,
   webhooks: WebhookConfig | undefined,
-  chat: ChatConfig | undefined,
   schedules: SchedulesConfig | undefined,
   request?: { onStarted?: BlockDefinition<any, any>; onCompleted?: BlockDefinition<any, any>; onErrored?: BlockDefinition<any, any>; onFinished?: BlockDefinition<any, any>; onStepErrored?: BlockDefinition<any, any> }
 ): BlockDefinition[] {
@@ -454,9 +450,6 @@ function actionBlocks(
     for (const sub of Object.values(webhooks)) {
       for (const binding of Object.values(sub.on)) blocks.push(...actionCoreBlocks(binding));
     }
-  }
-  if (chat?.on !== undefined) {
-    for (const binding of Object.values(chat.on)) blocks.push(...actionCoreBlocks(binding));
   }
   if (schedules?.static !== undefined) {
     for (const schedule of Object.values(schedules.static)) blocks.push(...actionCoreBlocks(schedule));
@@ -475,7 +468,7 @@ function actionBlocks(
 
 /**
  * Collect declaredResources from every action block in the flow (caller +
- * webhook + chat + static schedule) and merge them together. Returns the union
+ * webhook + static schedule) and merge them together. Returns the union
  * of all block-declared resources. Same accessor key + same `defineResource()`
  * reference deduplicates; different references at the same accessor key throw
  * at this layer.
@@ -1001,6 +994,8 @@ function createFlowInstance(
   rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
   rejectRemovedWork(definition, `Flow "${definition.kind}"`);
   rejectRemovedWork(options, `Flow "${definition.kind}" instance options`);
+  rejectRemovedChat(definition, `Flow "${definition.kind}"`);
+  rejectRemovedChat(options, `Flow "${definition.kind}" instance options`);
   rejectDefinitionOnlyOptions(options, definition.kind);
 
   const authentication = mergeAuthentication(
@@ -1041,7 +1036,6 @@ function createFlowInstance(
   //
   // Reading `definition.*` rather than a merge is complete, not a gap — see
   // `rejectDefinitionOnlyOptions`.
-  validateChatConfig(kind, definition.chat);
   validateWebhookConfig(kind, definition.webhooks);
   validateSchedulesConfig(kind, definition.schedules);
 
@@ -1050,7 +1044,6 @@ function createFlowInstance(
   // identically to its caller-action twin. Runs after validation (which
   // guarantees a real `block`); a no-op when the flow declares no tools.
   const webhooks = withFlowToolsWebhooks(definition.webhooks, tools);
-  const chat = withFlowToolsChat(definition.chat, tools);
   const schedules = withFlowToolsSchedules(definition.schedules, tools);
 
   // The two entry maps a caller cannot name. Validated before any aggregation
@@ -1084,7 +1077,7 @@ function createFlowInstance(
   const task = resolveDispatchTargets(
     kind,
     walkFlowGraph(
-      actionBlocks(actions, internal, declaredTasks, webhooks, chat, schedules, requestMerged)
+      actionBlocks(actions, internal, declaredTasks, webhooks, schedules, requestMerged)
     ),
     internal,
     declaredTasks
@@ -1095,7 +1088,6 @@ function createFlowInstance(
     internal,
     task,
     webhooks,
-    chat,
     schedules,
     requestMerged
   );
@@ -1173,7 +1165,6 @@ function createFlowInstance(
     tools,
     voice: options?.voice ?? definition.voice,
     mcp,
-    chat,
     webhooks,
     schedules,
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
@@ -1227,7 +1218,6 @@ export function defineFlow<
     tools: baseInstance.tools,
     voice: baseInstance.voice,
     mcp: baseInstance.mcp,
-    chat: baseInstance.chat,
     webhooks: baseInstance.webhooks,
     schedules: baseInstance.schedules,
     tokenCounter: baseInstance.tokenCounter,

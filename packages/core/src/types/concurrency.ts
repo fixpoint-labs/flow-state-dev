@@ -7,7 +7,7 @@
  * the framework's generalization of the scheduled-action `onOverlap` idiom
  * (`schedules.ts`) from a schedule-id-keyed check into a flow/action-level
  * policy enforced once at the shared dispatch seam, so every transport (HTTP,
- * chat, webhook, scheduled, MCP) inherits the same behavior.
+ * webhook, scheduled, MCP) inherits the same behavior.
  *
  * This file owns the *author surface* (the config shape declared on a flow)
  * and its definition-time validation. The runtime that enforces a resolved

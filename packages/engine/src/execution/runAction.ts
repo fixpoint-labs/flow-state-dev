@@ -291,7 +291,7 @@ function assertDispatchersRoutable(
  * — today the dynamic schedule, whose handler block is produced at dispatch
  * time and cannot be reached from the live flow definition. Otherwise the core
  * is resolved from the flow: a genuine event dispatch (`source === "webhook" |
- * "chat" | "scheduled"`) carries its coordinate in `metadata.<transport>`, so
+ * "scheduled"`) carries its coordinate in `metadata.<transport>`, so
  * the handler is found on the matching transport map rather than `flow.actions`.
  * See `resolveActionCore` — the source gate is what stops a caller-addressed
  * request from pivoting into an event handler via injected metadata.

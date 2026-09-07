@@ -26,7 +26,6 @@ import { z } from "zod";
 import { bindTaskDispatcher, defineFlow, handler, markDispatcher } from "@flow-state-dev/core";
 import { resolveEntry } from "../../src/execution/resolve-entry";
 import {
-  CHAT_SOURCE,
   INTERNAL_SOURCE,
   SCHEDULED_SOURCE,
   TASK_SOURCE,
@@ -132,27 +131,22 @@ describe("resolveEntry — task and internal never fall through to flow.actions"
   });
 });
 
-describe("resolveEntry — webhook/chat/scheduled need their own coordinate, never a name fallback", () => {
+describe("resolveEntry — webhook/scheduled need their own coordinate, never a name fallback", () => {
   const flow = defineFlow({
     kind: "coordinated",
     actions: { run: { block: publicBlock } },
-    chat: { on: { mention: { block: internalBlock, input: () => ({}) } } },
     webhooks: { github: { on: { push: { block: taskBlock, input: () => ({}) } } } },
     schedules: { static: { nightly: { block: otherBlock, cron: "0 3 * * *" } } }
   })();
 
-  it("resolves nothing for a webhook/chat/scheduled source with NO metadata coordinate", () => {
-    expect(resolveEntry(flow, "mention", CHAT_SOURCE, undefined)).toBeUndefined();
+  it("resolves nothing for a webhook/scheduled source with NO metadata coordinate", () => {
     expect(resolveEntry(flow, "push", WEBHOOK_SOURCE, undefined)).toBeUndefined();
     expect(resolveEntry(flow, "nightly", SCHEDULED_SOURCE, undefined)).toBeUndefined();
     // Not even a fallback to the name carried alongside the (absent) coordinate.
-    expect(resolveEntry(flow, "run", CHAT_SOURCE, undefined)).toBeUndefined();
+    expect(resolveEntry(flow, "run", WEBHOOK_SOURCE, undefined)).toBeUndefined();
   });
 
   it("resolves via the coordinate when one is present", () => {
-    expect(resolveEntry(flow, "irrelevant", CHAT_SOURCE, { chat: { eventKey: "mention" } })?.block).toBe(
-      internalBlock
-    );
     expect(
       resolveEntry(flow, "irrelevant", WEBHOOK_SOURCE, {
         webhook: { provider: "github", eventType: "push" }
@@ -163,15 +157,14 @@ describe("resolveEntry — webhook/chat/scheduled need their own coordinate, nev
     ).toBe(otherBlock);
   });
 
-  it("forged metadata.chat on an http source still resolves the named public action, not the chat entry", () => {
-    const forged = { chat: { eventKey: "mention" } };
+  it("forged metadata.webhook on an http source still resolves the named public action, not the webhook entry", () => {
+    const forged = { webhook: { provider: "github", eventType: "push" } };
     expect(resolveEntry(flow, "run", "http", forged)?.block).toBe(publicBlock);
   });
 
   it("resolves nothing for a coordinate that names no binding — never falls back to the name", () => {
     // Each mismatch on its own axis: an unknown provider, an unknown event
-    // under a known provider, a null eventType, an unknown chat key, and an
-    // unknown schedule id. None of these fall through to `flow.actions[name]`
+    // under a known provider, a null eventType, and an unknown schedule id. None of these fall through to `flow.actions[name]`
     // — the old `resolveActionCore` fell back here; `resolveEntry` never does.
     expect(
       resolveEntry(flow, "run", WEBHOOK_SOURCE, {
@@ -186,20 +179,18 @@ describe("resolveEntry — webhook/chat/scheduled need their own coordinate, nev
     expect(
       resolveEntry(flow, "run", WEBHOOK_SOURCE, { webhook: { provider: "github", eventType: null } })
     ).toBeUndefined();
-    expect(resolveEntry(flow, "run", CHAT_SOURCE, { chat: { eventKey: "reaction" } })).toBeUndefined();
     expect(
       resolveEntry(flow, "run", SCHEDULED_SOURCE, { schedule: { scheduleId: "hourly" } })
     ).toBeUndefined();
   });
 
-  it("resolves nothing on a flow that declares no webhooks/chat/schedules at all", () => {
+  it("resolves nothing on a flow that declares no webhooks/schedules at all", () => {
     // The dynamic-schedule case too: no static coordinate to resolve, and the
     // carried core (not this lookup) is what handles it upstream.
     const bare = defineFlow({ kind: "bare", actions: { run: { block: publicBlock } } })();
     expect(
       resolveEntry(bare, "run", WEBHOOK_SOURCE, { webhook: { provider: "github", eventType: "push" } })
     ).toBeUndefined();
-    expect(resolveEntry(bare, "run", CHAT_SOURCE, { chat: { eventKey: "mention" } })).toBeUndefined();
     expect(
       resolveEntry(bare, "run", SCHEDULED_SOURCE, { schedule: { scheduleId: "nightly" } })
     ).toBeUndefined();
@@ -260,7 +251,6 @@ describe("public re-entry — task and internal have no caller-facing entry, so 
   it("still admits today's public sources", () => {
     expect(isPublicReentryAllowed("http")).toBe(true);
     expect(isPublicReentryAllowed("mcp")).toBe(true);
-    expect(isPublicReentryAllowed("chat")).toBe(true);
     expect(isPublicReentryAllowed("scheduled")).toBe(true);
   });
 

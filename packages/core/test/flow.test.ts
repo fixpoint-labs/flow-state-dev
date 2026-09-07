@@ -67,7 +67,7 @@ describe("defineFlow", () => {
   // Runtime assertions rather than `@ts-expect-error` on purpose: this package's
   // `typecheck` compiles `src/**/*` only, so a type-level assertion in a test file
   // is never verified by anything. The `as any` below reaches the runtime guard.
-  it.each(["webhooks", "chat", "schedules", "mcp"])(
+  it.each(["webhooks", "schedules", "mcp"])(
     "fails closed when definition-only %s is passed to flow instance options",
     (option) => {
       const flow = defineFlow({ kind: "instance-transport-override", actions: {} });
@@ -77,6 +77,18 @@ describe("defineFlow", () => {
       );
     }
   );
+
+  // The chat transport was removed (FIX-1330); see `rejectRemovedChat`. A flow
+  // that still declares `chat` would otherwise register with handlers nothing
+  // dispatches to, so the removed key fails at definition time by name.
+  it("fails closed when the removed chat transport config is declared", () => {
+    expect(() =>
+      defineFlow({ kind: "legacy-chat", actions: {}, chat: { on: {} } } as any)
+    ).toThrow(/uses the removed "chat" option/);
+
+    const flow = defineFlow({ kind: "legacy-chat-instance", actions: {} });
+    expect(() => flow({ chat: {} } as any)).toThrow(/uses the removed "chat" option/);
+  });
 
   it("still applies a transport config declared on the flow definition", () => {
     const webhookHandler = handler({

@@ -22,7 +22,7 @@
  * Node `crypto`, which is not isomorphic, so it cannot live in this package;
  * the routing declaration here stays browser-safe.
  *
- * Unlike chat, the inbound event shape is framework-owned, so
+ * The inbound event shape is framework-owned, so
  * `WebhookInboundEvent` is concrete here. `payload` is `unknown` and is
  * narrowed via `defineWebhookBinding<TPayload>()`.
  */
@@ -135,7 +135,7 @@ export function defineWebhookBinding<TPayload = unknown>(
  * or a provider/event key is empty. Event-key spelling is NOT validated against
  * any provider vocabulary — keys are opaque strings.
  *
- * Throws plain `Error`, matching `validateChatConfig` / `validateSchedulesConfig`;
+ * Throws plain `Error`, matching `validateSchedulesConfig`;
  * the adapter translates a registration failure into a hard startup abort.
  */
 export function validateWebhookConfig(

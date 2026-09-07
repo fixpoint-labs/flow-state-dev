@@ -48,12 +48,11 @@ import type { BlockContext, BlockDefinition } from "./block";
 import type { ActionCore } from "./flow";
 
 /** The kinds of dispatch a flow can receive. Each resolves one map on the flow. */
-export type DispatchType = "public" | "chat" | "webhook" | "schedule" | "task" | "internal";
+export type DispatchType = "public" | "webhook" | "schedule" | "task" | "internal";
 
 /** Every dispatch type, for validation and iteration. */
 export const DISPATCH_TYPES: readonly DispatchType[] = [
   "public",
-  "chat",
   "webhook",
   "schedule",
   "task",

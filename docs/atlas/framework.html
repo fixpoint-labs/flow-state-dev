@@ -322,7 +322,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <rect class="n-box" x="372" y="164" width="236" height="56" rx="3"/>
         <text class="t-b" x="384" y="184">inbound transports</text>
         <text class="t-s" x="384" y="200">http · mcp · webhook</text>
-        <text class="t-s" x="384" y="213">scheduled · chat-sdk</text>
+        <text class="t-s" x="384" y="213">scheduled</text>
         <rect class="n-box" x="372" y="232" width="236" height="56" rx="3"/>
         <text class="t-b" x="384" y="252">stores</text>
         <text class="t-s" x="384" y="268">memory · filesystem · sqlite</text>
@@ -771,7 +771,6 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>store-sqlite</code></td><td>Persistence</td><td class="num">3,301</td><td class="num">16</td><td>SQLite-backed implementation of the store registry.</td><td>core, engine</td></tr>
       <tr><td><code>store-postgres</code></td><td>Persistence</td><td class="num">3,662</td><td class="num">16</td><td>PostgreSQL-backed implementation of the store registry.</td><td>core, engine</td></tr>
       <tr><td><code>mcp</code></td><td>Transport</td><td class="num">947</td><td class="num">6</td><td>MCP server adapter — actions exposed as MCP tools over JSON-RPC.</td><td>core, engine</td></tr>
-      <tr><td><code>chat-sdk</code></td><td>Transport</td><td class="num">1,668</td><td class="num">17</td><td>Chat SDK inbound transport, principal resolution, fan-out.</td><td>core, engine</td></tr>
       <tr><td><code>scheduled</code></td><td>Transport</td><td class="num">1,097</td><td class="num">11</td><td>Cron and dynamic schedules, idempotency cache, overlap policy.</td><td>core, engine</td></tr>
       <tr><td><code>voice-openai</code></td><td>Transport</td><td class="num">473</td><td class="num">5</td><td>OpenAI TTS / transcription provider behind the framework's voice contract.</td><td>core</td></tr>
       <tr><td><code>claude-code</code></td><td>Transport</td><td class="num">2,418</td><td class="num">20</td><td>Dispatches cloud coding tasks via the local <code>claude</code> CLI; ships both a CLI and an SDK capability.</td><td>core</td></tr>
@@ -1793,7 +1792,6 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <rect class="n-box" x="24" y="64" width="164" height="28" rx="3"/><text class="t-s" x="34" y="83">mcp — actions as tools</text>
         <rect class="n-box" x="24" y="98" width="164" height="28" rx="3"/><text class="t-s" x="34" y="117">webhook — provider events</text>
         <rect class="n-box" x="24" y="132" width="164" height="28" rx="3"/><text class="t-s" x="34" y="151">scheduled — cron, dynamic</text>
-        <rect class="n-box" x="24" y="166" width="164" height="28" rx="3"/><text class="t-s" x="34" y="185">chat-sdk — mentions</text>
         <rect class="n-grp" x="24" y="200" width="164" height="28" rx="3"/><text class="t-xs" x="34" y="218">YOUR OWN — PICK A source</text>
 
         <path class="ln" d="M188,146 L228,146" marker-end="url(#a18)"/>
@@ -1843,7 +1841,6 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>mcp</code></td><td>JSON-RPC method coverage, action-to-tool conversion, per-flow opt-in, origin enforcement, its own auth path.</td></tr>
       <tr><td><code>webhook</code></td><td>Declaration in <code>core</code> / runtime in <code>engine</code>; provider mechanics at mount vs routing on the flow; per-request registry lookup by <code>flowKind</code>-in-URL; idempotency and concurrency.</td></tr>
       <tr><td><code>scheduled</code></td><td>A <code>schedules</code> config block, two-phase auth, an idempotency cache, overlap policy, a listing endpoint, and dynamic schedules that carry their core inline (and therefore do not recover).</td></tr>
-      <tr><td><code>chat-sdk</code></td><td>Registration-time validation, mount-time discovery, a dispatch model and fan-out semantics, principal resolution.</td></tr>
     </tbody>
   </table></div>
 
@@ -1994,7 +1991,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 424" role="img" aria-label="Disposition map for seven proposed package moves: contracts merging into core (contradicted by evidence), tools splitting into search, sandbox and MCP-client packages, patterns absorbing into orchestration, the utility catalog pruned, chat-sdk replaced by a signals package, thought-fabric extracted to its own repository, and cli renamed to fsdev.">
+      <svg viewBox="0 0 940 424" role="img" aria-label="Disposition map for seven proposed package moves: contracts merging into core (contradicted by evidence), tools splitting into search, sandbox and MCP-client packages, patterns absorbing into orchestration, the utility catalog pruned, chat-sdk removed, thought-fabric extracted to its own repository, and cli renamed to fsdev.">
         <defs>
           <marker id="l1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker>
           <marker id="l1x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--k-router)"/></marker>
@@ -2040,9 +2037,9 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <rect class="n-box" x="24" y="236" width="230" height="34" rx="4"/>
         <text class="t-s" x="38" y="258">chat-sdk</text>
         <path class="ln-acc" d="M258,253 L594,253" marker-end="url(#l1)"/>
-        <text class="t-xs" x="427" y="247" text-anchor="middle">GENERALISE</text>
+        <text class="t-xs" x="427" y="247" text-anchor="middle">REMOVE</text>
         <rect class="n-box-2" x="600" y="236" width="328" height="34" rx="4"/>
-        <text class="t-s" x="614" y="258">signals — outside integrations, one abstraction</text>
+        <text class="t-s" x="614" y="258">removed — no replacement chat package</text>
 
         <rect class="n-box" x="24" y="284" width="230" height="34" rx="4"/>
         <text class="t-s" x="38" y="306">@thought-fabric/core</text>
@@ -2090,9 +2087,9 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <td>Confirmed, with a caveat: <code>keyedRouter</code> is not a utility in the same sense as the rest — it is infrastructure the framework itself runs on, and should probably move rather than be pruned alongside them.</td>
       </tr>
       <tr>
-        <td><strong>chat-sdk → a signals package</strong></td>
-        <td><strong>Zero in-repo importers.</strong> The four apparent hits in <code>core</code> and <code>engine</code> are prose in comments describing the one-way dependency, not imports.</td>
-        <td>Nothing in the workspace is holding it in place, so the replacement can be designed on its merits rather than around existing callers.</td>
+        <td><strong>chat-sdk → removed</strong></td>
+        <td><strong>Zero in-repo importers.</strong> The four apparent hits in <code>core</code> and <code>engine</code> were prose in comments describing the one-way dependency, not imports.</td>
+        <td>Decided and done (FIX-1330): the package, the <code>chat</code> dispatch type and the flow-level <code>chat</code> config are gone, with no replacement chat package. Collaboration stays dispatch + sessions + Workforce.</td>
       </tr>
       <tr>
         <td><strong>contracts → merge back into core</strong></td>

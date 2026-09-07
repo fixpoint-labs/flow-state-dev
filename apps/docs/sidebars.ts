@@ -113,7 +113,6 @@ const sidebars: SidebarsConfig = {
               items: [
                 "server/host-adapters",
                 "server/mcp",
-                "server/chat",
                 "server/webhooks",
                 {
                   type: "category",

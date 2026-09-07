@@ -135,7 +135,6 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/node`              | Node HTTP host adapter — serve a long-lived FSD server in one call      |
 | `@flow-state-dev/bullmq`            | BullMQ host/runtime adapter — durable background jobs, native cron, full-flow worker dispatch |
 | `@flow-state-dev/mcp`               | MCP transport adapter                                                   |
-| `@flow-state-dev/chat-sdk`          | Chat SDK inbound transport                                              |
 | `@flow-state-dev/scheduled`         | Scheduled-actions transport                                             |
 | `@flow-state-dev/voice-openai`      | OpenAI voice transport                                                  |
 | `@flow-state-dev/claude-code`       | Claude Code integration — dispatch cloud coding tasks via the local `claude` CLI |
