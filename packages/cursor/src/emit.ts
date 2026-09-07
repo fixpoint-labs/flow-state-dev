@@ -58,6 +58,11 @@ function deriveScope(ctx: BlockContext): EmitScope {
  * Emission bookkeeping for one run: the `tool_output` items opened by a call
  * and awaiting their result, and the run's last assistant text.
  *
+ * An open tool keeps the `itemIndex` it was added with. `getItemCount()`
+ * counts items by id, and settling an item the stream already has does not
+ * grow it — so re-reading the count on completion would hand the settled item
+ * the index the NEXT item is about to get, and two items would share one.
+ *
  * Deliberately NOT tracking the distinct tool names a run used, as the Claude
  * Code emitter does. That sibling puts them on its handle, but nothing in this
  * repository reads the field, and nothing in the neutral contract does — a
@@ -66,7 +71,10 @@ function deriveScope(ctx: BlockContext): EmitScope {
  * reads, or inventing a consumer to justify writing it.
  */
 export interface EmitState {
-  readonly openTools: Map<string, { id: string; name: string; arguments: string }>;
+  readonly openTools: Map<
+    string,
+    { id: string; itemIndex: number; name: string; arguments: string }
+  >;
   /** The last completed assistant message — the run's `finalMessage`. */
   finalMessage: string | null;
 }
@@ -223,6 +231,7 @@ async function emitToolCall(
   await ctx.response.emit({ type: "item.added", item });
   state.openTools.set(event.callId, {
     id: base.id,
+    itemIndex: base.itemIndex,
     name: event.name,
     arguments: event.arguments,
   });
@@ -249,7 +258,8 @@ async function emitToolResult(
     type: "tool_output" as const,
     status: event.isError ? ("failed" as const) : ("completed" as const),
     requestId: ctx.request.identity.id,
-    itemIndex: ctx.response.getItemCount(),
+    // The orphan is a NEW item and takes a fresh index; the settled one keeps its own.
+    itemIndex: open?.itemIndex ?? ctx.response.getItemCount(),
     provenance,
     ts: Date.now(),
     ...deriveScope(ctx),
@@ -307,7 +317,7 @@ export async function finalizeOpenItems(
         type: "tool_output",
         status: "incomplete",
         requestId: ctx.request.identity.id,
-        itemIndex: ctx.response.getItemCount(),
+        itemIndex: open.itemIndex,
         provenance,
         ts: Date.now(),
         ...deriveScope(ctx),

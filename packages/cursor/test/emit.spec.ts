@@ -90,3 +90,67 @@ describe("scope attribution", () => {
     expect(items[0].ownedBy).toBeUndefined();
   });
 });
+
+describe("item index", () => {
+  /** The `item.added` / `item.done` versions of every item, in emission order. */
+  function itemVersions(runtime: Awaited<ReturnType<typeof createTestContext>>) {
+    return runtime.response
+      .getEvents()
+      .filter((e) => e.type === "item.added" || e.type === "item.done")
+      .map((e) => {
+        const { type, item } = e as { type: string; item: { id: string; type: string; itemIndex: number } };
+        return { event: type, id: item.id, kind: item.type, itemIndex: item.itemIndex };
+      });
+  }
+
+  it("settling a tool item keeps the index it was added with, so the next item gets its own", async () => {
+    // `getItemCount()` counts items by id, and an `item.done` for an id the
+    // stream already has does not grow it. Re-reading the count on completion
+    // hands the settled tool item the index the NEXT item is about to get —
+    // two items on one index, and a replay whose order depends on a timestamp
+    // tie-break rather than on the index that exists to decide it.
+    const runtime = await createTestContext({});
+    const state = createEmitState();
+    for (const event of [
+      { kind: "tool_call", callId: "c1", name: "shell", arguments: "{}" },
+      {
+        kind: "tool_result",
+        callId: "c1",
+        name: "shell",
+        arguments: "{}",
+        output: "ok",
+        isError: false,
+      },
+      { kind: "message", text: "done" },
+    ] as const) {
+      await emitTranslatedEvent(event, runtime.ctx as never, state, "cursor-agent");
+    }
+
+    const versions = itemVersions(runtime);
+    const toolAdded = versions.find((v) => v.kind === "tool_output" && v.event === "item.added");
+    const toolDone = versions.find((v) => v.kind === "tool_output" && v.event === "item.done");
+    const message = versions.find((v) => v.kind === "message" && v.event === "item.added");
+
+    expect(toolDone?.itemIndex).toBe(toolAdded?.itemIndex);
+    expect(message?.itemIndex).not.toBe(toolAdded?.itemIndex);
+    const added = versions.filter((v) => v.event === "item.added").map((v) => v.itemIndex);
+    expect(new Set(added).size).toBe(added.length);
+  });
+
+  it("an item finalized because the run ended early keeps its index too", async () => {
+    const runtime = await createTestContext({});
+    const state = createEmitState();
+    await emitTranslatedEvent(
+      { kind: "tool_call", callId: "c1", name: "shell", arguments: "{}" },
+      runtime.ctx as never,
+      state,
+      "cursor-agent",
+    );
+    await finalizeOpenItems(runtime.ctx as never, state, "cursor-agent");
+
+    const versions = itemVersions(runtime);
+    const added = versions.find((v) => v.event === "item.added");
+    const done = versions.find((v) => v.event === "item.done");
+    expect(done?.itemIndex).toBe(added?.itemIndex);
+  });
+});
