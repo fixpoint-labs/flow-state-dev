@@ -199,6 +199,13 @@ describe("parseSkillMd — Agent Skills spec fields", () => {
     expect(warnings.some((w) => w.includes("metadata.nested"))).toBe(true);
   });
 
+  it("leaves metadata undefined when every value is invalid", () => {
+    const text = `---\ndescription: x\nmetadata:\n  nested:\n    deep: value\n---\n`;
+    const { state, warnings } = parseSkillMd(text);
+    expect(state.metadata).toBeUndefined();
+    expect(warnings.some((w) => w.includes("metadata.nested"))).toBe(true);
+  });
+
   it("warns and ignores mistyped license / compatibility / metadata", () => {
     const text = `---\ndescription: x\nlicense: [MIT]\ncompatibility: 3\nmetadata: just-a-string\n---\n`;
     const { state, warnings } = parseSkillMd(text);

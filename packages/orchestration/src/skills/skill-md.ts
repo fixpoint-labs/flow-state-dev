@@ -940,7 +940,9 @@ export function parseSkillMd(
           warnings.push(`\`metadata.${k}\` must be a string — ignored`);
         }
       }
-      state.metadata = out;
+      // An all-invalid map leaves nothing to keep; `undefined` matches the
+      // mistyped-field case rather than persisting an empty object.
+      if (Object.keys(out).length > 0) state.metadata = out;
     } else {
       warnings.push("`metadata` must be a mapping of string keys to string values — ignored");
     }
@@ -951,8 +953,9 @@ export function parseSkillMd(
     if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
       state.allowedTools = v as string[];
     } else if (typeof v === "string") {
-      // The spec form is a space-separated string (`Bash(git:*) Read`); the
-      // comma-separated form is accepted too for hand-written frontmatter.
+      // The spec form is a space-separated string (`Bash(git:*) Read`). The
+      // comma-separated form is a legacy leniency for hand-written frontmatter
+      // from before the spec settled — kept deliberately, not spec drift.
       state.allowedTools = v
         .split(/[\s,]+/)
         .map((s) => s.trim())
@@ -1086,10 +1089,7 @@ export function serializeSkillMd(state: SkillState, body: string): string {
   if (state.metadata && Object.keys(state.metadata).length > 0) {
     lines.push("metadata:");
     for (const [k, v] of Object.entries(state.metadata)) {
-      // Values are strings by spec; quote the ones YAML would otherwise read
-      // as a number/boolean/null (`version: 1.0`) so they round-trip as strings.
-      const scalar = typeof parseScalar(v) === "string" ? yamlScalar(v) : `"${v.replace(/"/g, '\\"')}"`;
-      lines.push(`  ${k}: ${scalar}`);
+      lines.push(`  ${k}: ${yamlStringScalar(v)}`);
     }
   }
 
@@ -1174,6 +1174,17 @@ function yamlScalar(value: string): string {
     return value;
   }
   // Quote strings containing special chars; escape embedded quotes.
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Serialize a value that must round-trip as a *string*. `metadata` values are
+ * strings by spec, but a bare `version: 1.0` or `beta: true` would re-parse as
+ * a number/boolean — so those are quoted. Decided with `parseScalar` itself so
+ * the quoting rule can never drift from the parsing rule.
+ */
+function yamlStringScalar(value: string): string {
+  if (typeof parseScalar(value) === "string") return yamlScalar(value);
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
