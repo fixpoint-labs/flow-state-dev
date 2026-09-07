@@ -205,22 +205,23 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <a href="#fence">04 &middot; Agent vs team</a>
     <a class="grp">The convention</a>
     <a href="#contract">05 &middot; The worker contract</a>
-    <a href="#memory">06 &middot; Memory / knowledge scopes</a>
-    <a href="#channels">07 &middot; Channels</a>
-    <a href="#projects">08 &middot; Projects and tasks</a>
-    <a href="#teams">09 &middot; Teams</a>
-    <a href="#intake">10 &middot; Team intake</a>
-    <a href="#members">11 &middot; One worker contract</a>
-    <a href="#plan">12 &middot; The plan</a>
-    <a href="#collab">13 &middot; Collaboration</a>
+    <a href="#files">06 &middot; File conventions</a>
+    <a href="#memory">07 &middot; Memory / knowledge scopes</a>
+    <a href="#channels">08 &middot; Channels</a>
+    <a href="#projects">09 &middot; Projects and tasks</a>
+    <a href="#teams">10 &middot; Teams and roster</a>
+    <a href="#intake">11 &middot; Team intake</a>
+    <a href="#members">12 &middot; One worker contract</a>
+    <a href="#plan">13 &middot; The plan</a>
+    <a href="#collab">14 &middot; Collaboration</a>
     <a class="grp">The split</a>
-    <a href="#conductor">14 &middot; Conductor</a>
+    <a href="#conductor">15 &middot; Conductor</a>
     <a class="grp">The ground</a>
-    <a href="#exists">15 &middot; What exists today</a>
-    <a href="#api">16 &middot; API surface</a>
-    <a href="#gaps">17 &middot; L1 gaps</a>
-    <a href="#gates">18 &middot; RC gates</a>
-    <a href="#cuts">19 &middot; Cuts</a>
+    <a href="#exists">16 &middot; What exists today</a>
+    <a href="#api">17 &middot; API surface</a>
+    <a href="#gaps">18 &middot; L1 gaps</a>
+    <a href="#gates">19 &middot; RC gates</a>
+    <a href="#cuts">20 &middot; Cuts</a>
   </nav>
 </aside>
 
@@ -256,7 +257,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <div class="card" style="--tc: var(--gone)">
       <h5>Not</h5><span class="role">invent kills</span>
-      <p>No Channel / Team / TeamFlow / MessageBoard L1. No second Agent model. No fake package surface. No members, channels, or inbox on <code>Agent</code>. See <a href="#fence">&#167;04</a> and <a href="#intake">&#167;10</a>.</p>
+      <p>No Channel / Team / TeamFlow / MessageBoard L1. No second Agent model. No fake package surface. No members, channels, or inbox on <code>Agent</code>. See <a href="#fence">&#167;04</a> and <a href="#intake">&#167;11</a>.</p>
     </div>
   </div>
 
@@ -463,10 +464,10 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <table>
       <thead><tr><th>Phase</th><th>Status</th><th>What is true</th><th>What would fake it</th></tr></thead>
       <tbody>
-        <tr><td>Foundation</td><td><span class="tag t-prop">proposed</span></td><td>Agent exists. Sessions, <code>dispatcher()</code>, <code>taskBoard</code>, <code>claim</code> exist. Helpers and keyed teams are names over those calls. Every team names an intake seat. A map may hold one team. Write/read team goals and lessons as resources &#8212; <a href="#memory">&#167;06</a> &#8212; so later retrieval has something honest to index.</td><td>A helper that takes &#8220;the team.&#8221; A singleton <code>team</code> with no key. A <code>TeamFlow</code>. Channel / Team / MessageBoard / Knowledge L1. A second Agent model. An export that is not a wrapper.</td></tr>
+        <tr><td>Foundation</td><td><span class="tag t-prop">proposed</span></td><td>Agent exists. Sessions, <code>dispatcher()</code>, <code>taskBoard</code>, <code>claim</code> exist. Helpers and keyed teams are names over those calls. Every team names an intake seat. A map may hold one team. Write/read team goals and lessons as resources &#8212; <a href="#memory">&#167;07</a> &#8212; so later retrieval has something honest to index.</td><td>A helper that takes &#8220;the team.&#8221; A singleton <code>team</code> with no key. A <code>TeamFlow</code>. Channel / Team / MessageBoard / Knowledge L1. A second Agent model. An export that is not a wrapper.</td></tr>
         <tr><td>Teams plural</td><td><span class="tag t-prop">proposed</span></td><td>N keyed teams, rooms more than one team can subscribe to, cross-team <code>dispatcher()</code>. Same L2. Cross-kind still refused on this pin (<a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open).</td><td>A Team substrate. An org graph on Agent. A new edge type for cross-team. Pretending cross-flow already landed.</td></tr>
-        <tr><td>Identity depth</td><td><span class="tag t-prose">named gap</span></td><td><code>flowIsolation</code> exists. Persona is a prompt source. Durable seat memory across sessions is unproved. Four knowledge scopes live on existing resources &#8212; <a href="#memory">&#167;06</a>. See <a href="#fence">&#167;04</a> proof&nbsp;A.</td><td><code>Agent.resources</code>, <code>Agent.memory</code>, a durable identity bag on the type. A <code>Knowledge</code> type.</td></tr>
-        <tr><td>Later</td><td><span class="tag t-gone">horizon</span></td><td>OKF is retrieval / graph over the stores in <a href="#memory">&#167;06</a>, not a store of its own. Surfaces and Conductor-as-extension wait. SOP files wait until a process repeats. Strategy owns GTM.</td><td>Pulling OKF, a knowledge hub, or a parallel graph into foundation so the atlas looks finished.</td></tr>
+        <tr><td>Identity depth</td><td><span class="tag t-prose">named gap</span></td><td><code>flowIsolation</code> exists. Persona is a prompt source. Durable seat memory across sessions is unproved. Four knowledge scopes live on existing resources &#8212; <a href="#memory">&#167;07</a>. See <a href="#fence">&#167;04</a> proof&nbsp;A.</td><td><code>Agent.resources</code>, <code>Agent.memory</code>, a durable identity bag on the type. A <code>Knowledge</code> type.</td></tr>
+        <tr><td>Later</td><td><span class="tag t-gone">horizon</span></td><td>OKF is retrieval / graph over the stores in <a href="#memory">&#167;07</a>, not a store of its own. Surfaces and Conductor-as-extension wait. SOP files wait until a process repeats. Strategy owns GTM.</td><td>Pulling OKF, a knowledge hub, or a parallel graph into foundation so the atlas looks finished.</td></tr>
       </tbody>
     </table>
   </div>
@@ -479,7 +480,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="fence">
   <div class="sec-head"><span class="sec-num">04</span><h2>Agent vs team</h2></div>
-  <p class="lede">The fence. <code>Agent</code> already exists as Layer&nbsp;1. A team does not. Foundation seats that Agent into keyed teams and rooms. The target is teams, plural. Grow Agent only after the three proofs at the bottom of this section. Honesty over a prettier type.</p>
+  <p class="lede">The fence. <code>Agent</code> already exists as Layer&nbsp;1. A team does not. A team is Layer&nbsp;2 &#8212; seats + shared rooms + dispatch &#8212; not an L1 <code>Team</code> type and not a TeamFlow. A <strong>roster</strong> is the seat-list (a team roster now; a project roster later if one earns it). Foundation seats that Agent into a keyed roster and rooms. The target is teams, plural. Grow Agent only after the three proofs at the bottom of this section.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
@@ -492,7 +493,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Team</h5><span class="role">L2 · not a type</span>
-      <p>A team is Layer&nbsp;2: seats + shared rooms + dispatch. It is not an L1 <code>Team</code> type and not a TeamFlow. The target is N of those, sharing rooms. No org graph on Agent.</p>
+      <p>A roster (seats) + shared rooms + dispatch. Not an L1 <code>Team</code> type. Not a TeamFlow. The target is N of those, sharing rooms. No org graph on Agent.</p>
     </div>
     <div class="card" style="--tc: var(--gone)">
       <h5>Not on Agent</h5><span class="role">cut</span>
@@ -607,7 +608,7 @@ type Agent = {
 
 <section id="contract">
   <div class="sec-head"><span class="sec-num">05</span><h2>The worker contract</h2></div>
-  <p class="lede">One factory. One flow per worker. Same shape every time. The worker <em>is</em> a sequencer flow. &#8220;Agent&#8221; is that flow when it calls generators &#8212; not a second type. <strong>Declare at the level they mean</strong> so the tree is the scope story: org, team, worker. Files are Layer&nbsp;2 declare into today&#8217;s <code>AgentRegistry</code> and <code>defineFlow</code> only. SOP files are later. A TypeScript escape hatch must emit those same shapes. Do not grow <code>Agent</code> or invent Team as Layer&nbsp;1.</p>
+  <p class="lede">One factory. One flow per worker. Same shape every time. The worker <em>is</em> a sequencer flow. &#8220;Agent&#8221; is that flow when it calls generators &#8212; not a second type. The file tree that declares those workers is <a href="#files">&#167;06</a>. SOP files are later. Do not grow <code>Agent</code> or invent Team as Layer&nbsp;1.</p>
 
   <figure>
     <div class="fig-body">
@@ -655,61 +656,18 @@ type Agent = {
         <text class="t-xs" x="34" y="376">THE FACTORY IS THE DEFAULT. THE CONTRACT IS THE LAW. NOT A MODULE-SWAP HOOK. NOT A NEW AGENT TYPE.</text>
       </svg>
     </div>
-    <figcaption><b>Same shape, then compose.</b> The factory is how most workers are born. The contract is what a worker <em>is</em>. A hand-written flow that keeps the contract is still a worker. A folder that does not emit that shape is not. Which harness a worker runs on is a <strong>field on a keyed team row</strong>, proposed &#8212; not a file in the folder, not a Layer&nbsp;1 Harness type. See <a href="#teams">&#167;09</a>.</figcaption>
+    <figcaption><b>Same shape, then compose.</b> The factory is how most workers are born. The contract is what a worker <em>is</em>. A hand-written flow that keeps the contract is still a worker. A folder that does not emit that shape is not. Which harness a worker runs on is a <strong>field on a keyed roster row</strong>, proposed &#8212; not a file in the folder, not a Layer&nbsp;1 Harness type. The tree is <a href="#files">&#167;06</a>. The team product is <a href="#teams">&#167;10</a>.</figcaption>
   </figure>
 
-  <figure>
-    <div class="fig-body">
-      <svg viewBox="0 0 940 420" role="img" aria-label="Proposed directory hierarchy is the scope story. org holds resources and skills for the whole org. teams slash teamId holds that team's resources and skills. workers slash name is the existing strawman seat folder: role, personality, tools, skills, resources. Right column: today AgentRegistry and defineFlow are explicit; readSkillsDirectory walks SKILL.md only. A workforce tree scan is a named gap. Cut: no agents slash sibling, no second registry, no auto-reg of Team or Channel types.">
-        <rect class="n-prop" x="16" y="16" width="560" height="388" rx="5"/>
-        <text class="t-lbl" x="34" y="38">TREE &#183; DECLARE AT THE LEVEL THEY MEAN</text>
-        <text class="t-s f-code" x="34" y="64">org/</text>
-        <text class="t-xs" x="50" y="82">resources/ &#183; skills/ &#183; ORG SCOPE &#183; SEE &#167;06</text>
-        <text class="t-s f-accent" x="34" y="110">teams/&lt;teamId&gt;/</text>
-        <text class="t-xs" x="50" y="128">resources/ &#183; skills/ &#183; TEAM RESOURCES &#183; ORG + KEY</text>
-        <text class="t-s f-accent" x="34" y="156">workers/&lt;name&gt;/</text>
-        <text class="t-xs" x="50" y="174">EXISTING STRAWMAN. THE SEAT LEVEL. NOT agents/</text>
-        <text class="t-s" x="50" y="200">role.md &#183; personality.md &#183; tools.md</text>
-        <text class="t-s" x="50" y="218">skills/ &#183; resources/</text>
-        <text class="t-xs" x="50" y="236">FACTORY INPUTS. MEMBER SCOPE IS THE NAMED GAP.</text>
-        <text class="t-s" x="34" y="268" fill="var(--prose)">sops/ &#183; later / cut</text>
-        <text class="t-xs" x="50" y="286">UNTIL A PROCESS REPEATS ACROSS WORKERS AND DRIFTS</text>
-        <text class="t-xs" x="34" y="318">resources/ AND skills/ MAP TO SCOPED L1 RESOURCES</text>
-        <text class="t-xs" x="34" y="336">AND EXISTING SKILL WIRING. NOT NEW PACKAGES.</text>
-        <text class="t-xs" x="34" y="362">HARNESS SEAT IS A TEAM FIELD, NOT A FILE. SEE &#167;09.</text>
-        <text class="t-xs" x="34" y="380">THE TREE IS THE SCOPE STORY. SEE &#167;06.</text>
-
-        <rect class="n-code" x="592" y="16" width="332" height="184" rx="5"/>
-        <text class="t-lbl f-code" x="610" y="38">EXISTS TODAY</text>
-        <text class="t-s" x="610" y="64">createAgentRegistry(agents)</text>
-        <text class="t-xs" x="610" y="82">IN-MEMORY. ARRAY IN. NO SCAN.</text>
-        <text class="t-s" x="610" y="108">defineFlow({ kind, ... })</text>
-        <text class="t-xs" x="610" y="126">EXPLICIT. NO DIRECTORY WALK.</text>
-        <text class="t-s" x="610" y="152">readSkillsDirectory(root)</text>
-        <text class="t-xs" x="610" y="170">SKILL.md ONLY. DEPTH 1.</text>
-        <text class="t-xs" x="610" y="188">orchestration. NOT THE TREE.</text>
-
-        <rect class="n-prop" x="592" y="216" width="332" height="188" rx="5"/>
-        <text class="t-lbl" x="610" y="238">SCAN &#183; NAMED GAP</text>
-        <text class="t-s f-accent" x="610" y="264">no workforce tree loader</text>
-        <text class="t-xs" x="610" y="288">IF A SCAN LANDS IT CALLS</text>
-        <text class="t-xs" x="610" y="306">AgentRegistry + defineFlow</text>
-        <text class="t-xs" x="610" y="324">DO NOT INVENT loadWorkforce()</text>
-        <text class="t-xs" x="610" y="350">NO SECOND REGISTRY</text>
-        <text class="t-xs" x="610" y="368">NO AUTO-REG OF Team / Channel</text>
-      </svg>
-    </div>
-    <figcaption><b>The tree is the scope story.</b> Declare at the level they mean. Seat folder stays <code>workers/</code> &#8212; the strawman already on this page. Do not add an <code>agents/</code> sibling. <code>resources/</code> and <code>skills/</code> at each level map onto scoped Layer&nbsp;1 resources and existing skill wiring, not new packages. A scan that feeds <code>createAgentRegistry</code> and <code>defineFlow</code> is a named gap. <code>readSkillsDirectory</code> exists and walks <code>SKILL.md</code> only.</figcaption>
-  </figure>
 
   <div class="cards">
     <div class="card" style="--tc: var(--accent)">
       <h5>role / personality / tools / skills</h5><span class="role">proposed v1 factory inputs</span>
-      <p>Declared on <code>workers/&lt;name&gt;/</code>. The factory emits one <code>defineFlow</code>. Org- and team-level <code>skills/</code> / <code>resources/</code> are the same files, higher in the tree. Not fields to grow onto <code>Agent</code>.</p>
+      <p>Declared on <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. The factory emits one <code>defineFlow</code>. Org- and team-level <code>skills/</code> / <code>resources/</code> sit higher in that tree. Not fields to grow onto <code>Agent</code>. See <a href="#files">&#167;06</a>.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
-      <h5>keyed teams + harness seat</h5><span class="role">proposed compose</span>
-      <p>A keyed map of teams, each a list of worker flow kinds, plus an optional harness name on the seat. One team in the map is fine. A singleton with no key is not. See <a href="#teams">&#167;09</a>.</p>
+      <h5>keyed roster + harness seat</h5><span class="role">proposed compose</span>
+      <p>A roster is the seat-list. A team is that roster plus shared rooms plus dispatch. The harness name is a field on the seat. See <a href="#files">&#167;06</a> and <a href="#teams">&#167;10</a>.</p>
     </div>
     <div class="card" style="--tc: var(--prose)">
       <h5>SOP files</h5><span class="role">later · cut until process repeats</span>
@@ -717,64 +675,29 @@ type Agent = {
     </div>
     <div class="card" style="--tc: var(--gone)">
       <h5>Agent / Team as L1</h5><span class="role">cut</span>
-      <p>Do not invent either. <code>Agent</code> stays a named participant you materialize. A team stays Layer&nbsp;2 &#8212; <a href="#fence">&#167;04</a>. Sequencer vs agent is not two types &#8212; <a href="#members">&#167;11</a>.</p>
+      <p>Do not invent either. <code>Agent</code> stays a named participant you materialize. A team stays Layer&nbsp;2 &#8212; <a href="#fence">&#167;04</a>. Sequencer vs agent is not two types &#8212; <a href="#members">&#167;12</a>.</p>
     </div>
   </div>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 280" role="img" aria-label="Five Architect fences. One: one worker contract, a sequencer flow; agent means that flow with generator calls. Two: files declare into today's AgentRegistry and defineFlow only; no second registry; no auto-reg of Team or Channel. Three: TypeScript escape hatch emits those same shapes. Four: resources and skills directories map to scoped Layer 1 resources and existing skill wiring. Five: a workforce tree scan is a named gap; do not invent a loader API on this page.">
-        <rect class="n-code" x="16" y="16" width="176" height="200" rx="5"/>
-        <text class="t-lbl f-code" x="28" y="38">1</text>
-        <text class="t-b" x="28" y="64">one contract</text>
-        <text class="t-xs" x="28" y="90">SEQUENCER FLOW</text>
-        <text class="t-xs" x="28" y="108">AGENT = THAT FLOW</text>
-        <text class="t-xs" x="28" y="126">PLUS GENERATOR CALLS</text>
-        <text class="t-xs" x="28" y="160">NOT TWO TYPES</text>
-        <text class="t-xs" x="28" y="196">SEE &#167;11</text>
+      <svg viewBox="0 0 940 200" role="img" aria-label="Two contract fences. One: one worker contract, a sequencer flow; agent means that flow with generator calls. Two: the TypeScript escape hatch emits Agent plus defineFlow, not a parallel API. File-tree fences live in the file conventions section.">
+        <rect class="n-code" x="16" y="16" width="444" height="168" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="38">1 &#183; ONE CONTRACT</text>
+        <text class="t-b" x="34" y="64">a sequencer flow</text>
+        <text class="t-xs" x="34" y="90">AGENT = THAT FLOW PLUS GENERATOR CALLS</text>
+        <text class="t-xs" x="34" y="108">NOT TWO TYPES</text>
+        <text class="t-xs" x="34" y="140">SEE &#167;12</text>
 
-        <rect class="n-code" x="204" y="16" width="176" height="200" rx="5"/>
-        <text class="t-lbl f-code" x="216" y="38">2</text>
-        <text class="t-b" x="216" y="64">files declare</text>
-        <text class="t-xs" x="216" y="90">INTO AgentRegistry</text>
-        <text class="t-xs" x="216" y="108">AND defineFlow</text>
-        <text class="t-xs" x="216" y="126">TODAY&#8217;S TWO ONLY</text>
-        <text class="t-xs" x="216" y="160">NO SECOND REGISTRY</text>
-        <text class="t-xs" x="216" y="178">NO AUTO-REG Team</text>
-        <text class="t-xs" x="216" y="196">OR Channel TYPES</text>
-
-        <rect class="n-prop" x="392" y="16" width="176" height="200" rx="5"/>
-        <text class="t-lbl" x="404" y="38">3</text>
-        <text class="t-b f-accent" x="404" y="64">TS hatch</text>
-        <text class="t-xs" x="404" y="90">SAME SHAPES</text>
-        <text class="t-xs" x="404" y="108">Agent + defineFlow</text>
-        <text class="t-xs" x="404" y="126">NOT A PARALLEL API</text>
-        <text class="t-xs" x="404" y="160">CUSTOM IS ALLOWED</text>
-        <text class="t-xs" x="404" y="178">IF IT EMITS THESE</text>
-        <text class="t-xs" x="404" y="196">PROPOSED</text>
-
-        <rect class="n-prop" x="580" y="16" width="168" height="200" rx="5"/>
-        <text class="t-lbl" x="592" y="38">4</text>
-        <text class="t-b f-accent" x="592" y="64">dirs map to L1</text>
-        <text class="t-xs" x="592" y="90">resources/ &#8594; SCOPE</text>
-        <text class="t-xs" x="592" y="108">skills/ &#8594; SKILL.md</text>
-        <text class="t-xs" x="592" y="126">EXISTING WIRING</text>
-        <text class="t-xs" x="592" y="160">NOT NEW PACKAGES</text>
-        <text class="t-xs" x="592" y="178">NOT A Knowledge</text>
-        <text class="t-xs" x="592" y="196">TYPE</text>
-
-        <rect class="n-prose" x="760" y="16" width="164" height="200" rx="5"/>
-        <text class="t-lbl" x="772" y="38">5</text>
-        <text class="t-b" x="772" y="64">name the scan</text>
-        <text class="t-xs" x="772" y="90">NO TREE LOADER</text>
-        <text class="t-xs" x="772" y="108">ON MAIN</text>
-        <text class="t-xs" x="772" y="126">SKILL SCAN EXISTS</text>
-        <text class="t-xs" x="772" y="152">NAMED GAP</text>
-        <text class="t-xs" x="772" y="170">DO NOT INVENT</text>
-        <text class="t-xs" x="772" y="188">loadWorkforce()</text>
+        <rect class="n-prop" x="480" y="16" width="444" height="168" rx="5"/>
+        <text class="t-lbl" x="498" y="38">2 &#183; TS HATCH &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="498" y="64">same shapes</text>
+        <text class="t-xs" x="498" y="90">Agent + defineFlow</text>
+        <text class="t-xs" x="498" y="108">NOT A PARALLEL API</text>
+        <text class="t-xs" x="498" y="140">THE TREE AND THE SCAN ARE &#167;06</text>
       </svg>
     </div>
-    <figcaption><b>Architect fences.</b> The tree is convention. The registries are the ones that already exist. A scan that is not on main stays a named gap until someone writes it as a call into those registries. Magic that mints Team or Channel types is a cut.</figcaption>
+    <figcaption><b>The contract is the law.</b> The factory is the default. A hand-written flow that keeps the contract is still a worker. How those files sit on disk, what a scan may call, and how a new seat is added are <a href="#files">&#167;06</a>.</figcaption>
   </figure>
 
   <pre class="code"><i>// EXISTS &#8212; @flow-state-dev/workforce, the thin registry. Not a flow factory.</i>
@@ -795,22 +718,162 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
 <i>// Wraps defineFlow. Does not invent a second worker type.</i>
 <b>createWorkerFlow</b>({
   name: <em>"eng-manager"</em>,
-  role: <em>"./workers/eng-manager/role.md"</em>,
-  personality: <em>"./workers/eng-manager/personality.md"</em>,
+  role: <em>"./teams/engineering/workers/eng-manager/role.md"</em>,
+  personality: <em>"./teams/engineering/workers/eng-manager/personality.md"</em>,
   tools: <em>["board", "search"]</em>,
   skills: <em>["staff-issue", "write-spec"]</em>,
 })
 <i>// &#8594; one defineFlow({ kind: "eng-manager", ... }) of the contract shape</i>
-<i>// org/ and teams/&lt;teamId&gt;/ are the same declare, higher in the tree</i>
+<i>// Seat path is teams/&lt;teamId&gt;/workers/&lt;name&gt;/ — see &#167;06</i>
 <i>// a hand-written defineFlow + defineAgent is the escape hatch — same shapes</i>
-<i>// SOP paths are not inputs. Team / harness seat live outside this call.</i>
-<i>// A directory scan that fills AgentRegistry + defineFlow is a named gap.</i>
+<i>// SOP paths are not inputs. Roster / harness seat live outside this call.</i>
+<i>// A directory scan that fills AgentRegistry + defineFlow is a named gap. &#167;06</i>
+<i>// Do not write loadWorkforce() here as if it shipped.</i></pre>
+</section>
+
+<section id="files">
+  <div class="sec-head"><span class="sec-num">06</span><h2>File conventions</h2></div>
+  <p class="lede">The product folders are <strong><code>teams/</code></strong>. A <strong>roster</strong> is a seat-list &#8212; a team roster today, later a project roster if one earns it. A <strong>team</strong> is the Layer&nbsp;2 product: that roster plus shared rooms plus dispatch. Not an L1 <code>Team</code> type. Not a TeamFlow. <strong>Projects are not a folder.</strong> They live as resources, boards, sessions, and content &#8212; the same move as plan = board + <code>readContent()</code>. Scan feeds today&#8217;s <code>AgentRegistry</code> and <code>defineFlow</code> only. A TypeScript escape hatch emits those same shapes. A workforce tree loader is a named gap. Do not invent <code>loadWorkforce()</code>.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 520" role="img" aria-label="Proposed file tree. org holds org-scoped resources and skills. teams slash teamId is the product folder: that team's resources and skills, then workers slash name for each seat. No projects slash folder. Right column: today createAgentRegistry and defineFlow are explicit; readSkillsDirectory walks SKILL.md only. A workforce tree scan is a named gap. Do not invent loadWorkforce.">
+        <rect class="n-prop" x="16" y="16" width="560" height="488" rx="5"/>
+        <text class="t-lbl" x="34" y="38">TREE &#183; PROPOSED CONVENTION</text>
+        <text class="t-s f-code" x="34" y="64">org/</text>
+        <text class="t-xs" x="58" y="84">resources/</text>
+        <text class="t-xs" x="58" y="102">skills/</text>
+        <text class="t-xs" x="200" y="84">ORG SCOPE &#183; EXISTS AS scope: "org"</text>
+        <text class="t-xs" x="200" y="102">SKILL.md WIRING &#183; readSkillsDirectory</text>
+
+        <text class="t-s f-accent" x="34" y="136">teams/&lt;teamId&gt;/</text>
+        <text class="t-xs" x="34" y="154">PRODUCT FOLDER. NOT A Team TYPE.</text>
+        <text class="t-xs" x="58" y="178">resources/</text>
+        <text class="t-xs" x="200" y="178">ORG + TEAM KEY &#183; NO scope: "team"</text>
+        <text class="t-xs" x="58" y="196">skills/</text>
+        <text class="t-xs" x="200" y="196">SAME SKILL.md WIRING, THIS TEAM</text>
+        <text class="t-s f-accent" x="58" y="226">workers/&lt;name&gt;/</text>
+        <text class="t-xs" x="58" y="244">THE SEAT. ADD A FILE TO ADD A SEAT.</text>
+        <text class="t-s" x="82" y="270">role.md</text>
+        <text class="t-s" x="82" y="288">personality.md</text>
+        <text class="t-s" x="82" y="306">tools.md</text>
+        <text class="t-s" x="82" y="324">skills/</text>
+        <text class="t-s" x="82" y="342">resources/</text>
+        <text class="t-xs" x="250" y="270">FACTORY INPUTS &#183; PROPOSED</text>
+        <text class="t-xs" x="250" y="288">MEMBER SCOPE IS THE NAMED GAP</text>
+        <text class="t-xs" x="250" y="342">SEE &#167;07</text>
+
+        <text class="t-s" x="34" y="378" fill="var(--prose)">sops/ &#183; later / cut</text>
+        <text class="t-xs" x="34" y="396">UNTIL A PROCESS REPEATS ACROSS WORKERS AND DRIFTS</text>
+        <text class="t-xs" x="34" y="424">NO projects/ BESIDE teams/. PROJECTS ARE RESOURCES.</text>
+        <text class="t-xs" x="34" y="442">NO agents/ SIBLING. SEAT FOLDER STAYS workers/.</text>
+        <text class="t-xs" x="34" y="460">HARNESS IS A ROSTER FIELD, NOT A FILE. SEE &#167;10.</text>
+        <text class="t-xs" x="34" y="482">NO Team / Project / Channel / Knowledge L1 TYPES.</text>
+
+        <rect class="n-code" x="592" y="16" width="332" height="200" rx="5"/>
+        <text class="t-lbl f-code" x="610" y="38">SCAN TODAY &#183; EXISTS</text>
+        <text class="t-s" x="610" y="64">createAgentRegistry(agents)</text>
+        <text class="t-xs" x="610" y="82">IN-MEMORY. ARRAY IN. NO TREE WALK.</text>
+        <text class="t-s" x="610" y="108">defineFlow({ kind, ... })</text>
+        <text class="t-xs" x="610" y="126">EXPLICIT. NO DIRECTORY WALK.</text>
+        <text class="t-s" x="610" y="152">readSkillsDirectory(root)</text>
+        <text class="t-xs" x="610" y="170">SKILL.md ONLY. DEPTH 1.</text>
+        <text class="t-xs" x="610" y="188">orchestration. NOT THE WORKFORCE TREE.</text>
+
+        <rect class="n-prose" x="592" y="232" width="332" height="152" rx="5"/>
+        <text class="t-lbl" x="610" y="254">WORKFORCE TREE SCAN</text>
+        <text class="t-b" x="610" y="280">named gap</text>
+        <text class="t-xs" x="610" y="304">NO LOADER ON MAIN</text>
+        <text class="t-xs" x="610" y="322">DO NOT INVENT loadWorkforce()</text>
+        <text class="t-xs" x="610" y="348">IF A SCAN LANDS IT CALLS</text>
+        <text class="t-xs" x="610" y="366">AgentRegistry + defineFlow ONLY</text>
+
+        <rect class="n-prop" x="592" y="400" width="332" height="104" rx="5"/>
+        <text class="t-lbl" x="610" y="422">TS ESCAPE &#183; PROPOSED</text>
+        <text class="t-xs" x="610" y="444">HAND-WRITTEN defineAgent</text>
+        <text class="t-xs" x="610" y="462">+ defineFlow. SAME SHAPES.</text>
+        <text class="t-xs" x="610" y="480">NOT A PARALLEL API.</text>
+      </svg>
+    </div>
+    <figcaption><b>The tree is the scope story.</b> Product folders stay <code>teams/</code>. Workers nest under the team they seat. There is no <code>projects/</code> tree and no <code>agents/</code> sibling. <code>createAgentRegistry</code> and <code>defineFlow</code> exist and take in-memory values. <code>readSkillsDirectory</code> exists and walks <code>SKILL.md</code> only. A scan that feeds those two registries from this tree is a named gap.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 300" role="img" aria-label="A new seat is a new file on the same scan path as bootstrap. Left: bootstrap walks teams slash teamId slash workers and feeds AgentRegistry plus defineFlow. Centre: adding copy-editor means adding that folder. Right: not a runtime API, not hot-dynamic flow kinds after boot — that stays a named gap. Load-time file plus scan, not kinds minted after boot.">
+        <rect class="n-prop" x="16" y="16" width="292" height="200" rx="5"/>
+        <text class="t-lbl" x="34" y="38">BOOTSTRAP &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="34" y="64">scan the tree</text>
+        <text class="t-xs" x="34" y="90">teams/&lt;teamId&gt;/workers/*</text>
+        <text class="t-xs" x="34" y="108">&#8594; AgentRegistry</text>
+        <text class="t-xs" x="34" y="126">&#8594; defineFlow</text>
+        <text class="t-xs" x="34" y="152">LOAD TIME. SAME PATH</text>
+        <text class="t-xs" x="34" y="170">EVERY SEAT ALREADY ON DISK</text>
+        <text class="t-xs" x="34" y="196">THE SCAN ITSELF IS THE GAP</text>
+
+        <rect class="n-prop" x="324" y="16" width="292" height="200" rx="5"/>
+        <text class="t-lbl" x="342" y="38">NEW SEAT &#183; ADD THE FILE</text>
+        <text class="t-b f-accent" x="342" y="64">same path</text>
+        <text class="t-s" x="342" y="90">teams/eng/workers/</text>
+        <text class="t-s" x="342" y="108">  copy-editor/</text>
+        <text class="t-xs" x="342" y="134">ROLE / PERSONALITY / TOOLS</text>
+        <text class="t-xs" x="342" y="152">NEXT BOOT SEES IT</text>
+        <text class="t-xs" x="342" y="178">NO SPECIAL RUNTIME API</text>
+        <text class="t-xs" x="342" y="196">NO SECOND REGISTRY</text>
+
+        <rect class="n-prose" x="632" y="16" width="292" height="200" rx="5"/>
+        <text class="t-lbl" x="650" y="38">NOT AFTER BOOT</text>
+        <text class="t-b" x="650" y="64">hot-dynamic kinds</text>
+        <text class="t-xs" x="650" y="90">NAMED GAP / OPEN DESIGN</text>
+        <text class="t-xs" x="650" y="108">FLOW KINDS REGISTER AT LOAD</text>
+        <text class="t-xs" x="650" y="132">DO NOT MINT KINDS AT RUNTIME</text>
+        <text class="t-xs" x="650" y="150">DO NOT INVENT A SEAT API</text>
+        <text class="t-xs" x="650" y="178">ARCHITECT: FILE + SCAN</text>
+        <text class="t-xs" x="650" y="196">NOT HOT-DYNAMIC KINDS</text>
+
+        <rect class="n-box" x="16" y="232" width="908" height="52" rx="5"/>
+        <text class="t-s" x="34" y="264">A new team seat is a folder on the bootstrap path. The missing piece is the scan, not a runtime join API.</text>
+      </svg>
+    </div>
+    <figcaption><b>Add the file.</b> Bootstrap and a later seat use the same path. The scan that would pick the folder up is the named gap. Hot-dynamic flow kinds after boot stay an open design gap. Do not invent a seat-join API to skip the file.</figcaption>
+  </figure>
+
+  <div class="cards">
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Roster</h5><span class="role">seats · reusable word</span>
+      <p>A roster is a seat-list. Today it is a <strong>team roster</strong>. Later it can be a <strong>project roster</strong> without a new folder kind. Do not retire the word. Do not make it the product.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Team</h5><span class="role">L2 product · folders stay teams/</span>
+      <p>Seats + shared rooms + dispatch. The directory is <code>teams/&lt;teamId&gt;/</code>. Not an L1 <code>Team</code> type. Not a TeamFlow. See <a href="#fence">&#167;04</a>.</p>
+    </div>
+    <div class="card" style="--tc: var(--code)">
+      <h5>Project</h5><span class="role">resources, not a code tree</span>
+      <p>Boards, sessions, content &#8212; the <a href="#plan">&#167;13</a> plan = board + <code>readContent()</code> move. No <code>projects/</code> beside <code>teams/</code>. No <code>Project</code> L1 type. See <a href="#projects">&#167;09</a>.</p>
+    </div>
+    <div class="card" style="--tc: var(--gone)">
+      <h5>Not</h5><span class="role">cut</span>
+      <p>No <code>loadWorkforce()</code>. No second registry. No auto-reg of Team / Channel / Project / MessageBoard. No <code>agents/</code> sibling. No hot-dynamic kinds after boot.</p>
+    </div>
+  </div>
+
+  <pre class="code"><i>// EXISTS &#8212; today's two registries. In-memory. No tree walk.</i>
+import { <b>defineAgent</b>, <b>createAgentRegistry</b> } from <em>"@flow-state-dev/workforce"</em>;
+import { <b>defineFlow</b> } from <em>"@flow-state-dev/core"</em>;
+
+const registry = <b>createAgentRegistry</b>([engMgr]);
+const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });
+<i>// readSkillsDirectory(root) exists and walks SKILL.md only.</i></pre>
+
+  <pre class="code"><i>// PROPOSED &#8212; TypeScript escape hatch. Same shapes. Not a parallel API.</i>
+<i>// A hand-written defineAgent + defineFlow is still a seat if it keeps the contract.</i>
+<i>// A scan, if it lands, calls these two. It does not mint Team or Project types.</i>
 <i>// Do not write loadWorkforce() here as if it shipped.</i></pre>
 </section>
 
 <section id="memory">
-  <div class="sec-head"><span class="sec-num">06</span><h2>Memory / knowledge scopes</h2></div>
-  <p class="lede">Knowledge is <strong>where the resource lives</strong>, not a Knowledge type. Layer&nbsp;1 already has three scopes: <code>session</code>, <code>user</code>, <code>org</code>. The convention names four uses of those scopes. The <a href="#contract">&#167;05</a> tree is how you declare them: path level is scope. Access is resource scope plus who you are seated as. Member identity is still the named gap &#8212; prove it on isolated org/user rows first. Do not put memory on Agent. OKF is later retrieval over these stores, not an RC gate, and not foundation implement.</p>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Memory / knowledge scopes</h2></div>
+  <p class="lede">Knowledge is <strong>where the resource lives</strong>, not a Knowledge type. Layer&nbsp;1 already has three scopes: <code>session</code>, <code>user</code>, <code>org</code>. The convention names four uses of those scopes. The <a href="#files">&#167;06</a> tree is how you declare them: path level is scope. Access is resource scope plus who you are seated as. Member identity is still the named gap &#8212; prove it on isolated org/user rows first. Do not put memory on Agent. OKF is later retrieval over these stores, not an RC gate, and not foundation implement.</p>
 
   <figure>
     <div class="fig-body">
@@ -842,7 +905,7 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <text class="t-xs" x="504" y="112">NO scope: "team"</text>
         <text class="t-xs" x="504" y="130">CONTENT + BOARD</text>
         <text class="t-xs" x="504" y="156">SAME PLAN=CONTENT</text>
-        <text class="t-xs" x="504" y="174">SEE &#167;12</text>
+        <text class="t-xs" x="504" y="174">SEE &#167;13</text>
         <text class="t-b f-accent" x="504" y="210">proposed convention</text>
 
         <rect class="n-code" x="724" y="16" width="200" height="220" rx="5"/>
@@ -895,7 +958,7 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <text class="t-xs" x="650" y="152">NOT Agent.memory</text>
       </svg>
     </div>
-    <figcaption><b>Path level is scope.</b> The §05 tree does not invent scopes. It names which existing <code>ResourceScope</code> (or which named gap) a folder writes into. <code>skills/</code> at each level is <code>SKILL.md</code> folders for <code>readSkillsDirectory</code>, not a Skills package per level.</figcaption>
+    <figcaption><b>Path level is scope.</b> The <a href="#files">&#167;06</a> tree does not invent scopes. It names which existing <code>ResourceScope</code> (or which named gap) a folder writes into. <code>skills/</code> at each level is <code>SKILL.md</code> folders for <code>readSkillsDirectory</code>, not a Skills package per level.</figcaption>
   </figure>
 
   <div class="tw">
@@ -904,7 +967,7 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
       <tbody>
         <tr><td>User-private</td><td><span class="tag t-real">exists</span></td><td><code>scope: "user"</code>, default <code>flowIsolation: false</code>. Stored at <code>(userId, ref)</code>. That human&#8217;s rows. Every flow they touch can see them.</td><td>A fourth scope. A private bag on Agent. A Knowledge row with <code>owner: user</code>.</td></tr>
         <tr><td>Member / Agent identity</td><td><span class="tag t-prose">named gap</span></td><td><code>Agent</code> has no store &#8212; no <code>resources</code>, no <code>memory</code>. <code>flowIsolation: true</code> on user/org keys <code>(scopeId, flowKind, ref)</code>. That is per flow kind, not per team seat. Two <code>eng-manager</code> seats share those rows. Prove isolation outlives a DM and a project room first &#8212; <a href="#fence">&#167;04</a> proof&nbsp;A. A seat key on an isolated collection is convention after that proof, not a field on Agent.</td><td><code>Agent.memory</code>. <code>scope: "agent"</code>. Pretending <code>flowIsolation</code> is already per-seat. Seating two of the same kind and calling the shared row identity.</td></tr>
-        <tr><td>Team</td><td><span class="tag t-prop">proposed</span></td><td>No <code>scope: "team"</code>. Org-scoped resource or collection keyed <code>teams/[teamId]/[doc]</code> (same pattern rule as the team itself). Goals, rules, lessons are content + board &#8212; the <a href="#plan">&#167;12</a> plan=content move. Foundation writes and reads those rows. It does not invent a Team store.</td><td>A Team type that holds knowledge. A second doc store beside <code>readContent()</code>. A Knowledge package.</td></tr>
+        <tr><td>Team</td><td><span class="tag t-prop">proposed</span></td><td>No <code>scope: "team"</code>. Org-scoped resource or collection keyed <code>teams/[teamId]/[doc]</code> (same pattern rule as the team itself). Goals, rules, lessons are content + board &#8212; the <a href="#plan">&#167;13</a> plan=content move. Foundation writes and reads those rows. It does not invent a Team store.</td><td>A Team type that holds knowledge. A second doc store beside <code>readContent()</code>. A Knowledge package.</td></tr>
         <tr><td>Org</td><td><span class="tag t-real">exists</span></td><td><code>scope: "org"</code>, default shared across flows and teams. Stored at <code>(orgId, ref)</code>. Cross-team by being org, not by an org graph on Agent.</td><td>An org graph on Agent. A new edge type so two teams can &#8220;see&#8221; each other.</td></tr>
       </tbody>
     </table>
@@ -972,7 +1035,7 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <text class="t-b" x="342" y="64">the working set</text>
         <text class="t-s" x="342" y="92">taskBoard + taskSchema</text>
         <text class="t-xs" x="342" y="116">ONE PLAN. TWO READS.</text>
-        <text class="t-xs" x="342" y="134">SEE &#167;12</text>
+        <text class="t-xs" x="342" y="134">SEE &#167;13</text>
         <text class="t-xs" x="342" y="160">NOT A SECOND PLANNER</text>
         <text class="t-xs" x="342" y="178">NOT A TEAM BOARD TYPE</text>
 
@@ -1042,18 +1105,18 @@ const teamDocs = <b>defineResourceCollection</b>({
   pattern: <em>"teams/[teamId]/[doc]"</em>,
   scope: <em>"org"</em>,
 });
-<i>// content = goals, rules, lessons. board = the structured half. See &#167;12.</i>
+<i>// content = goals, rules, lessons. board = the structured half. See &#167;13.</i>
 <i>// OKF later indexes these rows. Do not stand up a parallel graph in v1.</i></pre>
 
   <div class="note">
     <span class="lbl">OKF is later retrieval. Foundation writes the stores</span>
-    <p>OKF, if it comes, is a retrieval / graph over rows that already live as resources. It is not an RC gate, not foundation implement, and not a reason to mint a Knowledge type. Foundation&#8217;s job is that team goals and lessons can be written and read. A knowledge hub in foundation, or a graph beside the resources, is a cut. See <a href="#gates">&#167;18</a>.</p>
+    <p>OKF, if it comes, is a retrieval / graph over rows that already live as resources. It is not an RC gate, not foundation implement, and not a reason to mint a Knowledge type. Foundation&#8217;s job is that team goals and lessons can be written and read. A knowledge hub in foundation, or a graph beside the resources, is a cut. See <a href="#gates">&#167;19</a>.</p>
   </div>
 </section>
 
 
 <section id="channels">
-  <div class="sec-head"><span class="sec-num">07</span><h2>Channels</h2></div>
+  <div class="sec-head"><span class="sec-num">08</span><h2>Channels</h2></div>
   <p class="lede">Two channel kinds. A <strong>DM</strong> is one static session with that one worker, opened at bootstrap. A <strong>group</strong> is a message board plus one subscription session per subscribed member. <strong>Same-flow fan-out exists</strong>: a post is <code>dispatcher()</code> &#215; N into those sessions. <strong>Reply-storm exclusion exists</strong>: today&#8217;s <code>TaskCollectionRef.claim</code> admits one holder per post. <strong>Who may reply is proposed Layer&nbsp;2 policy</strong>. <strong>Ordered multi-reply is proposed Layer&nbsp;2</strong>: a board coordinator &#8212; a team role, not a primitive &#8212; files N reply tasks with <code>deps</code>; settle unlocks the next; only an idle chain looks at newer posts. <strong>Cross-kind / cross-flow delivery stays proposed</strong> until that refuse goes away. Not a new primitive and not a shared room.</p>
 
   <div class="cards">
@@ -1349,7 +1412,7 @@ const teamDocs = <b>defineResourceCollection</b>({
         <text class="t-xs" x="264" y="238">COLLABORATORS ADDRESS IT</text>
         <text class="t-xs" x="264" y="264">OR THEIR SUBSCRIBE</text>
         <text class="t-xs" x="264" y="282">SESSION ON ITS BOARD</text>
-        <text class="t-xs" x="264" y="300">SEE &#167;08</text>
+        <text class="t-xs" x="264" y="300">SEE &#167;09</text>
 
         <rect class="n-prop" x="480" y="148" width="220" height="168" rx="5"/>
         <text class="t-lbl" x="496" y="170">3 &#183; WORKER&#8596;WORKER</text>
@@ -1387,7 +1450,7 @@ const teamDocs = <b>defineResourceCollection</b>({
       <thead><tr><th>Talk</th><th>Room</th><th>How it is addressed</th></tr></thead>
       <tbody>
         <tr><td>User&#8596;worker</td><td>One static DM session per worker</td><td>That session&#8217;s <code>{ id }</code>. Bootstrap opens it. Already the DM lock.</td></tr>
-        <tr><td>Topic / task / project</td><td>A dynamic session for that work item</td><td>That session, or the collaborator&#8217;s subscription session on its board. See <a href="#projects">&#167;08</a>.</td></tr>
+        <tr><td>Topic / task / project</td><td>A dynamic session for that work item</td><td>That session, or the collaborator&#8217;s subscription session on its board. See <a href="#projects">&#167;09</a>.</td></tr>
         <tr><td>Worker&#8596;worker ad-hoc</td><td>Open or reuse a pairwise or small dynamic session</td><td>Session id or a known channel. Not a peer edge. Not a second bus.</td></tr>
         <tr><td>Team broadcast</td><td>Group board &#8594; N subscriber sessions</td><td>Same-flow fan-out exists (<code>dispatcher()</code> &#215; N). Reply-storm exclusion exists (<code>TaskCollectionRef.claim</code>). Who-may-reply and ordered multi-reply stay proposed. Cross-kind / cross-flow still proposed.</td></tr>
       </tbody>
@@ -1459,7 +1522,7 @@ const room = {
 <i>// worker&#8596;worker reply across flows still waits on cross-flow (#1600 open)</i></pre>
 
   <h3>Room helpers &#8212; proposed wrappers, multi-team from day one</h3>
-  <p>Same-flow N-rooms exist. Claim exclusion exists. Who may reply is proposed Layer&nbsp;2. Ordered multi-reply is proposed. The helpers below wrap those facts. They take a <strong>team key</strong>. Rooms are addressable across teams. They are not a second session model, not a Channel package, and not a one-team-only API. If a helper would need a door that is still refused, it is a gap &#8212; see <a href="#gaps">&#167;17</a> &#8212; not a pretend export.</p>
+  <p>Same-flow N-rooms exist. Claim exclusion exists. Who may reply is proposed Layer&nbsp;2. Ordered multi-reply is proposed. The helpers below wrap those facts. They take a <strong>team key</strong>. Rooms are addressable across teams. They are not a second session model, not a Channel package, and not a one-team-only API. If a helper would need a door that is still refused, it is a gap &#8212; see <a href="#gaps">&#167;18</a> &#8212; not a pretend export.</p>
 
   <figure>
     <div class="fig-body">
@@ -1521,11 +1584,11 @@ const room = {
     <table>
       <thead><tr><th>Helper</th><th>Status</th><th>Wraps, narrowly</th></tr></thead>
       <tbody>
-        <tr><td><code>openDm</code></td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ team, seat, userId, title }</code>. Wraps <code>createSessionClient().createSession</code> for that seat&#8217;s flow. The session <em>is</em> the DM. Wake with <code>dispatcher({ session: { id } })</code>. On a queue host that wake is <code>external-dispatcher</code> &#8212; see <a href="#gaps">&#167;17</a>. No implicit &#8220;the team.&#8221;</td></tr>
+        <tr><td><code>openDm</code></td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ team, seat, userId, title }</code>. Wraps <code>createSessionClient().createSession</code> for that seat&#8217;s flow. The session <em>is</em> the DM. Wake with <code>dispatcher({ session: { id } })</code>. On a queue host that wake is <code>external-dispatcher</code> &#8212; see <a href="#gaps">&#167;18</a>. No implicit &#8220;the team.&#8221;</td></tr>
         <tr><td><code>openProjectRoom</code> / task room</td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ room, subscribers: [{ team, seat }] }</code>. Subscribers may come from more than one team. Wraps <code>create_session</code> or <code>dispatcher({ session: { key } })</code> / <code>TaskSessionPolicy</code>. Not a Layer&nbsp;1 Project type. Not &#8220;this team&#8217;s rooms.&#8221;</td></tr>
         <tr><td><code>fanOutBoardPost</code></td><td><span class="tag t-prop">proposed</span></td><td>Same-flow fan-out <strong>exists</strong> under Layer&nbsp;1 (<code>dispatcher()</code> &#215; N). The helper is the named loop over subscriber sessions, addressed across teams. Cross-kind still refused at <code>create-request-host</code>. Same <code>external-dispatcher</code> limit on <code>{ id }</code>.</td></tr>
         <tr><td><code>fileOrderedReplies</code></td><td><span class="tag t-prop">proposed</span></td><td>Coordinator over existing <code>claim</code> (exclusion) and <code>task.deps</code> (order). Order names seats as <code>{ team, seat }</code>. Who may attempt the claim stays proposed Layer&nbsp;2. Not a board-lock type. Not a multiparty session.</td></tr>
-        <tr><td><code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ team }</code>. Looks up that team&#8217;s intake seat, then <code>openDm</code>. Address-the-team without picking a person. See <a href="#intake">&#167;10</a> and <a href="#fence">&#167;04</a>.</td></tr>
+        <tr><td><code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ team }</code>. Looks up that team&#8217;s intake seat, then <code>openDm</code>. Address-the-team without picking a person. See <a href="#intake">&#167;11</a> and <a href="#fence">&#167;04</a>.</td></tr>
       </tbody>
     </table>
   </div>
@@ -1566,12 +1629,12 @@ const room = {
 
 <b>openTeamInbox</b>({ team: <em>"engineering"</em>, userId })
 <i>// &#8594; openDm({ team, seat: intakeSeat, userId, title: "talk-to-eng" })</i>
-<i>// intake is a worker on that team. See §10.</i></pre>
+<i>// intake is a worker on that team. See §11. Not a TeamFlow.</i></pre>
 </section>
 
 <section id="projects">
-  <div class="sec-head"><span class="sec-num">08</span><h2>Projects and tasks</h2></div>
-  <p class="lede">Projects and tasks are <strong>dynamic sessions</strong>. Every message-board subscription gets its own action and its own session. A group channel is this pattern &#8212; the board plus one session per subscribed member &#8212; not a third session type. Same-flow, a post wakes N subscribers via <code>dispatcher()</code> &#215; N &#8212; that exists. Exclusion is today&#8217;s <code>claim</code>. Cross-kind still waits. Who may reply, and ordered multi-reply via a board coordinator, are the proposed Layer&nbsp;2 policy in <a href="#channels">&#167;07</a> &#8212; not a Layer&nbsp;1 board-lock, not a MessageBoard sequencer, and not a shared room. That is a convention on the dispatch spine, not a second messaging product.</p>
+  <div class="sec-head"><span class="sec-num">09</span><h2>Projects and tasks</h2></div>
+  <p class="lede">A project is <strong>resource-managed</strong>, not a code folder. It lives as Layer&nbsp;1 resources, boards, sessions, and content &#8212; the same move as plan = board + <code>readContent()</code> (<a href="#plan">&#167;13</a>). There is no <code>projects/</code> tree beside <code>teams/</code>, and no <code>Project</code> L1 type. Task and subscription rooms are <strong>dynamic sessions</strong>. Same-flow, a post wakes N subscribers via <code>dispatcher()</code> &#215; N &#8212; that exists. Exclusion is today&#8217;s <code>claim</code>. Cross-kind still waits. Who may reply, and ordered multi-reply, are proposed Layer&nbsp;2 in <a href="#channels">&#167;08</a>. A later <strong>project roster</strong> is still a seat-list, not a new folder kind.</p>
 
   <figure>
     <div class="fig-body">
@@ -1615,7 +1678,7 @@ const room = {
         <text class="t-xs" x="34" y="318">A SECOND BUS WOULD HAVE TO BE UNWOUND. THE SPINE IS ALREADY THE DOOR.</text>
       </svg>
     </div>
-    <figcaption><b>Subscription = action + session.</b> <code>TaskSessionPolicy</code> already names the child: <code>per-task</code>, <code>per-worker</code>, or <code>{ key }</code> &#8212; <code>packages/core/src/types/dispatch.ts</code>. The convention is which subscriptions you declare, not a new primitive that mints rooms.</figcaption>
+    <figcaption><b>Subscription = action + session.</b> <code>TaskSessionPolicy</code> already names the child: <code>per-task</code>, <code>per-worker</code>, or <code>{ key }</code> &#8212; <code>packages/core/src/types/dispatch.ts</code>. The convention is which subscriptions you declare, not a <code>projects/</code> tree and not a <code>Project</code> type. See <a href="#files">&#167;06</a>.</figcaption>
   </figure>
 
   <div class="tw">
@@ -1649,8 +1712,8 @@ const board = <b>taskBoard</b>({
 </section>
 
 <section id="teams">
-  <div class="sec-head"><span class="sec-num">09</span><h2>Teams</h2></div>
-  <p class="lede">A team is <strong>seats + shared rooms + dispatch</strong>. Address-the-team is the <strong>intake seat</strong> &#8212; <a href="#intake">&#167;10</a>. The target is <strong>teams, plural</strong> &#8212; N teams, rooms more than one team can subscribe to, cross-team dispatch when the refuse is gone. Agent is who you seat. Same-flow delivery is N dispatches into N per-subscriber sessions &#8212; that exists. Cross-kind stays proposed until cross-flow lands. Built-ins are team entries, not packages. Foundation may hold one team in the map. The key is still there. See <a href="#vision">&#167;03</a> and <a href="#fence">&#167;04</a>.</p>
+  <div class="sec-head"><span class="sec-num">10</span><h2>Teams and roster</h2></div>
+  <p class="lede">A <strong>roster</strong> is the seat-list. A <strong>team</strong> is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders stay <code>teams/</code> (<a href="#files">&#167;06</a>). Address-the-team is the <strong>intake seat</strong> &#8212; <a href="#intake">&#167;11</a>. The target is <strong>teams, plural</strong>. Same-flow delivery is N dispatches into N per-subscriber sessions &#8212; that exists. Cross-kind stays proposed. A later project roster is the same word for seats, not a <code>projects/</code> tree.</p>
 
   <figure>
     <div class="fig-body">
@@ -1696,9 +1759,13 @@ const board = <b>taskBoard</b>({
   </figure>
 
   <div class="cards">
+    <div class="card" style="--tc: var(--code)">
+      <h5>Roster = seats</h5><span class="role">reusable word</span>
+      <p>The list of seats on a team. Later, the list of seats on a project. Same word. Not the product. Not a type.</p>
+    </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Harness on the seat</h5><span class="role">proposed layer 2</span>
-      <p>A team entry can name which harness that worker runs on. Not a file in the worker folder. Not a third member kind.</p>
+      <p>A roster entry can name which harness that worker runs on. Not a file in the worker folder. Not a third member kind.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Inherit subscriptions</h5><span class="role">when those exist</span>
@@ -1753,8 +1820,8 @@ const board = <b>taskBoard</b>({
       <tbody>
         <tr><td>A default answer to &#8220;who does this?&#8221;</td><td>A keyed team is a list of worker flow kinds. Layer&nbsp;1 already addresses a flow and a session. N teams are N keys, not a Team type.</td></tr>
         <tr><td>Shared boards</td><td>The board is the working set. Each subscriber is woken in their own session via <code>dispatcher()</code>. No Team primitive, and no shared group session.</td></tr>
-        <tr><td>Address the team</td><td>An intake seat on that team &#8212; a worker with a static DM. See <a href="#intake">&#167;10</a> and <a href="#fence">&#167;04</a>.</td></tr>
-        <tr><td>Built-ins</td><td>Librarian, chief of staff, intake coordinator: same contract, shipped as team rows when the factory exists. The board coordinator that files ordered reply tasks is this kind of row, not a new type. See <a href="#channels">&#167;07</a>.</td></tr>
+        <tr><td>Address the team</td><td>An intake seat on that team &#8212; a worker with a static DM. See <a href="#intake">&#167;11</a> and <a href="#fence">&#167;04</a>.</td></tr>
+        <tr><td>Built-ins</td><td>Librarian, chief of staff, intake coordinator: same contract, shipped as team rows when the factory exists. The board coordinator that files ordered reply tasks is this kind of row, not a new type. See <a href="#channels">&#167;08</a>.</td></tr>
         <tr><td>A named harness on the seat</td><td>The team is still a list of worker flow kinds. Naming a harness is Layer&nbsp;2 convention on that row. The run rides Conductor&#8217;s harness-manager track. No Harness type, and no second manager. Proposed until that path exists.</td></tr>
         <tr><td><strong>When it is not a team</strong></td><td>One worker and no shared board. Then the folder buys nothing and should not exist.</td></tr>
       </tbody>
@@ -1787,7 +1854,7 @@ const team = <b>defineResourceCollection</b>({
 </section>
 
 <section id="intake">
-  <div class="sec-head"><span class="sec-num">10</span><h2>Team intake</h2></div>
+  <div class="sec-head"><span class="sec-num">11</span><h2>Team intake</h2></div>
   <p class="lede">Address-the-team without picking a person. That is a <strong>capability</strong>, not a new flow kind. Every keyed team has a <strong>team intake</strong> seat &#8212; a coordinator or a thin sequencer &#8212; with a static DM. &#8220;Talk to eng&#8221; is that session. The intake worker routes with claim, ordered replies, or fan-out. The team board stays for broadcast. Still one flow per worker. The intake <em>is</em> a worker.</p>
 
   <div class="cards">
@@ -1892,8 +1959,8 @@ const team = <b>defineResourceCollection</b>({
 </section>
 
 <section id="members">
-  <div class="sec-head"><span class="sec-num">11</span><h2>One worker contract</h2></div>
-  <p class="lede">The worker <em>is</em> a <strong>sequencer flow</strong>. &#8220;Agent&#8221; is that same flow when it calls generators &#8212; today via <code>materializeAgent</code> inside the flow. Not two types. Not two team member kinds. Kill sequencer-versus-agent as a fork. Intake can be a thin sequencer on that contract. An eng-manager can be the same contract with generator steps. Which harness a seat runs on is a team field, not a third kind. See <a href="#contract">&#167;05</a>, <a href="#fence">&#167;04</a>, and <a href="#intake">&#167;10</a>.</p>
+  <div class="sec-head"><span class="sec-num">12</span><h2>One worker contract</h2></div>
+  <p class="lede">The worker <em>is</em> a <strong>sequencer flow</strong>. &#8220;Agent&#8221; is that same flow when it calls generators &#8212; today via <code>materializeAgent</code> inside the flow. Not two types. Not two team member kinds. Kill sequencer-versus-agent as a fork. Intake can be a thin sequencer on that contract. An eng-manager can be the same contract with generator steps. Which harness a seat runs on is a team field, not a third kind. See <a href="#contract">&#167;05</a>, <a href="#fence">&#167;04</a>, and <a href="#intake">&#167;11</a>.</p>
 
   <figure>
     <div class="fig-body">
@@ -1934,8 +2001,8 @@ const team = <b>defineResourceCollection</b>({
 </section>
 
 <section id="plan">
-  <div class="sec-head"><span class="sec-num">12</span><h2>The plan</h2></div>
-  <p class="lede">The plan capability <strong>is</strong> the existing task board. The spec is resource text. The tasks are the structured half of that same plan. Team goals and lessons use this same move at a team key &#8212; <a href="#memory">&#167;06</a>. No second planner. No separate doc store. No Knowledge type.</p>
+  <div class="sec-head"><span class="sec-num">13</span><h2>The plan</h2></div>
+  <p class="lede">The plan capability <strong>is</strong> the existing task board. The spec is resource text. The tasks are the structured half of that same plan. Team goals and lessons use this same move at a team key &#8212; <a href="#memory">&#167;07</a>. No second planner. No separate doc store. No Knowledge type.</p>
 
   <figure>
     <div class="fig-body">
@@ -1973,13 +2040,13 @@ const team = <b>defineResourceCollection</b>({
         <text class="t-xs" x="34" y="274">PLAN-AND-EXECUTE IS A CALLER OF THIS BOARD, NOT A SECOND PLANNER.</text>
       </svg>
     </div>
-    <figcaption><b>One plan, two halves.</b> Prose is <code>readContent()</code>. Rows are <code>taskSchema</code> (<code>goal</code>, optional <code>title</code> / <code>context</code>, <code>parked</code> on current main). A UI that wants a document and a board is reading two faces of the same plan, not two systems. Team knowledge is this pattern under a team key. See <a href="#memory">&#167;06</a>.</figcaption>
+    <figcaption><b>One plan, two halves.</b> Prose is <code>readContent()</code>. Rows are <code>taskSchema</code> (<code>goal</code>, optional <code>title</code> / <code>context</code>, <code>parked</code> on current main). A UI that wants a document and a board is reading two faces of the same plan, not two systems. Team knowledge is this pattern under a team key. See <a href="#memory">&#167;07</a>.</figcaption>
   </figure>
 </section>
 
 <section id="collab">
-  <div class="sec-head"><span class="sec-num">13</span><h2>Collaboration</h2></div>
-  <p class="lede">Workers talk on the <strong>dispatch spine</strong>. Reverse address is <code>{ from: true }</code> &#8212; it exists. Cross-flow is the same door, when it lands. Which room is proposed Layer&nbsp;2 &#8212; team + context, then this door. See <a href="#channels">&#167;07</a>. The epic name Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> handler. Do not grow a second bus beside it.</p>
+  <div class="sec-head"><span class="sec-num">14</span><h2>Collaboration</h2></div>
+  <p class="lede">Workers talk on the <strong>dispatch spine</strong>. Reverse address is <code>{ from: true }</code> &#8212; it exists. Cross-flow is the same door, when it lands. Which room is proposed Layer&nbsp;2 &#8212; team + context, then this door. See <a href="#channels">&#167;08</a>. The epic name Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> handler. Do not grow a second bus beside it.</p>
 
   <figure>
     <div class="fig-body">
@@ -2051,7 +2118,7 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="conductor">
-  <div class="sec-head"><span class="sec-num">14</span><h2>Conductor</h2></div>
+  <div class="sec-head"><span class="sec-num">15</span><h2>Conductor</h2></div>
   <p class="lede">This cycle, Conductor is a <strong>thin shell on Layer&nbsp;1 dispatch</strong>. It does not wait on a Workforce package, including a foundation kick. Conductor-as-a-coding-extension-on-Workforce is phase 4 of the vision, not a dependency arrow. If a team seat names a harness, it rides Conductor&#8217;s harness-manager track &#8212; same stack, different consumer &#8212; once that path exists. The two products stay triangulated. GTM timing is Strategy.</p>
 
   <figure>
@@ -2087,7 +2154,7 @@ const replyToSender = <b>dispatcher</b>({
       <thead><tr><th>Claim</th><th>Whose opinion</th><th>What being wrong costs</th></tr></thead>
       <tbody>
         <tr><td>A session is owned by a workflow</td><td>Conductor</td><td>Right for an SDLC meta-harness. Fatal as a Layer&nbsp;1 law, because a Workforce DM <em>is</em> a session of a worker flow, and each group subscriber&#8217;s session is too.</td></tr>
-        <tr><td>A worker is a flow; knowledge is resource scopes</td><td>Workforce convention</td><td>Four uses of existing <code>user</code> / <code>org</code> rows &#8212; <a href="#memory">&#167;06</a>. Do not replace it with a Knowledge type, a field on <code>Agent</code>, or OKF in foundation.</td></tr>
+        <tr><td>A worker is a flow; knowledge is resource scopes</td><td>Workforce convention</td><td>Four uses of existing <code>user</code> / <code>org</code> rows &#8212; <a href="#memory">&#167;07</a>. Do not replace it with a Knowledge type, a field on <code>Agent</code>, or OKF in foundation.</td></tr>
         <tr><td>Talk is <code>dispatcher()</code></td><td>Layer 1, already true</td><td>A Workforce-shaped messenger beside <code>dispatcher()</code> is a second send door. Relay (<strong>FIX-1197</strong>) is that same door, not a new one.</td></tr>
         <tr><td>Conductor waits on Workforce</td><td>False this cycle</td><td>The coding product stalls on a factory that is not being built. A foundation kick does not invert this. Phase 4 only.</td></tr>
         <tr><td>A team seat names a harness</td><td>Workforce convention, proposed</td><td>Same manager stack as Conductor. Different consumer. Wait until that path exists. Do not merge the two products, and do not invent a second manager.</td></tr>
@@ -2097,7 +2164,7 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="exists">
-  <div class="sec-head"><span class="sec-num">15</span><h2>What exists today</h2></div>
+  <div class="sec-head"><span class="sec-num">16</span><h2>What exists today</h2></div>
   <p class="lede">A package, a type, a dispatcher, session routes, a board. Nothing below is the factory. Read every &#8220;Workforce&#8221; claim against this inventory, not against the intended harness.</p>
 
   <div class="tw">
@@ -2114,20 +2181,22 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td><code>dispatcher()</code></td><td><span class="tag t-real">exists</span></td><td>Same-flow send door. <code>internal</code> / <code>task</code>. Session <code>{ key }</code>, <code>{ id }</code>, or <code>{ from: true }</code>. Envelope <code>from</code> is still provenance.</td></tr>
         <tr><td>Session routes</td><td><span class="tag t-real">exists</span></td><td><code>create_session</code>, list, get, delete, patch. Enough for factory bootstrap. No seed field on <code>defineFlow</code>.</td></tr>
         <tr><td>Same-flow group fan-out (board + N sessions)</td><td><span class="tag t-real">exists</span></td><td>A board (working set) plus one session per subscriber on the same flow. A post is <code>dispatcher()</code> &#215; N into those sessions. Pin: <code>create_session</code> + <code>dispatcher({ session: { id } })</code>. Cross-kind still refused at <code>create-request-host</code>.</td></tr>
-        <tr><td><code>flowIsolation</code></td><td><span class="tag t-real">exists</span></td><td>User/org resources key per flow when true. Default false. Rejected at session scope. The member-identity <em>proof</em>, not a per-seat store. See <a href="#memory">&#167;06</a>.</td></tr>
-        <tr><td>Knowledge scopes (user / member / team / org)</td><td><span class="tag t-prop">proposed convention</span></td><td>Four uses of existing <code>user</code> / <code>org</code> resources. The §05 tree is how you declare them (path level = scope). No <code>Knowledge</code> type. No <code>scope: "team"</code>. Team goals and lessons are org rows keyed by team plus the plan=content move. Member identity is still the named gap. OKF later indexes; not foundation. See <a href="#memory">&#167;06</a>.</td></tr>
+        <tr><td><code>flowIsolation</code></td><td><span class="tag t-real">exists</span></td><td>User/org resources key per flow when true. Default false. Rejected at session scope. The member-identity <em>proof</em>, not a per-seat store. See <a href="#memory">&#167;07</a>.</td></tr>
+        <tr><td>Knowledge scopes (user / member / team / org)</td><td><span class="tag t-prop">proposed convention</span></td><td>Four uses of existing <code>user</code> / <code>org</code> resources. The <a href="#files">&#167;06</a> tree is how you declare them (path level = scope). No <code>Knowledge</code> type. No <code>scope: "team"</code>. Team goals and lessons are org rows keyed by team plus the plan=content move. Member identity is still the named gap. OKF later indexes; not foundation. See <a href="#memory">&#167;07</a>.</td></tr>
         <tr><td><code>taskBoard</code> + <code>taskSchema</code></td><td><span class="tag t-real">exists</span></td><td>Unified plan/task primitive. Status set includes <code>parked</code>. Content for the prose half is <code>readContent()</code>.</td></tr>
         <tr><td>Reply-storm exclusion via <code>TaskCollectionRef.claim</code></td><td><span class="tag t-real">exists</span></td><td>One holder per post. Same CAS <code>taskBoard</code> drain uses. Eligibility narrows to that post. Who may attempt the claim is proposed Layer&nbsp;2. No board-lock type.</td></tr>
-        <tr><td>Ordered multi-reply via board coordinator</td><td><span class="tag t-prop">proposed</span></td><td>Team role, L2 worker. Files N reply tasks with <code>deps</code>. Work is <code>dispatcher()</code> into that subscriber session. Idle chain before newer posts. Broke path is lease / <code>parked</code> / retry. No MessageBoard sequencer. No coordinator Layer&nbsp;1 type. No new lease type. See <a href="#channels">&#167;07</a>.</td></tr>
-        <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed</span></td><td>This page. No <code>createWorkerFlow</code> export. No <code>org/</code> · <code>teams/</code> · <code>workers/</code> tree in the repo. <code>workforce.config</code> is not a file. Role / personality / tools / skills stay factory inputs on <code>workers/&lt;name&gt;/</code>. Declare-at-level is proposed convention. SOP is later. See <a href="#contract">&#167;05</a>.</td></tr>
+        <tr><td>Ordered multi-reply via board coordinator</td><td><span class="tag t-prop">proposed</span></td><td>Team role, L2 worker. Files N reply tasks with <code>deps</code>. Work is <code>dispatcher()</code> into that subscriber session. Idle chain before newer posts. Broke path is lease / <code>parked</code> / retry. No MessageBoard sequencer. No coordinator Layer&nbsp;1 type. No new lease type. See <a href="#channels">&#167;08</a>.</td></tr>
+        <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed</span></td><td>This page. No <code>createWorkerFlow</code> export. No <code>org/</code> · <code>teams/</code> · <code>workers/</code> tree in the repo. <code>workforce.config</code> is not a file. Seat path is <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. SOP is later. See <a href="#files">&#167;06</a>.</td></tr>
         <tr><td><code>readSkillsDirectory</code></td><td><span class="tag t-real">exists</span></td><td>Walks <code>&lt;root&gt;/&lt;skill&gt;/SKILL.md</code> (depth 1) into <code>createSkillsCapability</code> <code>initialSkills</code>. <code>packages/orchestration/src/skills/read-directory.ts</code>. Skills wiring, not a workforce tree scan.</td></tr>
-        <tr><td>Workforce tree scan into <code>AgentRegistry</code> + <code>defineFlow</code></td><td><span class="tag t-prose">named gap</span></td><td><code>createAgentRegistry</code> takes an in-memory <code>Agent[]</code>. <code>defineFlow</code> is explicit. No directory loader on main feeds those two from <code>org/</code> · <code>teams/</code> · <code>workers/</code>. Do not invent <code>loadWorkforce()</code> on this page. If a scan lands, it calls the two registries that exist. No second registry. No auto-reg of Team / Channel / MessageBoard types.</td></tr>
+        <tr><td>Workforce tree scan into <code>AgentRegistry</code> + <code>defineFlow</code></td><td><span class="tag t-prose">named gap</span></td><td><code>createAgentRegistry</code> takes an in-memory <code>Agent[]</code>. <code>defineFlow</code> is explicit. No directory loader on main feeds those two from <code>org/</code> · <code>teams/</code> · <code>workers/</code>. Do not invent <code>loadWorkforce()</code>. If a scan lands, it calls the two registries that exist. No second registry. No auto-reg of Team / Channel / Project / MessageBoard types. See <a href="#files">&#167;06</a>.</td></tr>
+        <tr><td>New seat = add the file</td><td><span class="tag t-prop">proposed</span></td><td>A new team seat is a folder on the same path bootstrap would scan. Not a runtime join API. Hot-dynamic flow kinds after boot are a named gap. Architect: load-time file + scan.</td></tr>
+        <tr><td><code>projects/</code> code tree / <code>Project</code> L1 type</td><td><span class="tag t-gone">cut</span></td><td>Does not exist. Projects are resources / boards / sessions / content. Same pattern as plan = board + <code>readContent()</code>. No folder beside <code>teams/</code>.</td></tr>
         <tr><td>Keyed teams + harness on the seat</td><td><span class="tag t-prop">proposed</span></td><td>A seat is <code>teamId</code> + row. It can name a harness and inherit that harness&#8217;s subscriptions when they exist. One team in the map is fine. A singleton with no key is not. The consumer is Conductor&#8217;s harness-manager track. No second manager. No Team type. Not on main.</td></tr>
-        <tr><td>Room helpers (<code>openDm</code>, <code>fanOutBoardPost</code>, &#8230;)</td><td><span class="tag t-prop">proposed</span></td><td>Named wrappers over Layer&nbsp;1 already in this table. Multi-team from day one: <code>{ team, seat }</code>, rooms addressable across teams. Not exports. See <a href="#api">&#167;16</a>. Same-flow fan-out exists; the helper is the name.</td></tr>
-        <tr><td>Team intake seat + <code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Every team names an intake worker with a static DM. Address-the-team is that session. Capability. See <a href="#intake">&#167;10</a> and <a href="#fence">&#167;04</a>. <code>createWorkforceCapability</code> is still a stub &#8212; do not read it as this.</td></tr>
+        <tr><td>Room helpers (<code>openDm</code>, <code>fanOutBoardPost</code>, &#8230;)</td><td><span class="tag t-prop">proposed</span></td><td>Named wrappers over Layer&nbsp;1 already in this table. Multi-team from day one: <code>{ team, seat }</code>, rooms addressable across teams. Not exports. See <a href="#api">&#167;17</a>. Same-flow fan-out exists; the helper is the name.</td></tr>
+        <tr><td>Team intake seat + <code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Every team names an intake worker with a static DM. Address-the-team is that session. Capability. See <a href="#intake">&#167;11</a> and <a href="#fence">&#167;04</a>. <code>createWorkforceCapability</code> is still a stub &#8212; do not read it as this.</td></tr>
         <tr><td>RC vision / teams plural</td><td><span class="tag t-prop">proposed</span></td><td>The target this page teaches. N keyed teams + shared rooms + cross-team dispatch. Still L2. Cross-flow refused on this pin. See <a href="#vision">&#167;03</a>.</td></tr>
-        <tr><td>Strategy RC gates</td><td><span class="tag t-prop">proposed</span></td><td>Five gates, taught until they are true. Not a calendar. GTM stays Strategy. See <a href="#gates">&#167;18</a>.</td></tr>
-        <tr><td>L2 routing matrix (which room)</td><td><span class="tag t-prop">proposed</span></td><td>See <a href="#channels">&#167;07</a>. Package docs must not fork this matrix. Marked proposed until cross-flow lands.</td></tr>
+        <tr><td>Strategy RC gates</td><td><span class="tag t-prop">proposed</span></td><td>Five gates, taught until they are true. Not a calendar. GTM stays Strategy. See <a href="#gates">&#167;19</a>.</td></tr>
+        <tr><td>L2 routing matrix (which room)</td><td><span class="tag t-prop">proposed</span></td><td>See <a href="#channels">&#167;08</a>. Package docs must not fork this matrix. Marked proposed until cross-flow lands.</td></tr>
         <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-real">exists</span></td><td>Existing-session delivery to the seam-stamped sender. <code>packages/core/src/blocks/dispatcher.ts</code>. Documented in <code>docs/architecture/action-forms.md</code>.</td></tr>
         <tr><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">proposed</span></td><td>Refuse still on this pin. <code>create-request-host.ts</code> (<code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>). <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open, not merged. Do not flip until the refuse is gone.</td></tr>
         <tr><td>Published agents doc</td><td><span class="tag t-prose">docs</span></td><td><code>apps/docs/docs/orchestration/agents.md</code> describes today&#8217;s named participant. It is not this convention.</td></tr>
@@ -2142,8 +2211,8 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="api">
-  <div class="sec-head"><span class="sec-num">16</span><h2>Programmatic API surface</h2></div>
-  <p class="lede"><strong>Exists</strong> is a raw Layer&nbsp;1 call on main. <strong>Proposed</strong> is a named wrapper. Bodies live in <a href="#contract">&#167;05</a> (factory + tree), <a href="#memory">&#167;06</a> (knowledge scopes), <a href="#channels">&#167;07</a> (room helpers), and <a href="#intake">&#167;10</a> (team inbox). Nothing proposed is an export today. A helper that needs a missing door is a <a href="#gaps">&#167;17</a> gap, not an argument. A Knowledge export or a second registry is a cut. A workforce tree loader is a named gap, not an argument.</p>
+  <div class="sec-head"><span class="sec-num">17</span><h2>Programmatic API surface</h2></div>
+  <p class="lede"><strong>Exists</strong> is a raw Layer&nbsp;1 call on main. <strong>Proposed</strong> is a named wrapper. Bodies live in <a href="#contract">&#167;05</a> (factory), <a href="#files">&#167;06</a> (tree), <a href="#memory">&#167;07</a> (knowledge scopes), <a href="#channels">&#167;08</a> (room helpers), and <a href="#intake">&#167;11</a> (team inbox). Nothing proposed is an export today. A helper that needs a missing door is a <a href="#gaps">&#167;18</a> gap, not an argument. A Knowledge export or a second registry is a cut. A workforce tree loader is a named gap, not an argument.</p>
 
   <div class="note">
     <span class="lbl">Package docs must not fork the matrix</span>
@@ -2152,7 +2221,7 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="gaps">
-  <div class="sec-head"><span class="sec-num">17</span><h2>L1 gaps &#8212; prove against, don&#8217;t paper over</h2></div>
+  <div class="sec-head"><span class="sec-num">18</span><h2>L1 gaps &#8212; prove against, don&#8217;t paper over</h2></div>
   <p class="lede">A helper may wrap only what is on this pin. If the body needs a door that is refused, missing, or first-registered-wrong, name the gap. Do not ship a pretend argument that hides it. Cross-team dispatch that needs another flow is gap 4, not a Phase 2 export.</p>
 
   <figure>
@@ -2221,7 +2290,7 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="gates">
-  <div class="sec-head"><span class="sec-num">18</span><h2>RC gates</h2></div>
+  <div class="sec-head"><span class="sec-num">19</span><h2>RC gates</h2></div>
   <p class="lede">Strategy&#8217;s gates for Workforce RC. Taught here as <strong>proposed until they are true</strong>. Not a calendar. Timing is after foundation plus teams-plural dogfood &#8212; FSD and one client-shaped use. GTM timing stays Strategy. Conductor triangulation does not move.</p>
 
   <figure>
@@ -2302,7 +2371,7 @@ const replyToSender = <b>dispatcher</b>({
     <table>
       <thead><tr><th>Not an RC gate</th><th>Where it lives</th></tr></thead>
       <tbody>
-        <tr><td>OKF</td><td>Later retrieval / graph over the stores in <a href="#memory">&#167;06</a>. Foundation writes team goals and lessons as resources. Not a Workforce dependency and not a store of its own.</td></tr>
+        <tr><td>OKF</td><td>Later retrieval / graph over the stores in <a href="#memory">&#167;07</a>. Foundation writes team goals and lessons as resources. Not a Workforce dependency and not a store of its own.</td></tr>
         <tr><td>Slack-style web face</td><td>Later. Surfaces. Not this page.</td></tr>
         <tr><td>Pi</td><td>Later / Strategy. Not a Workforce RC gate.</td></tr>
         <tr><td>Paid packaging</td><td>Strategy. GTM timing is not this page.</td></tr>
@@ -2317,7 +2386,7 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="cuts">
-  <div class="sec-head"><span class="sec-num">19</span><h2>Cuts</h2></div>
+  <div class="sec-head"><span class="sec-num">20</span><h2>Cuts</h2></div>
   <p class="lede">Held on purpose. Do not invent these because the thought exists. Foundation is a thin wrapper over today&#8217;s Layer&nbsp;1, keyed for N teams, with an intake seat on each. A <code>TeamFlow</code> or a second dispatch surface is how that kick fails. A one-team-only API is how Phase 2 becomes a rewrite. RC gates stay proposed until they are true. Conductor does not wait on the package. GTM is not this page.</p>
 
   <div class="tension">
@@ -2332,7 +2401,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>No TeamFlow. No team-as-flow substrate. No team address type</h5>
-    <p>Address-the-team is the intake seat&#8217;s static session. The intake <em>is</em> a worker. Do not add a <code>TeamFlow</code> kind, a team-as-flow substrate, or an address that is not a session id or a known channel. An inbox field on Agent is the same cut. See <a href="#intake">&#167;10</a>.</p>
+    <p>Address-the-team is the intake seat&#8217;s static session. The intake <em>is</em> a worker. Do not add a <code>TeamFlow</code> kind, a team-as-flow substrate, or an address that is not a session id or a known channel. An inbox field on Agent is the same cut. See <a href="#intake">&#167;11</a>.</p>
   </div>
 
   <div class="tension">
@@ -2342,17 +2411,17 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>No Layer 1 Channel, Team, Project, MessageBoard, or OKF packages</h5>
-    <p>Those words are convention over sessions, teams, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms, a MessageBoard sequencer, or a shared group session several workers enter, is a second architecture. Same cut: no peer-edge graph, no second send door, no route-resolver under the matrix, no coordinator Layer&nbsp;1 type. Which room is Layer&nbsp;2 &#8212; see <a href="#channels">&#167;07</a>. OKF stays an example, not a Workforce dependency.</p>
+    <p>Those words are convention over sessions, teams, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms, a MessageBoard sequencer, or a shared group session several workers enter, is a second architecture. Same cut: no peer-edge graph, no second send door, no route-resolver under the matrix, no coordinator Layer&nbsp;1 type. Which room is Layer&nbsp;2 &#8212; see <a href="#channels">&#167;08</a>. OKF stays an example, not a Workforce dependency.</p>
   </div>
 
   <div class="tension">
     <h5>No fake package export that is not a thin wrapper</h5>
-    <p>A proposed name must show the Layer&nbsp;1 call it wraps. <code>sendAt</code>, <code>flowKind</code> on a helper, or a cross-kind fan-out that hides the refuse are not wrappers. They are gaps. Package docs must not fork the &#167;07 matrix. A <code>loadWorkforce()</code> that is not a call into <code>createAgentRegistry</code> + <code>defineFlow</code> is the same cut.</p>
+    <p>A proposed name must show the Layer&nbsp;1 call it wraps. <code>sendAt</code>, <code>flowKind</code> on a helper, or a cross-kind fan-out that hides the refuse are not wrappers. They are gaps. Package docs must not fork the &#167;08 matrix. A <code>loadWorkforce()</code> that is not a call into <code>createAgentRegistry</code> + <code>defineFlow</code> is the same cut.</p>
   </div>
 
   <div class="tension">
     <h5>No second registry. No auto-reg of Team, Channel, or MessageBoard types. No sequencer-vs-agent as two types</h5>
-    <p>Files declare into today&#8217;s <code>AgentRegistry</code> and <code>defineFlow</code> only. A TypeScript escape hatch emits those same shapes. The worker is a sequencer flow; generator calls do not mint a second type. See <a href="#contract">&#167;05</a> fences and <a href="#members">&#167;11</a>.</p>
+    <p>Files declare into today&#8217;s <code>AgentRegistry</code> and <code>defineFlow</code> only. A TypeScript escape hatch emits those same shapes. The worker is a sequencer flow; generator calls do not mint a second type. See <a href="#contract">&#167;05</a> fences and <a href="#members">&#167;12</a>.</p>
   </div>
 
   <div class="tension">
@@ -2362,7 +2431,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>No Knowledge type. No OKF / knowledge hub in foundation. No parallel graph. No memory on Agent</h5>
-    <p>See <a href="#memory">&#167;06</a>. Knowledge is resource scope plus who you are seated as. Foundation writes and reads team goals and lessons as resources. OKF later indexes those rows. It is not an RC gate. Do not mint a Knowledge type, stand up a graph beside the resources, or put <code>memory</code> on <code>Agent</code> to close the member-identity gap.</p>
+    <p>See <a href="#memory">&#167;07</a>. Knowledge is resource scope plus who you are seated as. Foundation writes and reads team goals and lessons as resources. OKF later indexes those rows. It is not an RC gate. Do not mint a Knowledge type, stand up a graph beside the resources, or put <code>memory</code> on <code>Agent</code> to close the member-identity gap.</p>
   </div>
 
   <div class="tension">
@@ -2386,8 +2455,18 @@ const replyToSender = <b>dispatcher</b>({
   </div>
 
   <div class="tension">
+    <h5>No <code>projects/</code> code tree. No Project L1 type</h5>
+    <p>Projects are resources, boards, sessions, and content. Same move as plan = board + <code>readContent()</code>. Product folders stay <code>teams/</code>. A project roster, if one earns it, is still a seat-list.</p>
+  </div>
+
+  <div class="tension">
+    <h5>No hot-dynamic flow kinds after boot. No seat-join API that skips the file</h5>
+    <p>A new seat is a folder on the bootstrap path. The scan is the named gap. Kinds register at load. Do not invent a runtime join to skip the file. See <a href="#files">&#167;06</a>.</p>
+  </div>
+
+  <div class="tension">
     <h5>OKF, a Slack-style web face, Pi, and paid packaging are not RC gates</h5>
-    <p>They are later or Strategy. Do not stall <a href="#gates">&#167;18</a> on them. GTM timing stays off this page.</p>
+    <p>They are later or Strategy. Do not stall <a href="#gates">&#167;19</a> on them. GTM timing stays off this page.</p>
   </div>
 
   <div class="tension">
@@ -2403,7 +2482,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is one worker contract on Layer&nbsp;1 &#8212; a sequencer flow; generator calls do not mint a second type. The target is RC collaboration: teams, plural &#8212; N keyed teams, shared rooms, cross-team dispatch. Address-the-team is an intake seat, a worker with a static DM. Agent exists as the seat, not a room, not a team, no inbox and no memory on the type. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources, not a Knowledge type. The tree declares at the level they mean (<code>org/</code>, <code>teams/&lt;teamId&gt;/</code>, <code>workers/&lt;name&gt;/</code>) into today&#8217;s <code>AgentRegistry</code> and <code>defineFlow</code>. A tree scan is a named gap. Foundation writes team goals and lessons as resources. Member identity is the named gap &#8212; prove <code>flowIsolation</code> first. OKF is later retrieval over those stores, not an RC gate. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2: a board coordinator files N reply tasks with <code>deps</code>; settle unlocks the next; idle before newer posts; no MessageBoard sequencer. RC gates are proposed until they are true. What a team is lives in <a href="#fence">&#167;04</a>. No second Agent. No second registry. No one-team-only API. Cross-flow is still refused on this pin. Conductor does not wait. GTM is Strategy.</p>
+    <p>Workforce is one worker contract on Layer&nbsp;1 &#8212; a sequencer flow; generator calls do not mint a second type. The target is RC collaboration: teams, plural. A roster is a seat-list. A team is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders are <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. Projects live as resources, boards, sessions, and content &#8212; no <code>projects/</code> tree, no <code>Project</code> type. A new seat is a file on that path. Scan feeds today&#8217;s <code>AgentRegistry</code> and <code>defineFlow</code>. A tree scan is a named gap. Hot-dynamic kinds after boot are a named gap. Address-the-team is an intake seat, a worker with a static DM. Agent exists as the seat, not a room, not a team, no inbox and no memory on the type. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources. Member identity is the named gap &#8212; prove <code>flowIsolation</code> first. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2. RC gates are proposed until they are true. No second Agent. No second registry. No one-team-only API. Cross-flow is still refused on this pin. Conductor does not wait. GTM is Strategy.</p>
   </div>
 </section>
 
