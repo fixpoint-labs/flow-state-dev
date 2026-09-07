@@ -4,7 +4,7 @@
 ---
 
 Skills now follow the Agent Skills specification (https://agentskills.io/specification)
-in full for a SKILL.md's frontmatter.
+in full for a SKILL.md's frontmatter (FIX-1318).
 
 - `name`, `license`, `compatibility`, and `metadata` are parsed into typed fields
   on `SkillState` (and `Skill`) instead of being kept only as preserved unknown
