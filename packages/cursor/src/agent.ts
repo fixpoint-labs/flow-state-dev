@@ -268,6 +268,12 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         const run = await sendPrompt(agent, prompt, sendOptions, ctx);
         const mirrored = await mirrorRun(run, ctx, emitState, name);
         const settled = await settleRun(run, mirrored);
+        // A call still `running` when the stream closed has no result coming,
+        // and an `error` or `cancelled` wait is an OUTCOME this block returns
+        // rather than a throw — so the `catch` below never sees it. Left open,
+        // the tool item would read in_progress under a handle that says the
+        // run is over.
+        await finalizeOpenItems(ctx, emitState, name);
         return buildHandle({
           sessionId,
           dispatchedAt,

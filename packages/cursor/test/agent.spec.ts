@@ -654,6 +654,37 @@ describe("cursorAgent — the endings", () => {
   });
 });
 
+describe("cursorAgent — open tool items when the stream ends without settling them", () => {
+  /** A call the runtime reported as running and never reported again. */
+  const DANGLING_CALL: CursorSdkMessage[] = [
+    {
+      type: "tool_call",
+      call_id: "c1",
+      name: "shell",
+      status: "running",
+      args: { command: "sleep 999" },
+    },
+  ];
+
+  it.each([
+    ["finished", { status: "finished", result: "done" } as CursorRunResult],
+    ["error", { status: "error", error: { message: "runtime died" } } as CursorRunResult],
+  ])("settles the dangling tool item when wait() reports %s — a returned outcome, not a throw", async (_label, waitResult) => {
+    // Cursor reports its terminal record on `wait()`, and an `error` there is
+    // an OUTCOME the block returns. A tool call still `running` when the stream
+    // closed has no result coming: left alone it renders as a call still
+    // running under a handle that says the run is over.
+    const { resolve } = scripted(DANGLING_CALL, { waitResult });
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve });
+    const { items, error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    const tools = items.filter((i) => i.type === "tool_output") as Array<Record<string, unknown>>;
+    expect(tools).toHaveLength(1);
+    expect(tools[0].status).toBe("incomplete");
+  });
+});
+
 describe("cursorAgent — cancellation", () => {
   it("throws WHEN THE SIGNAL FIRES, without waiting for the vendor's stream to close", async () => {
     const seen: string[] = [];
