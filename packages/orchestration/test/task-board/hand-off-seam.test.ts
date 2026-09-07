@@ -352,3 +352,38 @@ describe("the child session key", () => {
     expect(harness.claimAfter()).toEqual(CLAIM);
   });
 });
+
+describe("a seat that names another flow", () => {
+  it("forwards flowKind from the seat address through the seam", async () => {
+    // TaskSeatAddress allows flowKind (Jake required it legal on task). The
+    // author-facing dispatcher() already forwards it; the drain's hand-off
+    // is the path a real board takes, and omitting it makes the seam resolve
+    // on the sender — `no-entry` against the wrong flow.
+    const block = createHandOff({
+      name: "issue-work-hand-off-implement",
+      boardId: "issue-work",
+      seat: "implement",
+      address: {
+        type: "task",
+        action: "work",
+        session: "per-task",
+        flowKind: "task-recipient",
+      },
+      binding: BINDING,
+    });
+    const harness = drive({ seam: accepted, block });
+    await harness.run();
+
+    expect(harness.spec()).toMatchObject({
+      type: "task",
+      action: "work",
+      flowKind: "task-recipient",
+    });
+  });
+
+  it("omits flowKind when the seat addresses this flow", async () => {
+    const harness = drive({ seam: accepted });
+    await harness.run();
+    expect(harness.spec()?.flowKind).toBeUndefined();
+  });
+});

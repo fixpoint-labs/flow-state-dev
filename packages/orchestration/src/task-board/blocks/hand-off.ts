@@ -157,6 +157,10 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
         // Same source as every other field here: the claim ticket the board
         // minted from the row it had already claimed.
         provenance: { taskId: claim.taskId },
+        // A seat may name another flow. The author-facing dispatcher() already
+        // forwards this; omitting it here made the seam resolve on the sender
+        // and refuse `no-entry` against the wrong map.
+        ...(address.flowKind !== undefined ? { flowKind: address.flowKind } : {}),
       });
 
       if (!outcome.ok) {
