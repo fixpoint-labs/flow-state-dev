@@ -267,7 +267,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         sessionId = agent.agentId;
         const run = await sendPrompt(agent, prompt, sendOptions, ctx);
         const mirrored = await mirrorRun(run, ctx, emitState, name);
-        const settled = await settleRun(run, mirrored);
+        const settled = await settleRun(run, mirrored, ctx.signal);
         // A call still `running` when the stream closed has no result coming,
         // and an `error` or `cancelled` wait is an OUTCOME this block returns
         // rather than a throw — so the `catch` below never sees it. Left open,
@@ -467,8 +467,18 @@ async function mirrorRun(
  * `wait()`'s usage is cumulative and therefore replaces the stream-summed
  * figure when present; its model id is the one the run actually used, so it
  * wins over the init-message id the stream already named.
+ *
+ * Raced against the block's own signal for the same reason the stream is: the
+ * race {@link mirrorRun} armed is disposed once the stream closes, and `wait()`
+ * is a second vendor await the deadline has to bound. A terminal lookup that
+ * hangs past the caller's deadline would otherwise hold the block, and its
+ * cleanup, for as long as the SDK liked.
  */
-async function settleRun(run: CursorRunLike, mirrored: MirrorFacts): Promise<SettledRun> {
+async function settleRun(
+  run: CursorRunLike,
+  mirrored: MirrorFacts,
+  signal: AbortSignal | undefined,
+): Promise<SettledRun> {
   if (run.supports?.("wait") === false) {
     return {
       outcome: null,
@@ -479,7 +489,20 @@ async function settleRun(run: CursorRunLike, mirrored: MirrorFacts): Promise<Set
     };
   }
 
-  const result: CursorRunResult = await run.wait();
+  const deadline = abortRace(signal);
+  const pending = run.wait();
+  // Same as the stream race: the losing side still settles once the runtime
+  // is cancelled, and nothing is awaiting it then.
+  pending.catch(() => {});
+  let result: CursorRunResult;
+  try {
+    result = await Promise.race([pending, deadline.promise]);
+  } catch (err) {
+    await cancelQuietly(run);
+    throw err;
+  } finally {
+    deadline.dispose();
+  }
   const status = typeof result.status === "string" ? result.status.trim().toLowerCase() : "unknown";
   const outcome: HarnessRunOutcome = status === "finished" ? "finished" : "failed";
   const waitUsage = result.usage === undefined ? null : normalizeUsage(result.usage);

@@ -719,6 +719,30 @@ describe("cursorAgent — cancellation", () => {
     expect(rec.cancelled).toBe(1);
   }, 15_000);
 
+  it("throws WHEN THE SIGNAL FIRES while wait() is still pending after the stream has closed", async () => {
+    // The stream can close before the SDK's terminal record is available, and
+    // `wait()` is a second vendor await the deadline has to bound. The race
+    // armed for the stream is disposed once the stream ends, so a hang here is
+    // the same bug class as a hanging stream, reached through the other await.
+    const { resolve, rec } = scripted([{ type: "thinking", text: "started" }], {
+      waitResult: () => new Promise<CursorRunResult>(() => {}),
+    });
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve });
+    const runtime = await createTestContext({});
+    const ac = new AbortController();
+    (runtime.ctx as { signal?: AbortSignal }).signal = ac.signal;
+    setTimeout(() => ac.abort(), 20);
+
+    const startedAt = Date.now();
+    await expect(
+      block.config.execute?.({ prompt: "go" }, runtime.ctx as never),
+    ).rejects.toBeInstanceOf(CursorAgentAbortedError);
+
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    expect(rec.waited).toBe(1);
+    expect(rec.cancelled).toBe(1);
+  }, 3_000);
+
   it("the reminted abort error carries the agent id the hook already stored", async () => {
     const { resolve } = scripted(async function* () {
       yield { type: "thinking", text: "started" } as CursorSdkMessage;
