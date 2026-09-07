@@ -165,8 +165,17 @@ honest: no first-wins; isolation keys on instance id). Contract completion:
 Architect revised-clear the same day — direction holds; themes 4–6 were the
 missing shared contract.
 The owner's recipient decision and subsequent instruction not to optimize
-around chat are folded below. **Objective approval remains pending**; these
-decisions do not authorize child specs or implementation to start.
+around chat are folded below. **Objective approved 2026-09-07** for the
+three-issue floor (FIX-1321 / FIX-1322 / FIX-1323) at `e1d5b701`:
+the owner said "I approve all 3" in-session, recorded on
+[PR #1617](https://github.com/fixpoint-labs/flow-state-dev/pull/1617#issuecomment-5574969785)
+and Linear FIX-1320 (comment `4a714d24-2f94-4066-af07-15a74e7355ab`).
+This closes only the §1 objective gate under D-10 / FIX-1319.
+It released child spec authoring and FIX-1322's pre-code route assessment;
+it is **not individual spec approval or merge authorization**.
+All three specs are now open awaiting their own approvals. No implementation
+or goal proof exists. Cross-spec coherence still requires all individual
+spec approvals and then separate owner approval to run that pass.
 
 ---
 
@@ -349,9 +358,18 @@ Placeholder names INST-1..5 remain the epic labels; the filed ids are below.
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 | --- | --- | --- | --- | --- | --- |
-| [FIX-1321](https://linear.app/fixpoint-labs/issue/FIX-1321) INST-1 | Cardinality on `defineFlow` + registry: `singleton` \| `collection`; id rules; reject duplicate global ids; exact-id index; custom-id-without-collection refuse; no first-wins `get(kind)` | spec | — | — | Needs spec |
-| [FIX-1322](https://linear.app/fixpoint-labs/issue/FIX-1322) INST-2 | Dispatch / envelope: explicitly declared recipient instance; exact-id precedence then bare-kind refuse; minimal instance-address compatibility, no chat redesign; persist owning instance id on sessions/requests; adoption/re-entry check; same-kind cross-instance = `#1600` cross-flow; carry `flow.id` (align #1600); reshape FIX-1315 | spec | — | — | Needs spec |
-| [FIX-1323](https://linear.app/fixpoint-labs/issue/FIX-1323) INST-3 | Isolation: scope-keys + resource `flowIsolation` key on instance id; dual-read only where owner is known (theme 5) | spec | — | — | Needs spec |
+| [FIX-1321](https://linear.app/fixpoint-labs/issue/FIX-1321) INST-1 | Cardinality on `defineFlow` + registry: `singleton` or `collection`; id rules; reject duplicate global ids; exact-id index; custom-id-without-collection refuse; no first-wins `get(kind)` | spec (Feature) | [#1631](https://github.com/fixpoint-labs/flow-state-dev/pull/1631) | — | In Spec Review — awaiting individual approval |
+| [FIX-1322](https://linear.app/fixpoint-labs/issue/FIX-1322) INST-2 | Dispatch / envelope: explicitly declared recipient instance; exact-id precedence then bare-kind refuse; minimal instance-address compatibility, no chat redesign; persist owning instance id on sessions/requests; adoption/re-entry check; same-kind cross-instance = `#1600` cross-flow; carry `flow.id` (align #1600); reshape FIX-1315 | spec (Feature) | [#1633](https://github.com/fixpoint-labs/flow-state-dev/pull/1633) | — | In Spec Review — awaiting individual approval |
+| [FIX-1323](https://linear.app/fixpoint-labs/issue/FIX-1323) INST-3 | Isolation: scope-keys + resource `flowIsolation` key on instance id; dual-read only where owner is known (theme 5) | spec (Feature) | [#1632](https://github.com/fixpoint-labs/flow-state-dev/pull/1632) | — | In Spec Review — awaiting individual approval |
+
+FIX-1322's pre-code assessment promoted Bug → Feature because the work
+changes the public and persisted owner contract; it therefore follows the
+spec route. No implementation PRs exist.
+
+**Current Linear edges (2026-09-07):** FIX-1323 is blocked by FIX-1321.
+FIX-1322 is related to FIX-1321 and FIX-1323, with no hard blocked-by edge.
+Theme 8 still sequences registry before dispatch/isolation implementation;
+these edges do not turn one issue's pending spec approval into another's gate.
 
 ### Later — not this-cycle Proof
 
@@ -360,8 +378,9 @@ Placeholder names INST-1..5 remain the epic labels; the filed ids are below.
 | [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) INST-4 | Devtool: list/switch/sessions by instance id; kind as grouping | spec | — | — | Later (debug, not Proof) |
 | [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) INST-5 | Mint-on-bare-kind for collection kinds + Workforce hire helper | spec | — | — | Later (L2 slice 2/3) |
 
-FIX-1315 stays related until INST-2 files; it is reshaped, not implemented as
-written. `#1600` is related, not owned. Decision of record:
+FIX-1315 is reshaped by INST-2, not implemented as written.
+`#1600` is related, not owned. FIX-1330 remains separate chat-removal backlog,
+not a child or blocker. Decision of record:
 [D-10](https://github.com/Fixpoint-labs/flow-state-dev/issues/1616). Adjacent:
 [D-8](https://github.com/Fixpoint-labs/flow-state-dev/issues/1530) (cross-flow
 this cycle), [D-9](https://github.com/Fixpoint-labs/flow-state-dev/issues/1562),
@@ -421,4 +440,10 @@ this cycle), [D-9](https://github.com/Fixpoint-labs/flow-state-dev/issues/1562),
 - **2026-09-07 — owner recipient answer, then scope clarification** — require
   an explicitly declared instance; keep only minimal instance-address
   compatibility in INST-2. Do not optimize around chat; removal is separate,
-  message boards are excluded, and objective approval remains pending.
+  message boards are excluded. Objective approval was still pending at that
+  scope clarification.
+- **2026-09-07 — owner objective approval** — "I approve all 3" approves
+  the FIX-1321..1323 floor at `e1d5b701`, recorded on
+  [PR #1617](https://github.com/fixpoint-labs/flow-state-dev/pull/1617#issuecomment-5574969785)
+  and Linear FIX-1320. Individual spec approvals and merge authorization
+  remain separate; no scoped decision changed.
