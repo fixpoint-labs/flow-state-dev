@@ -17,11 +17,11 @@ skills/
     assets/           # optional: templates, data files
 ```
 
-`scripts/`, `references/`, and `assets/` are the conventional names; any file or folder layout works. The skill name is the folder name. It's 1 to 64 characters of lowercase letters, digits, and hyphens, with no hyphen at the start or end and no two hyphens in a row.
+`scripts/`, `references/`, and `assets/` are the conventional names; any file or folder layout works, and the examples on this page use a `reference/` folder. The skill name is the folder name. It's 1 to 64 characters of lowercase letters, digits, and hyphens, with no hyphen at the start or end and no two hyphens in a row.
 
 Files inside the folder are bundled with the skill when it's seeded into the resource collection. They're addressable from the body via the `${SKILL_DIR}` substitution (see below), so your body can say "open `${SKILL_DIR}/reference/rubric.md`" and the agent knows where to find it.
 
-Symlinks are rejected at read time for safety.
+A symlinked skill folder is reported as an error and not loaded. A symlink inside a skill folder is skipped.
 
 ## SKILL.md frontmatter
 
@@ -50,14 +50,14 @@ Body goes here.
 | `metadata` | no | map of string → string | Extra properties of your own. Keep the key names distinctive so they don't collide with anyone else's. |
 | `keywords` | no | string[] | Lowercased tokens for the up-front router's tier-2 keyword scan. Plain substring matches against the user message. Ignored on the `runSkill` path. See below. |
 | `context` | no | `inline` | Activation mode. Only `inline` is supported — a matched skill's body is injected into the parent generator's prompt. |
-| `allowed-tools` | no | space-separated string, or string[] | Catalog keys the skill declares. A per-generator binding uses them to scope which tools ride along when the skill is preloaded (see [Binding](./binding)); a delegation skill lists its board-as-tool blocks here too, and every key here is [assignable to a task](./delegation#assigning-a-task-to-a-tool). |
+| `allowed-tools` | no | space-separated string, or string[] | The tool names this skill needs. When the skill is preloaded on a generator, its binding limits the tools to this list (see [Binding](./binding)). A delegation skill lists its board tools here, and any tool listed can be [assigned to a task](./delegation#assigning-a-task-to-a-tool). |
 | `agents` | no | map | Agent declarations (inline `prompt`/`prompt-ref`, or `agent-ref`) that turn on delegation. See [Delegation](./delegation). |
 | `when-to-use` | no | string | Extra guidance appended to the description for the classifier and the `runSkill` catalog. Keep it short. |
 | `disable-model-invocation` | no | boolean | When `true`, the skill stays in the collection but every activation path skips it (no slash, no keyword match, hidden from the classifier and the `runSkill` catalog). Useful for drafts or admin-only skills. |
 
-Unknown frontmatter keys are preserved but not interpreted. The parser validates the shape up front — a malformed skill won't poison the seeding pass.
+Unknown frontmatter keys are preserved but not interpreted. A skill that fails validation is reported and skipped (see [Validation errors](#validation-errors)).
 
-`name`, `description`, `license`, `compatibility`, `metadata`, and `allowed-tools` are the Agent Skills fields. The rest (`keywords`, `agents`, `when-to-use`, `disable-model-invocation`, `context`) are this framework's additions. A skill that uses only the standard fields is fully portable; one that uses the additions still runs elsewhere, but the extra keys may be flagged by a strict validator such as `skills-ref`.
+`name`, `description`, `license`, `compatibility`, `metadata`, and `allowed-tools` are the Agent Skills fields. The rest (`keywords`, `agents`, `when-to-use`, `disable-model-invocation`, `context`) are this framework's additions. A skill that uses only the standard fields is fully portable; one that uses the additions still runs elsewhere, but the extra keys may be flagged by a strict validator such as the Agent Skills reference tool, [`skills-ref`](https://github.com/agentskills/agentskills/tree/main/skills-ref).
 
 ### Writing good descriptions
 
@@ -201,16 +201,16 @@ This gives the agent concrete ground truth (today's date) that it can't always r
 
 ## Validation errors
 
-The parser throws on:
+`parseSkillMd` throws on:
 
 - Missing or empty `description`
 - `description` longer than 1024 chars
-- `description` containing XML tags (reserved for future use)
+- `description` containing XML tags
 - A `name` that breaks the naming rules, or that doesn't match the folder it's in
 - `compatibility` longer than 500 chars
 - Missing or malformed frontmatter delimiters
 
-Individual skills that fail validation during `readSkillsDirectory` are collected into an `errors` array instead of throwing the whole pass, so one broken skill doesn't block seeding the rest.
+`readSkillsDirectory` catches these per skill and returns them in its `errors` array. One broken skill doesn't stop the rest from loading.
 
 ## Editing skills at runtime
 
