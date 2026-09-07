@@ -50,8 +50,9 @@ direction holds; the shared contract was incomplete until themes 4–6
 (ownership, migration, kind/id collision) landed here.
 
 **Owner recipient decision (2026-09-07):** declare the target flow instance.
-Chat does not shape or gate this epic: the owner wants it removed in separate
-work, not optimized here. INST-2 owns only the minimal compatibility needed
+Chat does not shape or gate this epic: the owner wants it removed separately
+in [FIX-1330](https://linear.app/fixpoint-labs/issue/FIX-1330/remove-the-framework-chat-chat-sdk-integration),
+not optimized here. INST-2 owns only the minimal compatibility needed
 for instance addressing. Message boards remain outside scope.
 
 **Later, not this-cycle Proof (D-10):** Devtool instance switcher; Workforce
