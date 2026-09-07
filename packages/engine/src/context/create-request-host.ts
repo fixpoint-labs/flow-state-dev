@@ -16,7 +16,7 @@
  *
  * 1. **Resolve the flow, then the entry.** The address names another flow or
  *    it does not; a named one must be registered in this process —
- *    `flow-not-found` otherwise. Then `(type, target)` on that flow's own map,
+ *    `flow-not-found` otherwise. Then `(type, action)` on that flow's own map,
  *    with no fallback — `no-entry` otherwise. For a same-flow address the
  *    `defineFlow` walk already refused an address that resolves nothing, so
  *    that check is the run-time half of the same rule, reached only by a
