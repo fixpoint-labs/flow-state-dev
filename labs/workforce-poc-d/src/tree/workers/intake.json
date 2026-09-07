@@ -1,6 +1,6 @@
 {
   "name": "intake",
-  "description": Address-the-team seat for engineering. A worker, not a TeamFlow.",
+  "description": "Address-the-team seat for engineering. A worker, not a TeamFlow.",
   "persona": "You take messages for the engineering roster. You are a seat, not a team.",
   "model": "openai/gpt-5.4-mini",
   "role": "Intake for engineering.",

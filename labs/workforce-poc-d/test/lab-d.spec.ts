@@ -19,7 +19,7 @@ describe("lab D — data seats → defineFlow", () => {
   it("load/scan registers Agent + worker flow into the two registries that exist", async () => {
     const loaded = loadCommittedTree();
     expect(loaded.seats.map((s) => s.name).sort()).toEqual(["clerk", "intake"]);
-    expect(loaded.skipped.some((s) => s.path.endsWith("roster.yaml"))).toBe(true);
+    expect(loaded.skipped.map((s) => s.path)).toEqual(["teams/engineering/roster.yaml"]);
 
     const host = await bootLab(loaded);
     try {
