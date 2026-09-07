@@ -144,7 +144,6 @@ resolves its `target` on that flow's `internal.actions` instead of its own:
 ```ts
 const notifyBilling = dispatcher({
   name: "notify-billing",
-  type: "internal",
   flowKind: "billing",                          // the other flow
   target: "charge",                             // billing's internal.actions.charge
   inputSchema: z.object({ orderId: z.string() }),
@@ -176,7 +175,6 @@ a `{ from: true }` dispatcher — pointed at your `flowKind`:
 // on the billing flow
 const confirmToSender = dispatcher({
   name: "confirm-to-sender",
-  type: "internal",
   flowKind: "orders",
   target: "confirm",
   inputSchema: z.object({ orderId: z.string() }),

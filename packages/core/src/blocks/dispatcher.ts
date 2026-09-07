@@ -51,7 +51,6 @@
  * ```ts
  * const notifyBilling = dispatcher({
  *   name: "notify-billing",
- *   type: "internal",
  *   flowKind: "billing",                               // resolves on the billing flow
  *   target: "invoice-ready",
  *   inputSchema: z.object({ invoiceId: z.string() }),
@@ -137,7 +136,11 @@ export type DispatcherSession<TInput> =
 export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny> {
   name: string;
   description?: string;
-  type: "internal";
+  /**
+   * Discriminant. Omit it — `internal` is the default. Only a task-board seat
+   * sets `type: "task"`.
+   */
+  type?: "internal";
   /**
    * The entry name — resolves `flow.internal.actions[target]` on the flow
    * {@link InternalDispatcherConfig.flowKind} names. Verified at `defineFlow`
@@ -206,7 +209,8 @@ export function dispatcher<TPayload = unknown>(
 export function dispatcher(
   config: DispatcherConfig
 ): BlockDefinition<any, typeof dispatchHandleSchema> {
-  const { name, description, type, target, transient } = config;
+  const { name, description, target, transient } = config;
+  const type = config.type ?? "internal";
   if (typeof target !== "string" || target.length === 0) {
     throw new Error(`[dispatcher] "${name}" must name a non-empty target entry`);
   }

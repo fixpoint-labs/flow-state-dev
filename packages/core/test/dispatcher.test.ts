@@ -64,6 +64,15 @@ describe("dispatcher — the definition", () => {
     expect(rescued.dispatch).toEqual({ type: "internal", target: "wake" });
   });
 
+  it("defaults type to internal when omitted", () => {
+    const block = dispatcher({
+      name: "wake-epic",
+      target: "wake",
+      session: { id: () => "s_epic" }
+    });
+    expect(block.dispatch).toEqual({ type: "internal", target: "wake" });
+  });
+
   it("refuses an empty target at construction", () => {
     expect(() =>
       dispatcher({ name: "blank", type: "internal", target: "", session: { key: () => "k" } })
