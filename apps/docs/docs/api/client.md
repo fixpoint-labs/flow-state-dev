@@ -91,7 +91,7 @@ Each row is a `ChildSessionSummary`:
 | `topic` | `string \| undefined` | Display label: the key the child was derived from. |
 | `coordinate` | `string \| undefined` | Display label for the entry running it. |
 | `status` | `ChildSessionStatus \| undefined` | Absent until the child has run something. |
-| `flowId` | `string \| undefined` | The flow instance that owns the child; the address to read it through. Absent on a child written before owners were recorded. |
+| `flowId` | `string \| undefined` | The flow instance that owns the child; the address to read it through. Absent on a child that records no owner. |
 
 The table is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it.
 

@@ -18,7 +18,7 @@ Execute a flow action with streaming NDJSON output.
 fsdev run my-agent chat -i '{"message": "Hello!"}'
 ```
 
-The first argument is the flow **instance** to run. For an ordinary flow that is its `kind`, as above. For a flow declared `cardinality: "collection"` it is the id of the copy you want (`fsdev run review-east run`); the bare kind is not found, and the error lists the ids that are. A session started through one copy stays that copy's: running it through another exits non-zero, with the session unchanged. See [Flows](/docs/fundamentals/flows#how-an-instance-is-addressed) and [Server setup](/docs/server/setup#keeping-a-session-with-its-owner).
+The first argument is the flow **instance** to run: its `kind` for an ordinary flow, as above, or the copy's own id for a flow declared `cardinality: "collection"` (`fsdev run review-east run`). A bare collection kind is not found, and the error lists the ids that are. Running a session through a copy that doesn't own it exits non-zero and leaves the session untouched. See [Flows](/docs/fundamentals/flows#how-an-instance-is-addressed).
 
 **Options:**
 

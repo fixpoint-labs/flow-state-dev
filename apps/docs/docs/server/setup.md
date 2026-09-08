@@ -190,7 +190,7 @@ If you want to warm the runtime ahead of the first request (or surface a bad con
 
 ## Addressing an instance
 
-Each flow you pass to `createFlowState` is registered under its instance id. For an ordinary flow that id is its `kind`, so `/api/flows/support/...` reaches the `support` flow and nothing about the URL changes. A flow declared `cardinality: "collection"` registers one instance per id you give it, and each is reached only by that id:
+Each flow you pass to `createFlowState` is registered under its instance id, and that id is the first path segment of every flow route. For an ordinary flow the id is its `kind`: `/api/flows/support/...` reaches the `support` flow. A flow declared `cardinality: "collection"` registers one instance per id you give it, and each is reached only by that id:
 
 ```ts
 const reviewFlow = defineFlow({ kind: "review", cardinality: "collection", ... });
@@ -200,7 +200,7 @@ export const flowstate = createFlowState({
 });
 ```
 
-`POST /api/flows/review-east/actions/run` runs the east copy with its configuration. `POST /api/flows/review/actions/run` is a `404`: the kind of a collection is not an address, and no copy is picked on your behalf. The id is an address, not a credential. Who may call the instance is still decided by [authentication](./authentication.md).
+`POST /api/flows/review-east/actions/run` runs the east copy with its configuration. `POST /api/flows/review/actions/run` is a `404`: the kind of a collection is not an address, and no copy is picked on your behalf. The id is an address, not a credential — who may call the instance is decided by [authentication](./authentication.md). [Flows](../fundamentals/flows.md#how-an-instance-is-addressed) covers the addressing model across every entry point.
 
 ### Keeping a session with its owner
 
@@ -214,7 +214,7 @@ curl -X POST /api/flows/review-west/s_42/actions/run -d '{"userId":"u1","input":
 # 409 { "error": "wrong-instance-session" }
 ```
 
-The same holds after a restart, whichever instances are registered afterwards and in whatever order: `review-east` re-enters `s_42`, and a server that only knows `review-west` still refuses it. Records written before owners were recorded are treated as belonging to the singleton of their kind; a collection flow with such history needs the one-time attribution in [Persistence](../persistence/overview.md#who-owns-a-record). Resuming or retrying a request always re-enters its recorded owner, see [Durable execution](../advanced/durable-execution.md#resuming-a-suspended-request).
+The same holds after a restart, whichever instances are registered afterwards and in whatever order: `review-east` re-enters `s_42`, and a server that only knows `review-west` still refuses it. A record that names no owner is treated as belonging to the singleton of its kind; a collection flow with such history needs the one-time attribution in [Persistence](../persistence/overview.md#who-owns-a-record). Resuming or retrying a request always re-enters its recorded owner — see [Durable execution](../advanced/durable-execution.md#resuming-a-suspended-request).
 
 ## API Endpoints
 

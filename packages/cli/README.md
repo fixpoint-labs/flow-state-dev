@@ -128,7 +128,7 @@ Starts an HTTP server serving both the flow API and the DevTool UI. Discovers fl
 fsdev dev
 
 # Custom port, model override
-fsdev dev --port 3000 --model gpt-4o-mini
+fsdev dev --port 3000 --model openai/gpt-5.4-mini
 
 # Specific flow directory, no browser
 fsdev dev --flow-dir ./my-flows --no-open

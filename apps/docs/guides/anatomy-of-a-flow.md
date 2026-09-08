@@ -57,7 +57,7 @@ defineFlow({
 });
 ```
 
-`defineFlow` returns a flow type. You call it, with no arguments, to produce the instance you register with the server; the `kind` is both what the flow is and the address it answers to. Instances support merge-based overrides if you need to swap actions or config at creation time, and a flow that needs several configured copies declares that on the definition (see [Flows](/docs/fundamentals/flows#flowtype-vs-flowinstance)).
+`defineFlow` returns a flow type. Call it, with no arguments, to produce the instance you register with the server. For that instance the `kind` is both what the flow is and the address it answers to. Instances take merge-based overrides if you need to swap actions or config at creation time, and a definition that needs several configured copies declares that on itself — see [Flows](/docs/fundamentals/flows#flowtype-vs-flowinstance).
 
 ## 4. Actions are the public API
 
@@ -69,7 +69,7 @@ Clients invoke actions by name. The framework:
 4. Streams results via SSE — The client opens a stream for the `requestId` returned in the POST response. Events arrive in order with sequence numbers.
 5. Persists state when the run completes — When the block finishes, the framework commits scope mutations, fires lifecycle hooks, and marks the request complete.
 
-The HTTP flow: `POST /api/flows/:kind/actions/:action` (or with `:sessionId` for an existing session). The server returns `202 Accepted` immediately with a `requestId`. Execution happens asynchronously. The client connects to the SSE stream for that `requestId` to receive items and deltas in real time.
+The HTTP flow: `POST /api/flows/:flowId/actions/:action` (or with `:sessionId` for an existing session). The server returns `202 Accepted` immediately with a `requestId`. Execution happens asynchronously. The client connects to the SSE stream for that `requestId` to receive items and deltas in real time.
 
 ## 5. State lives in scopes
 
