@@ -4,14 +4,14 @@
  *
  * `resolveEntry` reads exactly one map per dispatch type — `flow.actions` for
  * `user`, `flow.internal` for `internal`, `flow.task` for `task`, and the
- * adapter's namespaced coordinate for `chat` / `webhook` / `schedule` — and
+ * adapter's namespaced coordinate for `webhook` / `schedule` — and
  * NEVER falls through to another type's map. The failure this file exists to
  * prevent is a fall-through: a task or internal dispatch whose name collides
  * with a public action must never resolve that action, whatever is missing
  * from its own type's map. Because the message's type comes from the trusted
  * `source` (stamped by an adapter or the dispatch seam, never a caller), a
- * caller cannot forge its way into a task, internal, chat, webhook or
- * schedule handler by naming one or by injecting a coordinate into `metadata`.
+ * caller cannot forge its way into a task, internal, webhook or schedule
+ * handler by naming one or by injecting a coordinate into `metadata`.
  *
  * The concurrency arbiter and the public re-entry allow-list both depend on
  * the same no-fallback rule, so this file also pins their halves of it: the

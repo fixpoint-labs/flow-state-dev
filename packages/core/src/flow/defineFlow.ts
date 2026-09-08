@@ -388,8 +388,8 @@ function withFlowToolsSchedules(
 
 /**
  * Every executable block the flow declares: each caller-addressed action's
- * block plus each event-addressed binding's handler block (webhook, chat,
- * static schedule). Every event binding is an action in transport form,
+ * block plus each event-addressed binding's handler block (webhook, static
+ * schedule). Every event binding is an action in transport form,
  * carrying its handler inline, so its block must participate in resource and
  * `requireOrg` aggregation exactly like a `flow.actions` block — otherwise
  * event-declared resources never prefetch and their `requireOrg` is never

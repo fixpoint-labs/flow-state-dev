@@ -173,8 +173,8 @@ describe("scheduled adapter — end-to-end", () => {
     }
   });
 
-  // Goal check (FIX-838): the inline schedule + chat handlers resolve and
-  // dispatch through the real router (above + the dynamic case), yet neither
+  // Goal check (FIX-838): the inline schedule handlers resolve and dispatch
+  // through the real router (above + the dynamic case), yet none of them
   // appears in the flow's caller-addressed action surface — the structural leak
   // is closed. Here we assert the exposure invariant through the real HTTP
   // listing.
