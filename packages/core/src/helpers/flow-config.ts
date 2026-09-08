@@ -66,17 +66,57 @@ export function findFlowConfigMismatch(
       return { kind: "contributes", requirement, keys: ["<the whole bag>"] };
     }
     // The requirement schema is not closed, so its output is normally a subset
-    // of the bag. A key whose parsed value differs from the bag's — including
-    // one the bag does not have at all — is the schema contributing rather
-    // than reading.
-    const contributed = Object.keys(parsed).filter(
-      (key) => !Object.hasOwn(bag, key) || !deepEqual(parsed[key], bag[key])
-    );
+    // of the bag — at every level. A path the parse HOLDS that the bag does not
+    // is the schema contributing rather than reading.
+    const contributed = contributedPaths(parsed, bag, "");
     if (contributed.length > 0) {
       return { kind: "contributes", requirement, keys: contributed };
     }
   }
   return undefined;
+}
+
+/** A value Zod strips keys from, as opposed to one it compares whole. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Every path where the parsed output holds something the bag does not.
+ *
+ * The subtlety this exists for: **Zod strips unknown keys at every level, not
+ * just the top.** A requirement naming one setting inside a nested object
+ * parses to a nested object SMALLER than the bag's, and comparing those two
+ * objects whole reads that narrowing as a contribution — refusing a block that
+ * is doing exactly what `flowConfigSchema` is for. So the comparison descends
+ * instead: through plain objects, and element-wise through same-length arrays
+ * (Zod strips inside `z.array(z.object(...))` too).
+ *
+ * What it still catches, at any depth, is the failure the rule is about: a key
+ * the bag does not have, or a different value at a key it does. A `.default()`
+ * three levels down is refused exactly like one at the top.
+ */
+function contributedPaths(parsed: unknown, held: unknown, at: string): string[] {
+  if (isPlainObject(parsed) && isPlainObject(held)) {
+    const paths: string[] = [];
+    for (const key of Object.keys(parsed)) {
+      const path = at === "" ? key : `${at}.${key}`;
+      if (!Object.hasOwn(held, key)) {
+        paths.push(path);
+        continue;
+      }
+      paths.push(...contributedPaths(parsed[key], held[key], path));
+    }
+    return paths;
+  }
+  if (Array.isArray(parsed) && Array.isArray(held) && parsed.length === held.length) {
+    const paths: string[] = [];
+    for (let i = 0; i < parsed.length; i++) {
+      paths.push(...contributedPaths(parsed[i], held[i], `${at}[${i}]`));
+    }
+    return paths;
+  }
+  return deepEqual(parsed, held) ? [] : [at];
 }
 
 /** Render a Zod failure so the offending key is in the message, not just a path. */

@@ -371,6 +371,67 @@ describe("flow config bag — the promises, and their second paths", () => {
   });
 
   /**
+   * Zod strips unknown keys at EVERY level, not only the top. A requirement
+   * naming one setting inside a nested object therefore parses to a nested
+   * object SMALLER than the bag's — which is the requirement reading narrowly,
+   * exactly what `flowConfigSchema` is for, and not the requirement
+   * contributing. Comparing the two nested objects whole reads that stripping
+   * as a contribution and refuses a flow that is correct.
+   *
+   * The refusal is not the whole cost: the same predicate answers the
+   * blueprint's `requiresConfig` probe, so such a flow cannot be registered
+   * bare either. It can neither be minted nor registered — dead both ways.
+   */
+  it("accepts a nested requirement narrower than the bag at that key", () => {
+    const readsRetries = handler({
+      name: "reads-retries",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      flowConfigSchema: z.object({ limits: z.object({ retries: z.number() }) }),
+      execute: async () => ({})
+    });
+
+    const flow = defineFlow({
+      kind: "nested-reads",
+      cardinality: "collection",
+      configSchema: z.object({
+        limits: z.object({ retries: z.number(), timeout: z.number() })
+      }),
+      actions: { work: { block: readsRetries } }
+    });
+
+    expect(
+      flow({ id: "nr-1", config: { limits: { retries: 3, timeout: 30 } } } as never).config
+    ).toEqual({ limits: { retries: 3, timeout: 30 } });
+  });
+
+  /**
+   * The counter-case that keeps the fix honest: nesting must not become a hole
+   * through which a block-side default reaches the bag. A `.default()` one
+   * level down is the same type lie as one at the top, and is still refused.
+   */
+  it("refuses a nested block requirement that contributes a default", () => {
+    const contributes = handler({
+      name: "nested-default",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      flowConfigSchema: z.object({ limits: z.object({ retries: z.number().default(9) }) }),
+      execute: async () => ({})
+    });
+
+    const flow = defineFlow({
+      kind: "nested-block-default",
+      cardinality: "collection",
+      configSchema: z.object({ limits: z.object({ timeout: z.number() }) }),
+      actions: { work: { block: contributes } }
+    });
+
+    expect(() =>
+      flow({ id: "nbd-1", config: { limits: { timeout: 30 } } } as never)
+    ).toThrow(/block "nested-default" declares a flowConfigSchema that would change the bag/);
+  });
+
+  /**
    * "The bag is closed, so a typo fails loudly."
    *
    * `.strict()` does NOT clear a `catchall`, so `z.object({...}).catchall(...)`
@@ -524,6 +585,102 @@ describe("flow config bag — the promises, and their second paths", () => {
     });
 
     await expect(runForTest(agent, {}, ctx)).resolves.toEqual({ ok: true });
+  });
+
+  /**
+   * A tool is often a sequencer or a router, and the block that declares the
+   * requirement is INSIDE it. `defineFlow`'s walk descends through composition,
+   * so the static path already catches that; the dynamic path must descend the
+   * same way or it is one level shallower than the check it mirrors — the tool
+   * is offered to the model, the inner block runs, and the declaration it made
+   * about the bag does nothing. That is the fail-quiet this check exists to
+   * remove, reappearing one level down.
+   */
+  it("descends into a dynamically resolved tool to find a nested requirement", async () => {
+    const innerLookup = handler({
+      name: "inner-lookup",
+      description: "look something up",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ hit: z.string() }),
+      flowConfigSchema: z.object({ index: z.string() }),
+      execute: async () => ({ hit: "x" })
+    });
+
+    // Declares nothing itself — the requirement is one level down.
+    const toolSeq = sequencer({
+      name: "nested-tool",
+      description: "look something up",
+      inputSchema: z.object({ q: z.string() })
+    }).step(innerLookup);
+
+    const agent = generator({
+      name: "nested-dynamic-agent",
+      inputSchema: z.object({}),
+      model: "m",
+      prompt: "go",
+      outputSchema: z.object({ ok: z.boolean() }),
+      tools: () => [toolSeq],
+      itemVisibility: { client: true, history: true }
+    });
+
+    const flow = defineFlow({
+      kind: "nested-dynamic-tools",
+      cardinality: "collection",
+      configSchema: z.object({ index: z.string().optional() }),
+      actions: { ask: { block: agent } }
+    });
+    const instance = flow({ id: "ndt-1", config: {} } as never);
+
+    const ctx = createMockContext({
+      flow: instance as unknown as { config: Readonly<Record<string, unknown>> },
+      resolveModel: () => ({
+        modelId: "m",
+        async generate() {
+          return { structuredOutput: { ok: true } };
+        }
+      }) as never
+    });
+
+    await expect(runForTest(agent, {}, ctx)).rejects.toThrow(/block "inner-lookup" cannot read/);
+  });
+
+  /** The static path, asserted alongside it, so the two cannot drift apart. */
+  it("descends into a statically declared tool to find the same requirement", () => {
+    const innerLookup = handler({
+      name: "static-inner-lookup",
+      description: "look something up",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ hit: z.string() }),
+      flowConfigSchema: z.object({ index: z.string() }),
+      execute: async () => ({ hit: "x" })
+    });
+
+    const toolSeq = sequencer({
+      name: "static-nested-tool",
+      description: "look something up",
+      inputSchema: z.object({ q: z.string() })
+    }).step(innerLookup);
+
+    const agent = generator({
+      name: "static-nested-agent",
+      inputSchema: z.object({}),
+      model: "m",
+      prompt: "go",
+      outputSchema: z.object({ ok: z.boolean() }),
+      tools: [toolSeq],
+      itemVisibility: { client: true, history: true }
+    });
+
+    const flow = defineFlow({
+      kind: "static-nested-tools",
+      cardinality: "collection",
+      configSchema: z.object({ index: z.string().optional() }),
+      actions: { ask: { block: agent } }
+    });
+
+    expect(() => flow({ id: "snt-1", config: {} } as never)).toThrow(
+      /block "static-inner-lookup" cannot read/
+    );
   });
 });
 

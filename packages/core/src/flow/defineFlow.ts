@@ -35,6 +35,7 @@ import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } fr
 import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
 import { hasZodObjectCatchall, introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
+import { walkBlockGraph } from "../helpers/block-graph";
 import {
   describeFlowConfigIssues,
   describeFlowConfigMismatch,
@@ -722,54 +723,6 @@ function collectBlockResources(
   return collected;
 }
 
-/**
- * A generator's **statically declared** tools, or nothing (FIX-1074).
- *
- * `tools` is a `ToolsSlot` — an array, or a function resolved per call with the
- * input and context in hand. Only the array is knowable here, and the function
- * form is genuinely unknowable rather than merely inconvenient: what it returns
- * depends on runtime values that do not exist at definition time.
- */
-function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
-  const tools = (block.config as { tools?: unknown }).tools;
-  return Array.isArray(tools) ? (tools as BlockDefinition[]) : [];
-}
-
-/**
- * Walk the flow's block graph once: every block reachable from the roots,
- * through composition AND through a generator's static `tools` array. This is
- * what the dispatch-target resolution reads.
- *
- * **The tool edge is here because a board can be handed to a model as a tool**
- * (`tools: [board.drain]`, the shape FIX-925 shipped). Without it a board
- * reached only that way was invisible to the walk: its dispatcher seats went
- * unresolved, so the first time the model called the tool the board failed on
- * a configuration the author had every reason to think was supported
- * (FIX-1074).
- *
- * Only the dispatch walk needs the tool edge. Resources and `requiresOrg` are
- * collected off the action roots, and a handed-off board's ledger reaches the
- * flow through the task entry its seat addresses — an action root of its own —
- * so a board reached only as a tool still lands its declarations.
- *
- * A block is visited once: blocks are shared freely (one handler across several
- * actions) and a router route may point back up the tree, so revisits and cycles
- * are ordinary rather than exceptional.
- */
-function walkFlowGraph(roots: readonly BlockDefinition[]): BlockDefinition[] {
-  const seen = new Set<BlockDefinition>();
-  const queue: BlockDefinition[] = [...roots];
-  while (queue.length > 0) {
-    const block = queue.pop()!;
-    if (seen.has(block)) continue;
-    seen.add(block);
-    // Rescue handlers installed via `config.rescue` are already folded into
-    // `childBlocks` by `buildBlock`.
-    queue.push(...(block.childBlocks ?? []));
-    queue.push(...staticTools(block));
-  }
-  return [...seen];
-}
 
 /** True when any declared block (root or lifecycle observer) opted into `requireOrg`. */
 function collectRequiresOrg(blocks: readonly BlockDefinition[]): boolean {
@@ -1358,7 +1311,7 @@ function normalizeFlowConfig(
   // behind the claim gate of the board whose hand-off addresses it. The roots
   // below are then collected from THAT map, so the gate's own declarations
   // (the board's ledger) count.
-  const reachable = walkFlowGraph(
+  const reachable = walkBlockGraph(
     actionBlocks(actions, internal, declaredTasks, webhooks, schedules, requestMerged)
   );
 
