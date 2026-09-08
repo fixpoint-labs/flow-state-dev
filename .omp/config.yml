@@ -1,0 +1,15 @@
+# FSD-specific routing; default session and advisor choices remain user-controlled.
+modelRoleStorage: project
+modelRoles:
+  fsd_implement: openai-codex/gpt-6-astra:high
+  fsd_design_review: anthropic/claude-opus-5:xhigh
+  fsd_code_review: cursor/cursor-grok-4.6:xhigh
+
+task:
+  isolation:
+    enabled: true
+    apply: false
+    merge: patch
+
+isolation:
+  backend: auto

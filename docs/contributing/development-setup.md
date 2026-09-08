@@ -60,6 +60,35 @@ docs/
 | `pnpm --filter @flow-state-dev/kitchen-sink dev` | App | Run kitchen-sink dev server |
 
 
+## OMP development sessions
+
+OMP uses the shared development skills, with native agents in `.omp/agents/` and
+model-role mappings in `.omp/config.yml`. Restart OMP after changing these files.
+The shared `review` skill includes the native mixed-model dispatch path.
+
+Writing workers use isolated checkouts and return patches for deliberate integration;
+automatic application is disabled. An isolation preparation failure stops the worker.
+Do not bypass it by sending the same writing task into the shared checkout.
+
+Advisor selection and activation are separate: `/advisor status` reports the live
+state; `/advisor on` enables it for the session.
+
+At substantive session start, choose a relevant handle through the `agent-mailbox`
+skill, reusing an existing handle before creating one. Local delivery requires an
+authenticated `gh` CLI with access to `fixpoint-labs/agent-mailbox`.
+
+| Command | Purpose |
+|---------|---------|
+| `/mailbox subscribe <pr> <subscriber>` | Select a handle and receive its current backlog |
+| `/mailbox status` | Inspect subscriptions, errors, and the session's posting identity |
+| `/mailbox unsubscribe <pr>` | Stop watching a handle |
+
+The extension polls selected handles every 60 seconds and wakes the model only for
+addressed new mail. It runs only while OMP is open. Resuming the same session
+restores saved subscriptions and cursors; forks must subscribe explicitly.
+
+Mailbox regressions: `node --test .omp/test/mailbox.test.mjs`.
+
 ## Versioning and Publishing
 
 This repo uses [Changesets](https://github.com/changesets/changesets) for semver, changelogs, and coordinated workspace version bumps. The contributor walk-through — when to write a fragment, the pre-1.0 discipline, multi-package PRs — lives in [`release-notes-workflow.md`](release-notes-workflow.md). The full publish runbook (CI pipeline, snapshots, first-publish ceremony) is in [`RELEASING.md`](RELEASING.md).

@@ -196,6 +196,27 @@ Create a TodoWrite with all tasks.
 
 #### 5B.2: Dispatch Implementer Sub-agents
 
+**OMP dispatch adapter.** The coordinator owns this lifecycle; `fsd-implementer` is
+only a bounded leaf, not a substitute for the whole skill. Dispatch approved slices
+with native `task` items (`agent: "fsd-implementer", isolated: true`) or Eval
+`agent(prompt, { agent: "fsd-implementer", isolated: true, apply: false, merge: false })`;
+its `@fsd_implement` alias replaces Claude's execution-model selection. Supply the same spec context and
+chosen discipline, but omit template instructions to commit, publish, or spawn.
+Keep unresolved design judgment in the coordinator. Independent owned slices may
+share one task batch; dependent slices stay ordered. During a concurrent batch,
+workers skip all validation, builds, tests, linters, formatters, and runtime probes;
+the coordinator owns evidence capture and final checks. Capture required RED or
+reproduction evidence on pre-fix source before dispatching the corresponding fix.
+If that evidence is missing, obtain a test/probe-only patch first, integrate it,
+and run it against the unchanged implementation. Patches require explicit
+coordinator integration; run the final checks after the writing batch has settled.
+The coordinator also dispatches the challenger, per-task compliance review, and
+Step 6's review directly, never through an implementer's recursive spawn. For native
+review roles, frozen inputs, schema, and synthesis use
+[`review` → OMP native dispatch](../review/SKILL.md#omp-native-dispatch).
+This adapter does not authorize leaf ticket/PR publication or mailbox subscription;
+external communication stays with the coordinator. Claude's path below is unchanged.
+
 For each task, sequentially dispatch an implementer sub-agent using the template in `./implementer-prompt.md`. The template has a `[Discipline]` slot — fill it based on Step 4.1:
 
 - **Bug** → fill with the `diagnose` discipline block (see template). Sub-agent must build a feedback loop and reproduce before changing code; produces a regression test at the spec's named seam; runs the cleanup pass before reporting.

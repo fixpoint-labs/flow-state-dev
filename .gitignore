@@ -8,6 +8,8 @@ apps/docs/build
 
 # Local tool configs
 .claude/settings.local.json
+.omp/mcp.json
+.omp/mcp.json.lock
 .codex/
 .zenflow/
 /todos/*
