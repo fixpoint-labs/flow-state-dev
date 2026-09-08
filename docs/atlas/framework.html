@@ -206,7 +206,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <a class="grp">How it fits together</a>
     <a href="#dial">02 · What decides what runs next</a>
     <a href="#substrate">03 · The shared substrate</a>
-    <a href="#workforce-layer">04 · Workforce: the unbuilt layer</a>
+    <a href="#workforce-layer">04 · Workforce: L2 product, not L1</a>
     <a class="grp">The inventory</a>
     <a href="#packages">05 · Package inventory</a>
     <a href="#boundaries">06 · Locked boundaries</a>
@@ -659,8 +659,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="workforce-layer">
-  <div class="sec-head"><span class="sec-num">04</span><h2>Workforce: the layer that isn't built</h2></div>
-  <p class="lede">Workforce is meant to be the top of the stack — teams of named agents that work together, powered by every system beneath them. Today it is 397 lines that define <em>what one agent is</em>, and nothing that defines <em>how a set of them relate</em>.</p>
+  <div class="sec-head"><span class="sec-num">04</span><h2>Workforce: the Layer 2 product, not a Layer 1 type</h2></div>
+  <p class="lede">Workforce is the shippable Layer&nbsp;2 product — roster / teams + seats + rooms + thin helpers. Conductor is one team config on it, not a sibling ship. Today the package is still 397 lines that define <em>what one agent is</em>, and nothing that defines <em>how a set of them relate</em>. The product lock and the honesty tags live on the <a href="workforce.html">Workforce atlas</a>. Do not mint Team / Channel / MessageBoard here, and do not fold Workforce into core.</p>
 
   <h3>What exists</h3>
   <p>The <code>Agent</code> contract itself lives in <code>core</code> (so <code>orchestration</code> can type an injected <code>materializeAgent</code> without depending on <code>workforce</code>). An agent is a name, a description, a <strong>persona</strong>, a model, a tool allow-list, capabilities, and item visibility. <code>materializeAgent</code> turns that into a generator — resolving the persona into a system prompt, pulling tools and capabilities from catalogs, and binding <code>taskTools</code> to the active drain board when the agent is being materialized as a board worker.</p>
@@ -746,7 +746,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <h5>Closed: a team is not a Layer 1 type</h5>
     <p>Everything below workforce got built because a running system needed it. Workforce is the one layer specified top-down — the <code>Agent</code> type carries two fields nothing resolves, and its capability factory returns a name and a TODO. That is the shape tenet 3 warns about: a contract taken on before there was a caller.</p>
     <p>The generous reading is that it is a placeholder held deliberately while the layers underneath matured — and they did mature; seven of the ten needs above are now met by systems that did not exist when <code>Agent</code> was first written.</p>
-    <p>Closed: a team is <strong>not</strong> a first-class Layer&nbsp;1 primitive. A roster is the seat-list; a team is that roster plus shared rooms plus dispatch as Layer&nbsp;2. A seat binds a worker, not an Agent. Product Agent is Layer&nbsp;2. The core <code>Agent</code> / <code>AgentRegistry</code> types are the thin seam &#8212; do not grow them into teams or memory. Workforce story: <a href="workforce.html#fence">Workforce atlas</a>. Readiness gaps (conversation, board-as-address-test, durable delegation, materializer) live on that page &#8212; <a href="workforce.html#gaps">&#167;18</a> &#8212; not as new Layer&nbsp;1 nouns.</p>
+    <p>Closed: a team is <strong>not</strong> a first-class Layer&nbsp;1 primitive. A roster is the seat-list; a team is that roster plus shared rooms plus dispatch as Layer&nbsp;2. A seat binds a worker, not an Agent. Product Agent is Layer&nbsp;2. The core <code>Agent</code> / <code>AgentRegistry</code> types are the thin seam &#8212; do not grow them into teams or memory. Workforce is the product; Conductor is a config on it &#8212; <a href="workforce.html#conductor">Workforce atlas &#167;15</a>. Readiness gaps (conversation, board-as-address-test, durable delegation, materializer) live on that page &#8212; <a href="workforce.html#gaps">&#167;18</a> &#8212; not as new Layer&nbsp;1 nouns.</p>
   </div>
 </section>
 
@@ -765,7 +765,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>patterns</code></td><td>Composition</td><td class="num">8,058</td><td class="num">54</td><td>Eight named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
       <tr><td><code>memory</code></td><td>Composition</td><td class="num">7,825</td><td class="num">32</td><td>Four memory tiers (working / episodic / semantic / digest), consolidation, hygiene janitor, recall tools, one composed capability.</td><td>core</td></tr>
       <tr><td><code>tools</code></td><td>Composition</td><td class="num">7,170</td><td class="num">53</td><td>Search (7 providers), fetch (3), crawl (2), sandboxed bash (5 adapters), MCP client manager.</td><td>core</td></tr>
-      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">397</td><td class="num">8</td><td>Named agents: registry, persona definition and resolution, materialization into a block. The team layer above it is not built &mdash; see &sect;04.</td><td>core, orchestration</td></tr>
+      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">397</td><td class="num">8</td><td>Named agents: registry, persona definition and resolution, materialization into a block. The L2 product (teams / seats / rooms) is convention, not this package yet &mdash; see &sect;04 and the <a href="workforce.html">Workforce atlas</a>.</td><td>core, orchestration</td></tr>
       <tr><td><code>@thought-fabric/core</code></td><td>Composition</td><td class="num">3,931</td><td class="num">17</td><td>Cognitive primitives: attention (salience, relevance), identity (constitution, perspective), metacognition (bias detection).</td><td>core</td></tr>
       <tr><td><code>ui</code></td><td>Composition</td><td class="num">387</td><td class="num">10</td><td>Generative component registry — link-card, info-card.</td><td>contracts, core</td></tr>
       <tr><td><code>store-sqlite</code></td><td>Persistence</td><td class="num">3,301</td><td class="num">16</td><td>SQLite-backed implementation of the store registry.</td><td>core, engine</td></tr>
@@ -1737,7 +1737,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <h3>Workforce</h3>
   <p>The smallest composition package in the repo at 397 lines across 8 files. Six exports: <code>defineAgent</code>, <code>definePersona</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code>, <code>agentBlock</code>, <code>createWorkforceCapability</code>. The <code>Agent</code> and <code>AgentRegistry</code> contracts themselves live in <code>core</code>, so <code>orchestration</code> can type an injected <code>materializeAgent</code> without depending on this package.</p>
-  <p>What it does and does not yet do &mdash; and why the team layer currently lives inside skills rather than here &mdash; is <a href="#workforce-layer">&sect;04</a>.</p>
+  <p>What the package does and does not yet do is <a href="#workforce-layer">&sect;04</a>. The product lock &#8212; Workforce as the Layer&nbsp;2 surface, Conductor as a team config on it &#8212; is the <a href="workforce.html">Workforce atlas</a>, not this inventory.</p>
 
   <h3>Thought fabric</h3>
   <p><code>@thought-fabric/core</code> is a separate namespace for cognitive-architecture primitives built on FSD rather than part of it: <strong>attention</strong> (salience scoring, relevance filtering), <strong>identity</strong> (constitution, perspective system with its own capability), and <strong>metacognition</strong> (bias detection). Its naming convention encodes category by word order — <code>perspectiveObserve</code> is a block, <code>addPerspective</code> is a helper — so the inversion signals the kind without documentation.</p>

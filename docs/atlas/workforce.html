@@ -196,7 +196,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <aside class="rail">
   <div class="rail-mark">The Workforce Atlas</div>
   <div class="rail-sub">living design &middot; sep 2026</div>
-  <p class="sib">sibling &#183; <a href="conductor.html">Conductor atlas</a><br>sibling &#183; <a href="roadmap.html">Roadmap atlas</a></p>
+  <p class="sib">product &#183; Conductor is a config<br><a href="conductor.html">Conductor atlas</a> &#8212; one Workforce team<br><a href="roadmap.html">Roadmap atlas</a> &#8212; Strategy horizon</p>
   <nav>
     <a class="grp">Orientation</a>
     <a href="#what">01 &middot; What Workforce is</a>
@@ -214,8 +214,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <a href="#members">12 &middot; One worker contract</a>
     <a href="#plan">13 &middot; The plan</a>
     <a href="#collab">14 &middot; Collaboration</a>
-    <a class="grp">The split</a>
-    <a href="#conductor">15 &middot; Conductor</a>
+    <a class="grp">The consumer</a>
+    <a href="#conductor">15 &middot; Conductor as config</a>
     <a class="grp">The ground</a>
     <a href="#exists">16 &middot; What exists today</a>
     <a href="#api">17 &middot; API surface</a>
@@ -228,19 +228,19 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <main>
 <header class="masthead">
   <p class="eyebrow">Living design</p>
-  <h1>One worker contract. Then compose.</h1>
-  <p class="standfirst">Workforce is the general Layer&nbsp;2 convention: <strong>one worker shape, one flow per worker</strong>. A <strong>seat</strong> is a roster slot that binds a <strong>worker</strong> &#8212; not an Agent. A worker is any flow on that contract; thin sequencers count. <strong>Agent</strong> (product) is the opinionated worker: sequencer + generators + persona + durable member memory. A seat can be any worker. Thin seats do not need <code>AgentRegistry</code> or member memory. The target is the <strong>RC collaboration story &#8212; teams, plural</strong>. The build-out is <a href="#vision">&#167;03</a>. The three words are <a href="#fence">&#167;04</a>. This page teaches the target. It does not ship it. Conductor does not wait on it.</p>
+  <h1>Workforce is the product. Conductor is a team on it.</h1>
+  <p class="standfirst">Workforce is the <strong>Layer&nbsp;2 product</strong>: roster / teams + seats + rooms + thin helpers. It can ship for a client (OnSecurity is a GTM name, not an impl) and for personal or org workforces. A <strong>seat</strong> binds a <strong>worker</strong>, not an Agent. A worker is any flow on the contract; thin sequencers count. <strong>Agent</strong> (product) is the opinionated worker: sequencer + generators + persona + durable member memory. <strong>Conductor</strong> is one consumer: a Workforce team whose seats include coding-harness workers. The roster <em>names</em> the harness; <strong>omp</strong> (opinionated Pi harness) can fill that seat &#8212; proposed, not integrated. One harness-manager stack. Layer&nbsp;1 stays substrate. The three words are <a href="#fence">&#167;04</a>. The build-out is <a href="#vision">&#167;03</a>. Astra gaps stay in <a href="#gaps">&#167;18</a>.</p>
   <div class="key">
     <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
     <span><i class="sw-dash"></i> proposed &#8212; named, not built</span>
     <span><i class="sw" style="background: var(--prose-soft); border: 1.2px solid var(--prose)"></i> later / cut &#8212; not foundation</span>
   </div>
-  <p class="sib">Pinned to <code>origin/main</code> at <code>d8899c9b5</code> (2026-09-07, #1614). Sibling: <a href="conductor.html">Conductor</a> &#8212; this-cycle coding product on the same dispatch spine. Cross-flow PR <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> is open; the refuse is still on this pin.</p>
+  <p class="sib">Pinned to <code>origin/main</code> at <code>088181af7</code> (2026-09-07). Conductor is a Workforce config, not a sibling product and not a parallel Proof. The old lock &#8212; separate tracks, later triangulation &#8212; is <strong>superseded</strong>. Cross-flow PR <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> is open; instances (<a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a>) still first-wins. GTM timing stays Strategy.</p>
 </header>
 
 <section id="what">
   <div class="sec-head"><span class="sec-num">01</span><h2>What Workforce is</h2></div>
-  <p class="lede">Three words. Do not collapse them. A <strong>seat</strong> is a roster slot that binds a <strong>worker</strong>. A worker is any flow on the contract &#8212; thin sequencers count (intake, coordinator, harness-manager). <strong>Agent</strong> (product) is an opinionated worker: sequencer + generators + persona + durable member memory. A seat can be any worker, not always an agent. Collaboration is the rooms and the dispatch spine. The product target is <strong>teams, plural</strong>. The build-out is <a href="#vision">&#167;03</a>.</p>
+  <p class="lede">Workforce is the shippable product surface. Conductor is one team on it, not a sibling. Three words. Do not collapse them. A <strong>seat</strong> is a roster slot that binds a <strong>worker</strong>. A worker is any flow on the contract &#8212; thin sequencers count (intake, coordinator, harness-manager). <strong>Agent</strong> (product) is an opinionated worker: sequencer + generators + persona + durable member memory. A seat can be any worker, not always an agent. Collaboration is the rooms and the dispatch spine. The product target is <strong>teams, plural</strong>. The build-out is <a href="#vision">&#167;03</a>.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
@@ -263,98 +263,90 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 360" role="img" aria-label="Two Layer 2 opinions on one Layer 1 substrate. The solid bottom band is Layer 1: four block kinds, flows and actions, sessions, scoped resources with flowIsolation, capabilities, the task board, skills, and dispatcher. Above it, two dashed boxes. Left: Conductor, this-cycle thin shell on the dispatch spine, a coding meta-harness that does not wait on Workforce. Right: Workforce, the proposed convention: one worker contract, factory bootstrap, team plus boards, DMs as sessions, groups as a board plus N sessions.">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Workforce is the Layer 2 product on Layer 1 substrate. The solid bottom band is Layer 1: four block kinds, flows, sessions, resources, capabilities, task board, skills, dispatcher. Above it, one Workforce product band: roster, teams, seats, rooms, thin helpers. Inside that band, Conductor is one dashed team config whose seats include coding-harness workers. Other teams are the same product for client, personal, or org workforces. No sibling product.">
         <rect class="n-code" x="16" y="248" width="908" height="88" rx="5"/>
         <text class="t-lbl f-code" x="34" y="270">LAYER 1 &#8212; SUBSTRATE &#183; EXISTS</text>
         <text class="t-b" x="34" y="296">four block kinds &#183; flows &#183; sessions &#183; resources &#183; capabilities</text>
-        <text class="t-s" x="34" y="318">task board &#183; skills &#183; dispatcher() &#183; create_session</text>
+        <text class="t-s" x="34" y="318">task board &#183; skills &#183; dispatcher() &#183; create_session &#183; no Team / Channel / MessageBoard</text>
 
-        <path class="ln" d="M248,248 L248,214"/>
-        <path class="ln" d="M692,248 L692,214"/>
+        <path class="ln" d="M470,248 L470,214"/>
 
-        <rect class="n-prop" x="16" y="26" width="446" height="188" rx="5"/>
-        <text class="t-lbl" x="34" y="48">THIS CYCLE &#183; CODING PRODUCT</text>
-        <text class="t-b f-accent" x="34" y="76">Conductor</text>
-        <text class="t-s" x="34" y="100">thin shell on the dispatch spine</text>
-        <text class="t-xs" x="34" y="128">META-HARNESS THAT DRIVES CODING HARNESSES</text>
-        <text class="t-xs" x="34" y="148">DOES NOT WAIT ON A WORKFORCE PRODUCT</text>
-        <text class="t-xs" x="34" y="168">SESSION OWNED BY THE WORKFLOW</text>
-        <text class="t-b f-accent" x="34" y="196">ships without this factory</text>
+        <rect class="n-prop" x="16" y="16" width="908" height="198" rx="5"/>
+        <text class="t-lbl" x="34" y="38">LAYER 2 &#183; THE PRODUCT &#183; WORKFORCE</text>
+        <text class="t-b f-accent" x="34" y="64">roster / teams + seats + rooms + thin helpers</text>
+        <text class="t-s" x="34" y="88">one worker contract. seat binds a worker. agent is the L2 opinion.</text>
+        <text class="t-xs" x="34" y="108">CLIENT WORKFORCES (ONSECURITY = GTM NAME, NOT IMPL) &#183; PERSONAL / ORG</text>
 
-        <rect class="n-prop" x="478" y="26" width="446" height="188" rx="5"/>
-        <text class="t-lbl" x="496" y="48">THIS PAGE &#183; RC TARGET, PHASED IMPLEMENT</text>
-        <text class="t-b f-accent" x="496" y="76">Workforce</text>
-        <text class="t-s" x="496" y="100">one worker contract, then compose</text>
-        <text class="t-xs" x="496" y="128">SEAT BINDS A WORKER. AGENT IS THE L2 OPINION.</text>
-        <text class="t-xs" x="496" y="148">THIN SEATS SKIP REGISTRY + MEMBER MEMORY.</text>
-        <text class="t-xs" x="496" y="168">TARGET = TEAMS PLURAL &#183; SHARED ROOMS &#183; DISPATCH</text>
-        <text class="t-b f-accent" x="496" y="196">atlas now. thin package proposed.</text>
+        <rect class="n-box" x="34" y="124" width="420" height="74" rx="4"/>
+        <text class="t-b" x="48" y="148">Conductor</text>
+        <text class="t-xs" x="48" y="166">ONE TEAM CONFIG &#183; CODING-HARNESS SEATS</text>
+        <text class="t-xs" x="48" y="184">ROSTER NAMES THE HARNESS &#183; WIRING PROPOSED</text>
+
+        <rect class="n-prop" x="470" y="124" width="434" height="74" rx="4"/>
+        <text class="t-b f-accent" x="484" y="148">other Workforce teams</text>
+        <text class="t-xs" x="484" y="166">SAME PRODUCT. SAME STACK.</text>
+        <text class="t-xs" x="484" y="184">NOT A SECOND SHIP. NOT A PARALLEL PROOF.</text>
       </svg>
     </div>
-    <figcaption><b>One substrate, two opinions.</b> Conductor is the coding-product shell on Layer&nbsp;1 dispatch. Workforce is the general convention. Neither invents a fifth block kind. Conductor-as-a-coding-extension-on-Workforce is a later horizon, not a this-cycle dependency.</figcaption>
+    <figcaption><b>One product, one substrate.</b> Workforce is the shippable Layer&nbsp;2 surface. Conductor is a team on that surface whose seats include coding-harness workers. Neither invents a fifth block kind. The old &#8220;two opinions / later triangulation&#8221; lock is superseded.</figcaption>
   </figure>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 220" role="img" aria-label="Three analog pairs. Eve on Vercel. Grok Bot on Cursor Build. Claude Work on Claude Code. Each pair is a general conventions surface sitting on a product-specific or platform surface. Workforce sits beside Conductor the same way.">
-        <rect class="n-grp" x="16" y="16" width="292" height="188" rx="5"/>
-        <text class="t-lbl" x="162" y="38" text-anchor="middle">PLATFORM</text>
-        <rect class="n-prop" x="36" y="52" width="252" height="52" rx="4"/>
-        <text class="t-b f-accent" x="162" y="74" text-anchor="middle">Eve</text>
-        <text class="t-xs" x="162" y="92" text-anchor="middle">GENERAL / OPINIONATED</text>
-        <path class="ln" d="M162,104 L162,118"/>
-        <rect class="n-code" x="36" y="118" width="252" height="52" rx="4"/>
-        <text class="t-b f-code" x="162" y="140" text-anchor="middle">Vercel</text>
-        <text class="t-xs" x="162" y="158" text-anchor="middle">THE PLATFORM</text>
-        <text class="t-xs" x="162" y="188" text-anchor="middle">OPINIONS ON A SUBSTRATE</text>
+      <svg viewBox="0 0 940 220" role="img" aria-label="Workforce as the shippable product. Left: client and personal or org workforces, same product surface. Centre: Conductor as one team config whose roster names coding harnesses. Right: one harness-manager stack. omp, the opinionated Pi harness, can fill a seat and is proposed, not integrated. Cut: no sibling product, no second Proof, no Conductor-only harness path.">
+        <rect class="n-prop" x="16" y="16" width="292" height="188" rx="5"/>
+        <text class="t-lbl" x="34" y="38">THE PRODUCT</text>
+        <text class="t-b f-accent" x="34" y="68">Workforce</text>
+        <text class="t-s" x="34" y="96">roster + seats + rooms</text>
+        <text class="t-xs" x="34" y="120">CLIENT TEAMS &#183; PERSONAL / ORG</text>
+        <text class="t-xs" x="34" y="138">ONSECURITY = GTM NAME</text>
+        <text class="t-xs" x="34" y="156">NOT AN IMPLEMENTATION CLAIM</text>
+        <text class="t-b f-accent" x="34" y="184">the shippable surface</text>
 
-        <rect class="n-grp" x="324" y="16" width="292" height="188" rx="5"/>
-        <text class="t-lbl" x="470" y="38" text-anchor="middle">BUILD SURFACE</text>
-        <rect class="n-prop" x="344" y="52" width="252" height="52" rx="4"/>
-        <text class="t-b f-accent" x="470" y="74" text-anchor="middle">Grok Bot</text>
-        <text class="t-xs" x="470" y="92" text-anchor="middle">GENERAL AGENT</text>
-        <path class="ln" d="M470,104 L470,118"/>
-        <rect class="n-code" x="344" y="118" width="252" height="52" rx="4"/>
-        <text class="t-b f-code" x="470" y="140" text-anchor="middle">Cursor Build</text>
-        <text class="t-xs" x="470" y="158" text-anchor="middle">CODING-SPECIFIC</text>
-        <text class="t-xs" x="470" y="188" text-anchor="middle">SAME FAMILY, DIFFERENT JOB</text>
+        <rect class="n-box" x="324" y="16" width="292" height="188" rx="5"/>
+        <text class="t-lbl" x="342" y="38">ONE CONSUMER</text>
+        <text class="t-b" x="342" y="68">Conductor</text>
+        <text class="t-s" x="342" y="96">a Workforce team config</text>
+        <text class="t-xs" x="342" y="120">SEATS INCLUDE CODING HARNESSES</text>
+        <text class="t-xs" x="342" y="138">ROSTER NAMES THE HARNESS</text>
+        <text class="t-xs" x="342" y="156">omp CAN FILL A SEAT &#183; PROPOSED</text>
+        <text class="t-b" x="342" y="184">not a sibling ship</text>
 
-        <rect class="n-grp" x="632" y="16" width="292" height="188" rx="5"/>
-        <text class="t-lbl" x="778" y="38" text-anchor="middle">CLAUDE</text>
-        <rect class="n-prop" x="652" y="52" width="252" height="52" rx="4"/>
-        <text class="t-b f-accent" x="778" y="74" text-anchor="middle">Claude Work</text>
-        <text class="t-xs" x="778" y="92" text-anchor="middle">GENERAL WORK</text>
-        <path class="ln" d="M778,104 L778,118"/>
-        <rect class="n-code" x="652" y="118" width="252" height="52" rx="4"/>
-        <text class="t-b f-code" x="778" y="140" text-anchor="middle">Claude Code</text>
-        <text class="t-xs" x="778" y="158" text-anchor="middle">CODING HARNESS</text>
-        <text class="t-xs" x="778" y="188" text-anchor="middle">WORK VS CODE</text>
+        <rect class="n-prose" x="632" y="16" width="292" height="188" rx="5"/>
+        <text class="t-lbl" x="650" y="38">CUT</text>
+        <text class="t-b" x="650" y="68">one manager stack</text>
+        <text class="t-xs" x="650" y="96">packages/harness-manager</text>
+        <text class="t-xs" x="650" y="114">NO SECOND CONDUCTOR PATH</text>
+        <text class="t-xs" x="650" y="132">NO PARALLEL PROOF</text>
+        <text class="t-xs" x="650" y="150">#1612 CONSOLE HALF &#183; PARK</text>
+        <text class="t-xs" x="650" y="168">CONDUCTOR-ONLY, DOES NOT</text>
+        <text class="t-b" x="650" y="184">ride Workforce</text>
       </svg>
     </div>
-    <figcaption><b>The analog, not the architecture.</b> Workforce is to Conductor as Eve is to Vercel, Grok&nbsp;Bot to Cursor&nbsp;Build, Claude&nbsp;Work to Code. A general conventions surface beside a product-specific coding one. Both ours. Both on FSD.</figcaption>
+    <figcaption><b>Product, then config.</b> Workforce is what we ship. Conductor is a team on it. <code>omp</code> is a named harness that can fill a coding seat &#8212; proposed, not in tree. The #1612 operator-console half (PI-1..3) is a Conductor-only surface that does not ride Workforce; park it. Do not invent a second harness-manager.</figcaption>
   </figure>
 </section>
 
 <section id="layers">
   <div class="sec-head"><span class="sec-num">02</span><h2>Layer 1 vs Layer 2</h2></div>
-  <p class="lede">Layer&nbsp;1 has substrate opinions only. Layer&nbsp;2 has opinions so people get going. Workforce is that layer. A new box on this page is an opinion or a product, never a fifth block kind.</p>
+  <p class="lede">Layer&nbsp;1 has substrate opinions only. Layer&nbsp;2 is the product: Workforce. Conductor is a team config on that layer, not a second product and not a Layer&nbsp;1 opinion. A new box on this page is an opinion or a product, never a fifth block kind.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 420" role="img" aria-label="A stack. Top dashed band: product harnesses, Conductor this cycle and a later Workforce surface. Middle dashed band: Layer 2 conventions, the thin package that exists plus the proposed factory, team, channels, and plan convention. Bottom solid band: Layer 1 primitives that already exist, including dispatcher and session routes. Do not invent here.">
+      <svg viewBox="0 0 940 420" role="img" aria-label="A stack. Top dashed band: Conductor as one Workforce team config, wiring proposed, lab still on Layer 1. Middle band: Layer 2 product, Workforce, thin package that exists plus the proposed factory, team, channels, and plan convention. Bottom solid band: Layer 1 primitives that already exist. Do not invent here. Do not fold Workforce into core.">
         <rect class="n-prop" x="16" y="16" width="908" height="100" rx="5"/>
-        <text class="t-lbl" x="34" y="38">PRODUCT HARNESSES &#8212; OPINIONS, NOT NEW PRIMITIVES</text>
+        <text class="t-lbl" x="34" y="38">CONSUMER CONFIG &#8212; NOT A SIBLING PRODUCT</text>
         <rect class="n-box" x="34" y="52" width="420" height="48" rx="4"/>
         <text class="t-b" x="48" y="72">Conductor</text>
-        <text class="t-xs" x="48" y="88">THIN SHELL ON L1 DISPATCH &#183; THIS CYCLE</text>
+        <text class="t-xs" x="48" y="88">ONE WORKFORCE TEAM &#183; CODING-HARNESS SEATS &#183; WIRING PROPOSED</text>
         <rect class="n-prop" x="470" y="52" width="434" height="48" rx="4"/>
-        <text class="t-b f-accent" x="484" y="72">Workforce surface</text>
-        <text class="t-xs" x="484" y="88">GROK-BOT-LIKE &#183; HORIZON, NOT THIS CYCLE</text>
+        <text class="t-b f-accent" x="484" y="72">same product, other teams</text>
+        <text class="t-xs" x="484" y="88">CLIENT / PERSONAL / ORG &#183; NOT A SECOND SHIP</text>
 
         <path class="ln" d="M470,116 L470,132"/>
 
         <rect class="n-prop" x="16" y="132" width="908" height="128" rx="5"/>
-        <text class="t-lbl" x="34" y="154">LAYER 2 &#8212; CONVENTIONS</text>
+        <text class="t-lbl" x="34" y="154">LAYER 2 &#8212; THE PRODUCT &#183; WORKFORCE</text>
         <rect class="n-code" x="34" y="168" width="280" height="72" rx="4"/>
         <text class="t-s f-code" x="48" y="190">exists, thin impl</text>
         <text class="t-xs" x="48" y="210">defineAgent &#183; registry impl</text>
@@ -378,17 +370,17 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-s" x="34" y="376">taskBoard &#183; skills &#183; dispatcher() &#183; thin Agent / AgentRegistry types in core</text>
       </svg>
     </div>
-    <figcaption><b>Opinions sit on primitives.</b> Layer&nbsp;1 already has the doors this convention uses: a flow, a session, a resource, a board, a dispatcher, and a thin <code>Agent</code> / <code>AgentRegistry</code> type seam. The product Agent stays Layer&nbsp;2. Engine never sees <code>AgentRegistry</code> as product. Demote means do not grow those core types into teams or memory &#8212; not delete them.</figcaption>
+    <figcaption><b>The product sits on primitives.</b> Layer&nbsp;1 already has the doors Workforce uses: a flow, a session, a resource, a board, a dispatcher, and a thin <code>Agent</code> / <code>AgentRegistry</code> type seam. The product Agent stays Layer&nbsp;2. Engine never sees <code>AgentRegistry</code> as product. Do not fold Workforce into core. Demote means do not grow those core types into teams or memory &#8212; not delete them.</figcaption>
   </figure>
 
   <div class="tw">
     <table>
       <thead><tr><th></th><th>Layer 1</th><th>Layer 2</th></tr></thead>
       <tbody>
-        <tr><td>What it is</td><td>Substrate. Composable primitives with almost no product opinion.</td><td>Conventions. A default way to use the substrate.</td></tr>
-        <tr><td>Who it is for</td><td>Authors who will compose their own harness.</td><td>Authors who want to get going, and still extend everything.</td></tr>
-        <tr><td>What it must not do</td><td>Absorb one product&#8217;s knowledge. That is tenet&nbsp;4.</td><td>Invent a primitive the substrate does not have. Compose, or file a Layer&nbsp;1 gap.</td></tr>
-        <tr><td>Phased implement</td><td>Unblockers first: instances (FIX-1320 INST-1..3), then conversation + board proofs, then durable delegation, then the materializer. Cross-flow still refused on this pin. Persona FIX-796 is independent.</td><td>This page names the 1&#8594;4 build-out. The readiness sequence is named gaps on that inventory &#8212; not a fifth slice. Conductor also cares about the L1 slice. It does not wait on Workforce product.</td></tr>
+        <tr><td>What it is</td><td>Substrate. Composable primitives with almost no product opinion.</td><td>The product. Roster / teams + seats + rooms + thin helpers over the substrate.</td></tr>
+        <tr><td>Who it is for</td><td>Authors who will compose their own harness.</td><td>Clients and personal/org workforces. Conductor is one team config on this layer.</td></tr>
+        <tr><td>What it must not do</td><td>Absorb one product&#8217;s knowledge. That is tenet&nbsp;4. Do not mint Team / Channel / MessageBoard here.</td><td>Invent a primitive the substrate does not have. Compose, or file a Layer&nbsp;1 gap. Do not fold this layer into core.</td></tr>
+        <tr><td>Phased implement</td><td>Unblockers first: instances (FIX-1320 INST-1..3), then conversation + board proofs, then durable delegation, then the materializer. Cross-flow still refused on this pin. Persona FIX-796 is independent.</td><td>This page names the 1&#8594;4 build-out. The readiness sequence is named gaps on that inventory &#8212; not a fifth slice. Every Workforce team, including a Conductor config, waits on this L1 floor. Conductor is not a parallel ship.</td></tr>
       </tbody>
     </table>
   </div>
@@ -403,7 +395,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <svg viewBox="0 0 940 544" role="img" aria-label="Four-slice proposed roadmap. One: Layer 1 unblockers Conductor also cares about — flow instances FIX-1320 INST-1 through 3 first, FIX-1315 absorbed, cross-flow blocked on pull 1600, same-session resume FIX-1246 backlog and separate from FIX-957, member memory scope named gap. Two: Workforce foundation Layer 2 — file conventions proposed, scan to registries named gap, seat-to-worker factory proposed, thin Agent opinion on the existing seam. Three: Collab RC — teams plural, intake, DM and group, claim exists and ordered reply proposed, memory scopes user and org exist, team proposed, member after slice one. Four: later, not foundation — OKF, hot-dynamic flow kinds, Knowledge Hub. Sequence band: instances, then conversation and board proofs, then durable delegation, then materializer. Persona FIX-796 independent. Cut band: no TeamFlow, Channel, MessageBoard, second Agent, or hot-dynamic kinds to paper over Layer 1 gaps.">
         <rect class="n-prose" x="16" y="16" width="220" height="288" rx="5"/>
         <text class="t-lbl" x="32" y="38">1 &#183; L1 UNBLOCKERS</text>
-        <text class="t-b" x="32" y="64">Conductor also cares</text>
+        <text class="t-b" x="32" y="64">floor for every seat</text>
         <text class="t-xs" x="32" y="90">FIX-1320 INSTANCES</text>
         <text class="t-xs" x="32" y="108">INST-1..3 FIRST. 1315 ABSORBED</text>
         <text class="t-xs" x="32" y="132">CROSS-FLOW #1600</text>
@@ -450,8 +442,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="740" y="150">AFTER BOOT &#183; NAMED GAP</text>
         <text class="t-xs" x="740" y="174">KNOWLEDGE HUB</text>
         <text class="t-xs" x="740" y="192">NOT A STORE. NOT RC</text>
-        <text class="t-xs" x="740" y="216">SURFACES / CONDUCTOR</text>
-        <text class="t-xs" x="740" y="234">AS EXTENSION</text>
+        <text class="t-xs" x="740" y="216">omp / ONSECURITY IMPL</text>
+        <text class="t-xs" x="740" y="234">NOT THIS SLICE</text>
         <text class="t-b" x="740" y="280">horizon. do not pull in.</text>
 
         <rect class="n-box" x="16" y="320" width="908" height="48" rx="5"/>
@@ -467,17 +459,17 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-s" x="34" y="510">no TeamFlow / Channel / MessageBoard L1 &#183; no second Agent &#183; no hot-dynamic kinds to paper over L1 gaps</text>
       </svg>
     </div>
-    <figcaption><b>One roadmap. Honest tags.</b> Slice 1 is Layer&nbsp;1 work Conductor also needs. Slice 2 is the Workforce foundation kick. Slice 3 is collab RC on that foundation. Slice 4 stays later. The readiness sequence sits on this inventory &#8212; named gaps, not a fifth slice. Harness-manager is one stack: Conductor owns the Layer&nbsp;1 path; a team/roster only names the harness as Layer&nbsp;2 config.</figcaption>
+    <figcaption><b>One roadmap. Honest tags.</b> Slice 1 is Layer&nbsp;1 work every Workforce seat needs, including a Conductor team. Slice 2 is the Workforce foundation kick. Slice 3 is collab RC on that foundation. Slice 4 stays later. The readiness sequence sits on this inventory &#8212; named gaps, not a fifth slice. One harness-manager stack: the roster names the harness as Layer&nbsp;2 config. Conductor consumes that stack. It does not own a second path.</figcaption>
   </figure>
 
   <div class="tw">
     <table>
       <thead><tr><th>Slice</th><th>Status</th><th>What is true on this pin</th><th>What would fake it</th></tr></thead>
       <tbody>
-        <tr><td>1. L1 unblockers</td><td><span class="tag t-prose">blocked-on / gap</span></td><td>Instances first: <a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a> INST-1..3 (FIX-1315 absorbed / duplicate). Cross-flow still refused (<a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open). FIX-1246 resume is backlog and <em>separate</em> from FIX-957 durable delegation. Member memory is a named scope gap &#8212; identity lives on agent/member, not on the seat. Same-flow DM address, reverse <code>{ from: true }</code>, and <code>claim</code> already exist. Conductor cares about this slice too.</td><td>Pretending cross-flow landed. A hot-dynamic kind or TeamFlow so two seats of one kind can talk. Putting memory on the seat to skip the member-scope gap. Inventing a delivery bus, a dynamic dispatcher, or a second Workforce task store.</td></tr>
+        <tr><td>1. L1 unblockers</td><td><span class="tag t-prose">blocked-on / gap</span></td><td>Instances first: <a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a> INST-1..3 (FIX-1315 absorbed / duplicate). Cross-flow still refused (<a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1600">#1600</a> open). FIX-1246 resume is backlog and <em>separate</em> from FIX-957 durable delegation. Member memory is a named scope gap &#8212; identity lives on agent/member, not on the seat. Same-flow DM address, reverse <code>{ from: true }</code>, and <code>claim</code> already exist. Multi-hire and cross-seat wait here. Every Workforce team, including Conductor, waits on this floor.</td><td>Pretending cross-flow landed. A hot-dynamic kind or TeamFlow so two seats of one kind can talk. Putting memory on the seat to skip the member-scope gap. Inventing a delivery bus, a dynamic dispatcher, or a second Workforce task store.</td></tr>
         <tr><td>2. Workforce foundation L2</td><td><span class="tag t-prop">proposed</span></td><td>File conventions are this page (<code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>). No such tree on main. Scan&#8594;<code>defineFlow</code> is a named gap &#8212; no <code>loadWorkforce()</code>. Thin seats (intake, coordinator) stop there and skip <code>AgentRegistry</code>. <code>defineAgent</code> / registry only when the seat is an opinionated agent. Seat&#8594;worker factory is a proposed wrapper. Thin Agent opinion sits on the existing core seam; impl is already L2. Clean <code>materializeAgent</code> (FIX-1327) before teams harden.</td><td>A second Agent type in the Workforce package. Scanning every seat into <code>AgentRegistry</code>. Nesting today&#8217;s L1 under Workforce as if foundation shipped. Inventing the loader as an export. Hardening teams on the skill-forced materializer.</td></tr>
         <tr><td>3. Collab RC</td><td><span class="tag t-prop">proposed</span></td><td>Teams plural, intake, room helpers: proposed. Same-flow DM / group fan-out and <code>claim</code> exist. Ordered reply is proposed. User and org resource scopes exist. Team knowledge is proposed convention. Member memory waits on slice&nbsp;1.</td><td>A one-team-only API. A <code>TeamFlow</code>. Channel / MessageBoard L1. Cross-team dispatch that hides the #1600 refuse.</td></tr>
-        <tr><td>4. Later</td><td><span class="tag t-gone">horizon</span></td><td>OKF is retrieval / graph over the stores in <a href="#memory">&#167;07</a>. Hot-dynamic flow kinds after boot stay a named gap. Knowledge Hub is not a store and not an RC gate. Surfaces and Conductor-as-extension wait. Strategy owns GTM.</td><td>Pulling OKF, a knowledge hub, or hot-dynamic kinds into foundation so the atlas looks finished.</td></tr>
+        <tr><td>4. Later</td><td><span class="tag t-gone">horizon</span></td><td>OKF is retrieval / graph over the stores in <a href="#memory">&#167;07</a>. Hot-dynamic flow kinds after boot stay a named gap. Knowledge Hub is not a store and not an RC gate. <code>omp</code> integration and an OnSecurity impl wait. Conductor-as-config is the lock, not a later peel-off. Strategy owns GTM.</td><td>Pulling OKF, a knowledge hub, or hot-dynamic kinds into foundation so the atlas looks finished. Claiming <code>omp</code> or OnSecurity shipped.</td></tr>
       </tbody>
     </table>
   </div>
@@ -1808,46 +1800,46 @@ const board = <b>taskBoard</b>({
       <p>If that harness already has subscriptions, the seat inherits them. No new subscription primitive.</p>
     </div>
     <div class="card" style="--tc: var(--prose)">
-      <h5>One manager stack</h5><span class="role">conductor track</span>
-      <p>The consumer path is Conductor&#8217;s harness-manager. Workforce does not get a second one. Proposed until that path exists.</p>
+      <h5>One manager stack</h5><span class="role">exists · one package</span>
+      <p><code>@flow-state-dev/harness-manager</code> is the stack. A Workforce seat names which harness fills it. Conductor is a consumer, not a second path. <code>omp</code> is a proposed filler, not in tree.</p>
     </div>
   </div>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 280" role="img" aria-label="Proposed Layer 2: a team seat names which harness the worker runs on, and inherits that harness's subscriptions when those exist. The consumer is Conductor's harness-manager track, one stack. A cut box refuses a second Workforce harness-manager and a new Layer 1 harness or subscription type. The two products stay triangulated: same stack, different consumer, not one product.">
+      <svg viewBox="0 0 940 280" role="img" aria-label="A Workforce team seat names which harness the worker runs on, and inherits that harness's subscriptions when those exist. One harness-manager stack exists as a package. Conductor is a consumer team config. omp can fill a coding seat and is proposed. A cut box refuses a second Conductor-only harness path, a new Layer 1 harness type, and the parked 1612 console half.">
         <rect class="n-prop" x="16" y="16" width="292" height="176" rx="5"/>
         <text class="t-lbl" x="34" y="38">TEAM SEAT &#183; PROPOSED</text>
         <text class="t-b f-accent" x="34" y="64">names a harness</text>
-        <text class="t-s" x="34" y="92">claude-code &#183; codex &#183; &#8230;</text>
-        <text class="t-xs" x="34" y="114">INHERIT THAT HARNESS&#8217;S</text>
-        <text class="t-xs" x="34" y="132">SUBSCRIPTIONS WHEN THEY EXIST</text>
+        <text class="t-s" x="34" y="92">claude-code &#183; codex &#183; omp</text>
+        <text class="t-xs" x="34" y="114">omp = OPINIONATED PI HARNESS</text>
+        <text class="t-xs" x="34" y="132">PROPOSED. NOT IN TREE.</text>
         <text class="t-xs" x="34" y="158">NOT A FILE IN THE FOLDER</text>
         <text class="t-xs" x="34" y="176">A FIELD ON THE SEAT</text>
 
-        <rect class="n-prop" x="324" y="16" width="292" height="176" rx="5"/>
-        <text class="t-lbl" x="342" y="38">ONE STACK &#183; CONDUCTOR TRACK</text>
-        <text class="t-b f-accent" x="342" y="64">harness-manager</text>
-        <text class="t-s" x="342" y="92">the L1 consumer path</text>
-        <text class="t-xs" x="342" y="114">PROPOSED UNTIL THAT PATH EXISTS</text>
-        <text class="t-xs" x="342" y="132">WORKFORCE CONSUMES. IT DOES NOT BUILD.</text>
-        <text class="t-xs" x="342" y="158">SAME STACK. DIFFERENT CONSUMER.</text>
-        <text class="t-xs" x="342" y="176">NOT ONE PRODUCT.</text>
+        <rect class="n-code" x="324" y="16" width="292" height="176" rx="5"/>
+        <text class="t-lbl f-code" x="342" y="38">ONE STACK &#183; EXISTS</text>
+        <text class="t-b f-code" x="342" y="64">harness-manager</text>
+        <text class="t-s" x="342" y="92">the package on main</text>
+        <text class="t-xs" x="342" y="114">WORKFORCE SEAT NAMES THE FILLER</text>
+        <text class="t-xs" x="342" y="132">CONDUCTOR CONSUMES. IT DOES NOT FORK.</text>
+        <text class="t-xs" x="342" y="158">ONE PRODUCT. ONE STACK.</text>
+        <text class="t-xs" x="342" y="176">SEAT WIRING STILL PROPOSED</text>
 
         <rect class="n-prose" x="632" y="16" width="292" height="176" rx="5"/>
         <text class="t-lbl" x="650" y="38">CUT</text>
-        <text class="t-b" x="650" y="64">no second manager</text>
-        <text class="t-xs" x="650" y="92">NO WORKFORCE HARNESS-MANAGER</text>
+        <text class="t-b" x="650" y="64">no second path</text>
+        <text class="t-xs" x="650" y="92">NO CONDUCTOR-ONLY MANAGER</text>
         <text class="t-xs" x="650" y="114">NO NEW L1 HARNESS TYPE</text>
         <text class="t-xs" x="650" y="132">NO NEW L1 SUBSCRIPTION TYPE</text>
-        <text class="t-xs" x="650" y="158">INHERIT WHAT EXISTS</text>
-        <text class="t-xs" x="650" y="176">DO NOT INVENT THE DOOR</text>
+        <text class="t-xs" x="650" y="158">#1612 CONSOLE HALF PARKED</text>
+        <text class="t-xs" x="650" y="176">DOES NOT RIDE WORKFORCE</text>
 
         <rect class="n-box" x="16" y="208" width="908" height="56" rx="5"/>
-        <text class="t-s" x="34" y="242">Conductor chooses a harness per task. Workforce names one per team seat. One manager stack. Two consumers.</text>
+        <text class="t-s" x="34" y="242">The seat names the harness. One manager stack. Conductor is a Workforce team, not a second consumer product.</text>
       </svg>
     </div>
-    <figcaption><b>The seat names the harness.</b> Proposed Layer&nbsp;2: a team entry can name which harness that worker runs on, and inherit that harness&#8217;s subscriptions when those exist. The consumer path is Conductor&#8217;s harness-manager track &#8212; one stack. Workforce does not get a second manager, and this page does not invent a Layer&nbsp;1 harness or subscription type. Marked proposed until that path exists. Same stack, different consumer; not one product.</figcaption>
+    <figcaption><b>The seat names the harness.</b> A team entry can name which harness that worker runs on, and inherit that harness&#8217;s subscriptions when those exist. The stack is <code>@flow-state-dev/harness-manager</code> &#8212; it exists. Seat-as-config is proposed Layer&nbsp;2. <code>omp</code> is a named filler, not integrated. Do not invent a Layer&nbsp;1 harness type, and do not grow a Conductor-only path beside Workforce.</figcaption>
   </figure>
 
   <div class="tw">
@@ -1858,7 +1850,7 @@ const board = <b>taskBoard</b>({
         <tr><td>Shared boards</td><td>The board is the working set. Each subscriber is woken in their own session via <code>dispatcher()</code>. No Team primitive, and no shared group session.</td></tr>
         <tr><td>Address the team</td><td>An intake seat on that team &#8212; a worker with a static DM. See <a href="#intake">&#167;11</a> and <a href="#fence">&#167;04</a>.</td></tr>
         <tr><td>Built-ins</td><td>Librarian, chief of staff, intake coordinator: same contract, shipped as team rows when the factory exists. The board coordinator that files ordered reply tasks is this kind of row, not a new type. See <a href="#channels">&#167;08</a>.</td></tr>
-        <tr><td>A named harness on the seat</td><td>The team is still a list of worker flow kinds. Naming a harness is Layer&nbsp;2 convention on that row. The run rides Conductor&#8217;s harness-manager track. No Harness type, and no second manager. Proposed until that path exists.</td></tr>
+        <tr><td>A named harness on the seat</td><td>The team is still a list of worker flow kinds. Naming a harness is Layer&nbsp;2 convention on that row. The run rides the one harness-manager stack. No Harness type, and no second manager. Seat field proposed. <code>omp</code> as a filler is proposed.</td></tr>
         <tr><td><strong>When it is not a team</strong></td><td>One worker and no shared board. Then the folder buys nothing and should not exist.</td></tr>
       </tbody>
     </table>
@@ -1880,12 +1872,12 @@ const team = <b>defineResourceCollection</b>({
 <i>// Do not write teams/[teamId]/* — a parameterized matcher treats * as a literal segment.</i></pre>
 
   <pre class="code"><i>// PROPOSED &#8212; a field on the keyed team row. Not a file. Not a Layer 1 Harness type.</i>
-<i>// The run rides Conductor&#8217;s harness-manager track when that path exists.</i>
+<i>// The run rides the one harness-manager stack. omp is a named filler, not in tree.</i>
 {
   team: <em>"engineering"</em>,
   flowKind: <em>"eng-manager"</em>,
   role: <em>"staff-issues"</em>,
-  harness: <em>"claude-code"</em>,   <i>// inherit that harness&#8217;s subscriptions if they exist</i>
+  harness: <em>"omp"</em>,   <i>// or "claude-code" / "codex". inherit that harness&#8217;s subscriptions if they exist</i>
 }</pre>
 </section>
 
@@ -2154,46 +2146,48 @@ const replyToSender = <b>dispatcher</b>({
 </section>
 
 <section id="conductor">
-  <div class="sec-head"><span class="sec-num">15</span><h2>Conductor</h2></div>
-  <p class="lede">This cycle, Conductor is a <strong>thin shell on Layer&nbsp;1 dispatch</strong>. It does not wait on a Workforce package, including a foundation kick. It <em>does</em> care about slice&nbsp;1 of the build-out (cross-flow, resume, bare-kind, member memory). Conductor-as-a-coding-extension-on-Workforce is slice 4, not a dependency arrow. If a team seat names a harness, it rides Conductor&#8217;s harness-manager track &#8212; one stack; team/roster only names the harness as L2 config &#8212; once that path exists. The two products stay triangulated. GTM timing is Strategy.</p>
+  <div class="sec-head"><span class="sec-num">15</span><h2>Conductor as a Workforce config</h2></div>
+  <p class="lede">The lock: <strong>Workforce is the product. Conductor is one Workforce team</strong> whose seats include coding-harness workers. The roster names the harness. <code>omp</code> can fill that seat for now &#8212; proposed, not integrated. One harness-manager stack. Do not grow a Conductor-only path beside Workforce. The old lock &#8212; separate tracks, later triangulation, Conductor-as-L3-on-Workforce as a horizon &#8212; is <strong>superseded</strong>. GTM timing is Strategy.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 300" role="img" aria-label="Now versus horizon. Left solid: this cycle, Conductor sits directly on Layer 1 dispatch, Workforce is this page, no wait. Right dashed: later horizon, Conductor may sit as a coding extension on a built Workforce factory. A band underneath: do not invert the arrow this cycle.">
+      <svg viewBox="0 0 940 300" role="img" aria-label="Exists versus proposed for Conductor as a Workforce config. Left solid: the lock exists as Layer 2 convention. Workforce is the product. Conductor is a team config. One harness-manager package. Layer 1 stays substrate. Right dashed: wiring is still proposed. Factory, seat-to-harness bind, omp integration, and Conductor lab actually sitting on a Workforce team are not built. A band underneath: do not grow Conductor-only surfaces that skip Workforce, including the parked 1612 console half.">
         <rect class="n-code" x="16" y="16" width="446" height="200" rx="5"/>
-        <text class="t-lbl f-code" x="34" y="38">NOW &#183; THIS CYCLE</text>
-        <text class="t-b" x="34" y="68">Conductor on L1</text>
-        <text class="t-s" x="34" y="96">thin shell &#183; dispatch spine</text>
-        <text class="t-xs" x="34" y="120">DOES NOT WAIT ON WORKFORCE</text>
-        <text class="t-xs" x="34" y="138">WORKFORCE IS THIS PAGE</text>
-        <text class="t-xs" x="34" y="164">IF CONDUCTOR NEEDS A DOOR,</text>
-        <text class="t-xs" x="34" y="182">IT FILES A LAYER 1 GAP</text>
+        <text class="t-lbl f-code" x="34" y="38">EXISTS AS CONVENTION / LOCK</text>
+        <text class="t-b" x="34" y="68">Conductor is a team</text>
+        <text class="t-s" x="34" y="96">Workforce is the product</text>
+        <text class="t-xs" x="34" y="120">ONE HARNESS-MANAGER PACKAGE</text>
+        <text class="t-xs" x="34" y="138">L1 STAYS SUBSTRATE</text>
+        <text class="t-xs" x="34" y="164">LAB STILL SITS ON L1 DISPATCH</text>
+        <text class="t-xs" x="34" y="182">THAT IS HONEST, NOT A SIBLING SHIP</text>
 
         <rect class="n-prop" x="478" y="16" width="446" height="200" rx="5"/>
-        <text class="t-lbl" x="496" y="38">LATER &#183; HORIZON ONLY</text>
-        <text class="t-b f-accent" x="496" y="68">Conductor on Workforce</text>
-        <text class="t-s" x="496" y="96">coding extension &#183; proposed</text>
-        <text class="t-xs" x="496" y="120">A CODING TEAM ON THE FACTORY</text>
-        <text class="t-xs" x="496" y="138">NOT A THIS-CYCLE BUILD</text>
-        <text class="t-xs" x="496" y="164">DO NOT INVERT THE ARROW</text>
-        <text class="t-xs" x="496" y="182">AND CALL IT A DEPENDENCY</text>
+        <text class="t-lbl" x="496" y="38">PROPOSED &#183; THE WIRING</text>
+        <text class="t-b f-accent" x="496" y="68">seat &#8594; harness bind</text>
+        <text class="t-s" x="496" y="96">factory &#183; omp filler &#183; team scan</text>
+        <text class="t-xs" x="496" y="120">CONDUCTOR LAB ON A WORKFORCE TEAM</text>
+        <text class="t-xs" x="496" y="138">NOT BUILT. DO NOT CLAIM IT.</text>
+        <text class="t-xs" x="496" y="164">NOT A LATER PEEL-OFF</text>
+        <text class="t-xs" x="496" y="182">THE LOCK IS NOW. THE WIRE IS NOT.</text>
 
         <rect class="n-box" x="16" y="232" width="908" height="52" rx="5"/>
-        <text class="t-s" x="34" y="264">The coding product ships first. The later stack is allowed. Waiting on it is not.</text>
+        <text class="t-s" x="34" y="264">Park Conductor-only surfaces that skip Workforce. #1612 console half (PI-1..3) is that cut.</text>
       </svg>
     </div>
-    <figcaption><b>Do not invert the arrow.</b> Conductor may later be a Workforce team with a coding job. That is a peel-off, after the factory exists. This cycle the shell sits on Layer&nbsp;1, and this page keeps the factory honest enough that the peel-off is still possible.</figcaption>
+    <figcaption><b>Lock now. Wire later.</b> Conductor-as-config is the product lock, not a slice-4 horizon. What exists is the convention plus one harness-manager package plus a Conductor lab that still sits on Layer&nbsp;1. What is proposed is the seat bind, the factory, and <code>omp</code> in that seat. Do not invert that honesty into &#8220;two products.&#8221;</figcaption>
   </figure>
 
   <div class="tw">
     <table>
-      <thead><tr><th>Claim</th><th>Whose opinion</th><th>What being wrong costs</th></tr></thead>
+      <thead><tr><th>Claim</th><th>Status</th><th>What being wrong costs</th></tr></thead>
       <tbody>
-        <tr><td>A session is owned by a workflow</td><td>Conductor</td><td>Right for an SDLC meta-harness. Fatal as a Layer&nbsp;1 law, because a Workforce DM <em>is</em> a session of a worker flow, and each group subscriber&#8217;s session is too.</td></tr>
+        <tr><td>Workforce is the shippable product</td><td><span class="tag t-real">lock</span></td><td>Treating Conductor as a sibling ship or a parallel Proof. Growing Conductor-only surface that skips Workforce.</td></tr>
+        <tr><td>Conductor is a Workforce team config</td><td><span class="tag t-real">lock</span> <span class="tag t-prop">wiring proposed</span></td><td>The lock is now. The lab still sits on Layer&nbsp;1 dispatch. Claiming the wire shipped is a lie. Leaving the lock as &#8220;later triangulation&#8221; is the superseded sentence.</td></tr>
+        <tr><td>A session is owned by a workflow</td><td>Conductor opinion</td><td>Right for an SDLC team. Fatal as a Layer&nbsp;1 law, because a Workforce DM <em>is</em> a session of a worker flow, and each group subscriber&#8217;s session is too.</td></tr>
         <tr><td>A worker is a flow; knowledge is resource scopes</td><td>Workforce convention</td><td>Four uses of existing <code>user</code> / <code>org</code> rows &#8212; <a href="#memory">&#167;07</a>. Do not replace it with a Knowledge type, a field on <code>Agent</code>, or OKF in foundation.</td></tr>
         <tr><td>Talk is <code>dispatcher()</code></td><td>Layer 1, already true</td><td>A Workforce-shaped messenger beside <code>dispatcher()</code> is a second send door. Relay (<strong>FIX-1197</strong>) is that same door, not a new one.</td></tr>
-        <tr><td>Conductor waits on Workforce</td><td>False this cycle</td><td>The coding product stalls on a factory that is not being built. A foundation kick does not invert this. Phase 4 only.</td></tr>
-        <tr><td>A team seat names a harness</td><td>Workforce convention, proposed</td><td>Same manager stack as Conductor. Different consumer. Wait until that path exists. Do not merge the two products, and do not invent a second manager.</td></tr>
+        <tr><td>A team seat names a harness</td><td>Workforce convention, proposed</td><td>One manager stack. Conductor consumes it. <code>omp</code> may fill the seat and is not in tree. Do not invent a second manager.</td></tr>
+        <tr><td>Conductor-only console (#1612 PI-1..3)</td><td><span class="tag t-gone">cut / park</span></td><td>Does not ride Workforce. Park it. Do not grow it into a second product face.</td></tr>
       </tbody>
     </table>
   </div>
@@ -2201,7 +2195,7 @@ const replyToSender = <b>dispatcher</b>({
 
 <section id="exists">
   <div class="sec-head"><span class="sec-num">16</span><h2>What exists today</h2></div>
-  <p class="lede">A package, a type, a dispatcher, session routes, a board. Nothing below is the factory. Read every &#8220;Workforce&#8221; claim against this inventory, not against the intended harness.</p>
+  <p class="lede">A package, a type, a dispatcher, session routes, a board, one harness-manager. Nothing below is the factory. Read every &#8220;Workforce&#8221; claim against this inventory. Conductor-as-config is the lock; the wire is not on this pin.</p>
 
   <div class="tw">
     <table>
@@ -2229,7 +2223,11 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td>Workforce tree scan into <code>defineFlow</code></td><td><span class="tag t-prose">named gap</span></td><td><code>defineFlow</code> is explicit. <code>createAgentRegistry</code> takes an in-memory <code>Agent[]</code>. No directory loader on main walks <code>org/</code> · <code>teams/</code> · <code>workers/</code>. Do not invent <code>loadWorkforce()</code>. If a scan lands, every seat calls <code>defineFlow</code>. Thin seats skip the registry. <code>defineAgent</code> / <code>AgentRegistry</code> only when that seat is an opinionated agent. No second registry. No auto-reg of Team / Channel / Project / MessageBoard types. See <a href="#files">&#167;06</a>.</td></tr>
         <tr><td>New seat = add the file</td><td><span class="tag t-prop">proposed</span></td><td>A new team seat is a folder on the same path bootstrap would scan. Not a runtime join API. Hot-dynamic flow kinds after boot are a named gap. Architect: load-time file + scan.</td></tr>
         <tr><td><code>projects/</code> code tree / <code>Project</code> L1 type</td><td><span class="tag t-gone">cut</span></td><td>Does not exist. Projects are resources / boards / sessions / content. Same pattern as plan = board + <code>readContent()</code>. No folder beside <code>teams/</code>.</td></tr>
-        <tr><td>Keyed teams + harness on the seat</td><td><span class="tag t-prop">proposed</span></td><td>A seat is <code>teamId</code> + row. It can name a harness and inherit that harness&#8217;s subscriptions when they exist. One team in the map is fine. A singleton with no key is not. The consumer is Conductor&#8217;s harness-manager track. No second manager. No Team type. Not on main.</td></tr>
+        <tr><td>Keyed teams + harness on the seat</td><td><span class="tag t-prop">proposed</span></td><td>A seat is <code>teamId</code> + row. It can name a harness and inherit that harness&#8217;s subscriptions when they exist. One team in the map is fine. A singleton with no key is not. The stack is <code>@flow-state-dev/harness-manager</code>. Conductor is a consumer team. No second manager. No Team type. Seat field not on main.</td></tr>
+        <tr><td>Conductor as a Workforce team</td><td><span class="tag t-real">lock</span> <span class="tag t-prop">wiring proposed</span></td><td>The product lock: Conductor is one Workforce config, not a sibling. The lab still sits on Layer&nbsp;1 dispatch. Factory, seat&#8594;harness bind, and <code>omp</code> in that seat are proposed. See <a href="#conductor">&#167;15</a>.</td></tr>
+        <tr><td><code>@flow-state-dev/harness-manager</code></td><td><span class="tag t-real">exists</span></td><td>The one supervised-run stack. Slot takes a harness factory. Claude Code and Codex fill it today. No <code>omp</code> package on this pin.</td></tr>
+        <tr><td><code>omp</code> (opinionated Pi harness)</td><td><span class="tag t-prop">proposed</span></td><td>A named harness that can fill a coding seat. Not in tree. Do not claim integration.</td></tr>
+        <tr><td>#1612 operator-console half (PI-1..3)</td><td><span class="tag t-gone">cut / park</span></td><td>Conductor-only surface that does not ride Workforce. Park it. Do not grow a second product face from it.</td></tr>
         <tr><td>Room helpers (<code>openDm</code>, <code>fanOutBoardPost</code>, &#8230;)</td><td><span class="tag t-prop">proposed</span></td><td>Named wrappers over Layer&nbsp;1 already in this table. Multi-team from day one: <code>{ team, seat }</code>, rooms addressable across teams. Not exports. See <a href="#api">&#167;17</a>. Same-flow fan-out exists; the helper is the name.</td></tr>
         <tr><td>Team intake seat + <code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Every team names an intake worker with a static DM. Address-the-team is that session. Capability. See <a href="#intake">&#167;11</a> and <a href="#fence">&#167;04</a>. <code>createWorkforceCapability</code> is still a stub &#8212; do not read it as this.</td></tr>
         <tr><td>Build-out / teams plural</td><td><span class="tag t-prop">proposed</span></td><td>The 1&#8594;4 roadmap this page teaches. Slice 3 is N keyed teams + shared rooms + cross-team dispatch. Still L2. Cross-flow refused on this pin. See <a href="#vision">&#167;03</a>.</td></tr>
@@ -2374,11 +2372,11 @@ const replyToSender = <b>dispatcher</b>({
 
 <section id="gates">
   <div class="sec-head"><span class="sec-num">19</span><h2>RC gates</h2></div>
-  <p class="lede">Strategy&#8217;s gates for Workforce RC. Taught here as <strong>proposed until they are true</strong>. Not a calendar. Timing is after foundation plus teams-plural dogfood &#8212; FSD and one client-shaped use. GTM timing stays Strategy. Conductor triangulation does not move.</p>
+  <p class="lede">Strategy&#8217;s gates for Workforce RC. Taught here as <strong>proposed until they are true</strong>. Not a calendar. Timing is after foundation plus teams-plural dogfood &#8212; FSD and one client-shaped use. GTM timing stays Strategy. Conductor-as-config is the lock; the wiring is still proposed.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 380" role="img" aria-label="Five Strategy RC gates, all proposed until true. One: teams plural dogfood, N teams plus shared rooms plus cross-team dispatch. Two: reverse plus cross-flow fire-and-forget on the floor. Three: honest exists versus proposed, no fake Layer 1. Four: an outsider can install multi-team without babysitting substrate. Five: Conductor-as-extension stays proposed; RC does not wait on Conductor, Conductor thin shell does not wait on full Workforce RC. A cut band lists what is not an RC gate: OKF, Slack-style web face, Pi, paid packaging.">
+      <svg viewBox="0 0 940 380" role="img" aria-label="Five Strategy RC gates, all proposed until true. One: teams plural dogfood, N teams plus shared rooms plus cross-team dispatch. Two: reverse plus cross-flow fire-and-forget on the floor. Three: honest exists versus proposed, no fake Layer 1. Four: an outsider can install multi-team without babysitting substrate. Five: Conductor stays a Workforce team config; do not grow Conductor-only surfaces; wiring still proposed. A cut band lists what is not an RC gate: OKF, Slack-style web face, omp integration, paid packaging.">
         <rect class="n-prop" x="16" y="16" width="176" height="200" rx="5"/>
         <text class="t-lbl" x="28" y="38">1</text>
         <text class="t-b f-accent" x="28" y="64">teams plural</text>
@@ -2418,23 +2416,23 @@ const replyToSender = <b>dispatcher</b>({
 
         <rect class="n-prop" x="760" y="16" width="164" height="200" rx="5"/>
         <text class="t-lbl" x="772" y="38">5</text>
-        <text class="t-b f-accent" x="772" y="64">stay triangulated</text>
-        <text class="t-xs" x="772" y="90">RC DOES NOT WAIT</text>
-        <text class="t-xs" x="772" y="108">ON CONDUCTOR</text>
-        <text class="t-xs" x="772" y="126">CONDUCTOR SHELL</text>
-        <text class="t-xs" x="772" y="144">DOES NOT WAIT ON</text>
-        <text class="t-xs" x="772" y="162">FULL WORKFORCE RC</text>
-        <text class="t-xs" x="772" y="184">EXTENSION STAYS PROPOSED</text>
+        <text class="t-b f-accent" x="772" y="64">one product</text>
+        <text class="t-xs" x="772" y="90">CONDUCTOR = CONFIG</text>
+        <text class="t-xs" x="772" y="108">NOT A SIBLING SHIP</text>
+        <text class="t-xs" x="772" y="126">NO CONDUCTOR-ONLY</text>
+        <text class="t-xs" x="772" y="144">SURFACE THAT SKIPS</text>
+        <text class="t-xs" x="772" y="162">WORKFORCE</text>
+        <text class="t-xs" x="772" y="184">WIRING STILL PROPOSED</text>
 
         <rect class="n-box" x="16" y="232" width="908" height="48" rx="5"/>
         <text class="t-s" x="34" y="262">Timing: after foundation + teams-plural dogfood (FSD + one client-shaped use). Not a calendar. GTM is Strategy.</text>
 
         <rect class="n-prose" x="16" y="296" width="908" height="68" rx="5"/>
         <text class="t-lbl" x="34" y="318">NOT RC GATES</text>
-        <text class="t-s" x="34" y="344">OKF &#183; Slack-style web face &#183; Pi &#183; paid packaging. Later / Strategy. Do not stall RC on them.</text>
+        <text class="t-s" x="34" y="344">OKF &#183; Slack-style web face &#183; omp integration &#183; paid packaging. Later / Strategy. Do not stall RC on them.</text>
       </svg>
     </div>
-    <figcaption><b>Gates are claims. Mark them proposed until they hold.</b> Reverse already exists. Cross-flow does not. Gate 2 is therefore unmet. Gate 5 is a stay-true, not a ship-Conductor-as-extension. OKF, a Slack-style face, Pi, and paid packaging are not on this list.</figcaption>
+    <figcaption><b>Gates are claims. Mark them proposed until they hold.</b> Reverse already exists. Cross-flow does not. Gate 2 is therefore unmet. Gate 5 is the product lock: Conductor stays a Workforce config. It is not a ship-<code>omp</code> gate and not a later triangulation. OKF, a Slack-style face, <code>omp</code> integration, and paid packaging are not on this list.</figcaption>
   </figure>
 
   <div class="tw">
@@ -2445,7 +2443,7 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td>2</td><td>Reverse + cross-flow fire-and-forget on the floor</td><td><span class="tag t-prop">proposed</span></td><td>Reverse <code>{ from: true }</code> <strong>exists</strong>. Cross-flow is still refused. The gate needs both. Do not call it met.</td></tr>
         <tr><td>3</td><td>Honest exists-vs-proposed &#8212; no fake Layer&nbsp;1</td><td><span class="tag t-prop">proposed</span></td><td>This page is the drill. The gate is that the tags still match the tree at RC. Teaching it now is not the same as holding it at ship.</td></tr>
         <tr><td>4</td><td>An outsider can install multi-team without babysitting substrate</td><td><span class="tag t-prop">proposed</span></td><td>Not true. Helpers are names. The factory is not an export. Kitchen-sink does not import the package.</td></tr>
-        <tr><td>5</td><td>Conductor-as-extension stays proposed</td><td><span class="tag t-prop">proposed</span></td><td>RC does not wait on Conductor. The Conductor thin shell does not wait on full Workforce RC. Extension is phase 4. Do not invert either arrow to close a gate.</td></tr>
+        <tr><td>5</td><td>Conductor stays a Workforce config &#8212; no sibling ship</td><td><span class="tag t-real">lock</span> <span class="tag t-prop">wiring proposed</span></td><td>The lock holds now. The wire does not. Do not grow a Conductor-only surface that skips Workforce. Do not reopen &#8220;later triangulation.&#8221; RC still does not wait on an OnSecurity impl or <code>omp</code>.</td></tr>
       </tbody>
     </table>
   </div>
@@ -2456,7 +2454,7 @@ const replyToSender = <b>dispatcher</b>({
       <tbody>
         <tr><td>OKF</td><td>Later retrieval / graph over the stores in <a href="#memory">&#167;07</a>. Foundation writes team goals and lessons as resources. Not a Workforce dependency and not a store of its own.</td></tr>
         <tr><td>Slack-style web face</td><td>Later. Surfaces. Not this page.</td></tr>
-        <tr><td>Pi</td><td>Later / Strategy. Not a Workforce RC gate.</td></tr>
+        <tr><td><code>omp</code> / Pi harness</td><td>Proposed seat filler. Later / Strategy. Not a Workforce RC gate. Do not claim integration.</td></tr>
         <tr><td>Paid packaging</td><td>Strategy. GTM timing is not this page.</td></tr>
       </tbody>
     </table>
@@ -2470,11 +2468,11 @@ const replyToSender = <b>dispatcher</b>({
 
 <section id="cuts">
   <div class="sec-head"><span class="sec-num">20</span><h2>Cuts</h2></div>
-  <p class="lede">Held on purpose. Do not invent these because the thought exists. A seat binds a worker. Product Agent is L2. Foundation is a thin wrapper over today&#8217;s Layer&nbsp;1, keyed for N teams, with an intake seat on each. A <code>TeamFlow</code>, a second Agent type, or a second dispatch surface is how that kick fails. A one-team-only API is how slice 3 becomes a rewrite. RC gates stay proposed until they are true. Conductor does not wait on the package. GTM is not this page.</p>
+  <p class="lede">Held on purpose. Do not invent these because the thought exists. A seat binds a worker. Product Agent is L2. Foundation is a thin wrapper over today&#8217;s Layer&nbsp;1, keyed for N teams, with an intake seat on each. A <code>TeamFlow</code>, a second Agent type, or a second dispatch surface is how that kick fails. A one-team-only API is how slice 3 becomes a rewrite. RC gates stay proposed until they are true. Conductor is a Workforce config, not a sibling ship. GTM is not this page.</p>
 
   <div class="tension">
-    <h5>This page teaches the RC target. It does not ship the package</h5>
-    <p>Updating this atlas is the work. Implementing helpers is a later kick, if Jake takes it. Conductor does not wait. Atlas-only may merge. Strategy owns GTM timing.</p>
+    <h5>This page teaches the product lock. It does not ship the factory</h5>
+    <p>Workforce is the product. Conductor is a team on it. Updating this atlas is the work. Implementing helpers is a later kick. Atlas-only may merge. Strategy owns GTM timing.</p>
   </div>
 
   <div class="tension">
@@ -2533,8 +2531,8 @@ const replyToSender = <b>dispatcher</b>({
   </div>
 
   <div class="tension">
-    <h5>No second harness-manager. No Layer 1 harness type</h5>
-    <p>A team seat may name a harness and inherit subscriptions that already exist. The consumer is Conductor&#8217;s harness-manager track &#8212; one stack. Workforce does not get its own manager, and it does not invent a harness or subscription primitive. Marked proposed until that path exists. Triangulate; do not merge Conductor and Workforce harnesses on this page into one product.</p>
+    <h5>No second harness-manager. No Layer 1 harness type. No Conductor-only path</h5>
+    <p>A team seat may name a harness and inherit subscriptions that already exist. The stack is <code>@flow-state-dev/harness-manager</code> &#8212; one package. Conductor consumes it as a Workforce team. Do not invent a harness or subscription primitive. Seat field proposed. <code>omp</code> as a filler is proposed, not in tree. Park Conductor-only surfaces that skip Workforce, including the #1612 operator-console half (PI-1..3).</p>
   </div>
 
   <div class="tension">
@@ -2548,8 +2546,8 @@ const replyToSender = <b>dispatcher</b>({
   </div>
 
   <div class="tension">
-    <h5>OKF, a Slack-style web face, Pi, and paid packaging are not RC gates</h5>
-    <p>They are later or Strategy. Do not stall <a href="#gates">&#167;19</a> on them. GTM timing stays off this page.</p>
+    <h5>OKF, a Slack-style web face, <code>omp</code> integration, and paid packaging are not RC gates</h5>
+    <p>They are later or Strategy. Do not stall <a href="#gates">&#167;19</a> on them. Do not claim <code>omp</code> or OnSecurity shipped. GTM timing stays off this page.</p>
   </div>
 
   <div class="tension">
@@ -2565,7 +2563,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is one worker contract on Layer&nbsp;1 &#8212; a sequencer flow; generator calls do not mint a second type. A seat is a roster slot that binds a worker, not an Agent. Thin seats skip <code>AgentRegistry</code> and member memory. Product Agent is L2 opinion (sequencer + generators + persona + member memory). The core <code>Agent</code> / <code>AgentRegistry</code> types are the thin seam; do not grow them; do not delete them; engine never sees the registry as product. The target is RC collaboration: teams, plural. Build-out is 1&#8594;4. Readiness is named gaps on that inventory &#8212; instances, then conversation + board proofs, then durable delegation, then the materializer. A roster is a seat-list. A team is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders are <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. Projects live as resources, boards, sessions, and content &#8212; no <code>projects/</code> tree, no <code>Project</code> type. A new seat is a file on that path. Scan feeds today&#8217;s <code>defineFlow</code> for every seat; <code>AgentRegistry</code> only when that seat is an opinionated agent. A tree scan is a named gap. Hot-dynamic kinds after boot are a named gap. Address-the-team is an intake seat, a worker with a static DM. Identity lives on agent/member scope, not on the seat. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources. Member identity is the named gap &#8212; prove <code>flowIsolation</code> first. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2. RC gates are proposed until they are true. No second Agent. No second registry. No one-team-only API. Cross-flow is still refused on this pin. Conductor does not wait. GTM is Strategy.</p>
+    <p>Workforce is the Layer&nbsp;2 product: one worker contract on Layer&nbsp;1 &#8212; a sequencer flow; generator calls do not mint a second type. A seat is a roster slot that binds a worker, not an Agent. Thin seats skip <code>AgentRegistry</code> and member memory. Product Agent is L2 opinion (sequencer + generators + persona + member memory). The core <code>Agent</code> / <code>AgentRegistry</code> types are the thin seam; do not grow them; do not delete them; do not fold Workforce into core; engine never sees the registry as product. Conductor is one Workforce team whose seats include coding-harness workers. The roster names the harness. <code>omp</code> can fill that seat and is proposed, not integrated. One harness-manager stack. Park Conductor-only surfaces that skip Workforce (#1612 console half). The target is RC collaboration: teams, plural. Build-out is 1&#8594;4. Readiness is named gaps on that inventory &#8212; instances, then conversation + board proofs, then durable delegation, then the materializer. A roster is a seat-list. A team is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders are <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. Projects live as resources, boards, sessions, and content &#8212; no <code>projects/</code> tree, no <code>Project</code> type. A new seat is a file on that path. Scan feeds today&#8217;s <code>defineFlow</code> for every seat; <code>AgentRegistry</code> only when that seat is an opinionated agent. A tree scan is a named gap. Hot-dynamic kinds after boot are a named gap. Address-the-team is an intake seat, a worker with a static DM. Identity lives on agent/member scope, not on the seat. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources. Member identity is the named gap &#8212; prove <code>flowIsolation</code> first. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2. RC gates are proposed until they are true. No second Agent. No second registry. No one-team-only API. Cross-flow is still refused on this pin. Multi-hire waits on FIX-1320. GTM is Strategy.</p>
   </div>
 </section>
 
