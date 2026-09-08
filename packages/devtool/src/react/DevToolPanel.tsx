@@ -840,6 +840,18 @@ function PanelContent({ className }: { className?: string }) {
             remount covers because `PanelContent` itself does not remount.
           - THE STREAM HOOK closes its own SSE handle on the visit, because a
             live connection outlives a React unmount.
+
+          What this key does NOT do, so nobody below it assumes otherwise: it
+          retires reads when the WORKSPACE changes, and does nothing about two
+          reads of the SAME identity resolving out of order — a mount read, a
+          Refresh click and a `refreshKey` fan-out can be in flight together,
+          and the oldest response may land last. That is the second hazard
+          `use-read-fence` exists for, and the fence is the only thing that
+          answers it. The five readers below have never been protected against
+          it, before this key or after, so this is a standing gap and not
+          something traded away for the remount. A new reader added here
+          inherits the same gap; if it needs ordering within one identity, it
+          needs a fence of its own as well.
         */}
         <SelectionProvider key={workspaceKey}>
         {/* Main workspace */}
