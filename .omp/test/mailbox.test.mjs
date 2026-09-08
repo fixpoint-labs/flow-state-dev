@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import test from "node:test";
 import ts from "typescript";
+import { z } from "zod";
 
-const require = createRequire(new URL("../../packages/core/package.json", import.meta.url));
-const { z } = require("zod");
 const source = await readFile(new URL("../extensions/mailbox.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 const { default: mailbox } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
@@ -43,7 +41,7 @@ function host({ session = "one", entries = [] } = {}) {
   };
   const ctx = {
     cwd: process.cwd(),
-    sessionManager: { getSessionId: () => state.session, getEntries: () => [...state.entries], getBranch: () => [...state.entries] },
+    sessionManager: { getSessionId: () => state.session, getEntries: () => [...state.entries], getBranch: () => [...(state.branch ?? state.entries)] },
     ui: { setStatus() {}, notify() {} },
     setInterval(callback) { timers.add(callback); return callback; },
     clearTimer(callback) { timers.delete(callback); },
@@ -164,4 +162,38 @@ test("cancelling an in-flight subscription cannot deliver mail or persist a watc
   const resumed = host({ entries: h.state.entries });
   await resumed.emit("session_start");
   assert.deepEqual((await resumed.call("status")).subscriptions, []);
+});
+
+test("subscription backlog reaches the model through the inbound channel only", async () => {
+  const h = host();
+  const body = "A single decision for this subscription backlog.";
+  h.state.pages = [[comment(13, header("peer"), body)]];
+  const result = await h.subscribe();
+  assert.equal(h.state.sent.length, 1);
+  assert.ok(h.state.sent[0].content.includes(body), "queued follow-up carries the mail");
+  assert.ok(!JSON.stringify(result).includes(body), "tool result must not expose the same mail a second time");
+  await h.deliver();
+  await h.tick();
+  assert.equal(h.state.sent.length, 1);
+});
+
+test("tree navigation preserves session subscriptions and consumed-mail cursors", async () => {
+  const h = host();
+  await h.subscribe();
+  h.state.pages = [[comment(14, header("peer"))]];
+  await h.tick();
+  // Receipt persisted, but message_end has not yet checkpointed the cursor.
+  const receipt = h.state.pending.shift();
+  h.state.entries.push({ type: "custom_message", ...receipt });
+  h.state.branch = [];
+  await h.emit("session_tree");
+  const subscriptions = (await h.call("status")).subscriptions;
+  assert.deepEqual(subscriptions.map(watch => watch.pr), [7], "ancestor navigation cannot remove a session subscription");
+  assert.equal(subscriptions[0].cursor, 14);
+  assert.equal(h.state.sent.length, 1, "a receipt on another branch still prevents replay");
+
+  h.state.branch = [...h.state.entries];
+  await h.call("unsubscribe", { pr: 7 });
+  await h.emit("session_tree");
+  assert.deepEqual((await h.call("status")).subscriptions, [], "an older branch cannot resurrect an unsubscribed handle");
 });

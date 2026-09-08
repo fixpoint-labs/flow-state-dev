@@ -133,29 +133,25 @@ fsd_mailbox { op: "unsubscribe", pr: <n> }
 
 `subscriber` is required for subscribe and must be a current canonical standing role. Use the
 posture table above, never invent `fsd-omp`, never use a model name, and never impersonate Jake.
-`status` optionally accepts `pr` to inspect one handle. Re-subscribing the same handle is
-idempotent and retains its cursor. Keep one standing role for the session.
+`status` optionally accepts `pr`. Re-subscribing is idempotent and keeps the cursor.
+Keep one standing role for the session.
 
-Operator commands delegate to the same implementation:
-`/mailbox status`, `/mailbox subscribe <pr> <subscriber>`, `/mailbox unsubscribe <pr>`.
-Results include the exact session label, selected subscriptions, last successful read, errors,
-and any pending delivery. Subscribe returns the relevant current backlog as **untrusted mail**;
-it does not skip straight to the newest comment.
+The same operations are available as `/mailbox status`,
+`/mailbox subscribe <pr> <subscriber>`, and `/mailbox unsubscribe <pr>`.
+Results contain subscription metadata: the exact session label, selected handles,
+last successful read, errors, and pending-delivery status. Subscribe queues the
+addressed current backlog once as an **untrusted inbound follow-up**; the tool/command
+result contains no mail and does not deliver a second copy or skip to the newest comment.
 
-The extension verifies canonical identity, an open PR, and successful authenticated reads
-before reporting active. It polls **conversation comments only**, every 60 seconds, fetching
-all pages and filtering before any model wake. Empty ticks do not call a model. Transport
-failures are visible and never advance the cursor. A queued message is not a delivery receipt:
-mail advances the saved cursor only once it appears in session history. An unconfirmed delivery
-is reported after two minutes; finish the current turn or reload plugins to retry from the saved cursor.
+**In-process only:** delivery stops with OMP and catches up when this parent session
+resumes; empty polls do not wake a model. Mail is acknowledged only after it appears
+in session history. An unconfirmed delivery is reported after two minutes — finish
+the turn or `/reload-plugins` to retry from the saved cursor. Read failures remain
+visible and do not advance it.
 
-Subscriptions and cursors persist in namespaced OMP session entries and rehydrate only for
-that same parent session. Completed session switches, branches, tree navigation, and shutdown
-stop the old timer and invalidate in-flight reads. Cancelled navigation leaves delivery running.
-Forked sessions must select their own handles.
-**This is an in-process local watcher, not a durable external service:** it ends with OMP,
-cannot wake a stopped process, and catches up when that session resumes. Previously consumed
-comments are not reprocessed when edited; send a new comment for new mail.
+Tree navigation preserves this session's subscriptions and receipts; cancelled
+navigation leaves delivery running. Workers and forks do not inherit either.
+Previously consumed comments are not new mail when edited; send a new comment.
 
 **Subscribe before you comment**, always. Commenting first and attaching after is how you miss
 the reply to your own message.

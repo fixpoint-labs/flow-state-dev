@@ -2,9 +2,10 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.mjs"],
+      "entry": ["scripts/*.mjs", ".omp/extensions/*.ts", ".omp/test/*.mjs"],
       "ignore": ["spec-poc/**"],
-      "ignoreBinaries": ["build"]
+      "ignoreBinaries": ["build"],
+      "ignoreDependencies": ["@oh-my-pi/pi-coding-agent"]
     },
     "packages/*": {
       "entry": ["test/**/*.{test,spec}.{ts,tsx}", "**/*.type-test.ts"],

@@ -73,19 +73,18 @@ Do not bypass it by sending the same writing task into the shared checkout.
 Advisor selection and activation are separate: `/advisor status` reports the live
 state; `/advisor on` enables it for the session.
 
-At substantive session start, choose a relevant handle through the `agent-mailbox`
-skill, reusing an existing handle before creating one. Local delivery requires an
-authenticated `gh` CLI with access to `fixpoint-labs/agent-mailbox`.
+At substantive session start, top-level sessions follow the `agent-mailbox` skill
+and state the relevant handle(s), or why none is relevant. Local delivery requires
+an authenticated `gh` CLI with access to `fixpoint-labs/agent-mailbox`.
 
 | Command | Purpose |
 |---------|---------|
-| `/mailbox subscribe <pr> <subscriber>` | Select a handle and receive its current backlog |
+| `/mailbox subscribe <pr> <subscriber>` | Subscribe to a handle; addressed backlog arrives as an inbound follow-up |
 | `/mailbox status` | Inspect subscriptions, errors, and the session's posting identity |
 | `/mailbox unsubscribe <pr>` | Stop watching a handle |
 
-The extension polls selected handles every 60 seconds and wakes the model only for
-addressed new mail. It runs only while OMP is open. Resuming the same session
-restores saved subscriptions and cursors; forks must subscribe explicitly.
+For delivery, session persistence, and subscription semantics, see
+[`agent-mailbox` → Native OMP](../../.agents/skills/agent-mailbox/SKILL.md#native-omp).
 
 Mailbox regressions: `node --test .omp/test/mailbox.test.mjs`.
 

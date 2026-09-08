@@ -58,6 +58,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: OMP mailbox regressions
+        run: node --test .omp/test/mailbox.test.mjs
+
   guards:
     name: Process guards
     runs-on: ubuntu-latest

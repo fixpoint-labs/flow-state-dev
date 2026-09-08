@@ -103,10 +103,10 @@ anyway, they get it.
 
 ## OMP native dispatch
 
-This is a harness adapter, not another review policy. The **coordinator** runs this
-section, including when `issue-implement` delegates implementation to a leaf
-`fsd-implementer`. Implementers return their patch/evidence; they never launch their
-own reviewers. Claude keeps the Agent-tool invocation path above and below.
+Harness adapter only. The **coordinator** runs this; `fsd-implementer` returns its
+patch/evidence and never launches reviewers. Claude keeps the Agent-tool path above
+and below. Shared lens selection and **Run** remain policy; this section supplies
+only native roles, frozen inputs, leaf fences, and result validation.
 
 | Selected lens | Native agent | Configured model role |
 |---|---|---|
@@ -161,10 +161,10 @@ lens-specific context (e.g. Restraint's size baseline and justified keeps);
 Each evidence string must cite a captured path:line or log/spec reference and the
 observed fact supporting the finding; a filename alone is not evidence.
 
-In JavaScript Eval, first set `reviewedRevision` to the captured identity and
-`reviewBrief` to the shared scope plus bundle paths, spec and evidence references.
-Set `selectedLenses` from the selection rules above, using lower-case lens names.
-Then dispatch one native task batch:
+In JavaScript Eval, set `reviewedRevision` to the captured identity and `reviewBrief`
+to the shared scope, bundle paths, spec and evidence references. Set `selectedLenses`
+to the selected ordinary lenses in lower case; Alternatives uses the phase dispatch
+below, not this findings schema. Dispatch one native task batch:
 
 ```js
 const text = { type: "string", minLength: 1 };
@@ -216,44 +216,28 @@ const reviewJobs = await tool.task({
 Read only; no validation or external messages. No first-pass cross-contamination.
 # Contract
 All reviewers inspect the same frozen bundle. The coordinator alone adjudicates,
-integrates fixes, and synthesizes. Missing evidence is never approval.
+dispatches accepted fixes, and synthesizes. Missing evidence is never approval.
 ${reviewBrief}`,
   tasks: reviewTasks
 });
 display(reviewJobs);
 ```
 
-Use the returned job IDs/artifact handles to collect **every** selected lens; jobs
-complete asynchronously. The direct `task` tool accepts the same `context`/`tasks`
-payload. Alternatively Eval's native `agent(prompt, { agent, schema,
-schemaMode: "strict", label })` returns handles immediately: start all independent
-handles before awaiting any, then `wait(handles, { raiseErrors: false })` so a
-failed lens cannot hide the others. These are alternative dispatch APIs, not two
-rounds to run. Do not use oneshot `completion` as a substitute for a source-reading
-reviewer.
+Collect **every** selected job from the returned IDs/artifact handles; completion is
+asynchronous. Do not use oneshot `completion` for a source-reading reviewer.
 
-### Optional lenses and adjudication
+For selected Alternatives, the coordinator runs `adhd` in review context, retaining
+its orchestration, scoring and clustering. Each frame/focus leaf uses `fsd-coherence`
+with an explicit **Alternatives phase, not coherence critique** assignment and strict
+phase schemas matching `adhd`'s outputs. Preserve its isolation and collect both waves;
+do not coerce generative outputs into ordinary findings or switch the user's session
+model. Shared **Run** governs pruning, routing and severity.
 
-Depth uses the shared architecture skill's exploration/candidate criteria only;
-no grilling, ticket creation, or edits. Its findings remain notes.
+### Validate the round
 
-For Alternatives, the **coordinator** reads and executes `adhd` in review context:
-five independent frame calls, coordinator scoring/clustering, then three focus
-calls (or its explicitly permitted smaller shape). Use `fsd-coherence` with an
-explicit **Alternatives phase, not coherence critique** assignment for each frame
-or focus call, and strict phase schemas matching `adhd`'s own JSON outputs. Its
-design-review alias supplies the judgment role for both waves. The coordinator
-retains scoring, clustering and orchestration; Claude model names in the shared
-skill do not require switching the user's OMP session model. Preserve
-the skill's isolation invariant, pruning, switch test, and final review-context
-output. Merge its alternatives as notes and its routed defects under their actual
-lens/severity; do not coerce generative phase outputs into ordinary review findings.
-
-One coordinator is the **writer/adjudicator**: verify evidence, resolve conflicting
-claims against the frozen sources (not by model vote), dedupe, and render the Report
-below. Reviewers never apply fixes or publish their own reports. Only after all
-first passes finish may the coordinator request targeted clarification or integrate
-an accepted implementation patch; fixes get a new revision and affected re-review.
+The coordinator resolves conflicting claims against frozen evidence, not model vote.
+Only after all first passes finish may it request targeted clarification or dispatch
+accepted fixes; changed bytes require a new bundle/revision and affected re-review.
 
 Check schema **and semantics**: a clean result has no findings/blockers; findings
 requires at least one finding and no blockers; blocked requires a concrete blocker
