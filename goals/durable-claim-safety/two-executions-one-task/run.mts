@@ -167,7 +167,7 @@ function execution(name: string, body: (tasks: Board) => Promise<unknown>) {
         }),
       },
     },
-  })({ id: "default" });
+  })();
 }
 
 await runGoal(async (): Promise<GoalResult> => {

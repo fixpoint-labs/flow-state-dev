@@ -67,7 +67,7 @@ const genFlow = defineFlow({
       userMessage: (input) => input.message,
     },
   },
-})({ id: "default" });
+})();
 
 export default createFlowState({
   flows: { gen: genFlow },

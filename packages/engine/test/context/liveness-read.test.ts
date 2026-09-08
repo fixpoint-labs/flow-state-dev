@@ -24,6 +24,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { readLiveness } from "../../src/context/liveness-read";
 import type { ActiveRequestEntry } from "../../src/stores/types";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 
 const NOW = 1_000_000;
 const THRESHOLD = 60_000;
@@ -54,7 +55,7 @@ function harness(entries: Record<string, ActiveRequestEntry | undefined>) {
     listStale,
     inputs: {
       staleThresholdMs: THRESHOLD,
-      flowKind: "board",
+      flow: { id: "board", kind: "board", cardinality: "singleton" } as unknown as FlowInstance,
       principal: { userId: "u_alice", tenantId: "t_acme" },
       isDescendantSession: async (sessionId: string | undefined) => sessionId === "s_child",
       now: () => NOW

@@ -321,6 +321,22 @@ scoped to the addressed conversation's owner, tenant, org and flow, all read
 from the stored record, so a child inherits the parent conversation's access
 rules rather than getting its own.
 
+The flow that governs such a read is the one recorded as the record's owner,
+not one the caller names. A session created through `review-east` is checked by
+`review-east`'s resolver on every later read and re-entry, even when the URL
+names nothing but the session. On the action routes, which do name a flow, the
+address and the stored owner have to agree before the resolver is consulted:
+
+| Address | Stored owner | Result |
+|---|---|---|
+| `review-east` | `review-east` | `review-east`'s resolver runs, then the ordinary principal and tenant checks |
+| `review-east` | `review-west` | `409 wrong-instance-session`, before any resolver |
+| `review-east` | none recorded, kind has one instance | treated as that instance's |
+| `review-east` | none recorded, kind has several instances | `409 migration-required` (see [Persistence](/docs/persistence/overview#who-owns-a-record)) |
+
+The owner id is an address, not an authorization. Knowing that a session is
+`review-east`'s gives a caller nothing the resolver would not grant anyway.
+
 No endpoint on the flow API enumerates across owners. A caller reaches
 background work through the conversation that started it; there is no mode that
 returns every session on the server.

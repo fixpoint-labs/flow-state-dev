@@ -12,6 +12,7 @@ import { createLiveRequestStream, type LiveRequestStream } from "../streaming/li
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
 import { runAction } from "./runAction";
+import { resolveRecordOwner } from "../context/record-owner";
 
 export type InterruptedRequestInfo = {
   entry: ActiveRequestEntry;
@@ -26,10 +27,12 @@ export type InterruptedRequestInfo = {
  * processed — the rest are left untouched. This is the safe surface for the
  * client-driven recovery endpoint, which sweeps on behalf of a single user.
  *
- * When `anonymousFlowKinds` is provided, entries belonging to any other flow are
- * skipped entirely — not marked interrupted and not deregistered. An anonymous
- * caller in a mixed app reaches this with the app's open flows only, so it
- * cannot sweep an authenticated flow's in-flight requests.
+ * When `ownedBy` is provided, entries it does not admit are skipped entirely —
+ * not marked interrupted and not deregistered. An anonymous caller in a mixed
+ * app reaches this with a predicate admitting the app's open flow instances
+ * only, judged per entry's owner, so it cannot sweep an authenticated
+ * instance's in-flight requests — including one that shares an open peer's
+ * kind.
  *
  * A request queued with an external dispatcher and not yet claimed by a worker
  * is skipped while it is within `queuedGraceMs` (FIX-999): it has no heartbeat
@@ -52,11 +55,11 @@ export async function detectInterruptedRequests(options: {
   queuedGraceMs?: number;
   /** Restrict the sweep to entries owned by this userId. */
   userId?: string;
-  /** Restrict the sweep to these flow kinds. Undefined means unrestricted. */
-  anonymousFlowKinds?: Set<string>;
+  /** Restrict the sweep to entries this predicate admits. Undefined means unrestricted. */
+  ownedBy?: (entry: ActiveRequestEntry) => boolean;
   logger?: RuntimeLogger;
 }): Promise<InterruptedRequestInfo[]> {
-  const { stores, userId, anonymousFlowKinds, logger = DEFAULT_RUNTIME_LOGGER } = options;
+  const { stores, userId, ownedBy, logger = DEFAULT_RUNTIME_LOGGER } = options;
   const staleThresholdMs = options.staleThresholdMs ?? 30_000;
   const queuedGraceMs = options.queuedGraceMs ?? DEFAULT_QUEUED_GRACE_MS;
 
@@ -65,7 +68,7 @@ export async function detectInterruptedRequests(options: {
   const stale = allStale.filter(
     (entry) =>
       (userId === undefined || entry.userId === userId) &&
-      (anonymousFlowKinds === undefined || anonymousFlowKinds.has(entry.flowKind)) &&
+      (ownedBy === undefined || ownedBy(entry)) &&
       // `!= null` rather than truthiness: an entry from before this field
       // existed has no `queuedAt` and is swept exactly as it was (BP-030).
       (entry.queuedAt == null || sweepStartedAt - entry.queuedAt > queuedGraceMs)
@@ -142,6 +145,17 @@ export async function retryRequest(
   const entry = options.registryEntry;
 
   const flowKind = entry?.flowKind ?? originalRecord?.flowKind;
+  // The durable record's owner is authoritative; an active entry that names a
+  // different owner is an inconsistent identity, refused rather than merged.
+  const recordOwner = originalRecord?.flowId ?? undefined;
+  const entryOwner = entry?.flowId ?? undefined;
+  if (recordOwner !== undefined && entryOwner !== undefined && recordOwner !== entryOwner) {
+    throw new Error(
+      `Cannot retry request ${options.originalRequestId}: its record is owned by flow instance ` +
+        `"${recordOwner}" but its active entry names "${entryOwner}"`
+    );
+  }
+  const flowId = recordOwner ?? entryOwner;
   const actionName = entry?.actionName ?? originalRecord?.actionName;
   const sessionId = entry?.sessionId ?? originalRecord?.sessionId;
   const userId = entry?.userId ?? originalRecord?.userId;
@@ -159,10 +173,13 @@ export async function retryRequest(
     );
   }
 
-  const flow = flowRegistry.get(flowKind);
-  if (flow === undefined) {
-    throw new Error(`Cannot retry request ${options.originalRequestId}: unknown flow "${flowKind}"`);
+  const owner = resolveRecordOwner(flowRegistry, { flowKind, flowId });
+  if (!owner.ok) {
+    throw new Error(
+      `Cannot retry request ${options.originalRequestId}: ${owner.reason} (${owner.detail})`
+    );
   }
+  const flow = owner.flow;
 
   // Resolve the effective voice provider the same way normal dispatch does
   // (createInboundTransportHost): a per-flow `voice.provider` wins over the

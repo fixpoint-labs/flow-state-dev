@@ -14,6 +14,7 @@ import type { AuthenticationConfig } from "../types/auth";
 import type { BlockDefinition, DeclaredResourceEntry, DeclaredResources } from "../types/block";
 import { taskBindingOf, type TaskBinding, type InternalEntry, type TaskEntry } from "../types/dispatch";
 import type {
+  FlowCardinality,
   ActionConfig,
   FlowDefinition,
   FlowInstance,
@@ -173,6 +174,71 @@ const DEFINITION_ONLY_INSTANCE_OPTIONS = [
   "internal",
   "task",
 ] as const;
+
+/**
+ * Normalize a definition's `cardinality`, refusing anything that is not one of
+ * the two policies. Omitted means singleton — the shape every flow written
+ * before the option existed has.
+ */
+function normalizeCardinality(flowKind: string, value: unknown): FlowCardinality {
+  if (value === undefined) return "singleton";
+  if (value === "singleton" || value === "collection") return value;
+  throw new Error(
+    `Flow "${flowKind}" declares cardinality ${JSON.stringify(value)}; expected "singleton" or "collection".`
+  );
+}
+
+/**
+ * Instance cardinality is the definition's identity policy, so an instance
+ * option cannot change it. Refused by name rather than folded into
+ * {@link rejectDefinitionOnlyOptions}: that guard's message explains why a
+ * per-instance transport config was never applied, and that is not the story
+ * here — a per-instance cardinality would let one hand-built singleton give a
+ * collection kind a bare-kind address.
+ */
+function rejectInstanceCardinality(value: object | undefined, flowKind: string): void {
+  if (value !== undefined && Object.hasOwn(value, "cardinality")) {
+    throw new Error(
+      `Flow "${flowKind}" instance options set "cardinality", which is not an instance option. ` +
+      `Cardinality is the definition's identity policy; declare it on defineFlow(...) instead.`
+    );
+  }
+}
+
+/**
+ * The instance id for one factory call.
+ *
+ * A singleton defaults its id to its effective kind, and may still carry a
+ * supplied one for direct, unregistered execution (an eval label such as
+ * `myFlow({ id: "eval" })` handed straight to `testFlow`). The registry, not
+ * the factory, refuses that mismatch at admission — the factory has no way to
+ * know whether the instance will ever be registered.
+ *
+ * A collection member has no default: its id is its only address, so an
+ * omitted or empty one is a configuration error here, never a minted
+ * placeholder.
+ */
+function resolveInstanceId(
+  flowKind: string,
+  cardinality: FlowCardinality,
+  suppliedId: unknown
+): string {
+  if (suppliedId !== undefined && (typeof suppliedId !== "string" || suppliedId.length === 0)) {
+    throw new Error(
+      `Flow "${flowKind}" instance id must be a non-empty string; received ${JSON.stringify(suppliedId)}.`
+    );
+  }
+  if (cardinality === "collection") {
+    if (suppliedId === undefined) {
+      throw new Error(
+        `Flow "${flowKind}" has cardinality "collection", so every instance needs an explicit id: ` +
+        `call the flow factory with { id: "<instance-id>" }.`
+      );
+    }
+    return suppliedId;
+  }
+  return suppliedId ?? flowKind;
+}
 
 /**
  * Reject transport configs that are declared on the flow DEFINITION only.
@@ -968,15 +1034,40 @@ function validateMcpConfig(
   }
 }
 
+/**
+ * Everything a flow instance carries except its address.
+ *
+ * Split from {@link createFlowInstance} so a definition can be described
+ * without being instantiated: `defineFlow` reads this once to populate the
+ * callable blueprint's metadata (`actions`, `resources`, `requiresOrg`, …),
+ * and a collection definition has no id to instantiate with at that point.
+ * Putting the collection-id requirement here would make every collection
+ * definition fail before its author could supply an id.
+ */
+type NormalizedFlowConfig = Omit<FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg>, "id">;
+
 function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
 ): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg> {
+  const normalized = normalizeFlowConfig(definition, options);
+  return {
+    id: resolveInstanceId(normalized.kind, normalized.cardinality, options?.id),
+    ...normalized
+  };
+}
+
+function normalizeFlowConfig(
+  definition: AnyFlowDefinition,
+  options: AnyFlowInstanceOptions | undefined
+): NormalizedFlowConfig {
   rejectRemovedMiddleware(definition, `Flow "${definition.kind}"`);
   rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
   rejectRemovedWork(definition, `Flow "${definition.kind}"`);
   rejectRemovedWork(options, `Flow "${definition.kind}" instance options`);
   rejectDefinitionOnlyOptions(options, definition.kind);
+  rejectInstanceCardinality(options, definition.kind);
+  const cardinality = normalizeCardinality(definition.kind, definition.cardinality);
 
   const authentication = mergeAuthentication(
     definition.authentication,
@@ -1128,8 +1219,8 @@ function createFlowInstance(
 
 
   return {
-    id: options?.id ?? kind,
     kind,
+    cardinality,
     requireUser,
     requiresOrg: collectRequiresOrg(declaredBlocks),
     authentication,
@@ -1178,9 +1269,13 @@ export function defineFlow<
     TResources
   >;
 
-  const baseInstance = createFlowInstance(normalizedDefinition, undefined);
+  // The blueprint's metadata, read off the normalized config rather than a
+  // minted instance: a collection definition is describable — its actions,
+  // resources and policy are all known — without any instance existing yet.
+  const baseInstance = normalizeFlowConfig(normalizedDefinition, undefined);
   return Object.assign(flowFactory, {
     kind: normalizedDefinition.kind,
+    cardinality: baseInstance.cardinality,
     requireUser: baseInstance.requireUser,
     requiresOrg: baseInstance.requiresOrg,
     authentication: baseInstance.authentication,

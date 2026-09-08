@@ -9,10 +9,13 @@
  */
 import type { RequestStatusSnapshot } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../stores/types";
+import type { FlowRegistry } from "../registry/flow-registry";
+import { ownsRecord } from "../context/record-owner";
 import { jsonResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 type RequestStatusRouteContext = {
+  registry: FlowRegistry;
   stores: StoreRegistry;
 };
 
@@ -39,7 +42,10 @@ export async function handleGetRequestStatus(
     });
   }
 
-  if (record.flowKind !== route.flowKind) {
+  // The addressed instance must own the record; a same-kind peer's request
+  // is not found here, same as another flow's.
+  const flow = ctx.registry.get(route.flowKind);
+  if (flow === undefined || !ownsRecord(flow, record)) {
     return jsonResponse(404, {
       error: `Request "${requestId}" not found`
     });

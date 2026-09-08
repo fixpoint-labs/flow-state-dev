@@ -8,6 +8,7 @@ function serializeEntry(entry: ActiveRequestEntry): unknown[] {
   return [
     entry.requestId,
     entry.flowKind,
+    entry.flowId ?? null,
     entry.actionName,
     entry.sessionId ?? null,
     entry.userId,
@@ -42,6 +43,9 @@ function deserializeRow(row: Record<string, unknown>): ActiveRequestEntry {
     lastHeartbeatAt: row.last_heartbeat_at as number
   };
 
+  if (row.flow_id !== null && row.flow_id !== undefined) {
+    entry.flowId = row.flow_id as string;
+  }
   if (row.session_id !== null) {
     entry.sessionId = row.session_id as string;
   }
@@ -73,10 +77,10 @@ export function createSQLiteActiveRequestRegistry(
 ): ActiveRequestRegistry {
   const registerStmt = db.prepare(`
     INSERT OR REPLACE INTO active_requests
-      (request_id, flow_kind, action_name, session_id, user_id, org_id,
+      (request_id, flow_kind, flow_id, action_name, session_id, user_id, org_id,
        tenant_id, source, input, metadata, started_at, last_heartbeat_at,
        queued_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const heartbeatStmt = db.prepare(

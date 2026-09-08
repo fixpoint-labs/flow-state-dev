@@ -40,6 +40,13 @@ export class FilesystemSessionStore implements SessionStore {
         }
 
         if (
+          listOptions?.flowId !== undefined &&
+          record.flowId !== listOptions.flowId
+        ) {
+          return false;
+        }
+
+        if (
           listOptions?.userId !== undefined &&
           record.userId !== listOptions.userId
         ) {

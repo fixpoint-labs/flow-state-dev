@@ -1,7 +1,7 @@
 /**
- * Errors raised by `createExecutionContext` when an incoming request's claimed
- * `userId`, `orgId`, or `tenantId` conflicts with the values the session was
- * created with.
+ * Errors raised when an incoming request's claimed `userId`, `orgId`,
+ * `tenantId` or flow instance conflicts with the values a stored session or
+ * request record was created with.
  *
  * Sessions own a single user and at most one org for their lifetime. Subsequent
  * requests that claim a different identity are rejected here rather than
@@ -77,5 +77,43 @@ export class TenantBindingMismatchError extends Error {
     this.sessionId = sessionId;
     this.sessionTenantId = sessionTenantId ?? "<none>";
     this.requestedTenantId = requestedTenantId ?? "<none>";
+  }
+}
+
+/**
+ * Thrown when a request addressed to one flow instance reaches a session or
+ * request record another instance owns — or one whose owner this runtime
+ * cannot attribute. Ownership is decided by `context/record-owner.ts`; this
+ * is the refusal it produces at every admission point (host enqueue, direct
+ * execution, re-entry, recovery), before any write, active registration or
+ * data read against the foreign record.
+ *
+ * `record` says which kind of record was addressed, so a host can name it
+ * (`wrong-instance-session` / `wrong-instance-request`) without parsing the
+ * message; `reason` carries the owner-resolution refusal when the record's
+ * owner could not even be resolved, and is absent for a plain mismatch.
+ */
+export class FlowInstanceBindingMismatchError extends Error {
+  readonly record: "session" | "request";
+  readonly recordId: string;
+  readonly addressedFlowId: string;
+  readonly reason?: "owner-not-registered" | "owner-kind-mismatch" | "migration-required";
+
+  constructor(
+    record: "session" | "request",
+    recordId: string,
+    addressedFlowId: string,
+    detail: string,
+    reason?: FlowInstanceBindingMismatchError["reason"]
+  ) {
+    super(
+      `${record === "session" ? "Session" : "Request"} ${recordId} is not owned by flow instance ` +
+        `"${addressedFlowId}": ${detail}.`
+    );
+    this.name = "FlowInstanceBindingMismatchError";
+    this.record = record;
+    this.recordId = recordId;
+    this.addressedFlowId = addressedFlowId;
+    this.reason = reason;
   }
 }

@@ -23,6 +23,9 @@ import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-s
 import { collapseToCanonicalLog } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
+import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowRegistry } from "../registry/flow-registry";
+import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";
@@ -668,4 +671,46 @@ export async function parseJsonBody(request: Request): Promise<Record<string, un
   }
 
   return object;
+}
+
+/**
+ * The flow instance a stored session or request belongs to, for a route that
+ * goes on to read that record's declarations — schemas, resources, resolver.
+ * One outcome per refusal: an owner this process cannot resolve is the same
+ * `404 Unknown flow` the route always returned for an unregistered kind, and
+ * ambiguous legacy history is a `409 migration-required` so an operator sees
+ * the cutover they owe rather than a missing flow. No route resolves a
+ * record's flow by its stored kind on its own.
+ */
+export function resolveOwnerFlow(
+  registry: Pick<FlowRegistry, "get" | "list">,
+  record: OwnedRecord
+): { flow: FlowInstance; denied?: undefined } | { flow?: undefined; denied: Response } {
+  const owner = resolveRecordOwner(registry, record);
+  if (owner.ok) return { flow: owner.flow };
+  const refused = refuseUnattributedRecord(registry, record);
+  if (refused !== undefined) return { denied: refused };
+  return {
+    denied: jsonResponse(404, { error: `Unknown flow "${record.flowId ?? record.flowKind}"` })
+  };
+}
+
+/**
+ * The `409 migration-required` for a record whose legacy history this
+ * process cannot attribute to one instance, or `undefined` for any record
+ * it can read. For a route that needs nothing from the record's flow — a
+ * plain session read, edit, delete or request listing — this is the one
+ * owner check it owes: an unattributed row is refused everywhere, not only
+ * where a flow's declarations are read, so an operator meets the same stop
+ * condition on every door (and, in an app where some flow authenticates, no
+ * such row is served under a resolver that never governed it).
+ */
+export function refuseUnattributedRecord(
+  registry: Pick<FlowRegistry, "get" | "list">,
+  record: OwnedRecord
+): Response | undefined {
+  const owner = resolveRecordOwner(registry, record);
+  return !owner.ok && owner.reason === "migration-required"
+    ? jsonResponse(409, { error: "migration-required", message: owner.detail })
+    : undefined;
 }

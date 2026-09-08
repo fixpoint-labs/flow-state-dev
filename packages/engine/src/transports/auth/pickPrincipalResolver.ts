@@ -13,15 +13,16 @@ import type { FlowRegistry } from "../../registry/flow-registry";
 import type { PrincipalResolver } from "../types";
 
 /**
- * The resolver that governs `flowKind`: the flow's own if it configures one,
- * otherwise `hostResolver`. An unregistered or absent `flowKind` (a route that
- * spans every flow) yields the host-level fallback.
+ * The resolver that governs the instance at `address` (an exact flow instance
+ * id, carried on the historical `flowKind` slot): the instance's own if it
+ * configures one, otherwise `hostResolver`. An unregistered or absent address
+ * (a route that spans every flow) yields the host-level fallback.
  */
 export function pickPrincipalResolver(
   registry: FlowRegistry,
-  flowKind: string | undefined,
+  address: string | undefined,
   hostResolver: PrincipalResolver
 ): PrincipalResolver {
-  const flow = flowKind === undefined ? undefined : registry.get(flowKind);
+  const flow = address === undefined ? undefined : registry.get(address);
   return flow?.authentication?.resolvePrincipal ?? hostResolver;
 }

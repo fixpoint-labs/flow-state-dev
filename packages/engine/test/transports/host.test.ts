@@ -495,8 +495,10 @@ describe("createInboundTransportHost", () => {
         principal: { userId: "u_ext" }
       });
 
-      // The record + registry entry are present immediately after dispatch
-      // returns — the GET stream route can resolve them without waiting.
+      // The record + registry entry are present once the request is accepted
+      // — the same signal the 202 path acks on; admission reads the addressed
+      // session's owner before either write lands.
+      await handle.accepted;
       const record = await stores.request.get(handle.requestId);
       expect(record?.status).toBe("in_progress");
       expect(record?.sessionId).toBe("s_ext");

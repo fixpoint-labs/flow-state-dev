@@ -17,6 +17,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import { toBareState, toBareStates } from "../stores/resource-state-views";
 import {
+  resolveOwnerFlow,
   extractBareTopic,
   jsonResponse,
   loadTenantSession,
@@ -92,8 +93,9 @@ export async function handleGetResourceContent(
   );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
-  const flow = ctx.registry.get(session.flowKind);
-  if (!flow) return jsonResponse(404, { error: `Unknown flow "${session.flowKind}"` });
+  const owner = resolveOwnerFlow(ctx.registry, session);
+  if (owner.denied !== undefined) return owner.denied;
+  const flow = owner.flow;
 
   const found = findResourceConfig(flow, route.ref);
   if (!found) return jsonResponse(404, { error: `Unknown resource "${route.ref}"` });
@@ -137,8 +139,9 @@ export async function handleGetCollectionItemContent(
   );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
-  const flow = ctx.registry.get(session.flowKind);
-  if (!flow) return jsonResponse(404, { error: `Unknown flow "${session.flowKind}"` });
+  const owner = resolveOwnerFlow(ctx.registry, session);
+  if (owner.denied !== undefined) return owner.denied;
+  const flow = owner.flow;
 
   const found = findResourceConfig(flow, route.ref);
   if (!found) return jsonResponse(404, { error: `Unknown resource "${route.ref}"` });
@@ -212,8 +215,9 @@ export async function handleCreateCollectionItem(
   );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
-  const flow = ctx.registry.get(session.flowKind);
-  if (!flow) return jsonResponse(404, { error: `Unknown flow "${session.flowKind}"` });
+  const owner = resolveOwnerFlow(ctx.registry, session);
+  if (owner.denied !== undefined) return owner.denied;
+  const flow = owner.flow;
 
   const found = findResourceConfig(flow, route.ref);
   if (!found) return jsonResponse(404, { error: `Unknown resource "${route.ref}"` });
@@ -326,8 +330,9 @@ export async function handleUpdateResourceContent(
   );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
-  const flow = ctx.registry.get(session.flowKind);
-  if (!flow) return jsonResponse(404, { error: `Unknown flow "${session.flowKind}"` });
+  const owner = resolveOwnerFlow(ctx.registry, session);
+  if (owner.denied !== undefined) return owner.denied;
+  const flow = owner.flow;
 
   const found = findResourceConfig(flow, route.ref);
   if (!found) return jsonResponse(404, { error: `Unknown resource "${route.ref}"` });
@@ -420,8 +425,9 @@ export async function handleListCollectionState(
   );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
-  const flow = ctx.registry.get(session.flowKind);
-  if (!flow) return jsonResponse(404, { error: `Unknown flow "${session.flowKind}"` });
+  const owner = resolveOwnerFlow(ctx.registry, session);
+  if (owner.denied !== undefined) return owner.denied;
+  const flow = owner.flow;
 
   const found = findResourceConfig(flow, route.ref);
   if (!found) return jsonResponse(404, { error: `Unknown resource "${route.ref}"` });
@@ -539,8 +545,9 @@ export async function handleGetCollectionItemState(
   );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
-  const flow = ctx.registry.get(session.flowKind);
-  if (!flow) return jsonResponse(404, { error: `Unknown flow "${session.flowKind}"` });
+  const owner = resolveOwnerFlow(ctx.registry, session);
+  if (owner.denied !== undefined) return owner.denied;
+  const flow = owner.flow;
 
   const found = findResourceConfig(flow, route.ref);
   if (!found) return jsonResponse(404, { error: `Unknown resource "${route.ref}"` });
@@ -640,8 +647,9 @@ export async function handleGetResourceManifest(
   );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
-  const flow = ctx.registry.get(session.flowKind);
-  if (!flow) return jsonResponse(404, { error: `Unknown flow "${session.flowKind}"` });
+  const owner = resolveOwnerFlow(ctx.registry, session);
+  if (owner.denied !== undefined) return owner.denied;
+  const flow = owner.flow;
 
   const flatResources = (flow.resources ?? {}) as Record<string, unknown>;
   const entries: Array<Record<string, unknown>> = [];
@@ -722,8 +730,9 @@ export async function handleDeleteCollectionItem(
   );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
-  const flow = ctx.registry.get(session.flowKind);
-  if (!flow) return jsonResponse(404, { error: `Unknown flow "${session.flowKind}"` });
+  const owner = resolveOwnerFlow(ctx.registry, session);
+  if (owner.denied !== undefined) return owner.denied;
+  const flow = owner.flow;
 
   const found = findResourceConfig(flow, route.ref);
   if (!found) return jsonResponse(404, { error: `Unknown resource "${route.ref}"` });

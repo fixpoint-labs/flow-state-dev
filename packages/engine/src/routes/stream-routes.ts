@@ -10,6 +10,7 @@ import type { VoiceErrorKind, VoiceProvider } from "@flow-state-dev/core/types";
 import { canTranscribe, VoiceError } from "@flow-state-dev/core/types";
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
+import { ownsRecord } from "../context/record-owner";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import {
@@ -126,7 +127,9 @@ export async function handleRequestStream(
     (!isTerminalRequestStatus(requestRecord.status) ||
       (requestRecord.status === "suspended" && leaseHeld))
   ) {
-    if (requestRecord.flowKind !== flow.kind) {
+    // The addressed instance must own the record — a same-kind peer's request
+    // is as unknown here as another flow's.
+    if (!ownsRecord(flow, requestRecord)) {
       return jsonResponse(404, {
         error: `Unknown request "${route.requestId}"`
       });
@@ -210,7 +213,7 @@ export async function handleRequestStream(
     return new Response(payload, { status: 200, headers: SSE_HEADERS });
   }
 
-  if (requestRecord.flowKind !== flow.kind) {
+  if (!ownsRecord(flow, requestRecord)) {
     return jsonResponse(404, {
       error: `Unknown request "${route.requestId}"`
     });

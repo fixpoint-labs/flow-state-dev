@@ -76,4 +76,4 @@ const goalCheckFlow = defineFlow({
   }
 });
 
-export default goalCheckFlow({ id: "default" });
+export default goalCheckFlow();

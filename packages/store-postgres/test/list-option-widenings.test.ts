@@ -79,6 +79,28 @@ function request(id: string, overrides: Partial<RequestRecord> = {}): RequestRec
 }
 
 describe("Postgres list-option widenings", () => {
+  it("flowId filters sessions and requests to the exact owner, and a legacy NULL never matches", async () => {
+    const s = await freshStores();
+    await s.session.set("east", session("east", { flowKind: "review", flowId: "review-east" }), "any");
+    await s.session.set("west", session("west", { flowKind: "review", flowId: "review-west" }), "any");
+    await s.session.set("legacy", session("legacy", { flowKind: "review" }), "any");
+    await s.request.set("r_east", request("r_east", { flowKind: "review", flowId: "review-east" }), "any");
+    await s.request.set("r_legacy", request("r_legacy", { flowKind: "review" }), "any");
+
+    expect((await s.session.list({ flowId: "review-east" })).map((r) => r.id)).toEqual(["east"]);
+    expect((await s.session.list({ flowKind: "review" })).map((r) => r.id).sort()).toEqual([
+      "east",
+      "legacy",
+      "west"
+    ]);
+    expect((await s.request.list({ flowId: "review-east" })).map((r) => r.id)).toEqual(["r_east"]);
+    expect((await s.request.list({ flowKind: "review" })).map((r) => r.id).sort()).toEqual([
+      "r_east",
+      "r_legacy"
+    ]);
+    expect((await s.session.get("east"))?.flowId).toBe("review-east");
+    expect((await s.session.get("legacy"))?.flowId ?? undefined).toBeUndefined();
+  });
   it("session orgId filters exactly, NULL-safely, and only when the key is present", async () => {
     const s = await freshStores();
     await s.session.set("bound", session("bound", { orgId: "acme", parentSessionId: "p" }), "any");

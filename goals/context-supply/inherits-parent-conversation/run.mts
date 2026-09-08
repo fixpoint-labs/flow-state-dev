@@ -84,7 +84,7 @@ const flow = defineFlow({
     conversationWorker: { block: conversationWorker as never },
     isolatedWorker: { block: isolatedWorker as never },
   },
-})({ id: "default" });
+})();
 
 const stores = createInMemoryStores();
 const runtimeConfig = { modelResolver: createModelResolver() } as never;

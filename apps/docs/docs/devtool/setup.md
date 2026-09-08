@@ -47,7 +47,7 @@ export default defineFlow({
   actions: {
     echo: { block: echo },
   },
-})({ id: "default" });
+})();
 ```
 
 ## Starting the server

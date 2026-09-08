@@ -10,13 +10,15 @@ sidebar_label: CLI
 
 ## Commands
 
-### `fsdev run <flowKind> <action>`
+### `fsdev run <flowId> <action>`
 
 Execute a flow action with streaming NDJSON output.
 
 ```bash
 fsdev run my-agent chat -i '{"message": "Hello!"}'
 ```
+
+The first argument is the flow **instance** to run. For an ordinary flow that is its `kind`, as above. For a flow declared `cardinality: "collection"` it is the id of the copy you want (`fsdev run review-east run`); the bare kind is not found, and the error lists the ids that are. A session started through one copy stays that copy's: running it through another exits non-zero, with the session unchanged. See [Flows](/docs/fundamentals/flows#how-an-instance-is-addressed) and [Server setup](/docs/server/setup#keeping-a-session-with-its-owner).
 
 **Options:**
 
@@ -32,7 +34,7 @@ fsdev run my-agent chat -i '{"message": "Hello!"}'
 | `--no-config` | Ignore any config and force directory discovery |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
 
-When a config is loaded, `fsdev run` looks up the flow by `kind` in the config's registry and uses its stores. `--model <id>` still applies, routed through the config's own resolver (your gateways and providers stay in effect), and it covers the generators that run in this process but not [background work handed to a queue](/docs/cli/overview#model-overrides). `--flow-dir` together with a config is an error; the message suggests `--no-config` if directory discovery is what you want. The config's FlowState is disposed on exit, and disposal waits for any background work the run started in this process. See [App Configuration](/docs/cli/configuration) and [Background work](/docs/cli/overview#background-work).
+When a config is loaded, `fsdev run` looks up the flow by instance id in the config's registry and uses its stores. `--model <id>` still applies, routed through the config's own resolver (your gateways and providers stay in effect), and it covers the generators that run in this process but not [background work handed to a queue](/docs/cli/overview#model-overrides). `--flow-dir` together with a config is an error; the message suggests `--no-config` if directory discovery is what you want. The config's FlowState is disposed on exit, and disposal waits for any background work the run started in this process. See [App Configuration](/docs/cli/configuration) and [Background work](/docs/cli/overview#background-work).
 
 **NDJSON events:**
 
@@ -258,7 +260,7 @@ When `--flow-dir` is specified, only the given directories are searched — the 
 When a flow or action isn't found, the error lists what was discovered, where it searched, and any modules that were found but failed to import:
 
 ```text
-Flow "chat" not found. Available flows: echo, stateful, my-agent
+Flow "review" not found. Available flows: echo, review-east, review-west
 Searched: src/flows, flows, examples/hello-chat/src/flows
 1 flow module(s) failed to import:
   /repo/examples/chat/src/flows/chat/flow.ts: Error: Cannot find package 'left-pad'

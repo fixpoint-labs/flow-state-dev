@@ -114,4 +114,4 @@ export const boardLifecycleFlow = defineFlow({
   session: { stateSchema: z.object({}) },
 });
 
-export default boardLifecycleFlow({ id: "default" });
+export default boardLifecycleFlow();

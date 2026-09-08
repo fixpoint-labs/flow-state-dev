@@ -19,8 +19,10 @@ type FlowItemProps = {
 
 export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey, onRefreshActiveSession }: FlowItemProps) {
   const { setActiveSession } = useDevTool();
-  const { sessions, isLoading, refresh, createSession } = useSessions(isActive ? flow.kind : null);
-  const { activeSessionId, setActiveSessionId } = useActiveSession(isActive ? flow.kind : null);
+  // The instance address — a singleton's kind, or a collection member's own
+  // id — is what every route and the sticky selection key on.
+  const { sessions, isLoading, refresh, createSession } = useSessions(isActive ? flow : null);
+  const { activeSessionId, setActiveSessionId } = useActiveSession(isActive ? flow.id : null);
 
   // Refresh session list when parent signals metadata changed (e.g. title update via SSE)
   useEffect(() => {
@@ -53,7 +55,12 @@ export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey, onRefres
         ) : (
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-500" />
         )}
-        <span className="flex-1 truncate font-medium">{flow.kind}</span>
+        <span className="flex-1 truncate font-medium">
+          {flow.id}
+          {flow.id !== flow.kind && (
+            <span className="ml-1.5 font-normal text-slate-500">{flow.kind}</span>
+          )}
+        </span>
       </button>
 
       {isActive && (

@@ -24,4 +24,4 @@ const nestedFlow = defineFlow({
   },
 });
 
-export default nestedFlow({ id: "default" });
+export default nestedFlow();

@@ -46,6 +46,8 @@ export type RetryRequestResult = {
   /** Server-issued id of the newly dispatched request. */
   newRequestId: string;
   flowKind: string;
+  /** The flow instance that owns the retried request. */
+  flowId?: string;
   actionName: string;
   /** The original request id this retry derives from. */
   retryOf: string;
@@ -158,6 +160,7 @@ type RetryResponseBody = {
   request: {
     id: string;
     flowKind: string;
+    flowId?: string;
     actionName: string;
     status: string;
     retryOf: string;
@@ -211,6 +214,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
       return {
         newRequestId: payload.request.id,
         flowKind: payload.request.flowKind,
+        ...(payload.request.flowId !== undefined ? { flowId: payload.request.flowId } : {}),
         actionName: payload.request.actionName,
         retryOf: payload.request.retryOf,
         sessionId: payload.session?.id

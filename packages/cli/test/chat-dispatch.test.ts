@@ -9,12 +9,13 @@ const builtins = createBuiltinRegistry();
 /** A minimal registry stub shaped like the parts listTargets reads. */
 function stubRegistry(flows: Array<{ kind: string; actions: string[] }>) {
   const instances = flows.map((f) => ({
+    id: f.kind,
     kind: f.kind,
     actions: Object.fromEntries(f.actions.map((a) => [a, {}])),
   }));
   return {
     list: () => instances as any,
-    get: (kind: string) => instances.find((i) => i.kind === kind) as any,
+    get: (address: string) => instances.find((i) => i.id === address) as any,
   };
 }
 
@@ -70,7 +71,7 @@ describe("resolveDispatch", () => {
 });
 
 describe("listTargets", () => {
-  it("enumerates flow · action pairs from the registry-default instance", () => {
+  it("enumerates flow · action pairs, one per registered instance", () => {
     const registry = stubRegistry([
       { kind: "hello-chat", actions: ["chat"] },
       { kind: "writer", actions: ["draft", "revise"] },

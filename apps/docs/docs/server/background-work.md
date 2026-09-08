@@ -137,7 +137,10 @@ Seats that hand off](../orchestration/task-board.md#seats-that-hand-off).
 ### Starting a job on another flow
 
 A server usually runs more than one flow. Add `flowKind` and the dispatcher
-resolves its `action` on that flow's `internal.actions` instead of its own:
+resolves its `action` on that flow's `internal.actions` instead of its own. The
+value is the target's instance id: its kind for an ordinary flow, the copy's own
+id (`"review-east"`) for a flow that runs as several named copies. The bare kind
+of such a flow addresses nothing.
 
 ```ts
 const notifyBilling = dispatcher({
@@ -150,10 +153,13 @@ const notifyBilling = dispatcher({
 ```
 
 The job still starts and returns immediately, and the child session still hangs
-off the conversation that started it — but it belongs to the flow it was sent
-to. It runs that flow's entry, starts with that flow's session-state defaults,
-and its `flowKind` in the listing is that flow's. Whatever the job needs travels
-in the payload; the two flows share no state.
+off the conversation that started it — but it belongs to the instance it was sent
+to. It runs that instance's entry, starts with that instance's session-state
+defaults, and its `flowId` in the listing is that instance's. Whatever the job
+needs travels in the payload; the two flows share no state. Two copies of one
+definition count as two instances here: a child sent to `review-east` is
+`review-east`'s, and the same conversation dispatching to `review-west` gets a
+second child rather than adopting the first.
 
 `defineFlow` can't check this address the way it checks a same-flow one. It sees
 one flow at a time, and the flow you named is defined somewhere else. So the
@@ -181,9 +187,10 @@ const confirmToSender = dispatcher({
 ```
 
 The runtime supplies the session to reply into, from the dispatch it stamped;
-you supply the flow. If they disagree — the sender's session is not on the flow
-you named — the reply is refused `session-not-addressable` rather than
-delivered somewhere else. A `task` dispatcher may take `flowKind` the same way.
+you supply the flow. If they disagree — the sender's session is not owned by the
+instance you named — the reply is refused `session-not-addressable` rather than
+delivered somewhere else. Naming a sibling copy of the sender's definition is
+still a disagreement: ownership is by instance, not by kind. A `task` dispatcher may take `flowKind` the same way.
 
 ## Listing a session's children
 
@@ -200,6 +207,7 @@ GET /api/flows/sessions/sess_abc/children
       "topic": "task|10:issue-work|3:t42",
       "coordinate": "task:implement",
       "status": "active",
+      "flowId": "review-east",
       "createdAt": 1770000000000,
       "updatedAt": 1770000042000
     },
@@ -216,9 +224,11 @@ GET /api/flows/sessions/sess_abc/children
 }
 ```
 
-Those seven fields are the whole row. The route sends this named set rather than
+Those eight fields are the whole row. The route sends this named set rather than
 a session record, so there is no `flowKind`, `userId`, `title` or `metadata` on
-it.
+it. `flowId` is the instance that owns the child, the one a cross-flow dispatch
+was sent to; it is the address to read or re-enter the child through, and is
+absent on a child written before owners were recorded.
 
 `topic` and `coordinate` are display labels. `coordinate` is the entry the child
 was dispatched to, `<type>:<target>`: `internal:summarize` for an internal entry,
@@ -227,7 +237,7 @@ child session was derived from — what a `dispatcher()`'s `session: { key }`
 function returned, or the composed key a task seat's `session` policy produced.
 
 Nothing routes, authorizes or identifies from either label, and both are
-optional, as is `status`. Guard all three with `== null`. A row with no labels is
+optional, as are `status` and `flowId`. Guard all four with `== null`. A row with no labels is
 a child session, same as any other; it just carries nothing to display.
 
 ### What `status` tells you

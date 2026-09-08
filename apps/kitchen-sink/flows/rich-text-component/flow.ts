@@ -46,6 +46,6 @@ const richTextComponentFlow = defineFlow({
   resources: { ...mem.userResources },
 });
 
-const flow = richTextComponentFlow({ id: "default" });
+const flow = richTextComponentFlow();
 
 export default flow;

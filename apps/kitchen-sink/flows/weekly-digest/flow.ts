@@ -162,6 +162,6 @@ const weeklyDigestFlow = defineFlow({
   },
 });
 
-const flow = weeklyDigestFlow({ id: "default" });
+const flow = weeklyDigestFlow();
 
 export default flow;

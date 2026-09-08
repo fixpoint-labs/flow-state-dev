@@ -14,6 +14,9 @@ pnpm add @flow-state-dev/client
 import { createClient } from "@flow-state-dev/client";
 
 const client = createClient({ flowKind: "my-app", userId: "user_1" });
+// `flowKind` binds the client to one flow instance (a kind, or a collection
+// member's own id). Sessions it starts are recorded as that instance's, and
+// returned records carry `flowId`, the owner a retry or continuation re-enters.
 
 // Send an action and get back a request ID
 const { requestId } = await client.sendAction("chat", { message: "Hello" });
@@ -123,8 +126,11 @@ for (const child of children) {
 ```
 
 Each row is a `ChildSessionSummary`: `id`, `parentSessionId`, `createdAt`,
-`updatedAt`, and the optional `topic`, `coordinate`, and `status`. That is the whole
-row — the server sends this named field set rather than a session record. `topic`
+`updatedAt`, and the optional `flowId`, `topic`, `coordinate`, and `status`. That is
+the whole row — the server sends this named field set rather than a session record.
+`flowId` is the instance that owns the child, the address to read it through when it
+was dispatched into another instance; absent on a child written before owners were
+recorded. `topic`
 is the key the child was derived from and `coordinate` the entry it was dispatched
 to; both are display labels, nothing identifies or authorizes from them, and a row
 can arrive without either. How legible `topic` is depends on what the flow keyed on,
@@ -178,7 +184,9 @@ const { newRequestId } = await recovery.retry({
 ```
 
 `retry` only succeeds for requests whose status is `interrupted` or `failed`
-— the server returns 409 otherwise.
+— the server returns 409 otherwise. `flowKind` here has to be the request's
+recorded owner (`flowId` on the record); naming another instance is a 409
+`wrong-instance-request`, and the result carries the owner as `flowId`.
 
 ```ts
 // Continue a crash-interrupted request under its OWN id. Unlike `retry`,

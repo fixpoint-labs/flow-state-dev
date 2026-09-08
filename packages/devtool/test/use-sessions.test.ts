@@ -28,8 +28,11 @@ describe("useSessions", () => {
     devToolState.config = { userId: "devuser" };
   });
 
+  /** A singleton: its id is its kind, and it lists by kind so pre-owner rows still show. */
+  const demo = { id: "demo", cardinality: "singleton" as const };
+
   it("passes the configured userId to listSessions on initial fetch", async () => {
-    renderHook(() => useSessions("demo"));
+    renderHook(() => useSessions(demo));
 
     await waitFor(() => {
       expect(sessionClientMock.listSessions).toHaveBeenCalledWith({
@@ -40,7 +43,7 @@ describe("useSessions", () => {
   });
 
   it("re-fetches with the new userId when the config changes", async () => {
-    const { rerender } = renderHook(() => useSessions("demo"));
+    const { rerender } = renderHook(() => useSessions(demo));
 
     await waitFor(() => {
       expect(sessionClientMock.listSessions).toHaveBeenCalledWith({
@@ -56,6 +59,17 @@ describe("useSessions", () => {
       expect(sessionClientMock.listSessions).toHaveBeenLastCalledWith({
         flowKind: "demo",
         userId: "devuser2",
+      });
+    });
+  });
+
+  it("lists a collection member's sessions by its exact owner id, not by kind", async () => {
+    renderHook(() => useSessions({ id: "review-east", cardinality: "collection" }));
+
+    await waitFor(() => {
+      expect(sessionClientMock.listSessions).toHaveBeenCalledWith({
+        flowId: "review-east",
+        userId: "devuser",
       });
     });
   });

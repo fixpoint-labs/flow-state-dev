@@ -14,9 +14,10 @@ import { createPgRecordStore, nullSafeEqualsClause } from "./pg-store";
 export function createPostgresSessionStore(executor: QueryExecutor): SessionStore {
   return createPgRecordStore<SessionRecord, SessionListOptions>(executor, {
     tableName: "sessions",
-    columns: ["flow_kind", "user_id", "org_id", "tenant_id", "parent_session_id"],
+    columns: ["flow_kind", "flow_id", "user_id", "org_id", "tenant_id", "parent_session_id"],
     toRow: (record) => [
       record.flowKind,
+      record.flowId ?? null,
       record.userId,
       record.orgId ?? null,
       record.tenantId ?? null,
@@ -30,6 +31,11 @@ export function createPostgresSessionStore(executor: QueryExecutor): SessionStor
       if (options?.flowKind !== undefined) {
         parts.push(`flow_kind = $${p++}`);
         params.push(options.flowKind);
+      }
+      // Exact-owner filter: an equality, so a legacy NULL never matches.
+      if (options?.flowId !== undefined) {
+        parts.push(`flow_id = $${p++}`);
+        params.push(options.flowId);
       }
       if (options?.userId !== undefined) {
         parts.push(`user_id = $${p++}`);

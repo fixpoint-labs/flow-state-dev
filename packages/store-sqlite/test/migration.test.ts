@@ -184,6 +184,43 @@ describe("project → org schema migration", () => {
     db.close();
   });
 
+  it("adds a nullable `flow_id` owner column to existing sessions/requests/active_requests, with no backfill", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, user_id TEXT NOT NULL,
+        org_id TEXT, tenant_id TEXT, parent_session_id TEXT, version INTEGER NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, data TEXT NOT NULL
+      );
+      CREATE TABLE requests (
+        id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, user_id TEXT NOT NULL,
+        session_id TEXT, org_id TEXT, tenant_id TEXT, status TEXT NOT NULL, version INTEGER NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, data TEXT NOT NULL
+      );
+      CREATE TABLE active_requests (
+        request_id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, action_name TEXT NOT NULL,
+        session_id TEXT, user_id TEXT NOT NULL, org_id TEXT, tenant_id TEXT,
+        source TEXT NOT NULL DEFAULT 'http', input TEXT, metadata TEXT,
+        started_at INTEGER NOT NULL, last_heartbeat_at INTEGER NOT NULL, queued_at INTEGER
+      );
+    `);
+    db.prepare(
+      `INSERT INTO sessions (id, flow_kind, user_id, version, created_at, updated_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run("sess_legacy", "engineer", "alice", 0, 1, 1, '{"state":{}}');
+
+    initializeSchema(db);
+
+    expect(tableInfo(db, "sessions")).toContain("flow_id");
+    expect(tableInfo(db, "requests")).toContain("flow_id");
+    expect(tableInfo(db, "active_requests")).toContain("flow_id");
+    // A pre-existing row is NOT attributed to a copy by its kind name.
+    const row = db
+      .prepare(`SELECT flow_id FROM sessions WHERE id = ?`)
+      .get("sess_legacy") as { flow_id: string | null };
+    expect(row.flow_id).toBeNull();
+    db.close();
+  });
+
   it("is idempotent — calling initializeSchema twice doesn't break", () => {
     const db = new Database(":memory:");
     db.exec(`

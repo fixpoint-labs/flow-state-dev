@@ -191,7 +191,8 @@ export async function handleWebhook(
       await ensureSessionForWebhook({
         stores: host.stores,
         sessionId,
-        flowKind,
+        flowKind: flow.kind,
+        flowId: flow.id,
         principal,
         provider,
         eventType

@@ -60,4 +60,4 @@ export const wordCountFlow = defineFlow({
   session: { stateSchema: z.object({}) },
 });
 
-export default wordCountFlow({ id: "default" });
+export default wordCountFlow();

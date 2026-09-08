@@ -103,7 +103,7 @@ function buildFlow(poisonBehaviour: "throw" | "return", onError: "skip" | "fail"
         }).step(board.drain),
       },
     },
-  })({ id: "default" });
+  })();
 }
 
 /**
@@ -223,7 +223,7 @@ describe("FIX-951: task-board drain containment on a settled task", () => {
           }).step(board.drain),
         },
       },
-    })({ id: "default" });
+    })();
 
     await testFlow({
       flow,
@@ -351,7 +351,7 @@ function buildLegacyStoreFlow(misbehaviour: "ignores-guards" | "unreachable") {
         }).step(board.drain),
       },
     },
-  })({ id: "default" });
+  })();
 }
 
 describe("FIX-964: task-board drain containment on a custom store", () => {

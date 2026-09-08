@@ -132,11 +132,14 @@ effective resolver is still the default is treated as open.
 
 When a `host` or `user` route has no governing resolver in a **mixed
 app** (some flows authenticate, the host-level fallback is the default),
-the guard does not refuse the route. It returns `anonymousFlowKinds` —
-the set of flow kinds that do **not** configure their own resolver — and
-the handler withholds rows that belong to an authenticating flow.
-`anonymousFlowKinds` is that computed set, not a `createFlowApiRouter`
-option.
+the guard does not refuse the route. It returns `anonymousFlowIds` —
+the set of flow **instance ids** that do **not** configure their own
+resolver — and the handler withholds rows whose recorded owner
+(`flowId`, or the singleton its `flowKind` implies for a legacy row) is not
+in that set. Instance ids, not kinds: two instances of one collection can
+authenticate differently, and an anonymous member must not expose its
+authenticating sibling's rows. `anonymousFlowIds` is that computed set, not
+a `createFlowApiRouter` option.
 
 A mixed app that wants listings scoped to a real caller must set a
 host-level `resolvePrincipal`. Without one, the listing stays up for the

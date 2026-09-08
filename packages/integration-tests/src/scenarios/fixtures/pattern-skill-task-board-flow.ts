@@ -82,4 +82,4 @@ const flow = defineFlow({
   }
 });
 
-export default flow({ id: "default" });
+export default flow();

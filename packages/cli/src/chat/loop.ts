@@ -32,8 +32,8 @@ type LoopInput = NodeJS.ReadableStream & { isTTY?: boolean; setRawMode?: (mode: 
 
 export interface ChatLoopParams {
   state: HarnessState;
-  /** Resolves a flow instance for a target's kind (registry-default instance). */
-  registry: { get(kind: string, id?: string): FlowInstance | undefined };
+  /** Resolves a flow instance by a target's address (its exact instance id). */
+  registry: { get(address: string): FlowInstance | undefined };
   targets: FlowActionTarget[];
   builtins: ReadonlyMap<string, BuiltinCommand>;
   renderer: ChatRenderer;

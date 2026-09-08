@@ -153,7 +153,7 @@ const myFlow = defineFlow({
   request: { onStarted, onCompleted, onErrored, onFinished, onStepErrored },
 });
 
-export default myFlow({ id: "default" });
+export default myFlow();
 ```
 
 ## Resources

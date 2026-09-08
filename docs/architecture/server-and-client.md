@@ -47,6 +47,8 @@ registry.register(flow);
 const router = createFlowApiRouter({ registry });
 ```
 
+The registry indexes by exact instance id: a singleton by its kind, a collection member by its own id, and a collection's bare kind by nothing. See [flows-and-actions](./flows-and-actions.md#flowtype-and-flowinstance) for the declaration contract.
+
 ### Next.js Catch-All Route
 
 ```ts
@@ -75,15 +77,17 @@ custom) mount alongside it via the `adapters` option — see
 |--------|------|---------|
 | GET | `/api/flows` | List registered flows |
 | GET | `/api/flows/capabilities` | Feature flags |
-| POST | `/api/flows/:kind/actions/:action` | Execute action (new session) |
-| POST | `/api/flows/:kind/:sessionId/actions/:action` | Execute action (existing session) |
-| GET | `/api/flows/:kind/requests/:requestId/stream` | SSE request stream |
-| GET | `/api/flows/sessions` | List sessions |
+| POST | `/api/flows/:flowId/actions/:action` | Execute action (new session) |
+| POST | `/api/flows/:flowId/:sessionId/actions/:action` | Execute action (existing session) |
+| GET | `/api/flows/:flowId/requests/:requestId/stream` | SSE request stream |
+| GET | `/api/flows/sessions` | List sessions (`flowKind` and exact `flowId` filters) |
 | GET | `/api/flows/sessions/:sessionId` | Session detail |
 | GET | `/api/flows/sessions/:sessionId/requests` | Session requests |
 | GET | `/api/flows/sessions/:sessionId/state` | State snapshot |
-| POST | `/api/flows/:kind/sessions` | Create session |
+| POST | `/api/flows/:flowId/sessions` | Create session |
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |
+
+`:flowId` is the instance id (a singleton's kind, a collection member's own id). Every session and request records its owner as `flowId` beside the definition's `flowKind`, and every response that projects a session or request (`GET /api/flows` entries also carry `cardinality`) includes `flowId`. Routes that name a flow and a record check the two agree before the resolver runs (`409 wrong-instance-session` / `wrong-instance-request`, or `409 migration-required` for an ownerless record under a collection kind); routes that name only a record resolve the governing flow — whose resolver authorizes the read, and which decides the anonymous-listing filter (`anonymousFlowIds`) — from the record's owner. Retry, continue, resume, and interrupted-request recovery re-enter the recorded owner. Clients bind an instance id in `flowKind` and re-enter through the `flowId` on the records they hold.
 
 ### Custom Model Resolution
 

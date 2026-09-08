@@ -2,9 +2,10 @@
  * Flow-run job processor. Dequeues BullMQ jobs and calls runAction for each,
  * mapping execution results back to BullMQ job completion/failure semantics.
  *
- * Non-retryable errors (validation, unknown flow/action) are wrapped in
- * BullMQ's UnrecoverableError so they go straight to failed without retries.
- * All other errors follow the queue's retry/backoff config.
+ * Non-retryable errors (validation, unknown flow/action, a session or request
+ * another flow instance owns) are wrapped in BullMQ's UnrecoverableError so
+ * they go straight to failed without retries. All other errors follow the
+ * queue's retry/backoff config.
  */
 import { Worker, UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
@@ -52,6 +53,8 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
 
   return async (job: Job<FlowJobData>) => {
     const data = job.data;
+    // `flowKind` on the job is the instance's address — its exact id — so the
+    // worker resolves the same copy the enqueuing process did.
     const flow = registry.get(data.flowKind);
     if (!flow) {
       throw new UnrecoverableError(`Unknown flow "${data.flowKind}"`);
@@ -124,7 +127,15 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
       }
 
       return result;
-    } catch (err) {
+    } catch (caught) {
+      // A record another flow instance owns is refused at admission, before
+      // any write; retrying can only refuse again, so it fails outright.
+      // Matched by name rather than `instanceof` for the same cross-realm
+      // reason `UnrecoverableError` is below.
+      const err =
+        (caught as Error | undefined)?.name === "FlowInstanceBindingMismatchError"
+          ? new UnrecoverableError((caught as Error).message)
+          : caught;
       // Publish the error terminal only when BullMQ will NOT retry this
       // job: a non-retryable error or the final configured attempt. Earlier
       // attempts skip the publish so the web-side subscriber stays alive for

@@ -163,6 +163,47 @@ describe("defineFlow", () => {
     expect(custom.session?.metadata).toBeDefined();
   });
 
+  describe("instance cardinality", () => {
+    const actions = {
+      run: {
+        inputSchema: z.object({}),
+        block: handler({ name: "noop", inputSchema: z.object({}), execute: () => "ok" })
+      }
+    };
+
+    it("defaults a singleton's id to its effective kind and mirrors the policy", () => {
+      const flow = defineFlow({ kind: "reports", actions });
+      expect(flow.cardinality).toBe("singleton");
+      expect(flow().id).toBe("reports");
+      expect(flow().cardinality).toBe("singleton");
+      // An instance-side kind override derives the id from the effective kind.
+      expect(flow({ kind: "reports-eu" }).id).toBe("reports-eu");
+      // A supplied id is kept for direct, unregistered execution (an eval label).
+      expect(flow({ id: "eval" }).id).toBe("eval");
+    });
+
+    it("keeps a collection definition inspectable and requires an id to instantiate", () => {
+      const engineer = defineFlow({ kind: "engineer", cardinality: "collection", actions });
+      expect(engineer.cardinality).toBe("collection");
+      expect(Object.keys(engineer.actions)).toEqual(["run"]);
+      expect(() => engineer()).toThrow(/explicit id/);
+      expect(() => engineer({ id: "" })).toThrow(/non-empty/);
+      const a = engineer({ id: "engineer-a" });
+      expect(a.id).toBe("engineer-a");
+      expect(a.cardinality).toBe("collection");
+    });
+
+    it("refuses an invalid cardinality and an instance-side cardinality", () => {
+      expect(() =>
+        defineFlow({ kind: "bad", cardinality: "many" as unknown as "singleton", actions })
+      ).toThrow(/cardinality/);
+      const flow = defineFlow({ kind: "reports", actions });
+      expect(() =>
+        flow({ cardinality: "collection" } as unknown as Parameters<typeof flow>[0])
+      ).toThrow(/not an instance option/);
+    });
+  });
+
   it("allows requireUser: false on flows with no user-scope declarations", () => {
     const flow = defineFlow({
       kind: "system-only",

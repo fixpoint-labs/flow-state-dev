@@ -20,4 +20,4 @@ const strictFlow = defineFlow({
   },
 });
 
-export default strictFlow({ id: "default" });
+export default strictFlow();

@@ -164,7 +164,7 @@ function makeFlow(
         userMessage: (i: { message: string }) => i.message,
       },
     },
-  })({ id: "default" });
+  })();
 }
 
 const flows = {

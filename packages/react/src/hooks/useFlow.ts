@@ -52,6 +52,23 @@ export type UseFlowResult = {
 };
 
 /**
+ * The listing filter for the instance this hook addresses. A collection
+ * member's sessions are filed under its exact id (`flowId`) — its rows record
+ * the definition's kind, not the address, so a kind filter would find
+ * nothing. A singleton keeps the kind filter: its id is its kind, and the
+ * kind filter also finds sessions saved before owners were recorded, which
+ * an exact owner filter never matches. Until the flow list has loaded the
+ * address is read as a singleton, which is what every flow was.
+ */
+function sessionFilter(
+  address: string,
+  flows: readonly FlowListEntry[]
+): { flowKind: string } | { flowId: string } {
+  const entry = flows.find((flow) => flow.id === address);
+  return entry?.cardinality === "collection" ? { flowId: address } : { flowKind: address };
+}
+
+/**
  * Reactive hook for listing flows/sessions and managing session lifecycle.
  */
 export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
@@ -97,7 +114,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
       });
 
       const updated = await sessionClient.listSessions({
-        flowKind,
+        ...sessionFilter(flowKind, flows),
         userId
       });
       setSessions(updated);
@@ -105,7 +122,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
 
       return created;
     },
-    [flowKind, userId, sessionClient]
+    [flowKind, flows, userId, sessionClient]
   );
 
   const ensureSession = useCallback(
@@ -129,9 +146,12 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
 
   const refreshSessions = useCallback(async () => {
     if (!flowKind?.trim()) return;
-    const updated = await sessionClient.listSessions({ flowKind, userId });
+    const updated = await sessionClient.listSessions({
+      ...sessionFilter(flowKind, flows),
+      userId
+    });
     setSessions(updated);
-  }, [flowKind, userId, sessionClient]);
+  }, [flowKind, flows, userId, sessionClient]);
 
   // Fetch flows + sessions on mount, auto-create if requested and none exist.
   useEffect(() => {
@@ -140,15 +160,14 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
 
     void (async () => {
       try {
-        const [nextFlows, nextSessions] = await Promise.all([
-          client.listFlows(),
-          flowKind?.trim()
-            ? sessionClient.listSessions({
-                flowKind,
-                userId
-              })
-            : Promise.resolve<SessionSummary[]>([])
-        ]);
+        // Flows first: the session filter depends on what the address is.
+        const nextFlows = await client.listFlows();
+        const nextSessions: SessionSummary[] = flowKind?.trim()
+          ? await sessionClient.listSessions({
+              ...sessionFilter(flowKind, nextFlows),
+              userId
+            })
+          : [];
 
         if (cancelled) return;
 
@@ -169,7 +188,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
           setActiveSessionId(created.id);
 
           const updated = await sessionClient.listSessions({
-            flowKind,
+            ...sessionFilter(flowKind, nextFlows),
             userId
           });
           if (cancelled) return;

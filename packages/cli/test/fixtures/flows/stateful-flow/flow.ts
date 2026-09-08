@@ -34,6 +34,6 @@ const statefulFlow = defineFlow({
   },
 });
 
-const flow = statefulFlow({ id: "default" });
+const flow = statefulFlow();
 
 export default flow;

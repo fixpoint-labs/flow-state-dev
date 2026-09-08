@@ -94,24 +94,17 @@ function makeSlowFlow(kind: string, id = kind): FlowInstance {
 }
 
 describe("flow registry", () => {
-  it("registers, resolves, and lists flows", () => {
+  it("resolves a singleton by its kind and lists by kind then id", () => {
     const registry = createFlowRegistry();
-    const primary = makeFlow("chat", "default");
-    const secondary = makeFlow("chat", "alt");
+    registry.register(makeFlow("chat"));
+    registry.register(makeFlow("billing"));
 
-    registry.register(primary);
-    registry.register(secondary);
-
-    expect(registry.get("chat", "default")?.id).toBe("default");
-    expect(registry.get("chat", "alt")?.id).toBe("alt");
-    expect(registry.get("chat")?.id).toBe("default");
-    expect(registry.list().map((flow) => flow.id)).toEqual([
-      "alt",
-      "default"
-    ]);
+    expect(registry.get("chat")?.id).toBe("chat");
+    expect(registry.get("billing")?.kind).toBe("billing");
+    expect(registry.list().map((flow) => flow.id)).toEqual(["billing", "chat"]);
   });
 
-  it("rejects duplicate (kind,id) registrations", () => {
+  it("rejects a duplicate id", () => {
     const registry = createFlowRegistry();
     const flow = makeFlow("dup", "dup");
 
@@ -183,6 +176,7 @@ describe("createFlowApiRouter", () => {
         {
           id: "demo",
           kind: "demo",
+          cardinality: "singleton",
           requireUser: true,
           requiresOrg: false,
           actions: ["run"],

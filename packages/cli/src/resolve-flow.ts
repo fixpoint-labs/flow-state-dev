@@ -69,7 +69,8 @@ export interface DiscoverFlowsOptions {
  * 3. Then scan monorepo subdirectories: packages/*, examples/*, apps/*,
  *    labs/* looking for src/flows/ and flows/ within each.
  *
- * Deduplicates flows by kind (first discovered wins).
+ * Deduplicates flows by instance id (first discovered wins): two instances of
+ * one kind with distinct ids are both kept, and are two addresses.
  */
 export async function discoverFlows(cwdOrOptions?: string | DiscoverFlowsOptions): Promise<FlowInstance[]> {
   const options = typeof cwdOrOptions === "string" ? { cwd: cwdOrOptions } : (cwdOrOptions ?? {});
@@ -78,8 +79,8 @@ export async function discoverFlows(cwdOrOptions?: string | DiscoverFlowsOptions
   const flows: FlowInstance[] = [];
 
   async function addFlow(flow: FlowInstance): Promise<void> {
-    if (!seen.has(flow.kind)) {
-      seen.add(flow.kind);
+    if (!seen.has(flow.id)) {
+      seen.add(flow.id);
       flows.push(flow);
     }
   }

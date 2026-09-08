@@ -34,7 +34,7 @@ export default defineFlow({
   actions: { chat: { block: pipeline, userMessage: (i) => i.message } },
   session: { stateSchema, client },
   resources,
-})({ id: "default" });
+})();
 ```
 
 From that definition you get streaming with resume, conversation history, tool loops, atomic state operations, typed client-visible state, and error recovery.

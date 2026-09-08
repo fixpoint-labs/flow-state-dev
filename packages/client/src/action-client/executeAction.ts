@@ -220,7 +220,10 @@ export function createClient(options: CreateClientOptions): Client {
 export function createTypedClient<TFlow extends FlowLike>(
   options: CreateTypedClientOptions<TFlow>
 ): FlowClient<TFlow> {
-  const flowKind = ensureRequired(options.flow.kind, "flow.kind");
+  // Bind the instance's address: its id. A singleton definition has none and
+  // its instance's id is its kind, so the kind still serves; a collection
+  // definition names no instance and is refused rather than guessed.
+  const flowKind = resolveFlowAddress(options.flow);
   const client = createClient({
     flowKind,
     userId: options.userId,
@@ -253,6 +256,17 @@ export function createTypedClient<TFlow extends FlowLike>(
         sessions.getSessionState(sessionId)
     }
   };
+}
+
+function resolveFlowAddress(flow: FlowLike): string {
+  if (flow.id !== undefined) return ensureRequired(flow.id, "flow.id");
+  if (flow.cardinality === "collection") {
+    throw new Error(
+      `createTypedClient: flow "${flow.kind}" has cardinality "collection", so a definition is ` +
+        `not an address. Pass an instance — the factory called with { id } — instead.`
+    );
+  }
+  return ensureRequired(flow.kind, "flow.kind");
 }
 
 function ensureRequired(value: string, name: string): string {

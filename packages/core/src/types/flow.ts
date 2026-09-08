@@ -410,6 +410,23 @@ export type OrgConfig = {
   client?: ScopeClientConfig<JsonObject>;
 };
 
+/**
+ * How many registered instances a flow definition supports.
+ *
+ * - `"singleton"` (default) — one instance per kind. Its `id` is its `kind`,
+ *   so the addresses an application already uses (`/api/flows/<kind>/…`,
+ *   `fsdev run <kind>`) keep resolving unchanged.
+ * - `"collection"` — several named copies of one definition. Every instance
+ *   must be created with an explicit `id`, and that id is the only address it
+ *   answers to; the bare kind never selects a member, even when only one is
+ *   registered.
+ *
+ * Declared on the definition only. It is the flow's identity policy, not a
+ * per-instance choice: a hand-built singleton of a collection kind would turn
+ * the bare kind into an accidental address for the whole collection.
+ */
+export type FlowCardinality = "singleton" | "collection";
+
 export type FlowDefinition<
   TActions extends Record<string, ActionConfig> = Record<string, ActionConfig>,
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
@@ -419,6 +436,12 @@ export type FlowDefinition<
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   kind: string;
+  /**
+   * Instance cardinality — see {@link FlowCardinality}. Omitted means
+   * `"singleton"`. Definition-only: `rejectDefinitionOnlyOptions` refuses it
+   * as an instance option.
+   */
+  cardinality?: FlowCardinality;
   /**
    * Top-level shorthand for `authentication.requireUser`. When both are set,
    * `authentication.requireUser` wins. Default: true.
@@ -542,8 +565,9 @@ export type FlowInstanceOptions<
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  // `mcp`, `webhooks` and `schedules` are deliberately ABSENT — they are
-  // definition-only; see `rejectDefinitionOnlyOptions` in `flow/defineFlow.ts` (FIX-1048).
+  // `mcp`, `webhooks`, `schedules` and `cardinality` are deliberately ABSENT —
+  // they are definition-only; see `rejectDefinitionOnlyOptions` in
+  // `flow/defineFlow.ts` (FIX-1048).
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;
@@ -558,8 +582,15 @@ export type FlowInstance<
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
+  /**
+   * The instance's global address. For a singleton this equals `kind`; for a
+   * collection member it is the explicit id the factory was called with. The
+   * flow registry indexes every registered instance by this value alone.
+   */
   id: string;
   kind: string;
+  /** Normalized from the definition; see {@link FlowCardinality}. */
+  cardinality: FlowCardinality;
   requireUser: boolean;
   /**
    * True when any block in any action declares `requireOrg: true`. The HTTP
@@ -610,6 +641,8 @@ export type FlowType<
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   kind: string;
+  /** Mirror of `FlowInstance.cardinality`. */
+  cardinality: FlowCardinality;
   requireUser: boolean;
   /** Mirror of `FlowInstance.requiresOrg`. */
   requiresOrg: boolean;

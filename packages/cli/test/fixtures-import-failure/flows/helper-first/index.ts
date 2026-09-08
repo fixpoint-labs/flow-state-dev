@@ -24,4 +24,4 @@ const helperFirstFlow = defineFlow({
   },
 });
 
-export default helperFirstFlow({ id: "default" });
+export default helperFirstFlow();

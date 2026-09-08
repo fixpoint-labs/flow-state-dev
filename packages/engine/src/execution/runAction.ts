@@ -55,6 +55,8 @@ import {
   registerAbortController,
   deregisterAbortController
 } from "./abort-registry";
+import { FlowInstanceBindingMismatchError } from "../context/binding-errors";
+import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -222,12 +224,14 @@ async function reconcileDroppedDelivery(
  * accepted, leaving the row `in_progress` until lease recovery. `defineFlow`
  * refuses that statically; this is the same rule for a core it never walked.
  *
- * A `flowKind` that names **another** flow is skipped the same way
+ * A `flowKind` that names **another** flow instance is skipped the same way
  * `defineFlow` defers that lookup: this walk holds one flow's maps, and the
  * seam resolves the destination at dispatch time. Requiring the sender to
  * declare the entry would force a dummy that is never the one that runs.
- * Same-flow addresses (no `flowKind`, or `flowKind` equal to this flow) still
- * get the entry and task-binding checks.
+ * Same-instance addresses (no `flowKind`, or `flowKind` equal to this
+ * instance's id — the address is an instance id, so a collection member's
+ * bare kind is another address, not this one) still get the entry and
+ * task-binding checks.
  */
 function assertDispatchersRoutable(
   flow: FlowInstance,
@@ -245,7 +249,7 @@ function assertDispatchersRoutable(
 
     const address = block.dispatch;
     if (address !== undefined) {
-      const crossFlow = address.flowKind !== undefined && address.flowKind !== flow.kind;
+      const crossFlow = address.flowKind !== undefined && address.flowKind !== flow.id;
       if (!crossFlow) {
         const entry = resolveTypedEntry(flow, address.type, address.action);
         if (entry === undefined) {
@@ -761,9 +765,53 @@ export async function runActionInternal<
   // because composedSignal is consumed by it.
   const registry = options.stores.activeRequests;
   const source = options.source ?? "http";
+
+  // --- Owner admission (before anything is registered or written) ---
+  // The session this run addresses and the request record it may adopt must
+  // belong to THIS flow instance. Checked here, ahead of the active-request
+  // registration and the `latestRequestId` stamp below, so a request addressed
+  // to the wrong copy of a flow has no effect on the right copy's records: no
+  // heartbeat under its id, no auto-resume target moved, no adoption. The
+  // create-race winner is re-checked in `createExecutionContext`, which is the
+  // only place a record this run did not load can appear.
+  const sessionKey =
+    options.sessionId !== undefined
+      ? resolveSessionStorageKey(options.sessionId, options.tenantId)
+      : undefined;
+  const [admittedSession, admittedRequest] = await Promise.all([
+    sessionKey !== undefined ? options.stores.session.get(sessionKey) : undefined,
+    options.stores.request.get(requestId)
+  ]);
+  if (
+    admittedSession !== undefined &&
+    options.sessionId !== undefined &&
+    tenantMatches(admittedSession.tenantId, options.tenantId) &&
+    !ownsRecord(options.flow, admittedSession)
+  ) {
+    const refusal = foreignRecordRefusal(options.flow, admittedSession);
+    throw new FlowInstanceBindingMismatchError(
+      "session",
+      options.sessionId,
+      options.flow.id,
+      refusal.detail,
+      refusal.reason
+    );
+  }
+  if (admittedRequest !== undefined && !ownsRecord(options.flow, admittedRequest)) {
+    const refusal = foreignRecordRefusal(options.flow, admittedRequest);
+    throw new FlowInstanceBindingMismatchError(
+      "request",
+      requestId,
+      options.flow.id,
+      refusal.detail,
+      refusal.reason
+    );
+  }
+
   await registry.register({
     requestId,
     flowKind: options.flow.kind,
+    flowId: options.flow.id,
     actionName: options.actionName as string,
     sessionId: options.sessionId,
     userId: options.userId,
@@ -876,11 +924,14 @@ export async function runActionInternal<
   };
 
   // --- Update session's latestRequestId for auto-resume discovery ---
-  if (options.sessionId !== undefined) {
+  if (options.sessionId !== undefined && sessionKey !== undefined) {
     try {
       // Tenant-namespaced key (FIX-682) so this lands on the same record the
       // execution context reads/writes; a bare key would miss a tenant session.
-      const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
+      // Re-read rather than reusing the admission load above: the incarnation
+      // guard below compares against the record as it is NOW, after this run
+      // has registered, which is the moment a replacement session becomes
+      // visible.
       const session = await options.stores.session.get(sessionKey);
 
       // INCARNATION GUARD for a delivery into an existing session, and it sits

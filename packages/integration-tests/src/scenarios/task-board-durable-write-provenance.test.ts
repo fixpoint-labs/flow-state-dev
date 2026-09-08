@@ -85,10 +85,15 @@ const board = taskBoard({
 
 type Board = TaskCollectionRef<{ goal: string }, unknown>;
 
-/** One execution: a flow with a single handler that runs `body` against the shared board. */
+/**
+ * One execution: a flow with a single handler that runs `body` against the
+ * shared board. Every execution is the SAME flow identity — one kind, one
+ * singleton — because they share one session, and a session belongs to one
+ * flow instance; only the handler body differs.
+ */
 function execution(name: string, body: (tasks: Board) => Promise<unknown>) {
   return defineFlow({
-    kind: `write-provenance-${name}`,
+    kind: "write-provenance",
     actions: {
       run: {
         block: handler({
@@ -104,7 +109,7 @@ function execution(name: string, body: (tasks: Board) => Promise<unknown>) {
         }),
       },
     },
-  })({ id: "default" });
+  })();
 }
 
 /** Launch one execution over the shared stores/session. */

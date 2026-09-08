@@ -70,7 +70,7 @@ Wrap your app (or a subtree) with `<FlowProvider>` to set defaults and register 
 ```
 
 Props:
-- `flowKind?: string` — Default flow kind for child hooks
+- `flowKind?: string` — Default flow instance for child hooks (a kind, or a collection member's own id)
 - `sessionId?: string` — Default session ID
 - `userId?: string` — Required for Phase 1
 - `baseUrl?: string` — API base URL
@@ -109,7 +109,7 @@ Returns:
 - `statusMessage` — Request-scoped status slot mirror. Latest `ctx.emit.status()` value from the in-flight request (empty string when unset; resets on request termination). Pair with a streaming indicator to show "what's happening right now" with a "Working..." fallback.
 - `sendAction(action, input)` — Trigger an action
 - `abortRequest()` — Stop the in-flight request (signals the server to mark it `aborted`)
-- `resumeLatestRequest()` — Re-dispatch `latestRequest` and attach to the new stream. No-op when there's no latest request, or when its status is anything other than `interrupted` or `failed` (the only states the server will retry). Useful for rendering a "Resume" button when a previous request was interrupted by a server crash, HMR reload, or network drop:
+- `resumeLatestRequest()` — Re-dispatch `latestRequest` and attach to the new stream. No-op when there's no latest request, or when its status is anything other than `interrupted` or `failed` (the only states the server will retry). The retry goes through the instance recorded as the request's owner (`latestRequest.flowId`), falling back to the provider's `flowKind` only for a record with no owner recorded. Useful for rendering a "Resume" button when a previous request was interrupted by a server crash, HMR reload, or network drop:
 
   ```tsx
   {session.latestRequest?.status === "interrupted" && !session.isStreaming && (
@@ -182,7 +182,7 @@ The parameter defaults to `unknown`, so untyped call sites are unchanged.
 
 ### `SessionView.childSessions`
 
-`ReadonlyArray<ChildSessionSummary>` of the sessions started under this one — one entry per child, carrying `{ id, parentSessionId, createdAt, updatedAt, topic?, coordinate?, status? }`, which is the whole row. Empty for a session that started none. Separate from `items`: a child session is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
+`ReadonlyArray<ChildSessionSummary>` of the sessions started under this one — one entry per child, carrying `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate?, status? }`, which is the whole row. `flowId` is the instance that owns the child — the address to read it through when it was dispatched into another instance; absent on a child written before owners were recorded. Empty for a session that started none. Separate from `items`: a child session is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
 
 Carries one page of the most recent entries, newest first. This list is all-time history, not just what is running now, so it grows with everything the conversation has ever started. A conversation that runs more background work than one page keeps showing the newest; the oldest finished work falls off the end and is not reachable from the hook.
 

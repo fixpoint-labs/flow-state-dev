@@ -25,6 +25,6 @@ const echoFlow = defineFlow({
   },
 });
 
-const flow = echoFlow({ id: "default" });
+const flow = echoFlow();
 
 export default flow;

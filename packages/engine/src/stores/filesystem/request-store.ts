@@ -192,6 +192,13 @@ export class FilesystemRequestStore implements RequestStore {
         }
 
         if (
+          listOptions?.flowId !== undefined &&
+          record.flowId !== listOptions.flowId
+        ) {
+          return false;
+        }
+
+        if (
           listOptions?.sessionId !== undefined &&
           record.sessionId !== listOptions.sessionId
         ) {

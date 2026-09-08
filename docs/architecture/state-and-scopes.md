@@ -565,7 +565,7 @@ const isolated = resolveResourceIsolation(resource.flowIsolation, flow, "user");
 const scopeId = resolveResourceScopeId(userId, flow.kind, isolated); // bare id, or `${id}:${kind}`
 ```
 
-`createExecutionContext` routes every per-resource `resourceState` / `content` read and write through the per-resource resolution; read-side projections (`/state`, the resource routes, sibling MCP adapters) enumerate the buckets a flow declares via `resourceScopeIds` and merge. Session and request scopes are unaffected — sessions already carry `flowKind` on the record and are effectively flow-isolated already.
+`createExecutionContext` routes every per-resource `resourceState` / `content` read and write through the per-resource resolution; read-side projections (`/state`, the resource routes, sibling MCP adapters) enumerate the buckets a flow declares via `resourceScopeIds` and merge. Session and request scopes are unaffected — sessions and requests carry their owning instance (`flowId`, beside the definition's `flowKind`), and every route, transport and direct `runAction` admits the owner before any effect, so a session is reachable only through the instance that created it. Note that `flowKind` alone does not isolate sessions: two instances of one collection share a kind and are still two owners.
 
 ### Non-goals
 
@@ -580,7 +580,7 @@ This section covers what a child session *addresses*. For what happens to it ove
 
 The dispatch seam derives the child's session id rather than accepting one (`deriveDispatchChildSessionId`, `packages/engine/src/context/detached-child.ts`). The key material is the running request's `tenantId`, `userId`, `parentSessionId` and `lineageId`, the `dispatch` namespace, and the session key — a `dispatcher()`'s `{ key }` result, or the key a task seat's `session` policy composed — each length-framed, hashed to `dsx_<sha256[0:32]>`. The caller supplies the *target* of the operation and never the *authority* for it. The derivation is deterministic, which is what makes "adopt if it already exists" the ordinary retry path rather than a conflict.
 
-The child inherits `flowKind`, `userId`, `tenantId`, `orgId` and `lineageId`, and records `parentSessionId`. `evaluateAdoption` re-checks all six before adopting a record found at the derived key — the public session-create route lets a same-principal caller pre-create a record sitting at that deterministic id, and `createExecutionContext` validates user, tenant and org bindings but not `flowKind` or `parentSessionId`.
+A same-instance child inherits `flowId` and `flowKind`, `userId`, `tenantId`, `orgId` and `lineageId`, and records `parentSessionId`; a cross-instance child carries the target instance's `flowId`/`flowKind` and roots its own lineage. `evaluateAdoption` re-checks the owning instance (`flowId`, with kind and cardinality standing in for a pre-ownership record), principal, tenant, org, parent and lineage before adopting a record found at the derived key — the public session-create route lets a same-principal caller pre-create a record sitting at that deterministic id. `createExecutionContext` admits the session's and request's owner first, then validates user, tenant and org bindings; it does not check `parentSessionId`.
 
 ### What each scope resolves to inside a child session
 

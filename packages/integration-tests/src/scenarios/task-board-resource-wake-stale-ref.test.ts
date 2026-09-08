@@ -114,7 +114,7 @@ function buildFlow(backing: "resource" | "request") {
         }).stepAll([board.drain, seedAfterStart]),
       },
     },
-  })({ id: "default" });
+  })();
 
   return { flow, processed, addedAt };
 }

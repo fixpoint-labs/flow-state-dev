@@ -92,14 +92,24 @@ Store-adapter factories: `inMemoryStores()`, `filesystemStores({ rootDir })` (th
 
 ### `createFlowRegistry()`
 
-Create a registry for flow instances.
+Create a registry for flow instances. The registry indexes every instance by its id, which is what every route, CLI target, and queue job carries.
 
 ```ts
 import { createFlowRegistry } from "@flow-state-dev/engine";
 
 const registry = createFlowRegistry();
-registry.register(myFlow);
+registry.register(myFlow);          // singleton: id is its kind
+registry.registerMany([east, west]); // collection instances: their own ids
+
+registry.get("my-flow");     // the singleton
+registry.get("review-east"); // one collection instance
+registry.get("review");      // undefined: a collection's kind is not an address
+registry.list();             // every registered instance
 ```
+
+`get(id)` is an exact lookup. There is no first-registered fallback, and a miss is `undefined`. Ids are unique across the registry regardless of kind: a second `register` with an id already taken throws `FlowIdentityConflictError` (`reason: "duplicate-id"`), as does a singleton registered under a custom id (`"singleton-id-mismatch"`) or a collection instance without one. A kind cannot mix a singleton with collection instances.
+
+`GET /api/flows` lists what is registered, one entry per instance: `{ id, kind, cardinality, actions, ... }`. `createFlowState` builds this registry for you from its `flows` option; reach for it directly only when wiring a custom host.
 
 ### `createFlowApiRouter(options)`
 
@@ -120,7 +130,7 @@ export const { GET, POST, PATCH, DELETE } = router;
 
 ### `parseFlowRoute(path)`
 
-Parse a flow API path into its components (kind, action, sessionId, etc.).
+Parse a flow API path into its components (the addressed flow id, action, sessionId, and so on). The first segment of an action or stream route is an instance id, which for a singleton is its kind. See [Addressing an instance](../server/setup.md#addressing-an-instance).
 
 ## Execution
 
@@ -130,7 +140,7 @@ Create a block execution context manually (for advanced use).
 
 ### `runAction(options)`
 
-Execute a flow action programmatically.
+Execute a flow action programmatically. The `flow` you pass owns every record the run creates, and a `sessionId` that belongs to another instance is refused before the action starts. See [Manual flow execution](../advanced/manual-flow-execution.md).
 
 ### `executeBlock(block, input, ctx)`
 

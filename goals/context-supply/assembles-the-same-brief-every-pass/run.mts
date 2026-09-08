@@ -163,7 +163,7 @@ async function assemble(
     kind: "review-brief-goal",
     requireUser: true,
     actions: { review: { block: recipe as never } },
-  })({ id: "default" });
+  })();
 
   const result = await runAction({
     flow,

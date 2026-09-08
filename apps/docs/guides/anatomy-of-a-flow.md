@@ -57,7 +57,7 @@ defineFlow({
 });
 ```
 
-`defineFlow` returns a flow type. You call it with `({ id: "default" })` to produce an instance you register with the server. Instances support merge-based overrides if you need to swap actions or config at creation time.
+`defineFlow` returns a flow type. You call it, with no arguments, to produce the instance you register with the server; the `kind` is both what the flow is and the address it answers to. Instances support merge-based overrides if you need to swap actions or config at creation time, and a flow that needs several configured copies declares that on the definition (see [Flows](/docs/fundamentals/flows#flowtype-vs-flowinstance)).
 
 ## 4. Actions are the public API
 

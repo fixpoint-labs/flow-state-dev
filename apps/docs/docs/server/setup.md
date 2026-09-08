@@ -188,20 +188,50 @@ Construction is synchronous. The router and stores initialize lazily, memoized o
 
 If you want to warm the runtime ahead of the first request (or surface a bad connection string early), call `ready()` in an `instrumentation.ts` file or at the start of a test.
 
+## Addressing an instance
+
+Each flow you pass to `createFlowState` is registered under its instance id. For an ordinary flow that id is its `kind`, so `/api/flows/support/...` reaches the `support` flow and nothing about the URL changes. A flow declared `cardinality: "collection"` registers one instance per id you give it, and each is reached only by that id:
+
+```ts
+const reviewFlow = defineFlow({ kind: "review", cardinality: "collection", ... });
+
+export const flowstate = createFlowState({
+  flows: [reviewFlow({ id: "review-east" }), reviewFlow({ id: "review-west" })],
+});
+```
+
+`POST /api/flows/review-east/actions/run` runs the east copy with its configuration. `POST /api/flows/review/actions/run` is a `404`: the kind of a collection is not an address, and no copy is picked on your behalf. The id is an address, not a credential. Who may call the instance is still decided by [authentication](./authentication.md).
+
+### Keeping a session with its owner
+
+A session and every request under it record the instance that created them. Naming that session through a different instance is refused before the action runs, with nothing written:
+
+```bash
+curl -X POST /api/flows/review-east/s_42/actions/run -d '{"userId":"u1","input":{}}'
+# 202, s_42 is now review-east's
+
+curl -X POST /api/flows/review-west/s_42/actions/run -d '{"userId":"u1","input":{}}'
+# 409 { "error": "wrong-instance-session" }
+```
+
+The same holds after a restart, whichever instances are registered afterwards and in whatever order: `review-east` re-enters `s_42`, and a server that only knows `review-west` still refuses it. Records written before owners were recorded are treated as belonging to the singleton of their kind; a collection flow with such history needs the one-time attribution in [Persistence](../persistence/overview.md#who-owns-a-record). Resuming or retrying a request always re-enters its recorded owner, see [Durable execution](../advanced/durable-execution.md#resuming-a-suspended-request).
+
 ## API Endpoints
+
+`:flowId` is the instance id, which for an ordinary flow is its `kind`.
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/flows` | List registered flows |
 | GET | `/api/flows/capabilities` | Feature flags |
-| POST | `/api/flows/:kind/actions/:action` | Execute action (new session) |
-| POST | `/api/flows/:kind/:sessionId/actions/:action` | Execute action (existing session) |
-| GET | `/api/flows/:kind/requests/:requestId/stream` | SSE request stream |
+| POST | `/api/flows/:flowId/actions/:action` | Execute action (new session) |
+| POST | `/api/flows/:flowId/:sessionId/actions/:action` | Execute action (existing session) |
+| GET | `/api/flows/:flowId/requests/:requestId/stream` | SSE request stream |
 | GET | `/api/flows/sessions` | List sessions |
 | GET | `/api/flows/sessions/:sessionId` | Session detail |
 | GET | `/api/flows/sessions/:sessionId/state` | State snapshot (clientData) |
 | GET | `/api/flows/sessions/:sessionId/children` | [Sessions](./background-work.md) started under this one |
-| POST | `/api/flows/:kind/sessions` | Create session |
+| POST | `/api/flows/:flowId/sessions` | Create session |
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |
 
 ## Request Lifecycle

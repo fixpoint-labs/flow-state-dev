@@ -167,6 +167,8 @@ const router = createFlowApiRouter({ registry, stores });
 export const { GET, POST, PATCH, DELETE } = router;
 ```
 
+The registry indexes instances by id and `get(id)` is an exact lookup: a singleton is found by its kind, a collection member only by its own id, and a miss is `undefined` with no first-registered fallback. Ids are unique across the registry, so a duplicate id, a singleton under a custom id, or a kind mixing singleton and collection instances throws `FlowIdentityConflictError` at `register`. See the [Engine API](https://flow-state.dev/docs/api/server#createflowregistry) and [server setup](https://flow-state.dev/docs/server/setup#addressing-an-instance).
+
 For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.provider` overrides it. See the [Voice guide](https://flowstate.dev/docs/advanced/voice).
 
 ## What this package does
@@ -174,14 +176,17 @@ For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.p
 - **Action execution** — Validates input, resolves sessions, runs block pipelines, emits items
 - **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume. Resources declaring `client: { live: true }` emit their projected delta inline on each mutation so clients merge it without a refetch
 - **State persistence** — in-memory, filesystem, SQLite, and Postgres store adapters. Version-checked writes for anything computed from current state; increments, appends and single-key writes are unchecked and apply to whatever the store holds
-- **Flow registry** — Register multiple flows, routes are derived automatically
+- **Flow registry** — Register multiple flows, and several instances of a collection flow, each addressed by its exact id; routes are derived automatically
+- **Instance ownership** — Every session and request records the instance that created it (`flowId`, beside the definition's `flowKind`). Addressing a record through another instance, over HTTP, a transport, a worker or direct `runAction`, is refused with `FlowInstanceBindingMismatchError` before any effect (`409 wrong-instance-session` / `wrong-instance-request` on the action route). Session and request listings take an exact `flowId` filter and project `flowId` on every row; `resolveRecordOwner` / `ownsRecord` are the exported checks. Records with no owner recorded belong to the singleton of their kind; a collection kind with such history is `migration-required` until attributed (see [Persistence](https://flow-state.dev/docs/persistence/overview#who-owns-a-record))
 - **Error normalization** — All errors become typed `FlowError` instances with codes, retry signals, and scope context
 - **Structured logging** — Every action execution logs flow/action/block IDs, attempt numbers, timing, and summarized payloads
 ## Inbound transports
 
 Every entry point into the runtime — native HTTP, MCP servers, webhooks,
 scheduled actions, custom transports — implements the same
-`InboundTransportAdapter` contract. The built-in HTTP adapter is mounted
+`InboundTransportAdapter` contract. The envelope's `flowKind` is the exact
+instance address, carried unchanged; the host admits it against the owner of
+any session or request it names before writing anything. The built-in HTTP adapter is mounted
 automatically; `createFlowApiRouter` accepts an `adapters` option to mount
 additional transports onto the same host:
 

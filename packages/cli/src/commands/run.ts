@@ -1,7 +1,7 @@
 /**
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
-import { ensureSessionRecord } from "@flow-state-dev/engine";
+import { ensureSessionRecord, ownsRecord } from "@flow-state-dev/engine";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
@@ -222,9 +222,11 @@ export async function executeRunCommand(
           EXIT_CONFIG_ERROR,
         );
       }
+      // Exact instance address: a singleton's kind, or a collection member's
+      // explicit id. A collection's bare kind names nothing.
       const found = runtime.registry.get(flowKind);
       if (found === undefined) {
-        const kinds = [...new Set(runtime.registry.list().map((f) => f.kind))].join(", ") || "(none)";
+        const kinds = runtime.registry.list().map((f) => f.id).join(", ") || "(none)";
         throw new CliError(
           `Flow "${flowKind}" not found in fsdev config (${resolved.configPath}). Available flows: ${kinds}`,
           EXIT_DISCOVERY_ERROR,
@@ -235,9 +237,9 @@ export async function executeRunCommand(
       baseRuntimeConfig = runtime.runtimeConfig;
     } else {
       // --- discovery path: scan conventional directories, CLI defaults ---
-      const found = resolved.flows.find((f) => f.kind === flowKind);
+      const found = resolved.flows.find((f) => f.id === flowKind);
       if (found === undefined) {
-        const available = resolved.flows.map((f) => f.kind).join(", ") || "(none found)";
+        const available = resolved.flows.map((f) => f.id).join(", ") || "(none found)";
         const searched = resolved.searchedDirs.join(", ");
         throw new CliError(
           `Flow "${flowKind}" not found. Available flows: ${available}\n` +
@@ -273,6 +275,15 @@ export async function executeRunCommand(
       const seedData = parseSeedArg(options.seedSession, "session") as JsonObject;
       const existing = await stores.session.get(sessionId);
       if (existing !== undefined) {
+        // `runAction` refuses a session another instance owns, but only after
+        // this seed would have rewritten its state. Refuse first.
+        if (!ownsRecord(flow, existing)) {
+          throw new CliError(
+            `Session "${sessionId}" belongs to flow instance "${existing.flowId ?? existing.flowKind}", ` +
+              `not "${flow.id}"; --seed-session was not applied`,
+            EXIT_INVALID_ARGS,
+          );
+        }
         await stores.session.set(sessionId, {
           ...existing,
           state: { ...existing.state, ...seedData },
@@ -283,7 +294,8 @@ export async function executeRunCommand(
         // seeded CLI session needs as much as any other.
         await ensureSessionRecord(stores, sessionId, () => ({
           id: sessionId,
-          flowKind: flowKind,
+          flowKind: flow.kind,
+          flowId: flow.id,
           userId: "cli-user",
           state: seedData,
           version: 0,

@@ -11,6 +11,9 @@ export {
 
 export {
   CrossFlowSchemaConflictError,
+  FlowIdentityConflictError,
   type ConflictScope,
-  type CrossFlowSchemaConflictDetails
+  type CrossFlowSchemaConflictDetails,
+  type FlowIdentityConflictDetails,
+  type FlowIdentityConflictReason
 } from "./errors";

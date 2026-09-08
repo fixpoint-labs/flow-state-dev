@@ -116,7 +116,7 @@ function PanelContent({ className }: { className?: string }) {
   const [navWidth, setNavWidth] = useState(NAV_EXPANDED_WIDTH);
   const [detailWidth, setDetailWidth] = useState(DETAIL_DEFAULT_WIDTH);
 
-  const activeFlow = flows.find((f) => f.kind === activeFlowKind);
+  const activeFlow = flows.find((f) => f.id === activeFlowKind);
   const { activeSessionId: stickySession } = useActiveSession(activeFlowKind);
 
   const effectiveSessionId = activeSessionId ?? stickySession;

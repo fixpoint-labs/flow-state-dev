@@ -22,6 +22,9 @@ const client = createClient({
 });
 
 const { requestId } = await client.sendAction("chat", { message: "Hello" });
+// `flowKind` is the instance the client is bound to: a flow's kind, or one
+// copy's id for a flow that runs as several. Every call goes to that instance,
+// and a session it starts is recorded as that instance's.
 ```
 
 `sendAction` returns a `requestId`. Execution is async. The server returns `202 Accepted`; the real work happens in the background. Connect to the stream to receive results.
@@ -123,7 +126,9 @@ const snapshot = await sessions.getSessionState("sess_1", {
 
 ```ts
 const list = await sessions.listSessions({ flowKind: "my-app" });
-// Each entry includes id, title, description, tags, createdAt, updatedAt
+// Each entry includes id, flowId, title, description, tags, createdAt, updatedAt.
+// `flowId` is the instance that owns the session; pass `flowId` instead of
+// `flowKind` to list one copy of a multi-copy flow.
 ```
 
 The typed client includes a session client when created with a flow. Use it for creating sessions, listing requests, and fetching state.
@@ -154,13 +159,14 @@ type ChildSessionSummary = {
   parentSessionId: string;
   createdAt: number;
   updatedAt: number;
+  flowId?: string;          // the instance that owns the child; absent on rows written before owners were recorded
   topic?: string;
   coordinate?: string;
   status?: "active" | "completed" | "failed" | "incomplete" | "aborted";
 };
 ```
 
-That is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it.
+That is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it. `flowId` is the address to read the child through when it was dispatched into another instance.
 
 Paging is `{ limit, offset }`: `limit` runs 1–100 and defaults to 25, `offset` runs 0–10000.
 

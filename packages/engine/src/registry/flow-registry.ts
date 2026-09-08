@@ -1,5 +1,18 @@
 /**
- * Flow registry primitives for server-side flow lookup by kind/id.
+ * Flow registry primitives for server-side flow lookup by global instance id.
+ *
+ * Every registered instance has one address: its `id`. A singleton's id is
+ * its kind, so the addresses an application already uses keep resolving; a
+ * collection member is reachable only by its explicit id, and the bare kind
+ * never picks one — not even when it is the only member. Ids are unique across
+ * kinds, and an exact id always wins a lookup, even when the string happens to
+ * be another kind's name. There is no second resolver and no fallback.
+ *
+ * `register` is the one admission point: it refuses a duplicate id, a
+ * singleton under a custom id (the caller meant a collection and did not say
+ * so), and a kind registered under both policies. Direct structural
+ * instances go through the same checks; a legacy one without `cardinality` is
+ * admitted only when its id equals its kind, and is normalized to singleton.
  *
  * The registry also enforces cross-flow schema compatibility: at registration
  * time, a flow's `user.stateSchema`, `org.stateSchema`, and user/org resource
@@ -12,22 +25,39 @@
  * scope, so its `stateSchema` drops out under the flow-level flag, while each
  * resource carries its own `flowIsolation` override and drops out on that.
  */
-import type { DeclaredResourceEntry, FlowInstance } from "@flow-state-dev/core/types";
+import type { DeclaredResourceEntry, FlowCardinality, FlowInstance } from "@flow-state-dev/core/types";
 import { isExternalResourceCollection } from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { resolveResourceIsolation } from "../stores/scope-keys";
-import { CrossFlowSchemaConflictError, type ConflictScope } from "./errors";
+import {
+  CrossFlowSchemaConflictError,
+  FlowIdentityConflictError,
+  type ConflictScope
+} from "./errors";
 import { compareZodSchemas } from "./schema-compat";
 
 /**
  * Registry contract used by server routing/execution layers.
  */
 export interface FlowRegistry {
+  /**
+   * Admit one instance. Throws {@link FlowIdentityConflictError} for a
+   * duplicate id, a singleton under a custom id, or a mixed-cardinality kind,
+   * and {@link CrossFlowSchemaConflictError} for a schema conflict — in every
+   * case before any registry state is touched.
+   */
   register(flow: FlowInstance): void;
+  /** `register`, in order. An element that fails leaves the earlier ones admitted. */
   registerMany(flows: FlowInstance[]): void;
-  get(kind: string, id?: string): FlowInstance | undefined;
+  /**
+   * Resolve an instance by its exact global id, or `undefined`. A singleton
+   * answers to its kind (that is its id); a collection member answers to its
+   * explicit id only. Nothing is guessed from an incomplete address.
+   */
+  get(address: string): FlowInstance | undefined;
+  /** Every admitted instance, ordered by kind then id. */
   list(): FlowInstance[];
   /**
    * Merged cross-flow schema view — what each scope's shared storage looks
@@ -58,7 +88,8 @@ type ScopeParticipant = {
  * In-memory flow registry implementation for runtime and tests.
  */
 export class InMemoryFlowRegistry implements FlowRegistry {
-  private readonly flowsByKind = new Map<string, Map<string, FlowInstance>>();
+  /** The global address index — the one map `get`, `list`, and admission read. */
+  private readonly flowsById = new Map<string, FlowInstance>();
 
   /**
    * Per-scope list of flows participating in that scope's SHARED storage. A
@@ -77,18 +108,12 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   };
 
   /**
-   * Registers a single flow instance. Duplicate `(kind,id)` is rejected.
-   * Throws `CrossFlowSchemaConflictError` when the flow's non-isolated
-   * schemas conflict with an already-registered flow. Registration is
-   * transactional — a failure leaves every internal map untouched.
+   * Registers a single flow instance. Identity is validated first (see the
+   * file header), then cross-flow schemas; a failure of either leaves every
+   * internal map untouched.
    */
-  register(flow: FlowInstance): void {
-    const existingByKind = this.flowsByKind.get(flow.kind);
-    if (existingByKind?.has(flow.id)) {
-      throw new Error(
-        `Flow "${flow.kind}" with id "${flow.id}" is already registered`
-      );
-    }
+  register(input: FlowInstance): void {
+    const flow = admitIdentity(input, this.flowsById);
 
     // Validate both scopes before mutating any state. If the org-scope
     // check throws after the user-scope check passes, no participant entry
@@ -105,11 +130,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     if (orgDecl) this.validateScope("org", flow.kind, orgDecl);
 
     // All validation passed — commit.
-    const byId = existingByKind ?? new Map<string, FlowInstance>();
-    if (existingByKind === undefined) {
-      this.flowsByKind.set(flow.kind, byId);
-    }
-    byId.set(flow.id, flow);
+    this.flowsById.set(flow.id, flow);
     this.indexParticipant("user", flow.kind, userDecl);
     this.indexParticipant("org", flow.kind, orgDecl);
   }
@@ -124,49 +145,23 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   }
 
   /**
-   * Resolves a flow by kind and optional id. Without id, returns a deterministic default.
+   * Exact global-id lookup. One map read; every approved address case falls
+   * out of it without a special branch — a singleton is indexed under its
+   * kind, an absent collection id misses whether the kind has zero, one or
+   * many members, and an intentionally registered exact id wins.
    */
-  get(kind: string, id?: string): FlowInstance | undefined {
-    const byId = this.flowsByKind.get(kind);
-    if (byId === undefined) {
-      return undefined;
-    }
-
-    if (id !== undefined) {
-      return byId.get(id);
-    }
-
-    // Prefer kind-matching id when present, otherwise first registered instance.
-    return byId.get(kind) ?? byId.values().next().value;
+  get(address: string): FlowInstance | undefined {
+    return this.flowsById.get(address);
   }
 
   /**
    * Lists all registered flows in deterministic order.
    */
   list(): FlowInstance[] {
-    const kinds = Array.from(this.flowsByKind.keys()).sort((left, right) =>
-      left.localeCompare(right)
-    );
-    const result: FlowInstance[] = [];
-
-    for (const kind of kinds) {
-      const byId = this.flowsByKind.get(kind);
-      if (byId === undefined) {
-        continue;
-      }
-
-      const ids = Array.from(byId.keys()).sort((left, right) =>
-        left.localeCompare(right)
-      );
-      for (const id of ids) {
-        const flow = byId.get(id);
-        if (flow !== undefined) {
-          result.push(flow);
-        }
-      }
-    }
-
-    return result;
+    return Array.from(this.flowsById.values()).sort((left, right) => {
+      const byKind = left.kind.localeCompare(right.kind);
+      return byKind !== 0 ? byKind : left.id.localeCompare(right.id);
+    });
   }
 
   describeSharedSchemas(): SharedSchemasDescription {
@@ -511,6 +506,86 @@ function checkPair(
         : `[flow-state] Flows "${flowA}" and "${flowB}" declare structurally compatible but non-identical ${scope}.${field} schemas: ${result.warnings.join("; ")}`
     );
   }
+}
+
+/**
+ * Validate an instance's identity against what is already registered and
+ * return the instance the registry will hold — the input itself, or a copy
+ * carrying the normalized cardinality when a legacy structural instance
+ * omitted it.
+ *
+ * Runs before the schema checks and mutates nothing: every refusal here
+ * leaves the earlier registration reachable exactly as it was.
+ */
+function admitIdentity(
+  input: FlowInstance,
+  flowsById: ReadonlyMap<string, FlowInstance>
+): FlowInstance {
+  const declared = (input as { cardinality?: unknown }).cardinality;
+  // A structural singleton with no `id` at all — a hand-built literal from
+  // before ids were required, or a singleton definition handed over in place
+  // of an instance. Its identity is its kind, the same default `defineFlow`
+  // applies, so it is admitted under that id (BP-030). A collection with no id
+  // is a blueprint, not an instance, and refuses below; so does an empty or
+  // non-string id.
+  const singletonWithoutId =
+    (input as { id?: unknown }).id === undefined &&
+    (declared === undefined || declared === null || declared === "singleton");
+  const flow: FlowInstance = singletonWithoutId ? { ...input, id: input.kind } : input;
+  if (typeof flow.id !== "string" || flow.id.length === 0) {
+    throw new FlowIdentityConflictError({ reason: "invalid-id", kind: flow.kind, id: String(flow.id) });
+  }
+
+  let cardinality: FlowCardinality;
+  if (declared === "singleton" || declared === "collection") {
+    cardinality = declared;
+  } else if (declared === undefined || declared === null) {
+    // A structural instance from before the field existed. Its identity is
+    // known only when id and kind agree; a custom id on such an input is not
+    // evidence of a collection, and inferring one would hand a bare kind an
+    // accidental member. Refuse it the same way a mis-declared singleton is.
+    if (flow.id !== flow.kind) {
+      throw new FlowIdentityConflictError({
+        reason: "singleton-id-mismatch",
+        kind: flow.kind,
+        id: flow.id
+      });
+    }
+    cardinality = "singleton";
+  } else {
+    throw new FlowIdentityConflictError({ reason: "invalid-cardinality", kind: flow.kind, id: flow.id });
+  }
+
+  if (cardinality === "singleton" && flow.id !== flow.kind) {
+    throw new FlowIdentityConflictError({
+      reason: "singleton-id-mismatch",
+      kind: flow.kind,
+      id: flow.id
+    });
+  }
+
+  const holder = flowsById.get(flow.id);
+  if (holder !== undefined) {
+    throw new FlowIdentityConflictError({
+      reason: "duplicate-id",
+      kind: flow.kind,
+      id: flow.id,
+      existingKind: holder.kind
+    });
+  }
+
+  // One kind, one policy — whatever order the two arrive in.
+  const sibling = [...flowsById.values()].find((existing) => existing.kind === flow.kind);
+  if (sibling !== undefined && sibling.cardinality !== cardinality) {
+    throw new FlowIdentityConflictError({
+      reason: "mixed-cardinality",
+      kind: flow.kind,
+      id: flow.id,
+      existingCardinality: sibling.cardinality
+    });
+  }
+
+  return declared === cardinality && flow === input ? flow : { ...flow, cardinality };
 }
 
 function describeScope(entries: Map<string, ScopeParticipant>): SharedScopeDescription {

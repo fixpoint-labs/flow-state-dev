@@ -15,6 +15,7 @@ import {
   PrincipalResolutionError
 } from "../transports/errors";
 import { generateId } from "../utils/generate-id";
+import { FlowInstanceBindingMismatchError } from "../context/binding-errors";
 import {
   asObject,
   extractTenantId,
@@ -78,7 +79,7 @@ export async function handleExecuteAction(
       source: "http",
       request,
       envelope: {
-        flowKind: flow.kind,
+        flowKind: flow.id,
         action: route.actionName,
         sessionId,
         metadata: { ...(metadata ?? {}), body },
@@ -100,7 +101,9 @@ export async function handleExecuteAction(
   }
 
   const actionInput: ActionRunInput = {
-    flowKind: flow.kind,
+    // The address — the instance's exact id — so the host resolves this same
+    // instance, not whichever shares its kind.
+    flowKind: flow.id,
     actionName: route.actionName,
     input: body.input,
     userId: principal.userId,
@@ -201,6 +204,23 @@ export async function handleExecuteAction(
     try {
       await handle.accepted;
     } catch (error) {
+      // A session or request this instance does not own: refused at admission
+      // with nothing written, named by which record, without disclosing who
+      // does own it. Deterministic and non-retryable until the caller
+      // addresses the owning instance.
+      if (error instanceof FlowInstanceBindingMismatchError) {
+        return jsonResponse(409, {
+          error:
+            error.reason === "migration-required"
+              ? "migration-required"
+              : error.record === "session"
+                ? "wrong-instance-session"
+                : "wrong-instance-request",
+          message:
+            `${error.record === "session" ? "Session" : "Request"} "${error.recordId}" is not ` +
+            `owned by flow instance "${error.addressedFlowId}"`
+        });
+      }
       const message = error instanceof Error ? error.message : String(error);
       return jsonResponse(500, { error: "DispatchFailed", message });
     }
@@ -231,6 +251,7 @@ export async function handleExecuteAction(
     request: {
       id: handle.requestId,
       flowKind: flow.kind,
+      flowId: flow.id,
       actionName: resolvedActionInput.actionName,
       status: "in_progress"
     },

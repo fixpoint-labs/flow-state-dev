@@ -1053,7 +1053,7 @@ const researchFlow = defineFlow({
   },
 });
 
-export default researchFlow({ id: "default" });
+export default researchFlow();
 ```
 
 **Data flow:** `question` &rarr; `decomposer` &rarr; `forEach(summarizer)` &rarr; `analyzer` &rarr; `generator` &rarr; final answer

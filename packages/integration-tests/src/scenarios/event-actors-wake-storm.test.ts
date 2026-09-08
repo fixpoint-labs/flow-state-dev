@@ -106,7 +106,7 @@ describe("FIX-660: eventActors at high concurrency with reEmit", () => {
           }).step(handle.emit),
         },
       },
-    })({ id: "default" });
+    })();
 
     const result = await testFlow({
       flow,

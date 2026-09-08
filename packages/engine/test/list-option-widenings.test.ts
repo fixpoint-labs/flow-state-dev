@@ -78,6 +78,44 @@ function request(id: string, overrides: Partial<RequestRecord> = {}): RequestRec
 }
 
 describe.each(adapters)("list-option widenings — $name adapter", ({ create }) => {
+
+  // -------------------------------------------------------------------------
+  // flowId — the exact-owner filter, on both list-option types
+  // -------------------------------------------------------------------------
+
+  it("session flowId filters to the exact owner, never matching an unattributed legacy row", async () => {
+    const { session: store } = await create();
+    await store.set("east", session("east", { flowKind: "review", flowId: "review-east" }), "any");
+    await store.set("west", session("west", { flowKind: "review", flowId: "review-west" }), "any");
+    await store.set("legacy", session("legacy", { flowKind: "review" }), "any");
+
+    expect((await store.list({ flowId: "review-east" })).map((r) => r.id)).toEqual(["east"]);
+    // The kind filter is grouping, not ownership: every copy's rows, legacy included.
+    expect((await store.list({ flowKind: "review" })).map((r) => r.id).sort()).toEqual([
+      "east",
+      "legacy",
+      "west"
+    ]);
+    // A round trip keeps the owner; a legacy row reads back without one.
+    expect((await store.get("east"))?.flowId).toBe("review-east");
+    expect((await store.get("legacy"))?.flowId ?? undefined).toBeUndefined();
+  });
+
+  it("request flowId filters to the exact owner", async () => {
+    const { request: store } = await create();
+    await store.set("r_east", request("r_east", { flowKind: "review", flowId: "review-east" }), "any");
+    await store.set("r_west", request("r_west", { flowKind: "review", flowId: "review-west" }), "any");
+    await store.set("r_legacy", request("r_legacy", { flowKind: "review" }), "any");
+
+    expect((await store.list({ flowId: "review-west" })).map((r) => r.id)).toEqual(["r_west"]);
+    expect((await store.list({ flowKind: "review" })).map((r) => r.id).sort()).toEqual([
+      "r_east",
+      "r_legacy",
+      "r_west"
+    ]);
+    expect((await store.get("r_east"))?.flowId).toBe("review-east");
+  });
+
   // -------------------------------------------------------------------------
   // orgId, on both list-option types
   // -------------------------------------------------------------------------

@@ -36,7 +36,10 @@ export type DispatchStamp = {
   /**
    * The resolved flow INSTANCE's id, alongside `flowKind` and under the same
    * condition. Provenance: it says which instance the seam resolved the entry
-   * on, which a `kind`-keyed read of the registry cannot recover afterwards.
+   * on. It is the same value the request record's own top-level `flowId`
+   * (its durable owner) carries — both come off the one instance the seam
+   * resolved — so a reader that needs the owner reads the record field; this
+   * stamp only says the delivery crossed an instance boundary.
    */
   readonly flowId?: string;
   readonly from: {

@@ -68,6 +68,6 @@ const portfolioFlow = defineFlow({
   },
 });
 
-const flow = portfolioFlow({ id: "default" });
+const flow = portfolioFlow();
 
 export default flow;

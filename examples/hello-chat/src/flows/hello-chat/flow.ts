@@ -90,6 +90,6 @@ const helloChatFlow = defineFlow({
   }
 });
 
-const flow = helloChatFlow({ id: "default" });
+const flow = helloChatFlow();
 
 export default flow;

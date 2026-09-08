@@ -19,7 +19,7 @@ const echoFlow = defineFlow({
       }),
     },
   },
-})({ id: "default" });
+})();
 
 export default createFlowState({
   flows: { echo: echoFlow },

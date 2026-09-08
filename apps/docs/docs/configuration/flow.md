@@ -6,7 +6,9 @@ description: Every field on defineFlow, actions, scopes, and inbound transports.
 
 # Flow options
 
-`defineFlow({ ... })` returns a factory. Call the factory (`defineFlow({ ... })()` or `defineFlow({ ... })({ id: "default" })`) to get a registerable instance. The definition is the contract; the instance is what you pass to `createFlowState`.
+`defineFlow({ ... })` returns a factory. Call the factory (`defineFlow({ ... })()`) to get a registerable instance. The definition is the contract; the instance is what you pass to `createFlowState`.
+
+By default a definition yields one instance, whose id is its `kind`; the factory takes no id, or the kind spelled out. A definition declared `cardinality: "collection"` yields as many instances as you register, and each call must supply an `id`. See [Flows](/docs/fundamentals/flows#flowtype-vs-flowinstance) for when you want more than one copy.
 
 ```ts
 import { defineFlow, generator } from "@flow-state-dev/core";
@@ -46,7 +48,8 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
-| `kind` | `string` | required | Flow type id. Becomes the URL segment `/api/flows/:kind`. |
+| `kind` | `string` | required | Flow type id. For a singleton flow it is also the instance id and the URL segment `/api/flows/:flowId`. |
+| `cardinality` | `"singleton" \| "collection"` | `"singleton"` | How many instances the definition can register. A singleton's instance id is its `kind` and a custom id is refused. A collection instance must be given an `id`, and only that id addresses it. Definition-only. |
 | `actions` | `Record<string, ActionConfig>` | required | Caller-addressed entry points (HTTP and, when enabled, MCP). |
 | `requireUser` | `boolean` | `true` | Shorthand for `authentication.requireUser`. If both are set, `authentication.requireUser` wins. |
 | `authentication` | `AuthenticationConfig` | — | Per-flow principal resolution. See [Authentication](#authentication). |

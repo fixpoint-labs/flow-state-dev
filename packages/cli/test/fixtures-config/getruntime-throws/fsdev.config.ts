@@ -34,7 +34,7 @@ const flow = defineFlow({
       }),
     },
   },
-})({ id: "default" });
+})();
 
 export default createFlowState({
   flows: { x: flow },

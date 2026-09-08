@@ -29,7 +29,7 @@ export default defineFlow({
   kind: "my-app",
   actions: { chat: { block: pipeline } },
   session: { stateSchema },
-})({ id: "default" });
+})();
 ```
 
 The framework gives you: SSE streaming with resume, atomic state operations, retry policies, rescue boundaries, lifecycle hooks, typed client SDK, React hooks — all from this definition.

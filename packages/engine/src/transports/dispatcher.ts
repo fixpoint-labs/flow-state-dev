@@ -15,6 +15,13 @@ import type { ExecutionResult } from "../execution/types";
  */
 export interface DispatchEnvelope {
   requestId: string;
+  /**
+   * The address of the flow instance this request is for — its exact `id`
+   * (a singleton's kind, or a collection member's explicit id). The field
+   * keeps its historical name; the value is what the receiving process hands
+   * to `FlowRegistry.get`. A collection's bare kind is not an address and
+   * resolves nothing on either side of a queue.
+   */
   flowKind: string;
   actionName: string;
   input: unknown;

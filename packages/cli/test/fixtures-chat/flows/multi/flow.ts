@@ -19,4 +19,4 @@ const multiFlow = defineFlow({
   },
 });
 
-export default multiFlow({ id: "default" });
+export default multiFlow();

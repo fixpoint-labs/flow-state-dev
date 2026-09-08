@@ -89,9 +89,14 @@ lineage, the `dispatch` namespace and the key, each length-framed, hashed to
 other verb authorises by descent, so a child is reachable only *through* the
 parent that owns it. The derivation is deterministic, which is what makes
 "adopt if it already exists" the ordinary retry path rather than a conflict —
-and `evaluateAdoption` re-checks flow kind, principal, tenant, org, parent and
-lineage before adopting, because the public session-create route lets a
-same-principal caller pre-create a record at that deterministic id.
+and `evaluateAdoption` re-checks the owning flow instance (`flowId`, with
+`flowKind` and cardinality standing in for a record written before owners were
+stamped), principal, tenant, org, parent and lineage before adopting, because
+the public session-create route lets a same-principal caller pre-create a
+record at that deterministic id. Two instances of one collection are two
+owners: the target instance's id is part of the key material for a cross-
+instance child, so the same conversation dispatching to `review-east` and
+`review-west` gets two children rather than one adopted twice.
 
 ### Dispatching into another flow
 
@@ -116,10 +121,19 @@ say.
 Two things about the child differ from a same-flow one, and both follow from
 the boundary being a **storage** boundary as much as a routing one:
 
-- **It belongs to the addressed flow.** Its record carries that flow's
-  `flowKind` and its session-state defaults come from that flow's
-  `stateSchema`, not the sender's. `parentSessionId` still names the sender's
-  session.
+- **It belongs to the addressed instance.** `flowKind` on the block is an
+  instance id, resolved exactly (`spec.flowKind === flow.id` is the sender
+  itself; anything else goes through the host's `resolveFlow`, and a
+  collection's bare kind is `flow-not-found`). The child's record carries that
+  instance as `flowId` and that definition's `flowKind`, and its session-state
+  defaults come from that flow's `stateSchema`, not the sender's.
+  `parentSessionId` still names the sender's session. "Cross-flow" means
+  `targetFlow.id !== flow.id`, so a sibling member of the sender's own
+  collection is cross-flow. A reply's `session-not-addressable` check, and an
+  `{ id }` delivery's, use `ownsRecord` — instance equality, not kind. A queue
+  worker accepts the job's `flowKind` as the same exact address; historical
+  cross-flow children keyed before instance ids existed are re-keyed in the
+  offline owner migration, never adopted under a legacy key.
 - **It roots its own lineage** instead of inheriting the sender's. A
   `sharedToLineage` resource stores under `scopeType: "lineage"` at the lineage
   id, with no flow anywhere in the key — so handing a cross-flow child the

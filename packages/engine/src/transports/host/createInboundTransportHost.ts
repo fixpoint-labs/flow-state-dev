@@ -6,6 +6,7 @@
  * (HTTP, MCP, webhook, scheduled, custom) sees — adapters never touch
  * `runAction` directly.
  */
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../../registry/flow-registry";
 import type { StoreRegistry } from "../../stores/types";
 import type { ExecutionResult } from "../../execution/types";
@@ -19,6 +20,8 @@ import {
 import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
+import { FlowInstanceBindingMismatchError } from "../../context/binding-errors";
+import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
 import {
   DEFAULT_RUNTIME_LOGGER,
   logRuntimeEvent,
@@ -266,7 +269,100 @@ export function createInboundTransportHost(
     }
   };
 
+  /**
+   * Refuse a dispatch addressed to one instance that names a session or
+   * request another instance owns — before any enqueue-time write, so a
+   * foreign record is never overwritten, acknowledged or heartbeated on this
+   * instance's behalf. The direct execution path repeats the same check in
+   * `runAction`, before its own registration; this is the transport half.
+   *
+   * A request record is fenced atomically below (create-if-absent), so this
+   * pre-read is the session half plus the fast refusal; the CAS is what closes
+   * two concurrent admissions of one caller-supplied id.
+   */
+  const admitOwnership = async (
+    flow: FlowInstance,
+    dispatchEnvelope: DispatchEnvelope
+  ): Promise<void> => {
+    if (dispatchEnvelope.sessionId !== undefined) {
+      const session = await stores.session.get(
+        resolveSessionStorageKey(dispatchEnvelope.sessionId, dispatchEnvelope.tenantId)
+      );
+      // A tenant-key collision is refused later by the tenant binding; only a
+      // session this tenant can see is judged for ownership here.
+      if (
+        session !== undefined &&
+        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
+        !ownsRecord(flow, session)
+      ) {
+        // One refusal shape for every door: the same helper `runAction` and
+        // `createExecutionContext` raise with, so a legacy row is named the
+        // same way (a migration, not a wrong address) whichever path reached it.
+        const refusal = foreignRecordRefusal(flow, session);
+        throw new FlowInstanceBindingMismatchError(
+          "session",
+          dispatchEnvelope.sessionId,
+          flow.id,
+          refusal.detail,
+          refusal.reason
+        );
+      }
+    }
+    const active = await stores.activeRequests.get(dispatchEnvelope.requestId);
+    if (active !== undefined && !ownsRecord(flow, active)) {
+      const refusal = foreignRecordRefusal(flow, active);
+      throw new FlowInstanceBindingMismatchError(
+        "request",
+        dispatchEnvelope.requestId,
+        flow.id,
+        `an in-flight request with this id: ${refusal.detail}`,
+        refusal.reason
+      );
+    }
+  };
+
+  /**
+   * Materialize the enqueue-time `in_progress` stub and the `activeRequests`
+   * entry, owner-fenced. The record is written create-if-absent: a lost race
+   * against a foreign owner refuses rather than overwriting, and a lost race
+   * against this same owner (a retry reusing its id) keeps the existing record
+   * and re-stamps it, which is the last-write-wins hand-off it always was.
+   * Resolves `true` once the entry is this dispatch's to keep warm and to
+   * remove on exit.
+   */
+  const materializeOwned = async (
+    flow: FlowInstance,
+    dispatchEnvelope: DispatchEnvelope,
+    entry: Omit<Parameters<typeof stores.activeRequests.register>[0], "flowKind" | "flowId">
+  ): Promise<void> => {
+    const record = createInitialRequestRecord(
+      { ...dispatchEnvelope, flowKind: flow.kind, flowId: flow.id },
+      entry.startedAt
+    );
+    const created = await stores.request.set(record.id, record, "absent");
+    if (!created.ok) {
+      const holder = created.conflict.currentValue;
+      if (holder === undefined || !ownsRecord(flow, holder)) {
+        const refusal = holder === undefined ? undefined : foreignRecordRefusal(flow, holder);
+        throw new FlowInstanceBindingMismatchError(
+          "request",
+          record.id,
+          flow.id,
+          refusal === undefined
+            ? "a request with this id exists and could not be read back"
+            : `a request with this id: ${refusal.detail}`,
+          refusal?.reason
+        );
+      }
+      await stores.request.set(record.id, record, "any");
+    }
+    await stores.activeRequests.register({ ...entry, flowKind: flow.kind, flowId: flow.id });
+  };
+
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
+    // Exact instance address: a singleton's kind, or a collection member's
+    // explicit id. The address travels on `flowKind` unchanged; the records
+    // written below carry the resolved instance's actual kind and its id.
     const flow = registry.get(envelope.flowKind);
     if (flow === undefined) {
       throw new Error(`Unknown flow "${envelope.flowKind}"`);
@@ -394,6 +490,11 @@ export function createInboundTransportHost(
     // committed (in-process `queue`), or the run's own `activeRequests`
     // registration committed (in-process, FIX-982).
     let accepted: Promise<void> | undefined;
+    // Whether the `activeRequests` entry under this id is THIS dispatch's —
+    // written by its own materialization, or by the run it started. An
+    // admission refused before either happened must leave a foreign owner's
+    // entry alone on the way out.
+    let entryOwned = false;
     if ("dispatchLocal" in effectiveDispatcher) {
       // The in-process milestones, held here rather than read off the handle
       // because `gateStart` owns *when* the run is started and the handle does
@@ -437,7 +538,10 @@ export function createInboundTransportHost(
             }
           }
         );
-        handle.accepted?.then(markAccepted, failAccepted);
+        handle.accepted?.then(() => {
+          entryOwned = true;
+          markAccepted();
+        }, failAccepted);
         return handle.finished;
       };
 
@@ -479,27 +583,26 @@ export function createInboundTransportHost(
         // starts, so flip the stub to a terminal failure rather than leaving a
         // phantom `in_progress` the client can never resolve.
         const ts = Date.now();
-        const materialized = Promise.all([
-          stores.activeRequests.register({
-            requestId,
-            flowKind: dispatchEnvelope.flowKind,
-            actionName: dispatchEnvelope.actionName,
-            sessionId: dispatchEnvelope.sessionId,
-            userId: dispatchEnvelope.userId,
-            orgId: dispatchEnvelope.orgId,
-            tenantId: dispatchEnvelope.tenantId,
-            source: dispatchEnvelope.source ?? "http",
-            input: dispatchEnvelope.input,
-            metadata: dispatchEnvelope.metadata,
-            startedAt: ts,
-            lastHeartbeatAt: ts
-          }),
-          stores.request.set(
-            requestId,
-            createInitialRequestRecord(dispatchEnvelope, ts),
-            "any"
+        const materialized = admitOwnership(flow, dispatchEnvelope)
+          .then(() =>
+            materializeOwned(flow, dispatchEnvelope, {
+              requestId,
+              actionName: dispatchEnvelope.actionName,
+              sessionId: dispatchEnvelope.sessionId,
+              userId: dispatchEnvelope.userId,
+              orgId: dispatchEnvelope.orgId,
+              tenantId: dispatchEnvelope.tenantId,
+              source: dispatchEnvelope.source ?? "http",
+              input: dispatchEnvelope.input,
+              metadata: dispatchEnvelope.metadata,
+              startedAt: ts,
+              lastHeartbeatAt: ts
+            })
           )
-        ]).catch(async (error: unknown) => {
+          .then(() => {
+            entryOwned = true;
+          })
+          .catch(async (error: unknown) => {
           // Under `reject` the arbiter claimed the key synchronously in
           // `gate()` and only the wrapper it returned releases it — and that
           // wrapper is invoked only once materialization succeeds. Run it here
@@ -509,7 +612,11 @@ export function createInboundTransportHost(
           if (decision.policy === "reject") {
             await gateStart(() => Promise.reject(error)).catch(() => undefined);
           }
-          await terminateUnenqueuedRequest(stores, requestId);
+          // Only a record this dispatch wrote is its to terminate — a refused
+          // admission never touched the foreign owner's.
+          if (!(error instanceof FlowInstanceBindingMismatchError)) {
+            await terminateUnenqueuedRequest(stores, requestId);
+          }
           throw error;
         });
 
@@ -584,7 +691,18 @@ export function createInboundTransportHost(
               // carries it when it is made a moment later.
               return startRun(queuedAbort.signal);
             }).catch(async (error: unknown) => {
-              if (error instanceof ConcurrencyQueueTimeoutError) {
+              // The stub is this dispatch's own by now — materialization
+              // succeeded before the gate opened — so a refusal raised by the
+              // RUN (the loser of a session create race, checked in
+              // `createExecutionContext`) terminates it like any other start
+              // that never happened. Left `in_progress`, it would outlive the
+              // entry the `finally` below removes and be invisible to the
+              // sweeper. Only the admission-time refusal, handled above, found
+              // a record that was never ours.
+              if (
+                error instanceof ConcurrencyQueueTimeoutError ||
+                error instanceof FlowInstanceBindingMismatchError
+              ) {
                 await terminateUnenqueuedRequest(stores, requestId);
               }
               throw error;
@@ -644,38 +762,39 @@ export function createInboundTransportHost(
       // already went out. The concurrency gate does not apply here — external
       // dispatch is unarbitrated in v1 (FIX-830).
       const ts = Date.now();
-      const acceptance = Promise.all([
-        stores.activeRequests.register({
-          requestId,
-          flowKind: dispatchEnvelope.flowKind,
-          actionName: dispatchEnvelope.actionName,
-          sessionId: dispatchEnvelope.sessionId,
-          userId: dispatchEnvelope.userId,
-          orgId: dispatchEnvelope.orgId,
-          tenantId: dispatchEnvelope.tenantId,
-          source: dispatchEnvelope.source ?? "http",
-          input: dispatchEnvelope.input,
-          metadata: dispatchEnvelope.metadata,
-          startedAt: ts,
-          lastHeartbeatAt: ts,
-          queuedAt: ts
-        }),
-        stores.request.set(
-          requestId,
-          createInitialRequestRecord(dispatchEnvelope, ts),
-          "any"
+      const acceptance = admitOwnership(flow, dispatchEnvelope)
+        .then(() =>
+          materializeOwned(flow, dispatchEnvelope, {
+            requestId,
+            actionName: dispatchEnvelope.actionName,
+            sessionId: dispatchEnvelope.sessionId,
+            userId: dispatchEnvelope.userId,
+            orgId: dispatchEnvelope.orgId,
+            tenantId: dispatchEnvelope.tenantId,
+            source: dispatchEnvelope.source ?? "http",
+            input: dispatchEnvelope.input,
+            metadata: dispatchEnvelope.metadata,
+            startedAt: ts,
+            lastHeartbeatAt: ts,
+            queuedAt: ts
+          })
         )
-      ])
-        .then(() => effectiveDispatcher.dispatch(dispatchEnvelope))
+        .then(() => {
+          entryOwned = true;
+          return effectiveDispatcher.dispatch(dispatchEnvelope);
+        })
         .catch(async (error: unknown) => {
             // Materialization or the enqueue failed: the job is not running and
             // never will. Terminate the in_progress record we may have written —
-            // `Promise.all` can reject after one write already landed, and a
-            // failed enqueue leaves a fully-written record — so it doesn't
-            // outlive the job. The `finally` below only deregisters the
-            // activeRequests entry, which would otherwise leave the sweeper
-            // nothing to reap and the record stuck in_progress forever.
-            await terminateUnenqueuedRequest(stores, requestId);
+            // the record can land before the entry write fails, and a failed
+            // enqueue leaves a fully-written record — so it doesn't outlive the
+            // job. The `finally` below only deregisters the activeRequests
+            // entry, which would otherwise leave the sweeper nothing to reap and
+            // the record stuck in_progress forever. A refused admission wrote
+            // nothing and terminates nothing — the record it found is not ours.
+            if (!(error instanceof FlowInstanceBindingMismatchError)) {
+              await terminateUnenqueuedRequest(stores, requestId);
+            }
             throw error;
           });
 
@@ -687,8 +806,13 @@ export function createInboundTransportHost(
       if (liveStream !== null) {
         liveStream.close();
       }
-      // Safety net: deregister if runAction didn't (e.g., truly catastrophic failure)
-      stores.activeRequests.deregister(requestId).catch(() => {});
+      // Safety net: deregister if runAction didn't (e.g., truly catastrophic
+      // failure) — but only an entry this dispatch owns. A dispatch refused at
+      // admission never registered, and the entry under its id, if any, is
+      // another instance's live work.
+      if (entryOwned) {
+        stores.activeRequests.deregister(requestId).catch(() => {});
+      }
     });
 
     // Contained by `registerBackgroundWork`, because this is the ONLY thing left

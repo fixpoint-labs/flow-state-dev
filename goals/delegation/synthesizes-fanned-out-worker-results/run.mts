@@ -466,7 +466,7 @@ const flow = defineFlow({
       userMessage: (i: { message: string }) => i.message,
     },
   },
-})({ id: "default" });
+})();
 
 const stores = createInMemoryStores();
 const runtimeConfig = { modelResolver: createModelResolver() } as never;

@@ -56,6 +56,7 @@ Every adapter constructs one of these before invoking the runtime:
 ```ts
 interface InboundRequestEnvelope {
   source: string;
+  /** The addressed flow INSTANCE id (a singleton's kind, a collection member's own id). Historical spelling. */
   flowKind: string;
   action: string;
   input: unknown;
@@ -84,7 +85,29 @@ across crashes. See [Action forms](./action-forms.md).
 an open string; the documented known-set is `http`, `mcp`, `webhook`,
 `scheduled`, `notification`. Custom transports pick their own.
 
-### Execution configuration is per-host, with one per-envelope exception
+### The address is an instance id, and admission precedes materialization
+
+`envelope.flowKind` is the exact instance address. Every producer — the HTTP
+adapter's route segment, the MCP adapter, webhooks, schedules, the CLI, a
+BullMQ job's `flowKind`, a `dispatcher()`'s `flowKind` selector — carries the
+instance id under that historical name and never the bare kind of a collection
+flow, which `registry.get` does not resolve. `flowKind` on a *record*
+(`SessionRecord`, `RequestRecord`, `ActiveRequestEntry`) is the definition's
+kind, metadata for grouping; the owner is `flowId`.
+
+The host resolves the address (`registry.get`), then **admits ownership before
+any effect**: a named `sessionId` or `requestId` is loaded and checked with
+`resolveRecordOwner`; a foreign owner, an owner no longer registered, or an
+ownerless record under a collection kind is `FlowInstanceBindingMismatchError`
+thrown from `dispatch` (surfaced on `DispatchHandle.accepted`) with no request
+stub written and no active-request entry registered. Only an admitted envelope
+materializes: the request stub is written create-if-absent, a same-owner
+conflict is re-stamped, and the active entry is fenced so a refused envelope's
+cleanup cannot deregister an entry it never owned. `runAction` repeats the
+check for direct callers, and `createExecutionContext` loads session and
+request first and checks the owner before touching user, org or history.
+Ownership is orthogonal to transport trust: `source` and the resolved principal
+say who may call; `flowId` says which instance a record belongs to.
 
 The host's `runtimeConfig` is the execution configuration for everything it
 dispatches. That is the rule, and `runtimeConfig` on the envelope is the single

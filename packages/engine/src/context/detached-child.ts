@@ -16,7 +16,9 @@
  * liveness calls refuse — unsettleable, uninterruptible, invisible.
  */
 import { createHash } from "node:crypto";
+import type { FlowCardinality } from "@flow-state-dev/core/types";
 import { framed } from "@flow-state-dev/core/types";
+import { ownsRecord } from "./record-owner";
 
 /** The server-derived facts a child key is built from. Never caller-supplied. */
 export type DerivationIdentity = {
@@ -67,21 +69,24 @@ const DISPATCH_NAMESPACE = "dispatch";
  * flow that compute the same key share one child — a board that wants its
  * per-task children apart from another board's frames its own id into the key.
  *
- * `targetFlowKind` is the **other** flow a cross-flow dispatch addresses, and is
- * part of the material precisely because the key alone discriminates: without
- * it, one parent dispatching key `"job"` to two different flows derives one
- * child id for both, and the second dispatch meets a record whose `flowKind`
- * does not match and is refused `key-occupied` — a collision between two
- * addresses that have nothing to do with each other. Appended rather than
- * folded into the existing fields, so a same-flow derivation (which omits it)
- * still produces the id it produced before this shipped: an in-flight retry
- * across the upgrade re-enters the child it started, rather than minting a
- * second one beside it.
+ * `targetFlowId` is the **other** flow instance a cross-instance dispatch
+ * addresses — its exact id — and is part of the material precisely because
+ * the key alone discriminates: without it, one parent dispatching key `"job"`
+ * to two different instances derives one child id for both, and the second
+ * dispatch meets a record another instance owns and is refused `key-occupied`
+ * — a collision between two addresses that have nothing to do with each
+ * other. Two same-kind peers are two instances here, and get two children.
+ * Appended rather than folded into the existing fields, so a same-instance
+ * derivation (which omits it) still produces the id it produced before this
+ * shipped: an in-flight retry across the upgrade re-enters the child it
+ * started, rather than minting a second one beside it. For two singletons the
+ * id is the kind, so the bytes a cross-flow child derived under kind-based
+ * addressing are preserved too.
  */
 export function deriveDispatchChildSessionId(
   identity: DerivationIdentity,
   key: string,
-  targetFlowKind?: string
+  targetFlowId?: string
 ): string {
   const material = [
     framed(identity.tenantId ?? ""),
@@ -90,7 +95,7 @@ export function deriveDispatchChildSessionId(
     framed(identity.lineageId),
     framed(DISPATCH_NAMESPACE),
     framed(key),
-    ...(targetFlowKind !== undefined ? [framed(targetFlowKind)] : [])
+    ...(targetFlowId !== undefined ? [framed(targetFlowId)] : [])
   ].join("|");
 
   const digest = createHash("sha256").update(material, "utf8").digest("hex");
@@ -100,6 +105,14 @@ export function deriveDispatchChildSessionId(
 /** The identity a genuine child of this request must carry. */
 export type ExpectedChildIdentity = {
   flowKind: string;
+  /** The owning instance's id; a record's stored owner must be exactly this. */
+  flowId: string;
+  /**
+   * The owning instance's cardinality. A record written before owners were
+   * stamped carries no `flowId`; it is adoptable only when the owner is the
+   * singleton of its kind, which is the one identity such a record can mean.
+   */
+  flowCardinality: FlowCardinality;
   userId: string;
   tenantId: string | undefined;
   orgId: string | undefined;
@@ -116,6 +129,7 @@ export type ExpectedChildIdentity = {
 /** The subset of a stored session record adoption inspects. */
 export type AdoptionCandidate = {
   flowKind: string;
+  flowId?: string | null;
   userId: string;
   tenantId?: string;
   orgId?: string;
@@ -126,6 +140,7 @@ export type AdoptionCandidate = {
 /** Which field disagreed. Reported for diagnostics; the caller refuses by name. */
 export type AdoptionMismatch =
   | "flowKind"
+  | "flowId"
   | "userId"
   | "tenantId"
   | "orgId"
@@ -170,6 +185,17 @@ export function evaluateAdoption(
 ): AdoptionVerdict {
   if (record.flowKind !== expected.flowKind) {
     return { adoptable: false, mismatch: "flowKind" };
+  }
+  // The owner, exactly, on the one stored-owner interpretation: same-kind
+  // peers are two owners, and a legacy child with no stored owner belongs to
+  // its kind's singleton alone.
+  if (
+    !ownsRecord(
+      { kind: expected.flowKind, id: expected.flowId, cardinality: expected.flowCardinality },
+      record
+    )
+  ) {
+    return { adoptable: false, mismatch: "flowId" };
   }
   if (record.userId !== expected.userId) {
     return { adoptable: false, mismatch: "userId" };

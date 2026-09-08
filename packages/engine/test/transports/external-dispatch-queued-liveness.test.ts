@@ -33,6 +33,7 @@ import { detectInterruptedRequests } from "../../src/execution/request-recovery"
 import { runAction } from "../../src/execution/runAction";
 import type { FlowDispatcher } from "../../src/transports/dispatcher";
 import type { FlowRegistry } from "../../src/registry/flow-registry";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../../src/stores/types";
 
 const FLOW_KIND = "queued-liveness-test";
@@ -119,7 +120,7 @@ async function liveness(
   const answers = await readLiveness([requestId], {
     registry: stores.activeRequests,
     staleThresholdMs: STALE_THRESHOLD_MS,
-    flowKind: FLOW_KIND,
+    flow: { id: FLOW_KIND, kind: FLOW_KIND, cardinality: "singleton" } as unknown as FlowInstance,
     principal: { userId: "u_1", tenantId: undefined },
     isDescendantSession: async (sessionId) => sessionId === "s_1"
   });

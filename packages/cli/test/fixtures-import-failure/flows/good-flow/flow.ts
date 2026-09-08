@@ -24,4 +24,4 @@ const goodFlow = defineFlow({
   },
 });
 
-export default goodFlow({ id: "default" });
+export default goodFlow();

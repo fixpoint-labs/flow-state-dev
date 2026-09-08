@@ -15,7 +15,7 @@ import type { FlowRegistry } from "../src/registry/flow-registry";
 import type { ParsedFlowRoute } from "../src/routes/parseFlowRoute";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
-const registry = { get: () => undefined } as unknown as FlowRegistry;
+const registry = { get: () => undefined, list: () => [] } as unknown as FlowRegistry;
 
 function sessionRecord(id: string): SessionRecord {
   return {

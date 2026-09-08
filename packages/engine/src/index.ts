@@ -169,10 +169,19 @@ export {
   type ReadEventsFn
 } from "./stores/subscribe-helpers";
 export {
+  FlowInstanceBindingMismatchError,
   OrgBindingMismatchError,
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./context/binding-errors";
+export {
+  ownsRecord,
+  recordOwnerId,
+  resolveRecordOwner,
+  type OwnedRecord,
+  type OwnerResolution,
+  type OwnerResolutionRefusal
+} from "./context/record-owner";
 
 export {
   createSentenceBuffer,

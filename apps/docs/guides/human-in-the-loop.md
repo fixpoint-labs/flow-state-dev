@@ -19,6 +19,8 @@ Later, an external actor (your UI, an admin tool, another service) resolves the 
 
 The whole cycle lives on one request with one continuous item log: the work before the pause, the `suspension` item, a `suspension_resume` audit item, and the work after. That's what lets the UI show the resolution inline.
 
+The resumed step runs on the same flow instance that paused it. The request records its owner, and the resume re-enters that owner whatever has been registered or restarted in between; the approval card never has to know which copy of a flow the work belongs to. See [durable execution](/docs/advanced/durable-execution#resuming-a-suspended-request).
+
 ## Prerequisites: a durability provider
 
 Suspend/resume needs somewhere to persist the pause. Wire a `DurabilityProvider` into your runtime; without one, `ctx.suspend()` is unavailable.

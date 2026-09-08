@@ -134,7 +134,7 @@ export async function handleDispatch(
   if (schedule.onOverlap !== "allow") {
     const inFlight = await findScheduledRequest(
       host.stores.activeRequests,
-      flowKind,
+      flow.id,
       scheduleId
     );
     if (inFlight) {

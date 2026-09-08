@@ -17,7 +17,10 @@ import type { StoreRegistry } from "../../stores/types";
 export interface EnsureWebhookSessionArgs {
   stores: StoreRegistry;
   sessionId: string;
+  /** The resolved instance's kind — `flow.kind`, not the URL address. */
   flowKind: string;
+  /** The owning instance — `flow.id`. */
+  flowId: string;
   principal: ResolvedPrincipal;
   provider: string;
   eventType: string | null;
@@ -27,13 +30,14 @@ export interface EnsureWebhookSessionArgs {
 import { ensureSessionRecord } from "../../context/ensure-session-record";
 
 export async function ensureSessionForWebhook(args: EnsureWebhookSessionArgs): Promise<void> {
-  const { stores, sessionId, flowKind, principal, provider, eventType } = args;
+  const { stores, sessionId, flowKind, flowId, principal, provider, eventType } = args;
   // One creation path (FIX-1068): it mints the lineage id and writes
   // create-if-absent, neither of which this resolver should be deciding.
   const now = Date.now();
   await ensureSessionRecord(stores, sessionId, () => ({
       id: sessionId,
       flowKind,
+      flowId,
       userId: principal.userId,
       ...(principal.orgId !== undefined ? { orgId: principal.orgId } : {}),
       state: {},

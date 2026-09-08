@@ -9,9 +9,10 @@ import { createSQLiteRecordStore } from "./sqlite-store";
 export function createSQLiteSessionStore(db: Database.Database): SessionStore {
   return createSQLiteRecordStore<SessionRecord, SessionListOptions>(db, {
     tableName: "sessions",
-    columns: ["flow_kind", "user_id", "org_id", "tenant_id", "parent_session_id"],
+    columns: ["flow_kind", "flow_id", "user_id", "org_id", "tenant_id", "parent_session_id"],
     toRow: (record) => [
       record.flowKind,
+      record.flowId ?? null,
       record.userId,
       record.orgId ?? null,
       record.tenantId ?? null,
@@ -24,6 +25,11 @@ export function createSQLiteSessionStore(db: Database.Database): SessionStore {
       if (options?.flowKind !== undefined) {
         parts.push("flow_kind = ?");
         params.push(options.flowKind);
+      }
+      // Exact-owner filter: an equality, so a legacy NULL never matches.
+      if (options?.flowId !== undefined) {
+        parts.push("flow_id = ?");
+        params.push(options.flowId);
       }
       if (options?.userId !== undefined) {
         parts.push("user_id = ?");

@@ -81,6 +81,7 @@ export type {
   FlowInstanceOptions,
   FlowToolContext,
   FlowType,
+  FlowCardinality,
   HookHandler,
   InferFlowBlockContext,
   CostEstimate,

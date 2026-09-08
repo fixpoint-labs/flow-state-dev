@@ -9,6 +9,7 @@ const SESSIONS_TABLE = `
 CREATE TABLE IF NOT EXISTS sessions (
   id          TEXT PRIMARY KEY,
   flow_kind   TEXT NOT NULL,
+  flow_id     TEXT,
   user_id     TEXT NOT NULL,
   org_id  TEXT,
   tenant_id   TEXT,
@@ -22,6 +23,10 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 const SESSIONS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_sessions_flow_kind   ON sessions(flow_kind)",
+  // Exact-owner listing (`flowId` filter). Nullable: rows written before
+  // instance ownership carry no owner and are attributed by the offline
+  // migration, never by a blanket backfill from `flow_kind`.
+  "CREATE INDEX IF NOT EXISTS idx_sessions_flow_id     ON sessions(flow_id)",
   "CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id)",
   "CREATE INDEX IF NOT EXISTS idx_sessions_flow_user   ON sessions(flow_kind, user_id)",
   "CREATE INDEX IF NOT EXISTS idx_sessions_user_tenant ON sessions(user_id, tenant_id)",
@@ -37,6 +42,7 @@ const REQUESTS_TABLE = `
 CREATE TABLE IF NOT EXISTS requests (
   id          TEXT PRIMARY KEY,
   flow_kind   TEXT NOT NULL,
+  flow_id     TEXT,
   user_id     TEXT NOT NULL,
   session_id  TEXT,
   org_id  TEXT,
@@ -51,6 +57,7 @@ CREATE TABLE IF NOT EXISTS requests (
 
 const REQUESTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_requests_flow_kind       ON requests(flow_kind)",
+  "CREATE INDEX IF NOT EXISTS idx_requests_flow_id         ON requests(flow_id)",
   "CREATE INDEX IF NOT EXISTS idx_requests_session_id      ON requests(session_id)",
   "CREATE INDEX IF NOT EXISTS idx_requests_user_id         ON requests(user_id)",
   "CREATE INDEX IF NOT EXISTS idx_requests_org_id      ON requests(org_id)",
@@ -171,6 +178,7 @@ const ACTIVE_REQUESTS_TABLE = `
 CREATE TABLE IF NOT EXISTS active_requests (
   request_id        TEXT PRIMARY KEY,
   flow_kind         TEXT NOT NULL,
+  flow_id           TEXT,
   action_name       TEXT NOT NULL,
   session_id        TEXT,
   user_id           TEXT NOT NULL,
@@ -250,6 +258,39 @@ BEGIN
       WHERE table_schema = current_schema() AND table_name = t AND column_name = 'tenant_id'
     ) THEN
       EXECUTE format('ALTER TABLE %I ADD COLUMN tenant_id TEXT', t);
+    END IF;
+  END LOOP;
+END $$;
+`;
+
+/**
+ * Add the nullable `flow_id` column — the owning flow instance — to
+ * `sessions`, `requests` and `active_requests` tables created before instance
+ * ownership existed. Idempotent. Must run BEFORE the index DDL so the
+ * `idx_*_flow_id` indexes find the column.
+ *
+ * Nullable, **no backfill**: a row from before the field is attributed by the
+ * documented offline migration, which maps each historical row to a known
+ * registered instance. A blanket `flow_id = flow_kind` would silently assign a
+ * collection's history to whichever member happens to share the kind's name.
+ * Known singleton rows need no backfill to keep working — the runtime reads a
+ * NULL owner on a singleton kind compatibly (BP-030).
+ */
+const ADD_FLOW_ID_MIGRATION = `
+DO $$
+DECLARE
+  t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['sessions', 'requests', 'active_requests']
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = current_schema() AND table_name = t
+    ) AND NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = t AND column_name = 'flow_id'
+    ) THEN
+      EXECUTE format('ALTER TABLE %I ADD COLUMN flow_id TEXT', t);
     END IF;
   END LOOP;
 END $$;
@@ -555,6 +596,9 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // `sessions`. Existing rows read back as top-level; no backfill is needed
   // because nothing writes a parent id yet. Idempotent — no-op once present.
   ADD_PARENT_SESSION_ID_MIGRATION,
+  // Instance ownership: add the nullable `flow_id` owner column to the three
+  // tables that carry it. No backfill — see the migration's note.
+  ADD_FLOW_ID_MIGRATION,
   // FIX-141: ensure `suspension_records.status` / `resolved_at` exist on
   // pre-FIX-141 schemas. Idempotent on fresh databases.
   ADD_SUSPENSION_STATUS_COLUMNS_MIGRATION,

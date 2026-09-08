@@ -40,9 +40,10 @@
  * });
  * ```
  *
- * **Another flow is an address, not another mechanism.** Add `flowKind` and the
- * entry resolves on that flow instead of this one. The dispatch is still
- * fire-and-forget, and a reply is still the same `{ from: true }` block —
+ * **Another flow is an address, not another mechanism.** Add `flowKind` — the
+ * other flow instance's id, which for an ordinary singleton is its kind — and
+ * the entry resolves on that instance instead of this one. The dispatch is
+ * still fire-and-forget, and a reply is still the same `{ from: true }` block —
  * pointed back at the sender's flow.
  *
  * ```ts
@@ -144,8 +145,11 @@ export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodT
    */
   action: string;
   /**
-   * The **other flow** this dispatcher sends to. Omit for the sending flow's
-   * own entry, which is the ordinary case.
+   * The **other flow instance** this dispatcher sends to — its exact id: a
+   * singleton's kind, or a collection member's explicit id. Omit for the
+   * sending instance's own entry, which is the ordinary case. A collection's
+   * bare kind names no instance and refuses `flow-not-found`; an explicit
+   * value equal to the sender's own id is the sender.
    *
    * A cross-flow dispatch is fire-and-forget in the same sense a same-flow one
    * is — it starts a request over there and returns the handle, it does not
