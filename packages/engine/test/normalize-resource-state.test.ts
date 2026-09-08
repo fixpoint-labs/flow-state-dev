@@ -160,6 +160,44 @@ describe("parseResourceWriteState", () => {
       .catch({ n: 0 });
     expect(parseResourceWriteState(schema, null, "row")).toEqual({});
   });
+
+  it("rejects a write that only succeeds via `.catch()` under `.nullable()`", () => {
+    const schema = z
+      .object({ n: z.number().nonnegative(), keep: z.string() })
+      .catch({ n: 0, keep: "schema-default" })
+      .nullable();
+    expect(() => parseResourceWriteState(schema, { n: -1, keep: "DO-NOT-LOSE" }, "row")).toThrow(
+      ValidationError
+    );
+  });
+
+  it("still clears null when `.catch()` sits under `.nullable()`", () => {
+    const schema = z
+      .object({ n: z.number().nonnegative(), keep: z.string() })
+      .catch({ n: 0, keep: "schema-default" })
+      .nullable();
+    expect(parseResourceWriteState(schema, null, "row")).toEqual({});
+  });
+
+  it("rejects a write that only succeeds via `.catch()` under `.default()`", () => {
+    const schema = z
+      .object({ n: z.number().nonnegative(), keep: z.string() })
+      .catch({ n: 0, keep: "schema-default" })
+      .default({ n: 0, keep: "schema-default" });
+    expect(() => parseResourceWriteState(schema, { n: -1, keep: "DO-NOT-LOSE" }, "row")).toThrow(
+      ValidationError
+    );
+  });
+
+  it("rejects a write that only succeeds via `.catch()` under `.readonly()`", () => {
+    const schema = z
+      .object({ n: z.number().nonnegative(), keep: z.string() })
+      .catch({ n: 0, keep: "schema-default" })
+      .readonly();
+    expect(() => parseResourceWriteState(schema, { n: -1, keep: "DO-NOT-LOSE" }, "row")).toThrow(
+      ValidationError
+    );
+  });
 });
 
 /**

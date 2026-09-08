@@ -63,30 +63,123 @@ export function normalizeResourceState(config: ResourceConfig, value: unknown): 
   return normalizeResourceDefault(config);
 }
 
+type WriteWrapperLayer =
+  | { kind: "nullable" }
+  | { kind: "optional" }
+  | { kind: "readonly" }
+  | { kind: "default"; value: unknown };
+
+function isTransparentWriteWrapper(name: string | undefined): boolean {
+  return (
+    name === "ZodNullable" ||
+    name === "ZodOptional" ||
+    name === "ZodDefault" ||
+    name === "ZodReadonly"
+  );
+}
+
+/** ZodDefault stores its value as `_def.defaultValue`, sometimes as a thunk. */
+function zodDefaultValue(schema: ResourceConfig["stateSchema"]): unknown {
+  const defaultValue = (schema as { _def?: { defaultValue?: unknown } })._def?.defaultValue;
+  return typeof defaultValue === "function" ? defaultValue() : defaultValue;
+}
+
 /**
- * Peel consecutive top-level ZodCatch wrappers for write validation.
+ * Peel whole-row ZodCatch wrappers for write validation.
  *
  * A whole-row catch fallback is useful on reads, where the framework promises a
  * valid resource shape even when old stored data no longer parses. It is not a
  * write success: storing the fallback would replace a candidate the schema
  * rejected and can wipe unrelated fields the caller never touched.
  *
- * This is deliberately top-level only. Field-level `.catch()` is part of the
- * declared row shape and remains ordinary Zod normalization.
+ * Catch is peeled through the root wrapper chain (`.nullable()`, `.optional()`,
+ * `.default()`, `.readonly()`), then those wrappers are put back so null-reset
+ * and defaults still apply. Field-level `.catch()` lives on the object shape
+ * and is left alone.
  */
 function writeValidationSchema(
   stateSchema: ResourceConfig["stateSchema"]
 ): ResourceConfig["stateSchema"] {
-  if (getZodTypeName(stateSchema) !== "ZodCatch") return stateSchema;
+  if (!wrapperChainHasCatch(stateSchema)) return stateSchema;
+  return rebuildWithoutCatch(stateSchema);
+}
+
+function wrapperChainHasCatch(schema: ResourceConfig["stateSchema"]): boolean {
+  let current = schema;
+  for (let i = 0; i < 8; i++) {
+    const name = getZodTypeName(current);
+    if (name === "ZodCatch") return true;
+    if (!isTransparentWriteWrapper(name)) return false;
+    const inner = getZodInnerType(current);
+    if (inner === undefined) return false;
+    current = inner;
+  }
+  return false;
+}
+
+function rebuildWithoutCatch(
+  stateSchema: ResourceConfig["stateSchema"]
+): ResourceConfig["stateSchema"] {
+  const layers: WriteWrapperLayer[] = [];
   let schema = stateSchema;
   const seen = new Set<unknown>();
-  while (getZodTypeName(schema) === "ZodCatch" && !seen.has(schema)) {
+  while (!seen.has(schema)) {
     seen.add(schema);
-    const inner = getZodInnerType(schema);
-    if (inner === undefined) return schema;
-    schema = inner;
+    const name = getZodTypeName(schema);
+    if (name === "ZodCatch") {
+      const inner = getZodInnerType(schema);
+      if (inner === undefined) break;
+      schema = inner;
+      continue;
+    }
+    if (name === "ZodNullable" || name === "ZodOptional" || name === "ZodReadonly") {
+      layers.push({
+        kind: name === "ZodNullable" ? "nullable" : name === "ZodOptional" ? "optional" : "readonly"
+      });
+      const inner = getZodInnerType(schema);
+      if (inner === undefined) break;
+      schema = inner;
+      continue;
+    }
+    if (name === "ZodDefault") {
+      layers.push({ kind: "default", value: zodDefaultValue(schema) });
+      const inner = getZodInnerType(schema);
+      if (inner === undefined) break;
+      schema = inner;
+      continue;
+    }
+    break;
   }
-  return schema;
+
+  let result = schema;
+  for (let i = layers.length - 1; i >= 0; i--) {
+    const layer = layers[i];
+    if (layer === undefined) continue;
+    result = applyWriteWrapper(result, layer);
+  }
+  return result;
+}
+
+function applyWriteWrapper(
+  schema: ResourceConfig["stateSchema"],
+  layer: WriteWrapperLayer
+): ResourceConfig["stateSchema"] {
+  const wrap = schema as ResourceConfig["stateSchema"] & {
+    nullable: () => ResourceConfig["stateSchema"];
+    optional: () => ResourceConfig["stateSchema"];
+    readonly: () => ResourceConfig["stateSchema"];
+    default: (value: unknown) => ResourceConfig["stateSchema"];
+  };
+  switch (layer.kind) {
+    case "nullable":
+      return wrap.nullable();
+    case "optional":
+      return wrap.optional();
+    case "readonly":
+      return wrap.readonly();
+    case "default":
+      return wrap.default(layer.value);
+  }
 }
 
 /**
@@ -195,9 +288,10 @@ function assertStableResourceState(
  * Parse a write result against `stateSchema`. Throws {@link ValidationError}
  * (`retryable: false`) when the result fails the schema or parses to a
  * non-null non-object, so the CAS mutator never persists a replacement default.
- * Top-level `.catch()` wrappers are peeled before validation, so a fallback is
- * treated as a rejection unless the candidate also satisfies the wrapped inner
- * schema.
+ * Whole-row `.catch()` wrappers are peeled before validation — including when
+ * they sit under `.nullable()` / `.default()` / `.readonly()` — so a fallback
+ * is treated as a rejection unless the candidate also satisfies the wrapped
+ * inner schema.
  *
  * A successful parse is additionally held to {@link assertStableResourceState}:
  * the value about to be stored must parse back to itself, so the row cannot be

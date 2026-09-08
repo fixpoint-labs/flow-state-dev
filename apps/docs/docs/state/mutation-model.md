@@ -276,7 +276,7 @@ const bumpRetries = handler({
 });
 ```
 
-A result that fails `stateSchema`, or that parses to a non-null non-object, throws `ValidationError`. A top-level `.catch()` fallback is treated as that same failure on writes: consecutive whole-row catch wrappers are peeled, and the candidate must satisfy the wrapped inner schema before fallback-normalized output can be stored. Field-level `.catch()` remains ordinary Zod normalization. Stored state is the value from before the call. No `resource_change` is emitted.
+A result that fails `stateSchema`, or that parses to a non-null non-object, throws `ValidationError`. A whole-row `.catch()` fallback — including one sitting under `.nullable()`, `.default()`, or `.readonly()` — is treated as that same failure on writes: those catch wrappers are peeled, and the candidate must satisfy the wrapped inner schema before fallback-normalized output can be stored. Field-level `.catch()` remains ordinary Zod normalization. Stored state is the value from before the call. No `resource_change` is emitted.
 
 `setState(null)` on a `.nullable()` resource is not a schema failure. The store holds JSON objects, so that write persists as `{}` — the same cleared form an unwritten nullable single already surfaces as.
 
