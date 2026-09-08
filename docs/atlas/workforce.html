@@ -93,6 +93,7 @@ h1 { font-family: var(--display); font-weight: 700; font-size: clamp(32px, 5vw, 
 .standfirst strong { color: var(--ink); font-weight: 600; }
 
 section { margin-bottom: 60px; scroll-margin-top: 20px; }
+#lab { scroll-margin-top: 20px; }
 h2 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: -.02em; line-height: 1.15; margin: 0; text-wrap: balance; }
 .sec-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 22px; }
 .sec-num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); letter-spacing: .06em; flex: none; padding-top: 2px; }
@@ -202,6 +203,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <a href="#what">01 &middot; What Workforce is</a>
     <a href="#layers">02 &middot; Layer 1 vs Layer 2</a>
     <a href="#vision">03 &middot; Build-out</a>
+    <a href="#lab">03 &middot; Lab Proof</a>
     <a href="#fence">04 &middot; Seat vs worker vs agent</a>
     <a class="grp">The convention</a>
     <a href="#contract">05 &middot; The worker contract</a>
@@ -230,13 +232,13 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <header class="masthead">
   <p class="eyebrow">Living design</p>
   <h1>Workforce is the product. Conductor is a team on it.</h1>
-  <p class="standfirst">Workforce is the <strong>Layer&nbsp;2 product</strong>: roster / teams + seats + rooms + thin helpers. It can ship for a client (OnSecurity is a GTM name, not an impl) and for personal or org workforces. A <strong>seat</strong> binds a <strong>worker</strong>, not an Agent. A worker is any flow on the contract; thin sequencers count. <strong>Agent</strong> (product) is the opinionated worker: sequencer + generators + persona + durable member memory. <strong>Conductor</strong> is one consumer: a Workforce team whose seats include coding-harness workers. The roster <em>names</em> the harness; <strong>omp</strong> (opinionated Pi harness) can fill that seat &#8212; proposed, not integrated. One harness-manager stack. Layer&nbsp;1 stays substrate. A user who already has Claude or ChatGPT reaches this surface through a proposed MCP client door (<a href="#mcp">&#167;15</a>). <strong>W2</strong> foundation waits on INST. The build-out is <a href="#vision">&#167;03</a>. The three words are <a href="#fence">&#167;04</a>. Astra gaps stay in <a href="#gaps">&#167;19</a>.</p>
+  <p class="standfirst">Workforce is the <strong>Layer&nbsp;2 product</strong>: roster / teams + seats + rooms + thin helpers. It can ship for a client (OnSecurity is a GTM name, not an impl) and for personal or org workforces. A <strong>seat</strong> binds a <strong>worker</strong>, not an Agent. A worker is any flow on the contract; thin sequencers count. <strong>Agent</strong> (product) is the opinionated worker: sequencer + generators + persona + durable member memory. <strong>Conductor</strong> is one consumer: a Workforce team whose seats include coding-harness workers. The roster <em>names</em> the harness; <strong>omp</strong> (opinionated Pi harness) can fill that seat &#8212; proposed, not integrated. One harness-manager stack. Layer&nbsp;1 stays substrate. The kick is the <strong>W2</strong> package, then a thin <a href="#lab">lab Proof</a>. MCP is a proposed client door (<a href="#mcp">&#167;15</a>), <strong>held</strong> until those run. The sequence is <a href="#vision">&#167;03</a>. The three words are <a href="#fence">&#167;04</a>. Astra gaps stay in <a href="#gaps">&#167;19</a>.</p>
   <div class="key">
     <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
     <span><i class="sw-dash"></i> proposed &#8212; named, not built</span>
     <span><i class="sw" style="background: var(--prose-soft); border: 1.2px solid var(--prose)"></i> later / cut &#8212; not foundation</span>
   </div>
-  <p class="sib">Pinned to <code>origin/main</code> at <code>4e562d0e0</code> (2026-09-08). Conductor is a Workforce config, not a sibling product and not a parallel Proof. The old lock &#8212; separate tracks, later triangulation &#8212; is <strong>superseded</strong>. Chat-sdk is gone (<a href="https://linear.app/fixpoint-labs/issue/FIX-1330">FIX-1330</a>). Cross-flow dispatch exists on this pin (<code>dispatcher({ flowKind })</code>; #1600 landed as <code>7843f23f7</code>). Hire-id, dynamic addresses, and multi-hire still wait on instances (<a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a>). GTM timing stays Strategy.</p>
+  <p class="sib">Pinned to <code>origin/main</code> at <code>15c814251</code> (2026-09-08). Conductor is a Workforce config, not a sibling product and not a parallel Proof. The old lock &#8212; separate tracks, later triangulation &#8212; is <strong>superseded</strong>. Chat-sdk is gone (<a href="https://linear.app/fixpoint-labs/issue/FIX-1330">FIX-1330</a>). Cross-flow dispatch exists on this pin (<code>dispatcher({ flowKind })</code>; #1600 landed as <code>7843f23f7</code>). Hire-id, dynamic addresses, and multi-hire still wait on instances (<a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a>). <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code> is <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1653">#1653</a>, about to merge &#8212; W2 knobs, not exists on this pin. GTM timing stays Strategy.</p>
 </header>
 
 <section id="what">
@@ -381,7 +383,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>What it is</td><td>Substrate. Composable primitives with almost no product opinion.</td><td>The product. Roster / teams + seats + rooms + thin helpers over the substrate.</td></tr>
         <tr><td>Who it is for</td><td>Authors who will compose their own harness.</td><td>Clients and personal/org workforces. Conductor is one team config on this layer.</td></tr>
         <tr><td>What it must not do</td><td>Absorb one product&#8217;s knowledge. That is tenet&nbsp;4. Do not mint Team / Channel / MessageBoard here.</td><td>Invent a primitive the substrate does not have. Compose, or file a Layer&nbsp;1 gap. Do not fold this layer into core.</td></tr>
-        <tr><td>Phased implement</td><td>In flight: <a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a> INST-1..3, <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> config. Cross-flow exists (<code>dispatcher({ flowKind })</code>). Do not start package foundation against first-wins.</td><td><strong>W1</strong> Workforce MCP is unblocked now. <strong>W2</strong> foundation waits on INST. Collab RC waits on W2 and is not nested under W2. Hire-id / dynamic / multi-hire still INST. See <a href="#vision">&#167;03</a>.</td></tr>
+        <tr><td>Phased implement</td><td>In flight: <a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a> INST-1..3 for hire-id / multi-hire. <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> knobs about to land (#1653). Cross-flow exists (<code>dispatcher({ flowKind })</code>). W2 scans into today&#8217;s registries &#8212; one hire per kind is enough for the lab.</td><td><strong>W2</strong> package is next. <strong>Lab Proof</strong> follows. <strong>W1</strong> MCP is held until package + lab. Collab RC later (INST as needed for multi-hire). See <a href="#vision">&#167;03</a>.</td></tr>
       </tbody>
     </table>
   </div>
@@ -389,101 +391,159 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="vision">
   <div class="sec-head"><span class="sec-num">03</span><h2>Build-out</h2></div>
-  <p class="lede">The target is still the <strong>full RC collaboration story</strong>: more than one team, rooms they share, dispatch across those teams. This section names the epics that get there. <strong>In flight</strong> is Layer&nbsp;1. <strong>W1</strong> is the MCP door, unblocked now. <strong>W2</strong> is foundation, after INST. <strong>Collab RC</strong> waits on W2 and is not nested under W2. Cross-flow exists; hire-id / dynamic / multi-hire still wait on INST. Tag every row exists, proposed, or blocked-on. Do not start package foundation against first-wins. Do not invent a TeamFlow, Channel, MessageBoard, second Agent, or management bus. Orientation cards live in <a href="#what">&#167;01</a>. The three words live in <a href="#fence">&#167;04</a>. The MCP door is <a href="#mcp">&#167;15</a>.</p>
+  <p class="lede">The target is still the <strong>full RC collaboration story</strong>: more than one team, rooms they share, dispatch across those teams. The teach order is no longer MCP-first. <strong>W2</strong> is the package &#8212; next, the kick. A thin <a href="#lab">lab Proof</a> demonstrates that package. <strong>W1 MCP</strong> is held until both run. <strong>Collab RC</strong> is later, after foundation + lab (INST as needed for multi-hire). Cross-flow exists. Hire-id / dynamic / multi-hire still wait on INST. Tag every row exists, proposed, or held. Do not invent a TeamFlow, Channel, MessageBoard, second Agent, management bus, or Project type. Orientation cards live in <a href="#what">&#167;01</a>. The three words live in <a href="#fence">&#167;04</a>. The MCP door is <a href="#mcp">&#167;15</a>.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 620" role="img" aria-label="Build-out labeled by epic. In flight, not W1: FIX-1320 INST-1 through 3, FIX-1331 config. Cross-flow exists via dispatcher flowKind. Do not start package foundation against first-wins. W1 Workforce MCP, unblocked now: see section 15. Later MCP waits on INST for hire-by-id and dynamic address. W2 Workforce foundation Layer 2, after INST lands: file conventions, scan to registries, seat-to-worker factory plus FIX-1331, one harness stack, thin Agent on the existing seam. Collab RC after foundation: teams plural helpers, intake, multi-hire Proof, board notify with real addresses. Not nested under W2. Later, not now: member-memory depth, OKF, hot-dynamic kinds, Conductor-as-config polish, OnSecurity GTM. Cut: no TeamFlow, Channel, MessageBoard Layer 1, second Agent, or management bus.">
-        <rect class="n-prose" x="16" y="16" width="220" height="300" rx="5"/>
-        <text class="t-lbl" x="32" y="38">IN FLIGHT &#183; NOT W1</text>
-        <text class="t-b" x="32" y="64">L1 floor. first-wins.</text>
-        <text class="t-xs" x="32" y="90">FIX-1320 INST-1..3</text>
-        <text class="t-xs" x="32" y="108">FIX-1331 CONFIG</text>
-        <text class="t-xs" x="32" y="126">flowKind EXISTS</text>
-        <text class="t-xs" x="32" y="150">DO NOT START W2</text>
-        <text class="t-xs" x="32" y="168">PACKAGE FOUNDATION</text>
-        <text class="t-xs" x="32" y="186">AGAINST FIRST-WINS</text>
-        <text class="t-xs" x="32" y="216">W1 MAY RUN BESIDE THIS</text>
-        <text class="t-xs" x="32" y="234">IT USES TODAY&#8217;S DOORS</text>
-        <text class="t-b" x="32" y="292">blocked-on. not L2.</text>
+      <svg viewBox="0 0 940 560" role="img" aria-label="Build-out in teach order. First, W2 foundation, the kick: file conventions scan into today's registries, seat-to-worker factory, knobs via ctx.flow.config, thin helpers over declared dispatchers. Second, lab Proof: a thin pentest team on file conventions alone, no MCP. Third, W1 MCP held until package plus lab, then a client door. Fourth, Collab RC later: teams plural helpers, multi-hire Proof, board notify with real addresses, INST as needed. Bottom band: cross-flow exists, FIX-1331 about to land, INST still named for multi-hire. Cut: no TeamFlow, Channel, MessageBoard Layer 1, second Agent, management bus, or Project type.">
+        <rect class="n-prop" x="16" y="16" width="214" height="300" rx="5"/>
+        <text class="t-lbl" x="30" y="38">1 &#183; W2 FOUNDATION</text>
+        <text class="t-b f-accent" x="30" y="64">next. the kick.</text>
+        <text class="t-xs" x="30" y="90">teams/&lt;id&gt;/workers/&lt;name&gt;/</text>
+        <text class="t-xs" x="30" y="108">SCAN &#8594; TODAY&#8217;S REGISTRIES</text>
+        <text class="t-xs" x="30" y="126">SEAT &#8594; WORKER FACTORY</text>
+        <text class="t-xs" x="30" y="144">KNOBS: ctx.flow.config</text>
+        <text class="t-xs" x="30" y="162">FIX-1331 &#183; #1653 ABOUT TO LAND</text>
+        <text class="t-xs" x="30" y="186">THIN HELPERS OVER DISPATCH</text>
+        <text class="t-xs" x="30" y="204">keyed team &#183; intake DM</text>
+        <text class="t-xs" x="30" y="222">room subscribe &#183; board notify</text>
+        <text class="t-xs" x="30" y="246">NO loadWorkforce() EXPORT</text>
+        <text class="t-b f-accent" x="30" y="292">proposed. next.</text>
 
-        <rect class="n-prop" x="252" y="16" width="220" height="300" rx="5"/>
-        <text class="t-lbl" x="268" y="38">W1 &#183; WORKFORCE MCP</text>
-        <text class="t-b f-accent" x="268" y="64">unblocked now</text>
-        <text class="t-xs" x="268" y="90">L2 CLIENT DOOR</text>
-        <text class="t-xs" x="268" y="108">send / focus / status</text>
-        <text class="t-xs" x="268" y="132">INTAKE + BOARDS</text>
-        <text class="t-xs" x="268" y="150">+ dispatcher()</text>
-        <text class="t-xs" x="268" y="174">validateDispatch</text>
-        <text class="t-xs" x="268" y="192">STATIC + SAME-FLOW</text>
-        <text class="t-xs" x="268" y="216">NO BUS. NO CHAT-SDK.</text>
-        <text class="t-xs" x="268" y="234">LATER MCP: INST HOLDS</text>
-        <text class="t-b f-accent" x="268" y="292">proposed. see &#167;15.</text>
+        <path class="ln-acc" d="M230,166 L244,166"/>
 
-        <rect class="n-prop" x="488" y="16" width="220" height="300" rx="5"/>
-        <text class="t-lbl" x="504" y="38">W2 &#183; FOUNDATION L2</text>
-        <text class="t-b f-accent" x="504" y="64">after INST lands</text>
-        <text class="t-xs" x="504" y="90">FILE CONVENTIONS</text>
-        <text class="t-xs" x="504" y="108">SCAN &#8594; REGISTRIES</text>
-        <text class="t-xs" x="504" y="126">SEAT &#8594; WORKER FACTORY</text>
-        <text class="t-xs" x="504" y="150">+ FIX-1331</text>
-        <text class="t-xs" x="504" y="174">ONE HARNESS STACK</text>
-        <text class="t-xs" x="504" y="192">THIN AGENT ON SEAM</text>
-        <text class="t-xs" x="504" y="216">NOT AN EXPORT TODAY</text>
-        <text class="t-xs" x="504" y="234">NOT AGAINST FIRST-WINS</text>
-        <text class="t-b f-accent" x="504" y="292">proposed. wait.</text>
+        <rect class="n-prop" x="244" y="16" width="214" height="300" rx="5"/>
+        <text class="t-lbl" x="258" y="38">2 &#183; LAB PROOF</text>
+        <text class="t-b f-accent" x="258" y="64">thin pentest team</text>
+        <text class="t-xs" x="258" y="90">INTAKE + RECON + TRIAGE</text>
+        <text class="t-xs" x="258" y="108">NO 4TH SEAT UNTIL FAN-IN</text>
+        <text class="t-xs" x="258" y="132">PROJECTS = BOARDS / RESOURCES</text>
+        <text class="t-xs" x="258" y="150">NO Project TYPE</text>
+        <text class="t-xs" x="258" y="174">WRITE &#8594; TASK / DISPATCH</text>
+        <text class="t-xs" x="258" y="192">FILE CONVENTIONS ALONE</text>
+        <text class="t-xs" x="258" y="216">NO MCP IN LAB V1</text>
+        <text class="t-xs" x="258" y="234">NOT ONSECURITY. NOT A PRODUCT.</text>
+        <text class="t-b f-accent" x="258" y="292">proposed. after W2.</text>
 
-        <rect class="n-prop" x="724" y="16" width="200" height="300" rx="5"/>
-        <text class="t-lbl" x="740" y="38">COLLAB RC</text>
-        <text class="t-b f-accent" x="740" y="64">after W2</text>
-        <text class="t-xs" x="740" y="90">TEAMS PLURAL HELPERS</text>
-        <text class="t-xs" x="740" y="108">INTAKE</text>
-        <text class="t-xs" x="740" y="126">MULTI-HIRE PROOF</text>
-        <text class="t-xs" x="740" y="150">BOARD NOTIFY</text>
-        <text class="t-xs" x="740" y="168">REAL ADDRESSES</text>
-        <text class="t-xs" x="740" y="192">NOT NESTED UNDER W2</text>
-        <text class="t-xs" x="740" y="216">NOT A FIFTH SLICE</text>
-        <text class="t-xs" x="740" y="234">OF FOUNDATION</text>
-        <text class="t-b f-accent" x="740" y="292">proposed. after W2.</text>
+        <path class="ln-acc" d="M458,166 L472,166"/>
 
-        <rect class="n-box" x="16" y="332" width="908" height="48" rx="5"/>
-        <text class="t-s" x="34" y="362">W1 may run while INST is in flight. Do not start W2 package foundation against first-wins. Collab RC is not a W2 workstream.</text>
+        <rect class="n-prose" x="472" y="16" width="214" height="300" rx="5"/>
+        <text class="t-lbl" x="486" y="38">3 &#183; W1 MCP</text>
+        <text class="t-b" x="486" y="64">held</text>
+        <text class="t-xs" x="486" y="90">UNTIL PACKAGE + LAB RUN</text>
+        <text class="t-xs" x="486" y="114">THEN: send / focus / status</text>
+        <text class="t-xs" x="486" y="132">INTAKE + BOARDS</text>
+        <text class="t-xs" x="486" y="150">+ dispatcher()</text>
+        <text class="t-xs" x="486" y="174">validateDispatch</text>
+        <text class="t-xs" x="486" y="192">STATIC + SAME-FLOW FIRST</text>
+        <text class="t-xs" x="486" y="216">NO BUS. NO CHAT-SDK.</text>
+        <text class="t-xs" x="486" y="234">HIRE-ID / DYNAMIC: INST</text>
+        <text class="t-b" x="486" y="292">proposed. held. &#167;15</text>
 
-        <rect class="n-prose" x="16" y="396" width="908" height="88" rx="5"/>
-        <text class="t-lbl" x="34" y="418">LATER / NOT NOW</text>
-        <text class="t-s" x="34" y="442">member-memory depth &#183; OKF &#183; hot-dynamic kinds &#183; Conductor-as-config polish &#183; OnSecurity GTM</text>
-        <text class="t-xs" x="34" y="464">The lock is now. The wire is not. Do not pull these into W1 or W2 so the atlas looks finished.</text>
+        <path class="ln-acc" d="M686,166 L700,166"/>
 
-        <rect class="n-prose" x="16" y="500" width="908" height="100" rx="5"/>
-        <text class="t-lbl" x="34" y="522">CUT &#183; KILL INVENT</text>
-        <text class="t-s" x="34" y="546">no TeamFlow / Channel / MessageBoard L1 &#183; no second Agent &#183; no management bus</text>
-        <text class="t-xs" x="34" y="572">No hot-dynamic kind to paper over first-wins. No chat-sdk revival. No delivery bus so W1 looks like a product.</text>
+        <rect class="n-prop" x="700" y="16" width="224" height="300" rx="5"/>
+        <text class="t-lbl" x="714" y="38">4 &#183; COLLAB RC</text>
+        <text class="t-b f-accent" x="714" y="64">later</text>
+        <text class="t-xs" x="714" y="90">AFTER FOUNDATION + LAB</text>
+        <text class="t-xs" x="714" y="108">INST AS NEEDED</text>
+        <text class="t-xs" x="714" y="132">TEAMS PLURAL HELPERS</text>
+        <text class="t-xs" x="714" y="150">MULTI-HIRE PROOF</text>
+        <text class="t-xs" x="714" y="168">BOARD NOTIFY</text>
+        <text class="t-xs" x="714" y="186">REAL ADDRESSES</text>
+        <text class="t-xs" x="714" y="210">NOT NESTED UNDER W2</text>
+        <text class="t-xs" x="714" y="228">NOT THE LAB</text>
+        <text class="t-b f-accent" x="714" y="292">proposed. after lab.</text>
+
+        <rect class="n-code" x="16" y="332" width="908" height="56" rx="5"/>
+        <text class="t-s" x="34" y="356">Cross-flow exists (dispatcher({ flowKind })). FIX-1331 knobs: #1653 about to merge &#8212; not exists on this pin. INST / FIX-1320 still named for hire-id, dynamic addresses, and multi-hire.</text>
+        <text class="t-xs" x="34" y="376">W2 SCANS INTO TODAY&#8217;S REGISTRIES. ONE HIRE PER KIND IS ENOUGH FOR THE LAB. MULTI-HIRE IS NOT THE KICK.</text>
+
+        <rect class="n-prose" x="16" y="404" width="908" height="64" rx="5"/>
+        <text class="t-lbl" x="34" y="426">LATER / NOT NOW</text>
+        <text class="t-s" x="34" y="450">member-memory depth &#183; OKF &#183; hot-dynamic kinds &#183; Conductor-as-config polish &#183; OnSecurity GTM</text>
+
+        <rect class="n-prose" x="16" y="484" width="908" height="60" rx="5"/>
+        <text class="t-lbl" x="34" y="506">CUT &#183; KILL INVENT</text>
+        <text class="t-s" x="34" y="528">no TeamFlow / Channel / MessageBoard L1 &#183; no second Agent &#183; no management bus &#183; no Project type</text>
       </svg>
     </div>
-    <figcaption><b>Epic names. Honest tags.</b> In flight is Layer&nbsp;1: INST, FIX-1331. Cross-flow exists. W1 is the MCP client door and can start on today&#8217;s doors. W2 is the foundation kick after INST. Collab RC is after W2 &#8212; not a folder under W2. Hire-id / dynamic / multi-hire still INST. Later stays later. One harness-manager stack. Conductor consumes it. It does not own a second path.</figcaption>
+    <figcaption><b>W2 &#8594; lab &#8594; MCP held.</b> The package is the kick. The lab proves that package on file conventions alone. MCP waits. Collab RC is later &#8212; teams plural, multi-hire, real addresses &#8212; not a folder under W2 and not the lab. Hire-id / dynamic / multi-hire still INST. Later stays later. One harness-manager stack. Conductor consumes it.</figcaption>
+  </figure>
+
+  <div id="lab">
+  <h3>Lab Proof &#8212; a thin pentest team</h3>
+  <p>Not a second product. Not OnSecurity. Three seats on the W2 file tree: <strong>intake</strong>, <strong>recon</strong>, <strong>triage</strong>. A fourth (prioritizer) waits until those three prove fan-in. Projects are boards and resources, not a <code>Project</code> type. Reactive means a finding or asset write becomes a task and a dispatch to the next seat. The lab must run on file conventions alone &#8212; that is what proves the package surface. No full platform. <strong>No MCP in lab v1.</strong></p>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Lab Proof: a thin pentest team on file conventions alone. Left, intake seat with a static DM. Centre, recon seat writes findings and assets as boards and resources. Right, triage seat receives a task dispatch. Arrows: intake routes work to recon; a finding or asset write becomes a task and a dispatch to triage. No fourth seat until those three prove fan-in. Bottom cut: no MCP in lab v1, not OnSecurity, not a second product, no Project type.">
+        <rect class="n-prop" x="16" y="16" width="280" height="200" rx="5"/>
+        <text class="t-lbl" x="32" y="38">INTAKE &#183; SEAT</text>
+        <text class="t-b f-accent" x="32" y="64">static DM</text>
+        <text class="t-xs" x="32" y="90">teams/pentest/workers/intake/</text>
+        <text class="t-xs" x="32" y="108">THIN SEQUENCER. NOT AN AGENT.</text>
+        <text class="t-xs" x="32" y="132">ADDRESS-THE-TEAM</text>
+        <text class="t-xs" x="32" y="150">ROUTES TO RECON</text>
+        <text class="t-s" x="32" y="186">openTeamInbox shape</text>
+
+        <path class="ln-acc" d="M296,116 L332,116"/>
+
+        <rect class="n-prop" x="332" y="16" width="276" height="200" rx="5"/>
+        <text class="t-lbl" x="348" y="38">RECON &#183; SEAT</text>
+        <text class="t-b f-accent" x="348" y="64">write findings / assets</text>
+        <text class="t-xs" x="348" y="90">teams/pentest/workers/recon/</text>
+        <text class="t-xs" x="348" y="108">BOARDS + RESOURCES</text>
+        <text class="t-xs" x="348" y="126">NOT A Project TYPE</text>
+        <text class="t-xs" x="348" y="150">WRITE &#8594; TASK</text>
+        <text class="t-s" x="348" y="186">then dispatch</text>
+
+        <path class="ln-acc" d="M608,116 L644,116"/>
+
+        <rect class="n-prop" x="644" y="16" width="280" height="200" rx="5"/>
+        <text class="t-lbl" x="660" y="38">TRIAGE &#183; SEAT</text>
+        <text class="t-b f-accent" x="660" y="64">next seat wakes</text>
+        <text class="t-xs" x="660" y="90">teams/pentest/workers/triage/</text>
+        <text class="t-xs" x="660" y="108">TASK + dispatcher()</text>
+        <text class="t-xs" x="660" y="126">SAME SPINE. STATIC TARGET.</text>
+        <text class="t-xs" x="660" y="150">FAN-IN PROOF IS THESE THREE</text>
+        <text class="t-s" x="660" y="186">no prioritizer yet</text>
+
+        <rect class="n-code" x="16" y="232" width="446" height="52" rx="5"/>
+        <text class="t-s" x="32" y="264">Must run on file conventions alone. That is the package proof.</text>
+
+        <rect class="n-prose" x="478" y="232" width="446" height="52" rx="5"/>
+        <text class="t-s" x="494" y="264">No MCP in lab v1. Not OnSecurity. Not a second product.</text>
+
+        <rect class="n-box" x="16" y="300" width="908" height="44" rx="5"/>
+        <text class="t-xs" x="32" y="328">PRIORITIZER WAITS UNTIL INTAKE + RECON + TRIAGE PROVE FAN-IN. ARCHITECT: SKIP THE FOURTH SEAT.</text>
+      </svg>
+    </div>
+    <figcaption><b>Three seats. Boards, not a Project type.</b> Intake is the team DM. Recon writes findings and assets as resources. That write becomes a task and a dispatch to triage. Same helpers already named on this page &#8212; keyed team, intake DM, room subscribe, board notify. No new export. No MCP until this run exists.</figcaption>
   </figure>
 
   <div class="tw">
     <table>
       <thead><tr><th>Epic</th><th>Status</th><th>What is true on this pin</th><th>What would fake it</th></tr></thead>
       <tbody>
-        <tr><td>In flight &#8212; L1</td><td><span class="tag t-prose">blocked-on / gap</span></td><td><a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a> INST-1..3 (FIX-1315 absorbed / duplicate). <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code> is backlog. #1600 has landed &#8212; <code>dispatcher({ flowKind })</code> exists. Do not start W2 package foundation against first-wins. W1 may run beside this because it uses today&#8217;s doors.</td><td>Starting the factory, the scan, or a Workforce package tree while <code>get(kind)</code> is still first-wins. Teaching cross-flow as still open. Nesting INST under W2 so foundation looks unblocked.</td></tr>
-        <tr><td>W1 &#8212; Workforce MCP</td><td><span class="tag t-prop">proposed · unblocked now</span></td><td>Unblocked now. Contract, holds, and cuts: <a href="#mcp">&#167;15</a>.</td><td>A second control plane. A new MCP package. Filing Linear from this page. Starting W2 against first-wins and calling it W1.</td></tr>
-        <tr><td>W2 &#8212; Workforce foundation L2</td><td><span class="tag t-prop">proposed · after INST</span></td><td>File conventions (<code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>), scan&#8594;registries (named gap, no <code>loadWorkforce()</code>), seat&#8594;worker factory, plus FIX-1331 for seat knobs. One harness stack. Thin Agent opinion on the existing seam. Thin seats skip <code>AgentRegistry</code>. Not an export today.</td><td>Starting W2 against first-wins. A second Agent type. Scanning every seat into <code>AgentRegistry</code>. Nesting Collab RC under W2. Inventing the loader as an export.</td></tr>
-        <tr><td>Collab RC</td><td><span class="tag t-prop">proposed · after W2</span></td><td>Teams plural helpers, intake, multi-hire Proof, board notify with <em>real</em> addresses. Not nested under W2. Same-flow fan-out, <code>claim</code>, and <code>dispatcher({ flowKind })</code> exist now. Hire-id, dynamic addresses, and multi-hire still wait on INST (FIX-1320). Static-target notify can lab under W1 honesty &#8212; that is not this epic.</td><td>A one-team-only API. A <code>TeamFlow</code>. Channel / MessageBoard L1. Shipping Collab RC as a W2 folder. Teaching cross-flow as still refused.</td></tr>
-        <tr><td>Later / not now</td><td><span class="tag t-gone">horizon</span></td><td>Member-memory depth. OKF. Hot-dynamic kinds. Conductor-as-config polish (the lock is now; the wire is not). OnSecurity GTM. Strategy owns GTM.</td><td>Pulling any of these into W1 or W2 so the atlas looks finished. Claiming <code>omp</code> or OnSecurity shipped. Treating Conductor-as-config as a later peel-off.</td></tr>
+        <tr><td>W2 &#8212; Workforce foundation L2</td><td><span class="tag t-prop">proposed · next</span></td><td>The kick. File conventions (<code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>), scan into <em>today&#8217;s</em> registries only (named gap, no <code>loadWorkforce()</code>), seat&#8594;worker factory, knobs via <code>ctx.flow.config</code> (FIX-1331 / #1653 about to land &#8212; not exists). Thin L2 helpers over declared dispatchers: keyed team, intake seat DM, room subscribe, board notify. Names already on this page. Thin seats skip <code>AgentRegistry</code>. One hire per kind is enough.</td><td>A TeamFlow, Channel, MessageBoard L1, second Agent, management bus, or Project type. Scanning every seat into <code>AgentRegistry</code>. Inventing the loader as an export. Nesting the lab or Collab RC under W2 as extra package surface.</td></tr>
+        <tr><td>Lab Proof &#8212; thin pentest team</td><td><span class="tag t-prop">proposed · after W2</span></td><td>Intake + recon + triage. Projects = boards / resources. Reactive = finding or asset write &#8594; task / dispatch to the next seat. Must run on file conventions alone. No full platform. No MCP in lab v1. Not OnSecurity. Not a second product. Prioritizer waits until those three prove fan-in.</td><td>Standing up OnSecurity. A Project type. A fourth seat before fan-in. Shipping MCP inside the lab. Claiming the lab is the product.</td></tr>
+        <tr><td>W1 &#8212; Workforce MCP</td><td><span class="tag t-prose">proposed · held</span></td><td>Held until the package exists and the lab runs. Then a client door (send / focus / status) over intake + boards + <code>dispatcher()</code>; <code>validateDispatch</code>; static / same-flow first. Contract and cuts: <a href="#mcp">&#167;15</a>. Later MCP (hire-by-id / dynamic address) still INST.</td><td>Unblocking MCP before the package and lab. A second control plane. A new MCP package. Filing Linear from this page.</td></tr>
+        <tr><td>Collab RC</td><td><span class="tag t-prop">proposed · after foundation + lab</span></td><td>Teams plural helpers, multi-hire Proof, board notify with <em>real</em> addresses. INST as needed (FIX-1320) for hire-id / dynamic / multi-hire. Same-flow fan-out, <code>claim</code>, and <code>dispatcher({ flowKind })</code> exist now. Not nested under W2. Not the pentest lab.</td><td>A one-team-only API. A <code>TeamFlow</code>. Channel / MessageBoard L1. Shipping Collab RC as the lab. Teaching cross-flow as still refused.</td></tr>
+        <tr><td>Later / not now</td><td><span class="tag t-gone">horizon</span></td><td>Member-memory depth. OKF. Hot-dynamic kinds. Conductor-as-config polish (the lock is now; the wire is not). OnSecurity GTM. Strategy owns GTM.</td><td>Pulling any of these into W2 or the lab so the atlas looks finished. Claiming <code>omp</code> or OnSecurity shipped. Treating Conductor-as-config as a later peel-off.</td></tr>
       </tbody>
     </table>
   </div>
 
   <div class="note">
     <span class="lbl">The plural door still holds</span>
-    <p>If adding a second team requires a new argument, a new helper, or a Team type, W2 shipped the wrong API. Key the team on day one. Address a room by the seats that subscribe to it, not by &#8220;this team&#8217;s rooms.&#8221; Collab RC is then more rows in the map, plus real addresses when the refuse is gone &#8212; not a rewrite, and not a W2 workstream.</p>
+    <p>If adding a second team requires a new argument, a new helper, or a Team type, W2 shipped the wrong API. Key the team on day one. Address a room by the seats that subscribe to it, not by &#8220;this team&#8217;s rooms.&#8221; Collab RC is then more rows in the map, plus real addresses when INST has landed &#8212; not a rewrite, and not a W2 workstream.</p>
   </div>
 
   <div class="note">
-    <span class="lbl">W1 is unblocked. W2 is not.</span>
-    <p>Workforce MCP can POC now on today&#8217;s doors; the contract, holds, and cuts live in <a href="#mcp">&#167;15</a>.</p>
+    <span class="lbl">W2 is the kick. MCP is held.</span>
+    <p>MCP stays held until the Workforce package exists and a lab demonstrates it. The door&#8217;s contract, holds, and cuts still live in <a href="#mcp">&#167;15</a>. Do not POC that door on today&#8217;s doors before the package and lab run.</p>
   </div>
 </section>
 
@@ -1664,7 +1724,7 @@ const room = {
 
 <section id="projects">
   <div class="sec-head"><span class="sec-num">09</span><h2>Projects and tasks</h2></div>
-  <p class="lede">A project is <strong>resource-managed</strong>, not a code folder. It lives as Layer&nbsp;1 resources, boards, sessions, and content &#8212; the same move as plan = board + <code>readContent()</code> (<a href="#plan">&#167;13</a>). There is no <code>projects/</code> tree beside <code>teams/</code>, and no <code>Project</code> L1 type. Task and subscription rooms are <strong>dynamic sessions</strong>. Same-flow, a post wakes N subscribers via <code>dispatcher()</code> &#215; N &#8212; that exists. Exclusion is today&#8217;s <code>claim</code>. Cross-kind still waits. Who may reply, and ordered multi-reply, are proposed Layer&nbsp;2 in <a href="#channels">&#167;08</a>. A later <strong>project roster</strong> is still a seat-list, not a new folder kind.</p>
+  <p class="lede">A project is <strong>resource-managed</strong>, not a code folder. It lives as Layer&nbsp;1 resources, boards, sessions, and content &#8212; the same move as plan = board + <code>readContent()</code> (<a href="#plan">&#167;13</a>). There is no <code>projects/</code> tree beside <code>teams/</code>, and no <code>Project</code> L1 type. The <a href="#lab">lab Proof</a> uses this move: findings and assets are board / resource writes, then a task and a dispatch. Task and subscription rooms are <strong>dynamic sessions</strong>. Same-flow, a post wakes N subscribers via <code>dispatcher()</code> &#215; N &#8212; that exists. Exclusion is today&#8217;s <code>claim</code>. Cross-kind still waits. Who may reply, and ordered multi-reply, are proposed Layer&nbsp;2 in <a href="#channels">&#167;08</a>. A later <strong>project roster</strong> is still a seat-list, not a new folder kind.</p>
 
   <figure>
     <div class="fig-body">
@@ -1885,7 +1945,7 @@ const team = <b>defineResourceCollection</b>({
 
 <section id="intake">
   <div class="sec-head"><span class="sec-num">11</span><h2>Team intake</h2></div>
-  <p class="lede">Address-the-team without picking a person. That is a <strong>capability</strong>, not a new flow kind. Every keyed team has a <strong>team intake</strong> seat &#8212; a coordinator or a thin sequencer &#8212; with a static DM. &#8220;Talk to eng&#8221; is that session. The intake worker routes with claim, ordered replies, or fan-out. The team board stays for broadcast. Still one flow per worker. The intake <em>is</em> a worker.</p>
+  <p class="lede">Address-the-team without picking a person. That is a <strong>capability</strong>, not a new flow kind. Every keyed team has a <strong>team intake</strong> seat &#8212; a coordinator or a thin sequencer &#8212; with a static DM. &#8220;Talk to eng&#8221; is that session. The <a href="#lab">lab Proof</a> starts here: intake is the first of three seats. The intake worker routes with claim, ordered replies, or fan-out. The team board stays for broadcast. Still one flow per worker. The intake <em>is</em> a worker.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--accent)">
@@ -2149,16 +2209,16 @@ const replyToSender = <b>dispatcher</b>({
 
 <section id="mcp">
   <div class="sec-head"><span class="sec-num">15</span><h2>Workforce MCP &#8212; a client door, not a control plane</h2></div>
-  <p class="lede">This is <strong>W1</strong>. Unblocked now. The persistent core Workforce runs in the background. A user who already has Claude or ChatGPT still needs to send work or manage focus. That is a <strong>proposed Layer&nbsp;2 door</strong> onto today&#8217;s intake, boards, and <code>dispatcher()</code>. Not a second control plane. Not a second Agent inbox. Not a chat-sdk revival. Cross-flow dispatch exists (<code>dispatcher({ flowKind })</code>). Later MCP &#8212; hire-by-id and a dynamic MCP address &#8212; waits on INST (FIX-1320), not on #1600. That is not W1. W2 is foundation after INST. See <a href="#vision">&#167;03</a>.</p>
+  <p class="lede">This is <strong>W1</strong>. <strong>Held</strong> until the W2 package exists and the <a href="#lab">lab Proof</a> runs. The persistent core Workforce runs in the background. A user who already has Claude or ChatGPT still needs to send work or manage focus. That is a <strong>proposed Layer&nbsp;2 door</strong> onto intake, boards, and <code>dispatcher()</code>. Not a second control plane. Not a second Agent inbox. Not a chat-sdk revival. Cross-flow dispatch exists (<code>dispatcher({ flowKind })</code>). Later MCP &#8212; hire-by-id and a dynamic MCP address &#8212; waits on INST (FIX-1320), not on #1600. That is not the v1 door. W2 is the kick; this door is after the lab. See <a href="#vision">&#167;03</a>.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--accent)">
-      <h5>Client door</h5><span class="role">W1 · unblocked now</span>
-      <p>Claude / ChatGPT calls three tools. Those tools land on the existing MCP adapter, then on the intake seat, the boards, and <code>dispatcher()</code>. The core keeps running. The client does not become a second product face.</p>
+      <h5>Client door</h5><span class="role">W1 · held</span>
+      <p>Held until package + lab. Then Claude / ChatGPT calls three tools. Those tools land on the existing MCP adapter, then on the intake seat, the boards, and <code>dispatcher()</code>. The core keeps running. The client does not become a second product face. No MCP in lab v1.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>v1 tools</h5><span class="role">proposed names</span>
-      <p>Send work. Set focus. Read status. Names over today&#8217;s doors &#8212; not a new primitive, not an export. Static targets. Cross-flow via <code>flowKind</code> exists; do not wait on #1600 for it.</p>
+      <p>Send work. Set focus. Read status. Names over intake + boards + <code>dispatcher()</code> &#8212; not a new primitive, not an export. Static / same-flow first. Cross-flow via <code>flowKind</code> exists; do not wait on #1600 for it.</p>
     </div>
     <div class="card" style="--tc: var(--code)">
       <h5>Mount</h5><span class="role">L2 over today&#8217;s L1</span>
@@ -2209,8 +2269,8 @@ const replyToSender = <b>dispatcher</b>({
         <text class="t-lbl" x="34" y="254">CUT / HOLD</text>
         <text class="t-s" x="34" y="278">no management bus &#183; no chat-sdk revival (FIX-1330 gone) &#183; no TeamFlow &#183; no second Agent inbox</text>
         <text class="t-s" x="34" y="300">hold for INST (FIX-1320): address another hire by id &#183; dynamic MCP address. Cross-flow is not a hold.</text>
-        <text class="t-xs" x="34" y="328">W1 UNBLOCKED NOW. LATER MCP WAITS ON INST. W2 IS FOUNDATION AFTER INST. COLLAB RC AFTER W2.</text>
-        <text class="t-xs" x="34" y="352">FIX-1331 RIDES IN-FLIGHT L1 AND W2. THE W1 POC DOES NOT NEED IT. DO NOT FILE LINEAR.</text>
+        <text class="t-xs" x="34" y="328">W1 HELD UNTIL PACKAGE + LAB. LATER MCP (HIRE-ID / DYNAMIC) WAITS ON INST. COLLAB RC AFTER FOUNDATION + LAB.</text>
+        <text class="t-xs" x="34" y="352">FIX-1331 IS A W2 KNOB (#1653 ABOUT TO LAND). NO MCP IN LAB V1. DO NOT FILE LINEAR.</text>
       </svg>
     </div>
     <figcaption><b>Client &#8594; existing MCP adapter &#8594; today&#8217;s doors.</b> The adapter already exists and already calls <code>host.dispatch</code>. HTTP and webhook call <code>validateDispatch</code> between <code>resolvePrincipal</code> and <code>dispatch</code>; the MCP adapter currently skips that hook. The Workforce door must not inherit the skip, and must not grow a second principal path the way chat-sdk did. Do not invent a bus so the diagram looks like a product.</figcaption>
@@ -2221,9 +2281,9 @@ const replyToSender = <b>dispatcher</b>({
       <thead><tr><th>The piece</th><th>Status</th><th>What is true on this pin</th></tr></thead>
       <tbody>
         <tr><td><code>@flow-state-dev/mcp</code> adapter</td><td><span class="tag t-real">exists</span></td><td>L1 door. Actions with <code>mcp.enabled</code> become tools. <code>host.resolvePrincipal</code> then <code>host.dispatch</code>. Protocol default is stateless: omit <code>mcp.session</code> and every <code>tools/call</code> mints an ephemeral session. Per-action opt-in flow sessions already exist: <code>ActionMcpConfig.session</code> as a string template or <code>{ fromInput }</code> (adapter <code>deriveSessionId</code>). That is a flow session key, not <code>Mcp-Session-Id</code>, and not an auth decision (BP-031). Do not invent a second store for focus or status &#8212; pin those tools to the flow session the action already opted into. Must call <code>validateDispatch</code> after <code>resolvePrincipal</code> and before <code>dispatch</code> (<code>docs/architecture/inbound-transports.md</code>); the adapter skips that hook today. HTTP (<code>action-routes.ts</code>) and webhook (<code>webhook/routes.ts</code>) already call it. Do not copy chat-sdk&#8217;s parallel principal path.</td></tr>
-        <tr><td>W1 tools (send / focus / status)</td><td><span class="tag t-prop">proposed · unblocked now</span></td><td>L2 names over intake + boards + <code>dispatcher()</code>. Not exports. Not a new package. This is W1. Cross-flow via <code>dispatcher({ flowKind })</code> exists. Later MCP (hire-by-id / dynamic address) waits on INST (FIX-1320), not on #1600.</td></tr>
-        <tr><td>Static targets</td><td><span class="tag t-real">v1 lock</span></td><td>What today&#8217;s boards already do. A board with static targets can lab now. Hire-by-id and a dynamic MCP address wait on INST (FIX-1320). Cross-flow is not in this hold.</td></tr>
-        <tr><td><a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code></td><td><span class="tag t-none">backlog</span></td><td>Instance create-time config bag. Helps seat knobs later. The MCP POC does not need it to start.</td></tr>
+        <tr><td>W1 tools (send / focus / status)</td><td><span class="tag t-prose">proposed · held</span></td><td>Held until W2 package + lab Proof. Then L2 names over intake + boards + <code>dispatcher()</code>. Not exports. Not a new package. Static / same-flow first. Cross-flow via <code>dispatcher({ flowKind })</code> exists. Later MCP (hire-by-id / dynamic address) waits on INST (FIX-1320), not on #1600.</td></tr>
+        <tr><td>Static targets</td><td><span class="tag t-real">v1 lock</span></td><td>What today&#8217;s boards already do. When this door opens, v1 stays static / same-flow. Hire-by-id and a dynamic MCP address wait on INST (FIX-1320). Cross-flow is not in this hold.</td></tr>
+        <tr><td><a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code></td><td><span class="tag t-prose">about to land</span></td><td>Instance create-time config bag. W2 seat knobs. #1653 about to merge &#8212; not exists on this pin. The MCP door does not wait on it; the door waits on package + lab.</td></tr>
         <tr><td>chat-sdk / chat transport</td><td><span class="tag t-gone">gone</span></td><td><a href="https://linear.app/fixpoint-labs/issue/FIX-1330">FIX-1330</a> / <a href="https://github.com/fixpoint-labs/flow-state-dev/pull/1636">#1636</a>. Package, <code>chat</code> dispatch type, and flow-level <code>chat</code> config are gone. Do not revive. Collaboration stays dispatch + sessions + Workforce.</td></tr>
         <tr><td>Management bus / TeamFlow / second Agent inbox</td><td><span class="tag t-gone">cut</span></td><td>The door is not a control plane. Address-the-team stays the intake seat. Talk stays <code>dispatcher()</code>.</td></tr>
       </tbody>
@@ -2233,8 +2293,8 @@ const replyToSender = <b>dispatcher</b>({
   <p class="note">Mount path: <code>createMcpTransportAdapter</code> &#8594; <code>resolvePrincipal</code> &#8594; <code>validateDispatch</code> &#8594; <code>host.dispatch</code>.</p>
 
   <div class="note">
-    <span class="lbl">W1. Do not file from this page.</span>
-    <p>W1 is this door: epic/spec plus a thin POC on today&#8217;s doors. W2 is foundation after INST &#8212; do not start it against first-wins. Later MCP (hire-by-id, dynamic address) waits on INST. Collab RC is after W2 and is not nested here. FIX-1330 already landed. Name those on <a href="#vision">&#167;03</a>; do not open Linear from the atlas pass.</p>
+    <span class="lbl">W1 is held. Do not file from this page.</span>
+    <p>W1 is this door after the W2 package and the lab Proof exist. Do not POC it on today&#8217;s doors first. Later MCP (hire-by-id, dynamic address) waits on INST. Collab RC is after foundation + lab and is not nested here. FIX-1330 already landed. Name those on <a href="#vision">&#167;03</a>; do not open Linear from the atlas pass.</p>
   </div>
 </section>
 
@@ -2304,7 +2364,7 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td><code>examples/guides/research-team</code></td><td><span class="tag t-real">exists</span></td><td>The only caller. One <code>defineAgent</code> + registry + <code>materializeAgent</code> seats a skill via <code>agent-ref</code>. Inline persona, session scope, a single flow.</td></tr>
         <tr><td>Kitchen-sink</td><td><span class="tag t-gone">unused</span></td><td>Depends on the package in <code>package.json</code>. Imports it in zero source files.</td></tr>
         <tr><td><code>dispatcher()</code></td><td><span class="tag t-real">exists</span></td><td>Send door. <code>internal</code> / <code>task</code>. Session <code>{ key }</code>, <code>{ id }</code>, or <code>{ from: true }</code>. Cross-flow via <code>dispatcher({ flowKind })</code> exists. Envelope <code>from</code> is still provenance. Hire-id still INST.</td></tr>
-        <tr><td>Workforce MCP (proposed L2 client door)</td><td><span class="tag t-prop">proposed · unblocked now</span></td><td>See <a href="#mcp">&#167;15</a>.</td></tr>
+        <tr><td>Workforce MCP (proposed L2 client door)</td><td><span class="tag t-prose">proposed · held</span></td><td>Held until W2 package + lab Proof. See <a href="#mcp">&#167;15</a> and <a href="#vision">&#167;03</a>.</td></tr>
         <tr><td>Session routes</td><td><span class="tag t-real">exists</span></td><td><code>create_session</code>, list, get, delete, patch. Enough for factory bootstrap. No seed field on <code>defineFlow</code>.</td></tr>
         <tr><td>Same-flow group fan-out (board + N sessions)</td><td><span class="tag t-real">exists</span></td><td>A board (working set) plus one session per subscriber on the same flow. A post is <code>dispatcher()</code> &#215; N into those sessions. Pin: <code>create_session</code> + <code>dispatcher({ session: { id } })</code>. Cross-flow via <code>flowKind</code> exists. Hire-id still INST.</td></tr>
         <tr><td><code>flowIsolation</code></td><td><span class="tag t-real">exists</span></td><td>User/org resources key per flow when true. Default false. Rejected at session scope. The member-identity <em>proof</em>, not a per-seat store. See <a href="#memory">&#167;07</a>.</td></tr>
@@ -2312,7 +2372,7 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td><code>taskBoard</code> + <code>taskSchema</code></td><td><span class="tag t-real">exists</span></td><td>Unified plan/task primitive. Status set includes <code>parked</code>. Content for the prose half is <code>readContent()</code>.</td></tr>
         <tr><td>Reply-storm exclusion via <code>TaskCollectionRef.claim</code></td><td><span class="tag t-real">exists</span></td><td>One holder per post. Same CAS <code>taskBoard</code> drain uses. Eligibility narrows to that post. Who may attempt the claim is proposed Layer&nbsp;2. No board-lock type.</td></tr>
         <tr><td>Ordered multi-reply via board coordinator</td><td><span class="tag t-prop">proposed</span></td><td>Team role, L2 worker. Files N reply tasks with <code>deps</code>. Work is <code>dispatcher()</code> into that subscriber session. Idle chain before newer posts. Broke path is lease / <code>parked</code> / retry. No MessageBoard sequencer. No coordinator Layer&nbsp;1 type. No new lease type. See <a href="#channels">&#167;08</a>.</td></tr>
-        <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed</span></td><td>This page. No <code>createWorkerFlow</code> export. No <code>org/</code> · <code>teams/</code> · <code>workers/</code> tree in the repo. <code>workforce.config</code> is not a file. Seat path is <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. SOP is later. See <a href="#files">&#167;06</a>.</td></tr>
+        <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed · W2 next</span></td><td>This page. The kick. No <code>createWorkerFlow</code> export. No <code>org/</code> · <code>teams/</code> · <code>workers/</code> tree in the repo. <code>workforce.config</code> is not a file. Seat path is <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. SOP is later. See <a href="#files">&#167;06</a> and <a href="#vision">&#167;03</a>.</td></tr>
         <tr><td><code>readSkillsDirectory</code></td><td><span class="tag t-real">exists</span></td><td>Walks <code>&lt;root&gt;/&lt;skill&gt;/SKILL.md</code> (depth 1) into <code>createSkillsCapability</code> <code>initialSkills</code>. <code>packages/orchestration/src/skills/read-directory.ts</code>. Skills wiring, not a workforce tree scan.</td></tr>
         <tr><td>Workforce tree scan into <code>defineFlow</code></td><td><span class="tag t-prose">named gap</span></td><td><code>defineFlow</code> is explicit. <code>createAgentRegistry</code> takes an in-memory <code>Agent[]</code>. No directory loader on main walks <code>org/</code> · <code>teams/</code> · <code>workers/</code>. Do not invent <code>loadWorkforce()</code>. If a scan lands, every seat calls <code>defineFlow</code>. Thin seats skip the registry. <code>defineAgent</code> / <code>AgentRegistry</code> only when that seat is an opinionated agent. No second registry. No auto-reg of Team / Channel / Project / MessageBoard types. See <a href="#files">&#167;06</a>.</td></tr>
         <tr><td>New seat = add the file</td><td><span class="tag t-prop">proposed</span></td><td>A new team seat is a folder on the same path bootstrap would scan. Not a runtime join API. Hot-dynamic flow kinds after boot are a named gap. Architect: load-time file + scan.</td></tr>
@@ -2323,8 +2383,9 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td><code>omp</code> (opinionated Pi harness)</td><td><span class="tag t-prop">proposed</span></td><td>A named harness that can fill a coding seat. Not in tree. Do not claim integration.</td></tr>
         <tr><td>#1612 operator-console half (PI-1..3)</td><td><span class="tag t-gone">cut / park</span></td><td>Conductor-only surface that does not ride Workforce. Park it. Do not grow a second product face from it.</td></tr>
         <tr><td>Room helpers (<code>openDm</code>, <code>fanOutBoardPost</code>, &#8230;)</td><td><span class="tag t-prop">proposed</span></td><td>Named wrappers over Layer&nbsp;1 already in this table. Multi-team from day one: <code>{ team, seat }</code>, rooms addressable across teams. Not exports. See <a href="#api">&#167;18</a>. Same-flow fan-out exists; the helper is the name.</td></tr>
-        <tr><td>Team intake seat + <code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Every team names an intake worker with a static DM. Address-the-team is that session. Capability. See <a href="#intake">&#167;11</a> and <a href="#fence">&#167;04</a>. <code>createWorkforceCapability</code> is still a stub &#8212; do not read it as this. A Claude / ChatGPT client reaches this seat through the proposed MCP door &#8212; <a href="#mcp">&#167;15</a>.</td></tr>
-        <tr><td>Build-out (W1 / W2 / Collab RC)</td><td><span class="tag t-prop">proposed</span></td><td>W1 MCP unblocked now. W2 foundation after INST. Collab RC after W2, not nested under W2. Hire-id / dynamic / multi-hire still INST. Later: member-memory depth, OKF, hot-dynamic, Conductor polish, OnSecurity GTM. See <a href="#vision">&#167;03</a>.</td></tr>
+        <tr><td>Team intake seat + <code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Every team names an intake worker with a static DM. Address-the-team is that session. Capability. See <a href="#intake">&#167;11</a> and <a href="#fence">&#167;04</a>. <code>createWorkforceCapability</code> is still a stub &#8212; do not read it as this. A Claude / ChatGPT client reaches this seat through the proposed MCP door &#8212; held until package + lab. See <a href="#mcp">&#167;15</a>.</td></tr>
+        <tr><td>Lab Proof (thin pentest team)</td><td><span class="tag t-prop">proposed</span></td><td>Intake + recon + triage on the W2 file tree. Projects = boards / resources. Reactive write &#8594; task / dispatch. No MCP in lab v1. Not OnSecurity. Not a second product. See <a href="#lab">&#167;03</a>.</td></tr>
+        <tr><td>Build-out (W2 / lab / MCP held / Collab RC)</td><td><span class="tag t-prop">proposed</span></td><td>W2 package next. Lab Proof after W2. W1 MCP held until package + lab. Collab RC after foundation + lab; INST as needed for multi-hire. Later: member-memory depth, OKF, hot-dynamic, Conductor polish, OnSecurity GTM. See <a href="#vision">&#167;03</a>.</td></tr>
         <tr><td>Strategy RC gates</td><td><span class="tag t-prop">proposed</span></td><td>Five gates, taught until they are true. Not a calendar. GTM stays Strategy. See <a href="#gates">&#167;20</a>.</td></tr>
         <tr><td>L2 routing matrix (which room)</td><td><span class="tag t-prop">proposed</span></td><td>See <a href="#channels">&#167;08</a>. Package docs must not fork this matrix. Proposed Layer&nbsp;2 convention. Cross-flow exists; hire-id / dynamic still INST.</td></tr>
         <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-real">exists</span></td><td>Existing-session delivery to the seam-stamped sender. <code>packages/core/src/blocks/dispatcher.ts</code>. Documented in <code>docs/architecture/action-forms.md</code>.</td></tr>
@@ -2336,7 +2397,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note">
     <span class="lbl">The package is Layer 2 sugar, not the harness</span>
-    <p><code>@flow-state-dev/workforce</code> is documented as agent registry and materialization. CLAUDE.md still calls it &#8220;Layer&nbsp;2 on orchestration.&#8221; What landed is the thin impl on the core seam &#8212; name a participant, look it up, turn it into a block. That is not the product Agent and not a seat. Foundation, if kicked, extends this package: file scan + seat&#8594;worker factory around the existing seam. It does not fork a second Agent. It does not grow the core types into teams or memory. Engine never sees <code>AgentRegistry</code> as product. Read the package as evidence of the seam, not as evidence a team shipped. Package docs must not fork the room matrix on this page. See <a href="#fence">&#167;04</a> proof&nbsp;C.</p>
+    <p><code>@flow-state-dev/workforce</code> is documented as agent registry and materialization. CLAUDE.md still calls it &#8220;Layer&nbsp;2 on orchestration.&#8221; What landed is the thin impl on the core seam &#8212; name a participant, look it up, turn it into a block. That is not the product Agent and not a seat. W2 extends this package: file scan into today&#8217;s registries + seat&#8594;worker factory around the existing seam. It does not fork a second Agent. It does not grow the core types into teams or memory. Engine never sees <code>AgentRegistry</code> as product. The lab Proof is how we know that surface works. Read the package as evidence of the seam, not as evidence a team shipped. Package docs must not fork the room matrix on this page. See <a href="#fence">&#167;04</a> proof&nbsp;C.</p>
   </div>
 </section>
 
@@ -2411,7 +2472,7 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td>5</td><td><code>external-dispatcher</code> on <code>{ id }</code></td><td><span class="tag t-real">exists as refuse</span></td><td>Existing-session delivery past an external queue refuses by name (<code>create-request-host.ts</code> / <code>dispatch-operation</code>). <code>openDm</code> wake and same-flow <code>fanOutBoardPost</code> use <code>{ id }</code>. On BullMQ they refuse. The helper must surface that, not retry as <code>{ key }</code>. This is the session-addressability half of gap 7.</td></tr>
         <tr><td>6</td><td>Member memory scope</td><td><span class="tag t-prose">named gap</span></td><td>Identity / memory live on agent/member scope, not on the seat. <code>flowIsolation</code> exists and keys per flow kind, not per seat. Thin seats do not need this. Prove isolation first &#8212; in-flight L1 / INST. Member-memory depth is later / not now, not W1 or W2. Do not put <code>memory</code> on the core <code>Agent</code> type or on the seat to close it. See <a href="#memory">&#167;07</a>.</td></tr>
         <tr><td>7</td><td>Full conversation through dispatch</td><td><span class="tag t-prose">blocked-on</span></td><td>The proof is A &#8594; B &#8594; <code>{ from: true }</code> reply &#8594; later messages into the <em>existing</em> session. Layer&nbsp;1 path: FIX-1312 reverse <strong>exists</strong> + gap 4 <strong>exists</strong> + existing-session via external queue (gap 5). Workforce must <strong>not</strong> invent a delivery bus. Remaining hold is session addressability past a queue, plus multi-hire on FIX-1320.</td></tr>
-        <tr><td>8</td><td>Board as address-model test</td><td><span class="tag t-prop">proposed · L2</span></td><td>FIX-1311 stays Layer&nbsp;2 assembly: collections + subscriptions in state + <code>reactTo</code>. <code>reactTo</code> exists (in-session, inline). Pressure: addresses-as-data vs statically declared dispatch targets &#8212; <code>dispatch.ts</code> says a target chosen from data is a router over declared dispatchers, not a dynamic address. Need that Layer&nbsp;1 composition explicit before Workforce mints a &#8220;dynamic dispatcher.&#8221; Teams = roster (FIX-1310). Static-target notify can lab now.</td></tr>
+        <tr><td>8</td><td>Board as address-model test</td><td><span class="tag t-prop">proposed · L2</span></td><td>FIX-1311 stays Layer&nbsp;2 assembly: collections + subscriptions in state + <code>reactTo</code>. <code>reactTo</code> exists (in-session, inline). Pressure: addresses-as-data vs statically declared dispatch targets &#8212; <code>dispatch.ts</code> says a target chosen from data is a router over declared dispatchers, not a dynamic address. Need that Layer&nbsp;1 composition explicit before Workforce mints a &#8220;dynamic dispatcher.&#8221; Teams = roster (FIX-1310). Static-target notify can prove as L1 now &#8212; that is not the pentest Lab Proof, and not MCP.</td></tr>
         <tr><td>9</td><td>Durable task collections for delegation</td><td><span class="tag t-none">backlog</span></td><td><a href="https://linear.app/fixpoint-labs/issue/FIX-957">FIX-957</a>. Skills delegation still constructs the board with <code>backing: "sequencer"</code> (<code>delegation-surface.ts</code>) &#8212; turn-scoped. A hand-built durable collection already exists. Standing teams must not get a second Workforce task store. Separate from FIX-1246 (gap 3).</td></tr>
         <tr><td>10</td><td><code>materializeAgent</code> cleanup</td><td><span class="tag t-none">backlog</span></td><td><a href="https://linear.app/fixpoint-labs/issue/FIX-1327">FIX-1327</a>. Before teams harden: worker shape still requires <code>skillName</code> / <code>workerKey</code>, forces <code>z.string()</code> even when <code>outputSchema</code> is set, and can skip capabilities silently when no catalog is present (BP-030 refuse, not a quiet drop). Separate skills-adapter policy from reusable materialization. Persona FIX-796 is independent &#8212; do not sequence it here.</td></tr>
       </tbody>
@@ -2420,7 +2481,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 280" role="img" aria-label="Readiness sequence on the existing gap inventory. First instances FIX-1320. Then conversation through dispatch plus board notification proofs. Then durable delegation FIX-957. Then materializeAgent cleanup FIX-1327. Persona FIX-796 sits aside, independent. POC-ready: static board notify can lab now; multi-instance conversation waits on INST-1 through 3; dynamic-address and hire-id composition wait on INST.">
+      <svg viewBox="0 0 940 280" role="img" aria-label="Readiness sequence on the existing gap inventory. First instances FIX-1320. Then conversation through dispatch plus board notification proofs. Then durable delegation FIX-957. Then materializeAgent cleanup FIX-1327. Persona FIX-796 sits aside, independent. Static board notify can prove as Layer 1 now; that is not the pentest Lab Proof. Multi-instance conversation waits on INST-1 through 3; dynamic-address and hire-id composition wait on INST.">
         <rect class="n-prose" x="16" y="16" width="214" height="148" rx="5"/>
         <text class="t-lbl" x="28" y="38">1ST</text>
         <text class="t-b" x="28" y="64">instances</text>
@@ -2451,7 +2512,7 @@ const replyToSender = <b>dispatcher</b>({
 
         <rect class="n-box" x="16" y="180" width="908" height="84" rx="5"/>
         <text class="t-lbl" x="34" y="202">POC-READY &#183; TEACH HONESTLY</text>
-        <text class="t-s" x="34" y="226">Static-target board notify can lab now. Multi-instance conversation POC waits on INST-1..3.</text>
+        <text class="t-s" x="34" y="226">Static-target board notify can prove as L1 now. That is not the pentest Lab Proof. Multi-instance conversation waits on INST-1..3.</text>
         <text class="t-xs" x="34" y="248">Dynamic addresses and hire-id wait on INST (FIX-1320). Do not mint a Workforce bus to skip them.</text>
       </svg>
     </div>
@@ -2519,7 +2580,7 @@ const replyToSender = <b>dispatcher</b>({
         <text class="t-xs" x="772" y="184">WIRING STILL PROPOSED</text>
 
         <rect class="n-box" x="16" y="232" width="908" height="48" rx="5"/>
-        <text class="t-s" x="34" y="262">Timing: after foundation + teams-plural dogfood (FSD + one client-shaped use). Not a calendar. GTM is Strategy.</text>
+        <text class="t-s" x="34" y="262">Timing: after foundation + lab Proof + teams-plural dogfood (FSD + one client-shaped use). Not a calendar. GTM is Strategy.</text>
 
         <rect class="n-prose" x="16" y="296" width="908" height="68" rx="5"/>
         <text class="t-lbl" x="34" y="318">NOT RC GATES</text>
@@ -2556,13 +2617,13 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note">
     <span class="lbl">Timing is a sequence, not a date</span>
-    <p>Foundation, then teams-plural dogfood on FSD plus one client-shaped use, then ask whether the five gates hold. Do not put a quarter on this page. Do not stall those gates on OKF, a web face, Pi, or a price.</p>
+    <p>Foundation, then the lab Proof, then MCP, then teams-plural dogfood on FSD plus one client-shaped use, then ask whether the five gates hold. Do not put a quarter on this page. Do not stall those gates on OKF, a web face, Pi, or a price.</p>
   </div>
 </section>
 
 <section id="cuts">
   <div class="sec-head"><span class="sec-num">21</span><h2>Cuts</h2></div>
-  <p class="lede">Held on purpose. Do not invent these because the thought exists. A seat binds a worker. Product Agent is L2. Foundation is a thin wrapper over today&#8217;s Layer&nbsp;1, keyed for N teams, with an intake seat on each. A <code>TeamFlow</code>, a second Agent type, or a second dispatch surface is how that kick fails. A one-team-only API is how slice 3 becomes a rewrite. RC gates stay proposed until they are true. Conductor is a Workforce config, not a sibling ship. GTM is not this page.</p>
+  <p class="lede">Held on purpose. Do not invent these because the thought exists. A seat binds a worker. Product Agent is L2. Foundation is a thin wrapper over today&#8217;s Layer&nbsp;1, keyed for N teams, with an intake seat on each. A <code>TeamFlow</code>, a second Agent type, a Project type, or a second dispatch surface is how that kick fails. The lab is not OnSecurity and does not ship MCP. A one-team-only API is how Collab RC becomes a rewrite. RC gates stay proposed until they are true. Conductor is a Workforce config, not a sibling ship. GTM is not this page.</p>
 
   <div class="tension">
     <h5>This page teaches the product lock. It does not ship the factory</h5>
@@ -2586,7 +2647,12 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>No second control plane. No management bus. No chat-sdk revival</h5>
-    <p>Workforce MCP is a proposed client door, not a second control plane. Holds, mount, sessions, and chat-sdk status live in <a href="#mcp">&#167;15</a>.</p>
+    <p>Workforce MCP is a proposed client door, not a second control plane. It is held until the W2 package and the lab Proof run. No MCP in lab v1. Holds, mount, sessions, and chat-sdk status live in <a href="#mcp">&#167;15</a>.</p>
+  </div>
+
+  <div class="tension">
+    <h5>The lab is not OnSecurity. The lab is not a second product</h5>
+    <p>Lab Proof is a thin pentest team that proves the W2 file surface: intake + recon + triage, boards and resources, write then dispatch. Not a client impl. Not a fourth seat until those three prove fan-in. Not MCP. See <a href="#lab">&#167;03</a>.</p>
   </div>
 
   <div class="tension">
@@ -2662,7 +2728,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is the Layer&nbsp;2 product: one worker contract on Layer&nbsp;1 &#8212; a sequencer flow; generator calls do not mint a second type. A seat is a roster slot that binds a worker, not an Agent. Thin seats skip <code>AgentRegistry</code> and member memory. Product Agent is L2 opinion (sequencer + generators + persona + member memory). The core <code>Agent</code> / <code>AgentRegistry</code> types are the thin seam; do not grow them; do not delete them; do not fold Workforce into core; engine never sees the registry as product. Conductor is one Workforce team whose seats include coding-harness workers. The roster names the harness. <code>omp</code> can fill that seat and is proposed, not integrated. One harness-manager stack. Park Conductor-only surfaces that skip Workforce (#1612 console half). A user who already has Claude or ChatGPT reaches this surface through a proposed MCP client door (<a href="#mcp">&#167;15</a>), not a control plane. In flight is FIX-1320 INST-1..3 and FIX-1331 &#8212; do not start W2 package foundation against first-wins. W2 is file conventions + scan + seat&#8594;worker factory after INST. Collab RC is teams plural helpers, intake, multi-hire Proof, and board notify with real addresses &#8212; after W2, not nested under W2. Later / not now: member-memory depth, OKF, hot-dynamic, Conductor-as-config polish, OnSecurity GTM. A roster is a seat-list. A team is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders are <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. Projects live as resources, boards, sessions, and content &#8212; no <code>projects/</code> tree, no <code>Project</code> type. A new seat is a file on that path. Scan feeds today&#8217;s <code>defineFlow</code> for every seat; <code>AgentRegistry</code> only when that seat is an opinionated agent. A tree scan is a named gap. Hot-dynamic kinds after boot are a named gap. Address-the-team is an intake seat, a worker with a static DM. Identity lives on agent/member scope, not on the seat. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2. RC gates are proposed until they are true. No second Agent. No second registry. No one-team-only API. No management bus. Cross-flow exists (<code>dispatcher({ flowKind })</code>). Hire-id, dynamic addresses, and multi-hire wait on FIX-1320. GTM is Strategy.</p>
+    <p>Workforce is the Layer&nbsp;2 product: one worker contract on Layer&nbsp;1 &#8212; a sequencer flow; generator calls do not mint a second type. A seat is a roster slot that binds a worker, not an Agent. Thin seats skip <code>AgentRegistry</code> and member memory. Product Agent is L2 opinion (sequencer + generators + persona + member memory). The core <code>Agent</code> / <code>AgentRegistry</code> types are the thin seam; do not grow them; do not delete them; do not fold Workforce into core; engine never sees the registry as product. Conductor is one Workforce team whose seats include coding-harness workers. The roster names the harness. <code>omp</code> can fill that seat and is proposed, not integrated. One harness-manager stack. Park Conductor-only surfaces that skip Workforce (#1612 console half). Sequence: W2 package (file conventions, scan into today&#8217;s registries, seat&#8594;worker factory, knobs via <code>ctx.flow.config</code>, thin helpers) &#8594; lab Proof (thin pentest: intake + recon + triage; boards not a Project type; no MCP) &#8594; W1 MCP held until those run &#8594; Collab RC later (teams plural, multi-hire Proof, board notify with real addresses; INST as needed). A user who already has Claude or ChatGPT reaches this surface through that proposed MCP client door (<a href="#mcp">&#167;15</a>), not a control plane. Later / not now: member-memory depth, OKF, hot-dynamic, Conductor-as-config polish, OnSecurity GTM. A roster is a seat-list. A team is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders are <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. Projects live as resources, boards, sessions, and content &#8212; no <code>projects/</code> tree, no <code>Project</code> type. A new seat is a file on that path. Scan feeds today&#8217;s <code>defineFlow</code> for every seat; <code>AgentRegistry</code> only when that seat is an opinionated agent. A tree scan is a named gap. Hot-dynamic kinds after boot are a named gap. Address-the-team is an intake seat, a worker with a static DM. Identity lives on agent/member scope, not on the seat. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2. RC gates are proposed until they are true. No second Agent. No second registry. No one-team-only API. No management bus. Cross-flow exists (<code>dispatcher({ flowKind })</code>). Hire-id, dynamic addresses, and multi-hire wait on FIX-1320. GTM is Strategy.</p>
   </div>
 </section>
 
