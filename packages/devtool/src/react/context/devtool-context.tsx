@@ -323,7 +323,12 @@ export function DevToolProvider({
   useEffect(() => {
     const instance = activeFlow;
     if (instance === undefined || state.activeSessionId !== null) return;
-    const attempt = `${instance.id} ${state.config.userId} ${state.workspaceToken}`;
+    // Joined on a separator no instance id or user id can contain, so two
+    // different attempts cannot spell the same key. Written as the `\0` ESCAPE,
+    // never as a literal NUL byte: git sniffs a file's first 8000 bytes for one
+    // and renders the whole file as "Binary files differ" if it finds it, which
+    // would ship a change with no reviewable diff (`scripts/validate-no-nul-bytes.mjs`).
+    const attempt = `${instance.id}\0${state.config.userId}\0${state.workspaceToken}`;
     if (restoreAttemptRef.current === attempt) return;
     restoreAttemptRef.current = attempt;
 
