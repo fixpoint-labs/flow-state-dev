@@ -23,6 +23,12 @@ const CLI_TO_DOOR: Record<string, CodingDoor> = {
 };
 
 export interface ParsedCli {
+  /** Host-selected adapter; CLI parsing defaults to Cursor. */
+  harness?: FsdCodingHostOptions["harness"];
+  /** Explicit host model override; omitted preserves adapter configuration. */
+  model?: string;
+  /** Extra host-selected writable directories for Codex workspace-write runs. */
+  additionalDirectories?: string[];
   door: CodingDoor;
   cwd: string;
   sessionId: string;
@@ -48,6 +54,22 @@ function flag(args: string[], name: string): string | undefined {
   return value;
 }
 
+function repeatedFlag(args: string[], name: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== `--${name}`) continue;
+    const value = args[index + 1];
+    if (value === undefined || value.startsWith("--")) {
+      throw new CliUsageError(`--${name} needs a value`);
+    }
+    if (value.trim() === "") {
+      throw new CliUsageError(`--${name} needs a value`);
+    }
+    values.push(value);
+  }
+  return values;
+}
+
 /**
  * Parse `run.ts` argv (already minus the node/script prefix).
  */
@@ -66,7 +88,20 @@ export function parseArgs(argv: string[]): ParsedCli {
   }
 
   const cwd = flag(rest, "cwd") ?? process.env.FSD_CODING_CWD ?? process.cwd();
+  const harness = flag(rest, "harness") ?? "cursor";
+  if (harness !== "codex" && harness !== "cursor") {
+    throw new CliUsageError(`invalid harness "${harness}"; expected codex or cursor`);
+  }
   const sessionId = flag(rest, "session") ?? "fsd-coding";
+  const model = flag(rest, "model");
+  if (model !== undefined && model.trim() === "") {
+    throw new CliUsageError("--model needs a value");
+  }
+  const additionalDirectories = repeatedFlag(rest, "add-dir");
+  if (additionalDirectories.length > 0 && harness !== "codex") {
+    throw new CliUsageError("--add-dir is only supported with --harness codex");
+  }
+  const addDirs = additionalDirectories.length === 0 ? undefined : additionalDirectories;
   const userId = flag(rest, "user") ?? "cli-user";
   const sessionFile = flag(rest, "session-file") ?? process.env.FSD_CODING_SESSION_FILE;
   const task = flag(rest, "task");
@@ -75,14 +110,14 @@ export function parseArgs(argv: string[]): ParsedCli {
 
   if (door === "fixFsd") {
     if (repro === undefined) throw new CliUsageError("fix-fsd requires --repro");
-    return { door, cwd, sessionId, userId, sessionFile, input: { repro, notes } };
+    return { door, harness, model, additionalDirectories: addDirs, cwd, sessionId, userId, sessionFile, input: { repro, notes } };
   }
   if (task === undefined) throw new CliUsageError(`${rawDoor} requires --task`);
-  return { door, cwd, sessionId, userId, sessionFile, input: { task } };
+  return { door, harness, model, additionalDirectories: addDirs, cwd, sessionId, userId, sessionFile, input: { task } };
 }
 
 export interface RunCliOptions extends ParsedCli {
-  host?: Omit<FsdCodingHostOptions, "cwd" | "sessionFile">;
+  host?: Omit<FsdCodingHostOptions, "cwd" | "sessionFile" | "harness" | "model">;
   stores?: StoreRegistry;
   runtimeConfig?: RuntimeConfig;
 }
@@ -92,9 +127,12 @@ export interface RunCliOptions extends ParsedCli {
  */
 export async function runCli(options: RunCliOptions) {
   const flow = createFsdCodingFlow({
+    ...(options.host ?? {}),
+    harness: options.harness,
+    model: options.model,
+    additionalDirectories: options.additionalDirectories,
     cwd: options.cwd,
     sessionFile: options.sessionFile,
-    ...(options.host ?? {}),
   });
   const stores = options.stores ?? createInMemoryStores();
   const result = await runAction({

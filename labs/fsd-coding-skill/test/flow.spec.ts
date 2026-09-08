@@ -2,10 +2,10 @@
  * The path this lab exists to prove: a declared door runs Cursor through
  * host resolvers. cwd/session are not taken from action input.
  */
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../../../packages/cursor/src/agent";
@@ -20,6 +20,8 @@ const GATE_OFF = {
 
 const USER = "poc-user";
 const HOST_CWD = "/work/checkout";
+const dirs: string[] = [];
+afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true }); });
 
 function flowWith(recursor: ReturnType<typeof scriptedCursor>, extras: { sessionFile?: string } = {}) {
   return createFsdCodingFlow({
@@ -145,6 +147,7 @@ describe("fsd-coding flow wiring", () => {
 
   it("onSession writes the Cursor agent id to the host sidecar", async () => {
     const dir = mkdtempSync(join(tmpdir(), "fsd-coding-"));
+    dirs.push(dir);
     const sessionFile = join(dir, "sessions.json");
     const scripted = scriptedCursor({ agentId: "agent_sidecar" });
 
@@ -157,7 +160,7 @@ describe("fsd-coding flow wiring", () => {
     });
 
     expect(result.status).toBe("completed");
-    const stored = JSON.parse(readFileSync(sessionFile, "utf8")) as Record<string, string>;
-    expect(stored["cli-session"]).toBe("agent_sidecar");
+    const stored = JSON.parse(readFileSync(sessionFile, "utf8"));
+    expect(stored["cli-session"]).toEqual({ cursor: "agent_sidecar" });
   });
 });

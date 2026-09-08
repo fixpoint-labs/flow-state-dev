@@ -3,7 +3,7 @@
  *
  * The harness itself only accepts `{ prompt }`. These schemas are the
  * outer-agent payload; each door maps them onto a prompt. `cwd` and a
- * Cursor session id are not fields here (BP-031).
+ * harness selection or session id are not fields here (BP-031).
  */
 import { z } from "zod";
 
@@ -21,9 +21,13 @@ export const fixFsdInputSchema = z.object({
 export type TaskInput = z.infer<typeof taskInputSchema>;
 export type FixFsdInput = z.infer<typeof fixFsdInputSchema>;
 
-/** Session slice this host owns: the Cursor agent id `resume` will ask for. */
+/** Confirmed sessions keyed by adapter; legacy Cursor state remains readable. */
 export const sessionStateSchema = z.object({
   cursorAgentId: z.string().nullable().default(null),
+  harnessSessions: z.object({
+    codex: z.string().optional(),
+    cursor: z.string().optional(),
+  }).default({}),
 });
 
 export const FLOW_KIND = "fsd-coding";

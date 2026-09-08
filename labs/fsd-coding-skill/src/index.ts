@@ -1,5 +1,5 @@
 /**
- * Throwaway FSD-coding-skill lab. One flow, four static doors, Cursor harness.
+ * Throwaway FSD-coding-skill lab. One flow, four doors, host-selected harness.
  */
 export { createFsdCodingFlow, type FsdCodingHostOptions } from "./flow";
 export { createHostResolvers, type HostResolverOptions } from "./host";

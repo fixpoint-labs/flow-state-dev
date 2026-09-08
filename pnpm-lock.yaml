@@ -655,6 +655,9 @@ importers:
 
   labs/fsd-coding-skill:
     dependencies:
+      '@flow-state-dev/codex':
+        specifier: workspace:*
+        version: link:../../packages/codex
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../../packages/core

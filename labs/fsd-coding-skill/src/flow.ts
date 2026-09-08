@@ -1,9 +1,10 @@
 /**
- * One coding flow. Four static doors. One Cursor harness
- * (`@flow-state-dev/cursor`). Each door stamps a prefix onto `{ prompt }`
- * and hands that to the same `cursorAgent` instance.
+ * One coding flow with four static doors sharing the host-selected adapter.
  */
-import { defineFlow, sequencer } from "@flow-state-dev/core";
+import { defineFlow, sequencer, type harnessRunInputSchema } from "@flow-state-dev/core";
+import type { BlockDefinition, HarnessRunHandle } from "@flow-state-dev/core/types";
+import type { z } from "zod";
+import { codexAgent, type CodexAgentOptions } from "@flow-state-dev/codex";
 import { cursorAgent, type CursorAgentOptions } from "@flow-state-dev/cursor";
 import { createHostResolvers, type HostResolverOptions } from "./host";
 import {
@@ -16,7 +17,15 @@ import {
   type TaskInput,
 } from "./schemas";
 
+type CodingAgent = BlockDefinition<typeof harnessRunInputSchema, z.ZodType<HarnessRunHandle, z.ZodTypeDef, unknown>>;
+
 export interface FsdCodingHostOptions extends HostResolverOptions {
+  /** Explicit host model override; omitted preserves adapter bags/defaults. */
+  model?: string;
+  /** Extra host-selected writable directories for Codex workspace-write runs. */
+  additionalDirectories?: string[];
+  /** Codex's supported thread/client bags and client seam. Host feeds win. */
+  codex?: CodexAgentOptions;
   /** SDK client seam. Tests inject a scripted double; live omits it. */
   resolveCursorClient?: CursorAgentOptions["resolveCursorClient"];
   /** Forwarded Cursor `agent` bag (model, apiKey). `local.cwd` is refused. */
@@ -30,7 +39,7 @@ export interface FsdCodingHostOptions extends HostResolverOptions {
 
 function wrapTaskDoor(
   name: "implement" | "fix" | "openPr",
-  agent: ReturnType<typeof cursorAgent>,
+  agent: CodingAgent,
 ) {
   return sequencer({
     name,
@@ -39,7 +48,7 @@ function wrapTaskDoor(
   }).step((input: TaskInput) => ({ prompt: `${DOOR_PREFIX[name]}\n\n${input.task}` }), agent);
 }
 
-function wrapFixFsdDoor(agent: ReturnType<typeof cursorAgent>) {
+function wrapFixFsdDoor(agent: CodingAgent) {
   return sequencer({
     name: "fixFsd",
     description: "Declared self-heal door: fix FSD / the harness, then retry the original door",
@@ -57,15 +66,46 @@ function wrapFixFsdDoor(agent: ReturnType<typeof cursorAgent>) {
  */
 export function createFsdCodingFlow(options: FsdCodingHostOptions) {
   const resolvers = createHostResolvers(options);
-  const agent = cursorAgent({
-    ...(options.cursor ?? {}),
-    name: "cursor-agent",
-    cwd: resolvers.cwd,
-    resume: resolvers.resume,
-    onSession: resolvers.onSession,
-    resolveCursorClient: options.resolveCursorClient,
-    agent: options.agent ?? { model: { id: "composer-2.5" } },
-  });
+  let agent: CodingAgent;
+  switch (options.harness ?? "cursor") {
+    case "codex":
+      agent = codexAgent({
+        ...options.codex,
+        ...resolvers,
+        name: "codex-agent",
+        thread: {
+          ...options.codex?.thread,
+          ...(options.model === undefined ? {} : { model: options.model }),
+          ...(options.additionalDirectories === undefined ? {} : {
+            additionalDirectories: options.additionalDirectories,
+          }),
+        },
+      });
+      break;
+    case "cursor": {
+      const configuredAgent = options.agent ?? options.cursor?.agent ?? { model: { id: "composer-2.5" } };
+      agent = cursorAgent({
+        ...options.cursor,
+        ...resolvers,
+        name: "cursor-agent",
+        resolveCursorClient: options.resolveCursorClient ?? options.cursor?.resolveCursorClient,
+        agent: options.model === undefined ? configuredAgent : {
+          ...configuredAgent,
+          model: { ...configuredAgent.model, id: options.model },
+        },
+        // A per-turn model must not undo the explicit host choice on send/resume.
+        ...(options.model === undefined ? {} : {
+          send: {
+            ...options.cursor?.send,
+            model: { ...options.cursor?.send?.model, id: options.model },
+          },
+        }),
+      });
+      break;
+    }
+    default:
+      throw new Error(`invalid harness "${options.harness}"; expected codex or cursor`);
+  }
 
   const definition = defineFlow({
     kind: FLOW_KIND,
