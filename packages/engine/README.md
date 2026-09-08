@@ -638,7 +638,7 @@ A single resource's state is parsed on the way out as well as on the way in. The
 
 Collection instances are read back as stored. The read path does not normalize them, so a rewrite runs on an instance once, on the write. The count differs; the fact that the rewrite recurs does not.
 
-That is fine when the rewrite settles. Filling a `.default()`, stripping an undeclared key, normalizing a retired enum value — all land on the same value the second time, so the row converges and then holds. It is also how a row written before its schema gained a field picks that field up.
+That is fine when the rewrite settles. Filling a `.default()`, stripping an undeclared key, normalizing a retired enum value — all land on the same value the second time, so the row converges and then holds. It is also how a row written before its schema gained a field picks that field up. A whole-row `.catch()` fallback — including one sitting under `.nullable()`, `.default()`, or `.readonly()` — is different on the write path: those catch wrappers are peeled, and the candidate must satisfy the wrapped inner schema before fallback-normalized output can be stored. Field-level `.catch()` remains ordinary Zod normalization.
 
 A `.transform()` that returns something different on each pass is the case that does not settle. Under `z.object({ n: z.number().transform((v) => v + 1) })` the stored `n` climbs on every write even when the caller never touches it, and on a single resource the value you read back still looks plausible because the same shift re-applies on read.
 
