@@ -39,28 +39,28 @@ export interface FsdCodingHostOptions extends HostResolverOptions {
   cursor?: CursorAgentOptions;
 }
 
-function wrapTaskDoor(
-  name: "implement" | "fix" | "openPr",
+function wrapDoor<TInput extends z.ZodType>(
+  name: "implement" | "fix" | "openPr" | "fixFsd",
+  inputSchema: TInput,
+  toPrompt: (input: z.infer<TInput>) => string,
   agent: CodingAgent,
 ) {
   return sequencer({
     name,
-    description: `Declared coding door: ${name}`,
-    inputSchema: taskInputSchema,
-  }).step((input: TaskInput) => ({ prompt: `${DOOR_PREFIX[name]}\n\n${input.task}` }), agent);
+    description: name === "fixFsd"
+      ? "Declared self-heal door: fix FSD / the harness, then retry the original door"
+      : `Declared coding door: ${name}`,
+    inputSchema,
+  }).step((input: z.infer<TInput>) => ({ prompt: toPrompt(input) }), agent);
 }
 
-function wrapFixFsdDoor(agent: CodingAgent) {
-  return sequencer({
-    name: "fixFsd",
-    description: "Declared self-heal door: fix FSD / the harness, then retry the original door",
-    inputSchema: fixFsdInputSchema,
-  }).step((input: FixFsdInput) => {
-    const notes = input.notes === undefined || input.notes === "" ? "" : `\n\nNotes:\n${input.notes}`;
-    return {
-      prompt: `${DOOR_PREFIX.fixFsd}\n\nRepro:\n${input.repro}${notes}`,
-    };
-  }, agent);
+function taskPrompt(name: "implement" | "fix" | "openPr") {
+  return (input: TaskInput) => `${DOOR_PREFIX[name]}\n\n${input.task}`;
+}
+
+function fixFsdPrompt(input: FixFsdInput) {
+  const notes = input.notes === undefined || input.notes === "" ? "" : `\n\nNotes:\n${input.notes}`;
+  return `${DOOR_PREFIX.fixFsd}\n\nRepro:\n${input.repro}${notes}`;
 }
 
 /**
@@ -119,10 +119,10 @@ export function createFsdCodingFlow(options: FsdCodingHostOptions) {
     kind: FLOW_KIND,
     requireUser: true,
     actions: {
-      implement: { block: wrapTaskDoor("implement", agent) },
-      fix: { block: wrapTaskDoor("fix", agent) },
-      openPr: { block: wrapTaskDoor("openPr", agent) },
-      fixFsd: { block: wrapFixFsdDoor(agent) },
+      implement: { block: wrapDoor("implement", taskInputSchema, taskPrompt("implement"), agent) },
+      fix: { block: wrapDoor("fix", taskInputSchema, taskPrompt("fix"), agent) },
+      openPr: { block: wrapDoor("openPr", taskInputSchema, taskPrompt("openPr"), agent) },
+      fixFsd: { block: wrapDoor("fixFsd", fixFsdInputSchema, fixFsdPrompt, agent) },
     },
     session: { stateSchema: sessionStateSchema },
   });
