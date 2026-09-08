@@ -11,6 +11,7 @@ import { testFlow } from "@flow-state-dev/testing";
 import { INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../../../packages/cursor/src/agent";
 import { TESTED_SDK_VERSION } from "@flow-state-dev/cursor";
 import { createFsdCodingFlow } from "../src/flow";
+import { sidecarEntryKey } from "../src/host";
 import { DOOR_PREFIX, DOORS, FLOW_KIND } from "../src/schemas";
 import { scriptedCursor } from "./scripted-cursor";
 
@@ -161,6 +162,8 @@ describe("fsd-coding flow wiring", () => {
 
     expect(result.status).toBe("completed");
     const stored = JSON.parse(readFileSync(sessionFile, "utf8"));
-    expect(stored["cli-session"]).toEqual({ cursor: "agent_sidecar" });
+    expect(stored[sidecarEntryKey({ sessionId: "cli-session", userId: USER, cwd: HOST_CWD })]).toEqual({
+      cursor: "agent_sidecar",
+    });
   });
 });

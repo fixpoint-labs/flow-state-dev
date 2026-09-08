@@ -21,10 +21,42 @@ export interface HostResolverOptions {
   /** Directory the harness works in. Closed over — not taken from input. */
   cwd: string;
   /**
-   * Optional JSON map of FSD session id → { cursor?, codex? } confirmed ids.
-   * Legacy string values belong only to Cursor. Omit for session state only.
+   * Optional JSON map of owner+checkout+session → { cursor?, codex? } ids.
+   * Legacy bare session-id keys and string values belong only to Cursor.
+   * Omit for session state only.
    */
   sessionFile?: string;
+}
+
+export interface SidecarEntryOwner {
+  sessionId: string;
+  userId: string;
+  cwd: string;
+  tenantId?: string;
+}
+
+/**
+ * Stable sidecar map key for one trusted identity + checkout + FSD session.
+ */
+export function sidecarEntryKey(owner: SidecarEntryOwner): string {
+  return JSON.stringify({
+    tenantId: owner.tenantId ?? "",
+    userId: owner.userId,
+    cwd: owner.cwd,
+    sessionId: owner.sessionId,
+  });
+}
+
+function ownerFrom(ctx: HarnessCallbackContext, cwd: string): SidecarEntryOwner {
+  const identity = ctx.session.identity;
+  return {
+    sessionId: identity.id,
+    userId: typeof identity.userId === "string" ? identity.userId : "",
+    cwd,
+    ...(typeof identity.tenantId === "string" && identity.tenantId !== ""
+      ? { tenantId: identity.tenantId }
+      : {}),
+  };
 }
 
 function readStateId(ctx: HarnessCallbackContext, harness: Harness): string | null {
@@ -35,10 +67,12 @@ function readStateId(ctx: HarnessCallbackContext, harness: Harness): string | nu
 
 function readSidecar(path: string): Record<string, unknown> {
   try {
-    const raw = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-    return raw;
-  } catch {
-    return {};
+    return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err && (err as { code: unknown }).code === "ENOENT") {
+      return {};
+    }
+    throw err;
   }
 }
 
@@ -53,9 +87,25 @@ function sessionsFrom(value: unknown): Sessions {
   };
 }
 
-function writeSidecar(path: string, sessionId: string, harness: Harness, agentId: string): void {
+function readSidecarSessions(
+  raw: Record<string, unknown>,
+  owner: SidecarEntryOwner,
+): Sessions {
+  const keyed = sessionsFrom(raw[sidecarEntryKey(owner)]);
+  if (keyed.cursor !== undefined || keyed.codex !== undefined) return keyed;
+  return sessionsFrom(raw[owner.sessionId]);
+}
+
+function writeSidecar(
+  path: string,
+  owner: SidecarEntryOwner,
+  harness: Harness,
+  agentId: string,
+): void {
   const current = readSidecar(path);
-  current[sessionId] = { ...sessionsFrom(current[sessionId]), [harness]: agentId };
+  const key = sidecarEntryKey(owner);
+  current[key] = { ...readSidecarSessions(current, owner), [harness]: agentId };
+  if (key !== owner.sessionId) delete current[owner.sessionId];
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(current, null, 2)}\n`);
 }
@@ -76,7 +126,8 @@ export function createHostResolvers(
       const fromState = readStateId(ctx, harness);
       if (fromState !== null) return fromState;
       if (options.sessionFile === undefined) return null;
-      return sessionsFrom(readSidecar(options.sessionFile)[ctx.session.identity.id])[harness] || null;
+      const owner = ownerFrom(ctx, options.cwd);
+      return readSidecarSessions(readSidecar(options.sessionFile), owner)[harness] || null;
     },
     onSession: async (id, ctx) => {
       await ctx.session.atomicState((state: z.infer<typeof sessionStateSchema>) => ({
@@ -84,7 +135,7 @@ export function createHostResolvers(
         harnessSessions: { ...state.harnessSessions, [harness]: id },
       }));
       if (options.sessionFile !== undefined) {
-        writeSidecar(options.sessionFile, ctx.session.identity.id, harness, id);
+        writeSidecar(options.sessionFile, ownerFrom(ctx, options.cwd), harness, id);
       }
     },
   };

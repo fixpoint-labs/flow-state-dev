@@ -59,6 +59,11 @@ Use the **same selected harness**, host model choice, checkout, FSD session and 
 `fix-fsd`, then retry the original door once. Report both outputs if it fails
 again. The runner does not add a model retry loop.
 
+`fix-fsd` is only for failures after a declared door started. Bootstrap
+failures — missing SDK, version-gate, invalid host flags, or adapter
+construction — use the same construction path, so `fix-fsd` cannot recover
+them. Fix the host or environment, then retry the original door once.
+
 ## Host configuration and persistence
 
 `--cwd` (or `FSD_CODING_CWD`, then the process cwd), `--harness`, `--model`, `--session`
@@ -72,46 +77,48 @@ continuity requires the same in-memory stores, which the one-shot CLI does not r
 
 The host stores confirmed IDs in session state as
 `harnessSessions: { cursor?: string, codex?: string }`. State takes precedence;
-the sidecar is its cross-process fallback, keyed by FSD session ID:
+the sidecar is its cross-process fallback, keyed by user + checkout + FSD
+session (not the bare `--session` value):
 
 ```json
-{ "work-1": { "cursor": "cursor-agent-id", "codex": "codex-thread-id" } }
+{
+  "{\"tenantId\":\"\",\"userId\":\"cli-user\",\"cwd\":\"/work\",\"sessionId\":\"work-1\"}": {
+    "cursor": "cursor-agent-id",
+    "codex": "codex-thread-id"
+  }
+}
 ```
 
 Switching providers preserves both entries; switching back resumes that provider's
-own session. Legacy `cursorAgentId` state and legacy sidecar string entries are
-read as Cursor-only. A write upgrades the touched sidecar entry while preserving
-its Cursor ID and other sessions. Only the adapter's `onSession` confirmation
-writes IDs; a requested resume alone does not confirm anything. Legacy forms are
-compatibility reads for this POC, not fields new callers should write.
+own session. Legacy `cursorAgentId` state, legacy bare session-id keys, and
+legacy sidecar string entries are read as Cursor-only. A confirmed write
+migrates a matching legacy key into the namespaced entry and removes the bare
+key. Only the adapter's `onSession` confirmation writes IDs; a requested resume
+alone does not confirm anything. Legacy forms are compatibility reads for this
+POC, not fields new callers should write.
 
 This sidecar is a single trusted host's sequential-run file. It provides no
-cross-process locking or multi-user isolation; use separate files for independent
-hosts/accounts. FSD stores remain responsible for in-process session ownership.
+cross-process locking. Namespaced keys stop two users or checkouts that share
+`--session` (including the default `fsd-coding`) from resuming each other when
+they share a file. Still use separate files for independent hosts/accounts and
+serialize invocations of one file. FSD stores remain responsible for in-process
+session ownership. A missing sidecar is empty; corrupt JSON or permission errors
+surface instead of being treated as an empty map.
 
-## API surface
+## Lab internals
 
-The private package root exports:
+There is no package barrel. Tests and the CLI import source files directly:
 
-- `createFsdCodingFlow(FsdCodingHostOptions)`: one `fsd-coding` flow with
-  `implement`, `fix`, `openPr`, `fixFsd`. Options add optional `harness`, `model`, and
-  `networkAccess` / `additionalDirectories`, plus `codex: CodexAgentOptions`;
-  Codex's `thread`, `client`, and `resolveCodexClient` use the existing adapter
-  contracts. Existing `cursor`, `agent`, and `resolveCursorClient` options remain
-  supported. Host `cwd`/`resume`/`onSession` feeds override adapter-bag feeds.
-  Explicit `model` overrides the selected adapter's model options; explicit
-  `networkAccess` and `additionalDirectories` override the matching Codex thread
-  options; omission preserves them.
-- `createHostResolvers(HostResolverOptions)`: host cwd, provider-safe resume,
-  and confirmed-session persistence. `harness` defaults to Cursor.
-- `parseArgs`, `runCli`, `CliUsageError`, `ParsedCli`, `RunCliOptions`: CLI
-  parsing and one action execution. `runCli` returns the engine result, stores,
-  door, and declared doors; `run.ts` formats the skill-facing result. `ParsedCli`
-  and `RunCliOptions` carry optional host `model`, `networkAccess`, and
-  `additionalDirectories` alongside `harness`.
-- `DOORS`, `DOOR_PREFIX`, `FLOW_KIND`, `CodingDoor`, `taskInputSchema`,
-  `fixFsdInputSchema`, `sessionStateSchema`, `TaskInput`, `FixFsdInput`:
-  the static door names, prompt prefixes, and input/state contracts.
+- `src/flow.ts` — `createFsdCodingFlow(FsdCodingHostOptions)`: one `fsd-coding`
+  flow with `implement`, `fix`, `openPr`, `fixFsd`. Options add optional
+  `harness`, `model`, and `networkAccess` / `additionalDirectories`, plus
+  `codex: CodexAgentOptions`. Host `cwd`/`resume`/`onSession` feeds override
+  adapter-bag feeds.
+- `src/host.ts` — host cwd, namespaced resume, and confirmed-session persistence.
+- `src/cli.ts` — `parseArgs`, `runCli`, `CliUsageError`. `run.ts` formats the
+  skill-facing `{ok, …}` result.
+- `src/schemas.ts` — static door names, prompt prefixes, and input/state
+  contracts.
 
 The executable prints JSON on stdout. `ok: true` requires a completed handle
 with outcome `finished`. Failed, incomplete, limited, cancelled, and transport

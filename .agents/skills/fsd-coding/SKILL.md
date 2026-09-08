@@ -35,17 +35,19 @@ pnpm --filter @flow-state-dev/fsd-coding-skill fix -- --harness codex --model gp
 
 `--harness`, `--model`, `--add-dir`, `--network-access`, `--cwd`, `--session`, and `--session-file` are **host** flags. Never derive model or harness selection, extra writable directories, network permission, a working directory, or a vendor resume ID from action input or task text. `--session` names the FSD session, not the vendor conversation.
 
-Reuse the same `--session` and sidecar across CLI invocations. Supply `--session-file` or set `FSD_CODING_SESSION_FILE`; there is no implicit file path. Without a sidecar the one-shot CLI does not retain sessions. The sidecar holds separate confirmed Codex and Cursor IDs for each FSD session. An intentional host-selected switch preserves both; returning recovers that provider's own ID. Legacy strings and `cursorAgentId` state belong only to Cursor. Use a separate sidecar per trusted host/account and serialize its invocations.
+Reuse the same `--session` and sidecar across CLI invocations. Supply `--session-file` or set `FSD_CODING_SESSION_FILE`; there is no implicit file path. Without a sidecar the one-shot CLI does not retain sessions. The sidecar holds separate confirmed Codex and Cursor IDs for each **user + checkout + FSD session**. An intentional host-selected switch preserves both; returning recovers that provider's own ID. Legacy bare session-id keys and `cursorAgentId` state belong only to Cursor; the first confirmed write migrates a matching legacy key into the namespaced entry. Use a separate sidecar per trusted host/account and serialize its invocations.
 
 ## Self-heal — do this before retrying
 
-If the runner, FSD, or the selected harness errors while doing real work, **do not retry the same door**. Call `fix-fsd` with the repro first, keeping the **same selected harness**, host model choice, checkout, FSD session, and sidecar:
+If a **declared door started** and then the runner, FSD, or the selected harness errors while doing real work, **do not retry the same door**. Call `fix-fsd` with the repro first, keeping the **same selected harness**, host model choice, checkout, FSD session, and sidecar:
 
 ```bash
 pnpm --filter @flow-state-dev/fsd-coding-skill fix-fsd -- --harness codex --model gpt-5.5 --repro "<verbatim error + what you ran>" --notes "<what you were trying to do>" --cwd "<repo root>" --session "<same id>" --session-file "<same path>"
 ```
 
 Replace `codex` with `cursor` only if Cursor was the host's original selection. Then retry the original door once. If it still fails, stop and report the two outputs. Do not invent a third path.
+
+If the runner **never starts the door** — missing SDK, version-gate failure, invalid host flags, or `cursorAgent` / `codexAgent` construction errors — `fix-fsd` uses the same construction path and will hit the same failure. Do not call `fix-fsd` for those. Fix the host or environment, then retry the original door once. If it still fails, stop and report.
 
 ## Forbidden escapes
 

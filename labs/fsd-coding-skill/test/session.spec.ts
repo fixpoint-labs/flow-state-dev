@@ -9,6 +9,7 @@ import { INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../../../p
 import { TESTED_SDK_VERSION } from "@flow-state-dev/cursor";
 import { runCli } from "../src/cli";
 import { createFsdCodingFlow } from "../src/flow";
+import { sidecarEntryKey } from "../src/host";
 import { scriptedCodex } from "./scripted-codex";
 import { scriptedCursor } from "./scripted-cursor";
 
@@ -41,7 +42,41 @@ describe("provider-safe session continuity", () => {
     expect(cursor.rec.resumed.map(x => x.id)).toEqual(["agent_1"]);
     expect(codex.rec.started).toHaveLength(1);
     expect(codex.rec.resumed.map(x => x.id)).toEqual(["codex-thread"]);
-    if (sessionFile) expect(JSON.parse(readFileSync(sessionFile, "utf8"))).toEqual({ "same-fsd": { cursor: "agent_1", codex: "codex-thread" } });
+    if (sessionFile) {
+      expect(JSON.parse(readFileSync(sessionFile, "utf8"))).toEqual({
+        [sidecarEntryKey({ sessionId: "same-fsd", userId: "u", cwd: "/trusted" })]: {
+          cursor: "agent_1",
+          codex: "codex-thread",
+        },
+      });
+    }
+  });
+
+  it("does not resume another user's or checkout's sidecar entry for the same --session", async () => {
+    const sessionFile = sidecar();
+    const alice = scriptedCursor({ agentId: "agent-alice" });
+    await runCli({
+      door: "implement", harness: "cursor", cwd: "/checkout-a", sessionId: "fsd-coding", userId: "alice", sessionFile,
+      input: { task: "alice" },
+      host: { cursor: cursorGate, resolveCursorClient: alice.resolve },
+    });
+    const bob = scriptedCursor({ agentId: "agent-bob" });
+    await runCli({
+      door: "implement", harness: "cursor", cwd: "/checkout-a", sessionId: "fsd-coding", userId: "bob", sessionFile,
+      input: { task: "bob" },
+      host: { cursor: cursorGate, resolveCursorClient: bob.resolve },
+    });
+    expect(bob.rec.resumed).toEqual([]);
+    expect(bob.rec.created).toHaveLength(1);
+
+    const otherTree = scriptedCursor({ agentId: "agent-alice-b" });
+    await runCli({
+      door: "implement", harness: "cursor", cwd: "/checkout-b", sessionId: "fsd-coding", userId: "alice", sessionFile,
+      input: { task: "other tree" },
+      host: { cursor: cursorGate, resolveCursorClient: otherTree.resolve },
+    });
+    expect(otherTree.rec.resumed).toEqual([]);
+    expect(otherTree.rec.created).toHaveLength(1);
   });
 
   it("reads legacy sidecar strings only as Cursor IDs and preserves them when Codex writes", async () => {
@@ -58,7 +93,13 @@ describe("provider-safe session continuity", () => {
     }
     expect(codex.rec.resumed).toEqual([]);
     expect(cursor.rec.resumed[0]?.id).toBe("old-cursor");
-    expect(JSON.parse(readFileSync(sessionFile, "utf8"))).toEqual({ legacy: { cursor: "old-cursor", codex: "codex-thread" }, unrelated: "keep" });
+    expect(JSON.parse(readFileSync(sessionFile, "utf8"))).toEqual({
+      unrelated: "keep",
+      [sidecarEntryKey({ sessionId: "legacy", userId: "u", cwd: "/trusted" })]: {
+        cursor: "old-cursor",
+        codex: "codex-thread",
+      },
+    });
   });
 
   it.each(["codex", "cursor"] as const)("treats legacy session state as Cursor-only (%s)", async (harness) => {
@@ -72,6 +113,19 @@ describe("provider-safe session continuity", () => {
     expect(result.status).toBe("completed");
     expect(codex.rec.resumed).toEqual([]);
     expect(cursor.rec.resumed.map(x => x.id)).toEqual(harness === "cursor" ? ["legacy-state"] : []);
+  });
+
+  it("surfaces a corrupt sidecar instead of treating it as empty", async () => {
+    const sessionFile = sidecar();
+    writeFileSync(sessionFile, "{not-json");
+    const cursor = scriptedCursor();
+    const { result } = await runCli({
+      door: "implement", harness: "cursor", cwd: "/trusted", sessionId: "s", userId: "u", sessionFile,
+      input: { task: "continue" },
+      host: { cursor: cursorGate, resolveCursorClient: cursor.resolve },
+    });
+    expect(result.error?.message).toMatch(/JSON/);
+    expect(cursor.rec.created).toEqual([]);
   });
 
   it("does not confirm a requested Codex resume when no thread.started event arrives", async () => {
