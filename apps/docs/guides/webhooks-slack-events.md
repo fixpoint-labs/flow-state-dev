@@ -5,21 +5,15 @@ sidebar_label: Slack Events
 
 # Receiving Slack Events
 
-Slack shows up in two transports, and picking the right one matters. This guide
-covers the **Events API** — Slack's asynchronous server-to-server notifications,
-received over the webhook transport. If you want a real-time conversational bot
-instead, that's the [chat transport](/docs/server/chat), not this.
+This guide covers Slack's **Events API** — asynchronous server-to-server
+notifications, received over the webhook transport.
 
 **What we're building:** when someone posts in a channel our bot is in, our
 `slack` flow runs an `ingestMessage` action. We answer Slack's one-time URL
 verification handshake, verify every signature, and read the event type out of
 Slack's nested payload.
 
-## Events API vs the chat transport
-
-The [chat transport](/docs/server/chat) wraps a Slack bot for live
-conversation: mentions, slash commands, reactions, replies streamed back into
-the thread. It's bidirectional.
+## How the Events API behaves
 
 The Events API is one-directional. Slack POSTs your endpoint when something
 happens — a message, a reaction, a member joining — and expects a fast 2xx. No
@@ -160,5 +154,4 @@ in your action.
   out, keyed per channel.
 - The nested event type handled by the host's `eventType` extractor.
 
-For the full surface — and when to use the [chat transport](/docs/server/chat)
-instead — see the [webhook receivers reference](/docs/server/webhooks).
+For the full surface, see the [webhook receivers reference](/docs/server/webhooks).

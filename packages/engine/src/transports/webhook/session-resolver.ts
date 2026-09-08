@@ -3,8 +3,7 @@
  *
  * A webhook has no thread to key on, so the session id is whatever the flow's
  * binding/route derived (e.g. `customer-cus_123`). The first delivery for that
- * id creates the session; subsequent deliveries reuse it. Mirrors
- * `ensureSessionForChat` in `@flow-state-dev/chat-sdk`.
+ * id creates the session; subsequent deliveries reuse it.
  *
  * Concurrency: the write uses `expectedVersion: "any"` (unconditional), so two
  * near-simultaneous first deliveries for the same id both succeed and the

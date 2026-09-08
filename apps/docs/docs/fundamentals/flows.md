@@ -91,7 +91,7 @@ A collection instance has to be given an id. Ids are unique across the whole reg
 
 ### How an instance is addressed
 
-Every entry point reaches an instance by its **id**: the HTTP action routes, the CLI, chat, webhooks, schedules, MCP, and a queue worker all carry the id, and nothing else. For a singleton the id is the kind, so `POST /api/flows/my-chat/actions/send` and `fsdev run my-chat send` look exactly as they always have. For a collection it is the id you registered: `POST /api/flows/review-east/actions/run`. The kind of a collection is not an address. `POST /api/flows/review/...` is a miss, not a fallback to whichever copy was registered first.
+Every entry point reaches an instance by its **id**: the HTTP action routes, the CLI, webhooks, schedules, MCP, and a queue worker all carry the id, and nothing else. For a singleton the id is the kind, so `POST /api/flows/my-chat/actions/send` and `fsdev run my-chat send` look exactly as they always have. For a collection it is the id you registered: `POST /api/flows/review-east/actions/run`. The kind of a collection is not an address. `POST /api/flows/review/...` is a miss, not a fallback to whichever copy was registered first.
 
 The `kind` still says what an instance *is*. Sessions and requests record it alongside the id, listings group by it, and the definition-level transports below apply to every instance of the definition.
 
@@ -99,24 +99,24 @@ Saved work stays with the instance that created it. A session started through `r
 
 ### What the definition owns
 
-Inbound transports belong to the flow type. Declare `chat`, `webhooks`, `schedules`, and `mcp` on `defineFlow()`:
+Inbound transports belong to the flow type. Declare `webhooks`, `schedules`, and `mcp` on `defineFlow()`:
 
 ```ts
 const supportFlow = defineFlow({
   kind: "support",
-  chat: { /* ... */ },
   webhooks: { /* ... */ },
+  schedules: { /* ... */ },
   actions: { /* ... */ },
 });
 
 export default supportFlow();
 ```
 
-Every instance of a type serves the same transports. Pass one of the four to the instance call and TypeScript rejects it; a plain-JavaScript caller gets a thrown error naming the option. The `internal` and `task` entry maps described [below](#entries-only-the-flow-can-reach) are definition-only in the same way.
+Every instance of a type serves the same transports. Pass one of the three to the instance call and TypeScript rejects it; a plain-JavaScript caller gets a thrown error naming the option. The `internal` and `task` entry maps described [below](#entries-only-the-flow-can-reach) are definition-only in the same way.
 
 Everything else is settable per instance: `id`, `kind`, `actions`, `session`, `request`, `user`, `org`, `resources`, `tools`, `voice`, `authentication`, `requireUser`, `tokenCounter`, `costEstimator`, `isolateUserState`, and `isolateOrgState`.
 
-`voice` sits on both sides. Unlike the four transports above, you can set it on `defineFlow()` as the default for every instance of the type, then override it on any single instance.
+`voice` sits on both sides. Unlike the three transports above, you can set it on `defineFlow()` as the default for every instance of the type, then override it on any single instance.
 
 ## Actions — the flow's public API
 

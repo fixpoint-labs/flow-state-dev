@@ -190,10 +190,8 @@ read an env var that's populated after module load.
 
 ## Verifying signatures
 
-`verify` is the trust boundary. The webhook transport owns signature
-verification directly — unlike the chat transport, which delegates to the
-Vercel Chat SDK. Three presets cover the common providers, plus a generic
-constructor:
+`verify` is the trust boundary. Three presets cover the common providers, plus a
+generic constructor:
 
 ```ts
 import {
@@ -341,28 +339,6 @@ Arbitrating two genuinely competing deliveries on the same session — not
 redeliveries of one event, but two different events racing for the same session
 — is a separate concern the runtime will grow over time. For now, derive
 session ids that don't collide across unrelated events.
-
-## Webhooks vs chat
-
-Slack shows up in two places, and the difference is real. The
-[chat transport](./chat.md) wraps a Slack bot for real-time conversation:
-mentions, slash commands, reactions, replies streamed back to the thread. The
-webhook transport receives Slack's Events API — asynchronous server-to-server
-notifications with no outbound reply channel, just a 202 ack.
-
-Reach for chat when you're building a conversational bot. Reach for webhooks
-when an external service is notifying your backend that something happened and
-you want to react. They can coexist on the same server.
-
-Three honest divergences from the chat transport:
-
-- **Webhooks own signature verification.** Chat delegates it to the Vercel Chat
-  SDK; webhooks verify directly because there's no SDK in the middle.
-- **Webhooks extract their own event-type discriminator.** Its location varies
-  by provider — Stripe's body, GitHub's header, Slack's nested payload — so the
-  host's `eventType` function names it per provider.
-- **No outbound channel.** A webhook delivery gets a 202 ack and nothing else.
-  There's no thread to stream back to.
 
 ## Minimal example
 

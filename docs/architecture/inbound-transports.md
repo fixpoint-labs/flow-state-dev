@@ -83,12 +83,12 @@ across crashes. See [Action forms](./action-forms.md).
 `source` is provenance — first-class on `RequestRecord` and
 `ActiveRequestEntry`, propagated through to DevTool's request list. It is
 an open string; the documented known-set is `http`, `mcp`, `webhook`,
-`scheduled`, `notification`, `chat`. Custom transports pick their own.
+`scheduled`, `notification`. Custom transports pick their own.
 
 ### The address is an instance id, and admission precedes materialization
 
 `envelope.flowKind` is the exact instance address. Every producer — the HTTP
-adapter's route segment, the MCP adapter, chat, webhooks, schedules, the CLI, a
+adapter's route segment, the MCP adapter, webhooks, schedules, the CLI, a
 BullMQ job's `flowKind`, a `dispatcher()`'s `flowKind` selector — carries the
 instance id under that historical name and never the bare kind of a collection
 flow, which `registry.get` does not resolve. `flowKind` on a *record*
@@ -144,14 +144,14 @@ Every action — caller-addressed or event-addressed — is built on one shape:
 `ActionCore` (the handler `block` plus execution policy: `durable`,
 `tokenBudget`, `onCompleted`/`onErrored`, `inputSchema`, `userMessage`).
 A caller-addressed action (`ActionConfig` in `flow.actions`) adds the
-HTTP/MCP exposure metadata. An event-addressed handler — webhook, chat, or
+HTTP/MCP exposure metadata. An event-addressed handler — webhook or
 scheduled — carries the core inline on its transport binding and never enters
 `flow.actions`, so it has no caller surface. The runtime dispatches, runs, and
 records all forms identically; it only differs in how it finds the core.
 
 `resolveActionCore` is that seam. For an event dispatch it reads a
-**namespaced** coordinate out of metadata — `metadata.webhook`,
-`metadata.chat.eventKey`, or `metadata.schedule.scheduleId` — gated on the
+**namespaced** coordinate out of metadata — `metadata.webhook`
+or `metadata.schedule.scheduleId` — gated on the
 `source` the adapter set, and looks the binding up on the matching transport
 map. A caller-addressed dispatch resolves the named `flow.actions` entry. The
 source gate matters for security: a caller POSTing to the public action
@@ -379,7 +379,7 @@ and the trace channel can distinguish scheduled work: `source =
 "scheduled"` plus the namespaced `metadata.schedule = { scheduleId,
 origin, cron, nominalFireTime, dispatchedAt, timezone }`. Each transport
 namespaces its provenance the same way — `metadata.webhook`,
-`metadata.chat`, `metadata.schedule` — and `resolveActionCore` reads the
+`metadata.schedule` — and `resolveActionCore` reads the
 event coordinate from that slot. See
 [`scheduled-actions.md`](./scheduled-actions.md) for the full design
 notes.

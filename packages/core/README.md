@@ -151,7 +151,7 @@ Calling the factory with no argument yields the flow's one instance, whose id is
 
 **Concurrency policy:**
 
-Any entry can declare a `concurrency` policy that decides what happens when two requests collide on the same key (the session by default). Set it on the entry — an action, an `internal` entry, a task-board entry, or a chat / webhook / schedule binding — or set a flow-wide default via `RequestConfig.concurrency` (`flow.request.concurrency`); resolution is `entry.concurrency ?? flow.request.concurrency ?? "allow"`, the same ladder for every dispatch type.
+Any entry can declare a `concurrency` policy that decides what happens when two requests collide on the same key (the session by default). Set it on the entry — an action, an `internal` entry, a task-board entry, or a webhook / schedule binding — or set a flow-wide default via `RequestConfig.concurrency` (`flow.request.concurrency`); resolution is `entry.concurrency ?? flow.request.concurrency ?? "allow"`, the same ladder for every dispatch type.
 
 `ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently).
 
@@ -538,7 +538,6 @@ Every arrival at a flow is a **dispatch** of one **type**, delivered to one **en
 | `public` | `actions` | A caller over HTTP, MCP, voice, or a custom transport |
 | `internal` | `internal.actions` | A `dispatcher()` block in one of the flow's own running requests |
 | `task` | `task.actions` | A task board handing a claimed row to a child session, from a `dispatcher({ action, session })` seat (stamped `type: "task"`) |
-| `chat` | `chat.on` | The chat adapter |
 | `webhook` | `webhooks.<provider>.on` | The webhook adapter |
 | `schedule` | `schedules.static` | The host scheduler |
 

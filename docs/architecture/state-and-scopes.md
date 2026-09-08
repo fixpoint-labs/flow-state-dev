@@ -654,7 +654,7 @@ address nothing reads.
 the caller describes the record it wants, chooses neither the id nor the write
 predicate, and must use the record that comes back (on a lost race, the
 winner's, not its own). `createExecutionContext`, the CLI's `run`, and the
-webhook and chat-SDK session resolvers all go through it.
+webhook session resolver all go through it.
 
 Two creators satisfy the invariants without it, and neither is an oversight:
 

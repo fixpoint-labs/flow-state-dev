@@ -858,7 +858,7 @@ createFlowApiRouter({
   // before a sweep treats it as lost. Default 600_000 ms (10 minutes).
   queuedGraceMs: 600_000,
   // Sources from your own inbound transports that `retry` / `continue` /
-  // `resume` may re-enter. The built-ins (`http`, `mcp`, `chat`, `scheduled`)
+  // `resume` may re-enter. The built-ins (`http`, `mcp`, `scheduled`)
   // are always admitted; every other source is refused with a not-found unless
   // named here. `webhook`, `task` and `internal`
   // are never openable — naming one throws at construction.

@@ -15,7 +15,6 @@ import type {
 import type { ExternalResourceCollectionRef } from "./external-resource-collection";
 import type { SchedulesConfig } from "./schedules";
 import type { ConcurrencyConfig } from "./concurrency";
-import type { ChatConfig } from "./chat";
 import type { WebhookConfig } from "./webhooks";
 import type { InternalEntry, TaskEntry } from "./dispatch";
 import type { CASOptions } from "./state";
@@ -248,7 +247,7 @@ export type ActionCore<
  * metadata for the client-facing HTTP and MCP surfaces, where a caller names
  * the action and a principal is authorized per request. Lives in
  * `FlowDefinition.actions` — the flow's `public` entries. Every other entry
- * type (`internal.actions`, `task.actions`, and the chat / webhook / schedule
+ * type (`internal.actions`, `task.actions`, and the webhook / schedule
  * bindings) carries the same core on its own map and never enters this one.
  */
 export type ActionConfig<
@@ -509,13 +508,6 @@ export type FlowDefinition<
   mcp?: McpConfig;
 
   /**
-   * Per-flow chat-transport subscriptions. When set, the
-   * `@flow-state-dev/chat-sdk` adapter discovers these declarations at
-   * mount and dispatches matching inbound chat events to the named actions.
-   */
-  chat?: ChatConfig;
-
-  /**
    * Per-flow webhook-transport subscriptions. When set, the
    * `@flow-state-dev/engine` webhook adapter mounts
    * `POST /api/flows/:kind/webhooks/:provider` and routes verified inbound
@@ -573,8 +565,8 @@ export type FlowInstanceOptions<
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  // `mcp`, `chat`, `webhooks`, `schedules` and `cardinality` are deliberately
-  // ABSENT — they are definition-only; see `rejectDefinitionOnlyOptions` in
+  // `mcp`, `webhooks`, `schedules` and `cardinality` are deliberately ABSENT —
+  // they are definition-only; see `rejectDefinitionOnlyOptions` in
   // `flow/defineFlow.ts` (FIX-1048).
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
@@ -624,7 +616,6 @@ export type FlowInstance<
   tools?: ToolsConfig;
   voice?: VoiceConfig;
   mcp?: McpConfig;
-  chat?: ChatConfig;
   webhooks?: WebhookConfig;
   schedules?: SchedulesConfig;
   tokenCounter?: TokenCounter;
@@ -669,7 +660,6 @@ export type FlowType<
   tools?: ToolsConfig;
   voice?: VoiceConfig;
   mcp?: McpConfig;
-  chat?: ChatConfig;
   webhooks?: WebhookConfig;
   schedules?: SchedulesConfig;
   isolateUserState: boolean;

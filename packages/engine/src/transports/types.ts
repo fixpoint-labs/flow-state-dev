@@ -139,7 +139,7 @@ export interface InboundRequestEnvelope {
    * caller-addressed path. Not serializable and not persisted: on recovery the
    * field is absent, which is why durable dynamic schedules do not recover
    * (a documented non-goal). Statically-declared bindings (HTTP actions,
-   * webhooks, chat `on`, `schedules.static`) leave this unset and resolve by
+   * webhooks, `schedules.static`) leave this unset and resolve by
    * coordinate.
    *
    * Scope: only `runAction.resolveAction` consumes the carried core. The two

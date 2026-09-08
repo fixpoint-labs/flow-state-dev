@@ -61,7 +61,6 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 | `tools` | `ToolsConfig` | — | Default timeout, retry, and lifecycle hooks for tools. |
 | `voice` | `VoiceConfig` | — | Flow-level TTS provider and speak defaults. |
 | `mcp` | `McpConfig` | off | Opt-in MCP exposure for this flow. Definition-only: you cannot override it on the instance. |
-| `chat` | `ChatConfig` | — | Chat-transport event bindings. Definition-only. |
 | `webhooks` | `WebhookConfig` | — | Webhook event bindings. Definition-only. |
 | `schedules` | `SchedulesConfig` | — | Static and dynamic scheduled actions. Definition-only. |
 | `tokenCounter` | `TokenCounter` | — | Custom token accounting. |
@@ -69,7 +68,7 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 | `isolateUserState` | `boolean` | `false` | Key user state (and the default for user resources) per flow instance — each named copy of a definition gets its own. A resource's own `flowIsolation` always wins. |
 | `isolateOrgState` | `boolean` | `false` | Org-scope equivalent of `isolateUserState`. |
 
-`mcp`, `chat`, `webhooks`, and `schedules` belong on the definition. Passing them to the factory call (`defineFlow({ ... })({ mcp: ... })`) is rejected.
+`mcp`, `webhooks`, and `schedules` belong on the definition. Passing them to the factory call (`defineFlow({ ... })({ mcp: ... })`) is rejected.
 
 ## Actions
 
@@ -181,9 +180,9 @@ Each `ScheduleConfig` extends the action core (`block`, `inputSchema`, hooks, `d
 
 See [Scheduled actions](/docs/server/scheduled).
 
-### `chat` and `webhooks`
+### `webhooks`
 
-`chat.on` and each provider's `webhooks.<provider>.on` map event keys to a binding that extends the action core (`block` plus execution policy). They are not entries in `actions`. See [Chat](/docs/server/chat) and [Webhooks](/docs/server/webhooks).
+Each provider's `webhooks.<provider>.on` maps event keys to a binding that extends the action core (`block` plus execution policy). They are not entries in `actions`. See [Webhooks](/docs/server/webhooks).
 
 ### `voice`
 

@@ -11,10 +11,10 @@
  *   named by the caller and authorized per principal;
  * - `internal` / `task` — `flow.internal.actions[name]` / `flow.task.actions[name]`,
  *   dispatched by the seam from inside a running request;
- * - `webhook` / `chat` / `schedule` — the binding carried inline on its transport
+ * - `webhook` / `schedule` — the binding carried inline on its transport
  *   map, selected by the adapter's coordinate in the namespaced metadata slot
- *   (`metadata.webhook` / `metadata.chat` / `metadata.schedule`) and trusted at
- *   the transport boundary.
+ *   (`metadata.webhook` / `metadata.schedule`) and trusted at the transport
+ *   boundary.
  *
  * **No fallback, for any type.** An earlier shape let an event whose coordinate
  * did not match fall through to `flow.actions[name]`, and made the detached
@@ -28,7 +28,7 @@
  * adapters and the seam, never from a request body — whereas `metadata` on a
  * caller-addressed dispatch (the HTTP action endpoint spreads `body.metadata`)
  * is attacker-controlled. Without the source gate, a caller could POST
- * `{ metadata: { chat: { eventKey } } }` to the public action endpoint and
+ * `{ metadata: { webhook: { provider, eventType } } }` to the public action endpoint and
  * pivot resolution into an event handler, running it with forged input and no
  * transport authentication.
  *

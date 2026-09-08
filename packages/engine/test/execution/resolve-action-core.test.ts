@@ -106,16 +106,10 @@ describe("resolveActionCore", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Chat + scheduled event branches (FIX-838) — same coordinate-resolution and
-// source-gate model as the webhook branch, now namespaced under
-// `metadata.chat` / `metadata.schedule`.
+// Scheduled event branch (FIX-838) — same coordinate-resolution and
+// source-gate model as the webhook branch, namespaced under
+// `metadata.schedule`.
 // ---------------------------------------------------------------------------
-
-const chatHandler = handler({
-  name: "reply",
-  inputSchema: z.object({ text: z.string().optional() }),
-  execute: () => undefined
-});
 
 const scheduleHandler = handler({
   name: "send-digest",
@@ -127,41 +121,11 @@ function flowWithEvents() {
   return defineFlow({
     kind: "support",
     actions: { run: { block: namedActionBlock } },
-    chat: { on: { mention: { block: chatHandler, input: () => ({}) } } },
     schedules: { static: { daily: { cron: "0 9 * * *", block: scheduleHandler } } }
   })({ id: "support" });
 }
 
-const CHAT_META = { chat: { eventKey: "mention" } };
 const SCHEDULE_META = { schedule: { scheduleId: "daily" } };
-
-describe("resolveActionCore — chat branch", () => {
-  it("resolves the chat binding for a genuine chat dispatch", () => {
-    const flow = flowWithEvents();
-    const resolved = resolveActionCore(flow, "reply", "chat", CHAT_META);
-    expect(resolved).toBe(flow.chat!.on!.mention);
-    expect(resolved?.block).toBe(chatHandler);
-  });
-
-  // The security lock: a caller-addressed request must never reach a chat
-  // handler, even when it forges `metadata.chat`.
-  it("does NOT pivot into a chat handler when source is not 'chat'", () => {
-    const flow = flowWithEvents();
-    expect(resolveActionCore(flow, "reply", "http", CHAT_META)).toBeUndefined();
-    expect(resolveActionCore(flow, "run", "http", CHAT_META)).toBe(flow.actions.run);
-  });
-
-  it("never falls back when the chat event key does not match a binding", () => {
-    const flow = flowWithEvents();
-    const unknownKey = { chat: { eventKey: "reaction" } };
-    expect(resolveActionCore(flow, "run", "chat", unknownKey)).toBeUndefined();
-  });
-
-  it("resolves nothing for a chat dispatch with no chat metadata", () => {
-    const flow = flowWithEvents();
-    expect(resolveActionCore(flow, "run", "chat", undefined)).toBeUndefined();
-  });
-});
 
 describe("resolveActionCore — scheduled branch", () => {
   it("resolves the static schedule binding for a genuine scheduled dispatch", () => {
