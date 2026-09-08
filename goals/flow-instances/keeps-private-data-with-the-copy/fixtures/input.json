@@ -1,0 +1,8 @@
+{
+  "userId": "u_goal",
+  "orgId": "org_goal",
+  "shared": "one-directory-for-everyone",
+  "east": { "id": "review-east", "marker": "east-only" },
+  "west": { "id": "review-west", "marker": "west-only" },
+  "singleton": { "id": "digest", "marker": "digest-only" }
+}

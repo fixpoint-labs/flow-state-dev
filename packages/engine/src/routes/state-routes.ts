@@ -6,13 +6,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
-import { toBareStates } from "../stores/resource-state-views";
-import {
-  mergeScopeReads,
-  resolveOrgStorageKey,
-  resolveUserStorageKey,
-  resourceScopeIds
-} from "../stores/scope-keys";
+import { resolveOrgStorageKey, resolveUserStorageKey } from "../stores/scope-keys";
 import {
   resolveOwnerFlow,
   buildResourceSnapshot,
@@ -27,8 +21,10 @@ import {
   sortItems
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
-import { buildExternalResourceContextFromSession } from "../resources/internal";
-import { readSessionScopeWithLineage } from "../resources/lineage-scope";
+import {
+  buildExternalResourceContextFromSession,
+  getPersistedData
+} from "../resources/internal";
 
 const DEFAULT_STATE_ITEMS_LIMIT = 100;
 
@@ -125,48 +121,28 @@ export async function handleGetSessionState(
     totalItems = aggregatedItems.length;
     aggregatedItems = aggregatedItems.slice(offset, offset + limit);
   }
-  // Resource content is canonical in ContentStore (FIX-347); resource state is
-  // canonical in ResourceStateStore (FIX-689). Both are keyed per-resource,
-  // separate from the scope record.
-  //
-  // FIX-735: user/org resources key per isolation bucket (bare id when shared,
-  // `{id}:{flowKind}` when isolated), so read every declared bucket and merge.
-  // The snapshot/clientData builders filter to declared configs, so other
-  // flows' shared rows under the bare key never leak in. The reads are keyed
-  // off the identity id, not the scope record — a shared resource at the bare
-  // id stays visible even when this flow's (flow-flag) scope record sits at a
-  // different key or doesn't exist yet.
-  const isoFlow = {
-    kind: flow.kind,
-    isolateUserState: flow.isolateUserState ?? false,
-    isolateOrgState: flow.isolateOrgState ?? false,
-    resources: flow.resources as Record<string, { scope?: string; flowIsolation?: boolean }> | undefined
-  };
-  const userScopeIds = resourceScopeIds(session.userId, isoFlow, "user");
-  const orgScopeIds =
-    session.orgId !== undefined ? resourceScopeIds(session.orgId, isoFlow, "org") : [];
-
-  // FIX-1068: session scope reads its own rows, with any resource declared
-  // `sharedToLineage` taken from the lineage root instead — the same view a
-  // block resolves through `ctx.resources`.
-  const [sessionContent, userContent, orgContent] = await Promise.all([
-    readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeType, scopeId) =>
-      ctx.stores.content.getAll(scopeType, scopeId)
-    ),
-    mergeScopeReads(userScopeIds.map((id) => ctx.stores.content.getAll("user", id))),
-    mergeScopeReads(orgScopeIds.map((id) => ctx.stores.content.getAll("org", id)))
+  // One persisted-read function, shared with the resource routes and the debug
+  // snapshot. `/state` used to walk the isolation buckets itself; two copies of
+  // that walk is how the two `IsolationFlow` coercions drifted apart in the
+  // first place, and the walk is where the FIX-1323 instance coordinate has to
+  // be applied. `getPersistedData` owns all of it — the per-resource isolation
+  // buckets (FIX-735), the lineage-shared session rows (FIX-1068), and the
+  // tenant binding — for the owner instance resolved above.
+  const persistCtx = { registry: ctx.registry, stores: ctx.stores };
+  const [sessionPersisted, userPersisted, orgPersisted] = await Promise.all([
+    getPersistedData(persistCtx, flow, route.sessionId, "session", ctx.tenantId),
+    getPersistedData(persistCtx, flow, route.sessionId, "user", ctx.tenantId),
+    getPersistedData(persistCtx, flow, route.sessionId, "org", ctx.tenantId)
   ]);
-  const [sessionState, userState, orgState] = await Promise.all([
-    readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeType, scopeId) =>
-      ctx.stores.resourceState.getAll(scopeType, scopeId).then(toBareStates)
-    ),
-    mergeScopeReads(
-      userScopeIds.map((id) => ctx.stores.resourceState.getAll("user", id).then(toBareStates))
-    ),
-    mergeScopeReads(
-      orgScopeIds.map((id) => ctx.stores.resourceState.getAll("org", id).then(toBareStates))
-    )
-  ]);
+  // `undefined` is "this scope has no cell for this session" (org with no org
+  // binding); the projection below treats that as an empty scope, as it did
+  // when the walk produced an empty merge.
+  const sessionContent = sessionPersisted?.content ?? {};
+  const userContent = userPersisted?.content ?? {};
+  const orgContent = orgPersisted?.content ?? {};
+  const sessionState = sessionPersisted?.resources ?? {};
+  const userState = userPersisted?.resources ?? {};
+  const orgState = orgPersisted?.resources ?? {};
 
   // FIX-435: partition the flat flow.resources map back into per-scope
   // buckets so the existing per-scope storage helpers and snapshot builders

@@ -19,6 +19,7 @@ import {
 } from "../src";
 import { createContentStoreConformanceTests } from "../src/testing";
 import { createFilesystemStoreGuardConformanceTests } from "./filesystem-store-guard-conformance";
+import { InMemoryContentStore } from "../src/stores/memory/content-store";
 
 function runContentStoreTests(
   name: string,
@@ -172,6 +173,25 @@ function runContentStoreTests(
       expect(await s.get("session", "s2", "key")).toBe("value-2");
     });
 
+    it("keeps scope ids that share a colon prefix in separate buckets", async () => {
+      const s = await setup();
+      // An instance-isolated scope id is `${identityId}:${flowInstanceId}`, and
+      // an instance id may itself contain a colon — so `u:reviewer-a` and
+      // `u:reviewer-a:b` are two unrelated scopes whose string forms overlap.
+      // Whole-scope reads and deletes must address the bucket exactly: one
+      // copy's `getAll` or `deleteAll` reaching into the other's rows is one
+      // customer's private data leaking into, or being erased by, another's.
+      await s.set("user", "u:reviewer-a", "notes", "a-notes");
+      await s.set("user", "u:reviewer-a:b", "notes", "b-notes");
+
+      expect(await s.getAll("user", "u:reviewer-a")).toEqual({ notes: "a-notes" });
+      expect(await s.getByPrefix("user", "u:reviewer-a", "")).toEqual({ notes: "a-notes" });
+      expect(await s.getAll("user", "u:reviewer-a:b")).toEqual({ notes: "b-notes" });
+
+      await s.deleteAll("user", "u:reviewer-a");
+      expect(await s.get("user", "u:reviewer-a:b", "notes")).toBe("b-notes");
+    });
+
     it("handles resource keys with special characters", async () => {
       const s = await setup();
       const specialKey = "files/src/utils.ts";
@@ -258,5 +278,35 @@ describe("Filesystem stores per-subtree guard isolation", () => {
     await expect(stores.resourceState.getAll("session", "s1")).rejects.toThrow(
       /predates the nested-layout/
     );
+  });
+});
+
+/**
+ * Same retention shape as the resource-state store: the nested map keeps a
+ * `Map` per `(scopeType, scopeId)`, so a bucket emptied one key at a time must
+ * go. `deleteAll` already drops the whole bucket; `delete` is the path that
+ * could leave an empty one behind.
+ */
+describe("InMemoryContentStore bucket retention", () => {
+  const scopeIds = (store: InMemoryContentStore) =>
+    (store as unknown as { data: Map<string, Map<string, unknown>> }).data.get("user");
+
+  it("drops a scope bucket once its last key is deleted", async () => {
+    const store = new InMemoryContentStore();
+    await store.set("user", "u1", "k", "content");
+    expect(scopeIds(store)?.has("u1")).toBe(true);
+
+    await store.delete("user", "u1", "k");
+    expect(scopeIds(store)?.has("u1")).toBe(false);
+  });
+
+  it("keeps a bucket that still holds content", async () => {
+    const store = new InMemoryContentStore();
+    await store.set("user", "u1", "a", "content");
+    await store.set("user", "u1", "b", "content");
+
+    await store.delete("user", "u1", "a");
+    expect(scopeIds(store)?.has("u1")).toBe(true);
+    expect(await store.get("user", "u1", "b")).toBe("content");
   });
 });

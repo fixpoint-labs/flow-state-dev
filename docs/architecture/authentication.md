@@ -61,9 +61,11 @@ scoping is keyed per scope:
 | `user` | `userId` |
 | `org` | the session's bound `orgId`, taken from `principal.orgId` at session creation |
 
-User- and org-scoped resources route to a further `${id}:${flowKind}`
-bucket when the resource is flow-isolated, but the identity above is what
-that bucket is derived from.
+User- and org-scoped resources route to a further `${id}:${flow.id}`
+bucket when the resource is flow-isolated — the registered **instance**, so
+two copies of one collection definition isolate from each other too. The
+identity above is still what that bucket is derived from, and an instance id
+is a storage coordinate, never an authorization.
 
 A custom resolver therefore owns the org boundary as well as the user one.
 Return no `orgId` and the runtime builds no org resource registry for the

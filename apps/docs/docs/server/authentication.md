@@ -391,9 +391,17 @@ overwrite data — same field, different type — throws.
 
 When sharing isn't appropriate, set `isolateUserState: true` (or
 `isolateOrgState: true`) on `defineFlow`. The flow's user (or org) state
-is then stored separately and excluded from the schema check. See
+is then stored separately and excluded from the schema check — separately
+per flow copy, so a definition running as several named copies keeps one
+private record each. See
 [Sharing State Across Flows](/docs/advanced/flow-isolation) for the full
 opt-out story.
+
+That separation is about storage, not about permission. It decides where a
+flow's data is filed, and stops another flow reading or overwriting it. It
+does not decide whether the caller in front of you is allowed to act as this
+user — that is what the rest of this page is for, and isolation neither adds
+to it nor stands in for it.
 
 For triggering a flow from code outside the HTTP layer — where you supply the
 resolved `userId` yourself — see [Calling a flow without a transport](../advanced/manual-flow-execution.md).

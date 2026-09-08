@@ -246,7 +246,7 @@ userStateSchema: z.object({
 })
 ```
 
-User scope is shared across flows on the same server by default — every flow's user state schema is structurally compared at startup, and incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. See [Authentication](/docs/server/authentication) for the trust model and [Flow Isolation](/docs/advanced/flow-isolation) if you need to keep a flow's user state separate.
+User scope is shared across flows on the same server by default — every flow's user state schema is structurally compared at startup, and incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. See [Authentication](/docs/server/authentication) for the trust model and [Flow Isolation](/docs/advanced/flow-isolation) if you need to keep a flow's user state separate. Isolated state belongs to the particular flow copy that wrote it, so a definition running as several named copies keeps one private record per copy.
 
 **Org** is the team-level boundary. Shared configuration, knowledge bases, settings that an admin controls for everyone. Available when the caller passes an `orgId`; `ctx.org` is `undefined` otherwise.
 

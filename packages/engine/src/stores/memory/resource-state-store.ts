@@ -1,10 +1,19 @@
 /**
  * In-memory resource state store implementation.
  *
- * Stores resource state (single-resource and collection-instance alike) in a
- * flat Map keyed by `scopeType:scopeId:resourceKey`. Suitable for development,
- * testing, and single-process deployments where state need not survive
- * process restarts.
+ * Resource state (single-resource and collection-instance alike) is held in
+ * nested maps — `scopeType → scopeId → resourceKey` — so a bucket is addressed
+ * by **exact** `(scopeType, scopeId)` identity and prefix matching applies only
+ * to the resource key inside it. Suitable for development, testing, and
+ * single-process deployments where state need not survive process restarts.
+ *
+ * It used to be one flat map keyed `scopeType:scopeId:resourceKey`, scanned by
+ * string prefix. Concatenating three caller-supplied strings and re-splitting
+ * them by position is ambiguous, and FIX-1323 makes the ambiguity reachable:
+ * instance ids are now part of the `scopeId`, so scope `user:reviewer-a` and
+ * scope `user:reviewer-a:b` share a string prefix — one copy's `getAll`,
+ * `deleteAll` or `purgeTombstones` would have listed, tombstoned or purged the
+ * other's rows. Nesting removes the encoding rather than escaping it.
  *
  * Unlike the in-memory `ContentStore` this is a compare-and-swap store: each
  * row carries a monotonic version and a lifecycle, deletes tombstone rather
@@ -40,14 +49,48 @@ import {
 } from "../resource-state-predicate";
 
 export class InMemoryResourceStateStore implements ResourceStateStore {
-  private readonly data = new Map<string, ResourceStateRow>();
+  /** `scopeType → scopeId → resourceKey → row`. Exact bucket identity. */
+  private readonly data = new Map<
+    ContentScopeType,
+    Map<string, Map<string, ResourceStateRow>>
+  >();
 
-  private key(scopeType: ContentScopeType, scopeId: string, resourceKey: string): string {
-    return `${scopeType}:${scopeId}:${resourceKey}`;
+  /** The bucket for one exact scope, or `undefined` when nothing is stored there. */
+  private bucket(
+    scopeType: ContentScopeType,
+    scopeId: string
+  ): Map<string, ResourceStateRow> | undefined {
+    return this.data.get(scopeType)?.get(scopeId);
   }
 
-  private prefix(scopeType: ContentScopeType, scopeId: string): string {
-    return `${scopeType}:${scopeId}:`;
+  /**
+   * Drop a bucket that has no rows left, so a process that keeps minting scope
+   * ids (a recreated session id purging its tombstones, FIX-1323 review) does
+   * not retain one unreachable `Map` per id — retention the flat map it
+   * replaced did not have. The `scopeType` parent is deliberately kept: it is a
+   * closed three-value union, so it is bounded whatever happens.
+   */
+  private dropBucketIfEmpty(scopeType: ContentScopeType, scopeId: string): void {
+    const byScopeId = this.data.get(scopeType);
+    if (byScopeId?.get(scopeId)?.size === 0) byScopeId.delete(scopeId);
+  }
+
+  /** The bucket for one exact scope, created empty if it does not exist yet. */
+  private ensureBucket(
+    scopeType: ContentScopeType,
+    scopeId: string
+  ): Map<string, ResourceStateRow> {
+    let byScopeId = this.data.get(scopeType);
+    if (byScopeId === undefined) {
+      byScopeId = new Map();
+      this.data.set(scopeType, byScopeId);
+    }
+    let bucket = byScopeId.get(scopeId);
+    if (bucket === undefined) {
+      bucket = new Map();
+      byScopeId.set(scopeId, bucket);
+    }
+    return bucket;
   }
 
   async get(
@@ -55,7 +98,7 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     scopeId: string,
     resourceKey: string
   ): Promise<VersionedResourceState | undefined> {
-    const row = this.data.get(this.key(scopeType, scopeId, resourceKey));
+    const row = this.bucket(scopeType, scopeId)?.get(resourceKey);
     if (row === undefined || row.lifecycle !== "live") return undefined;
     return { state: cloneValue(row.state), version: row.version };
   }
@@ -68,15 +111,15 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<JsonObject>> {
     assertSetExpectedVersion(expectedVersion);
-    const mapKey = this.key(scopeType, scopeId, resourceKey);
-    const row = this.data.get(mapKey);
+    const bucket = this.ensureBucket(scopeType, scopeId);
+    const row = bucket.get(resourceKey);
     const check = checkWriteVersion(row, expectedVersion);
     if (check !== undefined) return check;
 
     // A recreate continues from the tombstone's version, so a version is
     // never reused for a key that has been deleted and written again.
     const nextVersion = (row?.version ?? 0) + 1;
-    this.data.set(mapKey, { state: cloneValue(state), version: nextVersion, lifecycle: "live" });
+    bucket.set(resourceKey, { state: cloneValue(state), version: nextVersion, lifecycle: "live" });
     return { ok: true, version: nextVersion };
   }
 
@@ -89,12 +132,13 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     // Ahead of the idempotent short-circuits below: an unusable
     // `expectedVersion` is refused for every key, live or not.
     assertDeleteExpectedVersion(expectedVersion);
-    const mapKey = this.key(scopeType, scopeId, resourceKey);
-    const row = this.data.get(mapKey);
+    const bucket = this.bucket(scopeType, scopeId);
+    const row = bucket?.get(resourceKey);
 
     // Nothing live to remove: idempotent success, and no tombstone is minted
-    // for a key that never existed (there is no observer to fence).
-    if (row === undefined) return { ok: true, version: 0 };
+    // for a key that never existed (there is no observer to fence). An absent
+    // bucket is that same case — no row has ever been written at this scope.
+    if (bucket === undefined || row === undefined) return { ok: true, version: 0 };
     if (row.lifecycle !== "live") return { ok: true, version: row.version };
 
     const check = checkWriteVersion(row, expectedVersion);
@@ -102,7 +146,7 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
 
     // Retain the version, drop the payload — the version is the only thing a
     // tombstone has to carry, and it is retained indefinitely.
-    this.data.set(mapKey, { state: {}, version: row.version, lifecycle: "deleted" });
+    bucket.set(resourceKey, { state: {}, version: row.version, lifecycle: "deleted" });
     return { ok: true, version: row.version };
   }
 
@@ -118,12 +162,11 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     scopeId: string,
     keyPrefix: string
   ): Promise<Record<string, VersionedResourceState>> {
-    const prefix = this.prefix(scopeType, scopeId);
     const result: Record<string, VersionedResourceState> = {};
-    for (const [key, row] of this.data) {
-      if (!key.startsWith(prefix)) continue;
+    const bucket = this.bucket(scopeType, scopeId);
+    if (bucket === undefined) return result;
+    for (const [resourceKey, row] of bucket) {
       if (row.lifecycle !== "live") continue;
-      const resourceKey = key.slice(prefix.length);
       if (resourceKey.startsWith(keyPrefix)) {
         result[resourceKey] = { state: cloneValue(row.state), version: row.version };
       }
@@ -132,11 +175,11 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
   }
 
   async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
-    const prefix = this.prefix(scopeType, scopeId);
-    for (const [key, row] of this.data) {
-      if (!key.startsWith(prefix)) continue;
+    const bucket = this.bucket(scopeType, scopeId);
+    if (bucket === undefined) return;
+    for (const [resourceKey, row] of bucket) {
       if (row.lifecycle !== "live") continue;
-      this.data.set(key, { state: {}, version: row.version, lifecycle: "deleted" });
+      bucket.set(resourceKey, { state: {}, version: row.version, lifecycle: "deleted" });
     }
   }
 
@@ -146,12 +189,13 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     // survive a re-create. Deleting entries while iterating a `Map` is
     // defined: the iterator visits each remaining key once and never revisits
     // a removed one.
-    const prefix = this.prefix(scopeType, scopeId);
-    for (const [key, row] of this.data) {
-      if (!key.startsWith(prefix)) continue;
+    const bucket = this.bucket(scopeType, scopeId);
+    if (bucket === undefined) return;
+    for (const [resourceKey, row] of bucket) {
       if (row.lifecycle === "live") continue;
-      this.data.delete(key);
+      bucket.delete(resourceKey);
     }
+    this.dropBucketIfEmpty(scopeType, scopeId);
   }
 }
 

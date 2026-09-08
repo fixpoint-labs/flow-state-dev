@@ -223,5 +223,6 @@ export type {
   ExposedResourceEntry as unstable_ExposedResourceEntry,
   ResolvedResourceScope as unstable_ResolvedResourceScope,
   ResourceFlowLike as unstable_ResourceFlowLike,
+  ResourceOwnerFlow as unstable_ResourceOwnerFlow,
   ResourcePersistenceContext as unstable_ResourcePersistenceContext
 } from "./resources/internal";

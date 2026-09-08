@@ -19,6 +19,7 @@ import {
 } from "../src";
 import { createResourceStateStoreConformanceTests } from "../src/testing";
 import { createFilesystemStoreGuardConformanceTests } from "./filesystem-store-guard-conformance";
+import { InMemoryResourceStateStore } from "../src/stores/memory/resource-state-store";
 
 /**
  * These cases cover CRUD, scope isolation and JSON round-tripping — storage
@@ -199,6 +200,30 @@ function runResourceStateStoreTests(
       await s.deleteAll("session", "s1");
       expect(await readState(s, "session", "s1", "key")).toBeUndefined();
       expect(await readState(s, "session", "s2", "key")).toEqual({ v: 2 });
+    });
+
+    it("keeps scope ids that share a colon prefix in separate buckets", async () => {
+      const s = await setup();
+      // An instance-isolated scope id is `${identityId}:${flowInstanceId}`, and
+      // an instance id may itself contain a colon — so `u:reviewer-a` and
+      // `u:reviewer-a:b` are two unrelated scopes whose string forms overlap.
+      // Every whole-scope operation must address the bucket exactly: a listing
+      // that reaches into the neighbour leaks one copy's private rows, and a
+      // `deleteAll` or `purgeTombstones` that does destroys them.
+      await put(s, "user", "u:reviewer-a", "notes", { who: "a" });
+      await put(s, "user", "u:reviewer-a:b", "notes", { who: "b" });
+
+      expect(await readAll(s, "user", "u:reviewer-a")).toEqual({ notes: { who: "a" } });
+      expect(await readPrefix(s, "user", "u:reviewer-a", "")).toEqual({ notes: { who: "a" } });
+      expect(await readAll(s, "user", "u:reviewer-a:b")).toEqual({ notes: { who: "b" } });
+
+      // A tombstone in one bucket must not be visible as, or purge, the other's
+      // live row: `deleteAll` tombstones rather than removes, so the neighbour
+      // survives both the delete and the later purge.
+      await s.deleteAll("user", "u:reviewer-a");
+      expect(await readState(s, "user", "u:reviewer-a:b", "notes")).toEqual({ who: "b" });
+      await s.purgeTombstones("user", "u:reviewer-a");
+      expect(await readState(s, "user", "u:reviewer-a:b", "notes")).toEqual({ who: "b" });
     });
 
     it("handles resource keys with special characters", async () => {
@@ -476,5 +501,42 @@ describe("FilesystemResourceStateStore on-disk record", () => {
     ]);
     expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
     expect((await store.get("session", "s1", "k"))?.version).toBe(2);
+  });
+});
+
+/**
+ * The nested-map bucketing FIX-1323 introduced retains a `Map` per
+ * `(scopeType, scopeId)` — the flat map it replaced held nothing per scope.
+ * `ensure-session-record.ts` purges tombstones when a deleted session id is
+ * recreated, so a long-running in-memory deployment would otherwise grow one
+ * unreachable bucket per id it has ever seen. Reaching into the private map is
+ * the only way to see this: an empty bucket and an absent one read identically
+ * through the public surface, which is exactly why it would go unnoticed.
+ */
+describe("InMemoryResourceStateStore bucket retention", () => {
+  const scopeIds = (store: InMemoryResourceStateStore, scopeType: ContentScopeType) =>
+    (store as unknown as { data: Map<ContentScopeType, Map<string, unknown>> }).data.get(
+      scopeType
+    );
+
+  it("drops a scope bucket once purgeTombstones removes its last row", async () => {
+    const store = new InMemoryResourceStateStore();
+    await store.set("session", "s1", "k", { v: 1 }, "any");
+    await store.delete("session", "s1", "k", "any");
+    expect(scopeIds(store, "session")?.has("s1")).toBe(true);
+
+    await store.purgeTombstones("session", "s1");
+    expect(scopeIds(store, "session")?.has("s1")).toBe(false);
+  });
+
+  it("keeps a bucket that still holds live rows", async () => {
+    const store = new InMemoryResourceStateStore();
+    await store.set("session", "s1", "live", { v: 1 }, "any");
+    await store.set("session", "s1", "gone", { v: 1 }, "any");
+    await store.delete("session", "s1", "gone", "any");
+
+    await store.purgeTombstones("session", "s1");
+    expect(scopeIds(store, "session")?.has("s1")).toBe(true);
+    expect(await store.getAll("session", "s1")).toHaveProperty("live");
   });
 });

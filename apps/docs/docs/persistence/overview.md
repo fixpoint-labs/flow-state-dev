@@ -108,10 +108,28 @@ Every session and request records the flow instance that created it, as `flowId`
 
 **Records with no owner recorded.** Sessions and requests written before owners were recorded have no `flowId`. They are read as belonging to the one instance of their kind, so a database full of ordinary singleton flows needs nothing done. A collection flow with such history is different: the server cannot tell which copy a bare `review` record belongs to, so it refuses to guess. Any route, resume, or retry that reaches one of those records answers `409 { "error": "migration-required" }` until an operator attributes it. Nothing migrates automatically, by design: attribution is a fact about your deployment, not something the framework can derive from the row.
 
+**What else moves with the owner.** A copy's private user and org data is filed under the copy too, so the same attribution decision covers more than the two record tables. If your collection flow sets `isolateUserState` / `isolateOrgState`, or declares a user- or org-scoped resource with `flowIsolation: true` (see [Sharing state across flows](/docs/advanced/flow-isolation)), then this history moves as well:
+
+| Cell | Where it lives now | Where it belongs |
+|---|---|---|
+| Isolated user or org scope state | one record keyed `<identity>:<kind>` | one record per copy, keyed `<identity>:<copy id>` |
+| Isolated user or org resource state | `(user\|org, <identity>:<kind>, resource key)` | the same key with the copy's id |
+| Isolated user or org resource content | the same coordinates in the content store | the same key with the copy's id |
+| Deletion markers for those resources | beside the rows they fence | move with them, or the version guarantee is lost |
+| Session-scoped state and content of a re-keyed child session | under the child's old session key | under its new key |
+
+Two things to be careful about. A scope record is one blob, so it moves whole — splitting fields between copies by guesswork is how the "private" data you were protecting gets mixed. And a shared record (an ordinary singleton's, or a resource declaring `flowIsolation: false`) does not move at all: it was never a copy's to begin with.
+
+**Identity ids containing a colon or a backslash move too, whatever your flows do.** A copy id is any string you choose, so the key has to encode the `<identity>:<copy id>` pair rather than run the two strings together — otherwise two different pairs can name one cell, and one account reads another's private data. Ids made of ordinary characters encode to themselves and key exactly as they did before, which is the common case and needs nothing. An id carrying a colon or a backslash picks up a backslash in front of each one — `u:1` is now keyed `u\:1`, shared and isolated cells alike — so inventory those identities with the rest. Some identity providers issue subjects that look like this; if yours does, its old keys were the ambiguous ones, which is why they change.
+
+The last row only applies if step 3 of the procedure below re-keys any child sessions. If the inventory finds none, note that and leave session-scoped data alone.
+
 **Attributing owners, once.** The SQLite and Postgres stores add the nullable `flow_id` column on open, with an index, and never backfill it. Attribution is a one-time procedure you run offline, in this order:
 
-1. **Quiesce.** Stop every process that writes to the stores: the web tier, workers, schedulers. A record attributed while a run is still in flight can be re-stamped underneath you.
+1. **Quiesce.** Stop every process that writes to the stores: the web tier, workers, schedulers. A record attributed while a run is still in flight can be re-stamped underneath you. Back the store up, and where the adapter allows it do the work on the copy — the backup is your only rollback, so keep it offline rather than wiring it up as a fallback the running server can read. Write down the copies you actually register, retired kinds included; the mapping below is against that list.
 2. **Inventory.** Count what has no owner, by kind: `SELECT flow_kind, COUNT(*) FROM sessions WHERE flow_id IS NULL GROUP BY flow_kind;` and the same over `requests`. Kinds that are ordinary singletons need nothing. Each collection kind in the list is a mapping decision you have to make: which copy each of those records belongs to (a tenant, a region, a config version, whatever distinguished them when they were written).
+
+   If the kind isolates user or org state, or declares an isolated resource, list its cells from the table above in the same inventory. Read them from the raw rows and files, not through the server's ordinary reads: those hide deletion markers, and a resource with content but no state never shows up in a state listing at all. One line per cell is enough — `user u_12 / kind review / resource notes/a / to review-east / because <your evidence>` — and every cell needs a destination, including ones belonging to identities that no longer appear in any active session. A count of zero is a fine answer once you have looked at the store; it is not an answer you can get from a `get` returning nothing.
 3. **Backfill.** Apply the mapping to both places a row keeps its owner, in one statement. The indexed `flow_id` column is what listings filter on; the `data` blob is the record the server reads back, and a later write of the whole record rewrites the column from it, so a column updated on its own reverts to `NULL` the next time the row is saved. SQLite:
 
    ```sql
@@ -131,9 +149,37 @@ Every session and request records the flow instance that created it, as `flowId`
    ```
 
    Run the same predicate over `requests`, so a request never ends up under a different owner than its session. Child sessions that another flow dispatched into a collection copy are keyed by the copy that ran them; re-key those under the copy you attribute them to, or the parent's next dispatch starts a fresh child instead of adopting the old one.
-4. **Read back.** Re-run the inventory, and check the blob agrees with the column: `SELECT COUNT(*) FROM sessions WHERE flow_id IS NOT NULL AND json_extract(data, '$.flowId') IS NULL;` (SQLite) or `... AND data->>'flowId' IS NULL;` (Postgres) should be zero, and so should the inventory's count for every collection kind. Any remaining row still answers `migration-required`. Then bring the writers back.
+
+   Then move the cells you inventoried, using your adapter's recipe below. Check the whole plan before you write anything: a destination that already holds data, or holds a deletion marker, is a conflict to resolve rather than a row to overwrite, and two cells whose source and destination keys chain into each other have to be moved from a staged snapshot rather than renamed one at a time. Move each resource's state and its content together — they are one thing to your users.
+4. **Read back.** Re-run the inventory, and check the blob agrees with the column: `SELECT COUNT(*) FROM sessions WHERE flow_id IS NOT NULL AND json_extract(data, '$.flowId') IS NULL;` (SQLite) or `... AND data->>'flowId' IS NULL;` (Postgres) should be zero, and so should the inventory's count for every collection kind. Any remaining row still answers `migration-required`. Check the moved cells the same way: every source in your inventory has a destination holding it, and nothing is left under a kind you converted. Remove the old addresses only once you have. Then bring the writers back and read a session's state and resources through each copy before you admit traffic.
+
+If something fails, leave the writers stopped. Before you have admitted traffic, rollback is restoring the backup. After the converted store has taken new writes it is the only correct one — don't start an older build against it.
 
 The column names above are the SQL stores'. The filesystem and in-memory stores hold the same `flowId` field on each record and need the same mapping applied to their files, if you keep history there at all.
+
+### Moving a copy's private data, per adapter
+
+The stores need no new columns or directories for this — the copy's id goes into keys that already exist. What differs is how you reach the raw rows.
+
+| Adapter | What to do |
+|---|---|
+| **In-memory** | Nothing. It starts empty on every restart, so there is no history to attribute. |
+| **Filesystem** | User records are `users/<encoded id>.json`, org records are under `projects/`. Resources are `state/<scope>/<encoded scope id>/<encoded key>.json` and `content/<scope>/<encoded scope id>/<encoded key>.md`, marker files included. Stage a full copy of the directory, move the attributed entries with the same encoding, rewrite the `id` field inside each scope record, and leave every other byte alone. Don't follow symlinks, and stop on a directory you don't recognise. Nothing here is atomic across directories, so keep traffic stopped until the whole replacement is verified. |
+| **SQLite** | `users.id` / `orgs.id` are the keys to rewrite, along with the `id` inside each row's JSON `data`. Resource rows are keyed `(scope_type, scope_id, resource_key)` — move `scope_id`, and keep the resource key, version, lifecycle and content exactly as they are. Do it in a transaction on the backup copy, reading the tables directly rather than through the store API. |
+| **Postgres** | The same keys and the same transaction, on a quiesced database or a staged snapshot, in whichever schema you configured. Scope and resource payloads are JSONB and content is text; preserve them verbatim. |
+| **Custom store** | Use your store's own export and restore, under the same maintenance window and the same checks. A store that can't show you its deletion markers or preserve versions can't be converted safely — that is a `migration-required` stop, not a case for a generic read-everything-and-write-it-back loop. |
+
+Move rows, not calls. Going through the normal `set` and `delete` API mints new versions and drops markers, which is exactly the history you are trying to keep.
+
+### When to stop
+
+Stop the cutover, restore the backup, and change nothing when:
+
+- A cell has no attribution you can defend, or two plausible ones. The stop condition is `migration-required` — the same one the running server raises when it meets a record with no owner. Only your records say who owned a cell; that a kind has just one copy today does not.
+- A destination already holds data, or a deletion marker.
+- You meet a file or a row in a layout you don't recognise.
+
+None of these is a case for guessing. Leave the original data intact and resolve the attribution first.
 
 ## Tenant isolation
 

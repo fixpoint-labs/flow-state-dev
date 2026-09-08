@@ -93,7 +93,7 @@ function buildFlow() {
 /** Scope-record (`ctx.user.state`) storage key — keys on the flow-level flag. */
 function userKeyFor(flow: ReturnType<typeof buildFlow>, userId: string): string {
   return resolveUserStorageKey(userId, {
-    kind: flow.kind,
+    id: flow.id,
     isolateUserState: flow.isolateUserState ?? false,
   });
 }
@@ -152,9 +152,9 @@ async function setupCtx(opts: {
     };
     await stores.user.set(userKey, userRecord, "any");
     // FIX-735: `accountsCollection` declares `flowIsolation: true`, so its
-    // instances key per-resource at the isolated bucket `{userId}:{flowKind}` —
+    // instances key per-resource at the isolated bucket `{userId}:{flow.id}` —
     // independent of the (flow-flag) scope-record key above.
-    const accountsScopeId = resolveResourceScopeId(userId, flow.kind, true);
+    const accountsScopeId = resolveResourceScopeId(userId, flow.id, true);
     for (const [topic, state] of Object.entries(opts.accounts)) {
       await stores.resourceState.set("user", accountsScopeId, `accounts/${topic}`, state as JsonObject, "any");
     }

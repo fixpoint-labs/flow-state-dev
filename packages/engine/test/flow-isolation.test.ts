@@ -20,6 +20,7 @@ import {
   resolveOrgStorageKey,
   resolveUserStorageKey
 } from "../src";
+import { resolveResourceScopeId } from "../src/stores/scope-keys";
 import { resourceStorageKeys } from "../src/resources/storage-keys";
 import { compareZodSchemas } from "../src/registry/schema-compat";
 
@@ -134,16 +135,128 @@ describe("resolveUserStorageKey / resolveOrgStorageKey", () => {
     expect(resolveOrgStorageKey("proj_1", flow)).toBe("proj_1");
   });
 
-  it("namespaces the key by flowKind when isolation is on", () => {
+  it("namespaces the key by the instance id when isolation is on", () => {
     const flow = makeFlow({ kind: "flow-a", isolateUserState: true, isolateOrgState: true });
+    // A singleton's id IS its kind, so its keys are the same strings this flow
+    // has always written — nothing to migrate for the ordinary case.
+    expect(flow.id).toBe(flow.kind);
     expect(resolveUserStorageKey("user_1", flow)).toBe("user_1:flow-a");
     expect(resolveOrgStorageKey("proj_1", flow)).toBe("proj_1:flow-a");
+  });
+
+  it("gives two copies of one collection kind separate keys", () => {
+    // The isolation coordinate is the instance, not the definition. Keying on
+    // the kind made every copy of a collection share one private bucket —
+    // "private" that two copies both wrote into.
+    const reviewer = makeFlowFactory({
+      kind: "reviewer",
+      cardinality: "collection",
+      isolateUserState: true,
+      isolateOrgState: true
+    });
+    const a = reviewer({ id: "reviewer-a" });
+    const b = reviewer({ id: "reviewer-b" });
+
+    expect(resolveUserStorageKey("user_1", a)).toBe("user_1:reviewer-a");
+    expect(resolveUserStorageKey("user_1", b)).toBe("user_1:reviewer-b");
+    expect(resolveOrgStorageKey("proj_1", a)).toBe("proj_1:reviewer-a");
+    expect(resolveOrgStorageKey("proj_1", b)).toBe("proj_1:reviewer-b");
   });
 
   it("isolates user and org independently", () => {
     const flow = makeFlow({ kind: "flow-a", isolateUserState: true });
     expect(resolveUserStorageKey("user_1", flow)).toBe("user_1:flow-a");
     expect(resolveOrgStorageKey("proj_1", flow)).toBe("proj_1");
+  });
+});
+
+/**
+ * FIX-1323 made the second key component an arbitrary caller-supplied instance
+ * id (it was a flow kind, which is why this was largely unreachable before), so
+ * the key has to be an encoding of the pair rather than the two strings run
+ * together. These tests hold both halves of that: the ambiguity is gone, AND
+ * the keys every existing deployment already wrote did not move.
+ */
+describe("isolation-key encoding", () => {
+  /** The pre-FIX-1323 derivation, spelled out so a drift is a failing test. */
+  const legacyKey = (identityId: string, flowId: string, isolated: boolean) =>
+    isolated ? `${identityId}:${flowId}` : identityId;
+
+  // Guarded rather than asserted: an id added here that DOES carry the
+  // delimiter has no byte-identity claim to make, and would quietly pass.
+  const ordinary = ["user_1", "proj_1", "auth0|abc123", "u", "a.b-c~d"].filter(
+    (v) => !v.includes(":") && !v.includes("\\")
+  );
+
+  it("leaves every ordinary id byte-identical to the key it already wrote", () => {
+    // The load-bearing compatibility claim of this PR: no singleton and no
+    // ordinary id changes cell, so there is nothing to migrate. Proved against
+    // a literal copy of the old derivation, not against the new one.
+    const flowIds = ["flow-a", "reviewer-a", "reviewer", "some_instance"];
+    for (const identityId of ordinary) {
+      for (const flowId of flowIds) {
+        expect(resolveResourceScopeId(identityId, flowId, true)).toBe(
+          legacyKey(identityId, flowId, true)
+        );
+        expect(resolveResourceScopeId(identityId, flowId, false)).toBe(
+          legacyKey(identityId, flowId, false)
+        );
+        expect(resolveUserStorageKey(identityId, { id: flowId, isolateUserState: true })).toBe(
+          legacyKey(identityId, flowId, true)
+        );
+        expect(resolveUserStorageKey(identityId, { id: flowId, isolateUserState: false })).toBe(
+          legacyKey(identityId, flowId, false)
+        );
+        expect(resolveOrgStorageKey(identityId, { id: flowId, isolateOrgState: true })).toBe(
+          legacyKey(identityId, flowId, true)
+        );
+        expect(resolveOrgStorageKey(identityId, { id: flowId, isolateOrgState: false })).toBe(
+          legacyKey(identityId, flowId, false)
+        );
+      }
+    }
+  });
+
+  it("does not let two different (identity, instance) pairs name one cell", () => {
+    // Codex's case on #1646: raw concatenation gave both of these `u:a:b`, so
+    // user `u` on instance `a:b` read and overwrote user `u:a`'s isolated data.
+    expect(resolveResourceScopeId("u", "a:b", true)).not.toBe(
+      resolveResourceScopeId("u:a", "b", true)
+    );
+    expect(legacyKey("u", "a:b", true)).toBe(legacyKey("u:a", "b", true));
+
+    expect(resolveUserStorageKey("u", { id: "a:b", isolateUserState: true })).not.toBe(
+      resolveUserStorageKey("u:a", { id: "b", isolateUserState: true })
+    );
+    expect(resolveOrgStorageKey("o", { id: "a:b", isolateOrgState: true })).not.toBe(
+      resolveOrgStorageKey("o:a", { id: "b", isolateOrgState: true })
+    );
+  });
+
+  it("does not let a shared identity collide with someone else's isolated cell", () => {
+    // The same bug one component down: user `u:a`'s SHARED bucket was the exact
+    // key user `u` isolated to instance `a` wrote. The bare form is encoded too.
+    expect(resolveResourceScopeId("u:a", "anything", false)).not.toBe(
+      resolveResourceScopeId("u", "a", true)
+    );
+    expect(legacyKey("u:a", "anything", false)).toBe(legacyKey("u", "a", true));
+  });
+
+  it("keeps every pair distinct across ids carrying the delimiter and the escape", () => {
+    const hostile = ["u", "u:a", "a", "b", "a:b", "u\\", "u\\:a", ":", "\\:"];
+    const seen = new Map<string, string>();
+    for (const identityId of hostile) {
+      for (const flowId of hostile) {
+        for (const isolated of [true, false]) {
+          const key = `${resolveResourceScopeId(identityId, flowId, isolated)}`;
+          // A shared bucket ignores the instance, so it is one cell per identity.
+          const pair = isolated ? `iso(${identityId},${flowId})` : `shared(${identityId})`;
+          const prior = seen.get(key);
+          if (prior !== undefined) expect(prior).toBe(pair);
+          seen.set(key, pair);
+        }
+      }
+    }
   });
 });
 
@@ -631,7 +744,7 @@ describe("cross-flow resource schema validation", () => {
     });
 
     it("rejects incompatible same-pattern collections that are both isolated", () => {
-      // Isolation moves both declarations into the one `${id}:${flowKind}`
+      // Isolation moves both declarations into the one `${id}:${flow.id}`
       // bucket together — it never separates them from each other. So the
       // same-flow comparison has to run BEFORE isolated declarations are
       // filtered out of the cross-flow view, or this pair overwrites one cell
@@ -689,7 +802,7 @@ describe("cross-flow resource schema validation", () => {
     it("leaves a shared and an isolated declaration at one pattern alone", () => {
       // The over-firing direction for the hoist: isolation is part of the cell
       // key, not ignored. These two land in different buckets — bare `{id}` and
-      // `{id}:{flowKind}` — so incompatible schemas are not a conflict.
+      // `{id}:{flow.id}` — so incompatible schemas are not a conflict.
       const registry = createFlowRegistry();
       expect(() =>
         registry.register(
@@ -1194,6 +1307,55 @@ describe("end-to-end: shared vs isolated state", () => {
     expect(isolated?.state).toEqual({ locale: "en" });
     expect(isolated?.id).toBe("user_1:isolated-flow");
     expect(isolated?.userId).toBe("user_1");
+  });
+
+  it("keeps two copies of one collection kind out of each other's scope state", async () => {
+    // The outcome this change exists for: two registered copies of one
+    // definition, one user, one org. What each copy calls private must be
+    // absent from the other, and still be there when it is read back.
+    const reviewer = makeFlowFactory({
+      kind: "reviewer",
+      cardinality: "collection",
+      isolateUserState: true,
+      isolateOrgState: true,
+      userSchema: z.object({ note: z.string().optional() }),
+      orgSchema: z.object({ note: z.string().optional() })
+    });
+    const a = reviewer({ id: "reviewer-a" });
+    const b = reviewer({ id: "reviewer-b" });
+    const stores = createInMemoryStores();
+
+    const ctxA = await createExecutionContext({
+      flow: a, actionName: "run", requestId: "req_a", sessionId: "sess_a",
+      userId: "user_1", orgId: "proj_1", stores,
+    });
+    await ctxA.user.patchState({ note: "a-private" });
+    await ctxA.org?.patchState({ note: "a-org" });
+
+    const ctxB = await createExecutionContext({
+      flow: b, actionName: "run", requestId: "req_b", sessionId: "sess_b",
+      userId: "user_1", orgId: "proj_1", stores,
+    });
+    await ctxB.user.patchState({ note: "b-private" });
+    await ctxB.org?.patchState({ note: "b-org" });
+
+    // Neither copy's write is visible to the other, at either scope.
+    expect(ctxB.user.state).toMatchObject({ note: "b-private" });
+    expect(ctxB.org?.state).toMatchObject({ note: "b-org" });
+
+    // And A's values survive B's writes — a later read through A still sees
+    // them, which a shared bucket would have overwritten.
+    const ctxAgain = await createExecutionContext({
+      flow: a, actionName: "run", requestId: "req_a2", sessionId: "sess_a",
+      userId: "user_1", orgId: "proj_1", stores,
+    });
+    expect(ctxAgain.user.state).toMatchObject({ note: "a-private" });
+    expect(ctxAgain.org?.state).toMatchObject({ note: "a-org" });
+
+    expect((await stores.user.get("user_1:reviewer-a"))?.state).toEqual({ note: "a-private" });
+    expect((await stores.user.get("user_1:reviewer-b"))?.state).toEqual({ note: "b-private" });
+    expect((await stores.org.get("proj_1:reviewer-a"))?.state).toEqual({ note: "a-org" });
+    expect((await stores.org.get("proj_1:reviewer-b"))?.state).toEqual({ note: "b-org" });
   });
 
   it("uses namespaced key for org scope when isolated", async () => {

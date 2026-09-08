@@ -36,7 +36,7 @@ When a resource is declared **without** an explicit `ref`, the canonical storage
 type ResourceConfig = {
   ref?: string;                 // Storage namespace identifier (combined with scope/flowIsolation)
   scope: "session" | "user" | "org"; // Required — intrinsic to the definition
-  flowIsolation?: boolean;      // Default false. When true at user/org, namespaces by flowKind
+  flowIsolation?: boolean;      // Default false. When true at user/org, namespaces by flow instance id
   stateSchema: ZodTypeAny;     // Required: defines the data shape
   default?: JsonValue;          // Default initial value
   content?: string;             // Optional definition-time content body
@@ -52,7 +52,7 @@ type ResourceConfig = {
 
 ### `flowIsolation`
 
-User- and org-scoped resources default to **shared** storage across every flow that touches the same `userId` / `orgId`. Set `flowIsolation: true` on a definition that should be flow-private — its data lives at `(scopeId, flowKind, ref)` instead of `(scopeId, ref)`.
+User- and org-scoped resources default to **shared** storage across every flow that touches the same `userId` / `orgId`. Set `flowIsolation: true` on a definition that should be flow-private — its data lives at `(scopeId, flowInstanceId, ref)` instead of `(scopeId, ref)`. The coordinate is the resolved **instance** id, not the kind (FIX-1323): two registered copies of one `collection` definition each get their own cell, and a singleton's instance id is its kind, so its existing keys are unchanged.
 
 `flowIsolation: true` on a session-scoped resource is a build-time error: sessions are intrinsically flow-bound, so the field has no semantic meaning there. The flow-level `isolateUserState` / `isolateOrgState` flags from FIX-431 remain as defaults for resources at the relevant scope that don't declare `flowIsolation` themselves; resource-level declarations always win.
 
@@ -60,9 +60,11 @@ User- and org-scoped resources default to **shared** storage across every flow t
 | -- | -- | -- |
 | `session` | (n/a) | `(sessionId, ref)` |
 | `user` | `false` (default) | `(userId, ref)` |
-| `user` | `true` | `(userId, flowKind, ref)` |
+| `user` | `true` | `(userId, flowInstanceId, ref)` |
 | `org` | `false` (default) | `(orgId, ref)` |
-| `org` | `true` | `(orgId, flowKind, ref)` |
+| `org` | `true` | `(orgId, flowInstanceId, ref)` |
+
+A resource's **state and its content share the instance coordinate** — they are the same cell in two stores, and a read or a migration that moved one without the other would split a resource in half. Session-scoped rows (and the lineage address a `sharedToLineage` resource resolves to) are unchanged by instance isolation: a session is already bound to one instance through its owner record. See `docs/architecture/state-and-scopes.md` → "Cross-Flow State: Shared vs Isolated".
 
 
 ### Resource Content

@@ -537,12 +537,14 @@ The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask
 
 ### Per-flow isolation (opt-in)
 
-Isolation promotes a user/org-scope storage cell to a flow-namespaced key (`${id}:${flowKind}`) so it can't be read or overwritten by other flows. Two layers decide it, at two different granularities (FIX-735):
+Isolation promotes a user/org-scope storage cell to an **instance**-namespaced key (`${id}:${flow.id}`) so it can't be read or overwritten by another flow — including another copy of the same definition (FIX-1323). Two layers decide it, at two different granularities (FIX-735):
 
 - **Flow-level**: `isolateUserState: true` / `isolateOrgState: true` on the `FlowDefinition`. Two roles: (1) it keys the **scope record** — the scope's single `state` blob (`ctx.user.state` / `ctx.org.state`) — and (2) it is the default `flowIsolation` for resources at that scope that don't declare their own. A flow that isolates a scope contributes no `stateSchema` to the registry schema merge for it, but still participates for any resource that opts back out.
 - **Resource-level** (FIX-435): `defineResource({ scope: "user", flowIsolation: true })`. Decides **that resource's** storage key, and always wins over the flow default — in both directions. A library can ship a flow-private user-scoped resource without consumers flipping the flow flag, and a resource declared `flowIsolation: false` stays shared even when a sibling on the same flow is isolated.
 
-Resources key **per resource**, not per flow. A flow may hold both shared and isolated user-scoped resources at once: each `flowIsolation: false` resource lives at the bare `{id}`, each `flowIsolation: true` resource at `{id}:{flowKind}`. The scope record's own `state` keys independently, on the flow-level flag alone.
+Resources key **per resource**, not per flow. A flow may hold both shared and isolated user-scoped resources at once: each `flowIsolation: false` resource lives at the bare `{id}`, each `flowIsolation: true` resource at `{id}:{flow.id}`. The scope record's own `state` keys independently, on the flow-level flag alone.
+
+**The isolation coordinate is the instance, not the kind** (FIX-1323). A singleton's `id` is its `kind`, so its keys are byte-identical to what it wrote before and there is nothing to migrate. Two registered copies of a `collection` definition occupy two buckets, which is the point: they are two flows for every purpose except their shared schema, and a kind coordinate made what each called private a cell they both wrote. There is no kind fallback on read — a runtime cannot discover which copy owned a legacy key from the key alone. A collection deployment with pre-instance history is attributed by the one offline cutover in `apps/docs/docs/persistence/overview.md`, whose stop condition is the same named `migration-required` outcome the runtime raises on a record with no owner.
 
 Use isolation for internal-only flows, background jobs, library-private state, or domain-specific data that should not leak into shared surfaces.
 
@@ -554,22 +556,28 @@ Key resolution is centralized in `packages/engine/src/stores/scope-keys.ts`. The
 
 ```ts
 export function resolveUserStorageKey(userId, flow): string {
-  return flow.isolateUserState ? `${userId}:${flow.kind}` : userId;
+  return flow.isolateUserState ? `${userId}:${flow.id}` : userId;
 }
 ```
+
+The exported helpers take an instance-bearing shape: a caller holding only `{ kind, isolateUserState }` passes `{ id: flow.id, isolateUserState }` instead. Each component is escaped before the two are joined, so the `(identity, instance)` pair is recoverable from the key — instance ids are arbitrary caller-supplied strings, and concatenating them raw let two different pairs name one cell. A component carrying neither `:` nor `\` encodes to itself, so every ordinary id keys byte-identically to what it already wrote.
+
+Every read-side projection goes through one persisted-read function, `getPersistedData` — the `/state` route, the resource routes, the debug snapshot and sibling transports alike — so no two of them can derive different keys for one request. `toIsolationFlow` in `scope-keys.ts` is the single coercion that function applies.
 
 **Resources** resolve a `scopeId` per resource from their effective isolation (the resource's `flowIsolation` if set, else the flow default):
 
 ```ts
 const isolated = resolveResourceIsolation(resource.flowIsolation, flow, "user");
-const scopeId = resolveResourceScopeId(userId, flow.kind, isolated); // bare id, or `${id}:${kind}`
+const scopeId = resolveResourceScopeId(userId, flow.id, isolated); // bare id, or `${id}:${flowId}`
 ```
 
-`createExecutionContext` routes every per-resource `resourceState` / `content` read and write through the per-resource resolution; read-side projections (`/state`, the resource routes, sibling MCP adapters) enumerate the buckets a flow declares via `resourceScopeIds` and merge. Session and request scopes are unaffected — sessions and requests carry their owning instance (`flowId`, beside the definition's `flowKind`), and every route, transport and direct `runAction` admits the owner before any effect, so a session is reachable only through the instance that created it. Note that `flowKind` alone does not isolate sessions: two instances of one collection share a kind and are still two owners.
+`createExecutionContext` routes every per-resource `resourceState` / `content` read and write through the per-resource resolution; read-side projections (`/state`, the resource routes, sibling MCP adapters) resolve the record's owning instance first, then enumerate the buckets that flow declares via `resourceScopeIds` and merge — one owner resolution per request, reused for the scope records and both resource stores. Session and request scopes are unaffected — sessions and requests carry their owning instance (`flowId`, beside the definition's `flowKind`), and every route, transport and direct `runAction` admits the owner before any effect, so a session is reachable only through the instance that created it. Note that `flowKind` alone does not isolate sessions: two instances of one collection share a kind and are still two owners.
+
+An instance id is a storage coordinate, not an authorization: the existing user, org and tenant checks still run before any of this data is exposed.
 
 ### Non-goals
 
-- **Schema versioning / migration.** Flipping `isolateUserState` (or a resource's `flowIsolation`) on an existing flow/resource is a data-affecting change — existing shared records become invisible; new isolated records start fresh. No automatic migration.
+- **Schema versioning / migration.** Flipping `isolateUserState` (or a resource's `flowIsolation`) on an existing flow/resource is a data-affecting change — existing shared records become invisible; new isolated records start fresh. Renaming a collection instance moves where its private data lives, for the same reason: stable instance ids are a persistence commitment. No automatic migration in either case; the single offline procedure is in `apps/docs/docs/persistence/overview.md`.
 - **Cross-flow read validation.** The registry prevents incompatible writes; it does not re-parse stored state on every read.
 
 ## Child sessions and scope
@@ -588,10 +596,12 @@ A same-instance child inherits `flowId` and `flowKind`, `userId`, `tenantId`, `o
 |---|---|
 | `request` | Fresh — the child's own dispatch |
 | `session` | **A separate cell.** Own state blob, own items and history, own journal, own metadata, own session-scoped resources — except a resource declared `sharedToLineage` (below) |
-| `user` | **The parent's cell.** `userId` is inherited, and `isolateUserState` keys on `${userId}:${flowKind}` with `flowKind` inherited too — so isolated and shared both resolve to the record the parent reads |
-| `org` | The parent's cell, by the same reasoning |
+| `user` | `userId` is inherited, so a **shared** cell (the bare `userId` — the default) is always the record the parent reads. An **isolated** cell keys on `${userId}:${flow.id}`, and `flow.id` is the *running* instance: a same-instance child inherits it and so reads the parent's cell, but a **cross-instance** child carries the target instance's id and reads that instance's cell, not its parent's |
+| `org` | The same, on the bound `orgId` and `isolateOrgState` |
 
 Tenant follows identity: the child's session storage key is `${tenantId}:dsx_...` under `resolveSessionStorageKey`, exactly as for any other session.
+
+**Do not rely on an isolated user/org cell being shared with the parent across a cross-instance dispatch** (FIX-1323). Before the isolation coordinate became the instance, every child of every dispatch resolved its parent's isolated cell, because the kind was the same or inherited. It no longer is. Work that has to reach the dispatching side's data either leaves it shared (the default) or passes it in the dispatch payload; a resource that has to follow the conversation rather than the principal is `sharedToLineage` at session scope (below).
 
 ### What connects a child to its parent today
 
