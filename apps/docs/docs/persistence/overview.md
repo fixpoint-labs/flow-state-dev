@@ -218,7 +218,7 @@ Omitting `parentage` narrows to `"top-level"`, which is the reverse of how an om
 
 ### Incremental items storage
 
-Backed adapters store items incrementally rather than inside the request record's JSONB column. The SQLite and Postgres adapters write one row per item into a dedicated child table (`request_items`); the filesystem store appends items and events to an append-only log instead. `RequestStore.persistItems` and `get` keep the same shape either way, so a flow author sees no difference. An operator does: See [Persistence cost model](/docs/server/setup#persistence-cost-model) for how each backend stores its data.
+Backed adapters store items incrementally rather than inside the request record's JSONB column. The SQLite and Postgres adapters write one row per item into a dedicated child table (`request_items`); the filesystem store appends items and events to an append-only log instead. `RequestStore.persistItems` and `get` keep the same shape either way, so a flow author sees no difference. An operator does — see [Persistence cost model](/docs/server/setup#persistence-cost-model) for how each backend stores its data.
 
 - `RequestStore.list()` does not populate `record.items` by default on any adapter; pass `withItems: true` to opt in.
 - `RequestStore.countItems(requestId)` returns how many items a request holds without loading their payloads — session retention's `maxItems` check uses it so a sweep stays cheap on long histories. A custom store must implement it; the backed adapters answer with an indexed `COUNT` on `request_items`.
