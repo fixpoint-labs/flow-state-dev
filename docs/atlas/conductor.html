@@ -1142,11 +1142,11 @@ export const inboxCollection = <em>defineResourceCollection</em>({
 
   <h3>A flow is already a mailroom</h3>
 
-  <p>Actions <em>are</em> dispatch types, and the flow routes each one to its workflow. That is what <code>defineFlow({ actions })</code> has always been, and it is why so little has to be added: an <code>internal</code> dispatch is a sixth type arriving at a door that already exists.</p>
+  <p>Actions <em>are</em> dispatch types, and the flow routes each one to its workflow. That is what <code>defineFlow({ actions })</code> has always been, and it is why so little has to be added: an <code>internal</code> dispatch is a fifth type arriving at a door that already exists.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 388" role="img" aria-label="A flow as a mailroom. Six dispatch types arrive at one door, each addressed by type and name. A public dispatch comes from a caller: HTTP, MCP or voice, and resolves flow.actions by name. A chat dispatch comes from a matched subscription and resolves flow.chat.on by event key. A webhook comes from an external sender and resolves flow.webhooks by provider and event type. A schedule comes from the host cron and resolves flow.schedules.static by schedule id. A task comes from a board seat and resolves flow.task.actions. An internal dispatch comes from a dispatcher block in a running request and resolves flow.internal.actions. All six enter the flow, which resolves one keyed lookup on type and name with no fallback to another type's map, and arbitrates on the session key using the concurrency policy. Only the two new maps nest under their type; the four transport maps keep the spelling they already had. The flow hands each dispatch to the entry it names. An internal dispatch adds a sender to a set of inputs that already exists; it is not a second way in.">
+      <svg viewBox="0 0 940 346" role="img" aria-label="A flow as a mailroom. Five dispatch types arrive at one door, each addressed by type and name. A public dispatch comes from a caller: HTTP, MCP or voice, and resolves flow.actions by name. A webhook comes from an external sender and resolves flow.webhooks by provider and event type. A schedule comes from the host cron and resolves flow.schedules.static by schedule id. A task comes from a board seat and resolves flow.task.actions. An internal dispatch comes from a dispatcher block in a running request and resolves flow.internal.actions. All five enter the flow, which resolves one keyed lookup on type and name with no fallback to another type's map, and arbitrates on the session key using the concurrency policy. Only the two new maps nest under their type; the three older maps keep the spelling they already had. The flow hands each dispatch to the entry it names. An internal dispatch adds a sender to a set of inputs that already exists; it is not a second way in.">
         <text class="t-lbl" x="16" y="24">WHO SENDS IT &middot; (type, name)</text>
         <text class="t-lbl" x="456" y="24" text-anchor="middle">ONE DOOR</text>
         <text class="t-lbl" x="924" y="24" text-anchor="end">WHAT RUNS</text>
@@ -1157,53 +1157,48 @@ export const inboxCollection = <em>defineResourceCollection</em>({
         <path class="ln" d="M286,61 L336,61"/>
 
         <rect class="n-box" x="16" y="90" width="270" height="46" rx="4"/>
-        <text class="t-b" x="32" y="110">chat</text>
-        <text class="t-xs" x="32" y="127">A SUBSCRIPTION &middot; flow.chat.on[key]</text>
+        <text class="t-b" x="32" y="110">webhook</text>
+        <text class="t-xs" x="32" y="127">EXTERNAL &middot; flow.webhooks[p].on[e]</text>
         <path class="ln" d="M286,113 L336,113"/>
 
         <rect class="n-box" x="16" y="142" width="270" height="46" rx="4"/>
-        <text class="t-b" x="32" y="162">webhook</text>
-        <text class="t-xs" x="32" y="179">EXTERNAL &middot; flow.webhooks[p].on[e]</text>
+        <text class="t-b" x="32" y="162">schedule</text>
+        <text class="t-xs" x="32" y="179">HOST CRON &middot; flow.schedules.static</text>
         <path class="ln" d="M286,165 L336,165"/>
 
         <rect class="n-box" x="16" y="194" width="270" height="46" rx="4"/>
-        <text class="t-b" x="32" y="214">schedule</text>
-        <text class="t-xs" x="32" y="231">HOST CRON &middot; flow.schedules.static</text>
+        <text class="t-b" x="32" y="214">task</text>
+        <text class="t-xs" x="32" y="231">A BOARD SEAT &middot; flow.task.actions</text>
         <path class="ln" d="M286,217 L336,217"/>
 
         <rect class="n-box" x="16" y="246" width="270" height="46" rx="4"/>
-        <text class="t-b" x="32" y="266">task</text>
-        <text class="t-xs" x="32" y="283">A BOARD SEAT &middot; flow.task.actions</text>
+        <text class="t-b f-accent" x="32" y="266">internal</text>
+        <text class="t-xs" x="32" y="283">A dispatcher() BLOCK &middot; flow.internal</text>
         <path class="ln" d="M286,269 L336,269"/>
 
-        <rect class="n-box" x="16" y="298" width="270" height="46" rx="4"/>
-        <text class="t-b f-accent" x="32" y="318">internal</text>
-        <text class="t-xs" x="32" y="335">A dispatcher() BLOCK &middot; flow.internal</text>
-        <path class="ln" d="M286,321 L336,321"/>
-
-        <rect class="n-box2" x="336" y="38" width="240" height="306" rx="4"/>
+        <rect class="n-box2" x="336" y="38" width="240" height="254" rx="4"/>
         <text class="t-lbl" x="456" y="72" text-anchor="middle">EXISTS</text>
         <text class="t-b" x="456" y="106" text-anchor="middle">the flow</text>
         <text class="t-s" x="456" y="132" text-anchor="middle">one typed entry set</text>
         <text class="t-xs" x="456" y="162" text-anchor="middle">ONE KEYED LOOKUP ON (type, name)</text>
         <text class="t-xs" x="456" y="190" text-anchor="middle">NO FALLBACK: A TYPE WITH NO</text>
         <text class="t-xs" x="456" y="206" text-anchor="middle">SUCH ENTRY REFUSES</text>
-        <text class="t-xs" x="456" y="248" text-anchor="middle">ARBITRATED ON THE SESSION KEY</text>
-        <text class="t-xs" x="456" y="264" text-anchor="middle">BY THE CONCURRENCY POLICY</text>
-        <text class="t-xs" x="456" y="300" text-anchor="middle">SIX MAPS, ONE KEYED LOOKUP</text>
-        <text class="t-xs" x="456" y="316" text-anchor="middle">OWN-PROPERTY, BY TYPE</text>
+        <text class="t-xs" x="456" y="232" text-anchor="middle">ARBITRATED ON THE SESSION KEY</text>
+        <text class="t-xs" x="456" y="248" text-anchor="middle">BY THE CONCURRENCY POLICY</text>
+        <text class="t-xs" x="456" y="272" text-anchor="middle">FIVE MAPS, ONE KEYED LOOKUP</text>
+        <text class="t-xs" x="456" y="288" text-anchor="middle">OWN-PROPERTY, BY TYPE</text>
 
-        <path class="ln" d="M576,191 L660,191"/>
+        <path class="ln" d="M576,165 L660,165"/>
 
-        <rect class="n-box" x="660" y="157" width="264" height="68" rx="4"/>
-        <text class="t-b" x="676" y="181">the entry it names</text>
-        <text class="t-xs" x="676" y="199">internal.actions &middot; task.actions NEST</text>
-        <text class="t-xs" x="676" y="215">THE FOUR OLDER MAPS KEEP THEIRS</text>
+        <rect class="n-box" x="660" y="131" width="264" height="68" rx="4"/>
+        <text class="t-b" x="676" y="155">the entry it names</text>
+        <text class="t-xs" x="676" y="173">internal.actions &middot; task.actions NEST</text>
+        <text class="t-xs" x="676" y="189">THE THREE OLDER MAPS KEEP THEIRS</text>
 
-        <text class="t-lbl" x="470" y="372" text-anchor="middle">SIX TYPES, ONE DOOR. AN internal DISPATCH ADDS A SENDER. IT IS NOT A SECOND WAY IN.</text>
+        <text class="t-lbl" x="470" y="330" text-anchor="middle">FIVE TYPES, ONE DOOR. AN internal DISPATCH ADDS A SENDER. IT IS NOT A SECOND WAY IN.</text>
       </svg>
     </div>
-    <figcaption><b>The door already exists.</b> Four of these six types were wired before the slice and were retyped rather than rebuilt; <code>task</code> and <code>internal</code> are the two it added, and they are the only two whose entries nest under the type. <code>flow.actions</code>, <code>flow.chat</code>, <code>flow.webhooks</code> and <code>flow.schedules</code> keep the spelling they already had, which is the one place the shipped cut departs from the design it implements. What an <code>internal</code> dispatch changes is <em>who</em> may put a dispatch through the door &#8212; not how a dispatch is routed once it is inside, and not what happens after.</figcaption>
+    <figcaption><b>The door already exists.</b> Three of these five types were wired before the slice and were retyped rather than rebuilt; <code>task</code> and <code>internal</code> are the two it added, and they are the only two whose entries nest under the type. <code>flow.actions</code>, <code>flow.webhooks</code> and <code>flow.schedules</code> keep the spelling they already had, which is the one place the shipped cut departs from the design it implements. What an <code>internal</code> dispatch changes is <em>who</em> may put a dispatch through the door &#8212; not how a dispatch is routed once it is inside, and not what happens after.</figcaption>
   </figure>
 
   <p>Actions are already API-driven &#8212; over REST, or programmatically against the flow instance &#8212; so the set of things that can put a dispatch through that door is already open. An <code>internal</code> dispatch adds an <strong>internal</strong> sender to it. It does not add a second way in.</p>

@@ -162,6 +162,14 @@ describe("resolveEntry — webhook/scheduled need their own coordinate, never a 
     expect(resolveEntry(flow, "run", "http", forged)?.block).toBe(publicBlock);
   });
 
+  it("refuses a dispatch stamped by the removed chat transport, even when its name is a public action", () => {
+    // Queued before the removal: `source: "chat"`, action = the chat handler's
+    // block name. The name colliding with `flow.actions.run` must not resolve
+    // the public entry — the removed source has no map to read.
+    expect(resolveEntry(flow, "run", "chat", undefined)).toBeUndefined();
+    expect(resolveEntry(flow, "run", "chat", { chat: { eventKey: "mention" } })).toBeUndefined();
+  });
+
   it("resolves nothing for a coordinate that names no binding — never falls back to the name", () => {
     // Each mismatch on its own axis: an unknown provider, an unknown event
     // under a known provider, a null eventType, and an unknown schedule id. None of these fall through to `flow.actions[name]`

@@ -333,6 +333,14 @@ describe("the stamp is trusted only under a seam-stamped source", () => {
     expect(dispatchTypeOf("some-third-party-transport")).toBe("public");
     expect(dispatchTypeOf(undefined)).toBe("public");
   });
+
+  it("refuses the removed chat source instead of retyping it as public", () => {
+    // A request recorded or queued before the chat transport was removed still
+    // carries `source: "chat"` and, as its action, the chat handler block's
+    // name — provenance only. Falling through to `public` would hand that
+    // dispatch a same-named caller action; it must resolve nothing instead.
+    expect(dispatchTypeOf("chat")).toBeUndefined();
+  });
 });
 
 describe("a failed enqueue-time materialization gives a `reject` key back", () => {

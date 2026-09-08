@@ -139,7 +139,11 @@ when their coordinate misses: an absent binding is a refusal, not a pivot into
 a caller-addressed handler. `dispatchTypeOf(source)`
 (`engine/transport-sources.ts`) maps a request source onto the type it
 resolves as; the four framework-stamped sources each map to their own type,
-and every caller-facing source maps to `public`.
+and every caller-facing source maps to `public`. The one exception is the
+removed chat transport's `chat` source, which maps to no type at all: a request
+recorded or queued before the removal still carries it, with the chat handler's
+block name as its action, and letting it fall through to `public` would hand it
+a same-named caller action. It is refused instead.
 
 A `task` dispatch carries the entry name as provenance only, and that name can
 collide with a public `flow.actions` key. The one-map rule is what keeps the
