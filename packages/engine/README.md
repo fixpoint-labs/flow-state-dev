@@ -655,7 +655,14 @@ A schema that collapses its own output — one whose second parse returns `null`
 
 Every resource write runs the check, because they all share one parse path: `setState` / `patchState` / `updateState`, the same ops on collection instances, `collection.create()` and `upsert`, and the client create route `POST /sessions/:id/resources/:ref`. That route carries no initial state, so it seeds the row from the schema's parse of `{}` — and a schema that cannot produce a valid, stable object from `{}` now gets `400` rather than a `201` over a row every later write would reject. A required field with no `.default()` is the usual cause; give it one.
 
-Rows written before this check may not satisfy it, and only some of them heal on their own. A row under a schema whose parse settles is read normally and converges to a stable value on its next successful write. A row written by a schema whose parse does not settle has no next successful write: every mutation through that schema is now refused, so nothing converges until the schema itself is fixed. Make the parse idempotent and the row converges on the next write after that; a value that already drifted keeps the value it drifted to until a write corrects it. If you need a derived value, compute it where you read the state rather than inside the state schema.
+A stored row that does not satisfy the check is read normally either way, but only one of the two kinds heals on its own:
+
+| The row's schema | What happens to the row |
+|---|---|
+| Parse settles | Read normally, and its next successful write stores a stable value |
+| Parse does not settle | There is no next successful write — every mutation through that schema is refused, so nothing changes until the schema is fixed |
+
+For the second kind, make the parse idempotent first; the next write after that settles the row. A value that already drifted keeps what it drifted to until a write corrects it. If you need a derived value, compute it where you read the state rather than inside the state schema.
 
 ```ts
 // branded — see the note under the table below
@@ -940,6 +947,7 @@ Right-hand-column calls never enter the retry loop and never raise `ConcurrentMo
 | `pushState(field, value)` | Both land. Position is not promised |
 | `patchState({ field: value })` — one field, plain value | Last write wins. The other value is gone |
 | `setStateRecord(field, key, value)` | Last write wins on that key. Other keys are untouched |
+| `deleteStateRecord(field, key)` | The key is removed. Other keys are untouched |
 
 Both writers get `true` in every one of those rows, the overwrite included. Where the new value depends on the old one, use `patchState("field", updater)` or `atomicState`, which re-run the mutator against the value that won.
 

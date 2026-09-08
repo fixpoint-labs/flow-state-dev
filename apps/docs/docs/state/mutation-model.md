@@ -6,9 +6,7 @@ sidebar_position: 1
 
 Every scope's state mutators (`patchState`, `setState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) route through one of three paths inside the runtime. Which path you get depends on whether the scope writes to a store at all, and on whether anything outside this Node.js process can advance the version underneath you.
 
-The shape of the write decides a second question: whether it carries a version at all. [Which writes carry a version](#which-writes-carry-a-version) is the table, and it is the part worth reading before you pick a mutator.
-
-Read-only instance config is also available on the context as `ctx.settings` — see [Engine setup → Settings](/docs/server/setup#settings).
+This page is the machinery. If what you want is which mutator to reach for and what two concurrent writers end up with, that's [State Operations](/docs/fundamentals/state-operations#cas-semantics).
 
 ## Three write paths
 
@@ -36,13 +34,13 @@ The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps
 | Request scope | `ConcurrentModificationError` when the retry budget exhausts |
 | Session / user / org | `ConcurrentModificationError` when the retry budget exhausts |
 
-Those two rows are about version-checked writes. An unchecked write carries no version, so it has nothing to conflict with and cannot raise `ConcurrentModificationError`.
+Those two rows are about version-checked writes. A write that carries no version has nothing to conflict with and cannot raise `ConcurrentModificationError`.
 
 ### Scopes with no store use a FIFO queue
 
 A *target* state container, a *sequencer* state container, [block state](/docs/advanced/block-state) generally, or any scope you build that doesn't bridge through a `persist` callback gets the lock path. Each container has a tail promise; new mutators chain off it, run one at a time in submission order, and the tail advances.
 
-In a single-process Node.js runtime, the only race vector for these mutators is `await`-point interleaving inside this process. Optimistic concurrency control with a fixed retry budget is the wrong primitive here — concurrent task-board workers create predictable, sustained contention, and the retry budget exhausts long before all writers can land. Serializing at the source costs nothing and is correct by construction.
+In a single-process Node.js runtime, the only race vector for these mutators is `await`-point interleaving inside this process. Optimistic concurrency control with a fixed retry budget is the wrong primitive there: concurrent task-board workers create sustained contention, and the retry budget exhausts long before all writers can land. Serializing at the source costs nothing and orders them exactly.
 
 The lock branch never throws `ConcurrentModificationError`. There is no version conflict to retry, because there is no remote authority that could advance the version.
 
@@ -60,133 +58,13 @@ These scopes write to a store — whichever adapter you configured, including th
 
 `ConcurrentModificationError` surfaces from these paths when retries exhaust. That's the contract: if the remote authority moves faster than your retry budget, you need to either widen the budget with `cas` on the scope or restructure to avoid the contention.
 
-### Which writes carry a version
-
-Some calls compute the next state from what they read, so the runtime writes a whole record and asks the store to accept it only if the version this context read is still current. Others describe an operation instead — "add 1 to `messageCount`", "set `byId.doc-1` to this value" — and the runtime hands that operation to the store, which applies it to the record as it stands. Those are **unchecked** writes. Nothing is compared, so nothing can conflict, and an unchecked write never raises `ConcurrentModificationError`. A call only goes that way if [the store offers the matching operation](#the-store-has-to-offer-the-operation).
-
-That is the mechanism. What you actually need is the second column: what two concurrent writers on the same field end up with.
-
-| Call | Carries a version | Two writers, same field |
-|---|---|---|
-| `incState({ field: n })` — one field | No | Both land. The field ends up with both deltas |
-| `pushState(field, value)` | No | Both land. Position is not promised |
-| `patchState({ field: value })` — one field, plain value | No | **Last write wins.** The other value is gone |
-| `setStateRecord(field, key, value)` | No | **Last write wins** on that key. Other keys are untouched |
-| `deleteStateRecord(field, key)` | No | The key is removed. Other keys are untouched |
-| `setState(next)` | Yes | **The object you passed is written as-is.** The other writer's fields are replaced |
-| `patchState({ a, b })` — two or more fields | Yes | Your fields overwrite theirs. Fields you didn't name survive |
-| `incState({ a, b })` — two or more fields | Yes | Both sets of increments land |
-| `patchState("field", updater)` | Yes | Your updater runs again against the value that won |
-| `atomicState(mutator)` | Yes | Your mutator runs again against the value that won |
-
-Carrying a version is not the same as merging, and `setState` is the call that catches people out. When a version-checked write loses the race, the runtime refreshes from the store and runs the write again — but "again" means three different things. `atomicState`, the updater form of `patchState`, and a multi-field `incState` re-run *your computation* against the value that won, so the two updates combine. A multi-field `patchState` re-applies the fixed values you passed onto the refreshed state, so fields you didn't name survive and the ones you did are overwritten. `setState` re-sends *the whole object you already passed*, unchanged, so whatever the other writer landed is replaced. Reach for `setState` when you mean "make the state exactly this", not when you mean "apply my change to it".
-
-#### Both writers land
-
-Two contexts incrementing the same counter both land, and neither spends a retry:
-
-```ts
-// two concurrent execution contexts, unchanged flow code, messageCount at 0
-await ctx.session.incState({ messageCount: 1 });
-await ctx.session.incState({ messageCount: 1 });
-// stored messageCount is 2
-```
-
-Appends land the same way, and nothing is dropped. What isn't promised is position. Two concurrent `pushState` calls on one array both survive, in whichever order they reached the store:
-
-```ts
-// two concurrent execution contexts appending to session state
-await ctx.session.pushState("history", { role: "user", text: "first" });
-await ctx.session.pushState("history", { role: "user", text: "second" });
-// both entries are in history. Which one sits at index 0 depends on
-// which write the store applied first.
-```
-
-So if you read that array back as an ordered history, order it on a field you set yourself, a timestamp or a sequence number. Array position won't carry that for you.
-
-#### Last write wins on the same field
-
-An unchecked write holds up against writers touching other parts of the record. Two writers on different fields, or on different keys of one map, don't clobber each other, because each write is applied to the record as the store holds it at that moment.
-
-Two writers on the same field, or the same key of one map, are the case that bites. A single-field `patchState`, or a `setStateRecord` on one key, carries no version, so the store has nothing to compare and stores the value it was handed. The write that reaches the store second wins, and the first one is gone:
-
-```ts
-// two concurrent execution contexts, both writing session state
-await ctx.session.patchState({ owner: "worker-a" });
-await ctx.session.patchState({ owner: "worker-b" });
-// stored owner is whichever write landed second. The other value is
-// overwritten. Both calls resolved true, neither raised, neither retried.
-```
-
-Nothing in the return value tells you this happened. Both calls resolve `true`, because each writer's own value did reach the store.
-
-When the write depends on what is already stored, use the updater form of `patchState` or `atomicState` instead. Both read current state, and a lost race re-runs your updater against the value that won rather than discarding it:
-
-```ts
-// claim the session only if nobody holds it
-const claimed = await ctx.session.patchState("owner", (current) => current ?? "worker-b");
-// true if this context claimed it. false if "worker-a" won the race —
-// the updater re-ran against "worker-a" and left it alone.
-```
-
-#### The store has to offer the operation
-
-A write only skips the check if the store behind the scope offers the matching operation. When it doesn't, the runtime writes the whole record instead, at the version this run last read, in a single attempt with no retry.
-
-Field deletion is the one gap in the built-in adapters. No built-in store offers it on request state, and the filesystem store offers it on no scope at all. `deleteStateRecord` there writes the full record:
-
-```ts
-await ctx.session.deleteStateRecord("byId", "doc-1");
-// on the filesystem store, resolves false when another writer moved the
-// session record first. "doc-1" is still stored.
-```
-
-That `false` is a lost race against a session record that is still very much there, not a report that the key was already gone.
-
-Retrying the same call in the same execution context will not clear the key. The refused write leaves this context's cached state and version untouched, so every repeat sends the version that already lost and gets `false` back. Reading the map first changes nothing, because that read comes from the same cache.
-
-Use a version-checked write instead. `atomicState` refreshes from the store on a conflict and runs your mutator again against the record that won:
-
-```ts
-await ctx.session.atomicState((state) => ({
-  byId: Object.fromEntries(
-    Object.entries(state.byId).filter(([key]) => key !== "doc-1")
-  ),
-}));
-// "doc-1" is gone from the record the store holds. Raises
-// ConcurrentModificationError if the retry budget exhausts.
-```
-
-A fresh execution context clears it too, since it loads the record from the store on the way in.
-
-On session, user and org state backed by the in-memory store, SQLite or Postgres, `deleteStateRecord` is unchecked like the rest. The store removes the key in place, so there is no version to lose.
-
-#### When `false` doesn't mean "already correct" {#when-false-doesnt-mean-already-correct}
-
-An unchecked write is refused when the record is gone. Every store checks that the record exists before it looks at any version, so a write to a scope whose record was deleted underneath you doesn't recreate it:
-
-```ts
-await ctx.session.incState({ messageCount: 1 });
-// false if the session record has been deleted. Nothing is created.
-```
-
-`false` is also what you get when the write was skipped as a no-op, and that no-op is decided against the state **this context last read**, before any store round-trip. If another context changed the field since your last read, and your write happens to match your own stale copy, the write is skipped and the other context's value stays stored:
-
-```ts
-// this context last read mode: "chat". Another context has since stored "agent".
-const changed = await ctx.session.atomicState(() => ({ mode: "chat" }));
-// false. Stored mode is still "agent" — the write was never sent.
-```
-
-So `false` means "nothing was written". It does not mean "the store already holds your value". Three different things produce it: a no-op against this context's cached read, a refusal because the record is gone, and a lost version check on a full-record fallback write. The return value alone won't tell them apart. When you need to know what is stored, read it back from something other than this context's cache. `ctx.<scope>.state` is that cache, and a lost version check leaves it untouched, so reading it back there hands you the copy that just lost. A version-checked write refreshes it on conflict, and a fresh execution context loads the record on the way in.
-
-### The resource state store is versioned too
+## The resource state store is versioned too {#the-resource-state-store-is-versioned-too}
 
 The four scopes above hold one state record each. **Resource state** — the state behind `ctx.resources.something`, and behind every instance of a collection — lives in a separate store, keyed per resource.
 
 Resource state is versioned: every stored resource carries a version that increases by one on each committed write and is never reused. A write lands only if the version this context read is still current; otherwise it is refused and the mutator re-runs. The refusal reports the version that is actually current. The store is what compares, so the refusal reaches exactly as far as the store does: the in-memory, SQLite and Postgres stores compare inside the store, and the filesystem store compares under a guard held on the store instance.
 
-Every resource **state** mutator takes that check: `patchState`, `setState`, `updateState`, `incState`, `pushState`, and the same five on a collection instance. The unchecked writes above belong to scope state — `incState` and `pushState` share their names with a scope bag but not that bag's exemption, so on a resource the delta is re-applied against the value that won rather than sent to the store unversioned.
+Every resource **state** mutator takes that check: `patchState`, `setState`, `updateState`, `incState`, `pushState`, and the same five on a collection instance. `incState` and `pushState` share their names with a scope bag but not that bag's exemption — on a resource the delta is re-applied against the value that won rather than sent to the store unversioned.
 
 `writeContent` does not take it. A content write carries no version, so the store overwrites whatever body the key holds:
 
@@ -222,11 +100,11 @@ Both refusals are final rather than retried. A retry could only re-apply what yo
 
 `getOrCreate` and `upsert` never surface the second one. Their contract is to hand you the instance either way, so a create that loses the race becomes a read of the winner (`getOrCreate`) or applies its update as a patch (`upsert`).
 
-One thing that is deliberately *not* an error: touching a resource that has never been stored. A resource you declared but never wrote exists so far only as its schema default, and a write to it that changes nothing is a no-op, not a report that something was deleted.
+Touching a resource that has never been stored is not an error. A resource you declared but never wrote exists so far only as its schema default, and a write to it that changes nothing is a no-op, not a report that something was deleted.
 
 Those two cases are why resource state has its own retry driver rather than sharing the one the four scopes use. The scope driver treats every conflict as retryable, which is correct when the only thing a conflict can mean is "somebody else moved this value." Resource state has two conflicts that mean something else — the key is gone, and the key is already taken — and retrying either produces exactly the write the version check was there to stop. Resource writes also pair a queue with a version check, the way request scope does: a per-key queue orders one context's writes to a resource so they never contend with each other, and the compare-and-swap underneath handles the contexts the queue cannot see.
 
-Writing a value the resource already holds still skips the write and emits no change event — but only once the runtime has re-read the key and confirmed your version is current. If the version moved, that is a conflict, not a no-op: the value you are writing happens to equal a stale cache, and suppressing it there would be the silent lost update this whole model exists to prevent.
+Writing a value the resource already holds skips the write and emits no change event, but only once the runtime has re-read the key and confirmed your version is current. If the version moved, that is a conflict rather than a no-op: the value you are writing happens to equal a stale cache, and suppressing it there would be the silent lost update this whole model exists to prevent.
 
 A resource write can exhaust its retry budget under sustained contention and raise `ConcurrentModificationError`, the same as the external-store scopes above. The per-key write queue in front of it makes that rare, because writes from one context never contend with each other.
 
@@ -234,9 +112,9 @@ Deleting a resource leaves a small marker behind rather than removing the row, a
 
 Markers are cleared at one moment only: the birth of a session record. Creating a session under an id clears that id's markers just before the record is written, so reusing a session id hands you writable resources rather than a session whose static resources refuse every write. Deleting a session clears nothing. That reclamation is the one place the never-reused-version guarantee stops holding — a reclaimed key starts again at version `1` — and it is not fenced against a second creator racing it for the same id, so the loser of that race can clear a marker inside the session that won and let the next write bring a deleted resource back. Both are reachable only by deliberately reusing a session id. See [persistence](../persistence/overview.md) for the storage-side view.
 
-One limit stated plainly: on the filesystem store the comparison is held per key on the store instance. That covers every write through that instance, two contexts sharing it included. It does not coordinate two stores pointed at the same directory, whether they sit in one Node process or two. The in-memory, SQLite and Postgres stores compare and swap inside the store itself.
+On the filesystem store the comparison is held per key on the store instance. That covers every write through that instance, two contexts sharing it included. It does not coordinate two stores pointed at the same directory, whether they sit in one Node process or two. The in-memory, SQLite and Postgres stores compare and swap inside the store itself.
 
-## Schema-invalid resource writes
+## Schema-invalid resource writes {#schema-invalid-resource-writes}
 
 After `patchState`, `setState`, `updateState`, `incState`, or `pushState` returns on a `ResourceRef`, the stored state is a JSON object that satisfies that resource's `stateSchema`. Collection-instance refs from `get` or `create` expose the same five methods and the same contract.
 
@@ -276,7 +154,9 @@ const bumpRetries = handler({
 });
 ```
 
-A result that fails `stateSchema`, or that parses to a non-null non-object, throws `ValidationError`. A whole-row `.catch()` fallback — including one sitting under `.nullable()`, `.default()`, or `.readonly()` — is treated as that same failure on writes: those catch wrappers are peeled, and the candidate must satisfy the wrapped inner schema before fallback-normalized output can be stored. Field-level `.catch()` remains ordinary Zod normalization. Stored state is the value from before the call. No `resource_change` is emitted.
+A write is refused, with `ValidationError`, when its result fails `stateSchema`, when it parses to a non-null non-object, or when the schema does not parse its own output back to the same value — see [the schema has to settle](#the-schema-has-to-settle) below. Stored state is the value from before the call, and no `resource_change` is emitted.
+
+A whole-row `.catch()` fallback — including one sitting under `.nullable()`, `.default()`, or `.readonly()` — is treated as a schema failure on writes: those catch wrappers are peeled, and the candidate must satisfy the wrapped inner schema before fallback-normalized output can be stored. Field-level `.catch()` remains ordinary Zod normalization.
 
 `setState(null)` on a `.nullable()` resource is not a schema failure. The store holds JSON objects, so that write persists as `{}` — the same cleared form an unwritten nullable single already surfaces as.
 
@@ -288,7 +168,7 @@ Resource "<storage-key>" write failed stateSchema validation[ at "<path>"]: <iss
 
 `<storage-key>` is the persist key: `task` for a single resource, `items/doc1` for a collection instance. The ` at "<path>"` segment is present when Zod reports a field path.
 
-Collection `create` and `upsert` refuse an invalid initial or merged state. The instance is not created or patched.
+Collection `create` and `upsert` refuse an invalid initial or merged state, and the seed clears the same bar as any later write. The instance is not created or patched.
 
 A read of a persisted single-resource value that does not validate resolves to a schema-valid default. The read does not throw. A collection-instance read returns the stored object as-is.
 
@@ -296,7 +176,42 @@ The refusal applies to `ResourceRef`. Scope bags (`ctx.session.patchState` and t
 
 `incState` and `pushState` carry a second refusal alongside this one. A delta aimed at a field that holds the wrong kind of value throws `FlowError` with code `resource_delta_refused` instead of a schema error, and the stored value is unchanged either way. See [When a delta is refused](/docs/resources/overview#when-a-delta-is-refused).
 
-## Writing an updater that may run twice
+### The schema has to settle {#the-schema-has-to-settle}
+
+A resource's `stateSchema` runs on every write, so anything it rewrites is re-applied each time. A single resource takes it twice per read-modify-write cycle, because the schema runs on the way out too: the read path normalizes the stored row, your updater builds on that, and the write parses the result. A collection instance is read back as stored, so its rewrite lands once, on the write. The count differs; that the rewrite recurs does not.
+
+Rewriting is fine, and useful: filling a `.default()`, stripping an undeclared key, mapping a retired enum value onto its replacement. What each of those has in common is that doing it twice gives the same answer as doing it once, so the stored value settles and then holds.
+
+A schema whose parse keeps moving does not settle. Under `z.object({ n: z.number().transform((v) => v + 1) })` the stored `n` climbs on every write, even on writes that never mention it:
+
+```ts
+const counter = defineResource({
+  scope: "session",
+  // Refused: parsing the output again gives a different value.
+  stateSchema: z.object({ n: z.number().transform((v) => v + 1) }),
+});
+```
+
+So a write has to land on a value the schema parses back to itself, and one that doesn't is refused rather than stored:
+
+```
+Resource "counter" write failed stateSchema validation at "n": the schema does not
+parse its own output back to the same value, so every write would move the stored
+state. Make the transform idempotent — parsing an already-parsed value must yield
+that same value.
+```
+
+A schema that collapses its own output — one whose second parse returns `null` or another non-object — is refused the same way, and says so rather than naming a field that did not move.
+
+Every resource write clears this bar: `setState` / `patchState` / `updateState` on singles and collection instances, `collection.create()` and `upsert`, and the client create route.
+
+Creates clear it on the value they seed. The client route carries no initial state, so it seeds the row from the schema's parse of `{}`; a schema that cannot produce a valid, settled object from `{}` answers [`400`](/docs/resources/client-access#what-the-write-endpoints-refuse) rather than creating a row every later write would reject. A required field with no `.default()` is the usual cause; give it one. `collection.create(key, seed)` is refused on the same grounds when the schema parses `seed` away to `null` and cannot produce a settled object from `{}`, which is the answer a bare `collection.create(key)` gives.
+
+An ordinary `z.object({…}).nullable()` parses `{}` to `{}`, so the `setState(null)` reset above is unaffected.
+
+A stored row whose schema doesn't settle can't heal on its own: every mutation through that schema is refused, so there is no write to converge on. Make the parse idempotent and the row settles on the next write after that. A value that already drifted keeps what it drifted to until a write corrects it. If you need a derived value, compute it where you read the state rather than inside the state schema.
+
+## Writing an updater that may run twice {#writing-an-updater-that-may-run-twice}
 
 The callback you hand to `updateState` (or `atomicState`) is an **updater**: it receives the current state and returns the next one. On any path above with a version check under it — request, session, user, org, and resource state — that callback is not guaranteed to run once. When the persist step loses a version check, the loop refreshes from the store and **calls your updater again** with the freshest state. Only the last attempt's output is written.
 
@@ -398,7 +313,7 @@ await ctx.session.atomicState((state) => {
 A version-checked write to a store scope exhausted its CAS retry budget, because contention exceeded what optimistic concurrency can absorb at that boundary. Options:
 
 - Widen the retry budget on the persist call site.
-- Rewrite the contended write as a single-field increment or an append if the update allows it. Where the store offers the matching operation, a counter bumped with `incState({ n: 1 })` never conflicts; the same counter bumped with `atomicState` does. Where it doesn't ([the store has to offer the operation](#the-store-has-to-offer-the-operation)), the increment still never raises, but it becomes one version-checked attempt that can lose the race and resolve `false`.
+- Rewrite the contended write as a single-field increment or an append if the update allows it. Where the store offers the matching operation, a counter bumped with `incState({ n: 1 })` never conflicts; the same counter bumped with `atomicState` does. Where it doesn't ([the store has to offer the operation](/docs/fundamentals/state-operations#the-store-has-to-offer-the-operation)), the increment still never raises, but it becomes one version-checked attempt that can lose the race and resolve `false`.
 - Move the contended writes to a scope with no store (sequencer state on a parent block) so they go through the lock instead.
 - Restructure the contention pattern — fewer concurrent writers, batched updates, or finer-grained scopes.
 
