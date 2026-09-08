@@ -429,21 +429,34 @@ spent; historic epic review counters remain unknown and are not reset.
 ## 4. Running index
 
 Linear parent [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320).
-Placeholder names INST-1..5 remain the epic labels; the filed ids are below.
+Placeholder names INST-1..6 remain the epic labels; the filed ids are below.
+INST-6 (FIX-1331) was filed after the epic opened and is indexed here.
 
 ### This-cycle floor — Proof (with the #1600 cluster)
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 | --- | --- | --- | --- | --- | --- |
-| [FIX-1321](https://linear.app/fixpoint-labs/issue/FIX-1321) INST-1 | Cardinality on `defineFlow` + registry: `singleton` or `collection`; id rules; reject duplicate global ids; exact-id index; custom-id-without-collection refuse; no first-wins `get(kind)` | spec (Feature) | [#1631](https://github.com/fixpoint-labs/flow-state-dev/pull/1631) (closed; approved `8b56dbde`) | — (future shared PR with FIX-1322; integration owner FIX-1322) | Individually approved by human comment; held for remaining specs and cross-spec gate; no independent semantic-switch landing |
-| [FIX-1322](https://linear.app/fixpoint-labs/issue/FIX-1322) INST-2 | Dispatch / envelope: explicitly declared recipient instance; exact-id precedence then bare-kind refuse; minimal instance-address compatibility, no chat redesign; persist owning instance id on sessions/requests; adoption/re-entry check; same-kind cross-instance = `#1600` cross-flow; carry `flow.id` (align #1600); reshape FIX-1315 | spec (Feature) | [#1633](https://github.com/fixpoint-labs/flow-state-dev/pull/1633) | — (single integration owner of future shared FIX-1321 + FIX-1322 PR) | In Spec Review — awaiting individual approval; independent historical-child migration question unresolved |
-| [FIX-1323](https://linear.app/fixpoint-labs/issue/FIX-1323) INST-3 | Isolation: scope-keys + resource `flowIsolation` key on instance id; dual-read only where owner is known (theme 5) | spec (Feature) | [#1632](https://github.com/fixpoint-labs/flow-state-dev/pull/1632) | — (separate; requires identity/owner prerequisites) | In Spec Review — awaiting individual approval |
-| [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) INST-4 | Devtool: distinguish/list same-kind instances; explicit instance selection; own sessions/request inspection; minimal read-path plumbing and correct existing-control addressing | spec (Feature) | [#1634](https://github.com/fixpoint-labs/flow-state-dev/pull/1634) (`733b0e042`) | — | In Spec Review — fourth required outcome; awaiting individual approval; real UI proof planned, not run |
+| [FIX-1321](https://linear.app/fixpoint-labs/issue/FIX-1321) INST-1 | Cardinality on `defineFlow` + registry: `singleton` or `collection`; id rules; reject duplicate global ids; exact-id index; custom-id-without-collection refuse; no first-wins `get(kind)` | spec (Feature) | [#1631](https://github.com/fixpoint-labs/flow-state-dev/pull/1631) (closed; approved `8b56dbde`) | [#1640](https://github.com/fixpoint-labs/flow-state-dev/pull/1640) (shared with FIX-1322; integration owner FIX-1322) | Implemented inside #1640; never had its own impl PR. CI green, awaiting merge |
+| [FIX-1322](https://linear.app/fixpoint-labs/issue/FIX-1322) INST-2 | Dispatch / envelope: explicitly declared recipient instance; exact-id precedence then bare-kind refuse; minimal instance-address compatibility, no chat redesign; persist owning instance id on sessions/requests; adoption/re-entry check; same-kind cross-instance = `#1600` cross-flow; carry `flow.id` (align #1600); reshape FIX-1315 | spec (Feature) | [#1633](https://github.com/fixpoint-labs/flow-state-dev/pull/1633) (closed; approved) | [#1640](https://github.com/fixpoint-labs/flow-state-dev/pull/1640) (integration owner of the atomic FIX-1321 + FIX-1322 landing; base `main`) | CI green on `6fd3bbcd`, mergeable clean, all review rounds folded. **Merges first.** Historical children re-keyed offline, no legacy-key adoption |
+| [FIX-1323](https://linear.app/fixpoint-labs/issue/FIX-1323) INST-3 | Isolation: scope-keys + resource `flowIsolation` key on instance id; dual-read only where owner is known (theme 5) | spec (Feature) | [#1632](https://github.com/fixpoint-labs/flow-state-dev/pull/1632) (closed; approved) | [#1646](https://github.com/fixpoint-labs/flow-state-dev/pull/1646) (base `fix/fix-1322`) | CI green on `37f85255`, Codex cleared. **Merges second** |
+| [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) INST-4 | Devtool: distinguish/list same-kind instances; explicit instance selection; own sessions/request inspection; minimal read-path plumbing and correct existing-control addressing | spec (Feature) | [#1634](https://github.com/fixpoint-labs/flow-state-dev/pull/1634) (`733b0e042`; closed; approved) | [#1649](https://github.com/fixpoint-labs/flow-state-dev/pull/1649) (base `fix/fix-1323`) | CI green on `8dd0b452`, review round 1 folded across four reviewers. **Merges third.** Real UI proof run in Chromium against the shipped bundle — it caught a cross-instance stream misaddressing defect the unit suite could not see |
+| [FIX-1331](https://linear.app/fixpoint-labs/issue/FIX-1331) INST-6 | Instance create-time config bag: optional `config` on `FlowInstanceOptions`, validated and frozen at mint against a definition-declared schema, read at `ctx.flow.config`. Filed after the epic opened | spec (Feature) | [#1648](https://github.com/fixpoint-labs/flow-state-dev/pull/1648) (`e1d13361`) | — | Spec converged over two review rounds; **awaiting the owner's spec-approval gate**. Blocked by FIX-1321 + FIX-1322 — not implementable until #1640 and #1646 merge |
 
 FIX-1322's pre-code assessment promoted Bug → Feature because the work
 changes the public and persisted owner contract; it therefore follows the
-spec route. No implementation PRs exist.
-Separate acceptance and goal accountability remain for all four issues.
+spec route.
+
+**The implementation is a three-PR stack, merged in this order:**
+[#1640](https://github.com/fixpoint-labs/flow-state-dev/pull/1640) (base `main`)
+→ [#1646](https://github.com/fixpoint-labs/flow-state-dev/pull/1646) (base `fix/fix-1322`)
+→ [#1649](https://github.com/fixpoint-labs/flow-state-dev/pull/1649) (base `fix/fix-1323`).
+Each is CI-green with its review rounds folded; all three wait on the owner's
+merge gate. Every spec PR closed unmerged at approval (BP-037). Two subtraction
+POCs opened by review — [#1641](https://github.com/fixpoint-labs/flow-state-dev/pull/1641)
+against #1640 and [#1650](https://github.com/fixpoint-labs/flow-state-dev/pull/1650)
+against #1649 — had their subtractions folded into the target PR and close
+unmerged once it lands.
+Separate acceptance and goal accountability remain for all five issues.
 FIX-1321 and FIX-1322 share only the future atomic implementation landing;
 each has its own spec gate (FIX-1321 satisfied, FIX-1322 pending), followed
 by the separately approved cross-spec pass before implementation.
@@ -451,11 +464,12 @@ FIX-1321's approved snapshot predates the Devtool scope expansion; its
 historical deferral is superseded by this current epic and Linear FIX-1321
 comment `340d9e06-f497-49a0-96fd-ea6df0d791e8`, without rewriting that snapshot.
 
-**FIX-1322 row blocker, not a new epic decision:** if historical custom-ID
-cross-flow children exist, new child-key derivation conflicts with
-preserve-old-record-ID backfill. Offline re-key versus legacy adoption
-remains an unresolved owner trade-off. No affected deployment history has
-been established; this sequencing resolution does not decide that question.
+**~~FIX-1322 row blocker~~** *Resolved before implementation:* historical
+custom-ID cross-flow children are re-keyed in the offline cutover, with no
+legacy-key adoption at runtime. An unattributed row under a collection kind
+refuses as `migration-required` until an operator attributes it; the procedure
+lives in `apps/docs/docs/persistence/overview.md`, written by #1640 and
+extended in place by #1646. One procedure, one named stop condition.
 
 **Current Linear edges (2026-09-07):** FIX-1323 is blocked by FIX-1321.
 FIX-1322 is related to FIX-1321 and FIX-1323, with no hard blocked-by edge.
