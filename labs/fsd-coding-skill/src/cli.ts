@@ -27,6 +27,8 @@ export interface ParsedCli {
   harness?: FsdCodingHostOptions["harness"];
   /** Explicit host model override; omitted preserves adapter configuration. */
   model?: string;
+  /** Explicit host opt-in for Codex sandbox network access. */
+  networkAccess?: boolean;
   /** Extra host-selected writable directories for Codex workspace-write runs. */
   additionalDirectories?: string[];
   door: CodingDoor;
@@ -70,6 +72,10 @@ function repeatedFlag(args: string[], name: string): string[] {
   return values;
 }
 
+function hasFlag(args: string[], name: string): boolean {
+  return args.includes(`--${name}`);
+}
+
 /**
  * Parse `run.ts` argv (already minus the node/script prefix).
  */
@@ -102,6 +108,10 @@ export function parseArgs(argv: string[]): ParsedCli {
     throw new CliUsageError("--add-dir is only supported with --harness codex");
   }
   const addDirs = additionalDirectories.length === 0 ? undefined : additionalDirectories;
+  const networkAccess = hasFlag(rest, "network-access");
+  if (networkAccess && harness !== "codex") {
+    throw new CliUsageError("--network-access is only supported with --harness codex");
+  }
   const userId = flag(rest, "user") ?? "cli-user";
   const sessionFile = flag(rest, "session-file") ?? process.env.FSD_CODING_SESSION_FILE;
   const task = flag(rest, "task");
@@ -110,14 +120,14 @@ export function parseArgs(argv: string[]): ParsedCli {
 
   if (door === "fixFsd") {
     if (repro === undefined) throw new CliUsageError("fix-fsd requires --repro");
-    return { door, harness, model, additionalDirectories: addDirs, cwd, sessionId, userId, sessionFile, input: { repro, notes } };
+    return { door, harness, model, networkAccess, additionalDirectories: addDirs, cwd, sessionId, userId, sessionFile, input: { repro, notes } };
   }
   if (task === undefined) throw new CliUsageError(`${rawDoor} requires --task`);
-  return { door, harness, model, additionalDirectories: addDirs, cwd, sessionId, userId, sessionFile, input: { task } };
+  return { door, harness, model, networkAccess, additionalDirectories: addDirs, cwd, sessionId, userId, sessionFile, input: { task } };
 }
 
 export interface RunCliOptions extends ParsedCli {
-  host?: Omit<FsdCodingHostOptions, "cwd" | "sessionFile" | "harness" | "model">;
+  host?: Omit<FsdCodingHostOptions, "cwd" | "sessionFile" | "harness" | "model" | "networkAccess" | "additionalDirectories">;
   stores?: StoreRegistry;
   runtimeConfig?: RuntimeConfig;
 }
@@ -130,6 +140,7 @@ export async function runCli(options: RunCliOptions) {
     ...(options.host ?? {}),
     harness: options.harness,
     model: options.model,
+    networkAccess: options.networkAccess,
     additionalDirectories: options.additionalDirectories,
     cwd: options.cwd,
     sessionFile: options.sessionFile,

@@ -29,6 +29,19 @@ Codex CLI as `--add-dir`. Use it for explicit extra writable roots such as a
 linked worktree's Git metadata. Cursor cannot honor this permission and the CLI
 rejects `--add-dir` when `--harness cursor` is selected.
 
+`--network-access` is an explicit Codex-only host permission for sandboxed runs
+that need outbound network, such as `git push`. It maps to Codex's
+`thread.networkAccessEnabled` option, which the SDK forwards as
+`sandbox_workspace_write.network_access=true`. Omission preserves the adapter's
+configured/default network policy. Cursor cannot honor this permission and the
+CLI rejects `--network-access` when `--harness cursor` is selected.
+
+A sandboxed push retry from a linked worktree carries both permissions:
+
+```bash
+pnpm --filter @flow-state-dev/fsd-coding-skill fix -- --harness codex --model gpt-5.5 --network-access --add-dir "$(git rev-parse --git-dir)" --add-dir "$(git rev-parse --git-common-dir)/objects" --add-dir "<current-branch-ref-dir>" --add-dir "<current-branch-reflog-dir>" --task "<retry the push>" --cwd "$PWD" --session work-1 --session-file /tmp/fsd-coding-sessions.json
+```
+
 Examples choose `gpt-5.5` explicitly; it is not a runner default. The host must
 choose a model supported by the authenticated account and the adapter's pinned
 SDK/CLI. The SDK's bundled Codex CLI may be older than the system CLI, so an
@@ -82,19 +95,20 @@ The private package root exports:
 
 - `createFsdCodingFlow(FsdCodingHostOptions)`: one `fsd-coding` flow with
   `implement`, `fix`, `openPr`, `fixFsd`. Options add optional `harness`, `model`, and
-  `additionalDirectories`, plus `codex: CodexAgentOptions`; Codex's `thread`, `client`, and
-  `resolveCodexClient` use the existing adapter contracts. Existing `cursor`,
-  `agent`, and `resolveCursorClient` options remain supported. Host
-  `cwd`/`resume`/`onSession` feeds override adapter-bag feeds. Explicit `model`
-  overrides the selected adapter's model options; explicit `additionalDirectories`
-  overrides Codex's configured `thread.additionalDirectories`; omission preserves them.
+  `networkAccess` / `additionalDirectories`, plus `codex: CodexAgentOptions`;
+  Codex's `thread`, `client`, and `resolveCodexClient` use the existing adapter
+  contracts. Existing `cursor`, `agent`, and `resolveCursorClient` options remain
+  supported. Host `cwd`/`resume`/`onSession` feeds override adapter-bag feeds.
+  Explicit `model` overrides the selected adapter's model options; explicit
+  `networkAccess` and `additionalDirectories` override the matching Codex thread
+  options; omission preserves them.
 - `createHostResolvers(HostResolverOptions)`: host cwd, provider-safe resume,
   and confirmed-session persistence. `harness` defaults to Cursor.
 - `parseArgs`, `runCli`, `CliUsageError`, `ParsedCli`, `RunCliOptions`: CLI
   parsing and one action execution. `runCli` returns the engine result, stores,
   door, and declared doors; `run.ts` formats the skill-facing result. `ParsedCli`
-  and `RunCliOptions` carry optional host `model` and `additionalDirectories`
-  alongside `harness`.
+  and `RunCliOptions` carry optional host `model`, `networkAccess`, and
+  `additionalDirectories` alongside `harness`.
 - `DOORS`, `DOOR_PREFIX`, `FLOW_KIND`, `CodingDoor`, `taskInputSchema`,
   `fixFsdInputSchema`, `sessionStateSchema`, `TaskInput`, `FixFsdInput`:
   the static door names, prompt prefixes, and input/state contracts.

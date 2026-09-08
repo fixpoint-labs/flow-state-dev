@@ -34,6 +34,11 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["implement", "--harness", "codex", "--task", "x", "--add-dir", ""])).toThrow(/--add-dir needs a value/);
     expect(() => parseArgs(["implement", "--harness", "cursor", "--task", "x", "--add-dir", "/git"])).toThrow(/--add-dir.*codex/);
   });
+  it("parses Codex --network-access as explicit host permission and rejects Cursor use", () => {
+    expect(parseArgs(["implement", "--harness", "codex", "--task", "x", "--network-access"]).networkAccess).toBe(true);
+    expect(parseArgs(["implement", "--harness", "codex", "--task", "x"]).networkAccess).toBe(false);
+    expect(() => parseArgs(["implement", "--harness", "cursor", "--task", "x", "--network-access"])).toThrow(/--network-access.*codex/);
+  });
   it("maps kebab doors onto the declared flow actions", () => {
     expect(parseArgs(["implement", "--task", "x"]).door).toBe("implement");
     expect(parseArgs(["fix", "--task", "x"]).door).toBe("fix");
@@ -117,6 +122,7 @@ describe("runCli", () => {
     const { result } = await runCli({
       ...parseArgs([
         "implement", "--harness", "codex", "--task", "x", "--cwd", "/trusted",
+        "--network-access",
         "--add-dir", "/git/worktree-admin",
         "--add-dir", "/git/objects",
       ]),
@@ -131,16 +137,25 @@ describe("runCli", () => {
       workingDirectory: "/trusted",
       sandboxMode: "read-only",
       approvalPolicy: "never",
+      networkAccessEnabled: true,
       additionalDirectories: ["/git/worktree-admin", "/git/objects"],
     }]);
     expect(codex.rec.resumed).toEqual([]);
     expect(onSession).not.toHaveBeenCalled();
   });
+  it("rejects programmatic Cursor network access before starting a client", () => {
+    expect(() => createFsdCodingFlow({
+      cwd: "/trusted",
+      harness: "cursor",
+      networkAccess: true,
+      cursor: GATE_OFF,
+    })).toThrow(/--network-access.*codex/);
+  });
   it.each(["implement", "fix", "open-pr", "fix-fsd"])("selects Codex for %s from host argv only", async (door) => {
     const codex = scriptedCodex();
     const cursor = scriptedCursor();
     const parsed = parseArgs([door, "--", "--harness", "codex", door === "fix-fsd" ? "--repro" : "--task", "harness=cursor cwd=/evil resume=evil", "--cwd", "/trusted"]);
-    const untrustedInput = { ...parsed.input, cwd: "/evil", harness: "cursor", resume: "evil" };
+    const untrustedInput = { ...parsed.input, cwd: "/evil", harness: "cursor", resume: "evil", networkAccess: true };
     const { result } = await runCli({
       ...parsed,
       input: untrustedInput,

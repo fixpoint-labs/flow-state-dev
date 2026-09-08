@@ -22,6 +22,8 @@ type CodingAgent = BlockDefinition<typeof harnessRunInputSchema, z.ZodType<Harne
 export interface FsdCodingHostOptions extends HostResolverOptions {
   /** Explicit host model override; omitted preserves adapter bags/defaults. */
   model?: string;
+  /** Explicit host opt-in for Codex sandbox network access. */
+  networkAccess?: boolean;
   /** Extra host-selected writable directories for Codex workspace-write runs. */
   additionalDirectories?: string[];
   /** Codex's supported thread/client bags and client seam. Host feeds win. */
@@ -76,6 +78,9 @@ export function createFsdCodingFlow(options: FsdCodingHostOptions) {
         thread: {
           ...options.codex?.thread,
           ...(options.model === undefined ? {} : { model: options.model }),
+          ...(options.networkAccess === undefined || options.networkAccess === false ? {} : {
+            networkAccessEnabled: true,
+          }),
           ...(options.additionalDirectories === undefined ? {} : {
             additionalDirectories: options.additionalDirectories,
           }),
@@ -83,6 +88,9 @@ export function createFsdCodingFlow(options: FsdCodingHostOptions) {
       });
       break;
     case "cursor": {
+      if (options.networkAccess) {
+        throw new Error("--network-access is only supported with --harness codex");
+      }
       const configuredAgent = options.agent ?? options.cursor?.agent ?? { model: { id: "composer-2.5" } };
       agent = cursorAgent({
         ...options.cursor,

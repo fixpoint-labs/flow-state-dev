@@ -25,7 +25,15 @@ For Codex only, repeat `--add-dir <path>` to grant explicit extra writable direc
 
 Use `--add-dir` only for the minimum paths a sandboxed run needs outside `--cwd`. For a linked Git worktree whose metadata lives outside the checkout, normal `git add` / `git commit` needs the worktree admin directory from `git rev-parse --git-dir`, the shared object database from `git rev-parse --git-common-dir` + `/objects`, and the current branch's shared ref and reflog parent directories. Do not grant the whole common `.git` directory, sibling worktree directories, another source tree, or global Git/Codex configuration. If a door fails and you call `fix-fsd`, pass the same `--add-dir` set to `fix-fsd` and to the one retry of the original door.
 
-`--harness`, `--model`, `--add-dir`, `--cwd`, `--session`, and `--session-file` are **host** flags. Never derive model or harness selection, extra writable directories, a working directory, or a vendor resume ID from action input or task text. `--session` names the FSD session, not the vendor conversation.
+For Codex only, pass `--network-access` when a sandboxed run needs outbound network, such as `git push`. It maps to the SDK's `thread.networkAccessEnabled` option, which becomes Codex config `sandbox_workspace_write.network_access=true`. Omission preserves the adapter default. The runner refuses `--network-access` with Cursor. If a door fails and you call `fix-fsd`, pass the same `--network-access` flag to `fix-fsd` and to the one retry of the original door.
+
+Example original-door retry for a sandboxed push from a linked worktree:
+
+```bash
+pnpm --filter @flow-state-dev/fsd-coding-skill fix -- --harness codex --model gpt-5.5 --network-access --add-dir "$(git rev-parse --git-dir)" --add-dir "$(git rev-parse --git-common-dir)/objects" --add-dir "<current-branch-ref-dir>" --add-dir "<current-branch-reflog-dir>" --task "<retry the push>" --cwd "<repo root>" --session "<same id>" --session-file "<same path>"
+```
+
+`--harness`, `--model`, `--add-dir`, `--network-access`, `--cwd`, `--session`, and `--session-file` are **host** flags. Never derive model or harness selection, extra writable directories, network permission, a working directory, or a vendor resume ID from action input or task text. `--session` names the FSD session, not the vendor conversation.
 
 Reuse the same `--session` and sidecar across CLI invocations. Supply `--session-file` or set `FSD_CODING_SESSION_FILE`; there is no implicit file path. Without a sidecar the one-shot CLI does not retain sessions. The sidecar holds separate confirmed Codex and Cursor IDs for each FSD session. An intentional host-selected switch preserves both; returning recovers that provider's own ID. Legacy strings and `cursorAgentId` state belong only to Cursor. Use a separate sidecar per trusted host/account and serialize its invocations.
 
