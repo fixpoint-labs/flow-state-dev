@@ -9,6 +9,10 @@
  * An empty list is the natural response when durable execution is not
  * configured (the suspensions store is simply empty), so callers distinguish
  * "no suspensions" from "debug disabled" via `disabled`.
+ *
+ * Lives under the workspace remount (`key={workspaceKey}` on the tab and
+ * `SelectionProvider`), so a visit that ends unmounts this hook rather than
+ * asking it to mask a retired pending row.
  */
 import { useCallback, useEffect, useState } from "react";
 import type {
@@ -19,10 +23,6 @@ import type {
 import { ClientHttpError } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
 import { describeReadError } from "../lib/instance-ownership";
-import { useWorkspaceFence } from "./use-workspace-fence";
-
-/** Stable empty list, so a stale hold does not hand back a new array each render. */
-const EMPTY_SUSPENSIONS: SuspensionRecord[] = [];
 
 export type UseListSuspensionsResult = {
   suspensions: SuspensionRecord[];
@@ -61,47 +61,27 @@ export function useListSuspensions(
   sessionId: string | null,
   status?: SuspensionStatus
 ): UseListSuspensionsResult {
-  const { sessionClient, workspaceToken } = useDevTool();
+  const { sessionClient } = useDevTool();
   const [suspensions, setSuspensions] = useState<SuspensionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [disabled, setDisabled] = useState(false);
 
-  // A pending suspension carries an approve/reject control, so a row surviving
-  // its workspace is not just stale display — it is a resolvable gate offered
-  // under the wrong copy.
-  const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
-  const fence = useWorkspaceFence([sessionId, status], () => {
-    setSuspensions([]);
-    setError(null);
-    setDisabled(false);
-    setIsLoading(false);
-    setHeldIdentity(null);
-  });
-  const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
-
   const refresh = useCallback(async () => {
-    const stillCurrent = fence.begin();
-    if (stillCurrent === null) return;
-    const mine: readonly unknown[] = [workspaceToken, sessionClient, sessionId, status];
     if (!sessionId) {
       setSuspensions([]);
       setError(null);
       setDisabled(false);
-      setHeldIdentity(mine);
       return;
     }
     setIsLoading(true);
     setError(null);
     setDisabled(false);
-    setHeldIdentity(mine);
     try {
       const result: DebugSuspensionsResponse =
         await sessionClient.debug.listSuspensions(sessionId, { status });
-      if (!stillCurrent()) return;
       setSuspensions(result.suspensions);
     } catch (err) {
-      if (!stillCurrent()) return;
       if (isDebugDisabledError(err)) {
         setDisabled(true);
         setSuspensions([]);
@@ -109,21 +89,15 @@ export function useListSuspensions(
         setError(describeReadError(err, "Failed to fetch suspensions"));
       }
     } finally {
-      if (stillCurrent()) setIsLoading(false);
+      setIsLoading(false);
     }
-  }, [fence, workspaceToken, sessionClient, sessionId, status]);
+  }, [sessionClient, sessionId, status]);
 
-  // Fetch on mount and whenever the read identity changes. The refresh
-  // callback's identity is stable for a given (workspace, sessionId, status).
+  // Fetch on mount and whenever the session id or status filter changes. The
+  // refresh callback's identity is stable for a given (sessionId, status).
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  return {
-    suspensions: holdsCurrent ? suspensions : EMPTY_SUSPENSIONS,
-    isLoading: holdsCurrent ? isLoading : sessionId !== null,
-    error: holdsCurrent ? error : null,
-    disabled: holdsCurrent ? disabled : false,
-    refresh,
-  };
+  return { suspensions, isLoading, error, disabled, refresh };
 }

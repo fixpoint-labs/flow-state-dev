@@ -1,6 +1,8 @@
 /**
- * The read fence every workspace-scoped hook uses, with the workspace half of
- * the identity supplied once instead of restated per hook.
+ * The read fence for workspace-scoped hooks that stay mounted across a visit
+ * (the request list, ChildSessions). Detail readers remount with the workspace
+ * instead. The workspace half of the identity is supplied once rather than
+ * restated per hook.
  *
  * `useReadFence` compares identity by value, which retires a read whose session
  * or client has been replaced. That is not sufficient on its own here: switching
@@ -13,8 +15,7 @@
  * `baseUrl` or credential change makes every read in flight the previous
  * backend's.
  *
- * `extra` is whatever else the read is keyed on — a session id, and for the
- * resource reads a ref and topic as well.
+ * `extra` is whatever else the read is keyed on — usually the session id.
  */
 import { useDevTool } from "../context/devtool-context";
 import { useReadFence, type ReadFence } from "./use-read-fence";

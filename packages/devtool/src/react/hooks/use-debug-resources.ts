@@ -7,16 +7,14 @@
  * (`debugEndpointsEnabled` / `FSDEV_DEBUG_ENDPOINTS=1`) and the origin allow
  * list both reject with 403 and a typed body payload.
  *
- * Fenced on the workspace: a resource tree belongs to one instance's session,
- * and per-instance isolation means a tree that outlives its workspace is another
- * copy's data shown under the selected one.
+ * Lives under the workspace remount, so a visit that ends unmounts this hook
+ * rather than asking it to mask a retired tree.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { DebugResourcesResponse } from "@flow-state-dev/client";
 import { ClientHttpError } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
 import { describeReadError } from "../lib/instance-ownership";
-import { useWorkspaceFence } from "./use-workspace-fence";
 
 export type UseDebugResourcesResult = {
   data: DebugResourcesResponse | null;
@@ -52,46 +50,26 @@ function isDebugDisabledError(err: unknown): boolean {
 export function useDebugResources(
   sessionId: string | null
 ): UseDebugResourcesResult {
-  const { sessionClient, workspaceToken } = useDevTool();
+  const { sessionClient } = useDevTool();
   const [data, setData] = useState<DebugResourcesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [disabled, setDisabled] = useState(false);
 
-  // Held with the data, and everything returned derives from it during render —
-  // the disabled and error flags included, since a stale "debug disabled" notice
-  // under a new workspace is as wrong as stale rows.
-  const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
-  const fence = useWorkspaceFence([sessionId], () => {
-    setData(null);
-    setError(null);
-    setDisabled(false);
-    setIsLoading(false);
-    setHeldIdentity(null);
-  });
-  const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
-
   const refresh = useCallback(async () => {
-    const stillCurrent = fence.begin();
-    if (stillCurrent === null) return;
-    const mine: readonly unknown[] = [workspaceToken, sessionClient, sessionId];
     if (!sessionId) {
       setData(null);
       setError(null);
       setDisabled(false);
-      setHeldIdentity(mine);
       return;
     }
     setIsLoading(true);
     setError(null);
     setDisabled(false);
-    setHeldIdentity(mine);
     try {
       const result = await sessionClient.debug.listResources(sessionId);
-      if (!stillCurrent()) return;
       setData(result);
     } catch (err) {
-      if (!stillCurrent()) return;
       if (isDebugDisabledError(err)) {
         setDisabled(true);
         setData(null);
@@ -99,21 +77,15 @@ export function useDebugResources(
         setError(describeReadError(err, "Failed to fetch debug resources"));
       }
     } finally {
-      if (stillCurrent()) setIsLoading(false);
+      setIsLoading(false);
     }
-  }, [fence, workspaceToken, sessionClient, sessionId]);
+  }, [sessionClient, sessionId]);
 
-  // Fetch on mount and whenever the read identity changes. The refresh
-  // callback's identity is stable for a given workspace and session.
+  // Fetch on mount and whenever the session id changes. The refresh callback's
+  // identity is stable across renders with the same sessionId.
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  return {
-    data: holdsCurrent ? data : null,
-    isLoading: holdsCurrent ? isLoading : sessionId !== null,
-    error: holdsCurrent ? error : null,
-    refresh,
-    disabled: holdsCurrent ? disabled : false,
-  };
+  return { data, isLoading, error, refresh, disabled };
 }

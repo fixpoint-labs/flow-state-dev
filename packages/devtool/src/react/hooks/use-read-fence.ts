@@ -38,13 +38,13 @@
  * some reads are keyed on more: a suspension listing on `(sessionId, status)`,
  * the debug content reads on `(sessionId, ref, topic)`.
  *
- * Every workspace-scoped read goes through `useWorkspaceFence`, which supplies
- * the shared half of that tuple — the visit token and the session client — so
- * each hook restates only what is genuinely its own. A tuple of VALUES can
- * repeat (leaving instance A for B and coming back gives the same session and
- * client), and a retired callback holding that tuple would agree with it; the
- * token is what makes a finished visit unrepeatable. See
- * `hooks/use-workspace-fence.ts`.
+ * Readers that stay mounted across a visit (session list, the request list,
+ * ChildSessions) go through `useWorkspaceFence`, which supplies the visit token
+ * and the session client so each hook restates only what is genuinely its own.
+ * A tuple of VALUES can repeat (leaving instance A for B and coming back gives
+ * the same session and client), and a retired callback holding that tuple would
+ * agree with it; the token is what makes a finished visit unrepeatable. Detail
+ * readers remount with the workspace instead — see `workspaceKey`.
  *
  * ```ts
  * const fence = useReadFence([sessionId, sessionClient]);
