@@ -141,24 +141,6 @@ function rejectRemovedWork(value: object | undefined, location: string): void {
 }
 
 /**
- * Reject the removed `chat` transport config (FIX-1330). The chat transport and
- * its `@flow-state-dev/chat-sdk` adapter are gone, so a flow that still declares
- * `chat.on` bindings would otherwise register with those handlers silently
- * unreachable — nothing dispatches to them any more. Fail at definition time
- * with the disposition instead (BP-030: reject removed keys loudly).
- */
-function rejectRemovedChat(value: object | undefined, location: string): void {
-  if (value !== undefined && Object.hasOwn(value, "chat")) {
-    throw new Error(
-      `${location} uses the removed "chat" option. ` +
-      "The chat transport (@flow-state-dev/chat-sdk) was removed and no adapter dispatches chat " +
-      "events any more. Drive conversational bots through a caller-addressed action in `actions`, " +
-      "or through the webhook transport (`webhooks`) for platform events."
-    );
-  }
-}
-
-/**
  * Reject the removed scope-config `clientData` option.
  *
  * `clientData` was the legacy authoring shape for a scope's client-facing
@@ -994,8 +976,6 @@ function createFlowInstance(
   rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
   rejectRemovedWork(definition, `Flow "${definition.kind}"`);
   rejectRemovedWork(options, `Flow "${definition.kind}" instance options`);
-  rejectRemovedChat(definition, `Flow "${definition.kind}"`);
-  rejectRemovedChat(options, `Flow "${definition.kind}" instance options`);
   rejectDefinitionOnlyOptions(options, definition.kind);
 
   const authentication = mergeAuthentication(

@@ -37,28 +37,14 @@ export const TASK_SOURCE = "task";
 export const INTERNAL_SOURCE = "internal";
 
 /**
- * Stamped by the removed chat adapter (FIX-1330). Kept only so a request that
- * was recorded or queued before the removal — a durable request row, a BullMQ
- * job enqueued by a pre-upgrade process — still fails closed: its `action` was
- * the chat handler block's name, provenance only, and letting the source fall
- * through to `public` would resolve a same-named caller action instead. No
- * adapter stamps this source any more, so nothing new can carry it.
- */
-const REMOVED_CHAT_SOURCE = "chat";
-
-/**
  * The dispatch type a source delivers. **A dispatch's type is decided by which
  * door it came through**, never by anything in its body — which is what makes
  * the entry map a caller cannot pick a boundary. Every caller-facing transport
  * (`http`, `mcp`, `voice`, a custom adapter's own source) delivers `public`
  * dispatches; the four framework-stamped sources each deliver their own type.
- * The removed chat source delivers nothing (`undefined`), so a dispatch that
- * still carries it is refused rather than retyped as a caller's.
  */
 export function dispatchTypeOf(source: string | undefined): DispatchType | undefined {
   switch (source) {
-    case REMOVED_CHAT_SOURCE:
-      return undefined;
     case WEBHOOK_SOURCE:
       return "webhook";
     case SCHEDULED_SOURCE:
