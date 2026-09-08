@@ -49,16 +49,17 @@ ends the turn:
   issue by **one bounded step** (via `issue-lifecycle`) in its own context and returns
   **≤ a couple of lines** of status, then exits. Token cost at the coordinator level is a
   small table across wakes, regardless of how much work the issues involve.
-- **Blind by design — so check, don't infer.** Holding no worker context makes every
-  judgement about a worker's work second-hand. **Never re-dispatch a row on elapsed
-  silence** — a quiet worker is not a dead worker; look for evidence of life first (its
-  worktree head, its branch on `origin`). Duplicating a live task is the one coordination
-  error nothing downstream undoes, and a worker that happens to re-check `origin` before
-  pushing is luck, not a safety net. **And never promote a reviewer's restructuring ask to
-  an instruction before the number behind it exists** — "this file is large" and an
-  eyeballed line count are not measurements (BP-003: a reviewer's assertion is a guess
-  too). Having a worker measure it costs one call; having a worker build it twice costs a
-  run.
+- **Blind by design — so check, don't infer.** **A worker is finished when its completion
+  arrives: its task notification, or the status line it returns. Nothing else ends it.**
+  Not elapsed silence, however long. Not an unanswered message. And not a filesystem or
+  `origin` probe — a worker that has not committed yet has an unchanged worktree head and
+  no branch on `origin`, which is exactly what a dead one leaves behind, so those probes can
+  add evidence of life but can never establish death. **Never re-dispatch a row on any signal
+  short of that completion.** Duplicating a live task is the one coordination error nothing
+  downstream undoes, and a worker that happens to re-check `origin` before pushing is luck,
+  not a safety net. **And never promote a reviewer's restructuring ask to an instruction
+  before the number behind it exists** (BP-003) — having a worker measure it costs one call;
+  having a worker build it twice costs a run.
 - **Event-driven, like the single-issue loop.** The coordinator is the event loop. It ends
   its turn while issues are idle and re-enters on PR events, a workflow completion, or a
   scheduled check-in; on re-entry it refreshes each row from Linear + PR state (cheap

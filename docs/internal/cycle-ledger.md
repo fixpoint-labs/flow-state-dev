@@ -944,10 +944,19 @@ Reviewers: `cursor[bot]` (three automations — simplify, Code Snob subtraction,
 Bugbot), `chatgpt-codex-connector[bot]`, `github-code-quality[bot]`, and the owner's own
 FSD-Architect pass on the epic PR. Run under `epic-em`.
 
-**Method:** cycles 4–6's, unchanged. `Rounds` = **spent** review waves — a set of automated
-passes on one head, followed by a fix commit — counted from `GET /pulls/N/reviews`
-(`cursor[bot]`, `chatgpt-codex-connector[bot]`, `github-code-quality[bot]`). `nit` is excluded
-from the rework signal. The epic PR takes the direction-artifact rules.
+**Method — and one break from cycles 4–6 that this entry originally hid.** `Rounds` here is
+**spent review waves** (a set of automated passes on one head, followed by a fix commit),
+counted from `GET /pulls/N/reviews` over `cursor[bot]`, `chatgpt-codex-connector[bot]` and
+`github-code-quality[bot]`. **Cycles 4 and 5 define `Rounds` as automated review passes, and
+put implementation PRs on ordinary scoring** — the wave rule is theirs for *direction
+artifacts* only. So a wave count and a pass count are different measurements, and this entry's
+first draft claimed the method was "cycles 4–6's, unchanged" while silently changing the
+denominator on every implementation row. It also adds `github-code-quality[bot]`, which cycles
+4–5 did not count.
+
+Both numbers are therefore given below: **waves**, which is what this cycle set out to measure,
+and **passes**, which is the only figure comparable to earlier cycles. `nit` is excluded from
+the rework signal. The epic PR takes the direction-artifact rules.
 
 **#1617 is still open, so its row is a partial** (`1 (in flight)`) and is not compared against a
 completed total. The four implementation rows are complete: each has a merge endpoint.
@@ -955,10 +964,10 @@ completed total. The four implementation rows are complete: each has a merge end
 | PR | Kind | Rounds | Feedback classes | Claims (looped / settled / verdicts) | Design felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|---|
 | [#1617](https://github.com/fixpoint-labs/flow-state-dev/pull/1617) FIX-1320 epic-spec | epic | **1 spent (in flight)** | design-off ×1 (identity stopped at lookup; the floor had no durable owner) · over-engineered ×1 (themes 1/3/5 restate one invariant) · spec-ambiguity ×1 (a kind name and an instance id are the same string) | 1 / 1 / **REFUTED** | **yes** — the floor gained an issue at the gate | An identity change names its durable half, not only its lookup half |
-| [#1640](https://github.com/fixpoint-labs/flow-state-dev/pull/1640) FIX-1321 + FIX-1322 | impl | **1** (5 automated passes, one wave) | missed-edge-case ×8 — **6 convergence** (route-auth collapses `migration-required` · `useFlow` still lists by kind · DevTool still keys by kind · CLI `--seed-session` writes before admission · `ChildSessionSummary` omits `flowId` · one legacy row yields three different 409s) + 2 concurrency (create-race zombie request; unfenced direct `requestId`) · stale-restatement ×1 (`add-flow` templates still scaffold `id: "default"`) · docs-miss ×2 (changeset prose; migration SQL updates the column, not the blob the adapters read) | 0 / 0 / — | no | Enumerate every door the address change passes through — the same fix as cycle 1 |
-| [#1646](https://github.com/fixpoint-labs/flow-state-dev/pull/1646) FIX-1323 | impl | **2** | missed-edge-case ×2 (non-injective isolation key — two `(identity, instance)` pairs name one cell; empty-bucket retention the flat map did not have) · stale-restatement ×1 (the child-scope table promised sharing the runtime no longer gives, in three surfaces) · nit ×4 | 0 / 0 / — | no | — the injectivity finding is a genuine design catch, not rework |
-| [#1649](https://github.com/fixpoint-labs/flow-state-dev/pull/1649) FIX-1324 | impl | **2** | missed-edge-case ×2 (a saved hint deleted on a *transient* failure; devtool's `recordBelongsTo` silently disagreeing with engine's `ownsRecord`) · over-engineered ×1 (an extraction sized off a line estimate) · docs-miss ×2 (changeset `minor` where policy says `patch`; changeset prose) · nit ×4 | 0 / 0 / — | no | Size a restructuring by enumeration before instructing it |
-| [#1653](https://github.com/fixpoint-labs/flow-state-dev/pull/1653) FIX-1331 | impl | **2** | missed-edge-case ×6 — **5 convergence** (sequencer's allowlist rebuild drops `flowConfigSchema` · a block requirement's parse output discarded · `.strict()` does not clear a `catchall` · dynamically-resolved tools never walked · a legacy structural instance admitted with no bag) + 1 type/runtime (inferred config typed mutable, frozen at runtime) · stale-restatement ×1 (docs echo across four surfaces, deferred) · docs-miss ×1 (changeset prose) · nit ×5 | 0 / 0 / — | no | Same class again — see below |
+| [#1640](https://github.com/fixpoint-labs/flow-state-dev/pull/1640) FIX-1321 + FIX-1322 | impl | **1 wave** · **5 passes** | missed-edge-case ×8 — **6 convergence** (route-auth collapses `migration-required` · `useFlow` still lists by kind · DevTool still keys by kind · CLI `--seed-session` writes before admission · `ChildSessionSummary` omits `flowId` · one legacy row yields three different 409s) + 2 concurrency (create-race zombie request; unfenced direct `requestId`) · stale-restatement ×1 (`add-flow` templates still scaffold `id: "default"`) · docs-miss ×2 (changeset prose; migration SQL updates the column, not the blob the adapters read) | 0 / 0 / — | no | Enumerate every door the address change passes through — the same fix as cycle 1 |
+| [#1646](https://github.com/fixpoint-labs/flow-state-dev/pull/1646) FIX-1323 | impl | **2 waves** · **5 passes** (3 defect-finding; 2 were the diagram automation) | missed-edge-case ×2 (non-injective isolation key — two `(identity, instance)` pairs name one cell; empty-bucket retention the flat map did not have) · stale-restatement ×1 (the child-scope table promised sharing the runtime no longer gives, in three surfaces) · nit ×4 | 0 / 0 / — | no | — the injectivity finding is a genuine design catch, not rework |
+| [#1649](https://github.com/fixpoint-labs/flow-state-dev/pull/1649) FIX-1324 | impl | **2 waves** · **3 passes** | missed-edge-case ×2 (a saved hint deleted on a *transient* failure; devtool's `recordBelongsTo` silently disagreeing with engine's `ownsRecord`) · over-engineered ×1 (an extraction sized off a line estimate) · docs-miss ×2 (changeset `minor` where policy says `patch`; changeset prose) · nit ×4 | 0 / 0 / — | no | Size a restructuring by enumeration before instructing it |
+| [#1653](https://github.com/fixpoint-labs/flow-state-dev/pull/1653) FIX-1331 | impl | **2 waves** · **6 passes** (7 with `github-code-quality`) | missed-edge-case ×6 — **5 convergence** (sequencer's allowlist rebuild drops `flowConfigSchema` · a block requirement's parse output discarded · `.strict()` does not clear a `catchall` · dynamically-resolved tools never walked · a legacy structural instance admitted with no bag) + 1 type/runtime (inferred config typed mutable, frozen at runtime) · stale-restatement ×1 (docs echo across four surfaces, deferred) · docs-miss ×1 (changeset prose) · nit ×5 | 0 / 0 / — | no | Same class again — see below |
 
 ### The dominant class is the one tenet 5 has named since cycle 1
 
@@ -980,17 +989,42 @@ inside it let a declaration silently do nothing. Every one type-checked. That is
 worth naming: **on the carrier axis there is no old answer for a reviewer to find — the compiler
 returns success, so reading is not merely unreliable, it is actively reassured.**
 
-**This is a coverage result, not a gap.** Tenet 5 names the arithmetic (*"an invariant with five
-writers is not enforced until the guard sits where all five pass through… if review keeps finding
-another place the old answer survived, you corrected a site rather than the thing"*) and tenet 7
-names the tell (*"a check that cannot fire is not a check — a parameter no call site passes"*).
-The class is named, at the right altitude, in the always-loaded layer — and it is still the
-dominant class at cycle 7. **No grounding change is proposed for it.** See *Dropped*.
+**This is a coverage result, not a gap in the grounding.** Tenet 5 names the arithmetic and
+tenet 7 names the tell, both in the always-loaded layer — and it is still the dominant class at
+cycle 7, which is the whole argument against naming it a fourth time. **No prose change is
+proposed for it; fix B is a test shape, not a restatement.** See *Dropped* and fix B.
 
-### Rounds-to-approval fell sharply — with one caveat that undercuts the reading
+### Rounds-to-approval did NOT fall — the metric changed, and two caveats finish the reading
 
-**1–2 spent rounds on every implementation PR**, against cycle 1's 5–12, cycle 5's 2–6 and
-cycle 6's 1/1/10/13. On the metric the instrument says matters, this is the best cycle recorded.
+This entry's first draft read: *"1–2 spent rounds on every implementation PR, against cycle 1's
+5–12, cycle 5's 2–6 and cycle 6's 1/1/10/13 — the best cycle recorded."* **That comparison was
+invalid**, and a reviewer caught it. It set this cycle's *wave* counts against earlier cycles'
+*pass* counts.
+
+**On the comparable metric, this cycle is unremarkable.** Automated passes per implementation
+PR, counted as cycles 4–5 count them (`cursor[bot]` + `chatgpt-codex-connector[bot]`):
+
+| PR | #1640 | #1646 | #1649 | #1653 |
+|---|---|---|---|---|
+| Passes | 5 | 5 | 3 | 6 |
+
+Against **cycle 5's 2–6**, that is 3–6: the same range, at the top of it. There is no
+improvement here to explain. The wave counts (1–2) are real and worth recording — they say the
+*fix commits* were few — but a wave collapses however many passes landed on one head, so a low
+wave count is partly a statement about how quickly the head moved to merge, which is the second
+caveat below, not a statement about convergence.
+
+**Why the error is worth its own paragraph — cycle 4 predicted it by name.** The note under
+cycle 4's table closes: *"Two baselines have now been invalidated by the same definition change;
+check for a third before trusting any rounds trend in this file."* **This is the third**, by the
+same mechanism, written by an instrument whose subject that cycle was definition drift. The
+false reading was flattering, arrived with a method line asserting continuity, and would have
+become the baseline the next cycle is scored against. It is also the shape of the class this
+epic catalogued: a claim that type-checks against the surrounding prose and is not true.
+
+The standing instruction that follows is cycle 4's, now with three instances behind it: **a
+rounds figure in this file is not comparable across cycles until you have re-read both cycles'
+method lines.** A cycle asserting its method is unchanged is not evidence that it is.
 
 **The caveat, and it is the finding cycle 5 pre-registered.** Cycle 5's claim 3 — *"before
 reporting any class at or near zero, confirm every configured reviewer actually reported on the
@@ -1009,9 +1043,10 @@ promises"* — the fix for four of the five fail-quiet doors, in a class whose s
 that reads correctly and does nothing. It was verified by its author (full suites, goal re-run,
 each finding reproduced red first) but never re-reviewed.
 
-**So the low round count partly measures convergence and partly measures merging before round
-two.** The two are not separable on this data, and a later cycle reading `1` as convergence will
-score this epic as cheaper than it was. Recorded as a fact, **not** as a proposed gate: there is
+**So the low WAVE count partly measures convergence and partly measures merging before round
+two.** (The pass count, above, shows no convergence gain at all.) The two are not separable on
+this data, and a later cycle reading `1` as convergence will score this epic as cheaper than it
+was. Recorded as a fact, **not** as a proposed gate: there is
 no measured escape to justify slowing every PR, and the merge call is the EM posture working as
 designed. Claim 1 below is how it gets settled.
 
