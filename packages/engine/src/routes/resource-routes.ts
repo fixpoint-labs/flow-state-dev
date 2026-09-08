@@ -38,7 +38,7 @@ import {
   isExternalResourceCollection,
   readExternalCollectionState,
   renderContent,
-  type ResourceFlowLike,
+  type ResourceOwnerFlow,
 } from "../resources/internal";
 import {
   readSessionScopeWithLineage,
@@ -62,7 +62,7 @@ type ResourceRouteContext = {
 
 async function resolveTemplateRaw(
   ctx: ResourceRouteContext,
-  flow: ResourceFlowLike,
+  flow: ResourceOwnerFlow,
   sessionId: string,
   config: { contentTemplateRef?: string }
 ): Promise<string | undefined> {

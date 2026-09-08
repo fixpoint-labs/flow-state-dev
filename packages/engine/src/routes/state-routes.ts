@@ -11,7 +11,8 @@ import {
   mergeScopeReads,
   resolveOrgStorageKey,
   resolveUserStorageKey,
-  resourceScopeIds
+  resourceScopeIds,
+  toIsolationFlow
 } from "../stores/scope-keys";
 import {
   resolveOwnerFlow,
@@ -130,18 +131,17 @@ export async function handleGetSessionState(
   // separate from the scope record.
   //
   // FIX-735: user/org resources key per isolation bucket (bare id when shared,
-  // `{id}:{flowKind}` when isolated), so read every declared bucket and merge.
+  // `{identityId}:{flow.id}` when isolated), so read every declared bucket and merge.
   // The snapshot/clientData builders filter to declared configs, so other
   // flows' shared rows under the bare key never leak in. The reads are keyed
   // off the identity id, not the scope record — a shared resource at the bare
   // id stays visible even when this flow's (flow-flag) scope record sits at a
   // different key or doesn't exist yet.
-  const isoFlow = {
-    kind: flow.kind,
-    isolateUserState: flow.isolateUserState ?? false,
-    isolateOrgState: flow.isolateOrgState ?? false,
-    resources: flow.resources as Record<string, { scope?: string; flowIsolation?: boolean }> | undefined
-  };
+  //
+  // FIX-1323: the isolated bucket is the owner INSTANCE's, resolved once above
+  // and reused for the scope records and both resource stores below — the same
+  // coercion `getPersistedData` uses, so one request never resolves two owners.
+  const isoFlow = toIsolationFlow(flow);
   const userScopeIds = resourceScopeIds(session.userId, isoFlow, "user");
   const orgScopeIds =
     session.orgId !== undefined ? resourceScopeIds(session.orgId, isoFlow, "org") : [];

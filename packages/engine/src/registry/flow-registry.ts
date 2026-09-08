@@ -391,8 +391,8 @@ function storageRef(
  *     directions. So effective isolation is resolved per resource
  *     (`resolveResourceIsolation`, the same helper the storage-key path uses),
  *     independently of the flow-level flag. An isolated resource is namespaced
- *     by `flowKind` and therefore cannot collide with another flow's, so it
- *     does not participate.
+ *     by its flow's instance id and therefore cannot collide with another
+ *     flow's, so it does not participate.
  *
  * Before this was fixed the resource half read `flow.user.resources` /
  * `flow.org.resources` — maps that stopped existing at FIX-435 — so it
@@ -414,9 +414,9 @@ function collectScopeDeclaration(
   // Same-flow cell occupancy, keyed by `(effective isolation, ref)`. Separate
   // from `resourceSchemas` — and checked BEFORE the isolation filter below —
   // because a same-flow collision is not a cross-flow question. Isolation
-  // moves both declarations into the one `${id}:${flowKind}` bucket together;
-  // it never separates them from each other, so filtering first would let two
-  // isolated declarations overwrite one cell unchecked.
+  // moves both declarations into the one `${identityId}:${flow.id}` bucket
+  // together; it never separates them from each other, so filtering first
+  // would let two isolated declarations overwrite one cell unchecked.
   //
   // Isolation is part of the key rather than ignored, because it DOES separate
   // a shared declaration from an isolated one: those land in different buckets

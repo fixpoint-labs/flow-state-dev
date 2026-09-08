@@ -55,6 +55,28 @@ Good for: artifacts, documents, knowledge entries, configuration bundles. Data t
 
 For dynamic collections where the instance count isn't known ahead of time, see [Resource Collections](/docs/resources/collections).
 
+### Who else can see a resource
+
+A resource's `scope` says which identity it hangs off. For user- and org-scoped resources, one more setting says how far it reaches:
+
+| Setting | Reachable by |
+|---|---|
+| `flowIsolation: false` (the default at user and org scope) | every flow on the server, for that user or org |
+| `flowIsolation: true` | only the flow copy that wrote it |
+| `scope: "session"` | only that session — flow isolation doesn't apply, and setting it is an error |
+
+```ts
+const auditLog = defineResource({
+  scope: "user",
+  flowIsolation: true,
+  stateSchema: z.object({
+    entries: z.array(z.string()).default([]),
+  }),
+});
+```
+
+"Only the flow copy that wrote it" is literal: if a definition runs as several named copies, each copy gets its own. See [Sharing state across flows](/docs/advanced/flow-isolation) for what that means for the ids you pick and for an existing deployment.
+
 ## Decision table
 
 | Signal | Scope state | Resource |
