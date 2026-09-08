@@ -698,6 +698,18 @@ as written; where this section disagrees with them, this section wins.
   The comment should point there.
 - "Three one-line `validateDispatch` fixes" overstated it: two are, chat is a seam.
 
+### Overtaken by main (2026-09-08)
+
+`@flow-state-dev/chat-sdk` and the chat transport were removed from `main` in
+[#1636](https://github.com/fixpoint-labs/flow-state-dev/pull/1636) (FIX-1330). Every
+chat-specific finding above is moot on the current tree: the chat half of revised
+top-1 (the adapter-supplied identity mapping on `PrincipalResolutionContext`), the
+module-level `Thread` map in Theme 5 and Gap 4, the chat pre-created session in
+Theme 4, and the chat row of the "three of five doors" count in Theme 2. Top-1 now
+reduces to the two one-line `validateDispatch` calls (MCP and scheduled) plus the
+table-driven conformance gate. The identity-mapping seam stays filed as a note for
+whichever event-shaped transport arrives next, not as work.
+
 ## Method
 
 Ten parallel read-only scans, one per area (trading-desk flows; trading-desk app side;
