@@ -37,7 +37,6 @@ import {
  *
  * - `http` — the public action endpoint.
  * - `mcp` — the MCP transport, caller-addressed like HTTP.
- * - `chat` — a chat subscription; its handler is caller-reachable.
  * - `scheduled` — a scheduled dispatch; retry/continue on these is existing,
  *   relied-upon behaviour.
  *
@@ -54,7 +53,6 @@ import {
 const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
   "http",
   "mcp",
-  "chat",
   "scheduled"
 ]);
 

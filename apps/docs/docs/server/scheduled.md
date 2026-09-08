@@ -62,8 +62,8 @@ mounted; MCP, webhooks, and scheduled coexist on the same router.
 
 A static schedule is a record on the flow's `schedules.static` map.
 Each entry carries its handler inline (the shared action core) instead
-of naming an entry in `flow.actions`. Same model the webhook and chat
-transports use. Cron strings and input shapes are validated when the
+of naming an entry in `flow.actions`. Same model the webhook transport
+uses. Cron strings and input shapes are validated when the
 flow is registered, so a malformed cron or a bad input shape surfaces
 at boot, not at dispatch.
 
@@ -84,8 +84,8 @@ defineFlow({
 });
 ```
 
-`defineScheduleBinding` is the schedule sibling of `defineWebhookBinding`
-and `defineChatBinding`. It's a compile-time convenience — a plain object
+`defineScheduleBinding` is the schedule sibling of `defineWebhookBinding`.
+It's a compile-time convenience — a plain object
 literal works too. A schedule handler lives only on `schedules.static`,
 so it has no HTTP or MCP caller surface; declare a block in both
 `schedules.static` and `flow.actions` (same reference) if you want it

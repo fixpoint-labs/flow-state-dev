@@ -78,7 +78,7 @@ rebinding the session. Derive `orgId` from the same trusted source as
 ## Resolution order
 
 1. **Transport-level** — the inbound transport already resolved a
-   principal (scheduled, MCP, webhook, chat, voice). Those adapters call
+   principal (scheduled, MCP, webhook, voice). Those adapters call
    `host.resolvePrincipal` with their own context; they do not implement
    a second auth path.
 2. **Flow-level** — `defineFlow({ authentication: { resolvePrincipal } })`.
@@ -233,7 +233,6 @@ When both are set, `authentication.requireUser` wins.
   `FlowMcpServerOptions.auth` slot.
 - [Webhook Transport](./webhook-transport.md) — signature verification as
   the resolver.
-- [Chat Transport](./chat-transport.md) — platform identity mapping.
 - [Scheduled Actions](./scheduled-actions.md) — server-side resource as
   the principal source; the reference BP-031 implementation.
 - [Voice Transport](./voice.md) — WebRTC / websocket identity.

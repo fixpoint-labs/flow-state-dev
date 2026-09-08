@@ -262,8 +262,7 @@ export async function handleWebhook(
  *
  * Matching is best-effort: a throwing `when` predicate is a benign
  * routing-logic bug, so it's treated as a non-match (logged), not a 5xx — a
- * 5xx would make providers retry an event that can never match. This mirrors
- * the chat transport's "throwing `when` is a non-match" stance. Throws from
+ * 5xx would make providers retry an event that can never match. Throws from
  * `input`/`sessionId` (the post-match invocation phase) stay a hard 500.
  */
 function matchBinding(

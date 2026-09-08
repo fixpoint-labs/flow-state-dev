@@ -300,8 +300,8 @@ export function validateSchedulesConfig(
 }
 
 /**
- * Construct a `ScheduleConfig` — the schedule sibling of `defineWebhookBinding`
- * / `defineChatBinding`. The schedule binding carries the shared `ActionCore`
+ * Construct a `ScheduleConfig` — the schedule sibling of `defineWebhookBinding`.
+ * The schedule binding carries the shared `ActionCore`
  * (handler `block` plus execution policy) inline alongside the cron mapping.
  * Compile-time convenience only: the runtime is a single passthrough. Use it
  * for inline static entries (`schedules.static[id] = defineScheduleBinding({…})`)

@@ -277,8 +277,8 @@ export interface CreateFlowStateOptions<
   /**
    * Interactive-harness defaults. `chat.default` is the target `fsdev chat`
    * binds when started with no positional flow — `"<flowKind>"` (its sole
-   * action) or `"<flowKind>.<action>"`. Distinct from a flow's own `chat`
-   * subscription config; this is a host-level default target for the CLI.
+   * action) or `"<flowKind>.<action>"`. A host-level default target for the
+   * CLI, not a flow-level option.
    */
   chat?: { default?: string };
 

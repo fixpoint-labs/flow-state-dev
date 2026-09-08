@@ -169,8 +169,8 @@ export type CreateFlowApiRouterOptions = {
    * Transport sources this deployment adds to the public re-entry allow-list
    * (FIX-999).
    *
-   * `retry`, `continue` and `resume` admit `http`, `mcp`, `chat` and
-   * `scheduled` and refuse everything else with a not-found. That default is
+   * `retry`, `continue` and `resume` admit `http`, `mcp` and `scheduled`
+   * and refuse everything else with a not-found. That default is
    * right for a source nobody named, but `InboundTransportAdapter.source` is an
    * open string: a transport you wrote stamps a source the framework cannot
    * know about, and its requests would lose re-entry with no way to get it

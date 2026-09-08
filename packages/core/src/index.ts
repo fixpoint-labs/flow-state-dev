@@ -327,8 +327,6 @@ export type {
 
 export { validateConcurrencyConfig } from "./types/concurrency";
 
-export type { ChatConfig, ChatEventBinding } from "./types/chat";
-export { validateChatConfig } from "./types/chat";
 export type {
   WebhookConfig,
   WebhookEventBinding,
