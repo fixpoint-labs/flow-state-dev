@@ -3,7 +3,7 @@
  * Structured key-value layout with copy buttons per scope.
  * Sections collapsed by default with count + change badges.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, RefreshCw, Copy } from "lucide-react";
 import { Button } from "../ui/button";
 import { JsonViewer } from "../shared/json-viewer";
@@ -23,11 +23,20 @@ type SessionContextPanelProps = {
 export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPanelProps) {
   const { snapshot, prevSnapshot, detail, isLoading, error, lastFetchedAt, refresh } = useSessionState(sessionId);
 
-  // Refresh when parent signals a state change (e.g., after stream completes)
+  // Refresh when the parent signals a state change (e.g. after a stream
+  // completes) — on a REAL change to the key, not merely on this effect running.
+  //
+  // The old condition (`refreshKey > 0`) also fired on mount and whenever
+  // `refresh` changed identity, which duplicated the read the hook had already
+  // issued. That was invisible while this panel mounted once per session; now
+  // that it remounts with each workspace visit, it was a duplicate state read
+  // on every switch. Comparing the value is the fix (BP-010: signal only on a
+  // real change).
+  const lastRefreshKey = useRef(refreshKey);
   useEffect(() => {
-    if (refreshKey && refreshKey > 0) {
-      void refresh();
-    }
+    if (refreshKey === lastRefreshKey.current) return;
+    lastRefreshKey.current = refreshKey;
+    void refresh();
   }, [refreshKey, refresh]);
 
   const relativeTime = useRelativeTime(lastFetchedAt);

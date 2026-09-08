@@ -10,13 +10,18 @@ import { describe, it, expect } from "vitest";
 import { ClientHttpError } from "@flow-state-dev/client";
 import {
   describeReadError,
+  isConclusiveRefusal,
   isMigrationRequiredError,
   recordBelongsTo,
   suspensionOwnerId,
 } from "../src/react/lib/instance-ownership";
 
-const collectionMember = { id: "engineer-b", cardinality: "collection" as const };
-const singleton = { id: "reports", cardinality: "singleton" as const };
+const collectionMember = {
+  id: "engineer-b",
+  kind: "engineer",
+  cardinality: "collection" as const,
+};
+const singleton = { id: "reports", kind: "reports", cardinality: "singleton" as const };
 
 describe("recordBelongsTo", () => {
   it("matches an attributed record to its exact owner", () => {
@@ -49,12 +54,16 @@ describe("recordBelongsTo", () => {
     expect(recordBelongsTo({ flowKind: "billing" }, singleton)).toBe(false);
   });
 
-  it("ignores kind entirely once a record is attributed", () => {
-    // An id may deliberately equal some other flow's kind. The owner field is
-    // the answer; the kind is not consulted.
+  it("refuses an attributed record whose two facts disagree", () => {
+    // Reachable when an id is re-registered under a different kind: the record
+    // still names `reports` as its owner, but the instance answering to that id
+    // is now a different flow, and its sessions are not this one's to show.
+    // The engine's `ownsRecord` refuses the same pair, and a presentation rule
+    // that disagreed with the admission rule would display what the server
+    // would then refuse to read.
     expect(
       recordBelongsTo({ flowId: "reports", flowKind: "engineer" }, singleton),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 
@@ -104,5 +113,40 @@ describe("unattributable history", () => {
     expect(describeReadError("not an error", "Failed to fetch requests")).toBe(
       "Failed to fetch requests",
     );
+  });
+});
+
+describe("isConclusiveRefusal", () => {
+  const http = (status: number, body?: unknown) =>
+    new ClientHttpError("refused", { status, body });
+
+  // Only these may be acted on destructively — discarding a saved selection.
+  it("treats a definite answer as conclusive", () => {
+    expect(isConclusiveRefusal(http(404))).toBe(true);
+    expect(isConclusiveRefusal(http(410))).toBe(true);
+    expect(isConclusiveRefusal(http(403))).toBe(true);
+    expect(
+      isConclusiveRefusal(http(409, { error: "migration-required" })),
+    ).toBe(true);
+  });
+
+  // A server that never rendered a verdict has not said the record is gone.
+  // Throwing state away on one of these makes a blip permanent.
+  it("treats a failure to answer as inconclusive", () => {
+    expect(isConclusiveRefusal(http(500))).toBe(false);
+    expect(isConclusiveRefusal(http(503))).toBe(false);
+    expect(isConclusiveRefusal(new Error("network down"))).toBe(false);
+    expect(isConclusiveRefusal(undefined)).toBe(false);
+  });
+
+  it("treats an expired credential as inconclusive", () => {
+    // A token that can be refreshed is not the same answer as "not yours", and
+    // a panel whose session lapsed must not delete every saved selection on the
+    // way out.
+    expect(isConclusiveRefusal(http(401))).toBe(false);
+  });
+
+  it("does not treat an unrelated 409 as conclusive", () => {
+    expect(isConclusiveRefusal(http(409, { error: "lease-held" }))).toBe(false);
   });
 });

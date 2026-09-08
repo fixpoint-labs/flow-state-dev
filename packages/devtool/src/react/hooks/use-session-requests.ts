@@ -8,8 +8,7 @@ import { useWorkspaceFence } from "./use-workspace-fence";
 const EMPTY_REQUESTS: SessionRequestSummary[] = [];
 
 export function useSessionRequests(sessionId: string | null) {
-  const { sessionClient, recoveryClient, config, autoRecoverInterrupted, workspaceToken } =
-    useDevTool();
+  const { sessionClient, recoveryClient, config, autoRecoverInterrupted } = useDevTool();
   const [requests, setRequests] = useState<SessionRequestSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,15 +39,14 @@ export function useSessionRequests(sessionId: string | null) {
   const refresh = useCallback(async () => {
     const stillCurrent = fence.begin();
     if (stillCurrent === null) return;
-    const mine: readonly unknown[] = [workspaceToken, sessionClient, sessionId];
     if (!sessionId) {
       setRequests([]);
-      setHeldIdentity(mine);
+      setHeldIdentity(fence.identity);
       return;
     }
     setIsLoading(true);
     setError(null);
-    setHeldIdentity(mine);
+    setHeldIdentity(fence.identity);
     try {
       // Sweep stale active-request entries before listing, same as the
       // session-list refresh — but ONLY when the host opted in via
@@ -77,7 +75,6 @@ export function useSessionRequests(sessionId: string | null) {
     }
   }, [
     fence,
-    workspaceToken,
     sessionClient,
     recoveryClient,
     sessionId,

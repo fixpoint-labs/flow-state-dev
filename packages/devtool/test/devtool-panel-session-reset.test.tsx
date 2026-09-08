@@ -144,7 +144,11 @@ vi.mock("../src/react/hooks/use-focus-revalidate", () => ({
 }));
 
 vi.mock("../src/react/hooks/use-continue-request", () => ({
-  useContinueRequest: () => ({ continueRequest: vi.fn(), isContinuing: () => false }),
+  useContinueRequest: () => ({
+    // Resolves, because the panel chains `.catch` onto it.
+    continueRequest: vi.fn().mockResolvedValue(undefined),
+    isContinuing: () => false,
+  }),
 }));
 
 // Stand-in for the Suspensions panel, exposing the panel's own `onResumed`

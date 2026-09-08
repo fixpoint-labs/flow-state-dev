@@ -45,7 +45,7 @@ import {
   createDevToolSessionClient,
   type DevToolConfig,
 } from "../lib/client";
-import { recordBelongsTo } from "../lib/instance-ownership";
+import { isConclusiveRefusal, recordBelongsTo } from "../lib/instance-ownership";
 import {
   clearLegacySingletonSessionHint,
   readLegacySingletonSessionHint,
@@ -346,16 +346,27 @@ export function DevToolProvider({
 
     const sessionClient = state.sessionClient;
     void (async () => {
-      let owned = false;
+      // Three outcomes, not two. A hint is only DISCARDED on a conclusive
+      // answer — the session is genuinely not this copy's, or genuinely not
+      // there. Anything indeterminate (a 5xx, a dropped connection, a
+      // credential that may refresh) leaves it alone and tries again next
+      // time, because the two mistakes are not symmetric: wrongly keeping a
+      // hint costs one failed restore that revalidates on the next attempt,
+      // and wrongly deleting one is unrecoverable — a single blip would
+      // silently turn off session restore for that operator, on every reload
+      // afterwards, with nothing on screen to say why.
+      let verdict: "owned" | "foreign" | "indeterminate";
       try {
         const detail = await sessionClient.getSession(hint);
-        owned = recordBelongsTo(detail, instance) && detail.userId === state.config.userId;
-      } catch {
-        // Denied, missing, or unattributable. All three mean the same thing
-        // here: this hint cannot become the workspace.
-        owned = false;
+        verdict =
+          recordBelongsTo(detail, instance) && detail.userId === state.config.userId
+            ? "owned"
+            : "foreign";
+      } catch (err) {
+        verdict = isConclusiveRefusal(err) ? "foreign" : "indeterminate";
       }
-      if (!owned) {
+      if (verdict === "indeterminate") return;
+      if (verdict === "foreign") {
         if (scoped !== null) writeSessionHint(scope, null);
         if (legacy !== null) clearLegacySingletonSessionHint(instance.id);
         return;

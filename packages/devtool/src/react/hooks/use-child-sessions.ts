@@ -136,7 +136,7 @@ export type UseChildSessionsResult = {
 };
 
 export function useChildSessions(sessionId: string | null): UseChildSessionsResult {
-  const { sessionClient, workspaceToken } = useDevTool();
+  const { sessionClient } = useDevTool();
   const [childSessions, setChildSessions] = useState<ChildSessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -191,20 +191,19 @@ export function useChildSessions(sessionId: string | null): UseChildSessionsResu
     // rows without clearing it — a stale failure banner over fresh data.
     const stillCurrent = fence.begin();
     if (stillCurrent === null) return;
-    const mine: readonly unknown[] = [workspaceToken, sessionClient, sessionId];
 
     if (!sessionId) {
       if (!stillCurrent()) return;
       setChildSessions([]);
       setError(null);
       setTruncation("complete");
-      setHeldIdentity(mine);
+      setHeldIdentity(fence.identity);
       return;
     }
 
     setIsLoading(true);
     setError(null);
-    setHeldIdentity(mine);
+    setHeldIdentity(fence.identity);
     try {
       const page = await fetchChildSessionPage(sessionClient, sessionId, stillCurrent);
       // `undefined` is a walk that stopped because it was retired, not a page.
@@ -235,7 +234,7 @@ export function useChildSessions(sessionId: string | null): UseChildSessionsResu
       // older read resolving late cannot clear it while a newer one is running.
       if (stillCurrent()) setIsLoading(false);
     }
-  }, [fence, workspaceToken, sessionClient, sessionId]);
+  }, [fence, sessionClient, sessionId]);
 
   // Fetch on mount and whenever the read identity changes. `refresh`'s identity
   // is stable for a given session id and client.

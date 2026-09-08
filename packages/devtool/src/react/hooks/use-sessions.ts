@@ -39,15 +39,14 @@ export function useSessions(flow: Pick<FlowListEntry, "id" | "cardinality"> | nu
   const refresh = useCallback(async () => {
     const stillCurrent = fence.begin();
     if (stillCurrent === null) return;
-    const mine: readonly unknown[] = [sessionClient, flowId, cardinality, config.userId];
     if (!flowId) {
       setSessions([]);
-      setHeldIdentity(mine);
+      setHeldIdentity(fence.identity);
       return;
     }
     setIsLoading(true);
     setError(null);
-    setHeldIdentity(mine);
+    setHeldIdentity(fence.identity);
     try {
       // Sweep stale active-request entries before listing so any request
       // whose process died is shown as `interrupted` rather than stuck

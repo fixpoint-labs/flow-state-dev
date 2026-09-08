@@ -14,6 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, act } from "@testing-library/react";
 import type { FlowListEntry } from "@flow-state-dev/client";
+import { ClientHttpError } from "@flow-state-dev/client";
 
 const listFlows = vi.fn();
 const getSession = vi.fn();
@@ -180,20 +181,60 @@ describe("flow instance selection", () => {
 
       expect(ctx.activeSessionId).toBeNull();
       expect(
-        localStorage.getItem("fsd.devtool.activeSession.%7Cu1%7Cengineer-b"),
+        localStorage.getItem("fsd.devtool.activeSession.|u1|engineer-b"),
       ).toBeNull();
     });
 
-    it("refuses one the server will not admit at all", async () => {
+    it("refuses one the server says is not there", async () => {
       await mount();
       await act(async () => ctx.selectWorkspace("engineer-b", "sess-b"));
-      getSession.mockRejectedValue(new Error("not found"));
+      getSession.mockRejectedValue(
+        new ClientHttpError("gone", { status: 404, body: {} }),
+      );
 
       await act(async () => ctx.selectInstance(null));
       await act(async () => ctx.selectInstance("engineer-b"));
       await settle();
 
       expect(ctx.activeSessionId).toBeNull();
+      // A definite "not there" is worth acting on.
+      expect(
+        localStorage.getItem("fsd.devtool.activeSession.|u1|engineer-b"),
+      ).toBeNull();
+    });
+
+    it("keeps a hint the server merely failed to answer for, and restores it later", async () => {
+      // The asymmetry that matters: wrongly keeping a hint costs one failed
+      // restore that revalidates next time; wrongly deleting one is
+      // unrecoverable, and a single blip would silently turn off session
+      // restore for this operator on every reload afterwards.
+      await mount();
+      await act(async () => ctx.selectWorkspace("engineer-b", "sess-b"));
+      getSession.mockRejectedValue(
+        new ClientHttpError("server error", { status: 500, body: {} }),
+      );
+
+      await act(async () => ctx.selectInstance(null));
+      await act(async () => ctx.selectInstance("engineer-b"));
+      await settle();
+
+      expect(ctx.activeSessionId).toBeNull();
+      expect(
+        localStorage.getItem("fsd.devtool.activeSession.|u1|engineer-b"),
+      ).toBe("sess-b");
+
+      // The outage clears; the next attempt restores it.
+      getSession.mockReset().mockResolvedValue({
+        id: "sess-b",
+        flowId: "engineer-b",
+        flowKind: "engineer",
+        userId: "u1",
+      });
+      await act(async () => ctx.selectInstance(null));
+      await act(async () => ctx.selectInstance("engineer-b"));
+      await settle();
+
+      expect(ctx.activeSessionId).toBe("sess-b");
     });
 
     it("installs one the server confirms belongs to the selected copy", async () => {
@@ -263,9 +304,11 @@ describe("flow instance selection", () => {
       expect(ctx.activeSessionId).toBeNull();
     });
 
-    it("drops a legacy hint the server refuses, instead of retrying it", async () => {
+    it("drops a legacy hint the server says is gone", async () => {
       localStorage.setItem("fsd.devtool.activeSession.reports", "sess-gone");
-      getSession.mockRejectedValue(new Error("not found"));
+      getSession.mockRejectedValue(
+        new ClientHttpError("gone", { status: 404, body: {} }),
+      );
       await mount();
 
       await act(async () => ctx.selectInstance("reports"));

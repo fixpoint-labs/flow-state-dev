@@ -14,6 +14,7 @@
  * the other's state.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDevTool } from "../context/devtool-context";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import {
   bindStoreToCallbacks,
@@ -27,12 +28,6 @@ export type UseContinueRequestOptions = {
   recoveryClient: RecoveryClient;
   /** The exact instance that owns the interrupted request. */
   flowId: string | null;
-  /**
-   * The workspace visit this continuation belongs to. In the owner token
-   * because instance and session can both come back to the values they had —
-   * leaving A for B and returning — while the visit cannot.
-   */
-  ownerToken?: number;
   sessionId: string | null;
   /**
    * Called whenever the continuation stream's merged view changes. `items` is
@@ -59,7 +54,11 @@ export type UseContinueRequestResult = {
 };
 
 export function useContinueRequest(options: UseContinueRequestOptions): UseContinueRequestResult {
-  const { recoveryClient, flowId, ownerToken, sessionId, onItems, onSettled } = options;
+  const { recoveryClient, flowId, sessionId, onItems, onSettled } = options;
+  // Read from context, not passed in — one channel for the visit, not two. It is
+  // in the owner token below because instance and session can both come back to
+  // the values they had (A -> B -> A) while the visit cannot.
+  const { workspaceToken } = useDevTool();
   const [activeIds, setActiveIds] = useState<ReadonlySet<string>>(new Set());
   const handlesRef = useRef<Map<string, RequestStreamHandle>>(new Map());
 
@@ -73,7 +72,7 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
   const ownerRef = useRef(0);
   useEffect(() => {
     ownerRef.current += 1;
-  }, [flowId, ownerToken, sessionId]);
+  }, [flowId, workspaceToken, sessionId]);
 
   const stop = useCallback(
     (requestId: string) => {
@@ -211,7 +210,7 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
         return next;
       });
     };
-  }, [flowId, ownerToken, sessionId]);
+  }, [flowId, workspaceToken, sessionId]);
 
   return { continueRequest, isContinuing };
 }

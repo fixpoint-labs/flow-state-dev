@@ -107,7 +107,11 @@ vi.mock("../src/react/hooks/use-focus-revalidate", () => ({
 }));
 
 vi.mock("../src/react/hooks/use-continue-request", () => ({
-  useContinueRequest: () => ({ continueRequest: vi.fn(), isContinuing: () => false }),
+  useContinueRequest: () => ({
+    // Resolves, because the panel chains `.catch` onto it.
+    continueRequest: vi.fn().mockResolvedValue(undefined),
+    isContinuing: () => false,
+  }),
 }));
 
 import { DevToolPanel } from "../src/react/DevToolPanel";

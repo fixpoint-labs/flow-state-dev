@@ -5,6 +5,15 @@
  * seed-then-merge behavior is exercised for real, not asserted against a mock.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// The hook reads the workspace visit from context now, rather than taking it as
+// a prop. `workspaceToken` is mutable so a test can move the workspace under an
+// in-flight continuation.
+const devToolState = { workspaceToken: 0 };
+
+vi.mock("../src/react/context/devtool-context", () => ({
+  useDevTool: () => devToolState,
+}));
 import { renderHook, act } from "@testing-library/react";
 
 const { calls } = vi.hoisted(() => ({
@@ -56,6 +65,7 @@ describe("useContinueRequest", () => {
   } as Response;
 
   beforeEach(() => {
+    devToolState.workspaceToken = 1;
     calls.length = 0;
     recoveryClient = { continueStream: vi.fn().mockResolvedValue(fakeResponse) };
   });
@@ -434,16 +444,15 @@ describe("useContinueRequest", () => {
     const onItems = vi.fn();
     const onSettled = vi.fn();
     const { result, rerender } = renderHook(
-      ({ flowId, ownerToken }) =>
+      ({ flowId }) =>
         useContinueRequest({
           recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
           flowId,
-          ownerToken,
           sessionId: "sess_1",
           onItems,
           onSettled,
         }),
-      { initialProps: { flowId: "engineer-a", ownerToken: 1 } },
+      { initialProps: { flowId: "engineer-a" } },
     );
 
     let pending!: Promise<void>;
@@ -451,9 +460,12 @@ describe("useContinueRequest", () => {
       pending = result.current.continueRequest("req_1", []);
     });
 
-    // A → B → A. Every visible value ends where it started.
-    rerender({ flowId: "engineer-b", ownerToken: 2 });
-    rerender({ flowId: "engineer-a", ownerToken: 3 });
+    // A → B → A. Every visible value ends where it started; only the visit,
+    // which the hook reads from context, records that anything happened.
+    devToolState.workspaceToken = 2;
+    rerender({ flowId: "engineer-b" });
+    devToolState.workspaceToken = 3;
+    rerender({ flowId: "engineer-a" });
 
     const cancel = vi.fn().mockResolvedValue(undefined);
     await act(async () => {

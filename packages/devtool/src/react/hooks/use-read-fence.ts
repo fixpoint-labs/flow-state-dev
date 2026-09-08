@@ -67,6 +67,17 @@ function sameIdentity(a: readonly unknown[], b: readonly unknown[]): boolean {
 
 export type ReadFence = {
   /**
+   * The identity this fence was built for.
+   *
+   * Stamp held data with THIS, never with a restatement of the same values. A
+   * hook that keeps its rows has to record which identity they were read under,
+   * and hand-assembling that tuple a second time is a duplicate of the one
+   * passed in — one that has to be kept in step by hand, in the exact place
+   * where getting it wrong shows another workspace's data and nothing fails.
+   * Handing back the array removes the second copy rather than documenting it.
+   */
+  identity: readonly unknown[];
+  /**
    * Is `candidate` the identity currently in play?
    *
    * For deriving OUTPUT, not for gating a write. A hook holds the identity its
@@ -184,6 +195,7 @@ export function useReadFence(
       const isCurrent = () =>
         !retiredRef.current && sameIdentity(mine, currentRef.current);
       return {
+        identity: mine,
         holds: (candidate) =>
           !retiredRef.current && sameIdentity(candidate, currentRef.current),
         isCurrent,

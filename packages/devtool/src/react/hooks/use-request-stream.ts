@@ -71,13 +71,6 @@ export type UseRequestStreamOptions = {
    * stream — or, more often, 404.
    */
   flowId: string | null;
-  /**
-   * The workspace visit this stream belongs to. In the connect effect's deps so
-   * a transition tears the wire down and rebuilds it: a stream is a live
-   * connection, and leaving instance A for B and returning must not be served by
-   * the socket A opened.
-   */
-  ownerToken?: number;
   requestId: string | null;
   startingAfter?: number;
   lastEventId?: string;
@@ -103,8 +96,13 @@ export type UseRequestStreamResult = {
 };
 
 export function useRequestStream(options: UseRequestStreamOptions): UseRequestStreamResult {
-  const { flowId, ownerToken, requestId, startingAfter, lastEventId, enabled = true, reconnectToken, onSessionMetadataChanged } = options;
-  const { baseUrl, config } = useDevTool();
+  const { flowId, requestId, startingAfter, lastEventId, enabled = true, reconnectToken, onSessionMetadataChanged } = options;
+  // The workspace visit is read from context rather than passed in: it is the
+  // same value for every consumer, and a second channel carrying it is a second
+  // thing to keep in step. In the connect effect's deps because a stream is a
+  // live connection — leaving instance A for B and returning must not be served
+  // by the socket A opened.
+  const { baseUrl, config, workspaceToken } = useDevTool();
   const bearerToken = config.bearerToken;
   const [streamState, setStreamState] = useState<StreamState | null>(null);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>("idle");
@@ -246,7 +244,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         rafRef.current = null;
       }
     };
-  }, [flowId, ownerToken, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, bearerToken, close, scheduleFlush, flushNow, buildSnapshot, onSessionMetadataChanged]);
+  }, [flowId, workspaceToken, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, bearerToken, close, scheduleFlush, flushNow, buildSnapshot, onSessionMetadataChanged]);
 
   const items = useMemo(
     () => streamState

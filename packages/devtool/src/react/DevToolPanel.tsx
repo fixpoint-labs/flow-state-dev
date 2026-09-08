@@ -235,7 +235,6 @@ function PanelContent({ className }: { className?: string }) {
 
   const { streamState, streamStatus, items: streamItems } = useRequestStream({
     flowId: activeFlowId,
-    ownerToken: workspaceToken,
     requestId: streamRequestId,
     startingAfter: replayState.startingAfter,
     lastEventId: replayState.lastEventId,
@@ -643,7 +642,6 @@ function PanelContent({ className }: { className?: string }) {
   const { continueRequest, isContinuing } = useContinueRequest({
     recoveryClient,
     flowId: activeFlowId,
-    ownerToken: workspaceToken,
     sessionId: effectiveSessionId,
     onItems: handleContinueItems,
     // The row's status in `requests` (polled) is stale the moment the
@@ -743,15 +741,18 @@ function PanelContent({ className }: { className?: string }) {
     .filter(Boolean)
     .join(" ");
 
-  // The identity of this workspace VISIT, used to key every owned subtree.
+  // The identity of this workspace VISIT, used to key the owned subtree.
   //
-  // The reset effect above is a passive effect: between the transition
-  // committing and that effect running, the panel renders once with the new
-  // selection and the previous workspace's items, details and replay state still
-  // in place. That render is the flash of A's content under B. A key makes React
-  // remount those subtrees with the transition itself, so the gap has no frame
-  // to appear in — and the token is in the key because A → B → A must not
-  // restore the subtree A left behind.
+  // This component's own transient state is reset during render (above), so it
+  // needs no key. What the key is for is everything MOUNTED BELOW: state,
+  // resources, suspensions and the trace/block/item selection all live in
+  // components whose own reset would be a passive effect, leaving one render
+  // with the new selection and the previous workspace's content still in place.
+  // That render is the flash of A's content under B. Remounting on the key
+  // removes the frame it could appear in, and retires those readers outright.
+  //
+  // The token is in the key because A → B → A must not restore the subtree A
+  // left behind: the ids come back, the visit does not.
   const workspaceKey = `${activeFlowId ?? "none"}:${effectiveSessionId ?? "none"}:${workspaceToken}`;
 
   return (
@@ -812,12 +813,33 @@ function PanelContent({ className }: { className?: string }) {
         />
 
         {/*
+          DO NOT REMOVE THIS KEY. It is not cosmetic and it is not redundant.
+
           Everything from here to the end of the detail panel belongs to ONE
-          workspace visit, and remounts with it. The trace/block/item selection
-          lives in this subtree for that reason: it names an item inside a
-          particular request of a particular session, so carrying it across a
-          switch would leave the detail sidebar describing work the operator can
-          no longer see.
+          workspace visit and remounts with it, and that remount is the ONLY
+          thing retiring the readers inside it. `use-session-state`,
+          `use-debug-resources`, `use-debug-resource-content`,
+          `use-debug-collection-items` and `use-list-suspensions` carry no fence
+          of their own precisely because this key unmounts them, so a response
+          from the copy just left writes to a component that no longer exists.
+          Delete the key and every one of them silently starts committing the
+          previous instance's state, resources and pending approvals under the
+          newly selected one.
+
+          `devtool-panel-owned-subtree.test.tsx` fails if it goes.
+
+          Which layer owns what, so nobody adds a fifth:
+          - THIS KEY retires everything mounted below it: the five readers above,
+            and the trace/block/item selection, which names an item inside a
+            particular request of a particular session.
+          - THE READ FENCE (`use-read-fence`) retires the readers that STAY
+            mounted across a switch — the navigator's session list, and the
+            panel's own request and ChildSession lists, which live above here.
+          - THE RENDER-PHASE RESET above retires this component's own transient
+            request state (`activeRequestId`, the item maps, replay), which no
+            remount covers because `PanelContent` itself does not remount.
+          - THE STREAM HOOK closes its own SSE handle on the visit, because a
+            live connection outlives a React unmount.
         */}
         <SelectionProvider key={workspaceKey}>
         {/* Main workspace */}
@@ -857,7 +879,6 @@ function PanelContent({ className }: { className?: string }) {
 
             <TabsContent value="stream" className="flex-1 min-h-0 m-0">
               <StreamView
-                key={workspaceKey}
                 requestGroups={requestGroups}
                 streamStatus={streamStatus}
                 isReplaying={isReplaying}
@@ -870,12 +891,11 @@ function PanelContent({ className }: { className?: string }) {
             </TabsContent>
 
             <TabsContent value="trace" className="flex-1 min-h-0 m-0">
-              <TraceView key={workspaceKey} requestGroups={requestGroups} />
+              <TraceView requestGroups={requestGroups} />
             </TabsContent>
 
             <TabsContent value="tasks" className="flex-1 min-h-0 m-0 overflow-auto">
               <TaskCollectionsView
-                key={workspaceKey}
                 items={taskItems}
                 childSessions={childSessions}
                 truncation={childSessionsTruncation}
@@ -885,7 +905,6 @@ function PanelContent({ className }: { className?: string }) {
 
             <TabsContent value="childSessions" className="flex-1 min-h-0 m-0">
               <ChildSessionsView
-                key={workspaceKey}
                 sessionId={effectiveSessionId}
                 childSessions={childSessions}
                 isLoading={childSessionsLoading}
@@ -899,7 +918,6 @@ function PanelContent({ className }: { className?: string }) {
 
             <TabsContent value="suspensions" className="flex-1 min-h-0 m-0">
               <SuspensionsView
-                key={workspaceKey}
                 sessionId={effectiveSessionId}
                 onResumed={handleResumed}
               />

@@ -27,10 +27,14 @@ vi.mock("../src/react/lib/client", () => ({
   },
 }));
 
+// Mutable so a test can move the workspace under an open stream. The hook reads
+// the visit from context rather than taking it as a prop.
+const devToolState = { baseUrl: undefined, config: { userId: "devuser" }, workspaceToken: 1 };
+
 vi.mock("../src/react/context/devtool-context", () => ({
   // The real context always carries `config`; the stream hook reads
   // `config.bearerToken` to forward a bearer on the SSE request.
-  useDevTool: () => ({ baseUrl: undefined, config: { userId: "devuser" } }),
+  useDevTool: () => devToolState,
 }));
 
 import { useRequestStream } from "../src/react/hooks/use-request-stream";
@@ -100,6 +104,7 @@ function feed(event: { type: string } & Record<string, unknown>) {
 
 describe("useRequestStream (devtool)", () => {
   beforeEach(() => {
+    devToolState.workspaceToken = 1;
     connections.length = 0;
     seq = 0;
     vi.useFakeTimers();
@@ -122,14 +127,13 @@ describe("useRequestStream (devtool)", () => {
     // A stream is a live connection, not a read. Leaving instance A for B and
     // coming back restores every visible value, so without the visit in the
     // connect effect's identity the socket A opened would go on serving B.
-    const { rerender } = renderHook(
-      ({ ownerToken }) =>
-        useRequestStream({ flowId: "demo", requestId: "req_1", enabled: true, ownerToken }),
-      { initialProps: { ownerToken: 1 } },
+    const { rerender } = renderHook(() =>
+      useRequestStream({ flowId: "demo", requestId: "req_1", enabled: true }),
     );
     expect(connections.length).toBe(1);
 
-    rerender({ ownerToken: 2 });
+    devToolState.workspaceToken = 2;
+    rerender();
 
     expect(connections.length).toBe(2);
     expect(connections[0]!.closed).toBe(true);
