@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/testing",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Test harnesses and mocks for flow-state-dev blocks and flows.",
   "keywords": [
     "ai",

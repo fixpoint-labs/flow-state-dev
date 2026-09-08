@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/next",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Next.js deployment adapter for flow-state-dev.",
   "keywords": [
     "ai",

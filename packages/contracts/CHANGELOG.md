@@ -1,5 +1,11 @@
 # @flow-state-dev/contracts
 
+## 0.1.0
+
+### Minor Changes
+
+- b3e6e22: Initial release (FIX-1187).
+
 ## 0.0.0
 
 - Initial release. Extracts the item taxonomy, the deterministic

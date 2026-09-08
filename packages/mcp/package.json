@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "MCP transport adapter for flow-state-dev.",
   "keywords": [
     "ai",

@@ -1,5 +1,29 @@
 # @flow-state-dev/tools
 
+## 0.1.0
+
+### Minor Changes
+
+- b3e6e22: Initial release (FIX-1187).
+
+### Patch Changes
+
+- Updated dependencies [67b4157]
+- Updated dependencies [527c5ca]
+- Updated dependencies [4e562d0]
+- Updated dependencies [afcac3d]
+- Updated dependencies [3cbc411]
+- Updated dependencies [b3e6e22]
+- Updated dependencies [ce85e80]
+- Updated dependencies [d7208f7]
+- Updated dependencies [1b94521]
+- Updated dependencies [5fa52aa]
+- Updated dependencies [2c4b0f5]
+- Updated dependencies [4054c64]
+- Updated dependencies [fda9b15]
+  - @flow-state-dev/core@0.1.0
+  - @flow-state-dev/workspace@0.1.0
+
 ## Pre-1.0 history
 
 Captured from the project's pre-Changesets development log (root `changelog.md`,
@@ -11,7 +35,7 @@ The kitchen-sink `selectBashProvider()` auto-detect on Vercel now requires the `
 
 ### 2026-05-15 — Bash tool fixes (consolidated)
 
-A series of bash-tool fixes shipped together. `routeWrittenFile` strips a leading `./` before matching mount prefixes, so paths the model supplies with `./artifacts/foo.md` route correctly into collections. New `purgeOldRuns` helper and `bash-purge-stale-containers` block bound the `fsdev-*` MOAT container pool when `persist: true`. MOAT containers persist across requests within a session by default (`provider.persist: true`). `stripMountsTargeting` now strips *and* injects the `/workspace` mount declaration. Artifact content now persists on first write via `getOrCreate` + `patchState` + `writeContent`. `bashCommand` runs with PWD = workspace root so the agent never has to know about `/workspace`. New `frameworkManaged` flag on `resolveMoatSandbox`. `flush()` warns on zero-file walks. Default MOAT workspace path aligned with `local` (`.fsdev/workspaces/session/<sessionId>`). Default `runName` is now session-stable (`fsdev-${sessionId}`). `moat run` early-exit detected within the readiness poll with captured stderr tail.
+A series of bash-tool fixes shipped together. `routeWrittenFile` strips a leading `./` before matching mount prefixes, so paths the model supplies with `./artifacts/foo.md` route correctly into collections. New `purgeOldRuns` helper and `bash-purge-stale-containers` block bound the `fsdev-*` MOAT container pool when `persist: true`. MOAT containers persist across requests within a session by default (`provider.persist: true`). `stripMountsTargeting` now strips _and_ injects the `/workspace` mount declaration. Artifact content now persists on first write via `getOrCreate` + `patchState` + `writeContent`. `bashCommand` runs with PWD = workspace root so the agent never has to know about `/workspace`. New `frameworkManaged` flag on `resolveMoatSandbox`. `flush()` warns on zero-file walks. Default MOAT workspace path aligned with `local` (`.fsdev/workspaces/session/<sessionId>`). Default `runName` is now session-stable (`fsdev-${sessionId}`). `moat run` early-exit detected within the readiness poll with captured stderr tail.
 
 ### 2026-05-15 — Bash tool: host-fs sync for bind-mount providers + cold-boot status sequencer
 

@@ -1,4 +1,4 @@
-# @flow-state-dev/node
+# @flow-state-dev/next
 
 ## 0.1.0
 

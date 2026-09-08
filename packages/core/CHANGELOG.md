@@ -1,5 +1,99 @@
 # @flow-state-dev/core
 
+## 0.1.0
+
+### Minor Changes
+
+- 67b4157: `dispatcher()` can address another flow: `flowKind` on an `internal` or `task` dispatcher resolves `action` on that flow's matching entry map and starts the work there, fire-and-forget. `defineFlow` holds one flow's entry maps and skips the check, so the miss is a named runtime refusal — `flow-not-found` for an unregistered flow, `no-entry` for a registered one that declares no such entry — never a retry, a queue, or a fall-through to the sender's own map. A cross-flow `{ key }` child belongs to the addressed flow (its `flowKind`, its state defaults) and roots its own lineage; a reply is the same `{ from: true }` dispatcher pointed back at the sender's `flowKind`. Omit `type` — ordinary dispatchers send `internal`, and a task-board seat is a dispatcher whose `session` is `"per-task"`, `"per-worker"`, or `{ key }` (FIX-1297, FIX-1171 family). The entry-name field is `action`.
+- 4e562d0: The chat transport is removed (FIX-1330): `@flow-state-dev/chat-sdk` no longer exists, `chat` is no longer an option on `defineFlow`, `ChatConfig` / `ChatEventBinding` / `validateChatConfig` are gone from core, `"chat"` is no longer a `DispatchType` or a public re-entry source in the engine, and the DevTool no longer renders a Chat provenance badge. Conversational bots are driven through a caller-addressed action in `actions`; platform events ride the webhook transport.
+- afcac3d: A flow declares its `cardinality` — `"singleton"` (the default: `myFlow()` is the one instance, addressed by its kind, and `myFlow({ id: "default" })` now throws) or `"collection"` (several configured copies, each registered under its own required `id`) — every address (the action, stream, resume, retry and continue routes, `fsdev run`, dispatchers, BullMQ jobs, MCP, webhook and schedule dispatch) is the exact instance id with no first-registered fallback, every session and request records its owning `flowId` and is refused when reached through another instance (`FlowInstanceBindingMismatchError`; `409 wrong-instance-session` / `wrong-instance-request` / `migration-required` on the routes), and SQLite and Postgres add a nullable indexed `flow_id` column with no backfill (FIX-1321, FIX-1322).
+- 3cbc411: A shared contract for coding-agent harnesses (LAB-152), so a harness package no
+  longer has to be built against another vendor's internals.
+
+  `@flow-state-dev/core` now exports the shape a harness block is handed and the
+  handle it returns — `harnessRunInputSchema` and `harnessRunHandleSchema` (plus
+  `harnessRunEnvelopeSchema` for a fire-and-forget dispatch), with
+  `HarnessRunInput`, `HarnessRunHandle`, `HarnessBlock`, `HarnessResolver` and
+  `HarnessSessionHook` on `@flow-state-dev/core/types`. The handle names how a run
+  ended (`outcome`: finished, stopped at a limit, or failed), its final message,
+  usage, and cost — including whether that cost was reported by the agent or
+  estimated. The input is the prompt alone: a working directory or a session to
+  resume reaches a harness through a resolver the host supplies, not through a
+  schema a model calling the block as a tool can see.
+
+  `@flow-state-dev/claude-code`'s handles are the neutral ones plus Claude's own
+  `resultSubtype` and `toolsObserved`. Two visible changes: `source` now reads
+  `claude-code/sdk` and `claude-code/cli-remote` (the `<package>/<door>`
+  convention every harness follows) and handles saved under the old `sdk` /
+  `cli-remote` spellings still load; and the SDK handle carries `outcome` and
+  `cost` alongside the existing `costUsd`, which stays for now. The package's
+  `RemoteAgentTaskHandle`, `RemoteAgentSource`, `RemoteAgentStatus` and
+  `remoteAgentTaskHandleSchema` are deprecated aliases of the core shapes.
+
+- b3e6e22: Initial release (FIX-1187).
+- ce85e80: Two registered copies of one flow definition can be set up differently: `defineFlow({ configSchema })` declares what a copy may carry, the factory call takes `config`, and blocks read it as `ctx.flow.config` (FIX-1331).
+- 1b94521: Background Claude Code runs can continue a previous conversation (LAB-154).
+
+  `claudeCodeAgent` and `createClaudeCodeAgentCapability` take `resume` (which
+  session this run continues — return `null` to start fresh) and `onSession`
+  (called during the run when the agent names its session, so a cancelled run's id
+  is not lost). Both are background-path only and throw at construction without
+  `detached: true`.
+
+  Three things existing code can trip over:
+
+  - **Every resolver option is now handed the block context alone.** `cwd`,
+    `sandbox` and `resume` on `claudeCodeAgent`, and `root` on
+    `createWorkspaceAgentCapability`, used to receive the run's input as a first
+    argument. Drop it: `cwd: (_input, ctx) => …` becomes `cwd: (ctx) => …`.
+  - **`costUsd` is gone from the SDK handle.** Read `cost.usd`. Handles already
+    persisted with the old field still load.
+  - **`HarnessResolver` in `@flow-state-dev/core/types` matches**, and its context
+    keeps its types where it previously widened them to `any` — a resolver body
+    reading an undeclared scope-state field no longer compiles.
+
+- 5fa52aa: One dispatch protocol: every arrival at a flow — a caller's action, a webhook, a schedule, a task hand-off, an internal dispatch — is a dispatch of one type delivered to one entry addressed by `(type, name)`, with no fallback between types (FIX-1302).
+
+  - **`defineFlow` gains `internal` and `task` entries, nested under their type.** `internal: { actions: { wake: { block } } }` and `task: { actions: { implement: { block } } }` are declared like actions and are definition-only, like the transport maps; the flat `internal: { wake }` / `tasks: { implement }` spelling is refused by name. An `internal` entry is reachable only from a `dispatcher()` inside the flow; a `task` entry is reachable only from a `dispatcher({ type: "task" })` seat on a task board the flow reaches, and `defineFlow` puts each one behind that board's claim gate (the row re-read, the claim verified, the task scope marked, the ticket re-minted) before the block runs. A task entry no board addresses, a task dispatcher no board holds, and two boards addressing one entry are refused at definition. Every entry, of every type, accepts its own `concurrency` (`ActionCore.concurrency`).
+  - **`dispatcher()` is the block that sends.** `dispatcher({ name, type: "internal", target, session: { key } | { id }, payload? })` (`InternalDispatcherConfig`) returns a handler carrying its static address, and `defineFlow` refuses an address the flow does not declare — through composition, rescue handlers, and a generator's static `tools`. `{ key }` derives a child session of the running one (minted, then adopted on the same key); `{ id }` delivers into an existing session of the same flow and principal, refuses an unknown id rather than creating one, and is dropped if that session was deleted and recreated between acceptance and the run. A refusal throws `DispatchRefusedError` naming the refusal (`no-entry`, `session-not-found`, `session-not-addressable`, `key-occupied`, `no-dispatch-operation`, `dispatch-rejected`, `external-dispatcher`).
+  - **`.forEach()` and `.forEachSideChain()` accept `blocks`.** A per-item factory declares the blocks it can produce, so they are walked for dispatch addresses and merged for resources like a block-shaped call's element. A task board's drain uses it, which is what lets `defineFlow` refuse a flow that reaches a board with a hand-off seat but never declares the entry it addresses.
+  - **A task board hands off through a dispatcher seat.** A seat under `workers` is a block; a `dispatcher({ name, type: "task", target, session: "per-task" | "per-worker" | { key: (task) => string } })` (`TaskDispatcherConfig`) in that position hands the seat's rows off to `flow.task.actions[target]` in the child session the policy names. A `task` dispatch carries `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, payload }` (`taskDispatchInputSchema`, `TaskDispatchInput` from core), and the entry's gate re-reads the row and verifies the claim before the block runs. A refused hand-off throws the same `DispatchRefusedError` a `dispatcher()` block throws. An entry a `per-worker` or `key` seat hands off to defaults to `concurrency: "queue"` (an explicit policy wins); a `per-task` seat keeps the flow default. `board.handedOff` lists the seats that hand off; `createTaskGate`, `createHandOff`, `StaleTaskClaimError` and the `TaskSeatRegistry` type are exported from `@flow-state-dev/orchestration/task-board`. `TaskSessionPolicy`, `taskSessionKeyFor`, `bindTaskDispatcher` and `taskBindingOf` are exported from core for substrate code.
+  - **A dispatched request is stamped.** It records `metadata.dispatch = { type, target, from, key?, ... }` under `source: "internal"` or `"task"`; the child session it runs in carries `topic` (the key) and `coordinate` (`"<type>:<target>"`) and is listed by `GET /sessions/:sessionId/children` like any other child of its parent.
+  - **`task` and `internal` dispatches can never be re-entered** from a public route: retry, continue and resume refuse them, and `publicReentrySources` cannot re-open them.
+  - **`createMockTransportHost` publishes `usesExternalDispatcher: false`**, matching the widened `InboundTransportHost` contract.
+  - **The dispatch seam is not a named member of the block context** — reach it with `dispatcher()`, or in substrate code with `dispatchThroughSeam` and `markDispatcher`. The Workstream surface this protocol replaces is removed in the same release; see the Workstream-removal note for the renames.
+
+- 4054c64: `dispatcher()` can reply to who dispatched it: `session: { from: true }` delivers into the seam-stamped sender, and a request with no trusted stamp refuses `no-sender` (FIX-1312, FIX-1171).
+- fda9b15: Background work is declared with a task-board dispatcher seat and read back as child sessions: a session's children are listed at `GET /sessions/:sessionId/children` through `listChildSessions()` and `useSession`'s `childSessions` / `childSessionsStale`, session-scoped resources shared with them use `sharedToLineage`, and the two `createFlowState` options are `dispatchDrainTimeoutMs` and `maxChildSessionListLimit`; the Workstream surface they replace is removed, `ctx.requestHost.startDetached` and `dispatch: { mode: "detached" }` with it (FIX-1308). From `@flow-state-dev/orchestration/task-board` that removes the detached-mode helpers (`assertDetachedBoardSupported`, `detachedTaskPredicate`, `coordinateKey`, `coordinateLabel`, `workstreamRoutingSeed`, `WorkerCoordinate`, `TaskWorkerDispatch`, `TaskWorkerSlot`, `TaskWorkerSlotRegistry`, `TaskWorkerEntry`, `isTaskWorkerEntry`) and `board.detachedWorkers`; a seat is a block or a `dispatcher({ type: "task" })`, and `resolveWorkerSlots` now returns the bare blocks plus the `HandOffSeat`s (`name`, `label`, `dispatch`) in one walk from the hand-off module. A `{ worker, dispatch }` or `{ block, session }` seat is refused by name at construction. The DevTool's Children panel pairs a child with its task from the dispatch key a `per-task` or `per-worker` seat derives (a `{ key }` policy pairs nothing) and shows the entry it was dispatched for.
+
+### Patch Changes
+
+- 527c5ca: The DevTool now identifies flows by instance rather than by kind, so two registered copies of one flow each show their own sessions, requests and controls instead of one copy's work appearing under the other (FIX-1324).
+- d7208f7: LAB-153: the model price table now knows OpenAI's Codex models, so a Codex run can be priced.
+
+  `gpt-5.4-codex-mini` previously matched the `gpt-5.4` row and was estimated at the full model's rate. Cost estimates for that model change; the other Codex names were unpriced before and are priced now.
+
+- 2c4b0f5: Skills now follow the Agent Skills specification (https://agentskills.io/specification)
+  in full for a SKILL.md's frontmatter (FIX-1318).
+
+  - `name`, `license`, `compatibility`, and `metadata` are parsed into typed fields
+    on `SkillState` (and `Skill`) instead of being kept only as preserved unknown
+    keys. `name` is validated and must match the folder it lives in;
+    `compatibility` is capped at 500 characters; `metadata` is a string → string
+    map. `MAX_COMPATIBILITY_LENGTH` is exported alongside the existing caps.
+  - `parseSkillMd` takes an optional `{ expectedName }` so directory readers and
+    seeders can enforce the name/folder match. `readSkillsDirectory`,
+    `importSkillsDirectory`, `ensureSeeded`, and `createSkillsLibrary` pass it.
+  - Skill names follow the spec's hyphen rules: no leading, trailing, or
+    consecutive hyphens. Names like `pdf-` or `pdf--tools` were accepted before
+    and are rejected now.
+  - `allowed-tools` accepts the spec's space-separated string form
+    (`allowed-tools: search fetch`) in addition to a YAML list, and
+    `serializeSkillMd` writes it in the spec form.
+
+- Updated dependencies [b3e6e22]
+  - @flow-state-dev/contracts@0.1.0
+
 ## Pre-1.0 history
 
 Captured from the project's pre-Changesets development log (root `changelog.md`,
