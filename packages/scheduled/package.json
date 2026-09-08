@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/scheduled",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Scheduled-actions transport for flow-state-dev.",
   "keywords": [
     "ai",

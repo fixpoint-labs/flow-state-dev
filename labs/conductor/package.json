@@ -7,7 +7,7 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "description": "Incubation lab: Conductor (LAB-138). A task row becomes a watched, settled coding run \u2014 a board, one handed-off harness manager per epic, a per-run checkout, and a verdict read before the row is settled.",
+  "description": "Incubation lab: Conductor (LAB-138). A task row becomes a watched, settled coding run — a board, one handed-off harness manager per epic, a per-run checkout, and a verdict read before the row is settled.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root . --passWithNoTests",

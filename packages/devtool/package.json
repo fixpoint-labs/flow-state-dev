@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/devtool",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Pre-built DevTool assets served by fsdev dev.",
   "keywords": [
     "ai",
