@@ -77,6 +77,7 @@ export function normalizeResourceState(config: ResourceConfig, value: unknown): 
 function writeValidationSchema(
   stateSchema: ResourceConfig["stateSchema"]
 ): ResourceConfig["stateSchema"] {
+  if (getZodTypeName(stateSchema) !== "ZodCatch") return stateSchema;
   let schema = stateSchema;
   const seen = new Set<unknown>();
   while (getZodTypeName(schema) === "ZodCatch" && !seen.has(schema)) {
@@ -237,7 +238,9 @@ export function parseResourceWriteState(
     // stores nothing, rather than being refused — which predates this guard and
     // is filed on its own. Widening the condition here would quietly fold that
     // fix into this one; it stays narrow until that issue lands.
-    const cleared = stateSchema.safeParse({});
+    // Same peel as the candidate parse above: a top-level catch must not make
+    // `{}` look like a successful clear-normalization via its fallback.
+    const cleared = writeValidationSchema(stateSchema).safeParse({});
     if (cleared.success && isJsonObject(cleared.data)) {
       assertStableResourceState(stateSchema, cleared.data, {}, resourceLabel);
     }

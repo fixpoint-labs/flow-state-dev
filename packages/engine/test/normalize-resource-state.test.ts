@@ -118,6 +118,48 @@ describe("parseResourceWriteState", () => {
       /at "range"/
     );
   });
+
+  it("rejects a write that only succeeds via a top-level `.catch()` fallback", () => {
+    const schema = z
+      .object({ n: z.number().nonnegative(), keep: z.string() })
+      .catch({ n: 0, keep: "schema-default" });
+    expect(() => parseResourceWriteState(schema, { n: -1, keep: "DO-NOT-LOSE" }, "row")).toThrow(
+      ValidationError
+    );
+  });
+
+  it("peels consecutive top-level `.catch()` wrappers before validating the write", () => {
+    const schema = z
+      .object({ n: z.number().nonnegative(), keep: z.string() })
+      .catch({ n: 0, keep: "inner-default" })
+      .catch({ n: 0, keep: "outer-default" });
+    expect(() => parseResourceWriteState(schema, { n: -1, keep: "DO-NOT-LOSE" }, "row")).toThrow(
+      ValidationError
+    );
+  });
+
+  it("still applies a field-level `.catch()` as ordinary write normalization", () => {
+    const schema = z.object({
+      n: z.number().nonnegative().catch(0),
+      keep: z.string()
+    });
+    expect(parseResourceWriteState(schema, { n: -1, keep: "ok" }, "row")).toEqual({
+      n: 0,
+      keep: "ok"
+    });
+  });
+
+  it("clears a nullable catch-wrapped schema without treating the fallback as a write", () => {
+    // `setState(null)` takes the nullable-clear branch, then re-parses `{}`
+    // for the fixed-point check. That second parse must use the same peel —
+    // otherwise a top-level catch can "succeed" on `{}` with a fallback that
+    // the drifting inner schema then moves, and a documented reset throws.
+    const schema = z
+      .object({ n: z.number().transform((v) => v + 1) })
+      .nullable()
+      .catch({ n: 0 });
+    expect(parseResourceWriteState(schema, null, "row")).toEqual({});
+  });
 });
 
 /**
