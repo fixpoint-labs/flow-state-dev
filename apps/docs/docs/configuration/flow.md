@@ -66,7 +66,7 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 | `schedules` | `SchedulesConfig` | — | Static and dynamic scheduled actions. Definition-only. |
 | `tokenCounter` | `TokenCounter` | — | Custom token accounting. |
 | `costEstimator` | `CostEstimator` | — | Custom USD cost estimate from model usage. |
-| `isolateUserState` | `boolean` | `false` | Key user state (and the default for user resources) per flow kind. A resource's own `flowIsolation` always wins. |
+| `isolateUserState` | `boolean` | `false` | Key user state (and the default for user resources) per flow instance — each named copy of a definition gets its own. A resource's own `flowIsolation` always wins. |
 | `isolateOrgState` | `boolean` | `false` | Org-scope equivalent of `isolateUserState`. |
 
 `mcp`, `chat`, `webhooks`, and `schedules` belong on the definition. Passing them to the factory call (`defineFlow({ ... })({ mcp: ... })`) is rejected.
@@ -213,5 +213,5 @@ Collections add `pattern`, `maxInstances`, `eviction` (`"none"` \| `"lru"` \| `"
 - [Block options](./blocks) — generator, handler, sequencer, router fields
 - [Runtime options](./runtime) — `createFlowState`
 - [Concurrency policies](/docs/advanced/concurrency-policies)
-- [Flow isolation](/docs/advanced/flow-isolation)
+- [Flow isolation](/docs/advanced/flow-isolation) — including the [two-copy example](/docs/advanced/flow-isolation#private-state-follows-the-copy-not-the-definition). There is no separate flag for sharing between copies: `flowIsolation` is the one control, and it is per resource.
 - [Durable execution](/docs/advanced/durable-execution)

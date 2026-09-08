@@ -201,6 +201,30 @@ function runResourceStateStoreTests(
       expect(await readState(s, "session", "s2", "key")).toEqual({ v: 2 });
     });
 
+    it("keeps scope ids that share a colon prefix in separate buckets", async () => {
+      const s = await setup();
+      // An instance-isolated scope id is `${identityId}:${flowInstanceId}`, and
+      // an instance id may itself contain a colon — so `u:reviewer-a` and
+      // `u:reviewer-a:b` are two unrelated scopes whose string forms overlap.
+      // Every whole-scope operation must address the bucket exactly: a listing
+      // that reaches into the neighbour leaks one copy's private rows, and a
+      // `deleteAll` or `purgeTombstones` that does destroys them.
+      await put(s, "user", "u:reviewer-a", "notes", { who: "a" });
+      await put(s, "user", "u:reviewer-a:b", "notes", { who: "b" });
+
+      expect(await readAll(s, "user", "u:reviewer-a")).toEqual({ notes: { who: "a" } });
+      expect(await readPrefix(s, "user", "u:reviewer-a", "")).toEqual({ notes: { who: "a" } });
+      expect(await readAll(s, "user", "u:reviewer-a:b")).toEqual({ notes: { who: "b" } });
+
+      // A tombstone in one bucket must not be visible as, or purge, the other's
+      // live row: `deleteAll` tombstones rather than removes, so the neighbour
+      // survives both the delete and the later purge.
+      await s.deleteAll("user", "u:reviewer-a");
+      expect(await readState(s, "user", "u:reviewer-a:b", "notes")).toEqual({ who: "b" });
+      await s.purgeTombstones("user", "u:reviewer-a");
+      expect(await readState(s, "user", "u:reviewer-a:b", "notes")).toEqual({ who: "b" });
+    });
+
     it("handles resource keys with special characters", async () => {
       const s = await setup();
       const specialKey = "todos/nested/item-1";

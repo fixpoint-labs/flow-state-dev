@@ -537,7 +537,20 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 
 **Cross-flow schema validation:**
 
-`FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `org.stateSchema`, and user/org resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateOrgState: true` on `defineFlow`) are namespaced by `flowKind` in storage and skip the registry check. See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and the [state and scopes reference](https://flow-state.dev/docs/fundamentals/state-and-scopes) for the full model.
+`FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `org.stateSchema`, and user/org resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateOrgState: true` on `defineFlow`) are namespaced by the **flow instance id** in storage and skip the registry check. A singleton's instance id is its kind, so its keys are unchanged; two registered copies of a `collection` definition each get their own cell. The same coordinate keys a resource declaring `flowIsolation: true`, for both its state and its content.
+
+The exported scope-key helpers therefore take an instance-bearing shape:
+
+```ts
+// before
+resolveUserStorageKey(userId, { kind: flow.kind, isolateUserState: true });
+// now
+resolveUserStorageKey(userId, { id: flow.id, isolateUserState: true });
+```
+
+`resolveOrgStorageKey`, `resolveResourceScopeId` and `resourceScopeIds` change the same way; their return type is unchanged. A `FlowInstance` satisfies the input as-is. Attributing an existing collection deployment's stored cells to the copy that owns them is one offline procedure — see [Persistence](https://flow-state.dev/docs/persistence/overview#who-owns-a-record); there is no runtime fallback to the old kind-keyed cell.
+
+See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and the [state and scopes reference](https://flow-state.dev/docs/fundamentals/state-and-scopes) for the full model.
 
 **Execution backend (worker adapters):**
 - `WorkerAdapter` / `WorkerHandle` / `WorkerMode` — Contract for the `worker` option on `createFlowState`. An adapter (e.g. `bullmqWorker` from `@flow-state-dev/bullmq`) provides the dispatch side and/or the processing side; `createFlowState` hands both the same resolved `{ registry, stores, runtimeConfig }` so the worker can never run against different stores than the router. `mode` picks the deployment shape: `"colocated"` (default), `"dispatch-only"` (web container), `"worker-only"` (worker container — call `ready()` to start consuming). `dispose()` drains the worker before closing stores

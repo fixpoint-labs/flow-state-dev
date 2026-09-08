@@ -134,10 +134,32 @@ describe("resolveUserStorageKey / resolveOrgStorageKey", () => {
     expect(resolveOrgStorageKey("proj_1", flow)).toBe("proj_1");
   });
 
-  it("namespaces the key by flowKind when isolation is on", () => {
+  it("namespaces the key by the instance id when isolation is on", () => {
     const flow = makeFlow({ kind: "flow-a", isolateUserState: true, isolateOrgState: true });
+    // A singleton's id IS its kind, so its keys are the same strings this flow
+    // has always written — nothing to migrate for the ordinary case.
+    expect(flow.id).toBe(flow.kind);
     expect(resolveUserStorageKey("user_1", flow)).toBe("user_1:flow-a");
     expect(resolveOrgStorageKey("proj_1", flow)).toBe("proj_1:flow-a");
+  });
+
+  it("gives two copies of one collection kind separate keys", () => {
+    // The isolation coordinate is the instance, not the definition. Keying on
+    // the kind made every copy of a collection share one private bucket —
+    // "private" that two copies both wrote into.
+    const reviewer = makeFlowFactory({
+      kind: "reviewer",
+      cardinality: "collection",
+      isolateUserState: true,
+      isolateOrgState: true
+    });
+    const a = reviewer({ id: "reviewer-a" });
+    const b = reviewer({ id: "reviewer-b" });
+
+    expect(resolveUserStorageKey("user_1", a)).toBe("user_1:reviewer-a");
+    expect(resolveUserStorageKey("user_1", b)).toBe("user_1:reviewer-b");
+    expect(resolveOrgStorageKey("proj_1", a)).toBe("proj_1:reviewer-a");
+    expect(resolveOrgStorageKey("proj_1", b)).toBe("proj_1:reviewer-b");
   });
 
   it("isolates user and org independently", () => {
@@ -1194,6 +1216,55 @@ describe("end-to-end: shared vs isolated state", () => {
     expect(isolated?.state).toEqual({ locale: "en" });
     expect(isolated?.id).toBe("user_1:isolated-flow");
     expect(isolated?.userId).toBe("user_1");
+  });
+
+  it("keeps two copies of one collection kind out of each other's scope state", async () => {
+    // The outcome this change exists for: two registered copies of one
+    // definition, one user, one org. What each copy calls private must be
+    // absent from the other, and still be there when it is read back.
+    const reviewer = makeFlowFactory({
+      kind: "reviewer",
+      cardinality: "collection",
+      isolateUserState: true,
+      isolateOrgState: true,
+      userSchema: z.object({ note: z.string().optional() }),
+      orgSchema: z.object({ note: z.string().optional() })
+    });
+    const a = reviewer({ id: "reviewer-a" });
+    const b = reviewer({ id: "reviewer-b" });
+    const stores = createInMemoryStores();
+
+    const ctxA = await createExecutionContext({
+      flow: a, actionName: "run", requestId: "req_a", sessionId: "sess_a",
+      userId: "user_1", orgId: "proj_1", stores,
+    });
+    await ctxA.user.patchState({ note: "a-private" });
+    await ctxA.org?.patchState({ note: "a-org" });
+
+    const ctxB = await createExecutionContext({
+      flow: b, actionName: "run", requestId: "req_b", sessionId: "sess_b",
+      userId: "user_1", orgId: "proj_1", stores,
+    });
+    await ctxB.user.patchState({ note: "b-private" });
+    await ctxB.org?.patchState({ note: "b-org" });
+
+    // Neither copy's write is visible to the other, at either scope.
+    expect(ctxB.user.state).toMatchObject({ note: "b-private" });
+    expect(ctxB.org?.state).toMatchObject({ note: "b-org" });
+
+    // And A's values survive B's writes — a later read through A still sees
+    // them, which a shared bucket would have overwritten.
+    const ctxAgain = await createExecutionContext({
+      flow: a, actionName: "run", requestId: "req_a2", sessionId: "sess_a",
+      userId: "user_1", orgId: "proj_1", stores,
+    });
+    expect(ctxAgain.user.state).toMatchObject({ note: "a-private" });
+    expect(ctxAgain.org?.state).toMatchObject({ note: "a-org" });
+
+    expect((await stores.user.get("user_1:reviewer-a"))?.state).toEqual({ note: "a-private" });
+    expect((await stores.user.get("user_1:reviewer-b"))?.state).toEqual({ note: "b-private" });
+    expect((await stores.org.get("proj_1:reviewer-a"))?.state).toEqual({ note: "a-org" });
+    expect((await stores.org.get("proj_1:reviewer-b"))?.state).toEqual({ note: "b-org" });
   });
 
   it("uses namespaced key for org scope when isolated", async () => {

@@ -27,7 +27,8 @@ import {
   mergeScopeReads,
   resolveSessionStorageKey,
   resourceScopeIds,
-  tenantMatches
+  tenantMatches,
+  toIsolationFlow
 } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
 import { isCollectionConfig } from "./is-collection-config";
@@ -43,9 +44,13 @@ import {
 export type ResolvedResourceScope = "session" | "user" | "org";
 
 /**
- * Minimal flow shape these helpers consume. Accepts any object with
- * `kind`, `resources`, and the user/org isolation flags — covers both
- * `FlowInstance` and `FlowType`.
+ * Minimal flow shape the **metadata** helpers consume — resource lookup,
+ * grouping, exposure. Accepts any object with `kind`, `resources`, and the
+ * user/org isolation flags; covers both `FlowInstance` and `FlowType`.
+ *
+ * Deliberately does NOT carry the instance `id`: these helpers answer "what
+ * does this definition declare", which is the same answer for every copy.
+ * Anything that touches storage takes {@link ResourceOwnerFlow} instead.
  */
 export type ResourceFlowLike = {
   kind: string;
@@ -53,6 +58,16 @@ export type ResourceFlowLike = {
   isolateUserState?: boolean;
   isolateOrgState?: boolean;
 };
+
+/**
+ * The flow shape a **persisted** read consumes: the resolved owning instance,
+ * `id` included (FIX-1323). Storage buckets key off the instance, so a caller
+ * that reached a persisted read holding only a kind has lost the one fact that
+ * decides which copy's data it is about — the type is what stops that, rather
+ * than a comment asking callers to remember. Every caller already resolves the
+ * owner through `resolveOwnerFlow` / `resolveRecordOwner` before reading.
+ */
+export type ResourceOwnerFlow = ResourceFlowLike & { id: string };
 
 /** Context required for persisted-data lookups (mirrors what the route handlers carry). */
 export type ResourcePersistenceContext = {
@@ -164,7 +179,7 @@ export function findResourceConfig(
  */
 export async function getPersistedData(
   ctx: ResourcePersistenceContext,
-  flow: ResourceFlowLike,
+  flow: ResourceOwnerFlow,
   sessionId: string,
   scope: ResolvedResourceScope,
   tenantId?: string
@@ -198,10 +213,11 @@ export async function getPersistedData(
 
   if (scope === "user") {
     // FIX-735: read resources by per-resource isolation bucket (bare `{userId}`
-    // when shared, `{userId}:{flowKind}` when isolated), keyed off the identity
-    // id — not the scope record. Read every bucket the flow declares and merge;
-    // the snapshot/clientData builders filter to declared configs, so other
-    // flows' shared rows under the bare key never surface.
+    // when shared, `{userId}:{flow.id}` when isolated — the resolved owning
+    // instance, FIX-1323), keyed off the identity id, not the scope record.
+    // Read every bucket the flow declares and merge; the snapshot/clientData
+    // builders filter to declared configs, so other flows' shared rows under
+    // the bare key never surface.
     const scopeIds = resourceScopeIds(session.userId, toIsolationFlow(flow), "user");
     const [resources, content] = await Promise.all([
       mergeScopeReads(
@@ -249,26 +265,6 @@ export async function renderContent(
     return config.render(rawContent, state);
   }
   return rawContent;
-}
-
-/**
- * Coerce a `ResourceFlowLike` into the `IsolationFlow` shape consumed by
- * `resolveUserStorageKey` / `resolveOrgStorageKey`. Forwards `resources`
- * so `effectiveScopeIsolation` can iterate per-resource `flowIsolation`
- * overrides (FIX-435).
- */
-function toIsolationFlow(flow: ResourceFlowLike): {
-  kind: string;
-  isolateUserState: boolean;
-  isolateOrgState: boolean;
-  resources?: Record<string, { scope?: string; flowIsolation?: boolean }>;
-} {
-  return {
-    kind: flow.kind,
-    isolateUserState: flow.isolateUserState ?? false,
-    isolateOrgState: flow.isolateOrgState ?? false,
-    resources: flow.resources as Record<string, { scope?: string; flowIsolation?: boolean }> | undefined
-  };
 }
 
 /** Shape returned for each entry surfaced by `listExposedResources`. */

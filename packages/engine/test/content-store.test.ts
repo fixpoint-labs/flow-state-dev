@@ -172,6 +172,25 @@ function runContentStoreTests(
       expect(await s.get("session", "s2", "key")).toBe("value-2");
     });
 
+    it("keeps scope ids that share a colon prefix in separate buckets", async () => {
+      const s = await setup();
+      // An instance-isolated scope id is `${identityId}:${flowInstanceId}`, and
+      // an instance id may itself contain a colon — so `u:reviewer-a` and
+      // `u:reviewer-a:b` are two unrelated scopes whose string forms overlap.
+      // Whole-scope reads and deletes must address the bucket exactly: one
+      // copy's `getAll` or `deleteAll` reaching into the other's rows is one
+      // customer's private data leaking into, or being erased by, another's.
+      await s.set("user", "u:reviewer-a", "notes", "a-notes");
+      await s.set("user", "u:reviewer-a:b", "notes", "b-notes");
+
+      expect(await s.getAll("user", "u:reviewer-a")).toEqual({ notes: "a-notes" });
+      expect(await s.getByPrefix("user", "u:reviewer-a", "")).toEqual({ notes: "a-notes" });
+      expect(await s.getAll("user", "u:reviewer-a:b")).toEqual({ notes: "b-notes" });
+
+      await s.deleteAll("user", "u:reviewer-a");
+      expect(await s.get("user", "u:reviewer-a:b", "notes")).toBe("b-notes");
+    });
+
     it("handles resource keys with special characters", async () => {
       const s = await setup();
       const specialKey = "files/src/utils.ts";

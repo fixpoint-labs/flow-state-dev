@@ -11,7 +11,7 @@
  *
  *   - **Resources** (`stores.resourceState` / `stores.content`) key per
  *     resource. Each user/org-scoped resource keys at the bare identity id
- *     when shared (effective `flowIsolation` false) or `${id}:${flowKind}`
+ *     when shared (effective `flowIsolation` false) or `${identityId}:${flow.id}`
  *     when isolated (effective `flowIsolation` true) — honoring the
  *     resource-level override the API advertises (FIX-435) rather than a
  *     flow-wide OR. `resolveResourceIsolation` + `resolveResourceScopeId`
@@ -21,13 +21,29 @@
  * Before FIX-735 both concerns shared one key derived from a flow-wide OR, so
  * a `flowIsolation: false` resource was silently isolated whenever any sibling
  * was isolated. The opt-out direction is now honored.
+ *
+ * FIX-1323: the isolation coordinate is the **instance** `id`, not the `kind`.
+ * Two registered copies of one collection definition are two flows for every
+ * purpose except their shared schema, so private data that keyed off the kind
+ * was private from other definitions and shared between copies of the same
+ * one. For a singleton the two coordinates are the same string (`id === kind`),
+ * so its keys are byte-identical to what it wrote before — no dual-read, and
+ * nothing to migrate. A collection deployment written under the old kind
+ * coordinate needs the attributable offline cutover in
+ * `apps/docs/docs/persistence/overview.md`; there is deliberately no kind
+ * fallback here, because a runtime cannot discover which copy owned a key.
  */
 
 import type { SessionParentage } from "./types";
 
-/** Minimal flow shape carrying the scope-isolation flags plus its own `kind`. */
+/**
+ * Minimal flow shape carrying the scope-isolation flags plus the instance
+ * `id` every isolated key is namespaced by. A `FlowInstance` satisfies it
+ * directly; a caller holding a looser shape coerces through
+ * {@link toIsolationFlow}.
+ */
 export interface IsolationFlow {
-  kind: string;
+  id: string;
   isolateUserState: boolean;
   isolateOrgState: boolean;
   /**
@@ -38,27 +54,51 @@ export interface IsolationFlow {
 }
 
 /**
+ * Coerce a flow-ish object into {@link IsolationFlow}, defaulting the two
+ * optional isolation flags. One copy, because every persistence-facing caller
+ * must derive the same key: the `/state` route, the shared resource helpers
+ * and the execution context all key off the instance, and a second coercion
+ * that dropped `id` would silently route one of them back into a kind-wide
+ * bucket.
+ */
+export function toIsolationFlow(flow: {
+  id: string;
+  isolateUserState?: boolean;
+  isolateOrgState?: boolean;
+  resources?: unknown;
+}): IsolationFlow {
+  return {
+    id: flow.id,
+    isolateUserState: flow.isolateUserState ?? false,
+    isolateOrgState: flow.isolateOrgState ?? false,
+    resources: flow.resources as
+      | Record<string, { scope?: string; flowIsolation?: boolean }>
+      | undefined
+  };
+}
+
+/**
  * Bare `userId` unless the flow isolates the user scope; then
- * `${userId}:${flowKind}`. Governs the scope *record* (`ctx.user.state`)
+ * `${userId}:${flow.id}`. Governs the scope *record* (`ctx.user.state`)
  * only — resources route per-resource via `resolveResourceScopeId`.
  */
 export function resolveUserStorageKey(
   userId: string,
-  flow: Pick<IsolationFlow, "kind" | "isolateUserState">
+  flow: Pick<IsolationFlow, "id" | "isolateUserState">
 ): string {
-  return flow.isolateUserState ? `${userId}:${flow.kind}` : userId;
+  return flow.isolateUserState ? `${userId}:${flow.id}` : userId;
 }
 
 /**
  * Bare `orgId` unless the flow isolates the org scope; then
- * `${orgId}:${flowKind}`. Governs the scope *record* (`ctx.org.state`)
+ * `${orgId}:${flow.id}`. Governs the scope *record* (`ctx.org.state`)
  * only — resources route per-resource via `resolveResourceScopeId`.
  */
 export function resolveOrgStorageKey(
   orgId: string,
-  flow: Pick<IsolationFlow, "kind" | "isolateOrgState">
+  flow: Pick<IsolationFlow, "id" | "isolateOrgState">
 ): string {
-  return flow.isolateOrgState ? `${orgId}:${flow.kind}` : orgId;
+  return flow.isolateOrgState ? `${orgId}:${flow.id}` : orgId;
 }
 
 /**
@@ -221,21 +261,22 @@ export function resolveResourceIsolation(
 
 /**
  * The `scopeId` a resource's per-resource storage (`resourceState` / `content`)
- * lives at: bare `identityId` when shared, `${identityId}:${flowKind}` when
- * isolated.
+ * lives at: bare `identityId` when shared, `${identityId}:${flowId}` when
+ * isolated. `flowId` is the resolved instance's id — two copies of one
+ * definition occupy two buckets.
  */
 export function resolveResourceScopeId(
   identityId: string,
-  flowKind: string,
+  flowId: string,
   isolated: boolean
 ): string {
-  return isolated ? `${identityId}:${flowKind}` : identityId;
+  return isolated ? `${identityId}:${flowId}` : identityId;
 }
 
 /**
  * The distinct storage `scopeId`s a flow's user/org-scoped resources occupy
  * for a given identity — at most two (the bare bucket and the
- * flow-namespaced bucket). Read paths consult every returned id and merge,
+ * instance-namespaced bucket). Read paths consult every returned id and merge,
  * since a flow may declare both shared and isolated resources at one scope.
  *
  * When the flow declares no resources at the scope, falls back to the
@@ -251,11 +292,11 @@ export function resourceScopeIds(
   for (const entry of entries) {
     if (entry.scope !== scope) continue;
     const isolated = resolveResourceIsolation(entry.flowIsolation, flow, scope);
-    ids.add(resolveResourceScopeId(identityId, flow.kind, isolated));
+    ids.add(resolveResourceScopeId(identityId, flow.id, isolated));
   }
   if (ids.size === 0) {
     const flowDefault = scope === "user" ? flow.isolateUserState : flow.isolateOrgState;
-    ids.add(resolveResourceScopeId(identityId, flow.kind, flowDefault));
+    ids.add(resolveResourceScopeId(identityId, flow.id, flowDefault));
   }
   return [...ids];
 }

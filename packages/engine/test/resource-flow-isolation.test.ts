@@ -307,3 +307,109 @@ describe("FIX-735: per-resource flowIsolation", () => {
     ).rejects.toThrow(/conflicting flowIsolation/);
   });
 });
+
+describe("instance-isolated resources", () => {
+  /**
+   * One `collection` definition with a shared and an isolated user resource,
+   * so a test can register two copies of it and ask what each one can see.
+   */
+  function makeReviewerFactory() {
+    const accounts = defineResource({
+      scope: "user",
+      flowIsolation: false,
+      ref: "accounts",
+      stateSchema: z.object({ balance: z.number().default(0) }),
+    });
+    const notes = defineResource({
+      scope: "user",
+      flowIsolation: true,
+      ref: "notes",
+      stateSchema: z.object({ text: z.string().default("") }),
+    });
+    return defineFlow({
+      kind: "reviewer",
+      cardinality: "collection",
+      actions: {
+        run: { inputSchema: z.string(), block: handler({ name: "noop", execute: () => "ok" }) },
+      },
+      resources: { accounts, notes },
+    });
+  }
+
+  it("gives each copy its own isolated resource while a shared one stays shared", async () => {
+    // Two copies of one definition are two flows for every storage purpose.
+    // Keying isolation on the kind put both copies' "private" notes in one
+    // cell, so whichever ran second overwrote the other.
+    const reviewer = makeReviewerFactory();
+    const a = reviewer({ id: "reviewer-a" });
+    const b = reviewer({ id: "reviewer-b" });
+    const stores = createInMemoryStores();
+
+    const ctxA = await createExecutionContext({
+      flow: a, actionName: "run", requestId: "req_a", sessionId: "sess_a", userId: "user_1", stores,
+    });
+    await ctxA.resources.notes.patchState({ text: "a-private" });
+    await ctxA.resources.accounts.patchState({ balance: 100 });
+
+    const ctxB = await createExecutionContext({
+      flow: b, actionName: "run", requestId: "req_b", sessionId: "sess_b", userId: "user_1", stores,
+    });
+    // The opt-out resource carries A's write across; the private one does not.
+    expect((ctxB.resources.accounts.state as { balance: number }).balance).toBe(100);
+    expect((ctxB.resources.notes.state as { text: string }).text).toBe("");
+    await ctxB.resources.notes.patchState({ text: "b-private" });
+
+    // One private bucket per copy, and A's value survived B writing its own.
+    const bucketA = toBareStates(await stores.resourceState.getAll("user", "user_1:reviewer-a"));
+    const bucketB = toBareStates(await stores.resourceState.getAll("user", "user_1:reviewer-b"));
+    expect(bucketA).toEqual({ notes: { text: "a-private" } });
+    expect(bucketB).toEqual({ notes: { text: "b-private" } });
+
+    // The shared one is at the bare identity id, written once, seen by both.
+    const shared = toBareStates(await stores.resourceState.getAll("user", "user_1"));
+    expect(shared).toEqual({ accounts: { balance: 100 } });
+  });
+
+  it("reads each copy's own resources back through the persisted read path", async () => {
+    // The write path alone is not the outcome: a later read that resolved the
+    // bucket from the kind would open the wrong copy's data even though the
+    // writes landed correctly.
+    const reviewer = makeReviewerFactory();
+    const a = reviewer({ id: "reviewer-a" });
+    const b = reviewer({ id: "reviewer-b" });
+    const stores = createInMemoryStores();
+    const registry = createFlowRegistry();
+    registry.registerMany([a, b]);
+
+    for (const [flow, sessionId, text] of [
+      [a, "sess_a", "a-private"],
+      [b, "sess_b", "b-private"],
+    ] as const) {
+      const ctx = await createExecutionContext({
+        flow, actionName: "run", requestId: `req_${sessionId}`, sessionId, userId: "user_1", stores,
+      });
+      await ctx.resources.notes.patchState({ text });
+    }
+    await stores.resourceState.set("user", "user_1", "accounts", { balance: 7 }, "any");
+
+    for (const [flow, sessionId, text] of [
+      [a, "sess_a", "a-private"],
+      [b, "sess_b", "b-private"],
+    ] as const) {
+      const session: SessionRecord = {
+        id: sessionId,
+        flowKind: "reviewer",
+        flowId: flow.id,
+        userId: "user_1",
+        state: {},
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await stores.session.set(sessionId, session, "any");
+      const data = await getPersistedData({ registry, stores }, flow, sessionId, "user");
+      // Its own private resource, and the shared one — never the sibling's.
+      expect(data?.resources.notes).toEqual({ text });
+      expect(data?.resources.accounts).toEqual({ balance: 7 });
+    }
+  });
+});

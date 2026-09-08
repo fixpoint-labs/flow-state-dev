@@ -24,6 +24,7 @@ import {
   isCollectionConfig,
   type ResolvedResourceScope,
   type ResourceFlowLike,
+  type ResourceOwnerFlow,
   type ResourcePersistenceContext
 } from "../resources/internal";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -283,7 +284,7 @@ export async function buildDebugResourceTree(opts: {
     distinctScopes.map(async (scope) => {
       const data = await getPersistedData(
         ctx,
-        flow as ResourceFlowLike,
+        flow as ResourceOwnerFlow,
         sessionId,
         scope,
         tenantId
@@ -451,7 +452,7 @@ export async function buildDebugCollectionItems(opts: {
 
   const persisted = await getPersistedData(
     ctx,
-    flow as ResourceFlowLike,
+    flow as ResourceOwnerFlow,
     sessionId,
     group.scope,
     tenantId
@@ -586,7 +587,7 @@ export async function lookupDebugContent(opts: {
 
   const persisted = await getPersistedData(
     ctx,
-    flow as ResourceFlowLike,
+    flow as ResourceOwnerFlow,
     sessionId,
     group.scope,
     tenantId
