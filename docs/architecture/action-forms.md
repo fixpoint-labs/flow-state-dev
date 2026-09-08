@@ -2,10 +2,10 @@
 
 An action is an executable unit plus its execution policy. The framework
 addresses and authenticates that unit in several ways — a caller naming it
-over HTTP, a webhook delivering an event, a chat mention, a cron tick — but
+over HTTP, a webhook delivering an event, a cron tick — but
 runs and records every form identically. This doc is the canonical reference
 for the shared model (FIX-439 introduced it for webhooks; FIX-838 extended it
-to chat and scheduled).
+to scheduled).
 
 ## `ActionCore`
 
@@ -25,8 +25,8 @@ type ActionCore<TBlock extends BlockDefinition = BlockDefinition> = {
 ```
 
 The core is independent of how the action is addressed or authenticated.
-Generalizing it is what lets a webhook handler, a chat handler, or a scheduled
-handler be a first-class action without living in `flow.actions`.
+Generalizing it is what lets a webhook handler or a scheduled handler be a
+first-class action without living in `flow.actions`.
 
 ## Two address forms
 
@@ -45,7 +45,7 @@ actions: {
 
 ### Event-addressed: transport bindings carrying the core inline
 
-A webhook, chat, or scheduled handler is an action in transport form. It
+A webhook or scheduled handler is an action in transport form. It
 extends `ActionCore` with an event mapping and lives on the transport map, not
 in `flow.actions`:
 
@@ -53,14 +53,11 @@ in `flow.actions`:
 // Webhook — flow.webhooks[provider].on[event]
 interface WebhookEventBinding extends ActionCore { input; sessionId?; when?; }
 
-// Chat — flow.chat.on[eventKey]
-interface ChatEventBinding extends ActionCore { input; sessionId?; when?; }
-
 // Scheduled — flow.schedules.static[id] (or a resolver return)
 type ScheduleConfig = ActionCore & { cron; input?; principal?; timezone?; ... };
 ```
 
-`defineWebhookBinding`, `defineChatBinding`, and `defineScheduleBinding` are
+`defineWebhookBinding` and `defineScheduleBinding` are
 compile-time conveniences — each is a passthrough that constructs the binding
 with a typed `event`/config. A plain object literal works just as well.
 
@@ -80,14 +77,14 @@ function that finds the core to run:
 
 ```ts
 function resolveActionCore(flow, actionName, source, metadata): ActionCore | undefined {
-  const type = dispatchTypeOf(source);                         // public | chat | webhook | schedule | task | internal
+  const type = dispatchTypeOf(source);                         // public | webhook | schedule | task | internal
   return resolveEntry(flow, type, actionName, metadata);       // ONE map, no fallback
 }
 ```
 
 `resolveEntry` reads exactly one map for the dispatch's type: `flow.actions`
-by name for `public`; `flow.webhooks[md.webhook.provider].on[md.webhook.eventType]`,
-`flow.chat.on[md.chat.eventKey]` and `flow.schedules.static[md.schedule.scheduleId]`
+by name for `public`; `flow.webhooks[md.webhook.provider].on[md.webhook.eventType]`
+and `flow.schedules.static[md.schedule.scheduleId]`
 by their **namespaced** metadata coordinate for the event forms;
 `flow.internal.actions` and `flow.task.actions` by name for the dispatched
 forms. A coordinate that does not resolve is `undefined`, and `runAction`
@@ -99,18 +96,19 @@ event handler be a first-class action without ever appearing in
 
 ### The source gate (security)
 
-Each event branch is gated on its `source` (`"webhook"`, `"chat"`,
-`"scheduled"`). Those sources are set **only by the adapters**, never from a
-request body. The HTTP action endpoint spreads `body.metadata` onto the
-dispatch, so `metadata` on a caller-addressed dispatch is attacker-controlled.
-Without the gate, a caller could POST `{ metadata: { chat: { eventKey } } }` to
-the public action endpoint and pivot resolution into an event handler — running
-it with forged input and no transport authentication (no signature check, no
-scheduler secret).
+Each event branch is gated on its `source` (`"webhook"`, `"scheduled"`). Those
+sources are set **only by the adapters**, never from a request body. The HTTP
+action endpoint spreads `body.metadata` onto the dispatch, so `metadata` on a
+caller-addressed dispatch is attacker-controlled. Without the gate, a caller
+could POST `{ metadata: { webhook: { provider, eventType } } }` to the public
+action endpoint and pivot resolution into an event handler — running it with
+forged input and no transport authentication (no signature check, no scheduler
+secret).
 
 The gate closes that pivot for every caller-addressed surface at once. A forged
-`metadata.chat` on an `http`-source dispatch is ignored, because the chat
-branch only runs when `source === "chat"`, which only the chat adapter sets.
+`metadata.webhook` on an `http`-source dispatch is ignored, because the webhook
+branch only runs when `source === "webhook"`, which only the webhook adapter
+sets.
 
 ## Dispatched: `internal` and `task` entries
 
@@ -134,7 +132,7 @@ refused by name, and both maps are definition-only like the transport maps.
 `resolveEntry(flow, type, name, coordinate?)` (`core/flow/resolve-entry.ts`)
 reads exactly one map — `flow.actions` for `public`, `flow.internal.actions`
 for `internal`, `flow.task.actions` for `task`, and the transport maps by their
-coordinate for `webhook` / `chat` / `schedule` — and returns `undefined` when
+coordinate for `webhook` / `schedule` — and returns `undefined` when
 the name is not there. `resolveActionCore` delegates to `resolveEntry` for
 every source, so the event branches no longer fall through to `flow.actions`
 when their coordinate misses: an absent binding is a refusal, not a pivot into
@@ -197,7 +195,7 @@ server-assembled stamp, `metadata.dispatch = { type, target, from: { block,
 sessionId }, key?, recipientLineageId?, ...provenance }`, read back through
 `readDispatchStamp`, which is gated on those two sources exactly as the event
 coordinates are gated on theirs. Neither source is re-enterable from a public
-route: `isPublicReentryAllowed` is an allow-list (`http` / `mcp` / `chat` /
+route: `isPublicReentryAllowed` is an allow-list (`http` / `mcp` /
 `scheduled`) that retry, continue and resume all route through; it never
 admits `task` or `internal`, and `assertPublicReentrySources` refuses a host
 that names them. Retry accepts a caller-supplied `inputOverride`, so
@@ -213,8 +211,8 @@ its process abandoned is [Dispatched Work](./dispatched-work.md).
 
 ## The carried core: dynamic schedules
 
-Three of the four event coordinates point at something declared statically on
-the flow (`flow.webhooks`, `flow.chat.on`, `flow.schedules.static`). One does
+Two of the three event coordinates point at something declared statically on
+the flow (`flow.webhooks`, `flow.schedules.static`). One does
 not: a **dynamic** schedule's `ScheduleConfig` is produced by the resolver at
 dispatch time and has no static coordinate.
 
@@ -233,7 +231,6 @@ serialized anyway. So:
 | --- | --- | --- |
 | Caller-addressed action | `flow.actions[name]` | Yes |
 | Webhook binding | `flow.webhooks[provider].on[event]` | Yes |
-| Chat binding | `flow.chat.on[eventKey]` | Yes |
 | Static schedule | `flow.schedules.static[id]` | Yes |
 | Dynamic schedule | carried `resolvedActionCore` (transient) | **No** |
 
@@ -255,7 +252,5 @@ live core.
 - [Inbound Transports](./inbound-transports.md) — the `InboundTransportAdapter`
   contract and the `InboundRequestEnvelope` these forms travel on.
 - [Webhook Transport](./webhook-transport.md) — the first inline-core binding.
-- [Chat Transport](./chat-transport.md) — chat binding form and mount-time
-  index.
 - [Scheduled Actions](./scheduled-actions.md) — static vs dynamic schedules and
   the carried-core path in full.

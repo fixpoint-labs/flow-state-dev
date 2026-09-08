@@ -3,7 +3,7 @@
  *
  * The engine's half of addressing: the envelope's trusted `source` decides the
  * dispatch type (`transport-sources.ts`), the adapter's namespaced metadata slot
- * carries the protocol coordinate for `chat` / `webhook` / `schedule`, and
+ * carries the protocol coordinate for `webhook` / `schedule`, and
  * `core`'s `resolveEntry` reads exactly one map with no fallback. See
  * `packages/core/src/flow/resolve-entry.ts` for the rule and why the fallback
  * is gone.
@@ -12,9 +12,9 @@
  * a request body, whereas `metadata` on a caller-addressed dispatch is
  * attacker-controlled (the HTTP action endpoint spreads `body.metadata`).
  * Because the type comes from the source and the coordinate is read only for
- * the type it belongs to, a caller POSTing `{ metadata: { chat: { eventKey } } }`
+ * the type it belongs to, a caller POSTing `{ metadata: { webhook: { provider, eventType } } }`
  * to the public action endpoint still resolves a `public` entry by name — it
- * cannot pivot into a chat, webhook, schedule, task or internal handler.
+ * cannot pivot into a webhook, schedule, task or internal handler.
  *
  * The one path with no static coordinate is the dynamic schedule, whose
  * core is produced at dispatch time by a resolver — handled upstream by a

@@ -67,7 +67,7 @@ describe("defineFlow", () => {
   // Runtime assertions rather than `@ts-expect-error` on purpose: this package's
   // `typecheck` compiles `src/**/*` only, so a type-level assertion in a test file
   // is never verified by anything. The `as any` below reaches the runtime guard.
-  it.each(["webhooks", "chat", "schedules", "mcp"])(
+  it.each(["webhooks", "schedules", "mcp"])(
     "fails closed when definition-only %s is passed to flow instance options",
     (option) => {
       const flow = defineFlow({ kind: "instance-transport-override", actions: {} });

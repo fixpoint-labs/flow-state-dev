@@ -13,7 +13,7 @@
  * hands a framework-stamped dispatch a caller-addressed handler whose key
  * happens to collide. Now every branch is terminal, and the security property
  * the detached branch used to carry alone — a dispatch cannot reach a handler
- * outside its own type's map — holds for all six.
+ * outside its own type's map — holds for all five.
  *
  * The source-to-type mapping is the engine's (`transport-sources.ts`): a
  * dispatch's type is decided by which door it came through, never by anything
@@ -22,18 +22,17 @@
 import type { DispatchType } from "../types/dispatch";
 
 /**
- * The protocol coordinate a `chat`, `webhook` or `schedule` dispatch carries.
+ * The protocol coordinate a `webhook` or `schedule` dispatch carries.
  * Stamped by the adapter into the namespaced metadata slot the engine reads it
  * back from; absent for the three types whose name is the whole address.
  */
 export type EntryCoordinate = {
-  readonly chat?: { readonly eventKey?: string };
   readonly webhook?: { readonly provider?: string; readonly eventType?: string | null };
   readonly schedule?: { readonly scheduleId?: string };
 };
 
 /**
- * The six maps, generic over the entry value so a narrowed view (the
+ * The five maps, generic over the entry value so a narrowed view (the
  * concurrency arbiter reads only `concurrency`) resolves through the same
  * function as a full `FlowInstance`.
  */
@@ -41,7 +40,6 @@ export type EntryMaps<TEntry> = {
   readonly actions: Record<string, TEntry>;
   readonly internal?: { readonly actions?: Record<string, TEntry> };
   readonly task?: { readonly actions?: Record<string, TEntry> };
-  readonly chat?: { readonly on?: Record<string, TEntry> };
   readonly webhooks?: Record<string, { readonly on?: Record<string, TEntry> } | undefined>;
   readonly schedules?: { readonly static?: Record<string, TEntry> };
 };
@@ -73,10 +71,6 @@ export function resolveEntry<TEntry>(
       return ownEntry(flow.internal?.actions, name);
     case "task":
       return ownEntry(flow.task?.actions, name);
-    case "chat": {
-      const eventKey = coordinate?.chat?.eventKey;
-      return typeof eventKey === "string" ? ownEntry(flow.chat?.on, eventKey) : undefined;
-    }
     case "webhook": {
       const webhook = coordinate?.webhook;
       if (typeof webhook?.provider !== "string" || typeof webhook.eventType !== "string") {

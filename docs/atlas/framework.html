@@ -322,7 +322,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <rect class="n-box" x="372" y="164" width="236" height="56" rx="3"/>
         <text class="t-b" x="384" y="184">inbound transports</text>
         <text class="t-s" x="384" y="200">http · mcp · webhook</text>
-        <text class="t-s" x="384" y="213">scheduled · chat-sdk</text>
+        <text class="t-s" x="384" y="213">scheduled</text>
         <rect class="n-box" x="372" y="232" width="236" height="56" rx="3"/>
         <text class="t-b" x="384" y="252">stores</text>
         <text class="t-s" x="384" y="268">memory · filesystem · sqlite</text>
@@ -771,7 +771,6 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>store-sqlite</code></td><td>Persistence</td><td class="num">3,301</td><td class="num">16</td><td>SQLite-backed implementation of the store registry.</td><td>core, engine</td></tr>
       <tr><td><code>store-postgres</code></td><td>Persistence</td><td class="num">3,662</td><td class="num">16</td><td>PostgreSQL-backed implementation of the store registry.</td><td>core, engine</td></tr>
       <tr><td><code>mcp</code></td><td>Transport</td><td class="num">947</td><td class="num">6</td><td>MCP server adapter — actions exposed as MCP tools over JSON-RPC.</td><td>core, engine</td></tr>
-      <tr><td><code>chat-sdk</code></td><td>Transport</td><td class="num">1,668</td><td class="num">17</td><td>Chat SDK inbound transport, principal resolution, fan-out.</td><td>core, engine</td></tr>
       <tr><td><code>scheduled</code></td><td>Transport</td><td class="num">1,097</td><td class="num">11</td><td>Cron and dynamic schedules, idempotency cache, overlap policy.</td><td>core, engine</td></tr>
       <tr><td><code>voice-openai</code></td><td>Transport</td><td class="num">473</td><td class="num">5</td><td>OpenAI TTS / transcription provider behind the framework's voice contract.</td><td>core</td></tr>
       <tr><td><code>claude-code</code></td><td>Transport</td><td class="num">2,418</td><td class="num">20</td><td>Dispatches cloud coding tasks via the local <code>claude</code> CLI; ships both a CLI and an SDK capability.</td><td>core</td></tr>
@@ -1049,7 +1048,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 900 296" role="img" aria-label="Diagram showing ActionCore at the centre, reached by two address forms: caller-addressed actions in flow.actions via HTTP and MCP, and event-addressed transport bindings carrying the core inline from webhook, chat and scheduled sources; both converge on resolveActionCore and the same execution pipeline. A third, dispatched form is described in the text: a task- or internal-sourced dispatch resolves through its own entry map and never reaches flow.actions.">
+      <svg viewBox="0 0 900 296" role="img" aria-label="Diagram showing ActionCore at the centre, reached by two address forms: caller-addressed actions in flow.actions via HTTP and MCP, and event-addressed transport bindings carrying the core inline from webhook and scheduled sources; both converge on resolveActionCore and the same execution pipeline. A third, dispatched form is described in the text: a task- or internal-sourced dispatch resolves through its own entry map and never reaches flow.actions.">
         <defs><marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker>
         <marker id="a6a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker></defs>
 
@@ -1063,7 +1062,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-lbl" x="24" y="140">Event-addressed</text>
         <rect class="n-box" x="24" y="150" width="212" height="88" rx="4"/>
         <text class="t-b" x="36" y="170">transport bindings</text>
-        <text class="t-s" x="36" y="187">webhook · chat · scheduled</text>
+        <text class="t-s" x="36" y="187">webhook · scheduled</text>
         <text class="t-s" x="36" y="202">core carried inline</text>
         <text class="t-s" x="36" y="217">event mapping instead of a name</text>
         <text class="t-s" x="36" y="232">never in flow.actions</text>
@@ -1099,7 +1098,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-s" x="588" y="250">11 · persist state, emit terminal status</text>
       </svg>
     </div>
-    <figcaption><b>Why the two forms converge.</b> Generalizing <code>ActionCore</code> is what lets a webhook, a chat mention, or a cron tick be a first-class action without living in <code>flow.actions</code> — and what makes the source gate the single place auth decisions get made from a trusted value rather than caller-controllable input.</figcaption>
+    <figcaption><b>Why the two forms converge.</b> Generalizing <code>ActionCore</code> is what lets a webhook or a cron tick be a first-class action without living in <code>flow.actions</code> — and what makes the source gate the single place auth decisions get made from a trusted value rather than caller-controllable input.</figcaption>
   </figure>
 
   <h3>The flow definition</h3>
@@ -1111,7 +1110,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>session</code> / <code>user</code> / <code>org</code></td><td>Per-scope <code>stateSchema</code> and a <code>client</code> projection block. Resources are <em>not</em> declared here — <code>session.resources</code> and friends are gone, replaced by the flat map below.</td></tr>
       <tr><td><code>resources</code></td><td>Flat map of <code>DefinedResource</code>s; scope is intrinsic to each definition.</td></tr>
       <tr><td><code>tools</code></td><td>Flow-level tool configuration available to generators beneath it.</td></tr>
-      <tr><td>transport blocks</td><td><code>chat</code>, <code>webhooks</code>, <code>schedules</code>, <code>voice</code>, <code>mcp</code> — each validated at registration.</td></tr>
+      <tr><td>transport blocks</td><td><code>webhooks</code>, <code>schedules</code>, <code>voice</code>, <code>mcp</code> — each validated at registration.</td></tr>
       <tr><td><code>request</code></td><td>Per-request policy, including the flow-wide <code>concurrency</code> default. There is no top-level <code>concurrency</code> slot — resolution is <code>action.concurrency ?? flow.request?.concurrency ?? "allow"</code>.</td></tr>
       <tr><td>lifecycle hooks</td><td><code>onStarted</code>, <code>onCompleted</code>, <code>onErrored</code>, <code>onFinished</code>, <code>onStepErrored</code>. Past tense is canonical.</td></tr>
     </tbody>
@@ -1511,7 +1510,6 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <span class="chip">workforce</span>
     <span class="chip">bash</span>
     <span class="chip">mcp</span>
-    <span class="chip">chat</span>
     <span class="chip">toolCache</span>
     <span class="chip">observationLedger</span>
     <span class="chip">perspective</span>
@@ -1793,7 +1791,6 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <rect class="n-box" x="24" y="64" width="164" height="28" rx="3"/><text class="t-s" x="34" y="83">mcp — actions as tools</text>
         <rect class="n-box" x="24" y="98" width="164" height="28" rx="3"/><text class="t-s" x="34" y="117">webhook — provider events</text>
         <rect class="n-box" x="24" y="132" width="164" height="28" rx="3"/><text class="t-s" x="34" y="151">scheduled — cron, dynamic</text>
-        <rect class="n-box" x="24" y="166" width="164" height="28" rx="3"/><text class="t-s" x="34" y="185">chat-sdk — mentions</text>
         <rect class="n-grp" x="24" y="200" width="164" height="28" rx="3"/><text class="t-xs" x="34" y="218">YOUR OWN — PICK A source</text>
 
         <path class="ln" d="M188,146 L228,146" marker-end="url(#a18)"/>
@@ -1833,7 +1830,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="230" y="286">A CONFORMANCE SUITE IN @flow-state-dev/testing IS WHAT MAKES A CUSTOM ADAPTER TRUSTWORTHY</text>
       </svg>
     </div>
-    <figcaption><b>The source string is load-bearing, but it is not the auth gate.</b> It is the one trusted fact about where a request came from, so routing decisions derive from it rather than from anything in the body or metadata (BP-031) — <code>resolveActionCore</code> uses it to stop caller-controlled metadata from selecting an event-only handler. That is provenance routing, not authentication. Caller identity comes from <code>host.resolvePrincipal</code> (a flow&rsquo;s own <code>authentication.resolvePrincipal</code> wins over the host&rsquo;s), and management-route ownership is checked separately in <code>authorizeManagementRoute</code>. An adapter that satisfies the source gate and stops there has skipped both.<br><br>The five adapters stamp <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code> and <code>chat</code>; <code>task</code> and <code>internal</code> are two more real values, stamped by the dispatch seam rather than an adapter, refused outright by <code>public-reentry</code>, and resolved by type in the concurrency arbiter. Custom transports pick their own. Worth flagging: the documented known-set in <code>core/src/types/auth.ts</code> reads <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code>, <code>notification</code> — it omits <code>chat</code>, <code>task</code> and <code>internal</code>, and names <code>notification</code>, which appears nowhere in the code as a source value. The doc comment is drifting in both directions.</figcaption>
+    <figcaption><b>The source string is load-bearing, but it is not the auth gate.</b> It is the one trusted fact about where a request came from, so routing decisions derive from it rather than from anything in the body or metadata (BP-031) — <code>resolveActionCore</code> uses it to stop caller-controlled metadata from selecting an event-only handler. That is provenance routing, not authentication. Caller identity comes from <code>host.resolvePrincipal</code> (a flow&rsquo;s own <code>authentication.resolvePrincipal</code> wins over the host&rsquo;s), and management-route ownership is checked separately in <code>authorizeManagementRoute</code>. An adapter that satisfies the source gate and stops there has skipped both.<br><br>The four adapters stamp <code>http</code>, <code>mcp</code>, <code>webhook</code> and <code>scheduled</code>; <code>task</code> and <code>internal</code> are two more real values, stamped by the dispatch seam rather than an adapter, refused outright by <code>public-reentry</code>, and resolved by type in the concurrency arbiter. Custom transports pick their own. Worth flagging: the documented known-set in <code>core/src/types/auth.ts</code> reads <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code>, <code>notification</code> — it omits <code>task</code> and <code>internal</code>, and names <code>notification</code>, which appears nowhere in the code as a source value. The doc comment is drifting in both directions.</figcaption>
   </figure>
 
   <h4>What each adapter adds beyond the contract</h4>
@@ -1843,7 +1840,6 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>mcp</code></td><td>JSON-RPC method coverage, action-to-tool conversion, per-flow opt-in, origin enforcement, its own auth path.</td></tr>
       <tr><td><code>webhook</code></td><td>Declaration in <code>core</code> / runtime in <code>engine</code>; provider mechanics at mount vs routing on the flow; per-request registry lookup by <code>flowKind</code>-in-URL; idempotency and concurrency.</td></tr>
       <tr><td><code>scheduled</code></td><td>A <code>schedules</code> config block, two-phase auth, an idempotency cache, overlap policy, a listing endpoint, and dynamic schedules that carry their core inline (and therefore do not recover).</td></tr>
-      <tr><td><code>chat-sdk</code></td><td>Registration-time validation, mount-time discovery, a dispatch model and fan-out semantics, principal resolution.</td></tr>
     </tbody>
   </table></div>
 
@@ -1994,7 +1990,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 424" role="img" aria-label="Disposition map for seven proposed package moves: contracts merging into core (contradicted by evidence), tools splitting into search, sandbox and MCP-client packages, patterns absorbing into orchestration, the utility catalog pruned, chat-sdk replaced by a signals package, thought-fabric extracted to its own repository, and cli renamed to fsdev.">
+      <svg viewBox="0 0 940 424" role="img" aria-label="Disposition map for seven proposed package moves: contracts merging into core (contradicted by evidence), tools splitting into search, sandbox and MCP-client packages, patterns absorbing into orchestration, the utility catalog pruned, chat-sdk removed, thought-fabric extracted to its own repository, and cli renamed to fsdev.">
         <defs>
           <marker id="l1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker>
           <marker id="l1x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--k-router)"/></marker>
@@ -2040,9 +2036,9 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <rect class="n-box" x="24" y="236" width="230" height="34" rx="4"/>
         <text class="t-s" x="38" y="258">chat-sdk</text>
         <path class="ln-acc" d="M258,253 L594,253" marker-end="url(#l1)"/>
-        <text class="t-xs" x="427" y="247" text-anchor="middle">GENERALISE</text>
+        <text class="t-xs" x="427" y="247" text-anchor="middle">REMOVE</text>
         <rect class="n-box-2" x="600" y="236" width="328" height="34" rx="4"/>
-        <text class="t-s" x="614" y="258">signals — outside integrations, one abstraction</text>
+        <text class="t-s" x="614" y="258">removed — no replacement chat package</text>
 
         <rect class="n-box" x="24" y="284" width="230" height="34" rx="4"/>
         <text class="t-s" x="38" y="306">@thought-fabric/core</text>
@@ -2090,9 +2086,9 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <td>Confirmed, with a caveat: <code>keyedRouter</code> is not a utility in the same sense as the rest — it is infrastructure the framework itself runs on, and should probably move rather than be pruned alongside them.</td>
       </tr>
       <tr>
-        <td><strong>chat-sdk → a signals package</strong></td>
-        <td><strong>Zero in-repo importers.</strong> The four apparent hits in <code>core</code> and <code>engine</code> are prose in comments describing the one-way dependency, not imports.</td>
-        <td>Nothing in the workspace is holding it in place, so the replacement can be designed on its merits rather than around existing callers.</td>
+        <td><strong>chat-sdk → removed</strong></td>
+        <td><strong>Zero in-repo importers.</strong> The four apparent hits in <code>core</code> and <code>engine</code> were prose in comments describing the one-way dependency, not imports.</td>
+        <td>Decided and done (FIX-1330): the package, the <code>chat</code> dispatch type and the flow-level <code>chat</code> config are gone, with no replacement chat package. Collaboration stays dispatch + sessions + Workforce.</td>
       </tr>
       <tr>
         <td><strong>contracts → merge back into core</strong></td>

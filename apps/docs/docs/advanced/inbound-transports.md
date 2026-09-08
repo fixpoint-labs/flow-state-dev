@@ -97,7 +97,7 @@ the final result await `handle.finished`.
 
 A flow's concurrency policy is enforced once, at the shared host dispatch
 seam every adapter funnels through. So the same declaration governs HTTP,
-chat, webhooks, scheduled, and MCP without per-transport code — an adapter
+webhooks, scheduled, and MCP without per-transport code — an adapter
 just constructs its envelope and calls `host.dispatch`. See
 [Concurrency policies](./concurrency-policies.md) for the policy surface.
 
@@ -122,8 +122,8 @@ better than ambiguous runtime dispatch.
 The public `retry`, `continue` and `resume` routes re-run a request that
 already exists, and retry accepts a caller-supplied `inputOverride`. Whether a
 given request may be re-entered that way depends on the transport it arrived
-on, so those routes work from an allow-list: `http`, `mcp`, `chat` and
-`scheduled`. A request on any other source gets the same not-found response a
+on, so those routes work from an allow-list: `http`, `mcp` and `scheduled`.
+A request on any other source gets the same not-found response a
 missing request does.
 
 Your custom source is not on that list, because the framework has no way to
@@ -197,8 +197,7 @@ and returns 202 the moment the handle is back. Because the action runs
 asynchronously, the ack returns well inside provider budgets (Slack 3s,
 GitHub 10s). The flow kind is carried in the URL, so the adapter resolves
 one flow per request via `host.registry.get(flowKind)` — the same
-per-request lookup MCP and Scheduled use, unlike the chat adapter's
-mount-time index.
+per-request lookup MCP and Scheduled use.
 
 `source: "webhook"` and `metadata.webhook` (`provider`, `eventType`, and
 `deliveryId` when configured) propagate to `RequestRecord` for trace and

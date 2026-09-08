@@ -17,9 +17,6 @@ import type { DispatchType } from "@flow-state-dev/core/types";
 /** Stamped by the webhook adapter. Resolves a `webhook` entry. */
 export const WEBHOOK_SOURCE = "webhook";
 
-/** Stamped by the chat adapter. Resolves a `chat` entry. */
-export const CHAT_SOURCE = "chat";
-
 /** Stamped by the scheduled adapter. Resolves a `schedule` entry. */
 export const SCHEDULED_SOURCE = "scheduled";
 
@@ -50,8 +47,6 @@ export function dispatchTypeOf(source: string | undefined): DispatchType | undef
   switch (source) {
     case WEBHOOK_SOURCE:
       return "webhook";
-    case CHAT_SOURCE:
-      return "chat";
     case SCHEDULED_SOURCE:
       return "schedule";
     case TASK_SOURCE:

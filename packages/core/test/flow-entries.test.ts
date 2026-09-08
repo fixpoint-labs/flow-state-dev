@@ -408,7 +408,6 @@ describe("resolveEntry — one lookup, no fallback", () => {
     actions: { chat: { block: noop }, wake: { block: noop }, handOff: { block: handOff } },
     internal: { actions: { wake: { block: wake }, status: { block: noop } } },
     task: { actions: { implement: { block: noop } } },
-    chat: { on: { mention: { block: noop, input: () => ({}) } } },
     webhooks: { github: { on: { push: { block: noop, input: () => ({}) } } } },
     schedules: { static: { nightly: { block: noop, cron: "0 3 * * *" } } }
   })();
@@ -417,7 +416,6 @@ describe("resolveEntry — one lookup, no fallback", () => {
     expect(resolveEntry(flow, "public", "chat")?.block).toBe(noop);
     expect(resolveEntry(flow, "internal", "wake")?.block).toBe(wake);
     expect(resolveEntry(flow, "task", "implement")?.block).toBe(noop);
-    expect(resolveEntry(flow, "chat", "any", { chat: { eventKey: "mention" } })?.block).toBe(noop);
     expect(
       resolveEntry(flow, "webhook", "any", { webhook: { provider: "github", eventType: "push" } })
         ?.block
@@ -439,7 +437,6 @@ describe("resolveEntry — one lookup, no fallback", () => {
   });
 
   it("refuses a protocol-owned type with no coordinate rather than reading the name", () => {
-    expect(resolveEntry(flow, "chat", "chat")).toBeUndefined();
     expect(resolveEntry(flow, "webhook", "push")).toBeUndefined();
     expect(resolveEntry(flow, "schedule", "nightly")).toBeUndefined();
     expect(resolveEntry(flow, "webhook", "any", { webhook: { provider: "github" } })).toBeUndefined();

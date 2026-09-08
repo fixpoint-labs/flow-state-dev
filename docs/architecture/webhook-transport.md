@@ -9,8 +9,8 @@ below the adapter is identical to HTTP: `host.dispatch` runs the action, and
 `RequestRecord.source = "webhook"` carries provenance through to DevTool.
 
 A webhook binding carries its handler inline (the shared `ActionCore`), not a
-named entry in `flow.actions`. As of FIX-838 the chat and scheduled transports
-follow this same inline-core binding model — see [Action forms](./action-forms.md).
+named entry in `flow.actions`. As of FIX-838 the scheduled transport
+follows this same inline-core binding model — see [Action forms](./action-forms.md).
 
 The defining trait is the **division of labour**. A flow declares routing only
 — which event runs which action — and carries no secrets. The host supplies
@@ -35,9 +35,8 @@ two existing ones:
   the signature verifiers in `transports/auth/`.
 
 Two reasons it isn't its own package. First, it isolates no external dependency
-— unlike `@flow-state-dev/mcp` (the MCP SDK) or `@flow-state-dev/chat-sdk` (the
-Vercel Chat SDK), the webhook transport needs nothing a consumer doesn't already
-have. Second, signature verification needs Node `crypto`, which is not
+— unlike `@flow-state-dev/mcp` (the MCP SDK), the webhook transport needs
+nothing a consumer doesn't already have. Second, signature verification needs Node `crypto`, which is not
 isomorphic. The verification code therefore cannot live in `core`; it lives in
 `engine`, the same package the HTTP adapter and the existing
 `createHmacVerifier` already live in. The flow-side declaration is pure routing
@@ -73,9 +72,7 @@ the adapter stamps onto `metadata.webhook` (see `resolveActionCore` in
 `engine`). The dispatched request records the handler block's `name` as its
 `actionName` for provenance.
 
-Unlike `ChatConfig` — where the event is typed `unknown` because `core` cannot
-import the chat-sdk's `ChatInboundEvent` without inverting the package
-dependency — the webhook event shape is **framework-owned**, so
+The webhook event shape is **framework-owned**, so
 `WebhookInboundEvent` is concrete in `core`. Only `payload` is `unknown`;
 `defineWebhookBinding<TPayload>()` narrows it as a compile-time passthrough.
 
@@ -113,8 +110,8 @@ live, retrying provider at request time.
 
 ## Registration-time validation
 
-`validateWebhookConfig` runs inside `defineFlow`, alongside `validateChatConfig`
-and `validateSchedulesConfig`, and *before* the resource/`requireOrg`
+`validateWebhookConfig` runs inside `defineFlow`, alongside
+`validateSchedulesConfig`, and *before* the resource/`requireOrg`
 aggregation that walks each binding's handler block. No-op when `webhooks` is
 absent. Otherwise each provider must declare an `on` map; each binding must
 carry a `block` (the handler) and a function `input`; `sessionId`/`when`, when
@@ -131,12 +128,9 @@ The adapter mounts one parameterized route,
 request via `host.registry.get(flowKind)` keyed by the URL param — the same
 per-request-lookup pattern MCP and Scheduled use.
 
-This is a deliberate contrast with the **chat** adapter, which cannot key on a
-URL param (chat events carry no flow kind in their payload) and instead walks
-every flow at mount via the `start()` hook to build a subscription index.
-Webhooks carry the flow kind in the URL, so they need no such index — the
-provider, not the flow, is the only thing the URL doesn't already pin down, and
-the `:provider` segment supplies that.
+Webhooks carry the flow kind in the URL, so they need no mount-time
+subscription index — the provider, not the flow, is the only thing the URL
+doesn't already pin down, and the `:provider` segment supplies that.
 
 ## Request pipeline
 
@@ -187,13 +181,10 @@ with its own badge (see [Inbound Transports](./inbound-transports.md) → known
 sources). `deliveryId` is included only when the provider's `deliveryId`
 extractor is configured.
 
-## Key divergences from chat
+## Verification, event typing, and the outbound side
 
-Stated honestly, because they're real:
-
-- **Webhooks own signature verification.** Chat delegates verification to the
-  Vercel Chat SDK; webhooks verify directly with the `verify` slot, because
-  there's no SDK in the middle. The verifiers (`stripeWebhookVerifier`,
+- **Webhooks own signature verification.** They verify directly with the
+  `verify` slot; there is no SDK in the middle. The verifiers (`stripeWebhookVerifier`,
   `githubWebhookVerifier`, `slackWebhookVerifier`, `createWebhookVerifier`) wrap
   the existing `createHmacVerifier` where the scheme is generic HMAC, and do
   bespoke HMAC where it isn't (Slack's `v0:<ts>:<body>` with the timestamp in a
@@ -218,8 +209,7 @@ Stated honestly, because they're real:
 
 ## Relationship to other work
 
-- **FIX-441** (cross-flow event bus) — adjacent, same shape as the chat
-  transport's relationship to it. This is the inbound side (external service
+- **FIX-441** (cross-flow event bus) — adjacent. This is the inbound side (external service
   events → flows); FIX-441 is the cross-flow side (flow → flow). Distinct
   primitives, no dependency.
 - **FIX-402** (idempotency) — composes with the surfaced `deliveryId` for
@@ -229,10 +219,8 @@ Stated honestly, because they're real:
 
 ## Related contracts
 
-- [Action forms](./action-forms.md) — the shared `ActionCore` model webhook,
-  chat, and scheduled bindings all carry inline.
+- [Action forms](./action-forms.md) — the shared `ActionCore` model webhook
+  and scheduled bindings both carry inline.
 - [Inbound Transports](./inbound-transports.md) — the adapter contract.
-- [Chat Transport](./chat-transport.md) — sibling adapter; contrast the
-  mount-time index vs. this adapter's per-request URL lookup.
 - [Scheduled Actions](./scheduled-actions.md) — sibling per-flow declarative
   transport with the same per-request registry lookup.
