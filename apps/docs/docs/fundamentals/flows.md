@@ -142,8 +142,26 @@ engineer({ id: "eng-carol", config: { harnes: "codex", model: "gpt-5.4" } })
 // "harnes" is not a declared setting.
 ```
 
+Keys are closed at the top level of the bag. A nested object is closed only if you close it, so add
+`.strict()` to any nested shape you want typos refused in:
+
+```ts
+const seatConfig = z.object({
+  harness: z.string(),
+  limits: z.object({ retries: z.number().default(1) }).strict(),
+});
+
+engineer({ id: "eng-carol", config: { harness: "codex", limits: { retrys: 3 } } });
+// Without .strict() on `limits`, `retrys` is dropped and `retries` quietly stays 1.
+```
+
+Without it, an undeclared key inside a nested object is dropped rather than refused whenever that
+object's own keys are all optional or defaulted — the setting goes missing rather than coming out
+wrong, but nothing tells you.
+
 The schema must be a plain `z.object({ ... })` — not a union, an intersection, or an object wrapped
-in `.refine()`. A rule spanning two settings belongs in the block that reads them.
+in `.refine()`. It also cannot carry a `.catchall(...)`, which would accept and keep undeclared keys.
+A rule spanning two settings belongs in the block that reads them.
 
 Omitting `config` doesn't skip the schema: the empty bag is parsed, so defaults apply and a required
 setting throws. A flow whose settings all have defaults can be registered bare, and reads

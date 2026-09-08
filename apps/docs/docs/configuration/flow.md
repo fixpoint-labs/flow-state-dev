@@ -90,10 +90,13 @@ What refuses, and when:
 
 | What | When |
 |------|------|
-| A key the schema doesn't declare | At the factory call, naming the flow, the instance id and the key |
+| A key the schema doesn't declare, at the bag's top level | At the factory call, naming the flow, the instance id and the key |
+| A key the schema doesn't declare, inside a nested object | Refused only if that nested shape is written `.strict()`. Otherwise dropped, unless one of the nested object's own keys is required — then the parse fails on the missing key |
 | A value the schema rejects | At the factory call, with the schema's own message |
 | `config` on a flow with no `configSchema` | At the factory call |
 | A `configSchema` that isn't a plain `z.object({ ... })` — a union, an intersection, or an object wrapped in `.refine()` | Where the flow is defined. A rule spanning two settings belongs in the block that reads them |
+| A `configSchema` carrying a `.catchall(...)` | Where the flow is defined. A catchall accepts and keeps undeclared keys, which is the opposite of what a bag is. Put open-ended data in one declared key whose own schema is a record |
+| A block's `flowConfigSchema` that would *change* the bag — a `.default()`, a `.transform()`, a coercion | At the factory call, naming the block and the keys. A block declares what it needs of the flow, not what it contributes; put the default on the flow's `configSchema` |
 | A required setting, when the call omits `config` | At the factory call. The empty bag is parsed, so defaults apply and required settings do not |
 | A block declaring `flowConfigSchema` on a flow with no `configSchema` at all | Where the flow is defined, naming the flow and the block |
 | A bag that doesn't satisfy a block's `flowConfigSchema` | At the factory call, naming the flow, the instance id and the block |

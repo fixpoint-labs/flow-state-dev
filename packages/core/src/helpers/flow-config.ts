@@ -85,7 +85,12 @@ export function describeFlowConfigIssues(error: ZodError): string {
     .map((issue) => {
       if (issue.code === "unrecognized_keys") {
         const keys = (issue as unknown as { keys: string[] }).keys;
-        return `${keys.map((key) => `"${key}"`).join(", ")} is not a declared setting`;
+        const named = keys.map((key) => `"${key}"`).join(", ");
+        // The path matters once a nested object is closed with `.strict()`:
+        // "retrys" alone does not say which setting it was meant to be inside.
+        return issue.path.length > 0
+          ? `${named} is not a declared setting of "${issue.path.join(".")}"`
+          : `${named} is not a declared setting`;
       }
       const at = issue.path.length > 0 ? `"${issue.path.join(".")}": ` : "";
       return `${at}${issue.message}`;

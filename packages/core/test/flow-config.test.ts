@@ -388,6 +388,49 @@ describe("flow config bag — the promises, and their second paths", () => {
   });
 
   /**
+   * The depth of that closing, asserted both ways — because the docs now tell
+   * authors to reach for `.strict()` on a nested shape, and an instruction
+   * that isn't true is worse than a limitation that is written down.
+   */
+  it("closes the bag at the top level, and nests only as deep as the author closes", () => {
+    const strictNested = defineFlow({
+      kind: "nested-strict",
+      configSchema: z.object({
+        harness: z.string(),
+        limits: z.object({ retries: z.number().default(1) }).strict()
+      }),
+      actions: {}
+    });
+
+    // The documented workaround: a nested typo refuses, and the message names
+    // the object it was meant to be inside.
+    expect(() =>
+      strictNested({ config: { harness: "codex", limits: { retrys: 3 } } } as never)
+    ).toThrow(/"retrys" is not a declared setting of "limits"/);
+
+    // And without it, the honest limit: the key is dropped and the declared
+    // one quietly keeps its default. The setting goes missing; it never comes
+    // out wrong.
+    const loose = defineFlow({
+      kind: "nested-loose",
+      configSchema: z.object({
+        harness: z.string(),
+        limits: z.object({ retries: z.number().default(1) })
+      }),
+      actions: {}
+    });
+    expect(loose({ config: { harness: "codex", limits: { retrys: 3 } } } as never).config).toEqual({
+      harness: "codex",
+      limits: { retries: 1 }
+    });
+
+    // The top level is closed whether or not the author asks.
+    expect(() => loose({ config: { harnes: "codex" } } as never)).toThrow(
+      /"harnes" is not a declared setting/
+    );
+  });
+
+  /**
    * "A block's declared requirement is always checked."
    *
    * The definition-time walk takes a generator's STATIC `tools` array. A

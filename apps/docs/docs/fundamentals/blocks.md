@@ -593,6 +593,11 @@ the flow declares no `configSchema` at all, where the flow is defined; otherwise
 created, naming the flow, the copy's id and this block. A block that declares nothing reads
 `Readonly<Record<string, unknown>>` and has to parse for itself.
 
+Declare what the block *needs*, not what it adds. A `.default()` or a `.transform()` in a
+`flowConfigSchema` is refused where the copy is created: the bag is one object every block reads, so
+a value only this block's schema produces would either be invisible to it or visible to blocks it was
+never declared for. Defaults belong on the flow's `configSchema`.
+
 The block names no flow, so the same block drops into any flow whose settings satisfy it, checked
 again there. See [Flows](./flows.md#copies-that-differ-by-settings) for what belongs in the bag and
 what belongs in the copy's own storage, and [Flow options](../configuration/flow.md#instance-settings)
