@@ -23,6 +23,7 @@ import type {
   McpConfig,
   OrgConfig,
   RequestConfig,
+  RequiredFlowConfigEntry,
   ScopeClientConfig,
   SessionConfig,
   ToolsConfig,
@@ -34,7 +35,8 @@ import { isDefinedResourceCollection } from "../types/resource-collection";
 import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } from "../types/schedules";
 import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
-import { introspectStateKeys } from "../helpers/zod-introspect";
+import { introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
+import type { ZodError, ZodObject, ZodRawShape, ZodTypeAny } from "zod";
 
 type ScopeKind = "session" | "user" | "org";
 
@@ -101,8 +103,17 @@ type AnyOrg = OrgConfig | undefined;
 
 type AnyResources = Record<string, DeclaredResourceEntry> | undefined;
 
-type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg>;
-type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg>;
+// `ZodTypeAny` in the config slot rather than the `undefined` default: these
+// aliases are what the normalization functions read, and a definition whose
+// `configSchema` typed as `undefined` could not be read at all.
+type AnyFlowDefinition = FlowDefinition<
+  AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg,
+  Record<string, DeclaredResourceEntry>, ZodTypeAny
+>;
+type AnyFlowInstanceOptions = FlowInstanceOptions<
+  AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg,
+  Record<string, DeclaredResourceEntry>, ZodTypeAny
+>;
 
 function rejectRemovedMiddleware(value: object | undefined, location: string): void {
   if (value !== undefined && Object.hasOwn(value, "middleware")) {
@@ -203,6 +214,208 @@ function rejectInstanceCardinality(value: object | undefined, flowKind: string):
       `Cardinality is the definition's identity policy; declare it on defineFlow(...) instead.`
     );
   }
+}
+
+/**
+ * A copy supplies config VALUES; the shape they are parsed against belongs to
+ * the definition. Refused by name rather than folded into
+ * {@link rejectDefinitionOnlyOptions}: that guard's message explains why a
+ * per-instance transport config was never applied, and that is not the story
+ * here — a per-instance schema would let one copy widen what copies may carry.
+ */
+function rejectInstanceConfigSchema(value: object | undefined, flowKind: string): void {
+  if (value !== undefined && Object.hasOwn(value, "configSchema")) {
+    throw new Error(
+      `Flow "${flowKind}" instance options set "configSchema", which is not an instance option. ` +
+      `The definition declares what a copy may carry; the copy supplies the values as "config". ` +
+      `Declare "configSchema" on defineFlow(...) instead.`
+    );
+  }
+}
+
+/**
+ * What every flow that declares no `configSchema` reads, and what a blueprint
+ * falls back to. One shared frozen object: a block reads a value rather than
+ * `undefined`, and nothing can write to it.
+ */
+const EMPTY_FLOW_CONFIG: Readonly<Record<string, unknown>> = Object.freeze({});
+
+/**
+ * The flow's declared `configSchema`, closed so an undeclared key is an error.
+ *
+ * A plain `z.object(...).parse()` DROPS a key nobody declared, so a roster
+ * with a typo'd knob would parse clean and the copy would run on a default —
+ * precisely what the declared-or-refused rule promises will not happen, and
+ * TypeScript's excess-property check never sees a bag loaded from a file.
+ * Closing it inside the framework rather than asking authors to write
+ * `.strict()` is deliberate: an author cannot leave the door open by
+ * forgetting, and `.passthrough()` would be meaningless here anyway.
+ *
+ * Requires a real `ZodObject`: closing keys needs one, and the introspection
+ * helper is a bare type-name check that does not unwrap. So a `.refine()`, a
+ * discriminated union or an intersection is refused where it is declared —
+ * cross-field validation of a bag belongs in the block that reads it.
+ */
+function closeConfigSchema(flowKind: string, schema: ZodTypeAny): ZodTypeAny {
+  if (!isZodObject(schema)) {
+    throw new Error(
+      `Flow "${flowKind}" declares a configSchema that is not an object schema. ` +
+      `It must be a plain \`z.object({ ... })\` — not a union, an intersection, or an object ` +
+      `wrapped in .refine()/.superRefine(), because undeclared keys are closed off before the bag ` +
+      `is parsed. A rule spanning two settings belongs in the block that reads them.`
+    );
+  }
+  return (schema as unknown as ZodObject<ZodRawShape>).strict();
+}
+
+/** Render a parse failure so the offending key is in the message, not just a path. */
+function describeConfigIssues(error: ZodError): string {
+  return error.issues
+    .map((issue) => {
+      if (issue.code === "unrecognized_keys") {
+        const keys = (issue as unknown as { keys: string[] }).keys;
+        return `${keys.map((key) => `"${key}"`).join(", ")} is not a declared setting`;
+      }
+      const at = issue.path.length > 0 ? `"${issue.path.join(".")}": ` : "";
+      return `${at}${issue.message}`;
+    })
+    .join("; ");
+}
+
+/**
+ * The first block whose `flowConfigSchema` the bag does not satisfy, if any.
+ *
+ * A parse of the real value, not a comparison of two schemas: by the time
+ * this runs the bag is concrete, so refinements run, unions resolve, nested
+ * objects are checked to the bottom, and the flow's own defaults have already
+ * been applied. There is no class of mismatch it misses and no correct
+ * program it refuses. The same technique `assertConfigCompatible` uses for
+ * capability config.
+ *
+ * The cost is stated rather than hidden: the guarantee is per COPY, not per
+ * definition. A flow whose `configSchema` is merely looser than a block needs
+ * is refused at the mint of every copy that omits the field, not where the two
+ * were written.
+ */
+function firstUnsatisfiedBlock(
+  bag: Record<string, unknown>,
+  required: readonly RequiredFlowConfigEntry[]
+): { entry: RequiredFlowConfigEntry; error: ZodError } | undefined {
+  for (const entry of required) {
+    const result = entry.schema.safeParse(bag);
+    if (!result.success) return { entry, error: result.error };
+  }
+  return undefined;
+}
+
+/**
+ * The config bag for ONE minted copy: parsed against the flow's declared
+ * schema, checked against every block that declared a requirement, frozen.
+ *
+ * Lives on the mint half of the factory path (beside `resolveInstanceId`) and
+ * never on the blueprint half, for the reason the id split already exists: a
+ * schema with a required field would otherwise throw when the flow is
+ * DEFINED, before its author could supply a bag.
+ *
+ * Frozen shallowly. A nested object inside the bag is not deep-frozen; a
+ * nested mutation succeeds and is visible to every later block in the
+ * process. Documented as a limitation, not defended against.
+ */
+function normalizeInstanceConfig(
+  definition: AnyFlowDefinition,
+  options: AnyFlowInstanceOptions | undefined,
+  flowKind: string,
+  instanceId: string,
+  required: readonly RequiredFlowConfigEntry[]
+): Readonly<Record<string, unknown>> {
+  const declared = definition.configSchema;
+  const supplied = (options as { config?: unknown } | undefined)?.config;
+
+  let parsed: Record<string, unknown>;
+  if (supplied !== undefined) {
+    if (declared === undefined) {
+      throw new Error(
+        `Flow "${flowKind}" instance "${instanceId}" was created with a config bag, but the flow ` +
+        `declares no configSchema. A copy may only carry settings the definition declared — add ` +
+        `\`configSchema: z.object({ ... })\` to defineFlow(...), or drop the bag.`
+      );
+    }
+    const result = closeConfigSchema(flowKind, declared).safeParse(supplied);
+    if (!result.success) {
+      throw new Error(
+        `Flow "${flowKind}" instance "${instanceId}" has an invalid config bag: ` +
+        `${describeConfigIssues(result.error)}.`
+      );
+    }
+    parsed = result.data as Record<string, unknown>;
+  } else if (declared !== undefined) {
+    // Omitting the bag is not a way around the schema: `{}` is parsed, so
+    // defaults apply and a required field refuses here rather than surfacing
+    // as an agent that quietly ran on the wrong model.
+    const result = closeConfigSchema(flowKind, declared).safeParse({});
+    if (!result.success) {
+      throw new Error(
+        `Flow "${flowKind}" instance "${instanceId}" was created without a config bag, and the ` +
+        `flow's configSchema cannot be satisfied by an empty one: ` +
+        `${describeConfigIssues(result.error)}. Call the factory with { config: { ... } }.`
+      );
+    }
+    parsed = result.data as Record<string, unknown>;
+  } else {
+    return EMPTY_FLOW_CONFIG;
+  }
+
+  const unsatisfied = firstUnsatisfiedBlock(parsed, required);
+  if (unsatisfied !== undefined) {
+    throw new Error(
+      `Flow "${flowKind}" instance "${instanceId}" has a config bag that block ` +
+      `"${unsatisfied.entry.blockName}" cannot read: ${describeConfigIssues(unsatisfied.error)}. ` +
+      `That block declares \`flowConfigSchema\`; the flow's configSchema must produce a bag that ` +
+      `satisfies it, and this copy's does not.`
+    );
+  }
+  return Object.freeze(parsed);
+}
+
+/**
+ * What the reachable blocks require of whatever flow installs them.
+ *
+ * Collected off `walkFlowGraph`'s closure — the same walk the dispatch-address
+ * refusal reads, tool edge included — rather than off the action roots that
+ * `declaredResources` and `requiresOrg` ride. A plain tool block that reads
+ * `ctx.flow.config` has no action root of its own, so collecting off the roots
+ * would silently skip it.
+ *
+ * Deduped by schema REFERENCE, the way `mergeDeclaredResources` dedupes by
+ * `defineResource()` reference: one shared schema across ten blocks is one
+ * entry. A list, never a merge — two blocks declaring contradictory schemas
+ * are both parsed against the same bag, so nothing silently reconciles them.
+ *
+ * The one refusal that is decidable here: a block requires config and the flow
+ * declares no schema at all, so nothing could ever satisfy it.
+ */
+function collectRequiredFlowConfig(
+  flowKind: string,
+  reachable: readonly BlockDefinition[],
+  hasConfigSchema: boolean
+): readonly RequiredFlowConfigEntry[] {
+  const collected: RequiredFlowConfigEntry[] = [];
+  const seen = new Set<ZodTypeAny>();
+  for (const block of reachable) {
+    const schema = (block.config as { flowConfigSchema?: ZodTypeAny }).flowConfigSchema;
+    if (schema === undefined) continue;
+    if (!hasConfigSchema) {
+      throw new Error(
+        `Flow "${flowKind}" reaches block "${block.name}", which requires flow config, but the flow ` +
+        `declares no configSchema. Add \`configSchema: z.object({ ... })\` to defineFlow(...) declaring ` +
+        `the settings this block reads, or install the block on a flow that declares them.`
+      );
+    }
+    if (seen.has(schema)) continue;
+    seen.add(schema);
+    collected.push({ blockName: block.name, schema });
+  }
+  return collected;
 }
 
 /**
@@ -1044,15 +1257,31 @@ function validateMcpConfig(
  * Putting the collection-id requirement here would make every collection
  * definition fail before its author could supply an id.
  */
-type NormalizedFlowConfig = Omit<FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg>, "id">;
+type NormalizedFlowConfig = Omit<
+  FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg>,
+  "id" | "config"
+>;
 
 function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
 ): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg> {
   const normalized = normalizeFlowConfig(definition, options);
+  // Config is per-copy and supplied at the mint, exactly like the id — so it
+  // is normalized HERE and never in the blueprint half. See
+  // `NormalizedFlowConfig`'s note: a required field parsed at definition time
+  // would make every configured definition fail before its author could
+  // supply a bag.
+  const id = resolveInstanceId(normalized.kind, normalized.cardinality, options?.id);
   return {
-    id: resolveInstanceId(normalized.kind, normalized.cardinality, options?.id),
+    id,
+    config: normalizeInstanceConfig(
+      definition,
+      options,
+      normalized.kind,
+      id,
+      normalized.requiredFlowConfig
+    ),
     ...normalized
   };
 }
@@ -1067,6 +1296,7 @@ function normalizeFlowConfig(
   rejectRemovedWork(options, `Flow "${definition.kind}" instance options`);
   rejectDefinitionOnlyOptions(options, definition.kind);
   rejectInstanceCardinality(options, definition.kind);
+  rejectInstanceConfigSchema(options, definition.kind);
   const cardinality = normalizeCardinality(definition.kind, definition.cardinality);
 
   const authentication = mergeAuthentication(
@@ -1145,13 +1375,19 @@ function normalizeFlowConfig(
   // behind the claim gate of the board whose hand-off addresses it. The roots
   // below are then collected from THAT map, so the gate's own declarations
   // (the board's ledger) count.
-  const task = resolveDispatchTargets(
+  const reachable = walkFlowGraph(
+    actionBlocks(actions, internal, declaredTasks, webhooks, schedules, requestMerged)
+  );
+
+  const task = resolveDispatchTargets(kind, reachable, internal, declaredTasks);
+
+  // Off the walk, not off the action roots below: a block that reads
+  // `ctx.flow.config` may reach the flow only as a generator's static tool,
+  // and would be invisible to a root-based collection.
+  const requiredFlowConfig = collectRequiredFlowConfig(
     kind,
-    walkFlowGraph(
-      actionBlocks(actions, internal, declaredTasks, webhooks, schedules, requestMerged)
-    ),
-    internal,
-    declaredTasks
+    reachable,
+    definition.configSchema !== undefined
   );
 
   const declaredBlocks = actionBlocks(
@@ -1222,6 +1458,7 @@ function normalizeFlowConfig(
     kind,
     cardinality,
     requireUser,
+    requiredFlowConfig,
     requiresOrg: collectRequiresOrg(declaredBlocks),
     authentication,
     actions,
@@ -1251,10 +1488,11 @@ export function defineFlow<
   const TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   const TUser extends UserConfig | undefined = UserConfig | undefined,
   const TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  const TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
+  const TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>,
+  TConfigSchema extends ZodTypeAny | undefined = undefined
 >(
-  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TOrg, TResources>
-): FlowType<TActions, TSession, TRequest, TUser, TOrg, TResources> {
+  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TOrg, TResources, TConfigSchema>
+): FlowType<TActions, TSession, TRequest, TUser, TOrg, TResources, TConfigSchema> {
   const normalizedDefinition: AnyFlowDefinition = {
     ...definition
   };
@@ -1266,17 +1504,45 @@ export function defineFlow<
     TRequest,
     TUser,
     TOrg,
-    TResources
+    TResources,
+    TConfigSchema
   >;
 
   // The blueprint's metadata, read off the normalized config rather than a
   // minted instance: a collection definition is describable — its actions,
   // resources and policy are all known — without any instance existing yet.
   const baseInstance = normalizeFlowConfig(normalizedDefinition, undefined);
+
+  // The blueprint's bag, from ONE probe of the declared schema against `{}` —
+  // the same value a bagless mint gets, so a blueprint and `flow()` never
+  // diverge. On failure it falls back to the frozen empty object and says so
+  // through `requiresConfig` rather than throwing: a required field is
+  // supplied at the mint, and throwing here would make the definition itself
+  // unwritable.
+  //
+  // The probe runs the block check too, so there is one rule and not two:
+  // "could this flow run with the bag it would have if nobody supplied one?"
+  const configSchema = normalizedDefinition.configSchema;
+  const probe = configSchema === undefined
+    ? undefined
+    : closeConfigSchema(normalizedDefinition.kind, configSchema).safeParse({});
+  const probedConfig =
+    probe !== undefined && probe.success
+      ? Object.freeze(probe.data as Record<string, unknown>)
+      : EMPTY_FLOW_CONFIG;
+  const requiresConfig =
+    (probe !== undefined && !probe.success) ||
+    firstUnsatisfiedBlock(
+      probedConfig as Record<string, unknown>,
+      baseInstance.requiredFlowConfig
+    ) !== undefined;
+
   return Object.assign(flowFactory, {
     kind: normalizedDefinition.kind,
     cardinality: baseInstance.cardinality,
     requireUser: baseInstance.requireUser,
+    config: probedConfig,
+    requiresConfig,
     requiresOrg: baseInstance.requiresOrg,
     authentication: baseInstance.authentication,
     actions: baseInstance.actions as TActions,

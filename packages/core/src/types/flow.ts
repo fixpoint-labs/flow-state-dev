@@ -427,13 +427,46 @@ export type OrgConfig = {
  */
 export type FlowCardinality = "singleton" | "collection";
 
+/**
+ * What a caller may hand a flow factory as `config` — the INPUT side of the
+ * declared schema, so a key with a `.default()` may be omitted.
+ *
+ * `never` when the definition declares no `configSchema`: a copy may only
+ * carry settings the definition declared, and that is decidable here.
+ */
+export type FlowConfigInput<TConfigSchema extends ZodTypeAny | undefined> =
+  TConfigSchema extends ZodTypeAny ? TConfigSchema["_input"] : never;
+
+/**
+ * The parsed, frozen bag a copy carries — the OUTPUT side of the declared
+ * schema, so defaults are present. An open read-only record for a flow that
+ * declares no schema, which reads `{}` at run time.
+ */
+export type FlowConfigValue<TConfigSchema extends ZodTypeAny | undefined> =
+  TConfigSchema extends ZodTypeAny
+    ? Readonly<TConfigSchema["_output"]>
+    : Readonly<Record<string, unknown>>;
+
+/**
+ * One block's declared requirement on the flow's config bag, collected off
+ * `defineFlow`'s block walk (FIX-1331). Internal and never serialized, like
+ * {@link FlowInstance.flowLevelResourceKeys}.
+ */
+export type RequiredFlowConfigEntry = {
+  /** The block that declared it — named in the refusal. */
+  blockName: string;
+  /** The block's `flowConfigSchema`, parsed against the bag at each mint. */
+  schema: ZodTypeAny;
+};
+
 export type FlowDefinition<
   TActions extends Record<string, ActionConfig> = Record<string, ActionConfig>,
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
+  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>,
+  TConfigSchema extends ZodTypeAny | undefined = undefined
 > = {
   kind: string;
   /**
@@ -442,6 +475,23 @@ export type FlowDefinition<
    * as an instance option.
    */
   cardinality?: FlowCardinality;
+  /**
+   * What a copy of this flow may be created WITH — the shape of the bag
+   * `flow({ config })` carries, parsed and frozen at that call (FIX-1331).
+   *
+   * Must be a plain `z.object({ ... })`: the framework closes it before
+   * parsing, so a key nobody declared is an error rather than a silently
+   * stripped one. A union, an intersection or an object wrapped in
+   * `.refine()` is refused where it is declared — a rule spanning two
+   * settings belongs in the block that reads them.
+   *
+   * Definition-only in the way `cardinality` is: passing it as an instance
+   * option throws by name rather than being accepted and ignored.
+   *
+   * Anything the copy is GIVEN goes here. Anything the copy LEARNS goes in
+   * its own instance-isolated state — the bag is frozen for the copy's life.
+   */
+  configSchema?: TConfigSchema;
   /**
    * Top-level shorthand for `authentication.requireUser`. When both are set,
    * `authentication.requireUser` wins. Default: true.
@@ -556,10 +606,18 @@ export type FlowInstanceOptions<
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
+  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>,
+  TConfigSchema extends ZodTypeAny | undefined = undefined
 > = {
   id?: string;
   kind?: string;
+  /**
+   * The settings this copy is created with, parsed against the definition's
+   * `configSchema` and frozen (FIX-1331). Omitting it is not a way around the
+   * schema: the schema parses `{}`, so its defaults apply and a required
+   * field refuses.
+   */
+  config?: FlowConfigInput<TConfigSchema>;
   requireUser?: boolean;
   authentication?: AuthenticationConfig;
   actions?: Partial<TActions> & Record<string, ActionConfig>;
@@ -570,9 +628,9 @@ export type FlowInstanceOptions<
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  // `mcp`, `webhooks`, `schedules` and `cardinality` are deliberately ABSENT —
-  // they are definition-only; see `rejectDefinitionOnlyOptions` in
-  // `flow/defineFlow.ts` (FIX-1048).
+  // `mcp`, `webhooks`, `schedules`, `cardinality` and `configSchema` are
+  // deliberately ABSENT — they are definition-only; see
+  // `rejectDefinitionOnlyOptions` in `flow/defineFlow.ts` (FIX-1048, FIX-1331).
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;
@@ -585,7 +643,8 @@ export type FlowInstance<
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
+  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>,
+  TConfigSchema extends ZodTypeAny | undefined = undefined
 > = {
   /**
    * The instance's global address. For a singleton this equals `kind`; for a
@@ -597,6 +656,22 @@ export type FlowInstance<
   /** Normalized from the definition; see {@link FlowCardinality}. */
   cardinality: FlowCardinality;
   requireUser: boolean;
+  /**
+   * This copy's create-time settings, parsed against the definition's
+   * `configSchema` and frozen (FIX-1331). Never absent — a flow that declares
+   * no schema carries a frozen empty object, so a block always reads a value.
+   *
+   * Blocks read it as `ctx.flow.config`. Normalized, never persisted, never
+   * on the wire, and no part of any storage key.
+   */
+  config: FlowConfigValue<TConfigSchema>;
+  /**
+   * @internal What the flow's reachable blocks declared with
+   * `flowConfigSchema`, collected off `defineFlow`'s block walk and parsed
+   * against `config` at each mint (FIX-1331). Deduped by schema reference.
+   * Never serialized.
+   */
+  requiredFlowConfig: readonly RequiredFlowConfigEntry[];
   /**
    * True when any block in any action declares `requireOrg: true`. The HTTP
    * action route uses this to reject requests against unbound sessions before
@@ -643,12 +718,30 @@ export type FlowType<
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
+  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>,
+  TConfigSchema extends ZodTypeAny | undefined = undefined
 > = {
   kind: string;
   /** Mirror of `FlowInstance.cardinality`. */
   cardinality: FlowCardinality;
   requireUser: boolean;
+  /**
+   * What a copy of this flow would carry if nobody supplied a bag — the
+   * definition's `configSchema` parsed against `{}`, so a blueprint and a
+   * bagless mint agree exactly, defaults included. The frozen empty object
+   * when that parse fails, in which case `requiresConfig` is true.
+   */
+  config: FlowConfigValue<TConfigSchema>;
+  /**
+   * True when this flow cannot run on the bag it would have if nobody
+   * supplied one: its `configSchema` does not parse `{}`, or the value that
+   * parse produced does not satisfy a block that declared `flowConfigSchema`.
+   *
+   * A declaration-derived flag beside `requiresOrg` — the registry reads it
+   * and refuses a blueprint handed over in place of an instance, rather than
+   * behaving differently. The framework never reads INSIDE the bag.
+   */
+  requiresConfig: boolean;
   /** Mirror of `FlowInstance.requiresOrg`. */
   requiresOrg: boolean;
   authentication?: AuthenticationConfig;
@@ -672,13 +765,16 @@ export type FlowType<
   /** Mirror of `FlowInstance.flowLevelResourceKeys` (FIX-688). */
   flowLevelResourceKeys: ReadonlySet<string>;
 
-  (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TResources>): FlowInstance<
+  (
+    options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TResources, TConfigSchema>
+  ): FlowInstance<
     TActions,
     TSession,
     TRequest,
     TUser,
     TOrg,
-    TResources
+    TResources,
+    TConfigSchema
   >;
 };
 

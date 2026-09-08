@@ -155,6 +155,48 @@ describe("parseFlowRoute", () => {
   });
 });
 
+/**
+ * A copy's settings never leave the process (FIX-1331). The flow listing is
+ * deliberately unauthenticated, and these are author-written values that will
+ * eventually include a credential someone should not have put there — so
+ * "why did this copy behave differently?" is answered from the code that
+ * minted it, not from an API.
+ */
+describe("flow listing carries no instance config", () => {
+  it("omits config from a configured instance's listing entry", async () => {
+    const registry = createFlowRegistry();
+    const configured = defineFlow({
+      kind: "configured",
+      cardinality: "collection",
+      configSchema: z.object({ apiKey: z.string(), model: z.string() }),
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler<{ value: string }, { ok: boolean }>({
+            name: "configured-run",
+            execute: () => ({ ok: true })
+          })
+        }
+      }
+    })({ id: "configured-east", config: { apiKey: "sk-do-not-publish", model: "opus" } });
+
+    // The value IS on the instance — this test is about the wire, not the mint.
+    expect(configured.config).toEqual({ apiKey: "sk-do-not-publish", model: "opus" });
+
+    registry.register(configured);
+    const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
+    const response = await router.GET(new Request("http://localhost/api/flows"), {
+      params: { path: [] }
+    });
+
+    const payload = (await response.json()) as { flows: Array<Record<string, unknown>> };
+    expect(payload.flows).toHaveLength(1);
+    expect(Object.keys(payload.flows[0]!)).not.toContain("config");
+    // And nothing carried the value under another name.
+    expect(JSON.stringify(payload)).not.toContain("sk-do-not-publish");
+  });
+});
+
 describe("createFlowApiRouter", () => {
   it("serves canonical list/capability/session/action/stream endpoints", async () => {
     const registry = createFlowRegistry();

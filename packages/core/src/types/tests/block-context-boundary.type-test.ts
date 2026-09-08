@@ -8,13 +8,20 @@
  *
  * What they pin down, and why it is worth a file:
  *
- * 1. **`stores` and `flow` are absent from the public context.** The whole
- *    injection seam rests on that premise — if either ever became public, a
- *    capability could reach the store layer directly and every guarantee the seam
- *    makes about identity would be bypassable without a cast. The premise used to
- *    be asserted by a probe no type-checker visited, which meant it could go stale
- *    silently. A directive that reports "unused" here is the signal that someone
- *    widened the boundary, and it fails CI.
+ * 1. **`stores` is absent, and `flow` admits exactly one member.** The whole
+ *    injection seam rests on that premise — if the store layer or the whole flow
+ *    instance ever became public, a capability could reach past the claim and
+ *    dispatch gates and every guarantee the seam makes about identity would be
+ *    bypassable without a cast. The premise used to be asserted by a probe no
+ *    type-checker visited, which meant it could go stale silently. A directive
+ *    that reports "unused" here is the signal that someone widened the boundary,
+ *    and it fails CI.
+ *
+ *    `flow` is no longer an absence: FIX-1331 opened it to the copy's config bag
+ *    and nothing else, so the assertions below are per MEMBER — negative on the
+ *    instance's actions, task, internal, resources and id, positive on `config`.
+ *    That is strictly more precise than the all-or-nothing assertion it replaces.
+ *    Re-aim these when the boundary moves; deleting them reopens the door.
  *
  * 2. **The runtime is reachable without a type assertion.** A capability helper
  *    calls the verbs through the declared member. There is deliberately no cast
@@ -30,21 +37,68 @@
  *    its own: a child is started only by a dispatch.
  */
 import type { BlockContext } from "../block";
+import type { AnyResourceRef } from "../resource";
 import type { RequestHost } from "../request-host";
 import { requireRequestHost } from "../request-host";
 import { DISPATCH_SEAM, dispatchThroughSeam, type DispatchOutcome } from "../dispatch";
 
 declare const ctx: BlockContext;
 
-// ── 1. The boundary: neither handle is on the public context ──────────────
-// If either directive reports "unused", `BlockContext` grew a member this seam
-// exists to keep off it. Do not delete the directive — fix the widening.
+// ── 1. The boundary: the store layer is off, and `flow` is one member ─────
+// If any directive below reports "unused", `BlockContext` grew a member this
+// seam exists to keep off it. Do not delete the directive — fix the widening.
 
 // @ts-expect-error `stores` is not on the public BlockContext, by design.
 ctx.stores;
 
-// @ts-expect-error `flow` is not on the public BlockContext, by design.
-ctx.flow;
+// The one member of the flow instance a block may read (FIX-1331). This is the
+// POSITIVE half: it fails if someone removes the narrowed view entirely.
+const flowConfig: Readonly<Record<string, unknown>> = ctx.flow.config;
+void flowConfig;
+
+// And the negative half, member by member. Reaching any of these would let a
+// block step past the claim and dispatch gates built onto them.
+
+// @ts-expect-error the flow's action map is not reachable from a block.
+ctx.flow.actions;
+
+// @ts-expect-error nor its task entries, which are gated per board.
+ctx.flow.task;
+
+// @ts-expect-error nor its internal entries.
+ctx.flow.internal;
+
+// @ts-expect-error nor its resource declarations — `ctx.resources` is the door.
+ctx.flow.resources;
+
+// @ts-expect-error nor the instance's own address.
+ctx.flow.id;
+
+// A block that declares a `flowConfigSchema` reads the shape it declared, with
+// no annotation and no flow named anywhere.
+declare const seatCtx: BlockContext<
+  Record<string, unknown>, Record<string, unknown>, Record<string, unknown>, Record<string, unknown>,
+  Record<string, AnyResourceRef>, Record<string, unknown>, unknown, undefined,
+  {}, Record<string, unknown>, Record<string, unknown>,
+  { harness: string; model: string }
+>;
+const harness: string = seatCtx.flow.config.harness;
+void harness;
+
+// @ts-expect-error a knob the block did not declare is not on its view.
+void seatCtx.flow.config.temperature;
+
+// A block that declared nothing reads the open record: the value is `unknown`,
+// which is the honest type for a bag it never described.
+const undeclared: unknown = ctx.flow.config.model;
+void undeclared;
+
+// @ts-expect-error and `unknown` cannot be used without parsing it first.
+void ctx.flow.config.model.length;
+
+// The bag is read-only at the top level, matching the runtime freeze.
+// @ts-expect-error `config` is a read-only member.
+ctx.flow.config = {};
 
 // ── 2. The seam: the runtime is reachable, with no assertion in this file ──
 

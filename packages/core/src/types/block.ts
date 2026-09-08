@@ -195,6 +195,43 @@ export type BlockResult<TOutput> =
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface FlowStateSettings {}
 
+/**
+ * The one member of the running flow instance a block may read: the copy's
+ * create-time config bag.
+ *
+ * A block context deliberately does not carry the flow instance. Reaching the
+ * whole instance would put a block's hands on the action, task and internal
+ * maps, and every claim and dispatch gate built onto them could then be
+ * stepped around. So the boundary is a *shape* rather than an absence — this
+ * view names `config` and nothing else, and the type-test in
+ * `types/tests/block-context-boundary.type-test.ts` keeps the rest closed.
+ *
+ * Named once and referred to by `BlockContext`, the block builders and that
+ * type-test, so widening the boundary later is one edit in one place.
+ */
+export type FlowContextView<
+  TConfig extends object = Readonly<Record<string, unknown>>
+> = {
+  /**
+   * The settings this copy of the flow was created with — parsed against the
+   * flow's `configSchema` and frozen at the mint. `{}` for a flow that
+   * declares none. Shallowly frozen: a nested object is not deep-frozen.
+   */
+  readonly config: TConfig;
+};
+
+/**
+ * A block's view of the config bag: the shape it declared with
+ * `flowConfigSchema`, or an open read-only record for a block that declared
+ * nothing — the honest type for a block that never said what it wanted.
+ */
+export type InferFlowConfigFromSchema<TSchema extends ZodTypeAny | undefined> =
+  TSchema extends ZodTypeAny
+    ? z.infer<TSchema> extends object
+      ? z.infer<TSchema>
+      : Readonly<Record<string, unknown>>
+    : Readonly<Record<string, unknown>>;
+
 export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
   TSessionState extends object = Record<string, unknown>,
@@ -212,6 +249,10 @@ export interface BlockContext<
   // usages stay valid.
   TSelfState extends object = Record<string, unknown>,
   TParentState extends object = Record<string, unknown>,
+  // FIX-1331: the flow copy's create-time config bag, typed from THIS block's
+  // `flowConfigSchema`. Appended at the end, like the two above, so existing
+  // positional `BlockContext<...>` usages stay valid.
+  TFlowConfig extends object = Readonly<Record<string, unknown>>,
 > {
   request: RequestScopeHandle<TRequestState>;
   session: SessionScopeHandle<TSessionState>;
@@ -238,6 +279,22 @@ export interface BlockContext<
    * Read-only. Typed via declaration merging into {@link FlowStateSettings}.
    */
   settings: FlowStateSettings;
+
+  /**
+   * The flow copy this block is running in, narrowed to its create-time
+   * config bag — `ctx.flow.config` and nothing else (FIX-1331).
+   *
+   * `ctx.settings` is the whole process, one shape for every flow in it;
+   * this is the per-copy sibling: two registered copies of one definition
+   * read different values here. Fixed when the copy was created and frozen
+   * for its life — anything a block would WRITE belongs in instance-isolated
+   * state, not here.
+   *
+   * Typed from this block's own `flowConfigSchema`, which also makes the flow
+   * refuse when it cannot supply what the block declared. A block that
+   * declares nothing reads an open read-only record and parses for itself.
+   */
+  flow: FlowContextView<TFlowConfig>;
 
   /**
    * Flat resource registry — every resource declared by this block, the
@@ -824,6 +881,24 @@ export interface BlockConfig<
    * (not flow-wide) — block authors opt in deliberately.
    */
   requireOrg?: boolean;
+
+  /**
+   * What this block requires of whatever flow installs it (FIX-1331): a Zod
+   * schema the flow's create-time config bag must satisfy.
+   *
+   * The block names no flow, so it stays portable — the requirement bubbles
+   * up through `defineFlow`'s block walk and the FLOW refuses if it cannot
+   * meet it: at definition time when the flow declares no `configSchema` at
+   * all, and at the mint of each copy whose bag does not parse against this
+   * schema. It also types `ctx.flow.config`.
+   *
+   * Distinct from `defineFlow({ configSchema })`, which declares what the bag
+   * IS and parses and freezes it. The two coexist; neither replaces the other.
+   *
+   * Declared on all four block kinds — a sequencer's connectors and taps read
+   * `ctx.flow.config` like anything else.
+   */
+  flowConfigSchema?: ZodTypeAny;
 
   /**
    * Opt-in tool-result memoization (FIX-610). When set, and when this

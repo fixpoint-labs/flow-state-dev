@@ -89,6 +89,73 @@ export const west = reviewFlow({ id: "review-west", resources: { rubric: westRub
 
 A collection instance has to be given an id. Ids are unique across the whole registry, whatever their kind, so registering two instances with the same id throws at registration time.
 
+### Copies that differ by settings
+
+Two copies of one definition can be set up differently. The definition declares what a copy may be
+given with `configSchema`; each copy is created with a bag of values matching it, and every block
+inside that copy reads them from `ctx.flow.config`.
+
+The line to hold: **anything a copy is given goes in the bag; anything a copy learns goes in its own
+storage.** A seat's harness and model are given. Its current task and its counters are learned —
+those belong in [isolated state](../persistence/overview.md#who-owns-a-record), because the bag is
+fixed when the copy is created and frozen for the copy's life.
+
+```ts
+import { z } from "zod";
+
+const seatConfig = z.object({
+  harness: z.enum(["claude-code", "codex", "cursor"]),
+  model: z.string(),
+  personaPath: z.string().optional(),
+});
+
+const engineerWork = handler({
+  name: "engineer-work",
+  // What this block needs of whatever flow installs it.
+  flowConfigSchema: seatConfig,
+  execute: async (input, ctx) => {
+    const { harness, model } = ctx.flow.config;
+    // ...
+  },
+});
+
+const engineer = defineFlow({
+  kind: "engineer",
+  cardinality: "collection",
+  configSchema: seatConfig,
+  actions: { work: { block: engineerWork } },
+});
+
+export const alice = engineer({ id: "eng-alice", config: { harness: "claude-code", model: "opus" } });
+export const bob = engineer({ id: "eng-bob", config: { harness: "codex", model: "gpt-5.4" } });
+```
+
+One definition, one block graph, two registered copies that behave differently. A roster mints the
+rest in a loop — `engineer({ id: seat.id, config: seat.config })` per row — with no graph rebuilt.
+
+A copy carries only settings the definition declared. A key that isn't in the schema throws where
+the copy is created, naming the flow, the id and the key:
+
+```
+engineer({ id: "eng-carol", config: { harnes: "codex", model: "gpt-5.4" } })
+// Flow "engineer" instance "eng-carol" has an invalid config bag:
+// "harnes" is not a declared setting.
+```
+
+The schema must be a plain `z.object({ ... })` — not a union, an intersection, or an object wrapped
+in `.refine()`. A rule spanning two settings belongs in the block that reads them.
+
+Omitting `config` doesn't skip the schema: the empty bag is parsed, so defaults apply and a required
+setting throws. A flow whose settings all have defaults can be registered bare, and reads
+those defaults. A flow with a required setting has to be minted with a bag before you register it.
+
+The values stay in the process. They are not on the flow listing, not in DevTool, and not written to
+any store, so a request that resumes after a deploy runs on the settings the process was started
+with.
+
+Blocks and their `flowConfigSchema` are covered in [Blocks](./blocks.md#reading-the-flow-copys-settings);
+the field-by-field reference is in [Flow configuration](../configuration/flow.md).
+
 ### How an instance is addressed
 
 Every entry point reaches an instance by its **id**: the HTTP action routes, the CLI, webhooks, schedules, MCP, and a queue worker all carry the id, and nothing else. For a singleton the id is the kind, so `POST /api/flows/my-chat/actions/send` and `fsdev run my-chat send` look exactly as they always have. For a collection it is the id you registered: `POST /api/flows/review-east/actions/run`. The kind of a collection is not an address. `POST /api/flows/review/...` is a miss, not a fallback to whichever copy was registered first.
@@ -112,9 +179,9 @@ const supportFlow = defineFlow({
 export default supportFlow();
 ```
 
-Every instance of a type serves the same transports. Pass one of the three to the instance call and TypeScript rejects it; a plain-JavaScript caller gets a thrown error naming the option. The `internal` and `task` entry maps described [below](#entries-only-the-flow-can-reach) are definition-only in the same way.
+Every instance of a type serves the same transports. Pass one of the three to the instance call and TypeScript rejects it; a plain-JavaScript caller gets a thrown error naming the option. The `internal` and `task` entry maps described [below](#entries-only-the-flow-can-reach) are definition-only in the same way, and so is `configSchema` — the definition says what a copy may carry, and each copy supplies the values.
 
-Everything else is settable per instance: `id`, `kind`, `actions`, `session`, `request`, `user`, `org`, `resources`, `tools`, `voice`, `authentication`, `requireUser`, `tokenCounter`, `costEstimator`, `isolateUserState`, and `isolateOrgState`.
+Everything else is settable per instance: `id`, `kind`, `config`, `actions`, `session`, `request`, `user`, `org`, `resources`, `tools`, `voice`, `authentication`, `requireUser`, `tokenCounter`, `costEstimator`, `isolateUserState`, and `isolateOrgState`.
 
 `voice` sits on both sides. Unlike the three transports above, you can set it on `defineFlow()` as the default for every instance of the type, then override it on any single instance.
 

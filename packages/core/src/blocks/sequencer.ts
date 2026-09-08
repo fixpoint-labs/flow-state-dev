@@ -1090,7 +1090,12 @@ function wrapWithOutputValidation(
 }
 
 
-function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | undefined = undefined>(
+function createSequencer<
+  TInput,
+  TOutput,
+  TStateSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+>(
   config: SequencerConfig<any>,
   operations: SequencerOperation[],
   rescueHandlers: RescueHandlerSpec[],
@@ -1116,7 +1121,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   // opacity is what stopped "every dispatcher this flow reaches names an entry
   // that exists" from being checkable at all.
   childBlocks: readonly BlockDefinition<any, any>[] = []
-): SequencerDefinition<TInput, TOutput, TStateSchema> {
+): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
   // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
   // individual blocks in the chain already validate their own outputs.
@@ -2465,16 +2470,18 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     }
   });
 
-  return definition as unknown as SequencerDefinition<TInput, TOutput, TStateSchema>;
+  return definition as unknown as SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
 }
 
 export function sequencer<
   const TInputSchema extends ZodTypeAny = ZodTypeAny,
   const TStateSchema extends ZodTypeAny | undefined = undefined,
   TInput = z.infer<TInputSchema>,
+  // FIX-1331: what this sequencer requires of the flow that installs it.
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
 >(
-  config: SequencerConfig<TInputSchema, TInput, TStateSchema>
-): SequencerDefinition<TInput, TInput, TStateSchema> {
+  config: SequencerConfig<TInputSchema, TInput, TStateSchema, TFlowConfigSchema>
+): SequencerDefinition<TInput, TInput, TStateSchema, TFlowConfigSchema> {
   const { declaredResources, resolvedCapabilities, stateSchema } = resolveCapabilities(config, "sequencer");
 
   // FIX-914 PR2: `resolveCapabilities` already merged any capability-
@@ -2489,7 +2496,7 @@ export function sequencer<
   // returns here before any child resources merge in. Capture this as the
   // sequencer's `ownDeclaredResources` (FIX-688): identical to the initial
   // accumulator, but it stays fixed as children bubble into the accumulator.
-  return createSequencer<TInput, TInput, TStateSchema>(
+  return createSequencer<TInput, TInput, TStateSchema, TFlowConfigSchema>(
     effectiveConfig as SequencerConfig<any>,
     [],
     [],

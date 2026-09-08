@@ -13,6 +13,7 @@ import type {
   BlockDefinition,
   ConnectorFn,
   InferBlockResources,
+  InferFlowConfigFromSchema,
   InferStateFromSchema,
   RetryPolicy
 } from "../types/block";
@@ -421,13 +422,29 @@ export interface GeneratorConfig<
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
   TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
+  // FIX-1331: what this block requires of the flow that installs it
+  // (`flowConfigSchema`), and the shape `ctx.flow.config` reads. Appended at
+  // the end so existing positional usages stay valid.
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfig extends object = InferFlowConfigFromSchema<TFlowConfigSchema>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
     TResources, TSequencerState, unknown, TMergedTargetSchemas,
-    TCapabilities, TSelfState, TParentState
+    TCapabilities, TSelfState, TParentState, TFlowConfig
   >,
-> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "onCompleted" | "stateSchema"> {
+> extends Omit<
+  BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
+  "execute" | "onCompleted" | "stateSchema" | "flowConfigSchema"
+> {
+  /**
+   * What this block requires of whatever flow installs it (FIX-1331). Types
+   * `ctx.flow.config` off this schema, and makes the flow refuse when it
+   * cannot supply a bag that satisfies it. Names no flow, so the block stays
+   * portable. See {@link BlockConfig.flowConfigSchema}.
+   */
+  flowConfigSchema?: TFlowConfigSchema;
+
   onCompleted?: (
     output: TOutput,
     ctx: TCtx,
@@ -2550,10 +2567,14 @@ export function generator<
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
   TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
+  // FIX-1331: what this block requires of the flow that installs it
+  // (`flowConfigSchema`), and the shape `ctx.flow.config` reads.
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfig extends object = InferFlowConfigFromSchema<TFlowConfigSchema>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
     TResources, TSequencerState, unknown, TMergedTargetSchemas,
-    TCapabilities, TSelfState, TParentState
+    TCapabilities, TSelfState, TParentState, TFlowConfig
   >,
 >(
   config: GeneratorConfig<
@@ -2561,7 +2582,8 @@ export function generator<
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
     TResourceDefs, TTargetSchemas, TUses,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
-    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState, TCtx
+    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState,
+    TFlowConfigSchema, TFlowConfig, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses, stateSchema: effectiveStateSchema } = resolveCapabilities(config, "generator");

@@ -138,6 +138,72 @@ describe("flow registry legacy compatibility", () => {
   });
 });
 
+/**
+ * The blueprint door (FIX-1331). A flow DEFINITION handed over in place of an
+ * instance is a narrow path — the types and CLI discovery both reject one —
+ * but the registry deliberately tolerates it for JS and legacy callers under
+ * `id = kind`. A definition that cannot run without a config bag would
+ * otherwise register there and hand its blocks an empty one, misbehaving
+ * somewhere downstream and far from the cause.
+ */
+describe("flow registry config admission", () => {
+  it("refuses a blueprint that cannot run without a config bag, naming the flow", () => {
+    const registry = createFlowRegistry();
+    const engineer = defineFlow({
+      kind: "engineer-blueprint",
+      configSchema: z.object({ harness: z.string(), model: z.string() }),
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: handler<Record<string, never>, { ok: true }>({
+            name: "engineer-blueprint-run",
+            execute: () => ({ ok: true })
+          })
+        }
+      }
+    });
+
+    expect(engineer.requiresConfig).toBe(true);
+    // The blueprint IS callable — this is the shape a JS caller reaches with.
+    expect(() => registry.register(engineer as unknown as FlowInstance)).toThrow(
+      FlowIdentityConflictError
+    );
+    expect(() => registry.register(engineer as unknown as FlowInstance)).toThrow(
+      /registered as a definition rather than an instance, but it cannot run without a config bag/
+    );
+    expect(registry.list()).toEqual([]);
+
+    // Minted, it registers exactly as before.
+    registry.register(engineer({ config: { harness: "codex", model: "gpt-5.4" } }));
+    expect(registry.get("engineer-blueprint")?.config).toEqual({
+      harness: "codex",
+      model: "gpt-5.4"
+    });
+  });
+
+  it("still admits a blueprint whose settings all default", () => {
+    const registry = createFlowRegistry();
+    const digest = defineFlow({
+      kind: "digest-blueprint",
+      configSchema: z.object({ retries: z.number().default(2) }),
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: handler<Record<string, never>, { ok: true }>({
+            name: "digest-blueprint-run",
+            execute: () => ({ ok: true })
+          })
+        }
+      }
+    });
+
+    expect(digest.requiresConfig).toBe(false);
+    registry.register(digest as unknown as FlowInstance);
+    // It reads the schema's defaults, the same value a bagless mint gets.
+    expect(registry.get("digest-blueprint")?.config).toEqual({ retries: 2 });
+  });
+});
+
 describe("flow registry schema transaction", () => {
   it("leaves lookup and listing unchanged when a schema conflict refuses an otherwise unique id", () => {
     const registry = createFlowRegistry();

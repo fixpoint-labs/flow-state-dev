@@ -531,6 +531,23 @@ function admitIdentity(
   const singletonWithoutId =
     (input as { id?: unknown }).id === undefined &&
     (declared === undefined || declared === null || declared === "singleton");
+  // A blueprint that cannot run on the bag it would have if nobody supplied
+  // one (FIX-1331). This is the only path where a required config bag could go
+  // missing silently: the types and CLI discovery both reject a `defineFlow`
+  // result, but the branch above deliberately tolerates one for JS and legacy
+  // callers, and would otherwise hand its blocks an empty bag and misbehave
+  // far from the cause. Forecloses nothing that works — a bare-registered
+  // singleton can never receive a bag anyway, because a blueprint and a mint
+  // of one flow cannot coexist in a registry (a default-id mint collides as
+  // `duplicate-id`; a custom-id one refuses earlier as
+  // `singleton-id-mismatch`).
+  if (singletonWithoutId && (input as { requiresConfig?: unknown }).requiresConfig === true) {
+    throw new FlowIdentityConflictError({
+      reason: "unminted-config",
+      kind: input.kind,
+      id: input.kind
+    });
+  }
   const flow: FlowInstance = singletonWithoutId ? { ...input, id: input.kind } : input;
   if (typeof flow.id !== "string" || flow.id.length === 0) {
     throw new FlowIdentityConflictError({ reason: "invalid-id", kind: flow.kind, id: String(flow.id) });

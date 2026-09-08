@@ -75,6 +75,10 @@ export function createMockContext(overrides?: Partial<BlockContext>): BlockConte
     wasRescued: () => false,
     targetStateSchemas: {},
     cap: {} as any,
+    // The narrowed flow view every production context carries (FIX-1331). A
+    // frozen empty bag, so a block that reads `ctx.flow.config` here sees what
+    // an unconfigured flow gives it rather than `undefined`.
+    flow: { config: Object.freeze({}) },
   };
 
   return {

@@ -103,6 +103,7 @@ function buildFlatResourceMap(
 
 function createTestFlow(options: {
   flow?: FlowInstance;
+  flowConfig?: Record<string, unknown>;
   sessionId?: string;
   sessionResources?: Record<string, unknown>;
   userResources?: Record<string, unknown>;
@@ -134,6 +135,11 @@ function createTestFlow(options: {
     cardinality: "singleton",
     requireUser: true,
     requiresOrg: false,
+    // Frozen, like a minted instance's: production promises a block reads a
+    // value here, never `undefined`, and a harness that disagreed with the
+    // runtime it stands in for would hide exactly that.
+    config: Object.freeze({ ...(options.flowConfig ?? {}) }),
+    requiredFlowConfig: [],
     actions: {},
     isolateUserState: false,
     isolateOrgState: false,
@@ -418,6 +424,7 @@ export async function createTestContext<TInput = unknown>(
 ): Promise<TestContextRuntime> {
   const flow = createTestFlow({
     flow: options.flow,
+    flowConfig: options.flowConfig,
     sessionId: options.sessionId,
     sessionResources: options.session?.resources,
     userResources: options.user?.resources,
