@@ -1,14 +1,49 @@
-# POC — the pi companion channel
+# POC evidence — OMP / pi runtime seams
 
-Throwaway. Never merges. Built to falsify the epic's Kill line **before** the objective
-gate, because the whole set rests on one unverified pi behaviour.
+Throwaway, never merged. The [current epic](../../spec/_epics/pi-harness.md) is
+OMP-only and harness-only. Its durable question/approval and same-session continuation
+proof remains open. The earlier pi companion investigation below is historical, not
+the current design or acceptance claim.
 
-## The question
+## Current model-free runtime checks
 
-The epic's Proof and Kill line both assume: **a spawned `pi` run, loaded with a companion
-extension via `-e`, can block on a question and get an answer back from the FSD host.**
-If that does not hold, a pi harness is a *substitution* for Claude Code rather than an
-improvement, and the epic should ship the console (PI-1..3) and stop.
+`runtime-check/bridge.mjs` was run unchanged on installed pi 0.85.1 and OMP 18.1.14.
+Both emitted `extension_ui_request` with `method: "confirm"`; replying with the same
+ID and `confirmed: true` reached the extension callback. Evidence:
+`runtime-check/roundtrip-evidence.json`. No model was invoked.
+
+Launch either executable with `--mode rpc`, a scratch `--session-dir`, and
+`-e <absolute-path-to-runtime-check/bridge.mjs>`. The captured runs disabled discovered
+extensions, skills, tools, and project rules/context using each runtime's own flags;
+they did not share a launcher configuration. Send newline-terminated JSON over stdin:
+
+```json
+{"id":"ask","type":"prompt","message":"/fsd-probe"}
+```
+
+Read the emitted confirmation ID, then send `extension_ui_response` with that ID and
+`confirmed: true`. After `FSD_PROBE_ANSWER:true`, send a prompt with
+`message: "/fsd-probe-history"`; the callback reports `[{"answer":true}]`.
+That history is in-memory evidence only. The probe commands did not persist session
+files on either runtime; reported session IDs/paths are not a resume proof.
+
+A separate `omp --mode rpc-ui --tools ask --no-extensions --no-skills --no-rules
+--no-lsp --no-title --session-dir <scratch>` run, with an isolated
+`PI_CODING_AGENT_DIR`, returned `ask` in `get_state.data.dumpTools`.
+`runtime-check/omp-native-ask-evidence.json` records the selected response fields.
+This checks native tool registration, not an actual model-driven ask.
+
+These checks remove the need to assume a bespoke HTTP/file-mailbox live-answer
+transport. They do **not** prove tool interception, authorization, safe stop, durable
+parking, restart-resume, or the full FSD manager loop. Pinned source and the runtime
+comparison are in the epic's §3; LAB-164 owns the remaining full-path proof.
+
+## Original question (superseded)
+
+The original pi proposal assumed a spawned `pi` run could block on a companion
+question and receive an answer from FSD. Its console fallback and live-held worker
+wait have since been removed. The retained files and findings below record that
+earlier investigation; they do not establish the revised OMP objective.
 
 ## What was built
 
@@ -21,7 +56,7 @@ improvement, and the epic should ship the console (PI-1..3) and stop.
 **Transport is a file mailbox, not a socket.** The authoring sandbox forbids `listen(2)`
 (`EPERM` on both TCP and a Unix socket). The transport is not what was under test — the
 *blocking semantics* are — so the rendezvous was swapped and the question preserved. A real
-implementation uses a socket or HTTP.
+implementation was then assumed to need socket/HTTP; the native RPC findings above supersede that assumption.
 
 ## Run it
 
