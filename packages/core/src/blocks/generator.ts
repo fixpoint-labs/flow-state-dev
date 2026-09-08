@@ -62,6 +62,11 @@ import type {
 
 import { resolveActivePresets, flattenCapabilities, getBaseCapability } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
+import {
+  describeFlowConfigMismatch,
+  findFlowConfigMismatch,
+  type FlowConfigRequirement,
+} from "../helpers/flow-config";
 import { sanitizeToolName, computeToolAliases, assertUniqueToolNames } from "../helpers/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
@@ -721,7 +726,43 @@ async function resolveTools<TInput, TCtx extends BlockContext>(
   }
 
   const resolved = typeof tools === "function" ? await tools(input, ctx) : tools;
-  return Array.isArray(resolved) ? resolved : [];
+  const blocks = Array.isArray(resolved) ? resolved : [];
+  assertToolsSatisfyFlowConfig(blocks, ctx);
+  return blocks;
+}
+
+/**
+ * Refuse a resolved tool whose `flowConfigSchema` the running copy's bag does
+ * not satisfy (FIX-1331).
+ *
+ * `defineFlow`'s walk takes a generator's STATIC `tools` array, so a tool it
+ * declares is checked at the mint and this is a no-op for it. A
+ * function-valued slot resolves per call against runtime values that do not
+ * exist at definition time, so its blocks are invisible to that walk — and
+ * without this they would run against a bag they declared they cannot accept,
+ * which is the same fail-quiet the mint-time check exists to remove.
+ *
+ * Here rather than at tool INVOCATION because the model should never be
+ * offered a tool that cannot run: this fires before the tool list reaches it.
+ * A tool declaring nothing costs one property read.
+ */
+function assertToolsSatisfyFlowConfig(blocks: readonly GeneratorTool[], ctx: BlockContext): void {
+  const requirements: FlowConfigRequirement[] = [];
+  for (const block of blocks) {
+    const schema = (block.config as { flowConfigSchema?: ZodTypeAny } | undefined)?.flowConfigSchema;
+    if (schema !== undefined) requirements.push({ blockName: block.name, schema });
+  }
+  if (requirements.length === 0) return;
+
+  // A hand-built context may carry no flow at all; an unconfigured flow reads
+  // the empty bag, which is what a mint would have checked against.
+  const bag = (ctx.flow?.config ?? {}) as Record<string, unknown>;
+  const mismatch = findFlowConfigMismatch(bag, requirements);
+  if (mismatch !== undefined) {
+    throw new Error(
+      describeFlowConfigMismatch("A generator resolved a tool whose flow", mismatch)
+    );
+  }
 }
 
 const AI_SDK_SCHEMA_SYMBOL = Symbol.for("vercel.ai.schema");

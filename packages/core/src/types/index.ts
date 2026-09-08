@@ -94,7 +94,6 @@ export type {
   McpConfig,
   OrgConfig,
   RequestConfig,
-  RequiredFlowConfigEntry,
   RetentionPolicy,
   ScopeResourceConfig,
   SessionConfig,

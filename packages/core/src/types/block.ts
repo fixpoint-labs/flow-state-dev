@@ -208,6 +208,19 @@ export interface FlowStateSettings {}
  *
  * Named once and referred to by `BlockContext`, the block builders and that
  * type-test, so widening the boundary later is one edit in one place.
+ *
+ * **This is a compile-time contract, not runtime enforcement.** The engine
+ * builds one context object carrying the whole `FlowInstance` under `flow`;
+ * only the public type is narrowed. So a block that casts — `(ctx as any).flow.actions`
+ * — reaches every member this view leaves out, and nothing stops it at run
+ * time. That is the accepted shape (FIX-1331 decision 4): a block author
+ * already owns the process their flow runs in, so the boundary exists to
+ * prevent the accident and the drift, not the determined author.
+ *
+ * It is a real guardrail rather than decoration — reaching past it takes a
+ * deliberate cast that shows up in review, and the type-test fails CI if the
+ * declared surface widens by accident. Just do not cite it as proof that a
+ * block *cannot* reach the flow's action, task or internal maps.
  */
 export type FlowContextView<
   TConfig extends object = Readonly<Record<string, unknown>>
@@ -228,7 +241,10 @@ export type FlowContextView<
 export type InferFlowConfigFromSchema<TSchema extends ZodTypeAny | undefined> =
   TSchema extends ZodTypeAny
     ? z.infer<TSchema> extends object
-      ? z.infer<TSchema>
+      // `Readonly` at the top level and no deeper, matching the runtime freeze
+      // exactly (see `FlowContextView.config`). Without it an assignment
+      // type-checks and then throws, which is the worst of both.
+      ? Readonly<z.infer<TSchema>>
       : Readonly<Record<string, unknown>>
     : Readonly<Record<string, unknown>>;
 
@@ -893,7 +909,10 @@ export interface BlockConfig<
    * schema. It also types `ctx.flow.config`.
    *
    * Distinct from `defineFlow({ configSchema })`, which declares what the bag
-   * IS and parses and freezes it. The two coexist; neither replaces the other.
+   * IS and parses and freezes it. The two coexist; neither replaces the other,
+   * and they buy different things: that one is the bag, this one is block
+   * portability. The generic plumbing this slot needs on all four kinds is the
+   * price of the second — see `FlowDefinition.configSchema` for the split.
    *
    * Declared on all four block kinds — a sequencer's connectors and taps read
    * `ctx.flow.config` like anything else.

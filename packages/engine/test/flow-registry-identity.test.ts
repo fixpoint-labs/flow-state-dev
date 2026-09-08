@@ -181,6 +181,29 @@ describe("flow registry config admission", () => {
     });
   });
 
+  /**
+   * "`ctx.flow.config` is always present."
+   *
+   * A structural instance written before the option existed carries an `id`
+   * and no `config`, so it is NOT the blueprint shape the guard above catches
+   * — it is admitted on the ordinary path. Left alone it would hand its blocks
+   * `undefined` where the contract says a frozen empty object, and a block
+   * reading `ctx.flow.config.x` would fail on the property access rather than
+   * on a missing setting. BP-030: tolerate the old shape.
+   */
+  it("gives a legacy structural instance the empty bag it never carried", () => {
+    const registry = createFlowRegistry();
+    const { cardinality: _dropped, ...legacy } = define("legacy-config")();
+    expect(Object.hasOwn(legacy, "config")).toBe(true);
+    // The shape as it existed before the option: no `config` at all.
+    delete (legacy as { config?: unknown }).config;
+
+    registry.register(legacy as unknown as FlowInstance);
+    const held = registry.get("legacy-config");
+    expect(held?.config).toEqual({});
+    expect(Object.isFrozen(held?.config)).toBe(true);
+  });
+
   it("still admits a blueprint whose settings all default", () => {
     const registry = createFlowRegistry();
     const digest = defineFlow({

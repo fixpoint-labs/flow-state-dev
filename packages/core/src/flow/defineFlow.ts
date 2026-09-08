@@ -23,7 +23,6 @@ import type {
   McpConfig,
   OrgConfig,
   RequestConfig,
-  RequiredFlowConfigEntry,
   ScopeClientConfig,
   SessionConfig,
   ToolsConfig,
@@ -35,7 +34,13 @@ import { isDefinedResourceCollection } from "../types/resource-collection";
 import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } from "../types/schedules";
 import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
-import { introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
+import { hasZodObjectCatchall, introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
+import {
+  describeFlowConfigIssues,
+  describeFlowConfigMismatch,
+  findFlowConfigMismatch,
+  type FlowConfigRequirement,
+} from "../helpers/flow-config";
 import type { ZodError, ZodObject, ZodRawShape, ZodTypeAny } from "zod";
 
 type ScopeKind = "session" | "user" | "org";
@@ -265,47 +270,23 @@ function closeConfigSchema(flowKind: string, schema: ZodTypeAny): ZodTypeAny {
       `is parsed. A rule spanning two settings belongs in the block that reads them.`
     );
   }
-  return (schema as unknown as ZodObject<ZodRawShape>).strict();
-}
-
-/** Render a parse failure so the offending key is in the message, not just a path. */
-function describeConfigIssues(error: ZodError): string {
-  return error.issues
-    .map((issue) => {
-      if (issue.code === "unrecognized_keys") {
-        const keys = (issue as unknown as { keys: string[] }).keys;
-        return `${keys.map((key) => `"${key}"`).join(", ")} is not a declared setting`;
-      }
-      const at = issue.path.length > 0 ? `"${issue.path.join(".")}": ` : "";
-      return `${at}${issue.message}`;
-    })
-    .join("; ");
-}
-
-/**
- * The first block whose `flowConfigSchema` the bag does not satisfy, if any.
- *
- * A parse of the real value, not a comparison of two schemas: by the time
- * this runs the bag is concrete, so refinements run, unions resolve, nested
- * objects are checked to the bottom, and the flow's own defaults have already
- * been applied. There is no class of mismatch it misses and no correct
- * program it refuses. The same technique `assertConfigCompatible` uses for
- * capability config.
- *
- * The cost is stated rather than hidden: the guarantee is per COPY, not per
- * definition. A flow whose `configSchema` is merely looser than a block needs
- * is refused at the mint of every copy that omits the field, not where the two
- * were written.
- */
-function firstUnsatisfiedBlock(
-  bag: Record<string, unknown>,
-  required: readonly RequiredFlowConfigEntry[]
-): { entry: RequiredFlowConfigEntry; error: ZodError } | undefined {
-  for (const entry of required) {
-    const result = entry.schema.safeParse(bag);
-    if (!result.success) return { entry, error: result.error };
+  // `.strict()` does NOT close a schema that carries a `.catchall(...)`: zod
+  // consults the catchall first and only falls back to strip/strict/passthrough
+  // when it is the default `ZodNever`. So a catchall would accept AND KEEP
+  // every undeclared key — the silent-default failure closing the schema
+  // exists to prevent. Refused rather than cleared: `.strict()` closes a door
+  // an author left at the default, but a catchall is a door they opened
+  // deliberately, and silently reversing it would make their schema mean
+  // something they did not write.
+  if (hasZodObjectCatchall(schema)) {
+    throw new Error(
+      `Flow "${flowKind}" declares a configSchema with a catchall. A config bag is a closed set of ` +
+      `declared keys — an undeclared one must refuse, and a catchall accepts and keeps it. Declare ` +
+      `every setting in the object's shape, or move the open-ended data into one declared key whose ` +
+      `own schema is a record.`
+    );
   }
-  return undefined;
+  return (schema as unknown as ZodObject<ZodRawShape>).strict();
 }
 
 /**
@@ -326,7 +307,7 @@ function normalizeInstanceConfig(
   options: AnyFlowInstanceOptions | undefined,
   flowKind: string,
   instanceId: string,
-  required: readonly RequiredFlowConfigEntry[]
+  required: readonly FlowConfigRequirement[]
 ): Readonly<Record<string, unknown>> {
   const declared = definition.configSchema;
   const supplied = (options as { config?: unknown } | undefined)?.config;
@@ -344,7 +325,7 @@ function normalizeInstanceConfig(
     if (!result.success) {
       throw new Error(
         `Flow "${flowKind}" instance "${instanceId}" has an invalid config bag: ` +
-        `${describeConfigIssues(result.error)}.`
+        `${describeFlowConfigIssues(result.error)}.`
       );
     }
     parsed = result.data as Record<string, unknown>;
@@ -357,7 +338,7 @@ function normalizeInstanceConfig(
       throw new Error(
         `Flow "${flowKind}" instance "${instanceId}" was created without a config bag, and the ` +
         `flow's configSchema cannot be satisfied by an empty one: ` +
-        `${describeConfigIssues(result.error)}. Call the factory with { config: { ... } }.`
+        `${describeFlowConfigIssues(result.error)}. Call the factory with { config: { ... } }.`
       );
     }
     parsed = result.data as Record<string, unknown>;
@@ -365,13 +346,10 @@ function normalizeInstanceConfig(
     return EMPTY_FLOW_CONFIG;
   }
 
-  const unsatisfied = firstUnsatisfiedBlock(parsed, required);
-  if (unsatisfied !== undefined) {
+  const mismatch = findFlowConfigMismatch(parsed, required);
+  if (mismatch !== undefined) {
     throw new Error(
-      `Flow "${flowKind}" instance "${instanceId}" has a config bag that block ` +
-      `"${unsatisfied.entry.blockName}" cannot read: ${describeConfigIssues(unsatisfied.error)}. ` +
-      `That block declares \`flowConfigSchema\`; the flow's configSchema must produce a bag that ` +
-      `satisfies it, and this copy's does not.`
+      describeFlowConfigMismatch(`Flow "${flowKind}" instance "${instanceId}"`, mismatch)
     );
   }
   return Object.freeze(parsed);
@@ -398,8 +376,8 @@ function collectRequiredFlowConfig(
   flowKind: string,
   reachable: readonly BlockDefinition[],
   hasConfigSchema: boolean
-): readonly RequiredFlowConfigEntry[] {
-  const collected: RequiredFlowConfigEntry[] = [];
+): readonly FlowConfigRequirement[] {
+  const collected: FlowConfigRequirement[] = [];
   const seen = new Set<ZodTypeAny>();
   for (const block of reachable) {
     const schema = (block.config as { flowConfigSchema?: ZodTypeAny }).flowConfigSchema;
@@ -1260,7 +1238,15 @@ function validateMcpConfig(
 type NormalizedFlowConfig = Omit<
   FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg>,
   "id" | "config"
->;
+> & {
+  /**
+   * Build-time only: what the reachable blocks require of the bag. Read by
+   * both halves below and then dropped: it is derived from the definition,
+   * identical for every copy, and read nowhere after the mint has parsed the
+   * bag against it, so it does not ride onto the published instance shape.
+   */
+  requiredFlowConfig: readonly FlowConfigRequirement[];
+};
 
 function createFlowInstance(
   definition: AnyFlowDefinition,
@@ -1273,16 +1259,13 @@ function createFlowInstance(
   // would make every configured definition fail before its author could
   // supply a bag.
   const id = resolveInstanceId(normalized.kind, normalized.cardinality, options?.id);
+  // Destructured off rather than spread through: once the bag has been parsed
+  // against it, nothing reads it again, and an instance is a published shape.
+  const { requiredFlowConfig, ...instanceFields } = normalized;
   return {
     id,
-    config: normalizeInstanceConfig(
-      definition,
-      options,
-      normalized.kind,
-      id,
-      normalized.requiredFlowConfig
-    ),
-    ...normalized
+    config: normalizeInstanceConfig(definition, options, normalized.kind, id, requiredFlowConfig),
+    ...instanceFields
   };
 }
 
@@ -1532,7 +1515,7 @@ export function defineFlow<
       : EMPTY_FLOW_CONFIG;
   const requiresConfig =
     (probe !== undefined && !probe.success) ||
-    firstUnsatisfiedBlock(
+    findFlowConfigMismatch(
       probedConfig as Record<string, unknown>,
       baseInstance.requiredFlowConfig
     ) !== undefined;

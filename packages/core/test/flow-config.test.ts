@@ -10,7 +10,7 @@
  * The fence these tests exist to hold: anything the copy is GIVEN goes in the
  * bag; anything the copy LEARNS goes in its own instance-isolated state.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, generator, handler, router, sequencer } from "../src";
 import type { FlowInstance } from "../src/types/flow";
@@ -265,7 +265,10 @@ describe("flow config bag — the value and its door", () => {
     expect(instance.config).toEqual({});
     expect(Object.isFrozen(instance.config)).toBe(true);
     expect(flow.requiresConfig).toBe(false);
-    expect(instance.requiredFlowConfig).toEqual([]);
+    // The block-side requirements are build-time only and never ride onto an
+    // instance: they are derived from the definition, identical for every
+    // copy, and read nowhere after the mint has parsed the bag against them.
+    expect(Object.hasOwn(instance, "requiredFlowConfig")).toBe(false);
   });
 
   /** `configSchema` is the definition's, like `cardinality` — not an instance option. */
@@ -298,6 +301,186 @@ describe("flow config bag — the value and its door", () => {
         actions: {}
       })
     ).toThrow(/not an object schema/);
+  });
+});
+
+/**
+ * Each promise this feature makes, and the path where it would not hold.
+ * Grouped deliberately: these are one class of defect — a guarantee stated in
+ * the docs or the types with a door left open behind it — not five unrelated
+ * bugs.
+ */
+describe("flow config bag — the promises, and their second paths", () => {
+  /**
+   * "The type you infer is the value you get."
+   *
+   * A block-side `.default()` type-checks `ctx.flow.config.x` as `string`,
+   * parses clean, and its OUTPUT is discarded — the bag a block actually reads
+   * is the flow's, so the block would read `undefined` through a type that
+   * says `string`. A type lie is the worst failure available here: invisible
+   * until the value is used, and then wrong somewhere else entirely.
+   *
+   * Preserving the block's output instead is not an option: the bag is ONE
+   * frozen object every block reads, so one block's default would appear to
+   * every other block as a setting the definition never declared — which
+   * decision 2 forbids outright.
+   */
+  it("refuses a block requirement whose schema would change the bag", () => {
+    const contributes = handler({
+      name: "contributes-a-default",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      flowConfigSchema: z.object({ model: z.string().default("fallback") }),
+      execute: async () => ({})
+    });
+
+    const flow = defineFlow({
+      kind: "block-default",
+      cardinality: "collection",
+      configSchema: z.object({ region: z.string() }),
+      actions: { work: { block: contributes } }
+    });
+
+    expect(() => flow({ id: "bd-1", config: { region: "eu" } } as never)).toThrow(
+      /block "contributes-a-default" declares a flowConfigSchema that would change the bag.*"model"/s
+    );
+  });
+
+  /** A requirement that only READS the bag is untouched by that rule. */
+  it("accepts a block requirement that reads without contributing", () => {
+    const reads = handler({
+      name: "reads-only",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      flowConfigSchema: z.object({ model: z.string() }),
+      execute: async () => ({})
+    });
+
+    const flow = defineFlow({
+      kind: "block-reads",
+      cardinality: "collection",
+      configSchema: z.object({ model: z.string(), region: z.string().default("eu") }),
+      actions: { work: { block: reads } }
+    });
+
+    // The FLOW's default still applies — that is the definition declaring it.
+    expect(flow({ id: "br-1", config: { model: "opus" } } as never).config).toEqual({
+      model: "opus",
+      region: "eu"
+    });
+  });
+
+  /**
+   * "The bag is closed, so a typo fails loudly."
+   *
+   * `.strict()` does NOT clear a `catchall`, so `z.object({...}).catchall(...)`
+   * passes the object check and then accepts and KEEPS every undeclared key —
+   * the exact silent-default failure closing the schema exists to prevent.
+   */
+  it("refuses a configSchema with a catchall, which strict mode cannot close", () => {
+    expect(() =>
+      defineFlow({
+        kind: "catchall-flow",
+        configSchema: z.object({ model: z.string() }).catchall(z.string()),
+        actions: {}
+      })
+    ).toThrow(/Flow "catchall-flow" declares a configSchema with a catchall/);
+  });
+
+  /**
+   * "A block's declared requirement is always checked."
+   *
+   * The definition-time walk takes a generator's STATIC `tools` array. A
+   * function-valued slot resolves per call, so a tool it returns is invisible
+   * to that walk — the same fail-quiet door the sequencer builder had, reached
+   * a different way. It is checkable at the moment the tool becomes known,
+   * which is still before the block runs.
+   */
+  it("checks a tool the generator resolves dynamically, at resolution time", async () => {
+    const needsIndex = handler({
+      name: "dynamic-lookup",
+      description: "look something up",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ hit: z.string() }),
+      flowConfigSchema: z.object({ index: z.string() }),
+      execute: async () => ({ hit: "x" })
+    });
+
+    const agent = generator({
+      name: "dynamic-agent",
+      inputSchema: z.object({}),
+      model: "m",
+      prompt: "go",
+      outputSchema: z.object({ ok: z.boolean() }),
+      // Resolved per call, so `defineFlow`'s walk cannot see it.
+      tools: () => [needsIndex],
+      itemVisibility: { client: true, history: true }
+    });
+
+    const flow = defineFlow({
+      kind: "dynamic-tools",
+      cardinality: "collection",
+      configSchema: z.object({ index: z.string().optional() }),
+      actions: { ask: { block: agent } }
+    });
+    // The mint cannot refuse — the tool is not in the walk — so the copy exists.
+    const instance = flow({ id: "dyn-1", config: {} } as never);
+
+    const ctx = createMockContext({
+      flow: instance as unknown as { config: Readonly<Record<string, unknown>> },
+      resolveModel: () => ({
+        modelId: "m",
+        async generate() {
+          return { structuredOutput: { ok: true } };
+        }
+      }) as never
+    });
+
+    await expect(runForTest(agent, {}, ctx)).rejects.toThrow(
+      /block "dynamic-lookup" cannot read/
+    );
+  });
+
+  /** And it runs when the bag does satisfy the dynamically-resolved tool. */
+  it("runs a dynamically resolved tool whose requirement the bag satisfies", async () => {
+    const needsIndex = handler({
+      name: "dynamic-ok",
+      description: "look something up",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ hit: z.string() }),
+      flowConfigSchema: z.object({ index: z.string() }),
+      execute: async () => ({ hit: "x" })
+    });
+
+    const agent = generator({
+      name: "dynamic-agent-ok",
+      inputSchema: z.object({}),
+      model: "m",
+      prompt: "go",
+      outputSchema: z.object({ ok: z.boolean() }),
+      tools: () => [needsIndex],
+      itemVisibility: { client: true, history: true }
+    });
+
+    const flow = defineFlow({
+      kind: "dynamic-tools-ok",
+      cardinality: "collection",
+      configSchema: z.object({ index: z.string().optional() }),
+      actions: { ask: { block: agent } }
+    });
+    const instance = flow({ id: "dyn-2", config: { index: "main" } } as never);
+
+    const ctx = createMockContext({
+      flow: instance as unknown as { config: Readonly<Record<string, unknown>> },
+      resolveModel: () => ({
+        modelId: "m",
+        async generate() {
+          return { structuredOutput: { ok: true } };
+        }
+      }) as never
+    });
+
+    await expect(runForTest(agent, {}, ctx)).resolves.toEqual({ ok: true });
   });
 });
 
@@ -534,16 +717,19 @@ describe("flow config bag — what a block's declaration is worth", () => {
         execute: async () => ({})
       });
 
-    const instance = defineFlow({
+    const flow = defineFlow({
       kind: "deduped",
       configSchema: shared,
       actions: { a: { block: make("a") }, b: { block: make("b") }, c: { block: make("c") } }
-    })({ config: { model: "opus" } } as never);
+    });
 
-    // One entry, holding the shared schema. WHICH of the three blocks names it
-    // is the walk's order, which is not a contract — that it is one and not
-    // three is.
-    expect(instance.requiredFlowConfig).toHaveLength(1);
-    expect(instance.requiredFlowConfig[0]?.schema).toBe(shared);
+    // Observed through the work it avoids, not through an internal field: the
+    // shared schema is parsed against the bag ONCE per mint, not once per
+    // declaring block. WHICH of the three names it is the walk's order and is
+    // not a contract; that it is one and not three is.
+    const parse = vi.spyOn(shared, "safeParse");
+    flow({ config: { model: "opus" } } as never);
+    expect(parse).toHaveBeenCalledTimes(1);
+    parse.mockRestore();
   });
 });

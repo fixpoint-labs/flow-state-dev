@@ -509,6 +509,13 @@ function checkPair(
 }
 
 /**
+ * What a legacy structural instance reads when it carries no bag of its own —
+ * the same frozen empty object the flow factory gives a flow that declares no
+ * `configSchema`.
+ */
+const EMPTY_INSTANCE_CONFIG: Readonly<Record<string, unknown>> = Object.freeze({});
+
+/**
  * Validate an instance's identity against what is already registered and
  * return the instance the registry will hold — the input itself, or a copy
  * carrying the normalized cardinality when a legacy structural instance
@@ -602,6 +609,16 @@ function admitIdentity(
     });
   }
 
+  // BP-030: an instance written before the config bag existed carries no
+  // `config` at all, and is admitted on the ordinary path rather than the
+  // blueprint branch above — it has an id. The contract every block relies on
+  // is that `ctx.flow.config` is a value and never `undefined`, so the old
+  // shape is normalized here, where the registry already tolerates a missing
+  // `cardinality` for the same reason.
+  const needsConfig = (flow as { config?: unknown }).config === undefined;
+  if (needsConfig) {
+    return { ...flow, cardinality, config: EMPTY_INSTANCE_CONFIG };
+  }
   return declared === cardinality && flow === input ? flow : { ...flow, cardinality };
 }
 

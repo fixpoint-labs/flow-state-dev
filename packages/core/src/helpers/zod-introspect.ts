@@ -93,6 +93,23 @@ export function getZodObjectUnknownKeysMode(
   return (schema as any)._def.unknownKeys;
 }
 
+/**
+ * True when a `z.object()` carries a real `.catchall(...)` — a per-key schema
+ * for everything not declared.
+ *
+ * Worth its own accessor because a catchall does NOT interact with
+ * `unknownKeys` the way it looks like it should: zod consults the catchall
+ * first and only falls back to strip/strict/passthrough when the catchall is
+ * `ZodNever` (the default). So `.strict()` on a schema with a catchall closes
+ * nothing, and a caller that wants a genuinely closed object has to ask this
+ * question separately from {@link getZodObjectUnknownKeysMode}.
+ */
+export function hasZodObjectCatchall(schema: ZodTypeAny): boolean {
+  if (!isZodObject(schema)) return false;
+  const catchall = (schema as any)._def.catchall;
+  return catchall !== undefined && getZodTypeName(catchall) !== "ZodNever";
+}
+
 // ---------------------------------------------------------------------------
 // Structural comparison
 // ---------------------------------------------------------------------------

@@ -42,6 +42,11 @@ const engineerBlock = handler({
     // @ts-expect-error a knob this block did not declare is not on its view.
     void ctx.flow.config.temperature;
 
+    // The bag is frozen at run time, so the inferred type has to be read-only
+    // too — otherwise an assignment type-checks and throws in the same breath.
+    // @ts-expect-error the bag is read-only, matching the freeze.
+    ctx.flow.config.model = "other";
+
     return { used: ctx.flow.config.model };
   }
 });

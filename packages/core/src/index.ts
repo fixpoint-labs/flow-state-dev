@@ -301,7 +301,6 @@ export type {
   FlowType,
   FlowCardinality,
   McpConfig,
-  RequiredFlowConfigEntry,
   ModelUsageEntry,
   TokenLedger,
   ToolLifecycleEvent,

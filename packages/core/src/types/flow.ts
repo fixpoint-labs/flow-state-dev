@@ -447,18 +447,6 @@ export type FlowConfigValue<TConfigSchema extends ZodTypeAny | undefined> =
     ? Readonly<TConfigSchema["_output"]>
     : Readonly<Record<string, unknown>>;
 
-/**
- * One block's declared requirement on the flow's config bag, collected off
- * `defineFlow`'s block walk (FIX-1331). Internal and never serialized, like
- * {@link FlowInstance.flowLevelResourceKeys}.
- */
-export type RequiredFlowConfigEntry = {
-  /** The block that declared it — named in the refusal. */
-  blockName: string;
-  /** The block's `flowConfigSchema`, parsed against the bag at each mint. */
-  schema: ZodTypeAny;
-};
-
 export type FlowDefinition<
   TActions extends Record<string, ActionConfig> = Record<string, ActionConfig>,
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
@@ -490,6 +478,15 @@ export type FlowDefinition<
    *
    * Anything the copy is GIVEN goes here. Anything the copy LEARNS goes in
    * its own instance-isolated state — the bag is frozen for the copy's life.
+   *
+   * **This option alone is the instance bag.** `BlockConfig.flowConfigSchema`
+   * is the other half, and it buys something different: block PORTABILITY — a
+   * block that declares what it needs of any flow installing it, checked at
+   * each. That second half is what costs the `TFlowConfigSchema` generic on
+   * all four block kinds and through the sequencer DSL. A reader working out
+   * which lines exist for which reason can use that split: the bag is this
+   * option, the factory's `config`, and the parse; everything threading a
+   * schema through a block builder is portability.
    */
   configSchema?: TConfigSchema;
   /**
@@ -665,13 +662,6 @@ export type FlowInstance<
    * on the wire, and no part of any storage key.
    */
   config: FlowConfigValue<TConfigSchema>;
-  /**
-   * @internal What the flow's reachable blocks declared with
-   * `flowConfigSchema`, collected off `defineFlow`'s block walk and parsed
-   * against `config` at each mint (FIX-1331). Deduped by schema reference.
-   * Never serialized.
-   */
-  requiredFlowConfig: readonly RequiredFlowConfigEntry[];
   /**
    * True when any block in any action declares `requireOrg: true`. The HTTP
    * action route uses this to reject requests against unbound sessions before

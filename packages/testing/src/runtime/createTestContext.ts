@@ -111,7 +111,13 @@ function createTestFlow(options: {
   declaredResources?: DeclaredResources;
 }): FlowInstance {
   if (options.flow !== undefined) {
-    return options.flow;
+    // A hand-built instance may predate the config bag, or simply omit it.
+    // Production promises a block reads a value at `ctx.flow.config`, so the
+    // harness supplies the same empty bag the registry does rather than
+    // handing the block under test `undefined` (FIX-1331).
+    return (options.flow as { config?: unknown }).config === undefined
+      ? { ...options.flow, config: Object.freeze({}) }
+      : options.flow;
   }
 
   // FIX-435: every resource is intrinsically scoped; the test harness now
@@ -139,7 +145,6 @@ function createTestFlow(options: {
     // value here, never `undefined`, and a harness that disagreed with the
     // runtime it stands in for would hide exactly that.
     config: Object.freeze({ ...(options.flowConfig ?? {}) }),
-    requiredFlowConfig: [],
     actions: {},
     isolateUserState: false,
     isolateOrgState: false,
