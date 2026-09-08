@@ -56,15 +56,33 @@ fsdev dev --flow-dir ./my-flows
 
 ## Flow overview
 
-The navigator lists all registered flows and their actions. Pick a flow to inspect. Each flow shows its action names and input schemas.
+Choose a flow instance by its exact ID. Its kind describes the flow; its ID identifies the copy you inspect.
+
+The navigator lists every registered instance, one row each. For most flows there is a single copy and the two are the same string, so a row just reads `reports`. A flow declared with `cardinality: "collection"` is registered once per copy, each under its own ID, and every copy gets its own row:
+
+```text
+> engineer-a  (engineer)
+> engineer-b  (engineer)
+> reports
+```
+
+The ID is the label; the kind sits beside it, muted, when the two differ. A long ID is shortened to fit — hover the row for the full value, or use the copy button beside Sessions to put it on your clipboard. That is the string you address the instance by, so copy it rather than retyping what the row shows.
+
+Expand a row to see that copy's sessions and the actions it declares. Two copies of a kind declare the same action names but can run entirely different blocks, so the actions shown are the selected copy's.
 
 ## Session management
 
-Create, browse, and switch between sessions. Sessions are scoped to a flow and a user. The DevTool displays the active session's ID and lets you create new sessions or switch to existing ones.
+Create, browse, and switch between sessions. Sessions belong to one flow instance and one user, so expanding a copy shows that copy's sessions and no other's. The DevTool displays the open session's ID and lets you create a new session or switch to an existing one.
+
+Selecting a different instance closes the session you had open. The two are one choice: the requests, state and resources on screen all belong to the session under the copy you selected, and carrying a session across would show one copy's work under another. Pick a session again after switching.
+
+The DevTool remembers the last session you had open under each copy and offers it back when you return, including after a reload. It checks with the server first — if that session no longer exists, is no longer yours, or belongs to a different copy, the workspace opens empty and waits for you to choose. It will never substitute another copy's session for the one you saved.
 
 ## Action dispatch
 
 Invoke actions directly from the DevTool. Select an action, paste or edit JSON input, and send. The response (request ID, status) appears immediately. Use this to trigger flows without wiring up a UI or writing curl commands.
+
+The dispatch goes to the instance selected in the navigator, under the session you have open. If two copies of a kind are registered, check which row is highlighted before you send — `engineer-a` and `engineer-b` accept the same action name and do different work with it.
 
 ## Item stream
 
@@ -93,6 +111,8 @@ Some work leaves the session you are watching. A dispatcher block, or a task boa
 The Children tab lists it. One row per child session, with the labels it carries, the state its runs reached, and its session id.
 
 Click a row and the workspace opens that session. It is a session like any other, so Stream, Trace, Tasks and Suspensions all read it, and a child that dispatched work of its own has a Children tab too. A breadcrumb above the tabs shows how deep you are and takes you back.
+
+Work dispatched into another flow instance produces a child that instance owns, so opening a row can move you to a different copy as well as a different session. The breadcrumb remembers which copy each step was under, and going back returns you to that copy, not to whichever one you ended up in.
 
 A few things worth knowing about a row:
 

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SessionRequestSummary } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
-import { useReadFence } from "./use-read-fence";
+import { describeReadError } from "../lib/instance-ownership";
+import { useWorkspaceFence } from "./use-workspace-fence";
 
 /** Stable empty list, so a stale hold does not hand back a new array each render. */
 const EMPTY_REQUESTS: SessionRequestSummary[] = [];
@@ -28,7 +29,7 @@ export function useSessionRequests(sessionId: string | null) {
   // effect leaves the previous session's `in_progress` row selectable for the
   // whole of the switching render.
   const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
-  const fence = useReadFence([sessionId, sessionClient], () => {
+  const fence = useWorkspaceFence([sessionId], () => {
     setRequests([]);
     setError(null);
     setHeldIdentity(null);
@@ -38,15 +39,14 @@ export function useSessionRequests(sessionId: string | null) {
   const refresh = useCallback(async () => {
     const stillCurrent = fence.begin();
     if (stillCurrent === null) return;
-    const mine: readonly unknown[] = [sessionId, sessionClient];
     if (!sessionId) {
       setRequests([]);
-      setHeldIdentity(mine);
+      setHeldIdentity(fence.identity);
       return;
     }
     setIsLoading(true);
     setError(null);
-    setHeldIdentity(mine);
+    setHeldIdentity(fence.identity);
     try {
       // Sweep stale active-request entries before listing, same as the
       // session-list refresh — but ONLY when the host opted in via
@@ -69,7 +69,7 @@ export function useSessionRequests(sessionId: string | null) {
       setRequests(result);
     } catch (err) {
       if (!stillCurrent()) return;
-      setError(err instanceof Error ? err.message : "Failed to fetch requests");
+      setError(describeReadError(err, "Failed to fetch requests"));
     } finally {
       if (stillCurrent()) setIsLoading(false);
     }

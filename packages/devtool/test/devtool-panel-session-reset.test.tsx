@@ -24,14 +24,31 @@ const requestsState = {
   refresh: vi.fn(),
 };
 
+const demoInstance = {
+  id: "demo",
+  kind: "demo",
+  cardinality: "singleton" as const,
+  requireUser: false,
+  actions: [],
+  actionSchemas: {},
+};
+
 const devToolState = {
   config: { userId: "u1" },
   client: { listFlows: vi.fn().mockResolvedValue([]) },
-  sessionClient: { listChildSessions: vi.fn().mockResolvedValue([]) },
+  sessionClient: {
+    listChildSessions: vi.fn().mockResolvedValue([]),
+    listSessions: vi.fn().mockResolvedValue([]),
+  },
   recoveryClient: { checkInterrupted: vi.fn().mockResolvedValue([]), continueStream: vi.fn() },
-  activeFlowKind: "demo",
+  activeFlowId: "demo",
+  activeFlow: demoInstance,
   activeSessionId: "sess_1",
-  flows: [{ kind: "demo", actions: [], actionSchemas: {} }],
+  // Bumped by `moveWorkspaceTo` below, exactly as the provider bumps it. It is
+  // what every retirement in the panel keys on, so a mock that left it fixed
+  // would report a switch the panel could not see.
+  workspaceToken: 0,
+  flows: [demoInstance],
   flowsLoading: false,
   flowsError: null,
   baseUrl: undefined,
@@ -40,12 +57,16 @@ const devToolState = {
   dispatch: vi.fn(),
   refreshFlows: vi.fn(),
   setConfig: vi.fn(),
-  setActiveFlow: vi.fn(),
-  setActiveSession: vi.fn(),
+  selectInstance: vi.fn(),
+  selectSession: vi.fn(),
+  selectWorkspace: vi.fn(),
 };
 
-/** The session the panel is looking at, swapped between renders. */
-const activeSession = { activeSessionId: "sess_1" };
+/** Move the workspace the way the provider does: session and visit together. */
+function moveWorkspaceTo(sessionId: string): void {
+  devToolState.activeSessionId = sessionId;
+  devToolState.workspaceToken += 1;
+}
 
 /** Every `useLiveMode` options object the panel has handed over, newest last. */
 const liveModeCalls: Array<{ dispatchedRequestId: string | null }> = [];
@@ -122,12 +143,12 @@ vi.mock("../src/react/hooks/use-focus-revalidate", () => ({
   useFocusRevalidate: () => {},
 }));
 
-vi.mock("../src/react/hooks/use-active-session", () => ({
-  useActiveSession: () => activeSession,
-}));
-
 vi.mock("../src/react/hooks/use-continue-request", () => ({
-  useContinueRequest: () => ({ continueRequest: vi.fn(), isContinuing: () => false }),
+  useContinueRequest: () => ({
+    // Resolves, because the panel chains `.catch` onto it.
+    continueRequest: vi.fn().mockResolvedValue(undefined),
+    isContinuing: () => false,
+  }),
 }));
 
 // Stand-in for the Suspensions panel, exposing the panel's own `onResumed`
@@ -178,8 +199,8 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     requestsState.requests = [];
     requestsState.refresh = vi.fn();
     liveModeCalls.length = 0;
-    activeSession.activeSessionId = "sess_1";
     devToolState.activeSessionId = "sess_1";
+    devToolState.workspaceToken = 0;
     sendAction.mockReset().mockResolvedValue(null);
     refreshChildSessions.mockReset();
   });
@@ -250,8 +271,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     const staleOnResumed = lastOnResumed!;
     expect(staleOnResumed).toBeDefined();
 
-    devToolState.activeSessionId = "sess_child";
-    activeSession.activeSessionId = "sess_child";
+    moveWorkspaceTo("sess_child");
     await act(async () => {
       rerender(<DevToolPanel userId="u1" />);
     });
@@ -305,8 +325,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     expect(latestDispatchedId()).toBeNull();
 
     // The user descends into a ChildSession while it is still in flight.
-    devToolState.activeSessionId = "sess_child";
-    activeSession.activeSessionId = "sess_child";
+    moveWorkspaceTo("sess_child");
     await act(async () => {
       rerender(<DevToolPanel userId="u1" />);
     });
@@ -381,10 +400,9 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     expect(latestDispatchedId()).toBe("req_dispatched");
 
     // Descend into a ChildSession (or pick another session from the navigator).
-    // `effectiveSessionId` is `activeSessionId ?? stickySession`, so the
-    // context's id is the one that moves.
-    devToolState.activeSessionId = "sess_child";
-    activeSession.activeSessionId = "sess_child";
+    // The provider moves the session and the visit token together, so that is
+    // what the mock does too.
+    moveWorkspaceTo("sess_child");
     await act(async () => {
       rerender(<DevToolPanel userId="u1" />);
     });

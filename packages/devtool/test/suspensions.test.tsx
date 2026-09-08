@@ -87,6 +87,54 @@ describe("SuspensionsView", () => {
     });
   });
 
+  it("resumes through the record's own instance, not its kind", async () => {
+    // Two copies of `engineer` suspend independently. Resuming through the kind
+    // re-enters whichever one the registry holds under that name — which is not
+    // the run that is waiting, and may be a run belonging to someone else's
+    // workspace entirely.
+    listSuspensions.mockResolvedValue({
+      suspensions: [pendingRecord({ flowKind: "engineer", flowId: "engineer-b" })],
+    });
+    render(<SuspensionsView sessionId="sess_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("engineer-b")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("engineer-b"));
+
+    const approve = await screen.findByRole("button", { name: "Approve" });
+    fireEvent.click(approve);
+
+    await waitFor(() => {
+      expect(resumeSuspension).toHaveBeenCalledWith(
+        "engineer-b",
+        "req_1",
+        expect.objectContaining({ suspensionId: "sus_1", action: "approve" }),
+      );
+    });
+  });
+
+  it("resumes a record from before owners were recorded through its kind", async () => {
+    // The only address such a record ever had, and the correct one for the
+    // singleton it must have belonged to.
+    listSuspensions.mockResolvedValue({ suspensions: [pendingRecord()] });
+    render(<SuspensionsView sessionId="sess_1" />);
+
+    await waitFor(() => expect(screen.getByText("chat")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("chat"));
+
+    const approve = await screen.findByRole("button", { name: "Approve" });
+    fireEvent.click(approve);
+
+    await waitFor(() => {
+      expect(resumeSuspension).toHaveBeenCalledWith(
+        "chat",
+        "req_1",
+        expect.objectContaining({ action: "approve" }),
+      );
+    });
+  });
+
   it("shows the debug-disabled notice on a 403 gate", async () => {
     const { ClientHttpError } = await import("@flow-state-dev/client");
     listSuspensions.mockRejectedValue(

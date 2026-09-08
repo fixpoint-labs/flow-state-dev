@@ -1,11 +1,21 @@
-import { useEffect } from "react";
-import { ChevronDown, ChevronRight, Plus, RefreshCw } from "lucide-react";
+/**
+ * One flow instance in the navigator: its identity row, and — when open — its
+ * own sessions and declared actions.
+ *
+ * The row's label is the instance ID, because that is what identifies the copy;
+ * the kind is shown beside it, muted, only when the two differ (a singleton's id
+ * IS its kind, and doubling it says nothing). A long id truncates visually, so
+ * the full value stays reachable through the row's title and a copy button —
+ * truncated text is not an identity, and neither is a row's position.
+ */
+import { useEffect, useState } from "react";
+import { Check, ChevronDown, ChevronRight, Copy, Plus, RefreshCw } from "lucide-react";
 import type { FlowListEntry } from "@flow-state-dev/client";
 import { Button } from "../ui/button";
 import { useDevTool } from "../../context/devtool-context";
 import { useSessions } from "../../hooks/use-sessions";
-import { useActiveSession } from "../../hooks/use-active-session";
 import { SessionRow } from "./session-row";
+import { ErrorAlert } from "../shared/error-alert";
 
 
 type FlowItemProps = {
@@ -18,11 +28,12 @@ type FlowItemProps = {
 };
 
 export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey, onRefreshActiveSession }: FlowItemProps) {
-  const { setActiveSession } = useDevTool();
-  // The instance address — a singleton's kind, or a collection member's own
-  // id — is what every route and the sticky selection key on.
-  const { sessions, isLoading, refresh, createSession } = useSessions(isActive ? flow : null);
-  const { activeSessionId, setActiveSessionId } = useActiveSession(isActive ? flow.id : null);
+  // Session selection lives in the provider, which moves instance and session
+  // together. This row reports a pick; it does not keep a second copy of the
+  // answer — two authorities over one selection is how the panel and the
+  // navigator came to disagree about which session was open.
+  const { activeSessionId, selectSession } = useDevTool();
+  const { sessions, isLoading, error, refresh, createSession } = useSessions(isActive ? flow : null);
 
   // Refresh session list when parent signals metadata changed (e.g. title update via SSE)
   useEffect(() => {
@@ -34,21 +45,31 @@ export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey, onRefres
   const handleCreateSession = async () => {
     const newId = await createSession();
     if (newId) {
-      setActiveSessionId(newId);
-      setActiveSession(newId);
+      selectSession(newId);
     }
   };
 
-  const handleSelectSession = (sessionId: string) => {
-    setActiveSessionId(sessionId);
-    setActiveSession(sessionId);
-  };
-
   return (
-    <div>
+    <div role="listitem">
       <button
         className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-800/60"
         onClick={onSelect}
+        aria-expanded={isActive}
+        aria-current={isActive ? "true" : undefined}
+        // Spelled out, because the visible label runs the id and the kind
+        // together with only styling between them — "engineer-aengineer" to
+        // anything reading the accessible name, which is the one place the two
+        // copies have to be tellable apart without looking.
+        aria-label={
+          flow.id === flow.kind
+            ? `Flow instance ${flow.id}`
+            : `Flow instance ${flow.id}, kind ${flow.kind}`
+        }
+        title={
+          flow.id === flow.kind
+            ? `Flow instance: ${flow.id}`
+            : `Flow instance: ${flow.id}\nKind: ${flow.kind}`
+        }
       >
         {isActive ? (
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-500" />
@@ -66,7 +87,10 @@ export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey, onRefres
       {isActive && (
         <div className="ml-3 border-l border-slate-800 pl-2">
           <div className="flex items-center gap-1 py-1">
-            <span className="flex-1 text-[10px] font-medium uppercase text-slate-500">Sessions</span>
+            <span className="flex-1 truncate text-[10px] font-medium uppercase text-slate-500">
+              Sessions
+            </span>
+            <CopyInstanceId flowId={flow.id} />
             <Button
               variant="ghost"
               size="sm"
@@ -84,7 +108,9 @@ export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey, onRefres
             </Button>
           </div>
 
-          {sessions.length === 0 && !isLoading && (
+          {error !== null && <ErrorAlert message={error} onRetry={() => void refresh()} />}
+
+          {sessions.length === 0 && !isLoading && error === null && (
             <p className="py-1 text-[10px] text-slate-600">No sessions yet</p>
           )}
 
@@ -93,7 +119,7 @@ export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey, onRefres
               key={session.id}
               session={session}
               isActive={activeSessionId === session.id}
-              onSelect={() => handleSelectSession(session.id)}
+              onSelect={() => selectSession(session.id)}
             />
           ))}
 
@@ -112,5 +138,37 @@ export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey, onRefres
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Copies the instance's full id.
+ *
+ * The row truncates a long id to fit the navigator, and an operator addressing
+ * a client at this instance needs the whole string exactly — retyping what a
+ * truncation shows is how the wrong copy gets addressed.
+ */
+function CopyInstanceId({ flowId }: { flowId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-5 w-5 p-0"
+      title={`Copy instance ID: ${flowId}`}
+      aria-label={`Copy instance ID ${flowId}`}
+      onClick={() => {
+        void navigator.clipboard?.writeText(flowId);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1200);
+      }}
+    >
+      {copied ? (
+        <Check className="h-3 w-3 text-green-400" />
+      ) : (
+        <Copy className="h-3 w-3 text-slate-500" />
+      )}
+    </Button>
   );
 }

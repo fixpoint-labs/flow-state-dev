@@ -5,6 +5,15 @@
  * seed-then-merge behavior is exercised for real, not asserted against a mock.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// The hook reads the workspace visit from context now, rather than taking it as
+// a prop. `workspaceToken` is mutable so a test can move the workspace under an
+// in-flight continuation.
+const devToolState = { workspaceToken: 0 };
+
+vi.mock("../src/react/context/devtool-context", () => ({
+  useDevTool: () => devToolState,
+}));
 import { renderHook, act } from "@testing-library/react";
 
 const { calls } = vi.hoisted(() => ({
@@ -56,16 +65,17 @@ describe("useContinueRequest", () => {
   } as Response;
 
   beforeEach(() => {
+    devToolState.workspaceToken = 1;
     calls.length = 0;
     recoveryClient = { continueStream: vi.fn().mockResolvedValue(fakeResponse) };
   });
 
-  it("calls recoveryClient.continueStream with {flowKind, sessionId, requestId, includeTrace: true}", async () => {
+  it("addresses the continuation to the owning instance, in the client's flowKind slot", async () => {
     const onItems = vi.fn();
     const { result } = renderHook(() =>
       useContinueRequest({
         recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-        flowKind: "demo",
+        flowId: "demo",
         sessionId: "sess_1",
         onItems,
       }),
@@ -91,7 +101,7 @@ describe("useContinueRequest", () => {
     const { result } = renderHook(() =>
       useContinueRequest({
         recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-        flowKind: "demo",
+        flowId: "demo",
         sessionId: "sess_1",
         onItems,
       }),
@@ -117,7 +127,7 @@ describe("useContinueRequest", () => {
     const { result } = renderHook(() =>
       useContinueRequest({
         recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-        flowKind: "demo",
+        flowId: "demo",
         sessionId: "sess_1",
         onItems,
       }),
@@ -147,7 +157,7 @@ describe("useContinueRequest", () => {
     const { result } = renderHook(() =>
       useContinueRequest({
         recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-        flowKind: "demo",
+        flowId: "demo",
         sessionId: "sess_1",
         onItems,
       }),
@@ -183,7 +193,7 @@ describe("useContinueRequest", () => {
     const { result } = renderHook(() =>
       useContinueRequest({
         recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-        flowKind: "demo",
+        flowId: "demo",
         sessionId: "sess_1",
         onItems: vi.fn(),
       }),
@@ -208,7 +218,7 @@ describe("useContinueRequest", () => {
     const { result } = renderHook(() =>
       useContinueRequest({
         recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-        flowKind: "demo",
+        flowId: "demo",
         sessionId: "sess_1",
         onItems: vi.fn(),
       }),
@@ -231,7 +241,7 @@ describe("useContinueRequest", () => {
     const { result } = renderHook(() =>
       useContinueRequest({
         recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-        flowKind: "demo",
+        flowId: "demo",
         sessionId: "sess_1",
         onItems: vi.fn(),
         onSettled,
@@ -252,7 +262,7 @@ describe("useContinueRequest", () => {
     const { result } = renderHook(() =>
       useContinueRequest({
         recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-        flowKind: "demo",
+        flowId: "demo",
         sessionId: "sess_1",
         onItems: vi.fn(),
         onSettled,
@@ -282,7 +292,7 @@ describe("useContinueRequest", () => {
     const { result } = renderHook(() =>
       useContinueRequest({
         recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-        flowKind: "demo",
+        flowId: "demo",
         sessionId: "sess_1",
         onItems,
       }),
@@ -322,7 +332,7 @@ describe("useContinueRequest", () => {
     const { result } = renderHook(() =>
       useContinueRequest({
         recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-        flowKind: "demo",
+        flowId: "demo",
         sessionId: "sess_1",
         onItems: vi.fn(),
         onSettled,
@@ -359,7 +369,7 @@ describe("useContinueRequest", () => {
       ({ sessionId }) =>
         useContinueRequest({
           recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-          flowKind: "demo",
+          flowId: "demo",
           sessionId,
           onItems,
           onSettled,
@@ -396,7 +406,7 @@ describe("useContinueRequest", () => {
       ({ sessionId }) =>
         useContinueRequest({
           recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
-          flowKind: "demo",
+          flowId: "demo",
           sessionId,
           onItems: vi.fn(),
         }),
@@ -417,6 +427,55 @@ describe("useContinueRequest", () => {
     });
 
     // The row must not be stuck reporting "continuing" under the new owner.
+    expect(result.current.isContinuing("req_1")).toBe(false);
+  });
+
+  it("does not revive a continuation when the operator leaves an instance and comes back", async () => {
+    // The instance and session ids return to exactly what they were, so an
+    // owner guard comparing those alone agrees with the retired POST and wires
+    // its stream into a workspace the operator has re-entered. The visit token
+    // is what makes the round trip visible.
+    let resolvePost!: (r: Response) => void;
+    recoveryClient.continueStream.mockReturnValue(
+      new Promise<Response>((resolve) => {
+        resolvePost = resolve;
+      }),
+    );
+    const onItems = vi.fn();
+    const onSettled = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ flowId }) =>
+        useContinueRequest({
+          recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+          flowId,
+          sessionId: "sess_1",
+          onItems,
+          onSettled,
+        }),
+      { initialProps: { flowId: "engineer-a" } },
+    );
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.continueRequest("req_1", []);
+    });
+
+    // A → B → A. Every visible value ends where it started; only the visit,
+    // which the hook reads from context, records that anything happened.
+    devToolState.workspaceToken = 2;
+    rerender({ flowId: "engineer-b" });
+    devToolState.workspaceToken = 3;
+    rerender({ flowId: "engineer-a" });
+
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    await act(async () => {
+      resolvePost({ ...fakeResponse, body: { cancel } } as unknown as Response);
+      await pending;
+    });
+
+    expect(calls.length).toBe(0);
+    expect(onItems).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalled();
     expect(result.current.isContinuing("req_1")).toBe(false);
   });
 });

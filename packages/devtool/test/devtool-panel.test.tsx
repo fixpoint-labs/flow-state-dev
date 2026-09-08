@@ -23,14 +23,25 @@ const requestsState = {
 // Avoid the real client factories (which would hit the network via
 // `refreshFlows`/`checkInterrupted`) — the panel's flows/config plumbing
 // isn't what this test exercises.
+const demoInstance = {
+  id: "demo",
+  kind: "demo",
+  cardinality: "singleton" as const,
+  requireUser: false,
+  actions: [],
+  actionSchemas: {},
+};
+
 const devToolState = {
   config: { userId: "u1" },
   client: { listFlows: vi.fn().mockResolvedValue([]) },
-  sessionClient: {},
+  sessionClient: { listSessions: vi.fn().mockResolvedValue([]) },
   recoveryClient: { checkInterrupted: vi.fn().mockResolvedValue([]), continueStream: vi.fn() },
-  activeFlowKind: "demo",
+  activeFlowId: "demo",
+  activeFlow: demoInstance,
   activeSessionId: "sess_1",
-  flows: [{ kind: "demo", actions: [], actionSchemas: {} }],
+  workspaceToken: 0,
+  flows: [demoInstance],
   flowsLoading: false,
   flowsError: null,
   baseUrl: undefined,
@@ -39,8 +50,9 @@ const devToolState = {
   dispatch: vi.fn(),
   refreshFlows: vi.fn(),
   setConfig: vi.fn(),
-  setActiveFlow: vi.fn(),
-  setActiveSession: vi.fn(),
+  selectInstance: vi.fn(),
+  selectSession: vi.fn(),
+  selectWorkspace: vi.fn(),
 };
 
 vi.mock("../src/react/context/devtool-context", () => ({
@@ -94,12 +106,12 @@ vi.mock("../src/react/hooks/use-focus-revalidate", () => ({
   useFocusRevalidate: () => {},
 }));
 
-vi.mock("../src/react/hooks/use-active-session", () => ({
-  useActiveSession: () => ({ activeSessionId: "sess_1" }),
-}));
-
 vi.mock("../src/react/hooks/use-continue-request", () => ({
-  useContinueRequest: () => ({ continueRequest: vi.fn(), isContinuing: () => false }),
+  useContinueRequest: () => ({
+    // Resolves, because the panel chains `.catch` onto it.
+    continueRequest: vi.fn().mockResolvedValue(undefined),
+    isContinuing: () => false,
+  }),
 }));
 
 import { DevToolPanel } from "../src/react/DevToolPanel";

@@ -4,9 +4,14 @@
  *
  * Dormant until the consumer calls `fetch`. `topic === null` selects the
  * single-resource path; a string topic selects the collection-item path.
+ *
+ * Renders inside the workspace-keyed subtree, so a visit that ends unmounts it
+ * and a late body has nowhere to land — see `use-session-state` for why that
+ * makes a second retirement mechanism here the wrong thing to add.
  */
 import { useCallback, useState } from "react";
 import { useDevTool } from "../context/devtool-context";
+import { describeReadError } from "../lib/instance-ownership";
 
 export type UseDebugResourceContentResult = {
   content: string | null;
@@ -36,7 +41,7 @@ export function useDebugResourceContent(
           : await sessionClient.debug.fetchCollectionItemContent(sessionId, ref, topic);
       setContent(body);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch content");
+      setError(describeReadError(err, "Failed to fetch content"));
     } finally {
       setIsLoading(false);
     }

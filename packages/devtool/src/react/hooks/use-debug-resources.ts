@@ -6,11 +6,16 @@
  * instead of an error: the server-side debug gate
  * (`debugEndpointsEnabled` / `FSDEV_DEBUG_ENDPOINTS=1`) and the origin allow
  * list both reject with 403 and a typed body payload.
+ *
+ * Renders inside the workspace-keyed subtree, so a visit that ends unmounts it
+ * and a late tree has nowhere to land — see `use-session-state` for why that
+ * makes a second retirement mechanism here the wrong thing to add.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { DebugResourcesResponse } from "@flow-state-dev/client";
-import { ClientHttpError } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
+import { isDebugDisabledError } from "../lib/debug-errors";
+import { describeReadError } from "../lib/instance-ownership";
 
 export type UseDebugResourcesResult = {
   data: DebugResourcesResponse | null;
@@ -19,29 +24,6 @@ export type UseDebugResourcesResult = {
   refresh: () => Promise<void>;
   disabled: boolean;
 };
-
-const DISABLED_REASONS = new Set([
-  "debug_endpoints_disabled",
-  "debug_endpoints_origin_rejected"
-]);
-
-/**
- * True only when the response body's `error` field matches one of the
- * documented debug-disabled reasons. Other 403s (session ownership, IP
- * gateways, misconfigured proxies) surface as generic errors so the panel
- * doesn't display a misleading "enable with FSDEV_DEBUG_ENDPOINTS=1" notice
- * when the endpoint is already enabled.
- */
-function isDebugDisabledError(err: unknown): boolean {
-  if (!(err instanceof ClientHttpError)) return false;
-  if (err.status !== 403) return false;
-  const body = err.body;
-  if (body === null || typeof body !== "object" || !("error" in body)) {
-    return false;
-  }
-  const reason = (body as { error?: unknown }).error;
-  return typeof reason === "string" && DISABLED_REASONS.has(reason);
-}
 
 export function useDebugResources(
   sessionId: string | null
@@ -70,7 +52,7 @@ export function useDebugResources(
         setDisabled(true);
         setData(null);
       } else {
-        setError(err instanceof Error ? err.message : "Failed to fetch debug resources");
+        setError(describeReadError(err, "Failed to fetch debug resources"));
       }
     } finally {
       setIsLoading(false);

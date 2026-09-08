@@ -1,0 +1,8 @@
+{
+  "copies": [
+    { "id": "engineer-a", "marker": "a-ran" },
+    { "id": "engineer-b", "marker": "b-ran" }
+  ],
+  "singleton": { "id": "reports", "marker": "reports-ran" },
+  "userId": "devuser"
+}

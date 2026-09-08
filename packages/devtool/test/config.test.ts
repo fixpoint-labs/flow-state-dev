@@ -4,8 +4,10 @@ import {
   writeUserId,
   readBearerToken,
   hasInjectedUserId,
-  readActiveSession,
-  writeActiveSession,
+  readSessionHint,
+  writeSessionHint,
+  readLegacySingletonSessionHint,
+  clearLegacySingletonSessionHint,
   readLastAction,
   writeLastAction,
   readDebugMode,
@@ -41,23 +43,52 @@ describe("config — localStorage helpers", () => {
     });
   });
 
-  describe("activeSession", () => {
+  describe("session hint", () => {
+    const east = { baseUrl: undefined, userId: "u1", flowId: "review-east" };
+    const west = { baseUrl: undefined, userId: "u1", flowId: "review-west" };
+
     it("returns null when nothing stored", () => {
-      expect(readActiveSession("chat")).toBeNull();
-    });
-
-    it("persists per flowKind", () => {
-      writeActiveSession("chat", "sess-1");
-      writeActiveSession("agent", "sess-2");
-
-      expect(readActiveSession("chat")).toBe("sess-1");
-      expect(readActiveSession("agent")).toBe("sess-2");
+      expect(readSessionHint(east)).toBeNull();
     });
 
     it("clears when set to null", () => {
-      writeActiveSession("chat", "sess-1");
-      writeActiveSession("chat", null);
-      expect(readActiveSession("chat")).toBeNull();
+      writeSessionHint(east, "sess-1");
+      writeSessionHint(east, null);
+      expect(readSessionHint(east)).toBeNull();
+    });
+
+    // The defect the scope exists to prevent: two copies of one kind must not
+    // share a saved session, or opening the second offers the first's work.
+    it("keeps two same-kind instances' hints apart", () => {
+      writeSessionHint(east, "sess-east");
+      writeSessionHint(west, "sess-west");
+
+      expect(readSessionHint(east)).toBe("sess-east");
+      expect(readSessionHint(west)).toBe("sess-west");
+    });
+
+    // A hint saved against one backend addresses sessions that do not exist on
+    // another, and one operator's session is not another's to be offered.
+    it("does not offer a hint across backends or operators", () => {
+      writeSessionHint(east, "sess-east");
+
+      expect(readSessionHint({ ...east, baseUrl: "https://other.example" })).toBeNull();
+      expect(readSessionHint({ ...east, userId: "u2" })).toBeNull();
+    });
+
+    // Ids are opaque, so the key must not be forgeable by choosing one that
+    // contains the separator.
+    it("does not let a crafted id collide with another scope", () => {
+      writeSessionHint({ baseUrl: undefined, userId: "u1", flowId: "a" }, "sess-a");
+      expect(readSessionHint({ baseUrl: undefined, userId: "u1|a", flowId: "" })).toBeNull();
+    });
+
+    it("reads and clears a legacy kind-keyed hint", () => {
+      localStorage.setItem("fsd.devtool.activeSession.reports", "sess-legacy");
+      expect(readLegacySingletonSessionHint("reports")).toBe("sess-legacy");
+
+      clearLegacySingletonSessionHint("reports");
+      expect(readLegacySingletonSessionHint("reports")).toBeNull();
     });
   });
 

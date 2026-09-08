@@ -38,9 +38,13 @@
  * some reads are keyed on more: a suspension listing on `(sessionId, status)`,
  * the debug content reads on `(sessionId, ref, topic)`.
  *
- * Used by `use-session-requests` and `use-child-sessions`. Five other
- * session-scoped hooks still read without any fence — FIX-1092 tracks
- * extending it to them.
+ * Every workspace-scoped read goes through `useWorkspaceFence`, which supplies
+ * the shared half of that tuple — the visit token and the session client — so
+ * each hook restates only what is genuinely its own. A tuple of VALUES can
+ * repeat (leaving instance A for B and coming back gives the same session and
+ * client), and a retired callback holding that tuple would agree with it; the
+ * token is what makes a finished visit unrepeatable. See
+ * `hooks/use-workspace-fence.ts`.
  *
  * ```ts
  * const fence = useReadFence([sessionId, sessionClient]);
@@ -62,6 +66,17 @@ function sameIdentity(a: readonly unknown[], b: readonly unknown[]): boolean {
 }
 
 export type ReadFence = {
+  /**
+   * The identity this fence was built for.
+   *
+   * Stamp held data with THIS, never with a restatement of the same values. A
+   * hook that keeps its rows has to record which identity they were read under,
+   * and hand-assembling that tuple a second time is a duplicate of the one
+   * passed in — one that has to be kept in step by hand, in the exact place
+   * where getting it wrong shows another workspace's data and nothing fails.
+   * Handing back the array removes the second copy rather than documenting it.
+   */
+  identity: readonly unknown[];
   /**
    * Is `candidate` the identity currently in play?
    *
@@ -180,6 +195,7 @@ export function useReadFence(
       const isCurrent = () =>
         !retiredRef.current && sameIdentity(mine, currentRef.current);
       return {
+        identity: mine,
         holds: (candidate) =>
           !retiredRef.current && sameIdentity(candidate, currentRef.current),
         isCurrent,

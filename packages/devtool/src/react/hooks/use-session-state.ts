@@ -1,6 +1,24 @@
+/**
+ * The open session's state snapshot and its session record — the two reads the
+ * detail sidebar renders.
+ *
+ * ## Why there is no read fence here
+ *
+ * This hook renders inside the workspace-keyed subtree (`SelectionProvider
+ * key={workspaceKey}` in `DevToolPanel`), so a visit that ends UNMOUNTS it. A
+ * response arriving afterwards writes to a component that no longer exists,
+ * which React discards. Holding an identity and masking on it would be a second
+ * mechanism for a hazard the remount has already removed, and two mechanisms
+ * for one rule is how they drift apart.
+ *
+ * The hooks that DO carry a fence are the ones that stay mounted across a
+ * switch: the navigator's session list, and the panel's own request and
+ * ChildSession lists, which live above that boundary.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionDetail, SessionStateSnapshotResponse } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
+import { describeReadError } from "../lib/instance-ownership";
 
 export function useSessionState(sessionId: string | null) {
   const { sessionClient } = useDevTool();
@@ -38,7 +56,7 @@ export function useSessionState(sessionId: string | null) {
       setDetail(sessionDetail);
       setLastFetchedAt(Date.now());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch state");
+      setError(describeReadError(err, "Failed to fetch state"));
     } finally {
       setIsLoading(false);
     }

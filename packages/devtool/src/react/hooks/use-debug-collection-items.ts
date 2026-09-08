@@ -5,10 +5,15 @@
  * fire it the first time the user expands a collection row). Each call
  * appends a page; `topicFilter` changes reset accumulation so the next
  * `loadMore` starts from the beginning.
+ *
+ * Renders inside the workspace-keyed subtree, so a visit that ends unmounts the
+ * accumulated page AND its cursor, rather than asking a late page not to append
+ * onto the next visit's walk — see `use-session-state`.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DebugCollectionItem } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
+import { describeReadError } from "../lib/instance-ownership";
 
 export type UseDebugCollectionItemsOptions = {
   topicFilter?: string;
@@ -70,7 +75,7 @@ export function useDebugCollectionItems(
         });
         setHasMore(!capped && result.nextCursor !== null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch collection items");
+        setError(describeReadError(err, "Failed to fetch collection items"));
       } finally {
         setIsLoading(false);
       }

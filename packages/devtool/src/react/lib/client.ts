@@ -1,9 +1,16 @@
 /**
  * Thin wrappers around the `@flow-state-dev/client` factories used by the
- * DevTool panel. The DevTool itself doesn't have a flowKind (it inspects
- * arbitrary flows), so the action client is initialised with a synthetic
- * `__devtool__` flowKind and the panel always passes the real flowKind
- * explicitly when dispatching actions.
+ * DevTool panel. The DevTool is not itself a flow instance (it inspects
+ * arbitrary ones), so the shared client is initialised with a synthetic
+ * `__devtool__` address for listing and capabilities only, and every addressed
+ * call below takes the selected instance's EXACT id.
+ *
+ * `flowKind` is the historical spelling of the client's address slot and of the
+ * `/api/flows/:flowKind/` URL segment. It carries an instance id — that is what
+ * the server resolves — so the parameters here are named `flowId` to say what
+ * the value actually is. Passing a kind where two copies exist addresses
+ * whichever one the registry happens to hold under that name, which is the
+ * defect this panel exists to stop showing.
  *
  * When a `bearerToken` is configured (from `fsdev.config.ts` → `devtool` →
  * injected into the page, or the Settings sheet), every client sends it as
@@ -65,8 +72,9 @@ export function createDevToolRecoveryClient(baseUrl?: string, bearerToken?: stri
   return createRecoveryClient({ baseUrl, fetcher: bearerFetcher(bearerToken) });
 }
 
+/** Open a request's SSE stream on the instance that owns it. */
 export function connectRequestStream(
-  flowKind: string,
+  flowId: string,
   requestId: string,
   callbacks: Omit<CreateSSEClientOptions, "url" | "baseUrl">,
   baseUrl?: string,
@@ -76,25 +84,28 @@ export function connectRequestStream(
     ...callbacks,
     baseUrl,
     fetcher: bearerFetcher(bearerToken),
-    url: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/stream?include=trace`,
+    // Encoded once, here. Instance ids are opaque, so they may carry
+    // punctuation this side does not get to prescribe.
+    url: `/api/flows/${encodeURIComponent(flowId)}/requests/${encodeURIComponent(requestId)}/stream?include=trace`,
   });
 }
 
 /**
- * Dispatch an action against a specific flow. The DevTool's shared `Client`
- * is bound to a synthetic `__devtool__` flowKind for listing/capabilities,
- * so action dispatches build a per-flow client to hit the right endpoint
- * while still threading `baseUrl` for cross-origin embedded mounts.
+ * Dispatch an action against a specific flow INSTANCE. The DevTool's shared
+ * `Client` is bound to the synthetic `__devtool__` address for
+ * listing/capabilities, so dispatches build a per-instance client to hit the
+ * right endpoint while still threading `baseUrl` for cross-origin embedded
+ * mounts.
  */
 export function dispatchDevToolAction(
-  flowKind: string,
+  flowId: string,
   sessionId: string,
   action: string,
   input: unknown,
   options: { userId: string; baseUrl?: string; bearerToken?: string },
 ): Promise<ExecuteActionResponse> {
   const client = createClient({
-    flowKind,
+    flowKind: flowId,
     userId: options.userId,
     baseUrl: options.baseUrl,
     fetcher: bearerFetcher(options.bearerToken),

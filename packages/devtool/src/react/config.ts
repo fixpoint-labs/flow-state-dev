@@ -1,8 +1,22 @@
 /**
  * localStorage helpers for panel state that should persist across reloads:
- * userId, active session per flow, last-dispatched action per flow, debug
- * toggles. All readers are SSR-safe — they return defaults when `window` is
- * undefined so the panel can render during a Next.js prerender pass.
+ * userId, the session hint per flow instance, last-dispatched action per
+ * instance, debug toggles. All readers are SSR-safe — they return defaults when
+ * `window` is undefined so the panel can render during a Next.js prerender pass.
+ *
+ * ## Why a session hint is scoped, and why it stays a hint
+ *
+ * A saved session is a convenience, never permission to guess which copy of a
+ * flow the operator meant. Two instances of one kind have different ids and
+ * different sessions, so the key carries the CONNECTION, the USER and the EXACT
+ * INSTANCE ID — a session saved under `engineer-a` must not be offered under
+ * `engineer-b`, nor under the same id on a different backend or for a different
+ * operator. The bearer token is deliberately NOT part of the key: it is a
+ * credential, and credentials are never written to localStorage.
+ *
+ * Reading one is still not installing it. The provider revalidates the hint
+ * against an admitted session read before anything renders under it — see
+ * `context/devtool-context.tsx`.
  */
 const USER_ID_KEY = "fsd.devtool.userId";
 const DEFAULT_USER_ID = "devuser";
@@ -59,28 +73,81 @@ export function writeUserId(userId: string): void {
   window.localStorage.setItem(USER_ID_KEY, userId.trim());
 }
 
-export function readActiveSession(flowKind: string): string | null {
-  if (!hasWindow()) return null;
-  return window.localStorage.getItem(ACTIVE_SESSION_PREFIX + flowKind) || null;
+/**
+ * What a saved session hint belongs to. Every part is load-bearing: the same
+ * instance id on a different backend, or under a different operator identity,
+ * addresses different sessions.
+ */
+export type SessionHintScope = {
+  /** API base URL the panel is talking to; `undefined` means same-origin. */
+  baseUrl: string | undefined;
+  userId: string;
+  /** The EXACT instance id — never a kind, and never an instance's position. */
+  flowId: string;
+};
+
+/**
+ * Encoded per part, so an id containing the separator cannot collide with a
+ * different scope. Instance ids are opaque and this side prescribes no syntax.
+ */
+function sessionHintKey(scope: SessionHintScope): string {
+  return (
+    ACTIVE_SESSION_PREFIX +
+    [scope.baseUrl ?? "", scope.userId, scope.flowId]
+      .map((part) => encodeURIComponent(part))
+      .join("|")
+  );
 }
 
-export function writeActiveSession(flowKind: string, sessionId: string | null): void {
+/** The saved session id for this scope, or `null`. Always revalidate before use. */
+export function readSessionHint(scope: SessionHintScope): string | null {
+  if (!hasWindow()) return null;
+  return window.localStorage.getItem(sessionHintKey(scope)) || null;
+}
+
+/** Save (or, with `null`, forget) this scope's session hint. */
+export function writeSessionHint(scope: SessionHintScope, sessionId: string | null): void {
   if (!hasWindow()) return;
+  const key = sessionHintKey(scope);
   if (sessionId) {
-    window.localStorage.setItem(ACTIVE_SESSION_PREFIX + flowKind, sessionId);
+    window.localStorage.setItem(key, sessionId);
   } else {
-    window.localStorage.removeItem(ACTIVE_SESSION_PREFIX + flowKind);
+    window.localStorage.removeItem(key);
   }
 }
 
-export function readLastAction(flowKind: string): string | null {
+/**
+ * A hint written by an earlier panel, which keyed on the flow kind alone.
+ *
+ * Offered ONLY for a singleton, whose id and kind are the same string and which
+ * therefore has exactly one possible owner. A collection member must never read
+ * one: its kind names a family, so the saved session could belong to any peer,
+ * and handing it over is exactly the "guess a copy" this design refuses.
+ *
+ * Like any hint it is revalidated before installation and dropped when that
+ * fails. Nothing here migrates a key — it just stops offering one it has proven
+ * useless.
+ */
+export function readLegacySingletonSessionHint(kind: string): string | null {
   if (!hasWindow()) return null;
-  return window.localStorage.getItem(LAST_ACTION_PREFIX + flowKind) || null;
+  return window.localStorage.getItem(ACTIVE_SESSION_PREFIX + kind) || null;
 }
 
-export function writeLastAction(flowKind: string, action: string): void {
+/** Forget a legacy kind-keyed hint that failed revalidation. */
+export function clearLegacySingletonSessionHint(kind: string): void {
   if (!hasWindow()) return;
-  window.localStorage.setItem(LAST_ACTION_PREFIX + flowKind, action);
+  window.localStorage.removeItem(ACTIVE_SESSION_PREFIX + kind);
+}
+
+/** Last action dispatched against this exact instance id. */
+export function readLastAction(flowId: string): string | null {
+  if (!hasWindow()) return null;
+  return window.localStorage.getItem(LAST_ACTION_PREFIX + flowId) || null;
+}
+
+export function writeLastAction(flowId: string, action: string): void {
+  if (!hasWindow()) return;
+  window.localStorage.setItem(LAST_ACTION_PREFIX + flowId, action);
 }
 
 export function readDebugMode(): boolean {

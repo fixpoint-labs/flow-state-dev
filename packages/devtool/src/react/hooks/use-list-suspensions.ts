@@ -9,6 +9,12 @@
  * An empty list is the natural response when durable execution is not
  * configured (the suspensions store is simply empty), so callers distinguish
  * "no suspensions" from "debug disabled" via `disabled`.
+ *
+ * Renders inside the workspace-keyed subtree, so a visit that ends unmounts it
+ * and a late row has nowhere to land — see `use-session-state` for why that
+ * makes a second retirement mechanism here the wrong thing to add. Which copy a
+ * pending suspension is resolved against does NOT rest on that: it comes from
+ * the record's own owner, in `suspensions-view`.
  */
 import { useCallback, useEffect, useState } from "react";
 import type {
@@ -16,8 +22,9 @@ import type {
   SuspensionRecord,
   SuspensionStatus
 } from "@flow-state-dev/client";
-import { ClientHttpError } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
+import { isDebugDisabledError } from "../lib/debug-errors";
+import { describeReadError } from "../lib/instance-ownership";
 
 export type UseListSuspensionsResult = {
   suspensions: SuspensionRecord[];
@@ -26,27 +33,6 @@ export type UseListSuspensionsResult = {
   disabled: boolean;
   refresh: () => Promise<void>;
 };
-
-const DISABLED_REASONS = new Set([
-  "debug_endpoints_disabled",
-  "debug_endpoints_origin_rejected"
-]);
-
-/**
- * True only when the response body's `error` field matches a documented
- * debug-disabled reason. Mirrors `use-debug-resources` so both surfaces treat
- * the gate identically.
- */
-function isDebugDisabledError(err: unknown): boolean {
-  if (!(err instanceof ClientHttpError)) return false;
-  if (err.status !== 403) return false;
-  const body = err.body;
-  if (body === null || typeof body !== "object" || !("error" in body)) {
-    return false;
-  }
-  const reason = (body as { error?: unknown }).error;
-  return typeof reason === "string" && DISABLED_REASONS.has(reason);
-}
 
 /**
  * Lists suspensions for `sessionId`, optionally narrowed to a single
@@ -81,9 +67,7 @@ export function useListSuspensions(
         setDisabled(true);
         setSuspensions([]);
       } else {
-        setError(
-          err instanceof Error ? err.message : "Failed to fetch suspensions"
-        );
+        setError(describeReadError(err, "Failed to fetch suspensions"));
       }
     } finally {
       setIsLoading(false);
