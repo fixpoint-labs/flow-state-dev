@@ -115,6 +115,14 @@ export function resolveRecordOwner(
 }
 
 /**
+ * The three identity facts an owner comparison reads. A `FlowInstance`
+ * satisfies it directly; a caller that holds only the facts (an expected
+ * child identity, say) passes them without building an instance.
+ */
+export type OwnerIdentity = Pick<FlowInstance, "kind"> &
+  Partial<Pick<FlowInstance, "id" | "cardinality">>;
+
+/**
  * Whether `flow` is the instance a stored record belongs to. The comparison
  * side of {@link resolveRecordOwner}: a request that already holds its
  * resolved instance asks this before touching a record it loaded.
@@ -123,7 +131,7 @@ export function resolveRecordOwner(
  * nothing else — never to a collection member, and never to a different kind
  * whose instance id happens to equal the stored kind.
  */
-export function ownsRecord(flow: FlowInstance, record: OwnedRecord): boolean {
+export function ownsRecord(flow: OwnerIdentity, record: OwnedRecord): boolean {
   // A hand-built structural instance may carry neither field; its identity is
   // the singleton of its kind, exactly as the registry admits it (BP-030).
   const flowId = flow.id ?? flow.kind;
@@ -136,23 +144,37 @@ export function ownsRecord(flow: FlowInstance, record: OwnedRecord): boolean {
 
 /**
  * Why a record `ownsRecord` refused belongs to someone else, for the error a
- * caller raises when it holds the addressed instance but no registry. A
- * legacy row (no `flowId`) refused by a collection member is a row this
- * runtime cannot attribute — `migration-required`, the stop condition an
- * operator acts on — not a wrong address. Every other refusal names the owner
- * the row claims.
+ * caller raises when it holds the addressed instance but no registry. The
+ * same verdict {@link resolveRecordOwner} reaches for the two legacy shapes it
+ * can name without one: a row of the addressed instance's own kind that now
+ * runs as a collection, and a row whose kind's address this instance has
+ * taken under another kind — both `migration-required`, the stop condition an
+ * operator acts on, not a wrong address. Every other refusal, a foreign
+ * legacy row of some other kind included, names the owner the row claims.
  */
 export function foreignRecordRefusal(
-  flow: FlowInstance,
+  flow: OwnerIdentity,
   record: OwnedRecord
 ): { detail: string; reason: OwnerResolutionRefusal | undefined } {
-  if (record.flowId == null && (flow.cardinality ?? "singleton") === "collection") {
-    return {
-      detail:
-        `it was written before instance ownership existed and its kind "${record.flowKind}" ` +
-        `now runs as a collection, so its owner must be attributed by migration`,
-      reason: "migration-required"
-    };
+  if (record.flowId == null) {
+    const sameKind = record.flowKind === flow.kind;
+    if (sameKind && (flow.cardinality ?? "singleton") === "collection") {
+      return {
+        detail:
+          `it was written before instance ownership existed and its kind "${record.flowKind}" ` +
+          `now runs as a collection, so its owner must be attributed by migration`,
+        reason: "migration-required"
+      };
+    }
+    if (!sameKind && (flow.id ?? flow.kind) === record.flowKind) {
+      return {
+        detail:
+          `it was written before instance ownership existed and names kind "${record.flowKind}", ` +
+          `whose address now belongs to an instance of kind "${flow.kind}", so its owner must be ` +
+          `attributed by migration`,
+        reason: "migration-required"
+      };
+    }
   }
   return { detail: `it belongs to flow instance "${recordOwnerId(record)}"`, reason: undefined };
 }

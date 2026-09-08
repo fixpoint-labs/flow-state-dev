@@ -40,10 +40,10 @@ export function FlowList({
     <div className="space-y-0.5">
       {flows.map((flow) => (
         <FlowItem
-          key={flow.kind}
+          key={flow.id}
           flow={flow}
-          isActive={activeFlowKind === flow.kind}
-          onSelect={() => setActiveFlow(activeFlowKind === flow.kind ? null : flow.kind)}
+          isActive={activeFlowKind === flow.id}
+          onSelect={() => setActiveFlow(activeFlowKind === flow.id ? null : flow.id)}
           sessionRefreshKey={sessionRefreshKey}
           onRefreshActiveSession={onRefreshActiveSession}
         />

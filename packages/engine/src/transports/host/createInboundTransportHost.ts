@@ -21,7 +21,7 @@ import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import { FlowInstanceBindingMismatchError } from "../../context/binding-errors";
-import { foreignRecordRefusal, ownsRecord, resolveRecordOwner } from "../../context/record-owner";
+import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
 import {
   DEFAULT_RUNTIME_LOGGER,
   logRuntimeEvent,
@@ -295,17 +295,16 @@ export function createInboundTransportHost(
         tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
         !ownsRecord(flow, session)
       ) {
-        // Name the stop condition an operator can act on: an ownerless row
-        // under a collection kind is a migration, not a wrong address.
-        const owner = resolveRecordOwner(registry, session);
+        // One refusal shape for every door: the same helper `runAction` and
+        // `createExecutionContext` raise with, so a legacy row is named the
+        // same way (a migration, not a wrong address) whichever path reached it.
+        const refusal = foreignRecordRefusal(flow, session);
         throw new FlowInstanceBindingMismatchError(
           "session",
           dispatchEnvelope.sessionId,
           flow.id,
-          owner.ok
-            ? `it belongs to flow instance "${owner.flow.id}"`
-            : owner.detail,
-          owner.ok ? undefined : owner.reason
+          refusal.detail,
+          refusal.reason
         );
       }
     }
@@ -344,13 +343,15 @@ export function createInboundTransportHost(
     if (!created.ok) {
       const holder = created.conflict.currentValue;
       if (holder === undefined || !ownsRecord(flow, holder)) {
+        const refusal = holder === undefined ? undefined : foreignRecordRefusal(flow, holder);
         throw new FlowInstanceBindingMismatchError(
           "request",
           record.id,
           flow.id,
-          holder === undefined
+          refusal === undefined
             ? "a request with this id exists and could not be read back"
-            : `a request with this id belongs to flow instance "${holder.flowId ?? holder.flowKind}"`
+            : `a request with this id: ${refusal.detail}`,
+          refusal?.reason
         );
       }
       await stores.request.set(record.id, record, "any");
@@ -690,7 +691,18 @@ export function createInboundTransportHost(
               // carries it when it is made a moment later.
               return startRun(queuedAbort.signal);
             }).catch(async (error: unknown) => {
-              if (error instanceof ConcurrencyQueueTimeoutError) {
+              // The stub is this dispatch's own by now — materialization
+              // succeeded before the gate opened — so a refusal raised by the
+              // RUN (the loser of a session create race, checked in
+              // `createExecutionContext`) terminates it like any other start
+              // that never happened. Left `in_progress`, it would outlive the
+              // entry the `finally` below removes and be invisible to the
+              // sweeper. Only the admission-time refusal, handled above, found
+              // a record that was never ours.
+              if (
+                error instanceof ConcurrencyQueueTimeoutError ||
+                error instanceof FlowInstanceBindingMismatchError
+              ) {
                 await terminateUnenqueuedRequest(stores, requestId);
               }
               throw error;

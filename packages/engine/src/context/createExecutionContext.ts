@@ -1340,7 +1340,29 @@ export async function createExecutionContext<
       },
       now
     );
-    await stores.request.set(requestRecord.id, requestRecord, "any");
+    // Written create-if-absent: the admission read above saw no record, but
+    // a concurrent direct run on another instance reusing this caller-supplied
+    // id may have written one since, and both must not execute. The loser is
+    // refused here, before the action runs; a same-owner hand-off (a retry
+    // reusing its id) keeps the last-write-wins overwrite it always had. The
+    // same fence the transport host applies to its enqueue-time stub.
+    const created = await stores.request.set(requestRecord.id, requestRecord, "absent");
+    if (!created.ok) {
+      const holder = created.conflict.currentValue;
+      if (holder === undefined || !ownsRecord(flow, holder)) {
+        const refusal = holder === undefined ? undefined : foreignRecordRefusal(flow, holder);
+        throw new FlowInstanceBindingMismatchError(
+          "request",
+          requestId,
+          flow.id,
+          refusal === undefined
+            ? "a request with this id exists and could not be read back"
+            : `a request with this id: ${refusal.detail}`,
+          refusal?.reason
+        );
+      }
+      await stores.request.set(requestRecord.id, requestRecord, "any");
+    }
   } else if (requestRecord.source === undefined) {
     // Pre-FIX-438 records read from a store that hasn't been migrated
     // default to the HTTP source. New writes always carry the field.

@@ -159,13 +159,14 @@ type ChildSessionSummary = {
   parentSessionId: string;
   createdAt: number;
   updatedAt: number;
+  flowId?: string;          // the instance that owns the child; absent on rows written before owners were recorded
   topic?: string;
   coordinate?: string;
   status?: "active" | "completed" | "failed" | "incomplete" | "aborted";
 };
 ```
 
-That is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it.
+That is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it. `flowId` is the address to read the child through when it was dispatched into another instance.
 
 Paging is `{ limit, offset }`: `limit` runs 1–100 and defaults to 25, `offset` runs 0–10000.
 

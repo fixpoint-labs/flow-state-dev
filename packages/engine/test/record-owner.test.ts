@@ -6,6 +6,7 @@
 import { defineFlow } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { createFlowRegistry, ownsRecord, resolveRecordOwner } from "../src";
+import { foreignRecordRefusal } from "../src/context/record-owner";
 
 function registryWith(...flows: Parameters<ReturnType<typeof createFlowRegistry>["register"]>[0][]) {
   const registry = createFlowRegistry();
@@ -61,5 +62,42 @@ describe("ownsRecord", () => {
     expect(ownsRecord(singleton, { flowKind: "reports" })).toBe(true);
     expect(ownsRecord(singleton, { flowKind: "reports", flowId: "reports" })).toBe(true);
     expect(ownsRecord(billing({ id: "reports" }), { flowKind: "reports" })).toBe(false);
+  });
+});
+
+describe("foreignRecordRefusal", () => {
+  it("names a migration only for the legacy shapes resolveRecordOwner refuses that way", () => {
+    const east = engineer({ id: "engineer-a" });
+    // A collection member reaching an ownerless row of its own kind: the
+    // history it cannot attribute.
+    expect(foreignRecordRefusal(east, { flowKind: "engineer" }).reason).toBe("migration-required");
+    // An ownerless row of ANOTHER kind is a wrong address, not a migration —
+    // its owner is that kind's singleton, whatever the addressed instance is.
+    const foreign = foreignRecordRefusal(east, { flowKind: "reports" });
+    expect(foreign.reason).toBeUndefined();
+    expect(foreign.detail).toContain('"reports"');
+    // The kind's address taken by an instance of another kind.
+    expect(foreignRecordRefusal(billing({ id: "engineer" }), { flowKind: "engineer" }).reason).toBe(
+      "migration-required"
+    );
+    // A stamped row always names its owner.
+    const stamped = foreignRecordRefusal(east, { flowKind: "engineer", flowId: "engineer-b" });
+    expect(stamped.reason).toBeUndefined();
+    expect(stamped.detail).toContain('"engineer-b"');
+  });
+
+  it("agrees with resolveRecordOwner on every legacy shape it can name", () => {
+    const registry = registryWith(reports(), engineer({ id: "engineer-a" }), billing({ id: "engineer" }));
+    for (const [flow, record] of [
+      [engineer({ id: "engineer-a" }), { flowKind: "engineer" }],
+      [engineer({ id: "engineer-a" }), { flowKind: "reports" }],
+      [billing({ id: "engineer" }), { flowKind: "engineer" }]
+    ] as const) {
+      const resolved = resolveRecordOwner(registry, record);
+      const refusal = foreignRecordRefusal(flow, record);
+      expect(refusal.reason === "migration-required").toBe(
+        !resolved.ok && resolved.reason === "migration-required"
+      );
+    }
   });
 });

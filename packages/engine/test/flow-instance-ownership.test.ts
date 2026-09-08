@@ -61,6 +61,19 @@ function review(options: { id: string }): FlowInstance {
   }) as unknown as FlowInstance;
 }
 
+/** A collection whose runs queue per session, so a dispatch materializes its request stub before the run starts. */
+const queuedDefinition = defineFlow({
+  kind: "queued",
+  cardinality: "collection",
+  request: { concurrency: { policy: "queue", key: "session" } },
+  actions: {
+    run: {
+      inputSchema: z.object({}),
+      block: handler({ name: "queued-run", inputSchema: z.object({}), execute: () => ({}) })
+    }
+  }
+});
+
 async function marker(stores: StoreRegistry, sessionId: string): Promise<unknown> {
   return (await stores.session.get(sessionId))?.state.marker;
 }
@@ -214,6 +227,59 @@ describe("a session belongs to one instance", () => {
     expect(await stores.activeRequests.get("req_foreign")).toBeUndefined();
   });
 
+  it("refuses a direct run whose caller-supplied request id another instance claimed after the admission read", async () => {
+    const stores = createInMemoryStores();
+    host(stores, review({ id: "review-east" }), review({ id: "review-west" }));
+    const now = Date.now();
+    const held = {
+      id: "req_raced",
+      flowKind: "review",
+      flowId: "review-east",
+      actionName: "run",
+      userId: "u_1",
+      sessionId: "s_east_raced",
+      source: "http",
+      status: "in_progress" as const,
+      startedAtMs: now,
+      state: {},
+      version: 0,
+      createdAt: now,
+      updatedAt: now
+    };
+    await stores.request.set("req_raced", held, "any");
+
+    // The interleaving: west's admission read sees no record (east has not
+    // written yet), then east's write lands before west's own. Modelled by a
+    // store whose reads of this id say "absent" while the record is there for
+    // the create-if-absent write to collide with.
+    const request = new Proxy(stores.request, {
+      get(target, prop, receiver) {
+        if (prop === "get") {
+          return async (id: string) =>
+            id === "req_raced" ? undefined : Reflect.get(target, prop, receiver).call(target, id);
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+
+    await expect(
+      runAction({
+        flow: review({ id: "review-west" }),
+        actionName: "run",
+        input: {},
+        userId: "u_1",
+        sessionId: "s_west_raced",
+        requestId: "req_raced",
+        stores: { ...stores, request },
+        runtimeConfig: {}
+      })
+    ).rejects.toBeInstanceOf(FlowInstanceBindingMismatchError);
+    // East's record survives untouched; west never ran.
+    expect(await stores.request.get("req_raced")).toEqual(held);
+    expect(await marker(stores, "s_west_raced")).toBeUndefined();
+  });
+
   it("refuses a request id another instance owns without overwriting or deregistering it", async () => {
     const stores = createInMemoryStores();
     const { router } = host(stores, review({ id: "review-east" }), review({ id: "review-west" }));
@@ -261,6 +327,69 @@ describe("a session belongs to one instance", () => {
     expect((await stores.request.get("req_held"))?.flowId).toBe("review-east");
     expect((await stores.request.get("req_held"))?.status).toBe("in_progress");
     expect(await stores.activeRequests.get("req_held")).toBeDefined();
+  });
+});
+
+describe("a refusal raised by the run itself", () => {
+  it("terminates the loser's own request stub instead of stranding it in_progress", async () => {
+    const stores = createInMemoryStores();
+    const now = Date.now();
+    const eastOwned: SessionRecord = {
+      id: "s_raced",
+      flowKind: "queued",
+      flowId: "queued-east",
+      userId: "u_1",
+      state: {},
+      version: 0,
+      createdAt: now,
+      updatedAt: now,
+      journal: []
+    };
+    // West's admission sees no session (east has not created it yet); by the
+    // time west's run loads it, east's record is there. Modelled by a store
+    // whose first read of the id says "absent".
+    let admissionRead = false;
+    const session = new Proxy(stores.session, {
+      get(target, prop, receiver) {
+        if (prop === "get") {
+          return async (id: string) => {
+            if (id === "s_raced" && !admissionRead) {
+              admissionRead = true;
+              await stores.session.set("s_raced", eastOwned, "any");
+              return undefined;
+            }
+            return Reflect.get(target, prop, receiver).call(target, id);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+    const registry = createFlowRegistry();
+    registry.registerMany([
+      queuedDefinition({ id: "queued-east" }) as unknown as FlowInstance,
+      queuedDefinition({ id: "queued-west" }) as unknown as FlowInstance
+    ]);
+    const raced = createFlowApiRouter({ registry, stores: { ...stores, session } });
+
+    const res = await raced.POST(
+      new Request("http://localhost/api/flows/queued-west/s_raced/actions/run", {
+        method: "POST",
+        body: JSON.stringify({ userId: "u_1", input: {} })
+      }),
+      { params: { path: ["queued-west", "s_raced", "actions", "run"] } }
+    );
+    // Accepted at admission — the stub was written — and refused by the run.
+    expect(res.status).toBe(202);
+    const { request } = (await res.json()) as { request: { id: string } };
+    await settle(stores, request.id);
+
+    const record = await stores.request.get(request.id);
+    expect(record?.flowId).toBe("queued-west");
+    expect(record?.status).toBe("failed");
+    expect(await stores.activeRequests.get(request.id)).toBeUndefined();
+    // East's session is exactly as east wrote it.
+    expect(await stores.session.get("s_raced")).toEqual(eastOwned);
   });
 });
 
@@ -340,12 +469,54 @@ describe("record-backed routes read the stored owner", () => {
     expect(collection.status).toBe(409);
     expect(((await collection.json()) as { error: string }).error).toBe("migration-required");
 
+    // The plain record routes, which read nothing from the flow, meet the
+    // same stop condition: one answer on every door.
+    const read = await router.GET(new Request("http://localhost/api/flows/sessions/s_legacy_collection"), {
+      params: { path: ["sessions", "s_legacy_collection"] }
+    });
+    expect(read.status).toBe(409);
+    const deleted = await router.DELETE(
+      new Request("http://localhost/api/flows/sessions/s_legacy_collection", { method: "DELETE" }),
+      { params: { path: ["sessions", "s_legacy_collection"] } }
+    );
+    expect(deleted.status).toBe(409);
+    expect(await stores.session.get("s_legacy_collection")).toBeDefined();
+
     // The action route names the same stop condition, not a wrong-instance
     // refusal that would send an operator looking for a different address.
     const acted = await act(router, "review-east", "s_legacy_collection");
     expect(acted.status).toBe(409);
     expect(((await acted.json()) as { error: string }).error).toBe("migration-required");
     expect(await marker(stores, "s_legacy_collection")).toBeUndefined();
+
+    // An ownerless row of ANOTHER kind reached through a collection member
+    // is a wrong address — its owner is that kind's singleton — not a
+    // migration an operator would go looking for.
+    const foreign = await act(router, "review-east", "s_legacy_singleton");
+    expect(foreign.status).toBe(409);
+    expect(((await foreign.json()) as { error: string }).error).toBe("wrong-instance-session");
+  });
+
+  it("refuses ownerless history of an authenticated collection instead of serving it anonymously", async () => {
+    const stores = createInMemoryStores();
+    const secure = secureReview("gated");
+    const { router } = host(stores, secure({ id: "gated-east" }), secure({ id: "gated-west" }));
+    await seedSession(stores, { id: "s_legacy_gated", flowKind: "gated", userId: "alice" });
+
+    // No instance can govern this row, so nothing may fall back to the
+    // host's open resolver and hand it out: the promised 409, on the plain
+    // session read and on the listing under it alike.
+    const read = await router.GET(new Request("http://localhost/api/flows/sessions/s_legacy_gated"), {
+      params: { path: ["sessions", "s_legacy_gated"] }
+    });
+    expect(read.status).toBe(409);
+    expect(((await read.json()) as { error: string }).error).toBe("migration-required");
+
+    const requests = await router.GET(
+      new Request("http://localhost/api/flows/sessions/s_legacy_gated/requests"),
+      { params: { path: ["sessions", "s_legacy_gated", "requests"] } }
+    );
+    expect(requests.status).toBe(409);
   });
 
   it("lists sessions by exact owner, and an ownerless row never matches an owner filter", async () => {

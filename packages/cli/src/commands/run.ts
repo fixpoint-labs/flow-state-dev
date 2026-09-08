@@ -1,7 +1,7 @@
 /**
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
-import { ensureSessionRecord } from "@flow-state-dev/engine";
+import { ensureSessionRecord, ownsRecord } from "@flow-state-dev/engine";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
@@ -275,6 +275,15 @@ export async function executeRunCommand(
       const seedData = parseSeedArg(options.seedSession, "session") as JsonObject;
       const existing = await stores.session.get(sessionId);
       if (existing !== undefined) {
+        // `runAction` refuses a session another instance owns, but only after
+        // this seed would have rewritten its state. Refuse first.
+        if (!ownsRecord(flow, existing)) {
+          throw new CliError(
+            `Session "${sessionId}" belongs to flow instance "${existing.flowId ?? existing.flowKind}", ` +
+              `not "${flow.id}"; --seed-session was not applied`,
+            EXIT_INVALID_ARGS,
+          );
+        }
         await stores.session.set(sessionId, {
           ...existing,
           state: { ...existing.state, ...seedData },

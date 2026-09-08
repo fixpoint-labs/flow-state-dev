@@ -112,8 +112,26 @@ Every session and request records the flow instance that created it, as `flowId`
 
 1. **Quiesce.** Stop every process that writes to the stores: the web tier, workers, schedulers. A record attributed while a run is still in flight can be re-stamped underneath you.
 2. **Inventory.** Count what has no owner, by kind: `SELECT flow_kind, COUNT(*) FROM sessions WHERE flow_id IS NULL GROUP BY flow_kind;` and the same over `requests`. Kinds that are ordinary singletons need nothing. Each collection kind in the list is a mapping decision you have to make: which copy each of those records belongs to (a tenant, a region, a config version, whatever distinguished them when they were written).
-3. **Backfill.** Apply the mapping: `UPDATE sessions SET flow_id = 'review-east' WHERE flow_kind = 'review' AND flow_id IS NULL AND <your predicate>;` and the same predicate over `requests`, so a request never ends up under a different owner than its session. Child sessions that another flow dispatched into a collection copy are keyed by the copy that ran them; re-key those under the copy you attribute them to, or the parent's next dispatch starts a fresh child instead of adopting the old one.
-4. **Read back.** Re-run the inventory. Any remaining `NULL` under a collection kind still answers `migration-required`, so the count you want is zero for every collection kind. Then bring the writers back.
+3. **Backfill.** Apply the mapping to both places a row keeps its owner, in one statement. The indexed `flow_id` column is what listings filter on; the `data` blob is the record the server reads back, and a later write of the whole record rewrites the column from it, so a column updated on its own reverts to `NULL` the next time the row is saved. SQLite:
+
+   ```sql
+   UPDATE sessions
+   SET flow_id = 'review-east',
+       data = json_set(data, '$.flowId', 'review-east')
+   WHERE flow_kind = 'review' AND flow_id IS NULL AND <your predicate>;
+   ```
+
+   Postgres:
+
+   ```sql
+   UPDATE sessions
+   SET flow_id = 'review-east',
+       data = jsonb_set(data, '{flowId}', '"review-east"')
+   WHERE flow_kind = 'review' AND flow_id IS NULL AND <your predicate>;
+   ```
+
+   Run the same predicate over `requests`, so a request never ends up under a different owner than its session. Child sessions that another flow dispatched into a collection copy are keyed by the copy that ran them; re-key those under the copy you attribute them to, or the parent's next dispatch starts a fresh child instead of adopting the old one.
+4. **Read back.** Re-run the inventory, and check the blob agrees with the column: `SELECT COUNT(*) FROM sessions WHERE flow_id IS NOT NULL AND json_extract(data, '$.flowId') IS NULL;` (SQLite) or `... AND data->>'flowId' IS NULL;` (Postgres) should be zero, and so should the inventory's count for every collection kind. Any remaining row still answers `migration-required`. Then bring the writers back.
 
 The column names above are the SQL stores'. The filesystem and in-memory stores hold the same `flowId` field on each record and need the same mapping applied to their files, if you keep history there at all.
 

@@ -182,7 +182,7 @@ The parameter defaults to `unknown`, so untyped call sites are unchanged.
 
 ### `SessionView.childSessions`
 
-`ReadonlyArray<ChildSessionSummary>` of the sessions started under this one — one entry per child, carrying `{ id, parentSessionId, createdAt, updatedAt, topic?, coordinate?, status? }`, which is the whole row. Empty for a session that started none. Separate from `items`: a child session is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
+`ReadonlyArray<ChildSessionSummary>` of the sessions started under this one — one entry per child, carrying `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate?, status? }`, which is the whole row. `flowId` is the instance that owns the child — the address to read it through when it was dispatched into another instance; absent on a child written before owners were recorded. Empty for a session that started none. Separate from `items`: a child session is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
 
 Carries one page of the most recent entries, newest first. This list is all-time history, not just what is running now, so it grows with everything the conversation has ever started. A conversation that runs more background work than one page keeps showing the newest; the oldest finished work falls off the end and is not reachable from the hook.
 

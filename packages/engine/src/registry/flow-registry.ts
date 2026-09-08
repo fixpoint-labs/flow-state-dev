@@ -88,13 +88,8 @@ type ScopeParticipant = {
  * In-memory flow registry implementation for runtime and tests.
  */
 export class InMemoryFlowRegistry implements FlowRegistry {
-  /** The global address index — the one thing `get` reads. */
+  /** The global address index — the one map `get`, `list`, and admission read. */
   private readonly flowsById = new Map<string, FlowInstance>();
-  /**
-   * Kind → id → instance. Not a resolver: it exists for the deterministic
-   * kind/id-sorted `list()` and for the per-kind cardinality policy check.
-   */
-  private readonly flowsByKind = new Map<string, Map<string, FlowInstance>>();
 
   /**
    * Per-scope list of flows participating in that scope's SHARED storage. A
@@ -118,8 +113,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    * internal map untouched.
    */
   register(input: FlowInstance): void {
-    const flow = admitIdentity(input, this.flowsById, this.flowsByKind);
-    const existingByKind = this.flowsByKind.get(flow.kind);
+    const flow = admitIdentity(input, this.flowsById);
 
     // Validate both scopes before mutating any state. If the org-scope
     // check throws after the user-scope check passes, no participant entry
@@ -136,11 +130,6 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     if (orgDecl) this.validateScope("org", flow.kind, orgDecl);
 
     // All validation passed — commit.
-    const byId = existingByKind ?? new Map<string, FlowInstance>();
-    if (existingByKind === undefined) {
-      this.flowsByKind.set(flow.kind, byId);
-    }
-    byId.set(flow.id, flow);
     this.flowsById.set(flow.id, flow);
     this.indexParticipant("user", flow.kind, userDecl);
     this.indexParticipant("org", flow.kind, orgDecl);
@@ -169,29 +158,10 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    * Lists all registered flows in deterministic order.
    */
   list(): FlowInstance[] {
-    const kinds = Array.from(this.flowsByKind.keys()).sort((left, right) =>
-      left.localeCompare(right)
-    );
-    const result: FlowInstance[] = [];
-
-    for (const kind of kinds) {
-      const byId = this.flowsByKind.get(kind);
-      if (byId === undefined) {
-        continue;
-      }
-
-      const ids = Array.from(byId.keys()).sort((left, right) =>
-        left.localeCompare(right)
-      );
-      for (const id of ids) {
-        const flow = byId.get(id);
-        if (flow !== undefined) {
-          result.push(flow);
-        }
-      }
-    }
-
-    return result;
+    return Array.from(this.flowsById.values()).sort((left, right) => {
+      const byKind = left.kind.localeCompare(right.kind);
+      return byKind !== 0 ? byKind : left.id.localeCompare(right.id);
+    });
   }
 
   describeSharedSchemas(): SharedSchemasDescription {
@@ -549,8 +519,7 @@ function checkPair(
  */
 function admitIdentity(
   input: FlowInstance,
-  flowsById: ReadonlyMap<string, FlowInstance>,
-  flowsByKind: ReadonlyMap<string, Map<string, FlowInstance>>
+  flowsById: ReadonlyMap<string, FlowInstance>
 ): FlowInstance {
   const declared = (input as { cardinality?: unknown }).cardinality;
   // A structural singleton with no `id` at all — a hand-built literal from
@@ -606,7 +575,7 @@ function admitIdentity(
   }
 
   // One kind, one policy — whatever order the two arrive in.
-  const sibling = flowsByKind.get(flow.kind)?.values().next().value;
+  const sibling = [...flowsById.values()].find((existing) => existing.kind === flow.kind);
   if (sibling !== undefined && sibling.cardinality !== cardinality) {
     throw new FlowIdentityConflictError({
       reason: "mixed-cardinality",

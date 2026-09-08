@@ -152,7 +152,7 @@ const <flowKind>Flow = defineFlow({
   },
 });
 
-export default <flowKind>Flow({ id: "default" });
+export default <flowKind>Flow();
 ```
 
 ### Step 5: Advanced Configuration
@@ -325,7 +325,7 @@ Flows are discovered by convention at `src/flows/**/flow.ts`. Each file exports 
 
 ```typescript
 // src/flows/<flow-kind>/flow.ts
-export default myFlow({ id: "default" });
+export default myFlow();
 ```
 
 For server registration, flows are passed to `createServer()` or `registerFlows()`:

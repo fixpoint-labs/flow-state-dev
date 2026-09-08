@@ -18,6 +18,7 @@
 import { createHash } from "node:crypto";
 import type { FlowCardinality } from "@flow-state-dev/core/types";
 import { framed } from "@flow-state-dev/core/types";
+import { ownsRecord } from "./record-owner";
 
 /** The server-derived facts a child key is built from. Never caller-supplied. */
 export type DerivationIdentity = {
@@ -185,14 +186,15 @@ export function evaluateAdoption(
   if (record.flowKind !== expected.flowKind) {
     return { adoptable: false, mismatch: "flowKind" };
   }
-  // The owner, exactly. Same-kind peers are two owners: a child one instance
-  // derived is not adoptable by another instance of the same definition, and a
-  // legacy child with no stored owner belongs to its kind's singleton alone.
-  const ownerMatches =
-    record.flowId != null
-      ? record.flowId === expected.flowId
-      : expected.flowCardinality === "singleton";
-  if (!ownerMatches) {
+  // The owner, exactly, on the one stored-owner interpretation: same-kind
+  // peers are two owners, and a legacy child with no stored owner belongs to
+  // its kind's singleton alone.
+  if (
+    !ownsRecord(
+      { kind: expected.flowKind, id: expected.flowId, cardinality: expected.flowCardinality },
+      record
+    )
+  ) {
     return { adoptable: false, mismatch: "flowId" };
   }
   if (record.userId !== expected.userId) {

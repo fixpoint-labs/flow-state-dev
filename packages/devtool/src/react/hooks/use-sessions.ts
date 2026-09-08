@@ -1,15 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
-import type { SessionSummary } from "@flow-state-dev/client";
+import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
 
-export function useSessions(flowKind: string | null) {
+/**
+ * Sessions of one flow instance. A collection member's rows are filed under
+ * its exact id, so they are listed by `flowId`; a singleton lists by kind,
+ * which also finds sessions saved before owners were recorded. `flow.id` is
+ * the address every route takes either way.
+ */
+export function useSessions(flow: Pick<FlowListEntry, "id" | "cardinality"> | null) {
   const { sessionClient, recoveryClient, config } = useDevTool();
+  const flowId = flow?.id ?? null;
+  const cardinality = flow?.cardinality;
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!flowKind) {
+    if (!flowId) {
       setSessions([]);
       return;
     }
@@ -28,7 +36,7 @@ export function useSessions(flowKind: string | null) {
           });
       }
       const result = await sessionClient.listSessions({
-        flowKind,
+        ...(cardinality === "collection" ? { flowId } : { flowKind: flowId }),
         userId: config.userId,
       });
       setSessions(result);
@@ -37,17 +45,17 @@ export function useSessions(flowKind: string | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [sessionClient, recoveryClient, flowKind, config.userId]);
+  }, [sessionClient, recoveryClient, flowId, cardinality, config.userId]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   const createSession = useCallback(async (): Promise<string | null> => {
-    if (!flowKind) return null;
+    if (!flowId) return null;
     try {
       const detail = await sessionClient.createSession({
-        flowKind,
+        flowKind: flowId,
         userId: config.userId,
       });
       await refresh();
@@ -56,7 +64,7 @@ export function useSessions(flowKind: string | null) {
       setError(err instanceof Error ? err.message : "Failed to create session");
       return null;
     }
-  }, [sessionClient, flowKind, config.userId, refresh]);
+  }, [sessionClient, flowId, config.userId, refresh]);
 
   return { sessions, isLoading, error, refresh, createSession };
 }

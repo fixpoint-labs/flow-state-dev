@@ -126,8 +126,11 @@ for (const child of children) {
 ```
 
 Each row is a `ChildSessionSummary`: `id`, `parentSessionId`, `createdAt`,
-`updatedAt`, and the optional `topic`, `coordinate`, and `status`. That is the whole
-row — the server sends this named field set rather than a session record. `topic`
+`updatedAt`, and the optional `flowId`, `topic`, `coordinate`, and `status`. That is
+the whole row — the server sends this named field set rather than a session record.
+`flowId` is the instance that owns the child, the address to read it through when it
+was dispatched into another instance; absent on a child written before owners were
+recorded. `topic`
 is the key the child was derived from and `coordinate` the entry it was dispatched
 to; both are display labels, nothing identifies or authorizes from them, and a row
 can arrive without either. How legible `topic` is depends on what the flow keyed on,

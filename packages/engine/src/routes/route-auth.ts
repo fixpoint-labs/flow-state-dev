@@ -22,7 +22,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { PrincipalResolutionError } from "../transports/errors";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
-import { jsonResponse, loadTenantSession } from "./route-utils";
+import { jsonResponse, loadTenantSession, refuseUnattributedRecord } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 /** Wiring the guard needs; all of it is already built by `createFlowRouteHandlers`. */
@@ -163,10 +163,24 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
   }
 }
 
-/** The instance a stored record belongs to, or `undefined` when its owner cannot be resolved. */
-function ownerFlowOf(ctx: RouteAuthContext, record: OwnedRecord): FlowInstance | undefined {
+/**
+ * The instance a stored record belongs to. Absent when its owner is not in
+ * this process, which falls to the host resolver below exactly as an
+ * unregistered kind always did. Ambiguous legacy history is different: a
+ * collection's ownerless row has NO instance whose authentication could
+ * govern it, and letting it fall to the host resolver would serve an
+ * authenticated collection's history to whoever the host admits. It is
+ * refused here with the same `409 migration-required` the record routes
+ * answer, before any resolver is picked.
+ */
+function ownerFlowOf(
+  ctx: RouteAuthContext,
+  record: OwnedRecord
+): { flow?: FlowInstance; denied?: Response } {
   const owner = resolveRecordOwner(ctx.registry, record);
-  return owner.ok ? owner.flow : undefined;
+  if (owner.ok) return { flow: owner.flow };
+  const denied = refuseUnattributedRecord(ctx.registry, record);
+  return denied === undefined ? {} : { denied };
 }
 
 /** Whether `flow` configures a resolver that is not the framework default. */
@@ -240,7 +254,9 @@ export async function authorizeManagementRoute(
         ctx.tenantId
       );
       if (session === undefined) return ALLOWED;
-      governing = ownerFlowOf(ctx, session);
+      const resolved = ownerFlowOf(ctx, session);
+      if (resolved.denied !== undefined) return { denied: resolved.denied };
+      governing = resolved.flow;
       owner = session.userId;
       sessionId = subject.sessionId;
       break;
@@ -248,7 +264,9 @@ export async function authorizeManagementRoute(
     case "request": {
       const record = await ctx.stores.request.get(subject.requestId);
       if (record !== undefined) {
-        governing = ownerFlowOf(ctx, record);
+        const resolved = ownerFlowOf(ctx, record);
+        if (resolved.denied !== undefined) return { denied: resolved.denied };
+        governing = resolved.flow;
         owner = record.userId;
         sessionId = record.sessionId;
         break;
@@ -261,7 +279,9 @@ export async function authorizeManagementRoute(
       // letting it through unchecked.
       const active = await ctx.stores.activeRequests.get(subject.requestId);
       if (active === undefined) return ALLOWED;
-      governing = ownerFlowOf(ctx, active);
+      const resolved = ownerFlowOf(ctx, active);
+      if (resolved.denied !== undefined) return { denied: resolved.denied };
+      governing = resolved.flow;
       owner = active.userId;
       sessionId = active.sessionId;
       break;

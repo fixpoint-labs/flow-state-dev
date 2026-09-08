@@ -17,7 +17,8 @@ import {
   getString,
   jsonResponse,
   loadTenantSession,
-  parseJsonBody
+  parseJsonBody,
+  refuseUnattributedRecord
 } from "./route-utils";
 import {
   resolveSessionStorageKey,
@@ -111,6 +112,8 @@ export async function handleGetSession(
       error: `Unknown session "${route.sessionId}"`
     });
   }
+  const unattributed = refuseUnattributedRecord(ctx.registry, session);
+  if (unattributed !== undefined) return unattributed;
 
   return jsonResponse(200, {
     // Surface the bare session id, not the namespaced storage key (FIX-682).
@@ -254,6 +257,8 @@ export async function handleDeleteSession(
       error: `Unknown session "${route.sessionId}"`
     });
   }
+  const unattributed = refuseUnattributedRecord(ctx.registry, existing);
+  if (unattributed !== undefined) return unattributed;
 
   // Delete per-resource content and state first — if either fails, the session
   // record still exists and the operation can be retried. The reverse (orphaned
@@ -281,6 +286,8 @@ export async function handlePatchSessionMetadata(
       error: `Unknown session "${route.sessionId}"`
     });
   }
+  const unattributed = refuseUnattributedRecord(ctx.registry, session);
+  if (unattributed !== undefined) return unattributed;
 
   const body = await parseJsonBody(request);
   const now = Date.now();
@@ -319,6 +326,8 @@ export async function handleListSessionRequests(
       error: `Unknown session "${route.sessionId}"`
     });
   }
+  const unattributed = refuseUnattributedRecord(ctx.registry, session);
+  if (unattributed !== undefined) return unattributed;
 
   const url = new URL(request.url);
   // Summary listing omits full item logs by default (FIX-685). Inspection
