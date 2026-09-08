@@ -560,7 +560,7 @@ export function resolveUserStorageKey(userId, flow): string {
 }
 ```
 
-The exported helpers take an instance-bearing shape: a caller holding only `{ kind, isolateUserState }` passes `{ id: flow.id, isolateUserState }` instead. `toIsolationFlow` in the same module is the one coercion the persistence-facing callers share, so the `/state` route, the resource helpers and the execution context cannot derive different keys for one request.
+The exported helpers take an instance-bearing shape: a caller holding only `{ kind, isolateUserState }` passes `{ id: flow.id, isolateUserState }` instead. Later reads (`/state`, the resource routes, the debug snapshot) go through `getPersistedData` after the owner is resolved, so they cannot derive different keys for one request.
 
 **Resources** resolve a `scopeId` per resource from their effective isolation (the resource's `flowIsolation` if set, else the flow default):
 

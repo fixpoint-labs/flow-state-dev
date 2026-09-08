@@ -6,13 +6,9 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
-import { toBareStates } from "../stores/resource-state-views";
 import {
-  mergeScopeReads,
   resolveOrgStorageKey,
-  resolveUserStorageKey,
-  resourceScopeIds,
-  toIsolationFlow
+  resolveUserStorageKey
 } from "../stores/scope-keys";
 import {
   resolveOwnerFlow,
@@ -28,8 +24,10 @@ import {
   sortItems
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
-import { buildExternalResourceContextFromSession } from "../resources/internal";
-import { readSessionScopeWithLineage } from "../resources/lineage-scope";
+import {
+  buildExternalResourceContextFromSession,
+  getPersistedData
+} from "../resources/internal";
 
 const DEFAULT_STATE_ITEMS_LIMIT = 100;
 
@@ -126,47 +124,18 @@ export async function handleGetSessionState(
     totalItems = aggregatedItems.length;
     aggregatedItems = aggregatedItems.slice(offset, offset + limit);
   }
-  // Resource content is canonical in ContentStore (FIX-347); resource state is
-  // canonical in ResourceStateStore (FIX-689). Both are keyed per-resource,
-  // separate from the scope record.
-  //
-  // FIX-735: user/org resources key per isolation bucket (bare id when shared,
-  // `{identityId}:{flow.id}` when isolated), so read every declared bucket and merge.
-  // The snapshot/clientData builders filter to declared configs, so other
-  // flows' shared rows under the bare key never leak in. The reads are keyed
-  // off the identity id, not the scope record — a shared resource at the bare
-  // id stays visible even when this flow's (flow-flag) scope record sits at a
-  // different key or doesn't exist yet.
-  //
-  // FIX-1323: the isolated bucket is the owner INSTANCE's, resolved once above
-  // and reused for the scope records and both resource stores below — the same
-  // coercion `getPersistedData` uses, so one request never resolves two owners.
-  const isoFlow = toIsolationFlow(flow);
-  const userScopeIds = resourceScopeIds(session.userId, isoFlow, "user");
-  const orgScopeIds =
-    session.orgId !== undefined ? resourceScopeIds(session.orgId, isoFlow, "org") : [];
-
-  // FIX-1068: session scope reads its own rows, with any resource declared
-  // `sharedToLineage` taken from the lineage root instead — the same view a
-  // block resolves through `ctx.resources`.
-  const [sessionContent, userContent, orgContent] = await Promise.all([
-    readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeType, scopeId) =>
-      ctx.stores.content.getAll(scopeType, scopeId)
-    ),
-    mergeScopeReads(userScopeIds.map((id) => ctx.stores.content.getAll("user", id))),
-    mergeScopeReads(orgScopeIds.map((id) => ctx.stores.content.getAll("org", id)))
+  const persistCtx = { registry: ctx.registry, stores: ctx.stores };
+  const [sessionPersisted, userPersisted, orgPersisted] = await Promise.all([
+    getPersistedData(persistCtx, flow, route.sessionId, "session", ctx.tenantId),
+    getPersistedData(persistCtx, flow, route.sessionId, "user", ctx.tenantId),
+    getPersistedData(persistCtx, flow, route.sessionId, "org", ctx.tenantId)
   ]);
-  const [sessionState, userState, orgState] = await Promise.all([
-    readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeType, scopeId) =>
-      ctx.stores.resourceState.getAll(scopeType, scopeId).then(toBareStates)
-    ),
-    mergeScopeReads(
-      userScopeIds.map((id) => ctx.stores.resourceState.getAll("user", id).then(toBareStates))
-    ),
-    mergeScopeReads(
-      orgScopeIds.map((id) => ctx.stores.resourceState.getAll("org", id).then(toBareStates))
-    )
-  ]);
+  const sessionContent = sessionPersisted?.content ?? {};
+  const userContent = userPersisted?.content ?? {};
+  const orgContent = orgPersisted?.content ?? {};
+  const sessionState = sessionPersisted?.resources ?? {};
+  const userState = userPersisted?.resources ?? {};
+  const orgState = orgPersisted?.resources ?? {};
 
   // FIX-435: partition the flat flow.resources map back into per-scope
   // buckets so the existing per-scope storage helpers and snapshot builders
