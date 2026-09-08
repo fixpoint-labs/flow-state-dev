@@ -1015,7 +1015,36 @@ score this epic as cheaper than it was. Recorded as a fact, **not** as a propose
 no measured escape to justify slowing every PR, and the merge call is the EM posture working as
 designed. Claim 1 below is how it gets settled.
 
-**Escapes are unmeasured, not zero.** The chain merged the same day this entry was written.
+### Claim 1 was run before this entry merged, and it found an escape
+
+The re-scan below was not deferred to next cycle: an adversarial review was run over exactly the
+four unreviewed ranges in the table above, the same day. The pre-registered method (*look for
+post-merge fix commits naming the issues*) would have measured **zero** — nobody had fixed
+anything, because nobody had looked. Re-reviewing the unreviewed code instead found **two live
+defects sitting in `main`**, both in #1653's unreviewed `b7214b3f6`, the commit whose whole
+purpose was closing this class's doors:
+
+| # | Defect | Class |
+|---|---|---|
+| 1 | A block whose `flowConfigSchema` names a setting inside a nested object is refused by every flow. Zod strips at every level, so a narrower nested requirement parses to a smaller nested object, and the whole-object comparison read that narrowing as contributing. The flow could then be neither minted nor registered bare, since the same predicate answers the blueprint's `requiresConfig` probe | convergence — the rule *"stripping is not contributing"* honoured at the top level and not at the levels below it |
+| 2 | The check on dynamically resolved tools read `flowConfigSchema` off the top-level tools only, while the definition-time walk descends through composition and static tools. A needy block inside a tool was checked when the tool was static and not when a function returned it — offered to the model and run against a bag it had declared it could not accept | **fail-quiet, and the carrier-axis sub-shape exactly** |
+
+**A correction to the table above, from the same scan:** it is **four** PRs that merged unread,
+not three. #1646 *looks* reviewed at its merged head — a `cursor[bot]` comment landed on
+`32690a0ab` six minutes before the merge — but that was the visual-walkthrough automation, whose
+body is a mermaid diagram and a canvas link, not a defect-finding pass. Three distinct automations
+post under one bot identity, and scoring by author rather than by what the review *does* counts a
+diagram as coverage. Rebase equivalence was verified by normalised patch content, not by SHA.
+
+**What this settles.** The low round count is no longer separable-in-principle; it is now measured
+on one side. Merging at round two on this chain **did** leave real defects in `main`, and both are
+in the family the epic was catalogued around. Fixed in FIX-1336; the fix's own tests assert the
+static and dynamic carriers side by side.
+
+**What it does not settle.** Two defects on one chain is an escape, not a rate. Both were found by
+one deliberate re-review that cost more than a review round would have — this measures the *cost of
+not re-reviewing*, not the general escape rate, and a gate on every PR still is not justified by
+n=1 chain.
 
 ### Scoring the previous cycles' fixes
 
@@ -1033,11 +1062,12 @@ designed. Claim 1 below is how it gets settled.
   class, this is the strongest available evidence that the remaining work on this family is
   mechanism, not wording.
 
-### Upstream fix — one, and it is not about the dominant class
+### Upstream fixes — two: one uncovered class, and one condition that fired
 
 | # | Fix | Altitude | Targets | What it can do |
 |---|---|---|---|---|
 | A | **`epic-lifecycle` gains one bullet: *Blind by design — so check, don't infer.*** Never re-dispatch a row on elapsed silence — look for evidence of life first (worktree head, branch on `origin`). Never promote a reviewer's restructuring ask to an instruction before the number behind it exists (BP-003). | skill, coordinator | two coordination incidents this epic, neither covered by any tenet, BP or skill | **the only genuinely uncovered class here.** Score it on whether a live worker is duplicated again |
+| B | **`write-block-tests` gains *Parameterize over carriers, not just over kinds*** — a declarative slot is found by code that WALKS to it, and the same declaration arrives by several carriers (action root, child block, static tool, tool returned at run time). Cover them in one `describe.each`, or assert two side by side, so a walk that stops one level short fails a test. Plus a coverage-checklist line. | skill, implementer | the fail-quiet / carrier-axis class — **not** as prose naming the class, but as a test shape at the point the slot is read | the pre-registered condition fired: score it on whether a carrier-shaped defect reaches `main` again |
 
 **Why the skill and not the `epic-wake` script.** Dedupe is normally the script's remit, but the
 check that settles this one is a filesystem read (a worktree head), and the script cannot read
@@ -1056,15 +1086,20 @@ sample and excluded from every rate above.**
 
 ### Dropped
 
-- **A BP or tenet clause for the fail-quiet / convergence class.** The highest-signal pattern in
-  the epic and still dropped, on three counts: tenets 5 and 7 already name it in the
+- **A BP or tenet clause for the fail-quiet / convergence class — still dropped, and the
+  reasoning survived the escape.** Three counts stand: tenets 5 and 7 already name it in the
   always-loaded layer, so a new entry is a near-duplicate that weakens both; tenet 5 already
   carries three parallel paragraphs of the same arithmetic and a fourth is the checklist growth
   tenet 3 forbids; and cycles 4, 5 and 6 each concluded that prose naming this family does not
   deter it — cycle 5 saw the class recur inside the remedy for it, within the hour. **A fourth
-  consecutive prose fix would be the instrument justifying itself.** The carrier-axis sub-shape
-  above is recorded here for the next cycle; if it recurs, the case is for a *mechanism*
-  (a parameterized carrier test at the point a declarative slot is added), not a sentence.
+  consecutive prose fix would be the instrument justifying itself.**
+
+  This entry was written recommending *no change of any kind*, on the added ground that review had
+  caught every instance before merge. **That ground is gone** — claim 1 found a carrier-shaped
+  instance in `main` — and the same paragraph pre-registered what to do about it: *if it recurs,
+  the case is for a mechanism, not a sentence.* So the prose fix stays dropped and fix B above
+  takes its place. The distinction is the whole point: fix B is not a rule saying "watch out for
+  fail-quiet", it is a test shape at the one place the slot is read.
 - **An upstream fix for the repeated docs-consolidation ask.** Verified: four reviewers raised it
   independently on #1640 (~30 pages), #1646, #1649 and #1653, and each was deferred to
   `polish-docs` at the wrap. **The deferral is the right standing answer** — consolidating from
@@ -1087,12 +1122,13 @@ sample and excluded from every rate above.**
 
 ### Claims to test next cycle
 
-1. **Does an escape appear on this chain?** Five PRs merged the same day, three on heads no
-   automated reviewer read. Re-scan #1640/#1646/#1649/#1653 for post-merge fix commits naming
-   FIX-1321/1322/1323/1324/1331. **Baseline to beat: 0 measured escapes out of 4 merged
-   implementation PRs, with the escape column admittedly unmeasured at write time.** This is
-   what separates "rounds fell because the loop converged" from "rounds fell because we merged
-   at round two."
+1. ~~**Does an escape appear on this chain?**~~ **Answered within the cycle — two defects, both
+   in `main`, both carrier-shaped.** See *Claim 1 was run before this entry merged* above. What
+   carries forward is the narrower question fix B is scored on: **does a carrier-shaped defect
+   reach `main` again, on a chain whose tests were written after fix B landed?** Note for whoever
+   scores it that the pre-registered method here would have returned a false zero — searching for
+   post-merge *fix commits* only finds defects somebody already noticed. Re-review the unread
+   range instead."
 2. **Convergence as a share of findings, after the epic that catalogued it.** It is ~40% of all
    findings and ~two thirds of `missed-edge-case` here, with tenet 5 in force since cycle 1.
    **Score which agent caught it** — if reviewers keep finding it and authors never do, the
