@@ -1618,6 +1618,11 @@ export async function runActionInternal<
             suspensionId: suspendError.suspensionId,
             requestId,
             flowKind: options.flow.kind,
+            // The exact copy that suspended. An operator resolving this from
+            // outside the run has only the record to go on, and a kind names a
+            // family — resuming through it would re-enter whichever instance the
+            // registry holds under that name.
+            flowId: options.flow.id,
             actionName: options.actionName,
             sessionId: options.sessionId,
             userId: options.userId,

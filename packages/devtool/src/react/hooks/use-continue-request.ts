@@ -25,7 +25,14 @@ import {
 
 export type UseContinueRequestOptions = {
   recoveryClient: RecoveryClient;
-  flowKind: string | null;
+  /** The exact instance that owns the interrupted request. */
+  flowId: string | null;
+  /**
+   * The workspace visit this continuation belongs to. In the owner token
+   * because instance and session can both come back to the values they had —
+   * leaving A for B and returning — while the visit cannot.
+   */
+  ownerToken?: number;
   sessionId: string | null;
   /**
    * Called whenever the continuation stream's merged view changes. `items` is
@@ -52,12 +59,12 @@ export type UseContinueRequestResult = {
 };
 
 export function useContinueRequest(options: UseContinueRequestOptions): UseContinueRequestResult {
-  const { recoveryClient, flowKind, sessionId, onItems, onSettled } = options;
+  const { recoveryClient, flowId, ownerToken, sessionId, onItems, onSettled } = options;
   const [activeIds, setActiveIds] = useState<ReadonlySet<string>>(new Set());
   const handlesRef = useRef<Map<string, RequestStreamHandle>>(new Map());
 
-  // Owner token (bumped whenever flowKind/sessionId changes) so a `/continue`
-  // POST still in flight when the caller switches flow/session can detect,
+  // Owner token (bumped whenever the workspace moves) so a `/continue` POST
+  // still in flight when the caller switches instance/session can detect,
   // after its await, that it's no longer for the current owner and bail
   // before wiring a handle or calling onItems/onSettled into the new view.
   // The unmount/switch cleanup effect below only closes handles that already
@@ -66,7 +73,7 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
   const ownerRef = useRef(0);
   useEffect(() => {
     ownerRef.current += 1;
-  }, [flowKind, sessionId]);
+  }, [flowId, ownerToken, sessionId]);
 
   const stop = useCallback(
     (requestId: string) => {
@@ -85,7 +92,7 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
 
   const continueRequest = useCallback(
     async (requestId: string, existingItems: OutputItem[]) => {
-      if (!flowKind || !sessionId) return;
+      if (!flowId || !sessionId) return;
 
       // Mark this row as continuing BEFORE the POST resolves, not after — the
       // per-row guard (`isContinuing`) must cover the pending-request window
@@ -97,7 +104,9 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
       let response: Response;
       try {
         response = await recoveryClient.continueStream({
-          flowKind,
+          // The client's address slot keeps its historical name; the value is
+          // the exact owning instance.
+          flowKind: flowId,
           sessionId,
           requestId,
           includeTrace: true,
@@ -177,7 +186,7 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
 
       handlesRef.current.set(requestId, handle);
     },
-    [flowKind, sessionId, recoveryClient, onItems, stop],
+    [flowId, sessionId, recoveryClient, onItems, stop],
   );
 
   const isContinuing = useCallback((requestId: string) => activeIds.has(requestId), [activeIds]);
@@ -202,7 +211,7 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
         return next;
       });
     };
-  }, [flowKind, sessionId]);
+  }, [flowId, ownerToken, sessionId]);
 
   return { continueRequest, isContinuing };
 }

@@ -33,6 +33,15 @@ export interface SuspensionRecord {
   suspensionId: string;
   requestId: string;
   flowKind: string;
+  /**
+   * The flow instance that owns the suspended run — the address a resume must
+   * re-enter it through. Two copies of one kind suspend independently, so the
+   * kind alone does not say which one is waiting. Absent on a record persisted
+   * before owners were recorded; guard with `== null` (BP-030), falling back to
+   * `flowKind`, which is the correct address for a singleton and the only one
+   * such a record ever had.
+   */
+  flowId?: string;
   actionName: string;
   sessionId?: string;
   userId: string;

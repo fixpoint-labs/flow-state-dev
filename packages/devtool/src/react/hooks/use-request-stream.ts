@@ -6,6 +6,9 @@
  * RAF; status transitions flush immediately so the request badge updates
  * without a frame's lag. The DevTool always GET-streams by request id (with
  * `?include=trace`) and shows every item — it does not pass an `itemFilter`.
+ *
+ * The stream is addressed to an exact flow INSTANCE and retires with the
+ * workspace visit, so B's stream can never be served by the wire A opened.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem, RequestStatus, RequestStatusEvent } from "@flow-state-dev/core/items";
@@ -62,8 +65,19 @@ function deriveStreamStatus(status: RequestStatus): StreamStatus {
 }
 
 export type UseRequestStreamOptions = {
-
-  flowKind: string | null;
+  /**
+   * The EXACT instance that owns the request. It is the address the stream URL
+   * is built from, so a same-kind peer's id here would open the wrong copy's
+   * stream — or, more often, 404.
+   */
+  flowId: string | null;
+  /**
+   * The workspace visit this stream belongs to. In the connect effect's deps so
+   * a transition tears the wire down and rebuilds it: a stream is a live
+   * connection, and leaving instance A for B and returning must not be served by
+   * the socket A opened.
+   */
+  ownerToken?: number;
   requestId: string | null;
   startingAfter?: number;
   lastEventId?: string;
@@ -89,7 +103,7 @@ export type UseRequestStreamResult = {
 };
 
 export function useRequestStream(options: UseRequestStreamOptions): UseRequestStreamResult {
-  const { flowKind, requestId, startingAfter, lastEventId, enabled = true, reconnectToken, onSessionMetadataChanged } = options;
+  const { flowId, ownerToken, requestId, startingAfter, lastEventId, enabled = true, reconnectToken, onSessionMetadataChanged } = options;
   const { baseUrl, config } = useDevTool();
   const bearerToken = config.bearerToken;
   const [streamState, setStreamState] = useState<StreamState | null>(null);
@@ -169,7 +183,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
   useEffect(() => {
     const store = storeRef.current!;
 
-    if (!enabled || !flowKind || !requestId) {
+    if (!enabled || !flowId || !requestId) {
       close();
       if (!requestId) {
         requestIdRef.current = null;
@@ -197,7 +211,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
 
     const binder = bindStoreToCallbacks(store, { onChange });
 
-    const handle = connectRequestStream(flowKind, requestId, {
+    const handle = connectRequestStream(flowId, requestId, {
       startingAfter,
       lastEventId,
       ...binder,
@@ -232,7 +246,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         rafRef.current = null;
       }
     };
-  }, [flowKind, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, bearerToken, close, scheduleFlush, flushNow, buildSnapshot, onSessionMetadataChanged]);
+  }, [flowId, ownerToken, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, bearerToken, close, scheduleFlush, flushNow, buildSnapshot, onSessionMetadataChanged]);
 
   const items = useMemo(
     () => streamState

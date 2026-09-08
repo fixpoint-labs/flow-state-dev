@@ -9,7 +9,13 @@ import { readLastAction, writeLastAction } from "../../config";
 import { SchemaForm } from "./schema-form";
 
 type ActionBarProps = {
-  flowKind: string | null;
+  /**
+   * The exact instance the dispatch is addressed to, and the key the
+   * last-used action is remembered under. Two copies of a kind declare the same
+   * actions but run different code, so remembering per kind would carry one
+   * copy's choice onto the other.
+   */
+  flowId: string | null;
   sessionId: string | null;
   availableActions: string[];
   actionSchemas?: Record<string, ActionInputSchema>;
@@ -59,7 +65,7 @@ function buildInputFromForm(
 }
 
 export function ActionBar({
-  flowKind,
+  flowId,
   sessionId,
   availableActions,
   actionSchemas,
@@ -80,12 +86,12 @@ export function ActionBar({
       setSelectedAction((prev) => prev === "" ? prev : "");
       return;
     }
-    const persisted = flowKind ? readLastAction(flowKind) : null;
+    const persisted = flowId ? readLastAction(flowId) : null;
     const target = persisted && availableActions.includes(persisted)
       ? persisted
       : availableActions[0];
     setSelectedAction((prev) => prev === target ? prev : target);
-  }, [availableActions, flowKind]);
+  }, [availableActions, flowId]);
 
   // Derive current schema reactively
   const currentSchema = actionSchemas?.[selectedAction];
@@ -127,11 +133,11 @@ export function ActionBar({
   const handleActionChange = (action: string) => {
     initializedRef.current = "";
     setSelectedAction(action);
-    if (flowKind) writeLastAction(flowKind, action);
+    if (flowId) writeLastAction(flowId, action);
   };
 
   const handleSend = useCallback(async () => {
-    if (!selectedAction || !flowKind || !sessionId) return;
+    if (!selectedAction || !flowId || !sessionId) return;
     // Remember which field is focused so we can restore it after reset.
     const activeEl = document.activeElement as HTMLElement | null;
     const focusedField = activeEl?.closest("[data-field]")?.getAttribute("data-field");
@@ -161,7 +167,7 @@ export function ActionBar({
         setJsonError(err.message);
       }
     }
-  }, [selectedAction, flowKind, sessionId, inputMode, jsonInput, formValues, currentSchema, onSendAction]);
+  }, [selectedAction, flowId, sessionId, inputMode, jsonInput, formValues, currentSchema, onSendAction]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !isSending) {
@@ -170,7 +176,7 @@ export function ActionBar({
     }
   };
 
-  const disabled = !flowKind || !sessionId || isSending;
+  const disabled = !flowId || !sessionId || isSending;
 
   return (
     <div className="space-y-2 rounded-md border border-slate-800 bg-slate-900/40 p-2">

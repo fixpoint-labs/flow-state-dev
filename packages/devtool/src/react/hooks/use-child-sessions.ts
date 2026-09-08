@@ -25,7 +25,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SessionClient, ChildSessionSummary } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
-import { useReadFence } from "./use-read-fence";
+import { describeReadError } from "../lib/instance-ownership";
+import { useWorkspaceFence } from "./use-workspace-fence";
 
 /**
  * What is known about rows beyond the page on screen.
@@ -135,7 +136,7 @@ export type UseChildSessionsResult = {
 };
 
 export function useChildSessions(sessionId: string | null): UseChildSessionsResult {
-  const { sessionClient } = useDevTool();
+  const { sessionClient, workspaceToken } = useDevTool();
   const [childSessions, setChildSessions] = useState<ChildSessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -170,7 +171,7 @@ export function useChildSessions(sessionId: string | null): UseChildSessionsResu
   // The reset below is now bookkeeping: it drops the retired data so nothing
   // holds it, and correctness no longer waits on it.
   const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
-  const fence = useReadFence([sessionId, sessionClient], () => {
+  const fence = useWorkspaceFence([sessionId], () => {
     setChildSessions([]);
     setError(null);
     setTruncation("unknown");
@@ -190,7 +191,7 @@ export function useChildSessions(sessionId: string | null): UseChildSessionsResu
     // rows without clearing it — a stale failure banner over fresh data.
     const stillCurrent = fence.begin();
     if (stillCurrent === null) return;
-    const mine: readonly unknown[] = [sessionId, sessionClient];
+    const mine: readonly unknown[] = [workspaceToken, sessionClient, sessionId];
 
     if (!sessionId) {
       if (!stillCurrent()) return;
@@ -221,9 +222,7 @@ export function useChildSessions(sessionId: string | null): UseChildSessionsResu
       // The rows already on screen are kept: a failed re-read means the list may
       // be stale, and blanking it would claim the session has no background work
       // — which is a different, and wrong, statement.
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch childSessions"
-      );
+      setError(describeReadError(err, "Failed to fetch childSessions"));
       // The read did not land, so nothing about this list is established. Left
       // alone, `truncation` kept whatever it said before — `"complete"` on a
       // first load — and a consumer holding only that was told a list it never
@@ -236,7 +235,7 @@ export function useChildSessions(sessionId: string | null): UseChildSessionsResu
       // older read resolving late cannot clear it while a newer one is running.
       if (stillCurrent()) setIsLoading(false);
     }
-  }, [fence, sessionClient, sessionId]);
+  }, [fence, workspaceToken, sessionClient, sessionId]);
 
   // Fetch on mount and whenever the read identity changes. `refresh`'s identity
   // is stable for a given session id and client.

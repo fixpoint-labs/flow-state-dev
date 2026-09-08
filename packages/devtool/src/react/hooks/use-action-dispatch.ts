@@ -4,7 +4,8 @@ import { useDevTool } from "../context/devtool-context";
 import { dispatchDevToolAction } from "../lib/client";
 
 export type UseActionDispatchResult = {
-  sendAction: (flowKind: string, sessionId: string, action: string, input: unknown) => Promise<ExecuteActionResponse | null>;
+  /** Dispatch against an exact flow instance id — never a kind. */
+  sendAction: (flowId: string, sessionId: string, action: string, input: unknown) => Promise<ExecuteActionResponse | null>;
   isSending: boolean;
   error: string | null;
   lastResponse: ExecuteActionResponse | null;
@@ -17,11 +18,11 @@ export function useActionDispatch(): UseActionDispatchResult {
   const [lastResponse, setLastResponse] = useState<ExecuteActionResponse | null>(null);
 
   const sendAction = useCallback(
-    async (flowKind: string, sessionId: string, action: string, input: unknown): Promise<ExecuteActionResponse | null> => {
+    async (flowId: string, sessionId: string, action: string, input: unknown): Promise<ExecuteActionResponse | null> => {
       setIsSending(true);
       setError(null);
       try {
-        const result = await dispatchDevToolAction(flowKind, sessionId, action, input, {
+        const result = await dispatchDevToolAction(flowId, sessionId, action, input, {
           userId: config.userId,
           baseUrl,
           bearerToken: config.bearerToken,

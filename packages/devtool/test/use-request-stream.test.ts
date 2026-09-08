@@ -108,9 +108,36 @@ describe("useRequestStream (devtool)", () => {
     vi.useRealTimers();
   });
 
+  it("opens the stream on the exact instance that owns the request", () => {
+    renderHook(() =>
+      useRequestStream({ flowId: "engineer-b", requestId: "req_1", enabled: true }),
+    );
+
+    // Addressed by id. A same-kind peer's id here streams a different copy's
+    // request, or nothing at all.
+    expect(connections[connections.length - 1]!.flowKind).toBe("engineer-b");
+  });
+
+  it("tears the wire down and rebuilds it when the workspace visit changes", () => {
+    // A stream is a live connection, not a read. Leaving instance A for B and
+    // coming back restores every visible value, so without the visit in the
+    // connect effect's identity the socket A opened would go on serving B.
+    const { rerender } = renderHook(
+      ({ ownerToken }) =>
+        useRequestStream({ flowId: "demo", requestId: "req_1", enabled: true, ownerToken }),
+      { initialProps: { ownerToken: 1 } },
+    );
+    expect(connections.length).toBe(1);
+
+    rerender({ ownerToken: 2 });
+
+    expect(connections.length).toBe(2);
+    expect(connections[0]!.closed).toBe(true);
+  });
+
   it("coalesces item/content flushes on a RAF — streamed text appears after the frame", () => {
     const { result } = renderHook(() =>
-      useRequestStream({ flowKind: "demo", requestId: "req_1", enabled: true }),
+      useRequestStream({ flowId: "demo", requestId: "req_1", enabled: true }),
     );
 
     act(() => { feed(requestCreated()); });
@@ -132,7 +159,7 @@ describe("useRequestStream (devtool)", () => {
 
   it("flushes status transitions immediately (no RAF needed)", () => {
     const { result } = renderHook(() =>
-      useRequestStream({ flowKind: "demo", requestId: "req_1", enabled: true }),
+      useRequestStream({ flowId: "demo", requestId: "req_1", enabled: true }),
     );
 
     expect(result.current.streamStatus).toBe("connecting");
@@ -144,7 +171,7 @@ describe("useRequestStream (devtool)", () => {
 
   it("derives StreamStatus from the store's RequestStatus for terminal states", () => {
     const { result } = renderHook(() =>
-      useRequestStream({ flowKind: "demo", requestId: "req_1", enabled: true }),
+      useRequestStream({ flowId: "demo", requestId: "req_1", enabled: true }),
     );
     act(() => { feed(requestCreated()); });
 
@@ -158,7 +185,7 @@ describe("useRequestStream (devtool)", () => {
 
   it("accumulates reasoning content (summary array), not just message content", () => {
     const { result } = renderHook(() =>
-      useRequestStream({ flowKind: "demo", requestId: "req_1", enabled: true }),
+      useRequestStream({ flowId: "demo", requestId: "req_1", enabled: true }),
     );
     act(() => { feed(requestCreated()); });
     act(() => {
@@ -172,7 +199,7 @@ describe("useRequestStream (devtool)", () => {
 
   it("tracks the resume cursor — lastSequenceNumber and the status-event log", () => {
     const { result } = renderHook(() =>
-      useRequestStream({ flowKind: "demo", requestId: "req_1", enabled: true }),
+      useRequestStream({ flowId: "demo", requestId: "req_1", enabled: true }),
     );
     act(() => {
       feed(requestCreated());                                  // seq 1 (not recorded — created)
@@ -188,7 +215,7 @@ describe("useRequestStream (devtool)", () => {
 
   it("surfaces transport errors as the disconnected status", () => {
     const { result } = renderHook(() =>
-      useRequestStream({ flowKind: "demo", requestId: "req_1", enabled: true }),
+      useRequestStream({ flowId: "demo", requestId: "req_1", enabled: true }),
     );
     act(() => {
       (connections[connections.length - 1]!.callbacks.onError as (e: unknown) => void)(new Error("boom"));
@@ -200,7 +227,7 @@ describe("useRequestStream (devtool)", () => {
   it("re-subscribes and resets the store when reconnectToken is bumped", () => {
     const { result, rerender } = renderHook(
       ({ token }: { token: number }) =>
-        useRequestStream({ flowKind: "demo", requestId: "req_1", enabled: true, reconnectToken: token }),
+        useRequestStream({ flowId: "demo", requestId: "req_1", enabled: true, reconnectToken: token }),
       { initialProps: { token: 0 } },
     );
 
