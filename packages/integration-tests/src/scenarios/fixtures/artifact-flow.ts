@@ -104,4 +104,4 @@ const artifactFlow = defineFlow({
   }
 });
 
-export default artifactFlow({ id: "default" });
+export default artifactFlow();

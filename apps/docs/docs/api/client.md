@@ -24,6 +24,9 @@ const client = createClient({
 });
 
 const { requestId } = await client.sendAction("chat", { message: "Hello!" });
+// `flowKind` here is the flow instance the client is bound to. The returned
+// request carries `flowId`, the instance that owns it, which is the address
+// a retry or continuation goes back through.
 await client.sendAction("chat", { message: "Hi!" }, { sessionId: "sess_1" });
 ```
 
@@ -88,6 +91,7 @@ Each row is a `ChildSessionSummary`:
 | `topic` | `string \| undefined` | Display label: the key the child was derived from. |
 | `coordinate` | `string \| undefined` | Display label for the entry running it. |
 | `status` | `ChildSessionStatus \| undefined` | Absent until the child has run something. |
+| `flowId` | `string \| undefined` | The flow instance that owns the child; the address to read it through. Absent on a child written before owners were recorded. |
 
 The table is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it.
 
@@ -199,7 +203,8 @@ if ((response.headers.get("content-type") ?? "").includes("text/event-stream")) 
 
 `resumeSuspension` error codes:
 - **400** — missing or invalid `action`, a `data` payload that fails `resumeSchema` validation (path-keyed `validationErrors` in the body), or no durability provider configured
-- **404** — unknown `flowKind`, `requestId`, or `suspensionId`
+- **404** — unknown `flowKind` (an instance id; a multi-copy flow's bare kind is unknown), `requestId`, or `suspensionId`
+- **409 `wrong-instance-session` / `wrong-instance-request`** — the addressed instance is not the one that owns the session or request
 - **409** — request is not currently suspended, or this suspension is already resolved, or a concurrent resume is in progress
 - **410** — the suspension has expired (`timeoutMs` elapsed)
 

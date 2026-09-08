@@ -71,6 +71,14 @@ console.log("ran", result.requestId);
 if (result.error) throw result.error;
 ```
 
+The `flow` you pass owns whatever the run creates: the session and the request
+are stamped with its id, and a later call through the HTTP server, the CLI or a
+worker re-enters them only through that same instance. The check runs the other
+way too. A `sessionId` that already belongs to another instance is refused with
+`FlowInstanceBindingMismatchError` before the action starts, with nothing
+written, even though no host is involved. There is no second runner that skips
+it.
+
 You already hold `stores` — they are the same registry you built to construct
 your server. `runtimeConfig` carries instance-level config (a `modelResolver`,
 settings, a logger); without a `modelResolver` in it, a generator block fails at

@@ -14,6 +14,7 @@ import {
   resourceScopeIds
 } from "../stores/scope-keys";
 import {
+  resolveOwnerFlow,
   buildResourceSnapshot,
   computeClientData,
   createScopeResources,
@@ -54,12 +55,11 @@ export async function handleGetSessionState(
     });
   }
 
-  const flow = ctx.registry.get(session.flowKind);
-  if (flow === undefined) {
-    return jsonResponse(404, {
-      error: `Unknown flow "${session.flowKind}"`
-    });
-  }
+  // The stored owner's declarations, never a kind-string lookup: two copies
+  // of one definition may declare different schemas and providers.
+  const owner = resolveOwnerFlow(ctx.registry, session);
+  if (owner.denied !== undefined) return owner.denied;
+  const flow = owner.flow;
 
   const url = new URL(request.url);
   const user = await ctx.stores.user.get(resolveUserStorageKey(session.userId, flow));

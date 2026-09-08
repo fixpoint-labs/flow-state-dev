@@ -1579,7 +1579,10 @@ export function useSession(
 
     try {
       const { newRequestId } = await recoveryClient.retry({
-        flowKind: target.flowKind,
+        // Re-enter through the record's OWNER, the instance that ran it. The
+        // stored kind is metadata; for a collection it names no instance, and
+        // for a legacy record the bound address is the singleton it implies.
+        flowKind: target.flowId ?? resolvedFlowKind,
         sessionId,
         requestId: target.id
       });

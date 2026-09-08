@@ -253,7 +253,10 @@ export type SessionTarget =
 export type DispatchSpec = {
   readonly type: BlockDispatchType;
   readonly action: string;
-  /** The flow the entry lives on, when it is not the sending request's own. */
+  /**
+   * The flow instance the entry lives on — its exact id — when it is not the
+   * sending request's own.
+   */
   readonly flowKind?: string;
   readonly session: SessionTarget;
   /** The entry's input. Validated by the entry's own schema on arrival. */

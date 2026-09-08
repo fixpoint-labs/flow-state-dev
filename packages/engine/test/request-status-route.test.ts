@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { defineFlow } from "@flow-state-dev/core";
 import { createInMemoryStores } from "../src/stores";
+import { createFlowRegistry } from "../src/registry/flow-registry";
 import { handleGetRequestStatus } from "../src/routes/request-status-routes";
 import { parseFlowRoute } from "../src/routes/parseFlowRoute";
+
+/** The addressed instances the status route resolves the URL against. */
+const registry = createFlowRegistry();
+registry.register(defineFlow({ kind: "chat", actions: {} })());
+registry.register(defineFlow({ kind: "other", actions: {} })());
 
 describe("parseFlowRoute — request_status", () => {
   it("parses GET /api/flows/:flowKind/requests/:requestId/status", () => {
@@ -37,7 +44,7 @@ describe("handleGetRequestStatus", () => {
     const response = await handleGetRequestStatus(
       new Request("http://test/api/flows/chat/requests/nope/status"),
       { kind: "request_status", flowKind: "chat", requestId: "nope" },
-      { stores }
+      { registry, stores }
     );
     expect(response.status).toBe(404);
   });
@@ -66,7 +73,7 @@ describe("handleGetRequestStatus", () => {
     const response = await handleGetRequestStatus(
       new Request("http://test/api/flows/other/requests/req_1/status"),
       { kind: "request_status", flowKind: "other", requestId: "req_1" },
-      { stores }
+      { registry, stores }
     );
     expect(response.status).toBe(404);
   });
@@ -107,7 +114,7 @@ describe("handleGetRequestStatus", () => {
     const response = await handleGetRequestStatus(
       new Request("http://test/api/flows/chat/requests/req_1/status"),
       { kind: "request_status", flowKind: "chat", requestId: "req_1" },
-      { stores }
+      { registry, stores }
     );
 
     expect(response.status).toBe(200);
@@ -147,7 +154,7 @@ describe("handleGetRequestStatus", () => {
     const response = await handleGetRequestStatus(
       new Request("http://test/api/flows/chat/requests/req_1/status"),
       { kind: "request_status", flowKind: "chat", requestId: "req_1" },
-      { stores }
+      { registry, stores }
     );
 
     expect(response.status).toBe(200);

@@ -21,7 +21,7 @@ const echoFlow = defineFlow({
       block: echoHandler,
     },
   },
-})({ id: "default" });
+})();
 
 export default createFlowState({
   flows: { echo: echoFlow },

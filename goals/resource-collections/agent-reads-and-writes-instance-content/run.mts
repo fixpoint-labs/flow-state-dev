@@ -85,7 +85,7 @@ const flow = defineFlow({
   actions: { run: { inputSchema, block: pipeline, userMessage: (i) => i.message } },
   resources,
   session: { stateSchema: z.object({}) },
-})({ id: "default" });
+})();
 
 await runGoal(async () => {
   const stores = createInMemoryStores();

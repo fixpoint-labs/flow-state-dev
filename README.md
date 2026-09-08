@@ -33,7 +33,7 @@ export default defineFlow({
     chat: { block: pipeline, userMessage: (i) => i.message },
   },
   session: { stateSchema: z.object({ messageCount: z.number().default(0) }) },
-})({ id: "default" });
+})();
 ```
 
 That's a streaming chat with conversation history, session state, and atomic counters. No transport wiring. No SSE plumbing. No retry logic. The framework handles all of it.

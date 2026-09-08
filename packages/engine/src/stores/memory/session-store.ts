@@ -86,6 +86,10 @@ export class InMemorySessionStore implements SessionStore {
         return false;
       }
 
+      if (options?.flowId !== undefined && record.flowId !== options.flowId) {
+        return false;
+      }
+
       if (options?.userId !== undefined && record.userId !== options.userId) {
         return false;
       }

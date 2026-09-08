@@ -290,15 +290,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.dispatchOperation = createDispatchOperation({ host });
   }
 
-  // Same last-resort terms, one field over: the flow lookup a cross-flow
-  // dispatch address resolves through. A router mounted without a `FlowState`
-  // has a registry of its own, and without this every cross-flow address it
-  // serves would refuse `flow-not-found` for flows sitting in that registry.
+  // Same last-resort terms, one field over: the exact-address lookup a
+  // cross-instance dispatch resolves through. A router mounted without a
+  // `FlowState` has a registry of its own, and without this every cross-flow
+  // address it serves would refuse `flow-not-found` for flows sitting in that
+  // registry.
   if (
     runtimeConfig.requestHost !== undefined &&
     runtimeConfig.requestHost.resolveFlow === undefined
   ) {
-    runtimeConfig.requestHost.resolveFlow = (kind: string) => options.registry.get(kind);
+    runtimeConfig.requestHost.resolveFlow = (address: string) => options.registry.get(address);
   }
 
   // Detect interrupted requests from previous runs on startup
@@ -371,7 +372,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       });
       if (auth.denied !== undefined) return auth.denied;
       const principal = auth.principal;
-      const anonymousFlowKinds = auth.anonymousFlowKinds;
+      const anonymousFlowIds = auth.anonymousFlowIds;
 
       if (route.kind === "not_found") {
         return jsonResponse(404, { error: "Route not found" });
@@ -382,6 +383,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           flows: options.registry.list().map((flow) => ({
             id: flow.id,
             kind: flow.kind,
+            cardinality: flow.cardinality,
             requireUser: flow.requireUser,
             requiresOrg: flow.requiresOrg,
             actions: Object.keys(flow.actions),
@@ -426,7 +428,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           stores,
           tenantId,
           principal,
-          anonymousFlowKinds
+          anonymousFlowIds
         });
       }
 
@@ -541,6 +543,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "request_status") {
         return await handleGetRequestStatus(request, route, {
+          registry: options.registry,
           stores
         });
       }
@@ -551,7 +554,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           stores,
           runtimeConfig,
           principal,
-          anonymousFlowKinds
+          anonymousFlowIds
         });
       }
 
@@ -560,7 +563,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           runtimeConfig,
-          anonymousFlowKinds
+          anonymousFlowIds
         });
       }
 

@@ -133,6 +133,6 @@ const analysisFlow = defineFlow({
   },
 });
 
-const flow = analysisFlow({ id: "default" });
+const flow = analysisFlow();
 
 export default flow;

@@ -95,7 +95,7 @@ session.refresh();
 
 The list holds 100 rows by default; pass `childSessions: { limit }` in the hook's options for a different page size. `childSessionsStale` turns `true` on a failed re-read, cleared by the next successful one, and on a `limit` above the server's cap, cleared only by asking for a page that fits. The rows already read stay either way — the hook never empties the list.
 
-`resumeLatestRequest` is a no-op unless `latestRequest.status` is `interrupted` or `failed`. The server creates a new request that re-runs the original action with the same input, and the hook auto-attaches to its stream.
+`resumeLatestRequest` is a no-op unless `latestRequest.status` is `interrupted` or `failed`. The server creates a new request that re-runs the original action with the same input, and the hook auto-attaches to its stream. The re-run goes through the flow instance recorded as the request's owner (`latestRequest.flowId`), not the provider's `flowKind`, so a session started through one copy of a flow stays with it; `continueRequest` re-enters the same way.
 
 `resumeSuspension` resolves a pending durable-execution suspension and streams the resumed continuation back into `session.items`, so the resolution renders live (no refresh) even on serverless. `requestId` is the suspended request's id (carried on the suspension item); the continuation re-enters that same id. This is the streaming resume `useSuspensions` and `<SuspensionResolverProvider>` build on.
 

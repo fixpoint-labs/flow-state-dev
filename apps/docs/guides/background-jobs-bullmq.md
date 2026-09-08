@@ -129,12 +129,14 @@ The adapter exposes the underlying runtime for direct enqueueing outside the act
 
 ```ts
 await bullmq.runtime.enqueueAction({
-  flowKind: "billing",
+  flowKind: "billing",   // the instance id: a kind, or a collection copy's own id
   actionName: "generateInvoice",
   input: { month: "2026-06" },
   userId: "system",
 });
 ```
+
+`flowKind` on the job is the instance the worker runs, carried unchanged from enqueue to processing, so a job for `review-east` runs the east copy's configuration on whichever worker claims it. A job that names a session another instance owns fails as unrecoverable, with nothing written, rather than retrying. If you turn an existing flow into a collection, drain the queue first: a job enqueued under the bare kind finds no instance once the kind stops being an address. See [Persistence](/docs/persistence/overview#who-owns-a-record) for attributing the saved sessions.
 
 The `queue` property is also exposed — useful for mounting admin consoles like Bull Board.
 

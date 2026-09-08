@@ -134,6 +134,10 @@ The schema uses:
 | `request_events` | `(request_id, sequence_number)` | Stream event replay for completed requests |
 | `request_items` | `(request_id, item_id)` | Output items produced by a request (one row per item) |
 
+### Instance ownership
+
+`sessions.flow_id` and `requests.flow_id` record the flow instance that owns a row. Both are nullable, added on open as a plain `ADD COLUMN` with a btree index, and never backfilled: a `NULL` reads as the singleton of the row's `flow_kind`, and for a kind that runs as several instances it is refused as `migration-required` until an operator attributes it offline (see the [persistence guide](https://flow-state.dev/docs/persistence/overview#who-owns-a-record) for the quiesce, inventory, backfill and read-back steps). The exact `flowId` list filter never matches a `NULL`.
+
 ### Session parentage
 
 `sessions.parent_session_id` backs the `SessionListOptions.parentage` filter. It is nullable, applied automatically on open as a plain `ADD COLUMN`, and needs no backfill — a row without it counts as a top-level session. A plain btree index on the column serves `{ parentOf }` lookups.
@@ -203,7 +207,7 @@ After the change, an item INSERT pays the TOAST cost once. An UPDATE only rewrit
 
 ## Upgrading from older versions
 
-Migration is lazy. There is no offline step and no required backfill.
+Migration of the items storage is lazy. There is no offline step and no required backfill for it. (Attributing owners to rows written before `flow_id` existed is the separate, operator-run step described under [Instance ownership](#instance-ownership).)
 
 - New requests after the deploy: items go straight to `request_items`. The `requests.data` JSONB no longer carries a `data.items` slice for new writes.
 - Legacy requests at deploy time: items still live in `data.items`. The adapter's read path returns them via a fallback that merges `request_items` rows with `data.items`, ordered by `itemIndex`.

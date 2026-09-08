@@ -73,6 +73,7 @@ function buildResources(
 
 function makeFlowFactory(options: {
   kind: string;
+  cardinality?: "singleton" | "collection";
   isolateUserState?: boolean;
   isolateOrgState?: boolean;
   userSchema?: z.ZodTypeAny;
@@ -96,6 +97,7 @@ function makeFlowFactory(options: {
 
   return defineFlow({
     kind: options.kind,
+    ...(options.cardinality !== undefined ? { cardinality: options.cardinality } : {}),
     isolateUserState: options.isolateUserState,
     isolateOrgState: options.isolateOrgState,
     actions: {
@@ -986,6 +988,7 @@ describe("cross-flow resource schema validation", () => {
       const registry = createFlowRegistry();
       const factory = makeFlowFactory({
         kind: "flow-a",
+        cardinality: "collection",
         resources: { preferences: { schema: z.object({ theme: z.string() }) } },
       });
 

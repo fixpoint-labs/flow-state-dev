@@ -361,10 +361,19 @@ async function executeDispatch(
     throw err;
   }
 
+  const flow = host.registry.get(flowKind);
+  if (flow === undefined) {
+    host.logger?.warn?.("@flow-state-dev/chat-sdk: flow instance is no longer registered; skipping", {
+      flowKind,
+    });
+    return;
+  }
+
   await ensureSessionForChat({
     stores: host.stores,
     sessionId,
-    flowKind,
+    flowKind: flow.kind,
+    flowId: flow.id,
     principal,
     event,
   });

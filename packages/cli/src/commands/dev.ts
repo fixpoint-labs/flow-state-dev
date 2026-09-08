@@ -139,7 +139,7 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
         EXIT_CONFIG_ERROR,
       );
     }
-    flowNames = [...new Set(runtime.registry.list().map((f) => f.kind))];
+    flowNames = runtime.registry.list().map((f) => f.id);
     dataLine = `config: ${resolved.configPath}`;
     // `meta` is a sync getter — no extra store init. Injected into the DevTool
     // page by serve() so a secured flow is debuggable without hand-editing
@@ -190,7 +190,7 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
         process.stderr.write(`[API error] ${context.method} ${context.path}: ${error.message}\n`);
       },
     });
-    flowNames = resolved.flows.map((f) => f.kind);
+    flowNames = resolved.flows.map((f) => f.id);
     dataLine = ".fsdev/data/fsdev.db (SQLite)";
     // The router holds these stores directly (not via a FlowState), so serve()
     // can't dispose them — the dev command closes them in its teardown.

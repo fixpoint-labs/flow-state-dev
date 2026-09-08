@@ -289,4 +289,4 @@ const knowledgeHubFlow = defineFlow({
   resources: { inbox: inboxCollection },
 });
 
-export default knowledgeHubFlow({ id: "default" });
+export default knowledgeHubFlow();

@@ -2,6 +2,7 @@
  * HTTP route handlers for request recovery (retry + active request listing).
  */
 import type { FlowRegistry } from "../registry/flow-registry";
+import { ownsRecord, resolveRecordOwner } from "../context/record-owner";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import { detectInterruptedRequests, retryRequest } from "../execution/request-recovery";
@@ -27,11 +28,11 @@ type RecoveryRouteContext = {
    */
   principal?: ResolvedPrincipal;
   /**
-   * For an anonymous cross-flow listing in a mixed app: the flow kinds that
-   * may be listed without a principal. Undefined means unrestricted. See
-   * `route-auth.ts`.
+   * For an anonymous cross-flow listing in a mixed app: the flow instance ids
+   * whose records may be listed without a principal. Undefined means
+   * unrestricted. See `route-auth.ts`.
    */
-  anonymousFlowKinds?: Set<string>;
+  anonymousFlowIds?: Set<string>;
 };
 
 type ContinueRouteContext = RecoveryRouteContext & {
@@ -89,10 +90,12 @@ export async function handleRetryRequest(
     });
   }
 
-  // Validate flow kind matches
-  if (originalRecord.flowKind !== route.flowKind) {
+  // The addressed instance must own the record. Retrying through another
+  // instance — a same-kind peer included — cannot transfer the request.
+  const retryFlow = ctx.registry.get(route.flowKind);
+  if (retryFlow === undefined || !ownsRecord(retryFlow, originalRecord)) {
     return jsonResponse(400, {
-      error: `Flow kind mismatch: request belongs to "${originalRecord.flowKind}", not "${route.flowKind}"`
+      error: `Flow mismatch: request belongs to flow instance "${originalRecord.flowId ?? originalRecord.flowKind}", not "${route.flowKind}"`
     });
   }
 
@@ -124,6 +127,7 @@ export async function handleRetryRequest(
         ? {
             requestId: route.requestId,
             flowKind: originalRecord.flowKind,
+            flowId: originalRecord.flowId,
             actionName: originalRecord.actionName,
             sessionId: originalRecord.sessionId,
             userId: originalRecord.userId,
@@ -142,7 +146,8 @@ export async function handleRetryRequest(
       status: "in_progress",
       request: {
         id: result.newRequestId,
-        flowKind: route.flowKind,
+        flowKind: originalRecord.flowKind,
+        flowId: retryFlow.id,
         actionName: originalRecord.actionName,
         status: "in_progress",
         retryOf: route.requestId
@@ -188,9 +193,10 @@ export async function handleContinueRequest(
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
-  if (originalRecord.flowKind !== route.flowKind) {
+  const continueFlow = ctx.registry.get(route.flowKind);
+  if (continueFlow === undefined || !ownsRecord(continueFlow, originalRecord)) {
     return jsonResponse(400, {
-      error: `Flow kind mismatch: request belongs to "${originalRecord.flowKind}", not "${route.flowKind}"`
+      error: `Flow mismatch: request belongs to flow instance "${originalRecord.flowId ?? originalRecord.flowKind}", not "${route.flowKind}"`
     });
   }
 
@@ -289,10 +295,14 @@ export async function handleListActiveRequests(
   // request and session ids. Reached anonymously in a mixed app, it withholds
   // the entries of any flow that authenticates instead.
   const callerId = ctx.principal?.userId;
-  const allowed = ctx.anonymousFlowKinds;
+  const allowed = ctx.anonymousFlowIds;
   const entries = all.filter((entry) => {
     if (callerId !== undefined) return entry.userId === callerId;
-    return allowed === undefined || allowed.has(entry.flowKind);
+    if (allowed === undefined) return true;
+    // Each entry is judged under its own OWNER, not its kind: an open peer of
+    // an authenticated instance must not make the latter's runs visible.
+    const owner = resolveRecordOwner(ctx.registry, entry);
+    return owner.ok && allowed.has(owner.flow.id);
   });
   const now = Date.now();
 
@@ -360,7 +370,7 @@ export async function handleCheckInterruptedRequests(
     return jsonResponse(400, { error: "staleThresholdMs must be a number" });
   }
 
-  // Reached anonymously in a mixed app, `ctx.anonymousFlowKinds` carries only
+  // Reached anonymously in a mixed app, `ctx.anonymousFlowIds` carries only
   // the flows that nothing authenticates, so the sweep leaves an authenticated
   // flow's in-flight requests untouched. Undefined means unrestricted.
   const swept = await detectInterruptedRequests({
@@ -380,7 +390,13 @@ export async function handleCheckInterruptedRequests(
     // because it only widens or narrows which heartbeat-governed entries are
     // considered, never which queued ones survive.
     queuedGraceMs: ctx.runtimeConfig.queuedGraceMs,
-    anonymousFlowKinds: ctx.anonymousFlowKinds,
+    ownedBy:
+      ctx.anonymousFlowIds === undefined
+        ? undefined
+        : (entry) => {
+            const owner = resolveRecordOwner(ctx.registry, entry);
+            return owner.ok && ctx.anonymousFlowIds!.has(owner.flow.id);
+          },
     logger: ctx.runtimeConfig.logger
   });
 

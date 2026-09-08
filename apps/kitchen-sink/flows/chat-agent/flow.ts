@@ -154,6 +154,6 @@ const chatAgentFlow = defineFlow({
   },
 });
 
-const flow = chatAgentFlow({ id: "default" });
+const flow = chatAgentFlow();
 
 export default flow;

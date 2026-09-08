@@ -365,7 +365,7 @@ async function listResources(
 
 async function handleToolsCall(
   host: InboundTransportHost,
-  flow: { kind: string; actions: Record<string, ActionConfig>; mcp?: McpConfig },
+  flow: { id: string; kind: string; actions: Record<string, ActionConfig>; mcp?: McpConfig },
   principal: ResolvedPrincipal,
   params: unknown,
   id: string | number | null,
@@ -409,7 +409,8 @@ async function handleToolsCall(
   try {
     handle = host.dispatch({
       source: MCP_TRANSPORT_SOURCE,
-      flowKind: flow.kind,
+      // The address the request arrived on — the instance's id.
+      flowKind: flow.id,
       action: target.actionKey,
       input,
       principal,

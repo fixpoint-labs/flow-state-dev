@@ -13,6 +13,7 @@ const SESSIONS_TABLE = `
 CREATE TABLE IF NOT EXISTS sessions (
   id          TEXT PRIMARY KEY,
   flow_kind   TEXT NOT NULL,
+  flow_id     TEXT,
   user_id     TEXT NOT NULL,
   org_id  TEXT,
   tenant_id   TEXT,
@@ -23,6 +24,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   data        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_flow_kind   ON sessions(flow_kind);
+-- Exact-owner listing (\`flowId\` filter). Nullable: rows written before
+-- instance ownership carry no owner and are attributed by the offline
+-- migration, never by a blanket backfill from \`flow_kind\`.
+CREATE INDEX IF NOT EXISTS idx_sessions_flow_id     ON sessions(flow_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_flow_user   ON sessions(flow_kind, user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_tenant ON sessions(user_id, tenant_id);
@@ -62,6 +67,7 @@ const REQUESTS_TABLE = `
 CREATE TABLE IF NOT EXISTS requests (
   id          TEXT PRIMARY KEY,
   flow_kind   TEXT NOT NULL,
+  flow_id     TEXT,
   user_id     TEXT NOT NULL,
   session_id  TEXT,
   org_id  TEXT,
@@ -73,6 +79,7 @@ CREATE TABLE IF NOT EXISTS requests (
   data        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_requests_flow_kind       ON requests(flow_kind);
+CREATE INDEX IF NOT EXISTS idx_requests_flow_id         ON requests(flow_id);
 CREATE INDEX IF NOT EXISTS idx_requests_session_id      ON requests(session_id);
 CREATE INDEX IF NOT EXISTS idx_requests_user_id         ON requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_org_id      ON requests(org_id);
@@ -120,6 +127,7 @@ const ACTIVE_REQUESTS_TABLE = `
 CREATE TABLE IF NOT EXISTS active_requests (
   request_id        TEXT PRIMARY KEY,
   flow_kind         TEXT NOT NULL,
+  flow_id           TEXT,
   action_name       TEXT NOT NULL,
   session_id        TEXT,
   user_id           TEXT NOT NULL,
@@ -200,6 +208,35 @@ function migrateAddTenantId(db: Database.Database): void {
       .all(tableName) as Array<{ name: string }>;
     if (!cols.some((c) => c.name === "tenant_id")) {
       db.exec(`ALTER TABLE ${tableName} ADD COLUMN tenant_id TEXT`);
+    }
+  }
+}
+
+/**
+ * Add the nullable `flow_id` column — the owning flow instance — to
+ * `sessions`, `requests` and `active_requests` tables created before instance
+ * ownership existed. Must run BEFORE the index DDL so `idx_*_flow_id` finds
+ * the column.
+ *
+ * Nullable, **no backfill**: a row from before the field is attributed by the
+ * documented offline migration, which maps each historical row to a known
+ * registered instance. A blanket `flow_id = flow_kind` would silently assign a
+ * collection's history to whichever member happens to share the kind's name.
+ * Known singleton rows need no backfill to keep working — the runtime reads a
+ * NULL owner on a singleton kind compatibly (BP-030).
+ */
+function migrateAddFlowId(db: Database.Database): void {
+  for (const tableName of ["sessions", "requests", "active_requests"]) {
+    const tableExists = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get(tableName);
+    if (tableExists === undefined) continue;
+
+    const cols = db
+      .prepare("SELECT name FROM pragma_table_info(?)")
+      .all(tableName) as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "flow_id")) {
+      db.exec(`ALTER TABLE ${tableName} ADD COLUMN flow_id TEXT`);
     }
   }
 }
@@ -553,6 +590,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   migrateAddActiveRequestsQueuedAt(db);
   migrateAddTenantId(db);
   migrateAddParentSessionId(db);
+  migrateAddFlowId(db);
   migrateAddSuspensionStatusColumns(db);
   migrateAddResourceStateVersioning(db);
 

@@ -14,20 +14,24 @@
  * through the seam. The seam does four things, in order, and refuses by name
  * at each:
  *
- * 1. **Resolve the flow, then the entry.** The address names another flow or
- *    it does not; a named one must be registered in this process —
- *    `flow-not-found` otherwise. Then `(type, action)` on that flow's own map,
- *    with no fallback — `no-entry` otherwise. For a same-flow address the
- *    `defineFlow` walk already refused an address that resolves nothing, so
- *    that check is the run-time half of the same rule, reached only by a
- *    dispatch the walk could not see (a carried core). For a **cross-flow**
- *    address it is the only half there is: `defineFlow` holds one flow's maps.
+ * 1. **Resolve the flow instance, then the entry.** The address names another
+ *    instance or it does not. An address is an exact instance id — a
+ *    singleton's kind, or a collection member's explicit id — resolved through
+ *    the registry with no fallback and no guess; `flow-not-found` when this
+ *    process has no such instance, including a collection's bare kind. An
+ *    explicit address equal to the sender's own id is the sender. Then
+ *    `(type, action)` on that instance's own map, with no fallback —
+ *    `no-entry` otherwise. For a same-instance address the `defineFlow` walk
+ *    already refused an address that resolves nothing, so that check is the
+ *    run-time half of the same rule, reached only by a dispatch the walk could
+ *    not see (a carried core). For a **cross-instance** address it is the only
+ *    half there is: `defineFlow` holds one flow's maps.
  * 2. **Resolve the session.** A `key` derives a child of the running session
  *    and mints or adopts it; an `id` names a session that must exist and be this
- *    principal's on this flow — `session-not-found` / `session-not-addressable`
- *    otherwise, never created. `{ from: true }` is the same delivery as `id`,
- *    addressed at the trusted `dispatchStamp.from` — `no-sender` when this
- *    request was not dispatched.
+ *    principal's, owned by the addressed instance — `session-not-found` /
+ *    `session-not-addressable` otherwise, never created. `{ from: true }` is the
+ *    same delivery as `id`, addressed at the trusted `dispatchStamp.from` —
+ *    `no-sender` when this request was not dispatched.
  * 3. **Build the envelope**, from values the seam derived: the dispatch type as
  *    the source, the sender's principal, tenant and org, and server-assembled
  *    provenance under `metadata.dispatch` — including, for an `id` delivery,
@@ -66,6 +70,7 @@ import type { DispatchStamp } from "../execution/dispatch-metadata";
 import type { RuntimeConfig } from "../runtime-config";
 import { resolveLineageId, resolveSessionStorageKey } from "../stores/scope-keys";
 import { deriveDispatchChildSessionId, evaluateAdoption } from "./detached-child";
+import { ownsRecord } from "./record-owner";
 import type { DispatchOperation } from "./dispatch-operation";
 import { purgeStaleResourceState } from "./ensure-session-record";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
@@ -99,15 +104,15 @@ export type RequestHostInputs = {
   /** Absent when this process executes requests but cannot dispatch one. */
   dispatchOperation?: DispatchOperation;
   /**
-   * Resolve another flow registered in this process, by kind — the flow
-   * registry, narrowed to the one question the seam asks.
+   * Resolve another flow instance registered in this process, by its exact
+   * address — the flow registry, narrowed to the one question the seam asks.
    *
-   * Only a **cross-flow** address consults it; the sending flow's own entries
-   * are resolved on `flow`, which is already here. Absent, every cross-flow
-   * address refuses `flow-not-found`, which is the honest answer for a process
-   * that cannot see past the one flow it was handed.
+   * Only a **cross-instance** address consults it; the sending instance's own
+   * entries are resolved on `flow`, which is already here. Absent, every
+   * cross-instance address refuses `flow-not-found`, which is the honest
+   * answer for a process that cannot see past the one flow it was handed.
    */
-  resolveFlow?: (kind: string) => FlowInstance | undefined;
+  resolveFlow?: (address: string) => FlowInstance | undefined;
   /**
    * The config this request runs under, handed to the dispatch operation so
    * a child inherits it rather than the host's construction-time one
@@ -195,16 +200,18 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     ) {
       return refuse("session-not-found", `no session "${sessionId}" is reachable from this request`);
     }
-    // Compared against the flow the dispatch is ADDRESSED to, not the sender's.
-    // For a same-flow address those are the same value and this is the check it
-    // always was; for a cross-flow one it is what makes the delivery land on a
-    // session of the flow whose entry is about to run it. A session of some
-    // third flow is still refused by name.
-    if (record.flowKind !== targetFlow.kind) {
+    // Owned by the instance the dispatch is ADDRESSED to, not the sender. For
+    // a same-instance address those are the same value and this is the check
+    // it always was; for a cross-instance one it is what makes the delivery
+    // land on a session the instance whose entry is about to run it actually
+    // owns. A same-kind peer's session, a third flow's, and an unattributed
+    // legacy session of a collection kind are all refused by name — addressing
+    // a session through another instance never transfers it.
+    if (!ownsRecord(targetFlow, record)) {
       return refuse(
         "session-not-addressable",
-        `session "${sessionId}" belongs to flow "${record.flowKind}", but this dispatch is ` +
-          `addressed to flow "${targetFlow.kind}"`
+        `session "${sessionId}" belongs to flow instance "${record.flowId ?? record.flowKind}", ` +
+          `but this dispatch is addressed to flow instance "${targetFlow.id}"`
       );
     }
     // Compared as two bindings, not two values that happen to be set: an
@@ -248,7 +255,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     address: { type: string; action: string },
     targetFlow: FlowInstance
   ): Promise<ResolvedSession> => {
-    const crossFlow = targetFlow.kind !== flow.kind;
+    // Instance inequality, not kind inequality: two copies of one definition
+    // are two owners, and a child one derives is not the other's.
+    const crossFlow = targetFlow.id !== flow.id;
     const childId = deriveDispatchChildSessionId(
       {
         userId: identity.userId,
@@ -257,9 +266,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         lineageId: identity.lineageId
       },
       key,
-      // Only for a cross-flow address, so every same-flow child keeps the id it
-      // has always derived — see `deriveDispatchChildSessionId`.
-      crossFlow ? targetFlow.kind : undefined
+      // Only for a cross-instance address, so every same-instance child keeps
+      // the id it has always derived — see `deriveDispatchChildSessionId`.
+      crossFlow ? targetFlow.id : undefined
     );
     const storageKey = resolveSessionStorageKey(childId, identity.tenantId);
     // A cross-flow child roots its OWN lineage instead of inheriting the
@@ -283,6 +292,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       : identity.lineageId;
     const expected = {
       flowKind: targetFlow.kind,
+      flowId: targetFlow.id,
+      flowCardinality: targetFlow.cardinality,
       userId: identity.userId,
       tenantId: identity.tenantId,
       orgId: identity.orgId,
@@ -316,6 +327,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       createdAt: ts,
       updatedAt: ts,
       flowKind: targetFlow.kind,
+      flowId: targetFlow.id,
       userId: identity.userId,
       journal: [],
       ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
@@ -402,20 +414,28 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     return resolveChildSession(spec.session.key, spec, targetFlow);
   };
 
+  const crossInstance = (targetFlow: FlowInstance): boolean => targetFlow.id !== flow.id;
+
   const seam: DispatchSeam = async (spec: DispatchSpec): Promise<DispatchOutcome> => {
-    // Which flow's maps the address resolves on. The sender's own unless the
-    // address names another — and a named one must be registered HERE: a flow
-    // deployed behind some other host is not reachable, and inventing a way to
-    // reach it would be a second delivery mechanism beside the one door.
+    // Which instance's maps the address resolves on. The sender's own unless
+    // the address names another — and a named one must be registered HERE: a
+    // flow deployed behind some other host is not reachable, and inventing a
+    // way to reach it would be a second delivery mechanism beside the one door.
+    //
+    // The address is an exact instance id. An omitted selector binds to the
+    // running instance; an explicit one equal to this instance's own id is the
+    // same thing; anything else goes to the registry as-is — including a
+    // string that happens to equal the sender's KIND, which for a collection
+    // member is another address (or none), never a shortcut back to itself.
     const targetFlow =
-      spec.flowKind === undefined || spec.flowKind === flow.kind
+      spec.flowKind === undefined || spec.flowKind === flow.id
         ? flow
         : inputs.resolveFlow?.(spec.flowKind);
     if (targetFlow === undefined) {
       return refuse(
         "flow-not-found",
-        `no flow "${spec.flowKind}" is registered in this process, so the ${spec.type} entry ` +
-          `"${spec.action}" cannot be resolved`
+        `no flow instance "${spec.flowKind}" is registered in this process, so the ${spec.type} ` +
+          `entry "${spec.action}" cannot be resolved`
       );
     }
 
@@ -451,9 +471,10 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       sessionId: session.sessionId,
       delivery: session.delivery,
       input: spec.payload,
-      // The flow the request BELONGS to — the one whose entry is about to run
-      // it, not the one that sent it.
-      flowKind: targetFlow.kind,
+      // The address of the instance the request BELONGS to — the one whose
+      // entry is about to run it, not the one that sent it. Its exact id: the
+      // host resolves the same instance from it that this seam resolved.
+      flowKind: targetFlow.id,
       // The same identity the child key was derived from, or the existing
       // session was validated against — see `DispatchOperation`.
       userId: identity.userId,
@@ -468,13 +489,14 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         dispatch: {
           type: spec.type,
           action: spec.action,
-          // The flow the entry was resolved on, stamped only when the dispatch
-          // actually crossed a flow boundary — so a reader can tell a
-          // cross-flow arrival from an ordinary one without inferring it, and
-          // an old record with neither field still reads as same-flow (BP-030).
-          // The id comes off the resolved instance rather than the address: it
-          // is what the seam actually resolved, which is the only id it knows.
-          ...(targetFlow.kind !== flow.kind
+          // The instance the entry was resolved on, stamped only when the
+          // dispatch actually crossed an instance boundary — so a reader can
+          // tell a cross-instance arrival from an ordinary one without
+          // inferring it, and an old record with neither field still reads as
+          // same-flow (BP-030). `flowId` here is the same value the request
+          // record's own top-level `flowId` carries, by construction: both come
+          // off the one instance this seam resolved.
+          ...(crossInstance(targetFlow)
             ? { flowKind: targetFlow.kind, flowId: targetFlow.id }
             : {}),
           from: {
@@ -556,10 +578,10 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       readLiveness(requestIds, {
         registry: stores.activeRequests,
         staleThresholdMs,
-        flowKind: flow.kind,
+        flow,
         principal: { userId: identity.userId, tenantId: identity.tenantId },
         isDescendantSession: (sessionId) =>
-          isDescendantSession(stores, sessionId, identity, flow.kind),
+          isDescendantSession(stores, sessionId, identity, flow),
         now: nowMs
       });
     return { host, seam };
@@ -622,7 +644,7 @@ async function isDescendantSession(
   stores: Pick<StoreRegistry, "session">,
   sessionId: string | undefined,
   identity: { userId: string; tenantId: string | undefined; sessionId: string },
-  flowKind: string
+  flow: FlowInstance
 ): Promise<boolean> {
   if (sessionId == null) return false;
   // A request may ask about work it started in its own session.
@@ -638,7 +660,7 @@ async function isDescendantSession(
     // tenant or flow even if a record somewhere claims a foreign parent.
     if (record.userId !== identity.userId) return false;
     if ((record.tenantId ?? undefined) !== identity.tenantId) return false;
-    if (record.flowKind !== flowKind) return false;
+    if (!ownsRecord(flow, record)) return false;
 
     const parent: string | undefined = record.parentSessionId ?? undefined;
     if (parent === identity.sessionId) return true;

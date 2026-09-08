@@ -117,7 +117,7 @@ const flow = defineFlow({
     drainOn: { block: boardOn.drain as never },
     drainOff: { block: boardOff.drain as never },
   },
-})({ id: "default" });
+})();
 
 const stores = createInMemoryStores();
 const runtimeConfig = { modelResolver: createModelResolver() } as never;

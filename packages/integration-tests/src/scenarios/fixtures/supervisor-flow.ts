@@ -53,4 +53,4 @@ const supervisorFlow = defineFlow({
   }
 });
 
-export default supervisorFlow({ id: "default" });
+export default supervisorFlow();

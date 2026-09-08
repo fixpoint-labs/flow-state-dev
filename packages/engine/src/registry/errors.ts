@@ -1,7 +1,82 @@
 /**
- * Error types for cross-flow schema registry validation.
+ * Error types for flow registry admission: identity (cardinality and global
+ * id) and cross-flow schema validation.
  */
 import type { CompatibilityReason } from "./schema-compat";
+
+/** Why `FlowRegistry.register` refused an instance's identity. */
+export type FlowIdentityConflictReason =
+  /** Another registered instance — of any kind — already holds this id. */
+  | "duplicate-id"
+  /** A singleton whose id is not its kind: the caller meant a collection and did not say so. */
+  | "singleton-id-mismatch"
+  /** A registered kind already has the other cardinality policy. */
+  | "mixed-cardinality"
+  /** The instance carries a cardinality that is neither policy. */
+  | "invalid-cardinality"
+  /** The instance has no usable id. */
+  | "invalid-id";
+
+export interface FlowIdentityConflictDetails {
+  reason: FlowIdentityConflictReason;
+  kind: string;
+  id: string;
+  /** For `duplicate-id`: the kind of the instance already holding the id. */
+  existingKind?: string;
+  /** For `mixed-cardinality`: the policy the kind is already registered under. */
+  existingCardinality?: string;
+}
+
+/**
+ * Thrown by `FlowRegistry.register` when an instance's identity cannot be
+ * admitted: its id is taken, it is a singleton under a custom id, or its kind
+ * is already registered under the other cardinality. Refused before any
+ * registry state is touched, so the earlier registration stays reachable.
+ *
+ * Same pattern as {@link CrossFlowSchemaConflictError}: a named class with the
+ * facts a caller might branch on, and a message that ends with the remedy.
+ */
+export class FlowIdentityConflictError extends Error {
+  readonly reason: FlowIdentityConflictReason;
+  readonly kind: string;
+  readonly id: string;
+  readonly existingKind?: string;
+  readonly existingCardinality?: string;
+
+  constructor(details: FlowIdentityConflictDetails) {
+    super(FlowIdentityConflictError.describe(details));
+    this.name = "FlowIdentityConflictError";
+    this.reason = details.reason;
+    this.kind = details.kind;
+    this.id = details.id;
+    this.existingKind = details.existingKind;
+    this.existingCardinality = details.existingCardinality;
+  }
+
+  private static describe(d: FlowIdentityConflictDetails): string {
+    switch (d.reason) {
+      case "duplicate-id":
+        return d.existingKind === d.kind
+          ? `Flow "${d.kind}" with id "${d.id}" is already registered`
+          : `Flow "${d.kind}" cannot register with id "${d.id}": that id already belongs to a ` +
+            `registered instance of flow "${d.existingKind}". Instance ids are global across kinds; ` +
+            `give one of them a distinct id.`;
+      case "singleton-id-mismatch":
+        return `Flow "${d.kind}" is a singleton but was instantiated with id "${d.id}". A singleton's ` +
+          `id is its kind. If this definition is meant to have several registered instances, ` +
+          `declare cardinality: "collection" on defineFlow(...); otherwise call the factory without an id.`;
+      case "mixed-cardinality":
+        return `Flow "${d.kind}" (id "${d.id}") declares a different flow instance cardinality ` +
+          `from the "${d.kind}" instance already registered ("${d.existingCardinality}"). ` +
+          `One kind has one policy; declare it once on the definition.`;
+      case "invalid-cardinality":
+        return `Flow "${d.kind}" (id "${d.id}") has an invalid flow instance cardinality; ` +
+          `expected "singleton" or "collection".`;
+      case "invalid-id":
+        return `Flow "${d.kind}" has no usable instance id; an id must be a non-empty string.`;
+    }
+  }
+}
 
 export type ConflictScope = "user" | "org";
 

@@ -98,7 +98,7 @@ When a request dies before it can finish — server crash, HMR reload mid-flow, 
 )}
 ```
 
-`resumeLatestRequest` is a no-op when the latest request is `completed`, `aborted`, or `in_progress` — only `interrupted` and `failed` are retryable.
+`resumeLatestRequest` is a no-op when the latest request is `completed`, `aborted`, or `in_progress` — only `interrupted` and `failed` are retryable. The retry re-enters the flow instance that owns the request, read from the record itself, so it lands on the same copy of the flow that ran it even when the provider is bound to another.
 
 ### Background work
 

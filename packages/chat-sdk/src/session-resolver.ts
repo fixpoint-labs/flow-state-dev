@@ -26,7 +26,10 @@ import type { ChatInboundEvent } from "./types";
 export interface EnsureSessionArgs {
   stores: StoreRegistry;
   sessionId: string;
+  /** The resolved instance's kind — `flow.kind`. */
   flowKind: string;
+  /** The owning instance — `flow.id`. */
+  flowId: string;
   principal: ResolvedPrincipal;
   event: ChatInboundEvent;
 }
@@ -34,13 +37,14 @@ export interface EnsureSessionArgs {
 import { ensureSessionRecord } from "@flow-state-dev/engine";
 
 export async function ensureSessionForChat(args: EnsureSessionArgs): Promise<void> {
-  const { stores, sessionId, flowKind, principal, event } = args;
+  const { stores, sessionId, flowKind, flowId, principal, event } = args;
   // One creation path (FIX-1068): it mints the lineage id and writes
   // create-if-absent, neither of which this resolver should be deciding.
   const now = Date.now();
   await ensureSessionRecord(stores, sessionId, () => ({
       id: sessionId,
       flowKind,
+      flowId,
       userId: principal.userId,
       ...(principal.orgId !== undefined ? { orgId: principal.orgId } : {}),
       state: {},

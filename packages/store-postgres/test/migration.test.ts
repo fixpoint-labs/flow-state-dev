@@ -164,6 +164,45 @@ describe("project → org schema migration (postgres)", () => {
     await pglite.close();
   });
 
+  it("adds a nullable flow_id owner column to existing sessions/requests/active_requests, with no backfill", async () => {
+    const pglite = new PGlite();
+    await pglite.exec(`
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, user_id TEXT NOT NULL,
+        org_id TEXT, tenant_id TEXT, parent_session_id TEXT, version INTEGER NOT NULL,
+        created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, data JSONB NOT NULL
+      );
+      CREATE TABLE requests (
+        id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, user_id TEXT NOT NULL,
+        session_id TEXT, org_id TEXT, tenant_id TEXT, status TEXT NOT NULL,
+        version INTEGER NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
+        data JSONB NOT NULL
+      );
+      CREATE TABLE active_requests (
+        request_id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, action_name TEXT NOT NULL,
+        session_id TEXT, user_id TEXT NOT NULL, org_id TEXT, tenant_id TEXT,
+        source TEXT NOT NULL DEFAULT 'http', input TEXT, metadata TEXT,
+        started_at BIGINT NOT NULL, last_heartbeat_at BIGINT NOT NULL, queued_at BIGINT
+      );
+    `);
+    await pglite.query(
+      `INSERT INTO sessions (id, flow_kind, user_id, version, created_at, updated_at, data) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      ["sess_legacy", "engineer", "alice", 0, 1, 1, JSON.stringify({ state: {} })]
+    );
+
+    await initializeSchema(pgliteExecutor(pglite));
+
+    expect(await columnExists(pglite, "sessions", "flow_id")).toBe(true);
+    expect(await columnExists(pglite, "requests", "flow_id")).toBe(true);
+    expect(await columnExists(pglite, "active_requests", "flow_id")).toBe(true);
+    // A pre-existing row is NOT attributed to a copy by its kind name.
+    const row = await pglite.query<{ flow_id: string | null }>(
+      `SELECT flow_id FROM sessions WHERE id = 'sess_legacy'`
+    );
+    expect(row.rows[0]?.flow_id).toBeNull();
+    await pglite.close();
+  });
+
   it("is idempotent — second call is a no-op", async () => {
     const pglite = new PGlite();
     await pglite.exec(`

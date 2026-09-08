@@ -46,4 +46,4 @@ const chatbot2Flow = defineFlow({
   },
 });
 
-export default chatbot2Flow({ id: "default" });
+export default chatbot2Flow();

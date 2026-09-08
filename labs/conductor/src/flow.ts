@@ -33,17 +33,11 @@
  * substitutes for the other: `boardId` names the board within a flow instance,
  * the collection identity partitions storage.
  *
- * **A named limit: a second instance registers, but nothing can address it.**
- * Two conductors carry two distinct flow ids, which is what keeps the registry
- * from rejecting the second registration — but no dispatch path resolves BY
- * that id. `FlowRegistry.get(kind, id?)` is called with one argument
- * everywhere in the engine (the HTTP action, session, stream, resume, state and
- * resource routes; the webhook route; the in-process dispatcher; the transport
- * host), and a kind-only lookup answers with the first instance registered
- * under that kind. So a second epic's conductor receives nothing: requests for
- * it land on the first, where the tenant gate or the phase guard refuses them.
- * Two epics need two hosts until dispatch carries an instance id, and making it
- * carry one is framework work rather than lab work.
+ * **Each conductor is addressed by its board id.** The definition declares
+ * `cardinality: "collection"`, so every instance registers under its own
+ * `boardId` and every dispatch path — the HTTP routes, the CLI, the dispatch
+ * seam, a queue worker — resolves that exact id. Two epics' conductors share
+ * one host; a request addressed to `conductor` (the bare kind) reaches neither.
  *
  * ## Why `status` is an action and not a route
  *
@@ -1033,6 +1027,10 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
 
   const defineConductor = defineFlow({
     kind: CONDUCTOR_FLOW_KIND,
+    // One conductor per epic, each addressed by its own board id — a
+    // collection, not a singleton. Declared here so the registry admits
+    // `defineConductor({ id: boardId })` and indexes it under that id.
+    cardinality: "collection",
     // The task entry the board's seat hands off to: the manager, reached by
     // the `task` dispatch the drain sends for each claimed row. `defineFlow`
     // puts it behind the board's claim gate; the flow, not the board, owns
@@ -1126,9 +1124,9 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
   //
   // `boardId` already carries `(tenant, epic)` through the owned-segment
   // grammar, so it is unique exactly where the board is and needs no new
-  // derivation. Lookup by kind alone is unaffected: `FlowRegistry.get(kind)`
-  // falls back to the first instance of that kind, which is what the CLI path
-  // (`fsdev run conductor status`) uses.
+  // derivation. It is also the instance's only address: the registry resolves
+  // an exact id, so `fsdev run <boardId> status` reaches this board and the
+  // bare kind `conductor` reaches nothing.
   const flow = defineConductor({ id: boardId });
 
   // **The host's shutdown budget, derived rather than guessed.** Exposed

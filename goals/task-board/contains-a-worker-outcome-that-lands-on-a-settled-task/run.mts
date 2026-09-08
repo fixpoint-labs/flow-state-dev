@@ -102,7 +102,7 @@ await runGoal(async () => {
         }).step(board.drain),
       },
     },
-  })({ id: "default" });
+  })();
 
   const { stores, runtimeConfig } = durableStores();
 

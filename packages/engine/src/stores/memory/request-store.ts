@@ -258,6 +258,10 @@ export class InMemoryRequestStore implements RequestStore {
         return false;
       }
 
+      if (options?.flowId !== undefined && record.flowId !== options.flowId) {
+        return false;
+      }
+
       if (options?.sessionId !== undefined && record.sessionId !== options.sessionId) {
         return false;
       }

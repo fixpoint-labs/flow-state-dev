@@ -92,6 +92,8 @@ export type ExecuteActionResponse = {
   request: {
     id: string;
     flowKind: string;
+    /** The flow instance that owns the request — the address to re-enter it through. */
+    flowId?: string;
     actionName: string;
     status: "in_progress" | "completed" | "failed" | "incomplete";
   };
@@ -105,8 +107,11 @@ export type ExecuteActionResponse = {
  * List-flows API item shape.
  */
 export type FlowListEntry = {
+  /** The instance's address — its kind for a singleton, its explicit id for a collection member. */
   id: string;
   kind: string;
+  /** `"singleton"` (one instance, addressed by kind) or `"collection"` (addressed by `id` only). */
+  cardinality: "singleton" | "collection";
   requireUser: boolean;
   actions: string[];
   actionSchemas?: Record<string, ActionInputSchema>;
@@ -127,6 +132,11 @@ export type FlowCapabilities = {
 export type SessionSummary = {
   id: string;
   flowKind: string;
+  /**
+   * The flow instance that owns the session. Absent on a session written
+   * before instance ownership existed.
+   */
+  flowId?: string;
   userId: string;
   title?: string;
   description?: string;
@@ -198,6 +208,11 @@ export type ChildSessionSummary = {
 export type SessionRequestSummary = {
   id: string;
   flowKind: string;
+  /**
+   * The flow instance that owns the request — the address a retry or
+   * continuation re-enters it through. Absent on a legacy record.
+   */
+  flowId?: string;
   actionName: string;
   userId: string;
   sessionId?: string;
@@ -383,9 +398,19 @@ export type SessionStateSnapshotResponse = {
 
 /**
  * A minimal structural type accepted by the typed flow client helper.
+ *
+ * Pass a flow INSTANCE (the result of calling the factory `defineFlow`
+ * returns) and the client binds its `id` — the address that reaches exactly
+ * that copy. A singleton definition is accepted too, since its instance's id
+ * is its kind; a collection definition alone is not an address, and the
+ * client refuses it rather than guessing a member.
  */
 export type FlowLike = {
   kind: string;
+  /** The instance's address. Absent on a definition, whose singleton id is its kind. */
+  id?: string;
+  /** Present on a definition or instance produced by `defineFlow`. */
+  cardinality?: "singleton" | "collection";
   actions: Record<string, ActionConfig>;
   request?: unknown;
   session?: unknown;
@@ -424,6 +449,7 @@ type FlowStateMap<TFlow extends FlowLike> = {
  * Typed flow-bound client surface layered over generic action/session APIs.
  */
 export type FlowClient<TFlow extends FlowLike> = {
+  /** The bound instance's address — its id. */
   flowKind: string;
   userId: string;
   sendAction: (

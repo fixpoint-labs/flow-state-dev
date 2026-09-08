@@ -19,4 +19,4 @@ const soloFlow = defineFlow({
   },
 });
 
-export default soloFlow({ id: "default" });
+export default soloFlow();

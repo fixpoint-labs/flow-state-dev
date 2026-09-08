@@ -140,6 +140,8 @@ Resume continues the **same** request id. There is no new linked request. The re
 
 The endpoint acquires an exclusive lease before re-dispatching, so concurrent resume attempts on the same request get a `409` rather than a double execution.
 
+The request re-enters the flow instance recorded as its owner, whatever the server currently has registered and in whatever order. A resume, a retry or a crash continuation never moves a request to another instance: `:flowKind` in the path has to be the owner's id, and a path naming another copy of the same definition is `409 wrong-instance-request`. Reattaching to a stream reads the same record and is scoped the same way. See [Persistence](/docs/persistence/overview#who-owns-a-record) for what is recorded and [Authentication](/docs/server/authentication#addressed-routes-and-what-they-scope-by) for which resolver governs the re-entry.
+
 On success the endpoint returns `202` with the same `requestId`. If the caller includes `Accept: text/event-stream`, the response streams the continued execution directly.
 
 A deliberate "start over from scratch" is a separate operation. RETRY mode runs the action again under a new request id. Resume is for picking up where a pause left off; retry is for discarding the prior attempt.

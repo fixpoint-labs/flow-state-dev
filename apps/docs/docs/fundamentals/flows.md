@@ -56,24 +56,46 @@ const chatFlow = defineFlow({
   },
 });
 
-export default chatFlow({ id: "default" });
+export default chatFlow();
 ```
 
 ## FlowType vs FlowInstance
 
-`defineFlow()` returns a **FlowType** — a factory. Calling it with `{ id }` creates a **FlowInstance** — the thing you actually register with the server:
+`defineFlow()` returns a **FlowType**, a factory. Calling it creates a **FlowInstance**, the thing you actually register with the server:
 
 ```ts
 // FlowType — the blueprint
 const chatFlow = defineFlow({ kind: "my-chat", ... });
 
 // FlowInstance — what you register and deploy
-export default chatFlow({ id: "default" });
+export default chatFlow();
 ```
 
-This separation lets you run several instances of one flow type, each with its own session, resource, or tool configuration.
+A definition describes a flow. A registered instance names one configured copy of it. Most flows have exactly one copy, and that is the default: a flow is a **singleton** unless you say otherwise, and its instance id is its `kind`. Calling the factory with no argument gives you that instance; `chatFlow({ id: "my-chat" })` is the same thing spelled out, and any other id is refused.
 
-**Instances that clients address need distinct `kind`s, not just distinct `id`s.** Every external entry point — HTTP action routes, chat, webhooks, schedules, MCP — resolves a flow by `kind` alone, and none of them carry an instance id. When two instances share a `kind`, those paths reach the one whose `id` matches the `kind`, or else the first registered, and the other instance's configuration is never used. `id` distinguishes instances for in-process code holding the registry, which can look up a specific one; it is not an addressing surface over the wire.
+To run several configured copies of one definition on one server, declare the definition a **collection** and give every instance its own id:
+
+```ts
+const reviewFlow = defineFlow({
+  kind: "review",
+  cardinality: "collection",
+  resources: { rubric: rubricResource },
+  actions: { run: { block: review } },
+});
+
+export const east = reviewFlow({ id: "review-east", resources: { rubric: eastRubric } });
+export const west = reviewFlow({ id: "review-west", resources: { rubric: westRubric } });
+```
+
+A collection instance has to be given an id. Ids are unique across the whole registry, whatever their kind, so registering two instances with the same id throws at registration time.
+
+### How an instance is addressed
+
+Every entry point reaches an instance by its **id**: the HTTP action routes, the CLI, chat, webhooks, schedules, MCP, and a queue worker all carry the id, and nothing else. For a singleton the id is the kind, so `POST /api/flows/my-chat/actions/send` and `fsdev run my-chat send` look exactly as they always have. For a collection it is the id you registered: `POST /api/flows/review-east/actions/run`. The kind of a collection is not an address. `POST /api/flows/review/...` is a miss, not a fallback to whichever copy was registered first.
+
+The `kind` still says what an instance *is*. Sessions and requests record it alongside the id, listings group by it, and the definition-level transports below apply to every instance of the definition.
+
+Saved work stays with the instance that created it. A session started through `review-east` records `review-east` as its owner, and a later call that names the same session through `review-west` is refused before anything runs. [Server setup](../server/setup.md#keeping-a-session-with-its-owner) shows the refusal; [Persistence](../persistence/overview.md#who-owns-a-record) covers what is recorded and how to attribute records written before owners were recorded.
 
 ### What the definition owns
 
@@ -87,7 +109,7 @@ const supportFlow = defineFlow({
   actions: { /* ... */ },
 });
 
-export default supportFlow({ id: "default" });
+export default supportFlow();
 ```
 
 Every instance of a type serves the same transports. Pass one of the four to the instance call and TypeScript rejects it; a plain-JavaScript caller gets a thrown error naming the option. The `internal` and `task` entry maps described [below](#entries-only-the-flow-can-reach) are definition-only in the same way.
@@ -283,4 +305,4 @@ registry.register(agentFlow);
 const router = createFlowApiRouter({ registry });
 ```
 
-The registry discovers flows by `kind` and routes requests automatically. Multiple flows can coexist in the same server.
+The registry indexes instances by id and routes requests to the one an address names. Several flows, and several instances of a collection flow, can coexist in the same server. See [`createFlowRegistry`](../api/server.md#createflowregistry) for how lookup, misses, and duplicate ids behave.

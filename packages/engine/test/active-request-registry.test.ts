@@ -47,6 +47,14 @@ function runRegistryTests(
       expect(retrieved!.actionName).toBe("run");
     });
 
+    it("round-trips the owning flow instance id, and reads a legacy entry without one", async () => {
+      await registry.register({ ...makeEntry(), flowId: "chat-east" });
+      expect((await registry.get("req_test_1"))?.flowId).toBe("chat-east");
+
+      await registry.register({ ...makeEntry(), requestId: "req_legacy" });
+      expect((await registry.get("req_legacy"))?.flowId ?? undefined).toBeUndefined();
+    });
+
     it("heartbeat updates lastHeartbeatAt", async () => {
       const entry = makeEntry({ lastHeartbeatAt: 1000 });
       await registry.register(entry);

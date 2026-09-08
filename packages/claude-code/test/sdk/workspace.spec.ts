@@ -101,7 +101,7 @@ function flowWith(cap: unknown) {
     kind: "workspace-flow",
     resources: { artifacts: artifactsCollection },
     actions: { go: { block: gen } },
-  })({ id: "default" });
+  })();
 }
 
 describe("what auto-discovery will and will not mount", () => {
@@ -406,7 +406,7 @@ describe("createWorkspaceAgentCapability", () => {
       kind: "workspace-hook-flow",
       resources: { artifacts: strict },
       actions: { go: { block: gen } },
-    })({ id: "default" });
+    })();
 
     await testBlock(toolOf(cap) as never, {
       input: { prompt: "go" },
@@ -463,7 +463,7 @@ describe("createWorkspaceAgentCapability", () => {
       kind: "workspace-strict-flow",
       resources: { artifacts: strict },
       actions: { go: { block: gen } },
-    })({ id: "default" });
+    })();
 
     const result = (await testBlock(toolOf(cap) as never, {
       input: { prompt: "go" },

@@ -28,6 +28,7 @@ import {
 } from "../resources/internal";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import { resolveRecordOwner } from "../context/record-owner";
 import { isJsonObject } from "../utils/json-helpers";
 import { extractBareTopic, isResourceConfig } from "./route-utils";
 
@@ -265,8 +266,9 @@ export async function buildDebugResourceTree(opts: {
   if (!session || !tenantMatches(session.tenantId, tenantId)) {
     return null;
   }
-  const flow = ctx.registry.get(session.flowKind);
-  if (!flow) return null;
+  const owner = resolveRecordOwner(ctx.registry, session);
+  if (!owner.ok) return null;
+  const flow = owner.flow;
 
   const groups = groupResources(flow as ResourceFlowLike);
 
@@ -432,8 +434,9 @@ export async function buildDebugCollectionItems(opts: {
   if (!session || !tenantMatches(session.tenantId, tenantId)) {
     return { ok: false, kind: "session_not_found" };
   }
-  const flow = ctx.registry.get(session.flowKind);
-  if (!flow) return { ok: false, kind: "session_not_found" };
+  const owner = resolveRecordOwner(ctx.registry, session);
+  if (!owner.ok) return { ok: false, kind: "session_not_found" };
+  const flow = owner.flow;
 
   // Locate the requested config via grouping so dual-registered aliases
   // resolve to the same collection regardless of which name was used.
@@ -570,8 +573,9 @@ export async function lookupDebugContent(opts: {
   if (!session || !tenantMatches(session.tenantId, tenantId)) {
     return { ok: false, kind: "session_not_found" };
   }
-  const flow = ctx.registry.get(session.flowKind);
-  if (!flow) return { ok: false, kind: "session_not_found" };
+  const owner = resolveRecordOwner(ctx.registry, session);
+  if (!owner.ok) return { ok: false, kind: "session_not_found" };
+  const flow = owner.flow;
 
   const groups = groupResources(flow as ResourceFlowLike);
   const group = groups.find((g) => g.aliases.includes(ref));

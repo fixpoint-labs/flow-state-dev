@@ -44,7 +44,7 @@ export async function registerStaticSchedules(
     if (!staticSchedules) continue;
 
     for (const [name, schedule] of Object.entries(staticSchedules)) {
-      const schedulerId = `${schedulerPrefix}:${flow.kind}:${name}`;
+      const schedulerId = `${schedulerPrefix}:${flow.id}:${name}`;
       desiredIds.add(schedulerId);
       await queue.upsertJobScheduler(
         schedulerId,
@@ -55,7 +55,8 @@ export async function registerStaticSchedules(
         {
           name: "static-schedule-fire",
           data: {
-            flowKind: flow.kind,
+            // The instance's address — what the dispatch URL names.
+            flowKind: flow.id,
             scheduleName: name,
             // Provenance only — the handler resolves by the schedule id
             // coordinate at dispatch, not by this name (FIX-838).

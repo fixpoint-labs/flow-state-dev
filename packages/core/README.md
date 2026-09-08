@@ -117,8 +117,10 @@ export default defineFlow({
       },
     },
   },
-})({ id: "default" });
+})();
 ```
+
+Calling the factory with no argument yields the flow's one instance, whose id is its `kind`. A definition that should run as several configured copies declares `cardinality: "collection"` and gives each instance its own `id` (`reviewFlow({ id: "review-east" })`); a singleton refuses any other id. See [Flow options](https://flow-state.dev/docs/configuration/flow).
 
 ## Exports
 
@@ -677,14 +679,14 @@ const confirmToSender = dispatcher({
 });
 ```
 
-Cross-flow addressing resolves by flow **kind**, and both flows have to be registered in the same process — a flow served by some other host is `flow-not-found`, not a network hop. A `task` dispatcher may take `flowKind` the same way.
+Cross-flow addressing resolves by flow **instance id** (`flowKind` on the block carries it: a singleton's kind, or a collection member's own id such as `"review-east"`; a collection's bare kind is `flow-not-found`), and both flows have to be registered in the same process — a flow served by some other host is `flow-not-found`, not a network hop. A `task` dispatcher may take `flowKind` the same way. See [Background work](https://flow-state.dev/docs/server/background-work#starting-a-job-on-another-flow).
 
 At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-refused"`), carrying `blockName`, `address`, `detail`, and `refused`:
 
 | `refused` | Meaning |
 |---|---|
 | `no-entry` | The addressed flow declares no entry at `(type, action)`. |
-| `flow-not-found` | A `flowKind` names a flow this process has not registered. |
+| `flow-not-found` | A `flowKind` names a flow instance this process has not registered. |
 | `session-not-found` | An `id` names a session that does not exist, or that belongs to another principal or another tenant. |
 | `session-not-addressable` | An `id` (or `{ from: true }`) names a session on a flow other than the one addressed, or one bound to a different org. |
 | `key-occupied` | A `key` derived a child id already held by a record that is not this request's child. |

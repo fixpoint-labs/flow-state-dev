@@ -62,6 +62,7 @@ import { createRequestSideChainPool } from "../execution/request-side-chain-pool
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
 import { ensureSessionRecord } from "./ensure-session-record";
+import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
@@ -93,6 +94,7 @@ import type { StorageScopeType } from "../stores/types";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { createInitialRequestRecord } from "./initial-request-record";
 import {
+  FlowInstanceBindingMismatchError,
   OrgBindingMismatchError,
   TenantBindingMismatchError,
   UserBindingMismatchError
@@ -543,13 +545,46 @@ export async function createExecutionContext<
   // history({ limit }) refines within this window — it cannot widen it.
   const historyWindowTurns = flow.session?.historyWindow?.turns ?? 50;
 
-  // Parallelize independent store lookups — user, session, org, and request
-  // records don't depend on each other for the initial load.
-  const [loadedUser, loadedSession, loadedOrg, loadedRequest, priorRequests] = await Promise.all([
-    stores.user.get(userKey),
+  // The two owned records first, and their owner checked, before any other
+  // read or write: a request addressed to the wrong copy of a flow must not
+  // create a user record, preload another instance's history, or adopt its
+  // request. `runAction` makes the same check ahead of its registration; this
+  // is the direct-entry half, and the one that sees the record actually
+  // adopted.
+  const [loadedSession, loadedRequest] = await Promise.all([
     stores.session.get(sessionKey),
+    stores.request.get(requestId)
+  ]);
+  if (
+    loadedSession !== undefined &&
+    tenantMatches(loadedSession.tenantId, options.tenantId) &&
+    !ownsRecord(flow, loadedSession)
+  ) {
+    const refusal = foreignRecordRefusal(flow, loadedSession);
+    throw new FlowInstanceBindingMismatchError(
+      "session",
+      sessionId,
+      flow.id,
+      refusal.detail,
+      refusal.reason
+    );
+  }
+  if (loadedRequest !== undefined && !ownsRecord(flow, loadedRequest)) {
+    const refusal = foreignRecordRefusal(flow, loadedRequest);
+    throw new FlowInstanceBindingMismatchError(
+      "request",
+      requestId,
+      flow.id,
+      refusal.detail,
+      refusal.reason
+    );
+  }
+
+  // Parallelize the remaining independent store lookups — user, org, and the
+  // history window don't depend on each other for the initial load.
+  const [loadedUser, loadedOrg, priorRequests] = await Promise.all([
+    stores.user.get(userKey),
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
-    stores.request.get(requestId),
     // The N most-recently-started completed requests — `status:"completed"`
     // excludes the current (in-progress) request and any in-flight siblings;
     // `orderBy:"startedAtMs"` makes the windowed selection robust to
@@ -617,6 +652,7 @@ export async function createExecutionContext<
     ((await ensureSessionRecord(stores, sessionKey, () => ({
       id: sessionKey,
       flowKind: flow.kind,
+      flowId: flow.id,
       userId,
       orgId: options.orgId,
       tenantId: options.tenantId,
@@ -638,6 +674,21 @@ export async function createExecutionContext<
   // unconditionally costs a comparison on the branch that built the record
   // itself, where they pass by construction, and that is the cheaper mistake.
   {
+    // Flow-instance binding. A record this request loaded was checked above;
+    // this is for the create-race WINNER, which a losing creator adopts
+    // without ever having loaded it — and which may belong to another instance
+    // that raced this one to the same caller-supplied session id.
+    if (!ownsRecord(flow, sessionRecord)) {
+      const refusal = foreignRecordRefusal(flow, sessionRecord);
+      throw new FlowInstanceBindingMismatchError(
+        "session",
+        sessionId,
+        flow.id,
+        refusal.detail,
+        refusal.reason
+      );
+    }
+
     // userId mismatch — closes a long-standing gap. The loaded session record's
     // userId is authoritative; a request claiming a different identity would
     // route this user's actions against another user's data.
@@ -1276,6 +1327,7 @@ export async function createExecutionContext<
       {
         requestId,
         flowKind: flow.kind,
+        flowId: flow.id,
         actionName: options.actionName,
         userId,
         sessionId,

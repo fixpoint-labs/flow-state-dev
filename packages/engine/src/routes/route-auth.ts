@@ -18,9 +18,10 @@ import type {
   PrincipalResolver,
   ResolvedPrincipal
 } from "../transports/types";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import { PrincipalResolutionError } from "../transports/errors";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
-import { pickPrincipalResolver } from "../transports/auth/pickPrincipalResolver";
+import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import { jsonResponse, loadTenantSession } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -50,14 +51,16 @@ export type RouteAuthResult = {
   /**
    * Set only for a cross-flow listing reached without a principal, in an app
    * where some flow authenticates and the host-level fallback does not: the
-   * flow kinds whose effective resolver is the framework default. The handler
-   * returns rows for these kinds and withholds the rest.
+   * flow INSTANCE ids whose effective resolver is the framework default. The
+   * handler resolves each row's owner and returns the rows owned by one of
+   * these, withholding the rest — so an open instance never makes a
+   * same-kind authenticated peer's rows visible.
    *
    * An empty set means "withhold everything"; `undefined` means the listing is
    * unrestricted (either nothing in the app authenticates, or a principal
    * scoped it already).
    */
-  anonymousFlowKinds?: Set<string>;
+  anonymousFlowIds?: Set<string>;
 };
 
 const ALLOWED: RouteAuthResult = {};
@@ -160,6 +163,12 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
   }
 }
 
+/** The instance a stored record belongs to, or `undefined` when its owner cannot be resolved. */
+function ownerFlowOf(ctx: RouteAuthContext, record: OwnedRecord): FlowInstance | undefined {
+  const owner = resolveRecordOwner(ctx.registry, record);
+  return owner.ok ? owner.flow : undefined;
+}
+
 /** Whether `flow` configures a resolver that is not the framework default. */
 function flowAuthenticates(flow: {
   authentication?: { resolvePrincipal?: PrincipalResolver };
@@ -173,13 +182,13 @@ function anyFlowAuthenticates(ctx: RouteAuthContext): boolean {
   return ctx.registry.list().some(flowAuthenticates);
 }
 
-/** The kinds of every registered flow that does NOT configure its own authentication. */
-function unauthenticatedFlowKinds(ctx: RouteAuthContext): Set<string> {
+/** The ids of every registered flow instance that does NOT configure its own authentication. */
+function unauthenticatedFlowIds(ctx: RouteAuthContext): Set<string> {
   return new Set(
     ctx.registry
       .list()
       .filter((flow) => !flowAuthenticates(flow))
-      .map((flow) => flow.kind)
+      .map((flow) => flow.id)
   );
 }
 
@@ -214,9 +223,12 @@ export async function authorizeManagementRoute(
     return ALLOWED;
   }
 
-  // Governing flow and record owner, both read from stored records so neither
-  // is caller-controlled (BP-031).
-  let flowKind: string | undefined;
+  // Governing flow instance and record owner, both read from stored records
+  // so neither is caller-controlled (BP-031). The instance is the record's
+  // stored OWNER, resolved through the one owner interpretation — never a
+  // lookup by its stored kind, which for a collection could pick a peer whose
+  // authentication differs.
+  let governing: FlowInstance | undefined;
   let owner: string | undefined;
   let sessionId: string | undefined;
 
@@ -228,7 +240,7 @@ export async function authorizeManagementRoute(
         ctx.tenantId
       );
       if (session === undefined) return ALLOWED;
-      flowKind = session.flowKind;
+      governing = ownerFlowOf(ctx, session);
       owner = session.userId;
       sessionId = subject.sessionId;
       break;
@@ -236,7 +248,7 @@ export async function authorizeManagementRoute(
     case "request": {
       const record = await ctx.stores.request.get(subject.requestId);
       if (record !== undefined) {
-        flowKind = record.flowKind;
+        governing = ownerFlowOf(ctx, record);
         owner = record.userId;
         sessionId = record.sessionId;
         break;
@@ -249,14 +261,15 @@ export async function authorizeManagementRoute(
       // letting it through unchecked.
       const active = await ctx.stores.activeRequests.get(subject.requestId);
       if (active === undefined) return ALLOWED;
-      flowKind = active.flowKind;
+      governing = ownerFlowOf(ctx, active);
       owner = active.userId;
       sessionId = active.sessionId;
       break;
     }
     case "flow":
-      // No record yet — the authenticated caller becomes the owner.
-      flowKind = subject.flowKind;
+      // No record yet — the authenticated caller becomes the owner. The
+      // address is an exact instance id.
+      governing = ctx.registry.get(subject.flowKind);
       break;
     case "user":
       owner = subject.userId;
@@ -265,7 +278,10 @@ export async function authorizeManagementRoute(
       break;
   }
 
-  const resolver = pickPrincipalResolver(ctx.registry, flowKind, ctx.hostResolver);
+  // The same precedence `pickPrincipalResolver` applies for the host, on the
+  // instance resolved above: a record whose owner cannot be resolved falls to
+  // the host resolver, exactly as an unregistered kind always did.
+  const resolver = governing?.authentication?.resolvePrincipal ?? ctx.hostResolver;
   if (isDefaultBodyUserIdPrincipalResolver(resolver)) {
     // No authentication governs this route. For a flow-scoped route that means
     // the flow is genuinely open in this app, so leave it alone.
@@ -285,7 +301,7 @@ export async function authorizeManagementRoute(
     // the whole listing away from every app that has one authenticated flow
     // (a cron-triggered digest is enough), including the flows that are open
     // by design. The caller still gets everything they could already see.
-    return { anonymousFlowKinds: unauthenticatedFlowKinds(ctx) };
+    return { anonymousFlowIds: unauthenticatedFlowIds(ctx) };
   }
 
   let principal: ResolvedPrincipal;
@@ -294,10 +310,12 @@ export async function authorizeManagementRoute(
       source: "http",
       request,
       envelope: {
-        // Empty for host- and user-addressed routes: `registry.get("")` misses,
-        // so the host falls through to its own resolver with `requireUser`
-        // enforced — exactly the intended behavior for a route with no flow.
-        flowKind: flowKind ?? "",
+        // The governing instance's address, so the host picks the same
+        // resolver this guard did. Empty for host- and user-addressed routes
+        // and for an unresolvable owner: `registry.get("")` misses, so the host
+        // falls through to its own resolver with `requireUser` enforced —
+        // exactly the intended behavior for a route with no flow.
+        flowKind: governing?.id ?? "",
         action: route.kind,
         sessionId,
         // Deliberately no `body` — see the file header.

@@ -27,6 +27,19 @@ export type ScopeRecordBase<TState extends JsonObject = JsonObject> = {
 
 export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
   flowKind: string;
+  /**
+   * The flow instance this record belongs to — the exact `id` of the instance
+   * it was created under. Every new framework write stamps it; a record
+   * persisted before the field existed reads back `undefined` (or `null` from
+   * a store that nulls absent keys). Readers resolve it through
+   * `context/record-owner.ts`, which is also where a legacy row's compatibility
+   * rule lives: only known singleton history is attributed without a migration.
+   *
+   * Distinct from {@link SessionRecord.flowKind}, which stays the definition's
+   * kind — descriptive metadata and a grouping filter, never an address that
+   * decides routing, authorization or which instance's declarations apply.
+   */
+  flowId?: string;
   userId: string;
   orgId?: string;
   /**
@@ -115,6 +128,8 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
 
 export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
   flowKind: string;
+  /** The owning flow instance's id. See {@link SessionRecord.flowId}. */
+  flowId?: string;
   actionName: string;
   userId: string;
   sessionId?: string;
@@ -179,8 +194,8 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
  * - `state` — has its own versioned verbs (`patchField` / `incField` / `pushToArray`).
  * - `items` — lives in a child table on the persistent adapters, written via `persistItems`.
  * - `updatedAt` — supplied as an explicit argument, mirroring the delta verbs.
- * - `status` and the indexed access-path fields (`flowKind`, `userId`, `sessionId`,
- *   `orgId`, `tenantId`) — denormalized into columns by the SQL adapters. `status`
+ * - `status` and the indexed access-path fields (`flowKind`, `flowId`, `userId`,
+ *   `sessionId`, `orgId`, `tenantId`) — denormalized into columns by the SQL adapters. `status`
  *   is additionally what the predicate reads, and a verb that both predicates on
  *   and rewrites status would be reasoning about two different values under one name.
  */
@@ -195,6 +210,7 @@ export type ConditionalRequestFields = Partial<
     | "items"
     | "status"
     | "flowKind"
+    | "flowId"
     | "userId"
     | "sessionId"
     | "orgId"
@@ -245,7 +261,14 @@ export type OrgRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<
 export type SessionParentage = "top-level" | "all" | { parentOf: string };
 
 export type SessionListOptions = {
+  /** Broad administrative grouping by definition kind. Not ownership. */
   flowKind?: string;
+  /**
+   * Exact-owner filter: only records stamped with this flow instance id. A
+   * legacy row with no `flowId` never matches, so a caller narrowing by owner
+   * sees attributed history only.
+   */
+  flowId?: string;
   userId?: string;
   /**
    * Tenant filter (FIX-682). See {@link RequestListOptions.tenantId} for the
@@ -303,7 +326,10 @@ export type SessionListOptions = {
 };
 
 export type RequestListOptions = {
+  /** Broad administrative grouping by definition kind. Not ownership. */
   flowKind?: string;
+  /** Exact-owner filter; see {@link SessionListOptions.flowId}. */
+  flowId?: string;
   sessionId?: string;
   userId?: string;
   /**
@@ -800,6 +826,8 @@ export interface OrgStore extends DeltaStoreOps<OrgRecord> {
 export type ActiveRequestEntry = {
   requestId: string;
   flowKind: string;
+  /** The owning flow instance's id. See {@link SessionRecord.flowId}. */
+  flowId?: string;
   actionName: string;
   sessionId?: string;
   userId: string;

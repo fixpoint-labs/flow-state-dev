@@ -13,6 +13,7 @@ function serializeEntry(entry: ActiveRequestEntry): unknown[] {
   return [
     entry.requestId,
     entry.flowKind,
+    entry.flowId ?? null,
     entry.actionName,
     entry.sessionId ?? null,
     entry.userId,
@@ -47,6 +48,9 @@ function deserializeRow(row: Record<string, unknown>): ActiveRequestEntry {
     lastHeartbeatAt: Number(row.last_heartbeat_at)
   };
 
+  if (row.flow_id !== null && row.flow_id !== undefined) {
+    entry.flowId = row.flow_id as string;
+  }
   if (row.session_id !== null) {
     entry.sessionId = row.session_id as string;
   }
@@ -105,12 +109,13 @@ export function createPostgresActiveRequestRegistry(
         // marker in place, so the row would read as forever-queued: never
         // reaped, and reported live long after the worker died.
         `INSERT INTO active_requests
-          (request_id, flow_kind, action_name, session_id, user_id, org_id,
+          (request_id, flow_kind, flow_id, action_name, session_id, user_id, org_id,
            tenant_id, source, input, metadata, started_at, last_heartbeat_at,
            queued_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         ON CONFLICT(request_id) DO UPDATE SET
           flow_kind = EXCLUDED.flow_kind,
+          flow_id = EXCLUDED.flow_id,
           action_name = EXCLUDED.action_name,
           session_id = EXCLUDED.session_id,
           user_id = EXCLUDED.user_id,

@@ -131,6 +131,7 @@ function createTestFlow(options: {
   return {
     id: "testing-flow",
     kind: "testing-flow",
+    cardinality: "singleton",
     requireUser: true,
     requiresOrg: false,
     actions: {},

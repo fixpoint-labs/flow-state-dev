@@ -26,4 +26,4 @@ const fallbackFlow = defineFlow({
   },
 });
 
-export default fallbackFlow({ id: "default" });
+export default fallbackFlow();

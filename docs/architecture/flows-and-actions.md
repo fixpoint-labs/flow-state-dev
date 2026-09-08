@@ -31,11 +31,21 @@ const chatFlow = defineFlow({
 ```ts
 const chatFlowType = defineFlow({ kind: "hello-chat", ... });
 
-// Create an instance with overrides
-const flow = chatFlowType({ id: "default" });
+// The singleton instance: id === kind
+const flow = chatFlowType();
+
+// A collection: several configured copies, each with its own id
+const reviewType = defineFlow({ kind: "review", cardinality: "collection", ... });
+const east = reviewType({ id: "review-east", resources: { rubric: eastRubric } });
 ```
 
 Instances support merge-based overrides for action replacement/extension at creation time.
+
+**Cardinality is declared on the definition, never on the instance.** `cardinality: "singleton"` (the default) means one instance whose id is its kind; the factory takes no id, or the kind spelled out, and anything else throws. `cardinality: "collection"` means as many instances as are registered, each with a required, explicit id. Both `FlowType` and `FlowInstance` carry `cardinality` as normalized metadata beside `kind` and `id`.
+
+**Registration is by exact global id.** `FlowRegistry.get(id)` is the only lookup: a singleton by its kind, a collection member by its id, a collection's bare kind by nothing. Ids are unique across kinds; a duplicate, a singleton under a custom id, a collection instance without one, or a kind mixing the two cardinalities is a `FlowIdentityConflictError` at `register`. There is no first-registered fallback anywhere. A structural instance without `cardinality` (older code, test doubles) is admitted as a singleton only when its id is absent or equals its kind.
+
+`evalFlow` / `testFlow` labels such as `id: "eval-run"` never pass through the registry; they run the definition directly and are not addresses.
 
 ## Actions
 
@@ -134,17 +144,20 @@ Hooks can be plain callbacks or blocks. If you pass a block, its `inputSchema` m
 
 When an action is invoked, the framework executes this sequence:
 
-1. Resolve flow instance and action
+1. Resolve flow instance by exact id (the route's first segment) and action
 2. Validate action input against `inputSchema`
-3. Resolve or create session (ephemeral if no `sessionId`)
-4. Require user context (Phase 1 policy)
-5. Create request scope and state
-6. Emit user message item (if `userMessage` defined)
-7. Fire `request.onStarted`
-8. Execute action root block via `block.run(input, ctx)`
-9. Fire action + request completion/error hooks
-10. Fire `request.onFinished`
-11. Persist state and emit terminal stream status
+3. Admit ownership: a named `sessionId` / `requestId` must be owned by the resolved instance (`resolveRecordOwner`), else `FlowInstanceBindingMismatchError` before any write; a record with no owner recorded resolves to the singleton of its kind or, for a collection kind, `migration-required`
+4. Resolve or create session (ephemeral if no `sessionId`), stamping `flowId` (owner) and `flowKind` (definition) on new session and request records and on the active-request entry
+5. Require user context (Phase 1 policy)
+6. Create request scope and state
+7. Emit user message item (if `userMessage` defined)
+8. Fire `request.onStarted`
+9. Execute action root block via `block.run(input, ctx)`
+10. Fire action + request completion/error hooks
+11. Fire `request.onFinished`
+12. Persist state and emit terminal stream status
+
+Retry, continue and resume re-enter the instance recorded as the request's owner, and interrupted-request recovery groups entries by owner; the `:flowKind` path segment on those routes must equal it.
 
 ## Resources and Client Data
 
@@ -216,7 +229,7 @@ Each flow module exports one flow instance (or array of instances):
 
 ```ts
 // src/flows/hello-chat/flow.ts
-export default helloChatFlow({ id: "default" });
+export default helloChatFlow();
 ```
 
 ## Route Shape
@@ -228,6 +241,8 @@ POST /api/flows/:flowKind/actions/:action
 POST /api/flows/:flowKind/:sessionId/actions/:action
 GET  /api/flows/:flowKind/requests/:requestId/stream
 ```
+
+`:flowKind` is the historical name of the segment; its value is the **instance id** (a singleton's kind, a collection member's own id). See [server-and-client](./server-and-client.md) for the current contract.
 
 Typically mounted via a Next.js catch-all: `app/api/flows/[...path]/route.ts`
 

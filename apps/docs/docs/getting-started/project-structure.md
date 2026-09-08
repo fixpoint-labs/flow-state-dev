@@ -55,7 +55,7 @@ const myChat = defineFlow({
   },
 });
 
-export default myChat({ id: "default" });
+export default myChat();
 ```
 
 ### Blocks live next to their flow

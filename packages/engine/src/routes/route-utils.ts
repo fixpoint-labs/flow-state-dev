@@ -23,6 +23,9 @@ import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-s
 import { collapseToCanonicalLog } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
+import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowRegistry } from "../registry/flow-registry";
+import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";
@@ -668,4 +671,29 @@ export async function parseJsonBody(request: Request): Promise<Record<string, un
   }
 
   return object;
+}
+
+/**
+ * The flow instance a stored session or request belongs to, for a route that
+ * goes on to read that record's declarations — schemas, resources, resolver.
+ * One outcome per refusal: an owner this process cannot resolve is the same
+ * `404 Unknown flow` the route always returned for an unregistered kind, and
+ * ambiguous legacy history is a `409 migration-required` so an operator sees
+ * the cutover they owe rather than a missing flow. No route resolves a
+ * record's flow by its stored kind on its own.
+ */
+export function resolveOwnerFlow(
+  registry: Pick<FlowRegistry, "get" | "list">,
+  record: OwnedRecord
+): { flow: FlowInstance; denied?: undefined } | { flow?: undefined; denied: Response } {
+  const owner = resolveRecordOwner(registry, record);
+  if (owner.ok) return { flow: owner.flow };
+  if (owner.reason === "migration-required") {
+    return {
+      denied: jsonResponse(409, { error: "migration-required", message: owner.detail })
+    };
+  }
+  return {
+    denied: jsonResponse(404, { error: `Unknown flow "${record.flowId ?? record.flowKind}"` })
+  };
 }

@@ -44,7 +44,9 @@ export function buildChatSubscriptionIndex(
 
     for (const [eventKey, binding] of Object.entries(on)) {
       const entry: ChatSubscriptionEntry = {
-        flowKind: flow.kind,
+        // The instance's address — its id — so a dispatch reaches the copy
+        // that declared the binding, not whichever shares its kind.
+        flowKind: flow.id,
         eventKey,
         binding
       };

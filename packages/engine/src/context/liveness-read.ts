@@ -17,8 +17,9 @@
  * accepted, not from the moment a worker picks it up (FIX-999).
  */
 import type { ActiveRequestEntry, ActiveRequestRegistry } from "../stores/types";
-import type { LivenessAnswers } from "@flow-state-dev/core/types";
+import type { FlowInstance, LivenessAnswers } from "@flow-state-dev/core/types";
 import { tenantMatches } from "../stores/scope-keys";
+import { ownsRecord } from "./record-owner";
 
 export type LivenessReadInputs = {
   /**
@@ -30,10 +31,11 @@ export type LivenessReadInputs = {
   /** From the enablement gate. Entries older than this are treated as not live. */
   staleThresholdMs: number;
   /**
-   * The running flow's kind. An entry belonging to another flow is not this
-   * caller's work, even under the same principal and session.
+   * The running flow instance. An entry another instance owns — another
+   * kind, or a same-kind peer — is not this caller's work, even under the
+   * same principal and session.
    */
-  flowKind: string;
+  flow: FlowInstance;
   /** The running request's server-derived principal. Never caller-supplied. */
   principal: { userId: string; tenantId: string | undefined };
   /** Whether a session lies in the caller's descendant chain. */
@@ -117,14 +119,12 @@ export async function readLiveness(
         answers[requestId] = false;
         return;
       }
-      // Flow identity, checked on the ENTRY rather than on a session record.
-      // A session id is not a flow boundary: `createExecutionContext` validates
-      // a reused session's user, tenant and org but not its flow kind, so one
-      // session can host requests of two flows. The descendant check below
-      // deliberately accepts the caller's own session, so this is the only thing
-      // standing between "a request I started" and "any request the same
-      // principal happens to be running under this session id".
-      if (entry.flowKind !== inputs.flowKind) {
+      // Flow-instance identity, checked on the ENTRY rather than on a session
+      // record. The descendant check below deliberately accepts the caller's
+      // own session, so this is what stands between "a request I started" and
+      // "any request the same principal happens to be running under this
+      // session id" — including one a same-kind peer instance is running.
+      if (!ownsRecord(inputs.flow, entry)) {
         answers[requestId] = false;
         return;
       }

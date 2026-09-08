@@ -165,6 +165,11 @@ export type ChildSessionSummary = {
   parentSessionId: string;
   createdAt: number;
   updatedAt: number;
+  /**
+   * The flow instance that owns the child — the exact id a cross-instance
+   * dispatch resolved. Absent on a child written before owners were stamped.
+   */
+  flowId?: string;
   /** The key the child was derived from. Written by the dispatch seam. */
   topic?: string;
   /** The entry the child was dispatched for, as `<type>:<target>`. Written by the dispatch seam. */
@@ -412,6 +417,7 @@ export async function handleListSessionChildren(
         parentSessionId: route.sessionId,
         createdAt: child.createdAt,
         updatedAt: child.updatedAt,
+        ...(child.flowId != null ? { flowId: child.flowId } : {}),
         ...readChildSessionLabels(child),
         ...(status !== undefined ? { status } : {})
       };

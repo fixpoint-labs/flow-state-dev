@@ -116,7 +116,9 @@ Live-tail subscriptions (`request.subscribeToEvents`) share one poll loop per re
 
 ## Schema evolution
 
-The store auto-applies schema changes on connection open via `initializeSchema`. No manual migration step.
+The store auto-applies schema changes on connection open via `initializeSchema`. No manual step for the DDL itself; the one exception is below.
+
+`sessions.flow_id` and `requests.flow_id` record the flow instance that owns a row. Both are nullable, added on open as a plain `ADD COLUMN` with an index, and never backfilled: which instance a row written before the column existed belongs to is a fact about your deployment, not something the store can derive. A `NULL` reads as the singleton of the row's `flow_kind`; for a kind that runs as several instances it is refused as `migration-required` until an operator attributes it, using the checklist in the [persistence guide](https://flow-state.dev/docs/persistence/overview#who-owns-a-record). The exact `flowId` list filter never matches a `NULL`.
 
 The `request_items` table was added for incremental item persistence: instead of rewriting the whole request blob on every item boundary, the store upserts one row per changed item keyed by `(request_id, item_id)`. Existing databases upgrade transparently — items written to the old `requests.data` blob are read via a fallback merge, and new items go to the table.
 

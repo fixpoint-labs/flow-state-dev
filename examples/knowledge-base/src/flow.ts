@@ -206,4 +206,4 @@ const knowledgeFlow = defineFlow({
   resources: { concepts: kb.collection },
 });
 
-export default knowledgeFlow({ id: "default" });
+export default knowledgeFlow();

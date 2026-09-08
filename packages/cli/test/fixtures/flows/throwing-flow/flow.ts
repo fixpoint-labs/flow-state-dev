@@ -23,6 +23,6 @@ const throwingFlow = defineFlow({
   },
 });
 
-const flow = throwingFlow({ id: "default" });
+const flow = throwingFlow();
 
 export default flow;

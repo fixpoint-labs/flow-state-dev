@@ -1,15 +1,18 @@
 /**
  * Target model and dispatch resolution for `fsdev chat`. Pure — no I/O.
  *
- * A "target" is what a message routes to: a `(flowKind, action)` pair.
+ * A "target" is what a message routes to: a `(flow address, action)` pair. The
+ * address is the flow instance's global id — a singleton's kind, or a
+ * collection member's explicit id — kept under the historical `flowKind` name.
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { ParsedInput } from "./parse";
 import type { HarnessState } from "./state";
 import type { BuiltinCommand } from "./registry";
 
-/** A flow action, addressed by flow kind + action name. */
+/** A flow action, addressed by flow instance id + action name. */
 export interface FlowActionTarget {
+  /** The instance's global id (a singleton's kind). */
   flowKind: string;
   actionName: string;
 }
@@ -27,22 +30,16 @@ export type Dispatch =
   | { kind: "noop"; hint?: string };
 
 /**
- * Enumerate the available targets. Distinct kinds come from `list()`, but each
- * kind's actions are read from `get(kind)` — the registry-default instance, the
- * same instance turn execution resolves — because `get()` and `list()` order
- * instances differently when a kind has more than one.
+ * Enumerate the available targets: one per registered instance and action,
+ * addressed by the instance's id. Two instances of one kind are two targets.
  */
 export function listTargets(registry: {
   list(): FlowInstance[];
-  get(kind: string, id?: string): FlowInstance | undefined;
 }): FlowActionTarget[] {
-  const kinds = [...new Set(registry.list().map((f) => f.kind))];
   const targets: FlowActionTarget[] = [];
-  for (const flowKind of kinds) {
-    const instance = registry.get(flowKind);
-    if (instance === undefined) continue;
+  for (const instance of registry.list()) {
     for (const actionName of Object.keys(instance.actions)) {
-      targets.push({ flowKind, actionName });
+      targets.push({ flowKind: instance.id, actionName });
     }
   }
   return targets;

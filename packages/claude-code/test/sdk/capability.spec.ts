@@ -176,9 +176,9 @@ describe("createClaudeCodeAgentCapability — recordWork", () => {
       prompt: "do the thing",
       uses: [cap as never],
     });
-    return defineFlow({ kind: "recording-flow", actions: { go: { block: gen } } })({
-      id: "default",
-    }) as unknown as { resources?: Record<string, unknown> };
+    return defineFlow({ kind: "recording-flow", actions: { go: { block: gen } } })() as unknown as {
+      resources?: Record<string, unknown>;
+    };
   }
 
   it("declares no resources by default", () => {
@@ -213,7 +213,7 @@ describe("createClaudeCodeAgentCapability — recordWork", () => {
     const flow = defineFlow({
       kind: "forwarding-only-flow",
       actions: { go: { block: gen } },
-    })({ id: "default" }) as unknown as { resources?: Record<string, unknown> };
+    })() as unknown as { resources?: Record<string, unknown> };
 
     // The block DID declare them — so the missing piece is provably the
     // tools-don't-bubble step, not a block that declared nothing. Without this

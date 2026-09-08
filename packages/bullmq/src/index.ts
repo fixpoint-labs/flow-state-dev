@@ -10,7 +10,7 @@ export { bullmqWorker } from "./flowstate-adapter";
 export type { BullmqWorkerOptions, BullmqWorkerAdapter } from "./flowstate-adapter";
 export { createBullmqRuntime } from "./runtime";
 export type { BullmqRuntime, CreateBullmqRuntimeOptions } from "./runtime";
-export { createFlowWorker } from "./worker";
+export { createFlowWorker, createFlowJobProcessor } from "./worker";
 export type { FlowWorkerDeps, CreateFlowWorkerOptions } from "./worker";
 export { createWorkerDispatcher } from "./dispatcher";
 export type { CreateWorkerDispatcherOptions } from "./dispatcher";

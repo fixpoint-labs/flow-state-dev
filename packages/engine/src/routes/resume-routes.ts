@@ -6,6 +6,7 @@ import type { Schema } from "@cfworker/json-schema";
 import type { ResumeAction, ResumeContext } from "@flow-state-dev/core/types";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
+import { ownsRecord } from "../context/record-owner";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
@@ -91,7 +92,9 @@ export async function handleResumeSuspension(
   }
 
   const originalRequest = await ctx.stores.request.get(route.requestId);
-  if (originalRequest === undefined) {
+  // Not found, and owned by another instance, answer the same way: the record
+  // is not this address's to resume, and its existence is not disclosed.
+  if (originalRequest === undefined || !ownsRecord(flow, originalRequest)) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 

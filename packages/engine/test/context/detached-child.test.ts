@@ -129,6 +129,8 @@ describe("adoption identity validation", () => {
   /** What the seam expects a genuine child of this request to look like. */
   const expected = {
     flowKind: "board",
+    flowId: "board",
+    flowCardinality: "singleton" as const,
     userId: base.userId,
     tenantId: base.tenantId,
     orgId: undefined,
@@ -139,6 +141,25 @@ describe("adoption identity validation", () => {
 
   it("adopts a record whose full identity matches", () => {
     expect(evaluateAdoption(genuineChild, expected)).toEqual({ adoptable: true });
+  });
+
+  it("refuses a child a same-kind peer instance derived, and adopts a legacy child only for a singleton", () => {
+    const collection = { ...expected, flowId: "board-a", flowCardinality: "collection" as const };
+    // Stamped by another copy of the same definition: not this instance's.
+    expect(
+      evaluateAdoption({ ...genuineChild, flowId: "board-b" }, collection)
+    ).toEqual({ adoptable: false, mismatch: "flowId" });
+    expect(evaluateAdoption({ ...genuineChild, flowId: "board-a" }, collection)).toEqual({
+      adoptable: true
+    });
+    // No stored owner: the singleton of the kind may adopt it, a collection member never.
+    expect(evaluateAdoption(genuineChild, collection)).toEqual({
+      adoptable: false,
+      mismatch: "flowId"
+    });
+    expect(evaluateAdoption({ ...genuineChild, flowId: null }, expected)).toEqual({
+      adoptable: true
+    });
   });
 
   it("refuses a record belonging to a different flow kind", () => {
@@ -193,6 +214,8 @@ describe("adoption identity validation", () => {
 describe("evaluateAdoption — the lineage arm a dispatched child requires", () => {
   const expected = {
     flowKind: "work",
+    flowId: "work",
+    flowCardinality: "singleton" as const,
     userId: "u_alice",
     tenantId: undefined,
     orgId: undefined,

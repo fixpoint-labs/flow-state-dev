@@ -20,6 +20,7 @@ import type { ExecutionResult } from "./types";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
 import { runAction } from "./runAction";
+import { resolveRecordOwner } from "../context/record-owner";
 
 export interface ContinueRequestOptions {
   /** The suspended/interrupted request to continue, re-entered under this id. */
@@ -71,10 +72,15 @@ export async function continueRequest(
     throw new Error(`Request "${requestId}" not found`);
   }
 
-  const flow = flowRegistry.get(record.flowKind);
-  if (flow === undefined) {
-    throw new Error(`Unknown flow "${record.flowKind}"`);
+  // The record's durable owner, never its kind: a same-kind peer must not
+  // continue another instance's request.
+  const owner = resolveRecordOwner(flowRegistry, record);
+  if (!owner.ok) {
+    throw new Error(
+      `Unknown flow "${record.flowId ?? record.flowKind}" (${owner.reason}: ${owner.detail})`
+    );
   }
+  const flow = owner.flow;
 
   // Per-flow SSE heartbeat override wins over the host default, mirroring
   // `dispatch`.
@@ -126,6 +132,7 @@ export async function continueRequest(
   await stores.activeRequests.register({
     requestId,
     flowKind: record.flowKind,
+    flowId: flow.id,
     actionName: record.actionName,
     sessionId: record.sessionId,
     userId: record.userId,

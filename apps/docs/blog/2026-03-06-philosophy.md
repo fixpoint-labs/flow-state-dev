@@ -142,7 +142,7 @@ export default defineFlow({
   resources: { docs: docResource },
   session: { stateSchema },
   actions: { chat: { block: agent } },
-})({ id: "default" });
+})();
 ```
 
 The LLM tool loop, streaming, state persistence, and error recovery are all handled. You define what the agent can do. The framework runs it.
@@ -316,7 +316,7 @@ export default defineFlow({
   },
   resources: { docs: docResource },
   session: { stateSchema },
-})({ id: "default" });
+})();
 ```
 
 The framework executes what you declared. You can take your blocks elsewhere if you need to.

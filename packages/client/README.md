@@ -14,6 +14,9 @@ pnpm add @flow-state-dev/client
 import { createClient } from "@flow-state-dev/client";
 
 const client = createClient({ flowKind: "my-app", userId: "user_1" });
+// `flowKind` binds the client to one flow instance (a kind, or a collection
+// member's own id). Sessions it starts are recorded as that instance's, and
+// returned records carry `flowId`, the owner a retry or continuation re-enters.
 
 // Send an action and get back a request ID
 const { requestId } = await client.sendAction("chat", { message: "Hello" });
@@ -178,7 +181,9 @@ const { newRequestId } = await recovery.retry({
 ```
 
 `retry` only succeeds for requests whose status is `interrupted` or `failed`
-— the server returns 409 otherwise.
+— the server returns 409 otherwise. `flowKind` here has to be the request's
+recorded owner (`flowId` on the record); naming another instance is a 409
+`wrong-instance-request`, and the result carries the owner as `flowId`.
 
 ```ts
 // Continue a crash-interrupted request under its OWN id. Unlike `retry`,

@@ -18,7 +18,7 @@ That discovers your flow, executes the action, and streams NDJSON events to stdo
 
 ### `fsdev run` — Execute a flow action
 
-Discovers flows from conventional directories (`src/flows/`, `flows/`), validates the action, and executes with streaming output.
+Discovers flows from conventional directories (`src/flows/`, `flows/`), validates the action, and executes with streaming output. The first argument is the flow instance's id: its `kind` for an ordinary flow, the member's own id for a flow declared `cardinality: "collection"` (whose bare kind is not found; the error lists the ids that are). A session stays with the instance that started it, so re-running it through another instance exits non-zero with the session unchanged. See the [CLI reference](https://flow-state.dev/docs/api/cli#fsdev-run-flowid-action).
 
 ```bash
 # Inline JSON input

@@ -161,12 +161,16 @@ dispatcher is a seat on a task board; the board binds its id and claim gate
 onto it, and `defineFlow` puts the addressed entry behind that gate.
 
 **An `internal` address may name another flow** — `flowKind` on the block,
-making the address `(type, action, flowKind)`. It is as static as the pair it
+carrying the target's **instance id** (a singleton's kind, a collection
+member's own id), making the address `(type, action, flowKind)`. It is as static as the pair it
 extends, but `defineFlow` holds one flow's entry maps and cannot resolve
 another's, so the walk skips it and the seam resolves it at run time against
 the flows the process registered. Same rule, one keyed lookup with no
 fallback; the miss just gets its own name, `flow-not-found`, beside the
-`no-entry` a registered flow with no such entry still gives. A `task` address
+`no-entry` a registered flow with no such entry still gives. The instance
+check widens no delivery mode: a `{ key }` child is derived under the target
+instance, an `{ id }` or `{ from: true }` delivery must name a session that
+instance owns (`session-not-addressable` otherwise), and nothing else changes. A `task` address
 may take `flowKind` the same way — see [Dispatched Work](./dispatched-work.md) →
 *Dispatching into another flow*.
 

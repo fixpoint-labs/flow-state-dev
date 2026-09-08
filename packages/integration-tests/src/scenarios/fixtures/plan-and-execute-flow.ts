@@ -34,4 +34,4 @@ const planAndExecuteFlow = defineFlow({
   }
 });
 
-export default planAndExecuteFlow({ id: "default" });
+export default planAndExecuteFlow();

@@ -25,7 +25,7 @@ Every request path the client builds already starts with `/api/flows`. Leave `ba
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
-| `flowKind` | `string` | required | Which flow to call. |
+| `flowKind` | `string` | required | The flow instance to call: its `kind` for an ordinary flow, the copy's own id for a flow that runs as several copies. See [Server setup](/docs/server/setup#addressing-an-instance). |
 | `userId` | `string` | required | Caller identity sent on every request. The server still resolves the principal from your auth hook; this is the client's claim. |
 | `baseUrl` | `string` | same origin | Prefix put in front of `/api/flows/…`. Omit it for a same-origin app (Next.js route handler, the `node` host). Set an origin such as `https://api.example.com` when the API lives elsewhere. |
 | `fetcher` | `typeof fetch` | global `fetch` | Custom fetch (tests, extra headers). |
@@ -55,7 +55,7 @@ import { FlowProvider } from "@flow-state-dev/react";
 
 | Field | Type | What it does |
 |-------|------|--------------|
-| `flowKind` | `string` | Default flow for hooks. |
+| `flowKind` | `string` | Default flow instance for hooks. |
 | `userId` | `string` | Default caller id. |
 | `sessionId` | `string` | Default session. `useFlow({ autoCreateSession: true })` can mint one instead. |
 | `baseUrl` | `string` | Forwarded to the client. Same rule: omit it for a same-origin app. |

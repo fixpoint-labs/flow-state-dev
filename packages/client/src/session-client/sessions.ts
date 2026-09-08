@@ -30,6 +30,8 @@ export type CreateSessionClientOptions = {
  */
 export type ListSessionsOptions = {
   flowKind?: string;
+  /** Exact owning instance. Narrower than `flowKind` for a collection flow. */
+  flowId?: string;
   userId?: string;
   limit?: number;
   offset?: number;

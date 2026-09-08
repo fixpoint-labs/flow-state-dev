@@ -8,6 +8,7 @@ import type { Command } from "commander";
 import {
   createFlowRegistry,
   createModelResolver,
+  ownsRecord,
   type FlowRegistry,
   type RequestRecord,
   type RuntimeConfig,
@@ -226,12 +227,16 @@ export async function executeChatCommand(
 
     const userId = options.user ?? "cli-user";
 
-    // Session guard (§4.4): reject an existing session whose record flow-kind, or
-    // whose completed-request history, belongs to a different flow.
+    // Session guard (§4.4): reject an existing session owned by another flow
+    // instance, or whose completed-request history belongs to one.
     const validateSessionForTarget: SessionGuard = async (sessionId, target) => {
+      const flow = registry.get(target.flowKind);
+      if (flow === undefined) {
+        return { ok: false, message: `Flow "${target.flowKind}" is no longer available.` };
+      }
       const record = await stores.session.get(sessionId).catch(() => undefined);
-      if (record !== undefined && record.flowKind !== target.flowKind) {
-        return { ok: false, message: `Session ${sessionId} belongs to flow "${record.flowKind}", not "${target.flowKind}".` };
+      if (record !== undefined && !ownsRecord(flow, record)) {
+        return { ok: false, message: `Session ${sessionId} belongs to flow "${record.flowId ?? record.flowKind}", not "${target.flowKind}".` };
       }
       // No tenantId filter: fsdev chat runs single-identity (tenantId undefined
       // throughout), so this is over-broad rather than unsafe — it can only reject
@@ -239,9 +244,9 @@ export async function executeChatCommand(
       const priorRequests = await stores.request
         .list({ sessionId, status: "completed", limit: 50 })
         .catch((): RequestRecord[] => []);
-      const foreign = priorRequests.find((r) => r.flowKind !== target.flowKind);
+      const foreign = priorRequests.find((r) => !ownsRecord(flow, r));
       if (foreign !== undefined) {
-        return { ok: false, message: `Session ${sessionId} has history from flow "${foreign.flowKind}", not "${target.flowKind}".` };
+        return { ok: false, message: `Session ${sessionId} has history from flow "${foreign.flowId ?? foreign.flowKind}", not "${target.flowKind}".` };
       }
       return { ok: true };
     };

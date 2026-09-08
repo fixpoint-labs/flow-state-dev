@@ -27,7 +27,10 @@ import type { RequestRecord } from "../stores/types";
  */
 export type InitialRequestRecordInput<TState extends JsonObject = JsonObject> = {
   requestId: string;
+  /** The definition's kind — `flow.kind`, never the address the request arrived on. */
   flowKind: string;
+  /** The owning instance — `flow.id`. */
+  flowId?: string;
   actionName: string;
   userId: string;
   /** Bare session id (FIX-682) — not the namespaced storage key. */
@@ -59,6 +62,7 @@ export function createInitialRequestRecord<TState extends JsonObject = JsonObjec
   return {
     id: input.requestId,
     flowKind: input.flowKind,
+    flowId: input.flowId,
     actionName: input.actionName,
     userId: input.userId,
     sessionId: input.sessionId,

@@ -81,7 +81,7 @@ describe("FIX-621: task-board event-driven worker idle-wait", () => {
           }).step(board.drain),
         },
       },
-    })({ id: "default" });
+    })();
 
     const result = await testFlow({
       flow,

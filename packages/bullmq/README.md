@@ -124,12 +124,14 @@ import { createBullmqRuntime } from "@flow-state-dev/bullmq";
 const bullmq = createBullmqRuntime({ connection: redisUrl });
 
 await bullmq.enqueueAction({
-  flowKind: "billing",
+  flowKind: "billing", // the instance id, carried unchanged to the worker
   actionName: "generateInvoice",
   input: { month: "2026-06" },
   userId: "system",
 });
 ```
+
+`flowKind` on the job is the exact instance the worker resolves: a singleton's kind, or a collection member's own id. The worker does not translate it, and a job naming a session another instance owns fails as `UnrecoverableError` with nothing written, rather than retrying. Turning an existing flow into a collection needs the queue drained first: a job enqueued under the bare kind finds no instance afterwards. Saved sessions are attributed offline, see the [persistence guide](https://flow-state.dev/docs/persistence/overview#who-owns-a-record).
 
 ## Connection
 

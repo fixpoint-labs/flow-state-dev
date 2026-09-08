@@ -141,9 +141,10 @@ export function createSQLiteRequestStore(
     // leave a window for a second connection's conditional write to be
     // overwritten by a full-record blob built from the stale value.
     preserveJsonKeys: ["abortRequested"],
-    columns: ["flow_kind", "user_id", "session_id", "org_id", "tenant_id", "status"],
+    columns: ["flow_kind", "flow_id", "user_id", "session_id", "org_id", "tenant_id", "status"],
     toRow: (record) => [
       record.flowKind,
+      record.flowId ?? null,
       record.userId,
       record.sessionId ?? null,
       record.orgId ?? null,
@@ -157,6 +158,11 @@ export function createSQLiteRequestStore(
       if (options?.flowKind !== undefined) {
         parts.push("flow_kind = ?");
         params.push(options.flowKind);
+      }
+      // Exact-owner filter: an equality, so a legacy NULL never matches.
+      if (options?.flowId !== undefined) {
+        parts.push("flow_id = ?");
+        params.push(options.flowId);
       }
       if (options?.sessionId !== undefined) {
         parts.push("session_id = ?");

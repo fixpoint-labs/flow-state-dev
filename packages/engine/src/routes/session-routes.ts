@@ -7,6 +7,7 @@ import type { SessionRecord, StoreRegistry } from "../stores/types";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { purgeStaleResourceState } from "../context/ensure-session-record";
+import { resolveRecordOwner } from "../context/record-owner";
 import {
   asObject,
   asStringArray,
@@ -40,11 +41,11 @@ type SessionRouteContext = {
    */
   principal?: ResolvedPrincipal;
   /**
-   * For an anonymous cross-flow listing in a mixed app: the flow kinds that
-   * may be listed without a principal. Undefined means unrestricted. See
-   * `route-auth.ts`.
+   * For an anonymous cross-flow listing in a mixed app: the flow instance ids
+   * whose sessions may be listed without a principal. Undefined means
+   * unrestricted. See `route-auth.ts`.
    */
-  anonymousFlowKinds?: Set<string>;
+  anonymousFlowIds?: Set<string>;
 };
 
 export async function handleListSessions(
@@ -55,6 +56,9 @@ export async function handleListSessions(
   const url = new URL(request.url);
   const sessions = await ctx.stores.session.list({
     flowKind: getString(url.searchParams.get("flowKind")),
+    // Exact owner: one instance of a collection flow. A record with no owner
+    // recorded never matches, so an ownerless legacy row cannot leak in.
+    flowId: getString(url.searchParams.get("flowId")),
     // An authenticated caller sees only their own sessions — the `userId`
     // query param is a convenience filter, never a way to widen the result
     // set past the principal. Without a principal (framework default
@@ -72,9 +76,16 @@ export async function handleListSessions(
   // shorter than `limit` — the alternative is one query per allowed kind, which
   // is not worth it for a path that only exists when a host-level
   // `resolvePrincipal` is absent.
-  const allowed = ctx.anonymousFlowKinds;
+  // Judged per row under its OWNER, not its kind, so an open peer of an
+  // authenticated instance does not make that instance's sessions visible.
+  const allowed = ctx.anonymousFlowIds;
   const visible =
-    allowed === undefined ? sessions : sessions.filter((s) => allowed.has(s.flowKind));
+    allowed === undefined
+      ? sessions
+      : sessions.filter((s) => {
+          const owner = resolveRecordOwner(ctx.registry, s);
+          return owner.ok && allowed.has(owner.flow.id);
+        });
 
   return jsonResponse(200, {
     // Surface bare session ids — the stored `id` is the namespaced storage key.
@@ -167,6 +178,9 @@ export async function handleCreateSession(
     // the bare id below.
     id: sessionKey,
     flowKind: flow.kind,
+    // The owner: the instance this route was addressed to. Every later action,
+    // re-entry and read on this session is admitted against it.
+    flowId: flow.id,
     userId,
     // Same rule as `userId` above, and it matters more here: `validateDispatch`
     // reads the stored session's `orgId` to satisfy a flow's `requiresOrg`, so
@@ -330,6 +344,10 @@ export async function handleListSessionRequests(
     // is the point, and which no shipped writer produces on the ordinary path.
     // Taken from the loaded record, never from the caller (BP-031).
     flowKind: session.flowKind,
+    // And the exact owner, when the session records one: a session's requests
+    // are the runs its owning instance admitted. A legacy session without an
+    // owner keeps the kind filter alone, as before.
+    ...(session.flowId != null ? { flowId: session.flowId } : {}),
     status: getString(url.searchParams.get("status")) as
       | RequestStatus
       | undefined,

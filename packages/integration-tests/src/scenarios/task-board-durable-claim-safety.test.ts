@@ -182,10 +182,14 @@ type Board = TaskCollectionRef<{ goal: string }, unknown>;
  * awaited, so an execution launched before a sibling's claim holds a
  * pre-claim view of that task, and one launched after holds a post-claim
  * view. Assertions 1 and 4 turn on exactly that difference.
+ *
+ * Every execution is the SAME flow identity — one kind, one singleton —
+ * because they share one session, and a session belongs to one flow
+ * instance; only the handler body differs.
  */
 function execution(name: string, body: (tasks: Board) => Promise<unknown>) {
   return defineFlow({
-    kind: `claim-safety-${name}`,
+    kind: "claim-safety",
     actions: {
       run: {
         block: handler({
@@ -201,7 +205,7 @@ function execution(name: string, body: (tasks: Board) => Promise<unknown>) {
         }),
       },
     },
-  })({ id: "default" });
+  })();
 }
 
 /** Launch one execution over the shared stores/session. Not awaited here. */

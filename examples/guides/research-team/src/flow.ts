@@ -72,4 +72,4 @@ export const researchTeamFlow = defineFlow({
   session: { stateSchema: z.object({}) },
 });
 
-export default researchTeamFlow({ id: "default" });
+export default researchTeamFlow();

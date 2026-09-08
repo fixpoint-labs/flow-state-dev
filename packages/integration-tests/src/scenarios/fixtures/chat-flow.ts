@@ -52,4 +52,4 @@ const chatFlow = defineFlow({
   }
 });
 
-export default chatFlow({ id: "default" });
+export default chatFlow();

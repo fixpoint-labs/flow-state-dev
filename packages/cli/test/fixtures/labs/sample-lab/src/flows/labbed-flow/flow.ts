@@ -24,4 +24,4 @@ const labbedFlow = defineFlow({
   },
 });
 
-export default labbedFlow({ id: "default" });
+export default labbedFlow();

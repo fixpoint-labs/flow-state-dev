@@ -295,6 +295,7 @@ export type {
   FlowInstance,
   FlowInstanceOptions,
   FlowType,
+  FlowCardinality,
   McpConfig,
   ModelUsageEntry,
   TokenLedger,

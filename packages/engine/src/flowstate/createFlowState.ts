@@ -941,7 +941,7 @@ class InternalFlowState<TSettings extends object>
         // this config is the one a colocated worker and the router both copy,
         // so wiring it anywhere later leaves one of them unable to resolve a
         // flow the process has plainly registered.
-        resolveFlow: (kind: string) => this.#registry.get(kind),
+        resolveFlow: (address: string) => this.#registry.get(address),
         ...(this.#routerRequested ? { staleSweepIntervalMs } : {})
       }
     });

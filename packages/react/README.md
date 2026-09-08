@@ -70,7 +70,7 @@ Wrap your app (or a subtree) with `<FlowProvider>` to set defaults and register 
 ```
 
 Props:
-- `flowKind?: string` — Default flow kind for child hooks
+- `flowKind?: string` — Default flow instance for child hooks (a kind, or a collection member's own id)
 - `sessionId?: string` — Default session ID
 - `userId?: string` — Required for Phase 1
 - `baseUrl?: string` — API base URL
@@ -109,7 +109,7 @@ Returns:
 - `statusMessage` — Request-scoped status slot mirror. Latest `ctx.emit.status()` value from the in-flight request (empty string when unset; resets on request termination). Pair with a streaming indicator to show "what's happening right now" with a "Working..." fallback.
 - `sendAction(action, input)` — Trigger an action
 - `abortRequest()` — Stop the in-flight request (signals the server to mark it `aborted`)
-- `resumeLatestRequest()` — Re-dispatch `latestRequest` and attach to the new stream. No-op when there's no latest request, or when its status is anything other than `interrupted` or `failed` (the only states the server will retry). Useful for rendering a "Resume" button when a previous request was interrupted by a server crash, HMR reload, or network drop:
+- `resumeLatestRequest()` — Re-dispatch `latestRequest` and attach to the new stream. No-op when there's no latest request, or when its status is anything other than `interrupted` or `failed` (the only states the server will retry). The retry goes through the instance recorded as the request's owner (`latestRequest.flowId`), falling back to the provider's `flowKind` only for a record with no owner recorded. Useful for rendering a "Resume" button when a previous request was interrupted by a server crash, HMR reload, or network drop:
 
   ```tsx
   {session.latestRequest?.status === "interrupted" && !session.isStreaming && (
