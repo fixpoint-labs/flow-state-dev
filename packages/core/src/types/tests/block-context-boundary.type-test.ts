@@ -60,19 +60,19 @@ void flowConfig;
 // block step past the claim and dispatch gates built onto them.
 
 // @ts-expect-error the flow's action map is not reachable from a block.
-ctx.flow.actions;
+void ctx.flow.actions;
 
 // @ts-expect-error nor its task entries, which are gated per board.
-ctx.flow.task;
+void ctx.flow.task;
 
 // @ts-expect-error nor its internal entries.
-ctx.flow.internal;
+void ctx.flow.internal;
 
 // @ts-expect-error nor its resource declarations — `ctx.resources` is the door.
-ctx.flow.resources;
+void ctx.flow.resources;
 
 // @ts-expect-error nor the instance's own address.
-ctx.flow.id;
+void ctx.flow.id;
 
 // A block that declares a `flowConfigSchema` reads the shape it declared, with
 // no annotation and no flow named anywhere.

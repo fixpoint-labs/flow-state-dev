@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, generator, handler, sequencer } from "../src";
+import { defineFlow, generator, handler, router, sequencer } from "../src";
 import type { FlowInstance } from "../src/types/flow";
 import { createMockContext, runForTest } from "./helpers";
 
@@ -21,6 +21,55 @@ const seatConfig = z.object({
   model: z.string(),
   personaPath: z.string().optional()
 });
+
+/** What each of the four kinds below declares it needs of its flow. */
+const needsModel = z.object({ model: z.string() });
+
+const needsModelHandler = (name: string) =>
+  handler({
+    name,
+    inputSchema: z.object({}),
+    outputSchema: z.object({}),
+    flowConfigSchema: needsModel,
+    execute: async () => ({})
+  });
+
+const needsModelGenerator = (name: string) =>
+  generator({
+    name,
+    inputSchema: z.object({}),
+    model: "openai/gpt-5.4-mini",
+    prompt: () => "go",
+    flowConfigSchema: needsModel,
+    itemVisibility: { client: true, history: true }
+  });
+
+const needsModelRouter = (name: string) => {
+  const only = handler({
+    name: `${name}-route`,
+    inputSchema: z.object({}),
+    outputSchema: z.object({}),
+    execute: async () => ({})
+  });
+  return router({
+    name,
+    inputSchema: z.object({}),
+    outputSchema: z.object({}),
+    flowConfigSchema: needsModel,
+    routes: [only],
+    execute: () => only
+  });
+};
+
+const needsModelSequencer = (name: string) =>
+  sequencer({ name, inputSchema: z.object({}), flowConfigSchema: needsModel }).step(
+    handler({
+      name: `${name}-step`,
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: async () => ({})
+    })
+  );
 
 /** A block context whose `flow` is a real minted instance, not a stub. */
 function ctxFor(instance: FlowInstance) {
@@ -387,6 +436,57 @@ describe("flow config bag — what a block's declaration is worth", () => {
     expect(() => withSchema({ id: "ask-1", config: {} } as never)).toThrow(
       /instance "ask-1" has a config bag that block "lookup-tool" cannot read/
     );
+  });
+
+  /**
+   * All four kinds, one behaviour. The slot lives on `BlockConfig`, which every
+   * kind extends, but each builder hands its own config to `buildBlock` — so
+   * "the type compiles" and "the declaration is enforced" are different claims,
+   * and only the second one matters.
+   *
+   * A sequencer is the kind this catches: it rebuilds its config from an
+   * explicit field list rather than spreading, so a new slot is dropped at
+   * runtime while the generic still type-checks. That is a silent no-op on a
+   * declaration the author believes is load-bearing — exactly the fail-quiet
+   * class this whole design exists to remove — so it is asserted per kind
+   * rather than assumed from the shared type.
+   */
+  describe.each([
+    ["handler", () => needsModelHandler("kind-handler")],
+    ["generator", () => needsModelGenerator("kind-generator")],
+    ["router", () => needsModelRouter("kind-router")],
+    ["sequencer", () => needsModelSequencer("kind-sequencer")]
+  ])("a %s's flowConfigSchema is enforced, not just typed", (kind, build) => {
+    it("refuses at definition time when the flow declares no configSchema", () => {
+      expect(() =>
+        defineFlow({ kind: `bare-${kind}`, actions: { work: { block: build() } } })
+      ).toThrow(
+        new RegExp(`reaches block "kind-${kind}", which requires flow config, but the flow declares no configSchema`)
+      );
+    });
+
+    it("refuses at the mint when the bag cannot satisfy it", () => {
+      const flow = defineFlow({
+        kind: `loose-${kind}`,
+        cardinality: "collection",
+        configSchema: z.object({ model: z.string().optional() }),
+        actions: { work: { block: build() } }
+      });
+
+      expect(() => flow({ id: `${kind}-1`, config: {} } as never)).toThrow(
+        new RegExp(`instance "${kind}-1" has a config bag that block "kind-${kind}" cannot read`)
+      );
+      // And the copy that supplies it mints, so the check is a refusal and not
+      // a blanket rejection of the kind.
+      expect(flow({ id: `${kind}-2`, config: { model: "opus" } } as never).config).toEqual({
+        model: "opus"
+      });
+    });
+
+    it("carries the declaration onto the built block", () => {
+      const built = build() as unknown as { config: { flowConfigSchema?: unknown } };
+      expect(built.config.flowConfigSchema).toBe(needsModel);
+    });
   });
 
   /**

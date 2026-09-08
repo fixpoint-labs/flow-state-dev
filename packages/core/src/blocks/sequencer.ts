@@ -1141,7 +1141,14 @@ function createSequencer<
       outputSchema: undefined,
       stateSchema: config.stateSchema,
       container: config.container,
-      activeStatusMessage: config.activeStatusMessage
+      activeStatusMessage: config.activeStatusMessage,
+      // Carried through like every other declared slot. Unlike the three leaf
+      // builders, which spread their config, this one is rebuilt from an
+      // explicit field list — so a slot omitted HERE is dropped at run time
+      // while its generic still type-checks, and the declaration becomes a
+      // silent no-op. `collectRequiredFlowConfig` reads this off the built
+      // block, so a sequencer's requirement reaches the flow only through it.
+      flowConfigSchema: config.flowConfigSchema
     },
     execute: wrapWithOutputValidation(
       runSequencerOperations(operations, rescueHandlers, durable, config.stateSchema),
