@@ -1,7 +1,7 @@
 # POC evidence — OMP / pi runtime seams
 
 Throwaway, never merged. The [current epic](../../spec/_epics/pi-harness.md) is
-OMP-only and harness-only. Its durable question/approval and same-session continuation
+OMP-only and harness-only. Its durable question and same-session continuation
 proof remains open. The earlier pi companion investigation below is historical, not
 the current design or acceptance claim.
 

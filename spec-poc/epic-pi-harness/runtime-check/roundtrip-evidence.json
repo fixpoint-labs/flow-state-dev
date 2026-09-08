@@ -44,6 +44,8 @@
       }
     ],
     "sessionId": "01a07e9e-7e25-7660-9a8d-de430f59257a",
+    "sessionFilePresent": false,
+    "sessionFileCheck": "Post-stop filesystem stat returned ENOENT",
     "sessionFile": "/tmp/fsd-runtime-probe/pi-sessions/2026-09-08T01-25-11-333Z_01a07e9e-7e25-7660-9a8d-de430f59257a.jsonl"
   },
   "omp": {
@@ -101,6 +103,8 @@
       }
     ],
     "sessionId": "01a07e9e-7f56-7603-8321-a7804c657984",
+    "sessionFilePresent": false,
+    "sessionFileCheck": "Post-stop filesystem stat returned ENOENT",
     "sessionFile": "/tmp/fsd-runtime-probe/omp-sessions/2026-09-08T01-25-11-638Z_01a07e9e-7f56-7603-8321-a7804c657984.jsonl"
   }
 }
