@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SessionRequestSummary } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
-import { useReadFence } from "./use-read-fence";
+import { describeReadError } from "../lib/instance-ownership";
+import { useWorkspaceFence } from "./use-workspace-fence";
 
 /** Stable empty list, so a stale hold does not hand back a new array each render. */
 const EMPTY_REQUESTS: SessionRequestSummary[] = [];
 
 export function useSessionRequests(sessionId: string | null) {
-  const { sessionClient, recoveryClient, config, autoRecoverInterrupted } = useDevTool();
+  const { sessionClient, recoveryClient, config, autoRecoverInterrupted, workspaceToken } =
+    useDevTool();
   const [requests, setRequests] = useState<SessionRequestSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +30,7 @@ export function useSessionRequests(sessionId: string | null) {
   // effect leaves the previous session's `in_progress` row selectable for the
   // whole of the switching render.
   const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
-  const fence = useReadFence([sessionId, sessionClient], () => {
+  const fence = useWorkspaceFence([sessionId], () => {
     setRequests([]);
     setError(null);
     setHeldIdentity(null);
@@ -38,7 +40,7 @@ export function useSessionRequests(sessionId: string | null) {
   const refresh = useCallback(async () => {
     const stillCurrent = fence.begin();
     if (stillCurrent === null) return;
-    const mine: readonly unknown[] = [sessionId, sessionClient];
+    const mine: readonly unknown[] = [workspaceToken, sessionClient, sessionId];
     if (!sessionId) {
       setRequests([]);
       setHeldIdentity(mine);
@@ -69,12 +71,13 @@ export function useSessionRequests(sessionId: string | null) {
       setRequests(result);
     } catch (err) {
       if (!stillCurrent()) return;
-      setError(err instanceof Error ? err.message : "Failed to fetch requests");
+      setError(describeReadError(err, "Failed to fetch requests"));
     } finally {
       if (stillCurrent()) setIsLoading(false);
     }
   }, [
     fence,
+    workspaceToken,
     sessionClient,
     recoveryClient,
     sessionId,

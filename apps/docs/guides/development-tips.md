@@ -119,7 +119,7 @@ A first-party inspector app for real-time flow visualization. See blocks executi
 - **Session state** — Current scope state and resources. Inspect what the flow has stored.
 - **Replay** — Re-run previous requests to reproduce behavior. No need to retype inputs.
 
-**How to run it:** Run the DevTool app alongside your server. Connect to your flow kind and session. The exact launch command may vary (e.g. `fsdev dev` or running the devtool app from the monorepo). See the project's DevTool docs for current setup.
+**How to run it:** Run the DevTool app alongside your server. In the navigator, pick a flow instance by its ID, then open a session under it — see [Flow overview](/docs/devtool/overview#flow-overview) for how copies of one flow are told apart. The exact launch command may vary (e.g. `fsdev dev` or running the devtool app from the monorepo). See the project's DevTool docs for current setup.
 
 **When to use it:** Visual debugging of multi-block flows. Understanding item provenance (which block emitted what). Inspecting state after a run. Reproducing bugs by replaying a request. The DevTool is most helpful when the flow has several steps and you need to see the execution order and data flow.
 

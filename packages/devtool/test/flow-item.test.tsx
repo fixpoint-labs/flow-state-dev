@@ -5,31 +5,34 @@ import type { FlowListEntry } from "@flow-state-dev/client";
 // FlowItem pulls selection + session-list state from hooks/context. Mock those
 // so the test can isolate the Sessions ⟳ fan-out wiring (FIX-730): the button
 // must refresh the session list AND the open session.
-const { refreshSpy, createSessionSpy, setActiveSessionSpy, setActiveSessionIdSpy } = vi.hoisted(() => ({
+const { refreshSpy, createSessionSpy, selectSessionSpy } = vi.hoisted(() => ({
   refreshSpy: vi.fn(),
   createSessionSpy: vi.fn(),
-  setActiveSessionSpy: vi.fn(),
-  setActiveSessionIdSpy: vi.fn(),
+  selectSessionSpy: vi.fn(),
 }));
 
 vi.mock("../src/react/context/devtool-context", () => ({
-  useDevTool: () => ({ setActiveSession: setActiveSessionSpy }),
+  useDevTool: () => ({ activeSessionId: null, selectSession: selectSessionSpy }),
 }));
 vi.mock("../src/react/hooks/use-sessions", () => ({
   useSessions: () => ({
     sessions: [],
     isLoading: false,
+    error: null,
     refresh: refreshSpy,
     createSession: createSessionSpy,
   }),
 }));
-vi.mock("../src/react/hooks/use-active-session", () => ({
-  useActiveSession: () => ({ activeSessionId: null, setActiveSessionId: setActiveSessionIdSpy }),
-}));
 
 import { FlowItem } from "../src/react/components/navigator/flow-item";
 
-const flow: FlowListEntry = { id: "demo", kind: "demo", requireUser: false, actions: [] };
+const flow: FlowListEntry = {
+  id: "demo",
+  kind: "demo",
+  cardinality: "singleton",
+  requireUser: false,
+  actions: [],
+};
 
 describe("FlowItem — Sessions ⟳ fan-out (FIX-730)", () => {
   beforeEach(() => {

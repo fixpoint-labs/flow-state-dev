@@ -36,7 +36,6 @@ import { TokenUsageSummary } from "./components/detail/token-usage-summary";
 import { ItemDetail } from "./components/detail/item-detail";
 import { FlowStateMark } from "./components/shared/flow-state-mark";
 
-import { useActiveSession } from "./hooks/use-active-session";
 import { useRequestStream } from "./hooks/use-request-stream";
 import { useActionDispatch } from "./hooks/use-action-dispatch";
 import { useSessionRequests } from "./hooks/use-session-requests";
@@ -102,32 +101,47 @@ export function DevToolPanel({
       userIdControl={userIdControl}
     >
       <DebugProvider>
-        <SelectionProvider>
-          <PanelContent className={className} />
-        </SelectionProvider>
+        {/*
+          `SelectionProvider` is deliberately NOT here. Trace/block/item detail
+          belongs to one workspace, so it is mounted inside `PanelContent` and
+          keyed on the visit — see `workspaceKey`. Debug toggles are the
+          operator's preference and outlive every switch, so they stay out here.
+        */}
+        <PanelContent className={className} />
       </DebugProvider>
     </DevToolProvider>
   );
 }
 
 function PanelContent({ className }: { className?: string }) {
-  const { config, flows, activeFlowKind, activeSessionId, recoveryClient, setActiveSession } = useDevTool();
+  const {
+    config,
+    activeFlow,
+    activeFlowId,
+    activeSessionId,
+    workspaceToken,
+    recoveryClient,
+    selectWorkspace,
+  } = useDevTool();
   const [navExpanded, setNavExpanded] = useState(true);
   const [navWidth, setNavWidth] = useState(NAV_EXPANDED_WIDTH);
   const [detailWidth, setDetailWidth] = useState(DETAIL_DEFAULT_WIDTH);
 
-  const activeFlow = flows.find((f) => f.id === activeFlowKind);
-  const { activeSessionId: stickySession } = useActiveSession(activeFlowKind);
-
-  const effectiveSessionId = activeSessionId ?? stickySession;
+  // The session under the selected instance, and nothing else. The panel used
+  // to fold in a second, locally-restored "sticky" session, which meant the
+  // navigator and the workspace each held an answer to the same question and
+  // could give different ones. The provider owns the restore now, and only
+  // installs a saved session once the server has confirmed it belongs to the
+  // instance on screen.
+  const effectiveSessionId = activeSessionId;
 
   // The panel's own staleness check, on the same primitive its hooks use.
   //
   // `descentSessionRef` cannot serve: it is synchronised by a PASSIVE EFFECT,
-  // so between a navigator or sticky-session change committing and that effect
-  // running there is a window where it still names the session just left. An
-  // awaited callback settling in that window passes the check and installs its
-  // request as the active stream under the session now open.
+  // so between a workspace change committing and that effect running there is a
+  // window where it still names the session just left. An awaited callback
+  // settling in that window passes the check and installs its request as the
+  // active stream under the session now open.
   //
   // That is the render-versus-effect trap for the third time here — a
   // generation counter read too late, then captured too early, now a cell
@@ -136,13 +150,11 @@ function PanelContent({ className }: { className?: string }) {
   // step with. A ref written in render would work equally; this is the same
   // question the hooks ask, so it uses the same answer rather than a fourth
   // mechanism.
-  const sessionFence = useReadFence([effectiveSessionId]);
-
-  useEffect(() => {
-    if (stickySession && !activeSessionId) {
-      setActiveSession(stickySession);
-    }
-  }, [stickySession, activeSessionId, setActiveSession]);
+  //
+  // Keyed on the visit token, not the session id alone: leaving instance A for
+  // B and coming back restores the same id, and a callback retired on the way
+  // out would agree with it again.
+  const sessionFence = useReadFence([workspaceToken, effectiveSessionId]);
 
   const { requests, refresh: refreshRequests } = useSessionRequests(effectiveSessionId);
   // Owned here rather than inside the ChildSessions tab: the Tasks tab draws a
@@ -170,11 +182,12 @@ function PanelContent({ className }: { className?: string }) {
 
   const { replayState, isReplaying, replayFull, replayFromCursor, simulateReconnect, clearReplay } = useReplay();
 
-  // Reset transient state when switching sessions. The two item maps are keyed
-  // by request id, so they never collide across sessions — but the synthetic
-  // group `requestGroups` appends for an `activeRequestId` that is not in
-  // `requests` reads straight out of them, which is how the session left behind
-  // keeps rendering its items under the newly opened one.
+  // Reset transient request state on every workspace transition — an instance
+  // switch, a session pick, a credential change. The two item maps are keyed by
+  // request id, so they never collide across sessions — but the synthetic group
+  // `requestGroups` appends for an `activeRequestId` that is not in `requests`
+  // reads straight out of them, which is how the workspace left behind keeps
+  // rendering its items under the newly opened one.
   //
   // `dispatchedRequestId` is cleared here too, and only here for this path. Its
   // usual release is the terminal-status effect below, which never fires on a
@@ -183,14 +196,31 @@ function PanelContent({ className }: { className?: string }) {
   // in the session we just left, and `useLiveMode` only auto-subscribes when it
   // is null — so live mode would silently ignore an in-progress request in the
   // session the user just opened.
-  useEffect(() => {
+  //
+  // ## Why this is not an effect
+  //
+  // It was, and a real browser caught what that costs. An effect-based reset
+  // leaves ONE COMMIT in which `activeFlowId` has already moved to the copy just
+  // selected while `activeRequestId` still names the request of the copy just
+  // left — and the stream effect in that commit connects the two together,
+  // issuing `/api/flows/<new copy>/requests/<old copy's request>/stream`. One
+  // instance's request on another's address, sent before the reset it is racing
+  // has run.
+  //
+  // Adjusting the state during render is React's documented answer to exactly
+  // this ("adjusting state when a prop changes"): the body re-runs before
+  // anything commits, so no child, effect or request ever observes the
+  // mismatched pair. It is the same move the read fences make — mirror the
+  // identity during render, so there is no schedule to be out of step with.
+  const [transientVisit, setTransientVisit] = useState(workspaceToken);
+  if (transientVisit !== workspaceToken) {
+    setTransientVisit(workspaceToken);
     setActiveRequestId(null);
     setDispatchedRequestId(null);
     setLiveItems(new Map());
     setLiveRawItems(new Map());
     clearReplay();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveSessionId]);
+  }
 
   const streamRequestId = replayState.requestId ?? activeRequestId;
   // Bumped to force the stream to re-attach to the SAME request id after a
@@ -204,7 +234,8 @@ function PanelContent({ className }: { className?: string }) {
   }, []);
 
   const { streamState, streamStatus, items: streamItems } = useRequestStream({
-    flowKind: activeFlowKind,
+    flowId: activeFlowId,
+    ownerToken: workspaceToken,
     requestId: streamRequestId,
     startingAfter: replayState.startingAfter,
     lastEventId: replayState.lastEventId,
@@ -327,7 +358,7 @@ function PanelContent({ className }: { className?: string }) {
         return next;
       });
     }
-  }, [streamRequestId, streamItems, effectiveSessionId]);
+  }, [streamRequestId, streamItems, workspaceToken]);
 
   const requestGroups: RequestGroup[] = useMemo(() => {
     // Reconcile the watched request's status between the live stream and the
@@ -404,15 +435,23 @@ function PanelContent({ className }: { className?: string }) {
   // with the open session itself last. Empty while looking at a session picked
   // from the navigator.
   //
-  // A ChildSession IS a session, so opening one just swaps `activeSessionId` and
-  // every tab follows — which is the point, and also why the trail exists: once
+  // A ChildSession IS a session, so opening one swaps the workspace and every
+  // tab follows — which is the point, and also why the trail exists: once
   // swapped, nothing on screen would otherwise say the workspace has left the
   // conversation the navigator still highlights. Nesting is real (a ChildSession
   // can start its own), so this is a stack rather than a single parent.
-  const [descent, setDescent] = useState<Array<{ id: string; label: string }>>([]);
+  //
+  // Each entry carries its OWNER, not just its session id. Work dispatched into
+  // another instance produces a child that instance owns — a same-kind peer
+  // included — so descending is a move in both axes and returning has to undo
+  // both. A trail of bare session ids would send the operator back to the right
+  // conversation under whichever copy happened to be selected.
+  const [descent, setDescent] = useState<
+    Array<{ id: string; label: string; flowId: string }>
+  >([]);
   // The session id `descent` describes. Any other id arriving in
-  // `effectiveSessionId` came from the navigator or the sticky restore — a
-  // fresh pick, not a step in this descent — so the trail is dropped.
+  // `effectiveSessionId` came from the navigator or the restore — a fresh pick,
+  // not a step in this descent — so the trail is dropped.
   const descentSessionRef = useRef<string | null>(effectiveSessionId);
 
   useEffect(() => {
@@ -424,15 +463,29 @@ function PanelContent({ className }: { className?: string }) {
   const handleOpenChildSession = useCallback(
     (childSession: ChildSessionSummary) => {
       const from = effectiveSessionId;
-      if (from === null || from === childSession.id) return;
+      if (from === null || activeFlowId === null || from === childSession.id) return;
+      // The child's own admitted owner, when the server recorded one. A child
+      // written before owners existed has none, and the only honest reading of
+      // that is "the instance we are already in" — it is the one that could have
+      // started it under the old same-flow rule.
+      const childFlowId = childSession.flowId ?? activeFlowId;
       setDescent((prev) => [
-        ...(prev.length > 0 ? prev : [{ id: from, label: shortSessionId(from) }]),
-        { id: childSession.id, label: childSession.topic ?? shortSessionId(childSession.id) },
+        ...(prev.length > 0
+          ? prev
+          : [{ id: from, label: shortSessionId(from), flowId: activeFlowId }]),
+        {
+          id: childSession.id,
+          label: childSession.topic ?? shortSessionId(childSession.id),
+          flowId: childFlowId,
+        },
       ]);
       descentSessionRef.current = childSession.id;
-      setActiveSession(childSession.id);
+      // Instance and session in ONE transition. Two updates would leave a render
+      // in which the child is open under the parent's instance, and the reads
+      // that render fires would be addressed to the wrong copy.
+      selectWorkspace(childFlowId, childSession.id);
     },
-    [effectiveSessionId, setActiveSession],
+    [effectiveSessionId, activeFlowId, selectWorkspace],
   );
 
   const handleReturnTo = useCallback(
@@ -443,9 +496,9 @@ function PanelContent({ className }: { className?: string }) {
       // one-crumb trail would claim we are still inside something.
       setDescent(index === 0 ? [] : descent.slice(0, index + 1));
       descentSessionRef.current = entry.id;
-      setActiveSession(entry.id);
+      selectWorkspace(entry.flowId, entry.id);
     },
-    [descent, setActiveSession],
+    [descent, selectWorkspace],
   );
 
   // The ChildSession axis is interaction-scoped
@@ -485,7 +538,7 @@ function PanelContent({ className }: { className?: string }) {
   //   session can move underneath them.
   const handleSendAction = useCallback(
     async (action: string, input: unknown) => {
-      if (!activeFlowKind || !effectiveSessionId) return;
+      if (!activeFlowId || !effectiveSessionId) return;
       const stillCurrent = sessionFence.begin();
       if (stillCurrent === null) return;
       // Re-read the ChildSession axis at the START of the call, which is what
@@ -502,7 +555,7 @@ function PanelContent({ className }: { className?: string }) {
       // it always names the session on screen, and the hook already retires its
       // own read by generation if the workspace moves while it is in flight.
       void refreshChildSessions();
-      const response = await sendAction(activeFlowKind, effectiveSessionId, action, input);
+      const response = await sendAction(activeFlowId, effectiveSessionId, action, input);
       // The workspace can move while this is in flight — descending into a
       // ChildSession is a click away — and the session-change reset has already
       // cleared both ids by the time we resume. Installing them now would put a
@@ -519,7 +572,7 @@ function PanelContent({ className }: { className?: string }) {
         setDispatchedRequestId(response.request.id);
       }
     },
-    [activeFlowKind, effectiveSessionId, sendAction, refreshChildSessions, sessionFence],
+    [activeFlowId, effectiveSessionId, sendAction, refreshChildSessions, sessionFence],
   );
 
   // After a suspension is resolved, re-attach the live stream to the continued
@@ -589,7 +642,8 @@ function PanelContent({ className }: { className?: string }) {
   );
   const { continueRequest, isContinuing } = useContinueRequest({
     recoveryClient,
-    flowKind: activeFlowKind,
+    flowId: activeFlowId,
+    ownerToken: workspaceToken,
     sessionId: effectiveSessionId,
     onItems: handleContinueItems,
     // The row's status in `requests` (polled) is stale the moment the
@@ -689,6 +743,17 @@ function PanelContent({ className }: { className?: string }) {
     .filter(Boolean)
     .join(" ");
 
+  // The identity of this workspace VISIT, used to key every owned subtree.
+  //
+  // The reset effect above is a passive effect: between the transition
+  // committing and that effect running, the panel renders once with the new
+  // selection and the previous workspace's items, details and replay state still
+  // in place. That render is the flash of A's content under B. A key makes React
+  // remount those subtrees with the transition itself, so the gap has no frame
+  // to appear in — and the token is in the key because A → B → A must not
+  // restore the subtree A left behind.
+  const workspaceKey = `${activeFlowId ?? "none"}:${effectiveSessionId ?? "none"}:${workspaceToken}`;
+
   return (
     <TraceLookupProvider requestGroups={requestGroups}>
     <div className={rootClass}>
@@ -746,6 +811,15 @@ function PanelContent({ className }: { className?: string }) {
           onMouseDown={(e) => onStartResize("nav", e.clientX)}
         />
 
+        {/*
+          Everything from here to the end of the detail panel belongs to ONE
+          workspace visit, and remounts with it. The trace/block/item selection
+          lives in this subtree for that reason: it names an item inside a
+          particular request of a particular session, so carrying it across a
+          switch would leave the detail sidebar describing work the operator can
+          no longer see.
+        */}
+        <SelectionProvider key={workspaceKey}>
         {/* Main workspace */}
         <main className="flex min-w-0 min-h-0 flex-1 flex-col bg-slate-950">
           <Tabs defaultValue="stream" className="flex flex-1 flex-col min-h-0">
@@ -783,7 +857,7 @@ function PanelContent({ className }: { className?: string }) {
 
             <TabsContent value="stream" className="flex-1 min-h-0 m-0">
               <StreamView
-                key={effectiveSessionId ?? "none"}
+                key={workspaceKey}
                 requestGroups={requestGroups}
                 streamStatus={streamStatus}
                 isReplaying={isReplaying}
@@ -796,12 +870,12 @@ function PanelContent({ className }: { className?: string }) {
             </TabsContent>
 
             <TabsContent value="trace" className="flex-1 min-h-0 m-0">
-              <TraceView key={effectiveSessionId ?? "none"} requestGroups={requestGroups} />
+              <TraceView key={workspaceKey} requestGroups={requestGroups} />
             </TabsContent>
 
             <TabsContent value="tasks" className="flex-1 min-h-0 m-0 overflow-auto">
               <TaskCollectionsView
-                key={effectiveSessionId ?? "none"}
+                key={workspaceKey}
                 items={taskItems}
                 childSessions={childSessions}
                 truncation={childSessionsTruncation}
@@ -811,7 +885,7 @@ function PanelContent({ className }: { className?: string }) {
 
             <TabsContent value="childSessions" className="flex-1 min-h-0 m-0">
               <ChildSessionsView
-                key={effectiveSessionId ?? "none"}
+                key={workspaceKey}
                 sessionId={effectiveSessionId}
                 childSessions={childSessions}
                 isLoading={childSessionsLoading}
@@ -825,7 +899,7 @@ function PanelContent({ className }: { className?: string }) {
 
             <TabsContent value="suspensions" className="flex-1 min-h-0 m-0">
               <SuspensionsView
-                key={effectiveSessionId ?? "none"}
+                key={workspaceKey}
                 sessionId={effectiveSessionId}
                 onResumed={handleResumed}
               />
@@ -835,7 +909,7 @@ function PanelContent({ className }: { className?: string }) {
 
             <div className="p-2">
               <ActionBar
-                flowKind={activeFlowKind}
+                flowId={activeFlowId}
                 sessionId={effectiveSessionId}
                 availableActions={activeFlow?.actions ?? []}
                 actionSchemas={activeFlow?.actionSchemas}
@@ -866,6 +940,7 @@ function PanelContent({ className }: { className?: string }) {
             <ItemDetail />
           </div>
         </aside>
+        </SelectionProvider>
       </div>
     </div>
     </TraceLookupProvider>
@@ -884,7 +959,7 @@ function DescentTrail({
   descent,
   onReturnTo,
 }: {
-  descent: ReadonlyArray<{ id: string; label: string }>;
+  descent: ReadonlyArray<{ id: string; label: string; flowId: string }>;
   onReturnTo: (index: number) => void;
 }) {
   if (descent.length === 0) return null;
@@ -908,7 +983,7 @@ function DescentTrail({
               <button
                 type="button"
                 onClick={() => onReturnTo(index)}
-                title={`Back to ${entry.id}`}
+                title={`Back to ${entry.id}\nin ${entry.flowId}`}
                 className="max-w-[10rem] truncate hover:text-slate-200 hover:underline"
               >
                 {entry.label}

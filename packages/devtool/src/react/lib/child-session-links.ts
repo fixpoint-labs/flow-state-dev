@@ -91,7 +91,10 @@
  * events. Once attribution is verifiable the rules here get SIMPLER, and the
  * contention pass is retired rather than extended.
  */
-import { readFramed as readFramedField } from "@flow-state-dev/core";
+// From the `types` subpath, not the package root. The root barrel reaches the
+// model resolver, which imports `node:module` — harmless in Node, fatal when
+// this package is bundled for the browser, which is the only place it runs.
+import { readFramed as readFramedField } from "@flow-state-dev/core/types";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
 import type { CollectionView, Task } from "./task-collection-state";
 

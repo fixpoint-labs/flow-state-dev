@@ -1,12 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
+import { describeReadError } from "../lib/instance-ownership";
+import { useReadFence } from "./use-read-fence";
+
+/** Stable empty list, so a stale hold does not hand back a new array each render. */
+const EMPTY_SESSIONS: SessionSummary[] = [];
 
 /**
  * Sessions of one flow instance. A collection member's rows are filed under
  * its exact id, so they are listed by `flowId`; a singleton lists by kind,
  * which also finds sessions saved before owners were recorded. `flow.id` is
  * the address every route takes either way.
+ *
+ * Fenced on the instance rather than on the workspace: this list belongs to a
+ * copy, not to the session open inside it, so picking a session must not make
+ * it re-read. What it must not do is show one copy's rows under another — two
+ * navigator rows of the same kind are exactly the case where a late response
+ * lands in the wrong list.
  */
 export function useSessions(flow: Pick<FlowListEntry, "id" | "cardinality"> | null) {
   const { sessionClient, recoveryClient, config } = useDevTool();
@@ -16,13 +27,27 @@ export function useSessions(flow: Pick<FlowListEntry, "id" | "cardinality"> | nu
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
+  const fence = useReadFence([sessionClient, flowId, cardinality, config.userId], () => {
+    setSessions([]);
+    setError(null);
+    setIsLoading(false);
+    setHeldIdentity(null);
+  });
+  const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
+
   const refresh = useCallback(async () => {
+    const stillCurrent = fence.begin();
+    if (stillCurrent === null) return;
+    const mine: readonly unknown[] = [sessionClient, flowId, cardinality, config.userId];
     if (!flowId) {
       setSessions([]);
+      setHeldIdentity(mine);
       return;
     }
     setIsLoading(true);
     setError(null);
+    setHeldIdentity(mine);
     try {
       // Sweep stale active-request entries before listing so any request
       // whose process died is shown as `interrupted` rather than stuck
@@ -39,13 +64,15 @@ export function useSessions(flow: Pick<FlowListEntry, "id" | "cardinality"> | nu
         ...(cardinality === "collection" ? { flowId } : { flowKind: flowId }),
         userId: config.userId,
       });
+      if (!stillCurrent()) return;
       setSessions(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch sessions");
+      if (!stillCurrent()) return;
+      setError(describeReadError(err, "Failed to fetch sessions"));
     } finally {
-      setIsLoading(false);
+      if (stillCurrent()) setIsLoading(false);
     }
-  }, [sessionClient, recoveryClient, flowId, cardinality, config.userId]);
+  }, [fence, sessionClient, recoveryClient, flowId, cardinality, config.userId]);
 
   useEffect(() => {
     void refresh();
@@ -53,18 +80,32 @@ export function useSessions(flow: Pick<FlowListEntry, "id" | "cardinality"> | nu
 
   const createSession = useCallback(async (): Promise<string | null> => {
     if (!flowId) return null;
+    const stillCurrent = fence.begin();
+    if (stillCurrent === null) return null;
     try {
       const detail = await sessionClient.createSession({
         flowKind: flowId,
         userId: config.userId,
       });
+      // The operator may have collapsed this row, or opened another copy, while
+      // the create was in flight. The session exists — it just isn't this
+      // navigator row's to open, and handing its id back would select it under
+      // whichever instance is now expanded.
+      if (!stillCurrent()) return null;
       await refresh();
       return detail.id;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create session");
+      if (!stillCurrent()) return null;
+      setError(describeReadError(err, "Failed to create session"));
       return null;
     }
-  }, [sessionClient, flowId, config.userId, refresh]);
+  }, [fence, sessionClient, flowId, config.userId, refresh]);
 
-  return { sessions, isLoading, error, refresh, createSession };
+  return {
+    sessions: holdsCurrent ? sessions : EMPTY_SESSIONS,
+    isLoading: holdsCurrent ? isLoading : flowId !== null,
+    error: holdsCurrent ? error : null,
+    refresh,
+    createSession,
+  };
 }

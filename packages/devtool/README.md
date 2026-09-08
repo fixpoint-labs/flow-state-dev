@@ -15,6 +15,8 @@ pnpm add -D @flow-state-dev/devtool
 fsdev dev
 ```
 
+The navigator lists one row per registered flow instance, identified by its exact ID — see [Flow overview](https://flow-state.dev/docs/devtool/overview#flow-overview) for choosing between copies of one flow and opening a session under the one you picked.
+
 ## API Surface
 
 ### `getAssetPath(): string`

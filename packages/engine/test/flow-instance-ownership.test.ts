@@ -9,7 +9,7 @@
  * owner check, a lost owner stamp, a listing that groups by kind), not on
  * wiring.
  */
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -23,6 +23,7 @@ import {
   type SessionRecord,
   type StoreRegistry
 } from "../src";
+import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 type Router = ReturnType<typeof createFlowApiRouter>;
 
@@ -562,5 +563,53 @@ describe("record-backed routes read the stored owner", () => {
     const ids = ((await listing.json()) as { sessions: Array<{ id: string }> }).sessions.map((s) => s.id);
     expect(ids).toContain("s_east");
     expect(ids).not.toContain("s_locked");
+  });
+
+  it("stamps the suspending copy on the suspension record, so a resume re-enters that one", async () => {
+    // An operator resolving an approval from outside the run has only this
+    // record to go on. Its kind names both copies, so without the owner the
+    // resume address is a coin flip between two runs.
+    const gateDefinition = defineFlow({
+      kind: "gate",
+      cardinality: "collection",
+      actions: {
+        ask: {
+          inputSchema: z.object({}),
+          block: sequencer({ name: "gateSeq", durable: true }).step(
+            handler({
+              name: "gate-wait",
+              inputSchema: z.object({}),
+              outputSchema: z.unknown(),
+              execute: async (_input, ctx) =>
+                ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+            })
+          )
+        }
+      }
+    });
+
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({
+      checkpoints: stores.checkpoints,
+      suspensions: stores.suspensions,
+      leases: stores.leases
+    });
+
+    await runAction({
+      flow: gateDefinition({ id: "gate-west" }),
+      actionName: "ask",
+      input: {},
+      userId: "u_1",
+      sessionId: "s_west",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+
+    const pending = await provider.listSuspended({ status: "pending" });
+    expect(pending.length).toBe(1);
+    expect(pending[0]?.flowId).toBe("gate-west");
+    // The kind is still recorded — it describes the flow, and a singleton's
+    // pre-ownership records have only it.
+    expect(pending[0]?.flowKind).toBe("gate");
   });
 });

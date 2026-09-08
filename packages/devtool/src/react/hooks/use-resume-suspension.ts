@@ -4,16 +4,17 @@
  *
  * Wraps the client's `recoveryClient.resumeSuspension` — transport lives in
  * the client, this hook only manages the in-flight / error UI state. The
- * suspension's real `flowKind` and `requestId` come from the selected
- * record, so the resume hits the correct flow endpoint (not the DevTool's
- * synthetic `__devtool__` flowKind).
+ * owning instance and `requestId` come from the selected RECORD, so the resume
+ * re-enters the exact copy that suspended — not the DevTool's synthetic
+ * `__devtool__` address, and not whichever copy of the kind is registered.
  */
 import { useCallback, useState } from "react";
 import type { ResumeSuspensionResult } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
 
 export type ResumeArgs = {
-  flowKind: string;
+  /** The record's own owning instance id — see `suspensionOwnerId`. */
+  flowId: string;
   requestId: string;
   suspensionId: string;
   action: "approve" | "reject";
@@ -43,7 +44,9 @@ export function useResumeSuspension(): UseResumeSuspensionResult {
       setError(null);
       try {
         return await recoveryClient.resumeSuspension(
-          args.flowKind,
+          // The client's address slot keeps its historical name; the value is
+          // the exact owning instance.
+          args.flowId,
           args.requestId,
           {
             suspensionId: args.suspensionId,

@@ -103,8 +103,9 @@ The panel and your main app share sessions when they hit the same flow API as th
 
 When `userIdControl="host"` the panel does not write `userId` to localStorage — identity stays fully in the host. When `userIdControl="internal"` (the standalone shell), the SettingsSheet exposes a userId editor and persists changes to localStorage.
 
+Two other identities are in play, and they are not this one. The **flow instance** selected in the navigator is which copy of a flow you are inspecting; the **connection** is which server you are pointed at (`baseUrl`). Changing the signed-in user clears the open session and re-reads everything under the new identity, because a session belongs to one operator. Which copy is selected is remembered per connection, per user and per instance ID — a saved session is never offered to a different copy, a different server, or a different person. See [Flow overview](./overview.md#flow-overview).
+
 ## Known limitations
 
 - **No custom-component rendering.** The embedded panel renders `component` items in debug view, the same as the standalone tool. Renderer-registry inheritance (so the panel can use the host's renderers) is tracked separately as a follow-up.
 - **No interrupted-request sweep by default.** If a request died while the host server kept running, the panel won't surface it as "interrupted" until the standalone tool or `fsdev dev` runs the recovery sweep. Set `autoRecoverInterrupted` if you want the embedded panel to do it instead.
-- **Settings userId switch.** When `userIdControl="internal"`, switching userId in the SettingsSheet does not currently refresh the session list. A bug fix is tracked separately. This is hidden in `userIdControl="host"` mode because the editor isn't rendered.

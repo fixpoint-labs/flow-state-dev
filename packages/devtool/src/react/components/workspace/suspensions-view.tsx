@@ -16,6 +16,7 @@ import { PauseCircle } from "lucide-react";
 import type { SuspensionRecord, SuspensionStatus } from "@flow-state-dev/client";
 import { useListSuspensions } from "../../hooks/use-list-suspensions";
 import { useResumeSuspension } from "../../hooks/use-resume-suspension";
+import { suspensionOwnerId } from "../../lib/instance-ownership";
 import { EmptyState } from "../shared/empty-state";
 import { StatusBadge } from "../shared/status-badge";
 import { JsonViewer } from "../shared/json-viewer";
@@ -170,8 +171,15 @@ function SuspensionRow({
       <td className="px-3 py-1.5 text-[11px] text-slate-400">
         {new Date(record.createdAt).toLocaleString()}
       </td>
-      <td className="py-1.5 pr-2 font-mono text-[11px] text-slate-300">
-        {record.flowKind}
+      <td
+        className="py-1.5 pr-2 font-mono text-[11px] text-slate-300"
+        title={
+          record.flowId != null && record.flowId !== record.flowKind
+            ? `Flow instance: ${record.flowId}\nKind: ${record.flowKind}`
+            : `Flow instance: ${suspensionOwnerId(record)}`
+        }
+      >
+        {suspensionOwnerId(record)}
       </td>
       <td className="py-1.5 pr-2 text-slate-300">{record.reason}</td>
       <td className="px-3 py-1.5">
@@ -215,7 +223,11 @@ function SuspensionDetail({
     }
     try {
       await resume({
-        flowKind: record.flowKind,
+        // The record's own owner, not the instance the navigator happens to
+        // have open and not the record's kind. This resolves a gate in a run
+        // that is still waiting; addressing it to a same-kind peer resumes
+        // nothing, or worse, something else.
+        flowId: suspensionOwnerId(record),
         requestId: record.requestId,
         suspensionId: record.suspensionId,
         action,
