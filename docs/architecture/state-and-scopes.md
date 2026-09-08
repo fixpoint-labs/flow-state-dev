@@ -560,7 +560,9 @@ export function resolveUserStorageKey(userId, flow): string {
 }
 ```
 
-The exported helpers take an instance-bearing shape: a caller holding only `{ kind, isolateUserState }` passes `{ id: flow.id, isolateUserState }` instead. `toIsolationFlow` in the same module is the one coercion the persistence-facing callers share, so the `/state` route, the resource helpers and the execution context cannot derive different keys for one request.
+The exported helpers take an instance-bearing shape: a caller holding only `{ kind, isolateUserState }` passes `{ id: flow.id, isolateUserState }` instead. Each component is escaped before the two are joined, so the `(identity, instance)` pair is recoverable from the key — instance ids are arbitrary caller-supplied strings, and concatenating them raw let two different pairs name one cell. A component carrying neither `:` nor `\` encodes to itself, so every ordinary id keys byte-identically to what it already wrote.
+
+Every read-side projection goes through one persisted-read function, `getPersistedData` — the `/state` route, the resource routes, the debug snapshot and sibling transports alike — so no two of them can derive different keys for one request. `toIsolationFlow` in `scope-keys.ts` is the single coercion that function applies.
 
 **Resources** resolve a `scopeId` per resource from their effective isolation (the resource's `flowIsolation` if set, else the flow default):
 
@@ -594,10 +596,12 @@ A same-instance child inherits `flowId` and `flowKind`, `userId`, `tenantId`, `o
 |---|---|
 | `request` | Fresh — the child's own dispatch |
 | `session` | **A separate cell.** Own state blob, own items and history, own journal, own metadata, own session-scoped resources — except a resource declared `sharedToLineage` (below) |
-| `user` | **The parent's cell.** `userId` is inherited, and `isolateUserState` keys on `${userId}:${flowKind}` with `flowKind` inherited too — so isolated and shared both resolve to the record the parent reads |
-| `org` | The parent's cell, by the same reasoning |
+| `user` | `userId` is inherited, so a **shared** cell (the bare `userId` — the default) is always the record the parent reads. An **isolated** cell keys on `${userId}:${flow.id}`, and `flow.id` is the *running* instance: a same-instance child inherits it and so reads the parent's cell, but a **cross-instance** child carries the target instance's id and reads that instance's cell, not its parent's |
+| `org` | The same, on the bound `orgId` and `isolateOrgState` |
 
 Tenant follows identity: the child's session storage key is `${tenantId}:dsx_...` under `resolveSessionStorageKey`, exactly as for any other session.
+
+**Do not rely on an isolated user/org cell being shared with the parent across a cross-instance dispatch** (FIX-1323). Before the isolation coordinate became the instance, every child of every dispatch resolved its parent's isolated cell, because the kind was the same or inherited. It no longer is. Work that has to reach the dispatching side's data either leaves it shared (the default) or passes it in the dispatch payload; a resource that has to follow the conversation rather than the principal is `sharedToLineage` at session scope (below).
 
 ### What connects a child to its parent today
 

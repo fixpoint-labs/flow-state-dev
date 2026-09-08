@@ -120,6 +120,8 @@ Every session and request records the flow instance that created it, as `flowId`
 
 Two things to be careful about. A scope record is one blob, so it moves whole — splitting fields between copies by guesswork is how the "private" data you were protecting gets mixed. And a shared record (an ordinary singleton's, or a resource declaring `flowIsolation: false`) does not move at all: it was never a copy's to begin with.
 
+**Identity ids containing a colon or a backslash move too, whatever your flows do.** A copy id is any string you choose, so the key has to encode the `<identity>:<copy id>` pair rather than run the two strings together — otherwise two different pairs can name one cell, and one account reads another's private data. Ids made of ordinary characters encode to themselves and key exactly as they did before, which is the common case and needs nothing. An id carrying a colon or a backslash picks up a backslash in front of each one — `u:1` is now keyed `u\:1`, shared and isolated cells alike — so inventory those identities with the rest. Some identity providers issue subjects that look like this; if yours does, its old keys were the ambiguous ones, which is why they change.
+
 The last row only applies if step 3 of the procedure below re-keys any child sessions. If the inventory finds none, note that and leave session-scoped data alone.
 
 **Attributing owners, once.** The SQLite and Postgres stores add the nullable `flow_id` column on open, with an index, and never backfill it. Attribution is a one-time procedure you run offline, in this order:

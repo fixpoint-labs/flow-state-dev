@@ -531,9 +531,14 @@ export type FlowDefinition<
   /**
    * Isolation for the user scope. Two roles:
    *   - keys the scope's `state` record (`ctx.user.state`) — bare `{userId}`
-   *     when false, `{userId}:{flowKind}` when true; and
+   *     when false, `{userId}:{instance id}` when true; and
    *   - the default `flowIsolation` for user-scoped resources that don't
    *     declare their own.
+   *
+   * The namespace is the registered **instance**, not the kind (FIX-1323):
+   * a singleton's id is its kind, so its cell is unchanged, but two copies of
+   * a `collection` definition isolate from each other as well as from other
+   * flows. Renaming an instance therefore moves where its isolated data lives.
    *
    * Resources key per resource (FIX-735): a resource's own `flowIsolation`
    * always wins over this default, in both directions (FIX-435).

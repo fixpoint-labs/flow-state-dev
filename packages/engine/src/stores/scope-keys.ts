@@ -32,6 +32,12 @@
  * coordinate needs the attributable offline cutover in
  * `apps/docs/docs/persistence/overview.md`; there is deliberately no kind
  * fallback here, because a runtime cannot discover which copy owned a key.
+ *
+ * Because instance ids are arbitrary caller-supplied strings, the isolated key
+ * escapes each component before joining them (`encodeScopeKeyComponent`) so
+ * the pair is recoverable from the key. Concatenating them raw was ambiguous —
+ * two different (identity, instance) pairs could name one cell — which is the
+ * opposite of what isolation promises.
  */
 
 import type { SessionParentage } from "./types";
@@ -55,11 +61,17 @@ export interface IsolationFlow {
 
 /**
  * Coerce a flow-ish object into {@link IsolationFlow}, defaulting the two
- * optional isolation flags. One copy, because every persistence-facing caller
- * must derive the same key: the `/state` route, the shared resource helpers
- * and the execution context all key off the instance, and a second coercion
- * that dropped `id` would silently route one of them back into a kind-wide
- * bucket.
+ * optional isolation flags. One copy, because a second coercion that dropped
+ * `id` would silently route a read back into a kind-wide bucket — which is
+ * how the two that existed before FIX-1323 drifted apart. Its one caller is
+ * `getPersistedData`, the single persisted-read function every read-side
+ * projection (`/state`, the resource routes, the debug snapshot, sibling
+ * transports) goes through.
+ *
+ * The `resources?: unknown` parameter is deliberate: `ResourceOwnerFlow` and
+ * `FlowInstance` both carry `resources` at a looser type than the isolation
+ * rules read, so narrowing it here would move one cast into every call site
+ * rather than remove it.
  */
 export function toIsolationFlow(flow: {
   id: string;
@@ -78,15 +90,57 @@ export function toIsolationFlow(flow: {
 }
 
 /**
+ * Escape one component of an isolation storage key. `\` and the `:`
+ * delimiter are backslash-escaped; every other character passes through, so a
+ * component carrying neither encodes to **itself** — every ordinary id, and
+ * every singleton's `id === kind`, keys byte-identically to what the
+ * deployment already wrote, and nothing moves.
+ *
+ * This is what makes the key injective. Plain concatenation was not: user `u`
+ * on instance `a:b` and user `u:a` on instance `b` both derived `u:a:b`, and
+ * neither component is validated, so two accounts could read and overwrite
+ * each other's isolated cell. Escaped, they derive `u:a\:b` and `u\:a:b`.
+ *
+ * The **shared** (single-component) form is escaped for the same reason: a
+ * user id of `u:a` would otherwise land on the exact key user `u` isolated to
+ * instance `a` writes.
+ *
+ * Nothing decodes these keys — they are opaque bucket addresses — but the
+ * encoding *is* decodable (scan left to right; `\` escapes the next
+ * character, an unescaped `:` is the delimiter), and that is what makes
+ * distinctness a property rather than a hope.
+ *
+ * An id containing `:` or `\` therefore keys differently than it did before
+ * FIX-1323 — such a deployment already had ambiguous keys, and re-keys through
+ * the same offline cutover in `apps/docs/docs/persistence/overview.md`.
+ */
+function encodeScopeKeyComponent(value: string): string {
+  return value.replace(/[\\:]/g, "\\$&");
+}
+
+/**
+ * The isolated two-component key: each component escaped, joined by `:`.
+ * One copy, because the scope record and the per-resource buckets must agree
+ * character for character or a write and its read land in different cells.
+ */
+function joinIsolationKey(identityId: string, flowId: string): string {
+  return `${encodeScopeKeyComponent(identityId)}:${encodeScopeKeyComponent(flowId)}`;
+}
+
+/**
  * Bare `userId` unless the flow isolates the user scope; then
- * `${userId}:${flow.id}`. Governs the scope *record* (`ctx.user.state`)
- * only — resources route per-resource via `resolveResourceScopeId`.
+ * `${userId}:${flow.id}`. Both forms run through
+ * {@link encodeScopeKeyComponent}, so the pair is recoverable from the key.
+ * Governs the scope *record* (`ctx.user.state`) only — resources route
+ * per-resource via `resolveResourceScopeId`.
  */
 export function resolveUserStorageKey(
   userId: string,
   flow: Pick<IsolationFlow, "id" | "isolateUserState">
 ): string {
-  return flow.isolateUserState ? `${userId}:${flow.id}` : userId;
+  return flow.isolateUserState
+    ? joinIsolationKey(userId, flow.id)
+    : encodeScopeKeyComponent(userId);
 }
 
 /**
@@ -98,7 +152,9 @@ export function resolveOrgStorageKey(
   orgId: string,
   flow: Pick<IsolationFlow, "id" | "isolateOrgState">
 ): string {
-  return flow.isolateOrgState ? `${orgId}:${flow.id}` : orgId;
+  return flow.isolateOrgState
+    ? joinIsolationKey(orgId, flow.id)
+    : encodeScopeKeyComponent(orgId);
 }
 
 /**
@@ -270,7 +326,9 @@ export function resolveResourceScopeId(
   flowId: string,
   isolated: boolean
 ): string {
-  return isolated ? `${identityId}:${flowId}` : identityId;
+  return isolated
+    ? joinIsolationKey(identityId, flowId)
+    : encodeScopeKeyComponent(identityId);
 }
 
 /**

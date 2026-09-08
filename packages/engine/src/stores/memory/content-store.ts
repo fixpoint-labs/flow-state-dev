@@ -54,7 +54,15 @@ export class InMemoryContentStore implements ContentStore {
   }
 
   async delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void> {
-    this.bucket(scopeType, scopeId)?.delete(resourceKey);
+    const bucket = this.bucket(scopeType, scopeId);
+    if (bucket === undefined) return;
+    bucket.delete(resourceKey);
+    // Drop the bucket once its last row goes, so a process that keeps minting
+    // scope ids does not retain one unreachable `Map` per id — retention the
+    // flat map this replaced did not have. `deleteAll` already drops the whole
+    // bucket. The `scopeType` parent is kept: a closed three-value union is
+    // bounded whatever happens.
+    if (bucket.size === 0) this.data.get(scopeType)?.delete(scopeId);
   }
 
   async getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, string>> {

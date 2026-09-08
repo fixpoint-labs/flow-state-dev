@@ -5,7 +5,7 @@
  * A resource declared `flowIsolation: false` keys at the bare `{userId}`
  * (shared across flows) even when a sibling user-scoped resource on the same
  * flow declares `flowIsolation: true`. The isolated sibling keys at
- * `{userId}:{flowKind}`; the shared resource is not dragged into isolation.
+ * `{userId}:{flow.id}`; the shared resource is not dragged into isolation.
  */
 import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { z } from "zod";

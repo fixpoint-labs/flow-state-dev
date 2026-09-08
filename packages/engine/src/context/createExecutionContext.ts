@@ -967,7 +967,7 @@ export async function createExecutionContext<
 
   // FIX-735: per-resource isolation. Resource storage (resourceState +
   // content) keys per resource — bare identity id when shared
-  // (`flowIsolation` false), `${id}:${flowKind}` when isolated — instead of
+  // (`flowIsolation` false), `${id}:${flow.id}` when isolated — instead of
   // collapsing the whole scope onto one flow-wide key. The scope *record*
   // (`stores.user`/`stores.org`, holding `ctx.user.state`) still keys on the
   // flow-level `isolateUserState`/`isolateOrgState` flag via `userKey` /
@@ -993,7 +993,7 @@ export async function createExecutionContext<
   // read/write can map a key to its bucket.
   //
   // The flag means something different per scope, but routes identically:
-  // user/org route on `flowIsolation` (bare identity vs `${id}:${flowKind}`,
+  // user/org route on `flowIsolation` (bare identity vs `${id}:${flow.id}`,
   // FIX-735); session routes on `sharedToLineage` (this session vs the
   // lineage root, FIX-1068).
   type ScopeBuckets = {

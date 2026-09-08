@@ -19,6 +19,7 @@ import {
 } from "../src";
 import { createContentStoreConformanceTests } from "../src/testing";
 import { createFilesystemStoreGuardConformanceTests } from "./filesystem-store-guard-conformance";
+import { InMemoryContentStore } from "../src/stores/memory/content-store";
 
 function runContentStoreTests(
   name: string,
@@ -277,5 +278,35 @@ describe("Filesystem stores per-subtree guard isolation", () => {
     await expect(stores.resourceState.getAll("session", "s1")).rejects.toThrow(
       /predates the nested-layout/
     );
+  });
+});
+
+/**
+ * Same retention shape as the resource-state store: the nested map keeps a
+ * `Map` per `(scopeType, scopeId)`, so a bucket emptied one key at a time must
+ * go. `deleteAll` already drops the whole bucket; `delete` is the path that
+ * could leave an empty one behind.
+ */
+describe("InMemoryContentStore bucket retention", () => {
+  const scopeIds = (store: InMemoryContentStore) =>
+    (store as unknown as { data: Map<string, Map<string, unknown>> }).data.get("user");
+
+  it("drops a scope bucket once its last key is deleted", async () => {
+    const store = new InMemoryContentStore();
+    await store.set("user", "u1", "k", "content");
+    expect(scopeIds(store)?.has("u1")).toBe(true);
+
+    await store.delete("user", "u1", "k");
+    expect(scopeIds(store)?.has("u1")).toBe(false);
+  });
+
+  it("keeps a bucket that still holds content", async () => {
+    const store = new InMemoryContentStore();
+    await store.set("user", "u1", "a", "content");
+    await store.set("user", "u1", "b", "content");
+
+    await store.delete("user", "u1", "a");
+    expect(scopeIds(store)?.has("u1")).toBe(true);
+    expect(await store.get("user", "u1", "b")).toBe("content");
   });
 });

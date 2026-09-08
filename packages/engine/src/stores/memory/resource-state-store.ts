@@ -63,6 +63,18 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     return this.data.get(scopeType)?.get(scopeId);
   }
 
+  /**
+   * Drop a bucket that has no rows left, so a process that keeps minting scope
+   * ids (a recreated session id purging its tombstones, FIX-1323 review) does
+   * not retain one unreachable `Map` per id — retention the flat map it
+   * replaced did not have. The `scopeType` parent is deliberately kept: it is a
+   * closed three-value union, so it is bounded whatever happens.
+   */
+  private dropBucketIfEmpty(scopeType: ContentScopeType, scopeId: string): void {
+    const byScopeId = this.data.get(scopeType);
+    if (byScopeId?.get(scopeId)?.size === 0) byScopeId.delete(scopeId);
+  }
+
   /** The bucket for one exact scope, created empty if it does not exist yet. */
   private ensureBucket(
     scopeType: ContentScopeType,
@@ -183,6 +195,7 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
       if (row.lifecycle === "live") continue;
       bucket.delete(resourceKey);
     }
+    this.dropBucketIfEmpty(scopeType, scopeId);
   }
 }
 

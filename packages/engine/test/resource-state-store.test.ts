@@ -19,6 +19,7 @@ import {
 } from "../src";
 import { createResourceStateStoreConformanceTests } from "../src/testing";
 import { createFilesystemStoreGuardConformanceTests } from "./filesystem-store-guard-conformance";
+import { InMemoryResourceStateStore } from "../src/stores/memory/resource-state-store";
 
 /**
  * These cases cover CRUD, scope isolation and JSON round-tripping — storage
@@ -500,5 +501,42 @@ describe("FilesystemResourceStateStore on-disk record", () => {
     ]);
     expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
     expect((await store.get("session", "s1", "k"))?.version).toBe(2);
+  });
+});
+
+/**
+ * The nested-map bucketing FIX-1323 introduced retains a `Map` per
+ * `(scopeType, scopeId)` — the flat map it replaced held nothing per scope.
+ * `ensure-session-record.ts` purges tombstones when a deleted session id is
+ * recreated, so a long-running in-memory deployment would otherwise grow one
+ * unreachable bucket per id it has ever seen. Reaching into the private map is
+ * the only way to see this: an empty bucket and an absent one read identically
+ * through the public surface, which is exactly why it would go unnoticed.
+ */
+describe("InMemoryResourceStateStore bucket retention", () => {
+  const scopeIds = (store: InMemoryResourceStateStore, scopeType: ContentScopeType) =>
+    (store as unknown as { data: Map<ContentScopeType, Map<string, unknown>> }).data.get(
+      scopeType
+    );
+
+  it("drops a scope bucket once purgeTombstones removes its last row", async () => {
+    const store = new InMemoryResourceStateStore();
+    await store.set("session", "s1", "k", { v: 1 }, "any");
+    await store.delete("session", "s1", "k", "any");
+    expect(scopeIds(store, "session")?.has("s1")).toBe(true);
+
+    await store.purgeTombstones("session", "s1");
+    expect(scopeIds(store, "session")?.has("s1")).toBe(false);
+  });
+
+  it("keeps a bucket that still holds live rows", async () => {
+    const store = new InMemoryResourceStateStore();
+    await store.set("session", "s1", "live", { v: 1 }, "any");
+    await store.set("session", "s1", "gone", { v: 1 }, "any");
+    await store.delete("session", "s1", "gone", "any");
+
+    await store.purgeTombstones("session", "s1");
+    expect(scopeIds(store, "session")?.has("s1")).toBe(true);
+    expect(await store.getAll("session", "s1")).toHaveProperty("live");
   });
 });
