@@ -1,0 +1,9 @@
+{
+  "issue": "LAB-154-RESUME",
+  "phase": "implement",
+  "epic": "harness-manager-resume",
+  "factFileName": "resume-proof.txt",
+  "askJob": "Somewhere in this conversation you have been given a fact. Do not act on it yet, and do not write it anywhere. Before you do anything else at all, you must ask one question and then stop working. Ask whether the file you will eventually be asked to write should end with a trailing newline.",
+  "answerText": "No trailing newline.",
+  "writeJob": "You asked earlier whether the file should end with a trailing newline, and you have been answered above. Now do the job: write the fact you were given earlier in this conversation — the value that followed 'FACT:' — into the file named below, on its own, with no other text. Do not commit anything and do not open a pull request."
+}

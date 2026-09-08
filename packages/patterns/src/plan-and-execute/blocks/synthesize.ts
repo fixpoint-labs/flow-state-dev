@@ -26,7 +26,7 @@ import { planAndExecuteStateSchema } from "../schemas";
  * Translate a substrate `Task` to its legacy P&E status string.
  *
  * The substrate uses `pending | in_progress | completed | errored |
- * cancelled | blocked | awaiting_review`. The legacy P&E vocabulary
+ * cancelled | blocked | parked`. The legacy P&E vocabulary
  * — what external consumers depend on — is `pending | in-progress |
  * completed | failed | skipped`. The mapping:
  *

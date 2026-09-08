@@ -1,4 +1,5 @@
 ---
+name: research-company
 description: Multi-angle company research delivered by a small team of analysts. Use when the user asks to research a company, wants a deep dive on what a company is up to, or wants several perspectives stitched into a single report. You plan the tasks on your board — a market analyst and a financial analyst in parallel, a synthesizer gated on both — and run it.
 keywords: [research, company, deep-dive, deep, dive, briefing, analyst, market]
 argument-hint: <company name or ticker>

@@ -48,14 +48,14 @@ Narrative: [Engine setup](/docs/server/setup), [App configuration](/docs/cli/con
 | `errorCapture` | handler | off | Block-aware sink: failing block identity plus flow / request / session / user ids. You write the adapter; the framework ships no vendor SDK. |
 | `onBackgroundWork` | `(promise) => void` | — | Keep-alive for work that outlives the response. On Vercel, pass `(p) => after(() => p)`. |
 | `detectInterruptedOnStartup` | `boolean` | `true` | Scan for interrupted requests at boot. Turn off on serverless if the scan contends with the first request. |
-| `detachedDrainTimeoutMs` | `number` | `30000` | How long `dispose()` waits for **in-process** detached work. `0` skips the wait and still reports what was left. It does not cover the worker shutdown that follows: `dispose()` then closes the worker, and an adapter like BullMQ waits — outside this ceiling — for jobs this process already claimed. Queued work no worker has claimed is not waited on. Size a host's shutdown grace period for both phases, not this value alone. |
+| `dispatchDrainTimeoutMs` | `number` | `30000` | How long `dispose()` waits for dispatched child sessions still running **in this process**. `0` skips the wait and still reports what was left. The default is sized for a serverless shutdown grace period, so raise it past your longest expected run on a long-lived host doing slow background work. It does not cover the worker shutdown that follows: `dispose()` then closes the worker, and an adapter like BullMQ waits — outside this ceiling — for jobs this process already claimed. Queued work no worker has claimed is not waited on. Size a host's shutdown grace period for both phases, not this value alone. |
 | `debugEndpointsEnabled` | `boolean` | `false` | Privileged debug routes. `fsdev dev` sets `FSDEV_DEBUG_ENDPOINTS=1`. |
 | `defaultSseHeartbeatMs` | `number` | `15000` | Router-level SSE ping when a flow does not set `request.sseHeartbeatMs`. |
 | `staleSweepIntervalMs` | `number` | `30000` | Stale-request sweeper cadence. `0` disables. |
 | `staleSweepThresholdMs` | `number` | `60000` | Heartbeat age after which a running request is stale. |
 | `queuedGraceMs` | `number` | `600000` | How long an unclaimed queued request may sit before a sweep treats it as lost. Must be finite. |
-| `publicReentrySources` | `string[]` | built-in caller-addressed sources | Extra inbound `source` values allowed on retry / continue / resume. `webhook` and the detached-dispatch source cannot be added. |
-| `maxWorkstreamListLimit` | `number` | `100` | Largest `limit` the workstream list route accepts. |
+| `publicReentrySources` | `string[]` | built-in caller-addressed sources | Extra inbound `source` values allowed on retry / continue / resume. `webhook`, `internal` and `task` cannot be added. |
+| `maxChildSessionListLimit` | `number` | `100` | Largest `limit` the child-session listing route accepts. The listing is all-time history, so it outgrows any fixed page a client would ask for. |
 | `durable` | `boolean` | `false` | Install the default checkpoint provider so actions with `durable: true` can recover and `ctx.suspend()`. Needs a persistent store to survive a process restart. |
 | `durabilityRetention` | retention object | — | Sweeper for expired suspensions, leases, and orphaned checkpoints. Only with durability on. |
 | `worker` | `WorkerAdapter` | — | Execution backend (for example `bullmqWorker(...)`). Mutually exclusive with `dispatcher`. |
@@ -121,7 +121,7 @@ Built-in adapters:
 | `"dispatch-only"` | Enqueue only (web process). |
 | `"worker-only"` | Consume only. Call `ready()` so the worker starts; you typically do not serve the router. |
 
-`worker` and `dispatcher` cannot both be set. See [Detached work](/docs/server/background-work) and [Background jobs with BullMQ](/guides/background-jobs-bullmq).
+`worker` and `dispatcher` cannot both be set. See [Dispatched work](/docs/server/background-work) and [Background jobs with BullMQ](/guides/background-jobs-bullmq).
 
 ## See also
 

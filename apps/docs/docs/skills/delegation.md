@@ -220,7 +220,7 @@ All eight report a problem the same way. Each returns `{ ok: true }` on success 
 | `blockTask` | `taskId`, optional `reason` | Marks a task as waiting on an external condition. The board stops treating it as runnable, so `runBoard` reports `blocked`. **One-way**: no task tool moves it back (see below). |
 | `cancelTask` | `taskId`, optional `reason` | Cancels a task. Terminal. Use it when the work is no longer needed. Refused on a task that already finished. |
 | `updateTask` | `taskId`, `patch` | Patches mutable fields: `priority`, `metadata`, `assignee`, `addLabel`, `removeLabel`. All optional. A patch carrying `assignee` is checked against the roster, and refused on a task that already finished; no part of it is written then. A patch without `assignee` skips the roster check and applies even to a finished task. |
-| `listTasks` | optional `status`, optional `assignee` | Reads the board back, filtered. `status` is one of `pending`, `in_progress`, `awaiting_review`, `completed`, `errored`, `cancelled`, `blocked`. |
+| `listTasks` | optional `status`, optional `assignee` | Reads the board back, filtered. `status` is one of `pending`, `in_progress`, `parked`, `completed`, `errored`, `cancelled`, `blocked`. |
 
 Most skills only need `addTask` and `runBoard`. The rest matter when the coordinator has to steer a board mid-flight: cancelling a plan that turned out to be wrong, or reading back what settled.
 
@@ -286,7 +286,7 @@ Only a refused transition or a refused write comes back as a result. Storage fai
 
 `addTask` writes a task; it does not execute anything by itself. Execution happens when the generator calls `runBoard`, which drains the runnable graph.
 
-`runBoard` reports how the drain ended. `status: "drained"` means every task settled; `status: "blocked"` means at least one did not, counting any task left `pending`, `in_progress`, `awaiting_review`, or `blocked`. It is a statement about outstanding work, not about failure. An errored dependency and a task marked with `blockTask` both produce it; terminal tasks do not, so a board whose only problem is one errored task still reports `drained`. A dependency counts as satisfied only when it `completed`, so a dependent of an errored task stays `pending` rather than being skipped or failed; `createCascadeSkipDependents` is a `taskBoard` block the [supervisor](../patterns/supervisor) and [plan-and-execute](../patterns/plan-and-execute) patterns wire in, and it is not part of this drain. For how to tell the causes apart, see [When it goes wrong](/guides/agents-command-the-board#7-when-it-goes-wrong).
+`runBoard` reports how the drain ended. `status: "drained"` means every task settled; `status: "blocked"` means at least one did not, counting any task left `pending`, `in_progress`, `parked`, or `blocked`. It is a statement about outstanding work, not about failure. An errored dependency and a task marked with `blockTask` both produce it; terminal tasks do not, so a board whose only problem is one errored task still reports `drained`. A dependency counts as satisfied only when it `completed`, so a dependent of an errored task stays `pending` rather than being skipped or failed; `createCascadeSkipDependents` is a `taskBoard` block the [supervisor](../patterns/supervisor) and [plan-and-execute](../patterns/plan-and-execute) patterns wire in, and it is not part of this drain. For how to tell the causes apart, see [When it goes wrong](/guides/agents-command-the-board#7-when-it-goes-wrong).
 
 ```ts
 const skills = createSkillsLibrary({ catalog, initialSkills });

@@ -42,6 +42,7 @@
  * not a correctness step, which is why a store outage is not one.
  */
 import type { TaskClaimTicket } from "./claim-ticket";
+import { committedLeaseSpan } from "./collection/internal";
 import type { Task } from "./schema/task";
 import type { TaskCollectionRef } from "./collection/types";
 
@@ -157,8 +158,8 @@ export interface LeaseRenewalDriver {
  * Start renewing `claimedTask`'s lease until {@link LeaseRenewalDriver.stop}.
  *
  * **The span is the one the claim committed, not the one that is left.**
- * `leaseUntil - updatedAt` — both stamped from a single clock read inside the
- * claim write, so the subtraction is exact. Deriving it from `leaseUntil - now`
+ * {@link committedLeaseSpan}, shared with the claim gate's takeover so the two
+ * cannot read one lease differently. Deriving it from `leaseUntil - now`
  * instead would let a driver that starts late shrink its own cadence: a valid
  * one-second claim reached 990 ms late would read a 10 ms span and derive a
  * 3.33 ms cadence from it, which is the write storm the lease minimum exists to
@@ -202,8 +203,7 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
   let inFlight = false;
 
   const leaseUntil = claimedTask.leaseUntil;
-  const span =
-    leaseUntil == null ? undefined : leaseUntil - claimedTask.updatedAt;
+  const span = committedLeaseSpan(claimedTask);
 
   function stop(): void {
     if (stopped) return;

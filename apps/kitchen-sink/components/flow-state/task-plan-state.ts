@@ -45,7 +45,7 @@ export type TaskStatus =
   | "pending"
   | "in_progress"
   | "blocked"
-  | "awaiting_review"
+  | "parked"
   | "completed"
   | "errored"
   | "cancelled"
@@ -101,7 +101,7 @@ export type BoardCounts = {
   pending: number;
   in_progress: number;
   blocked: number;
-  awaiting_review: number;
+  parked: number;
   completed: number;
   errored: number;
   cancelled: number;
@@ -156,7 +156,7 @@ export const STATUS_SECTIONS: ReadonlyArray<{
   { status: "pending", label: "Todo" },
   { status: "in_progress", label: "In progress" },
   { status: "blocked", label: "Blocked" },
-  { status: "awaiting_review", label: "Awaiting review" },
+  { status: "parked", label: "Parked" },
   { status: "completed", label: "Done" },
   { status: "errored", label: "Failed" },
   { status: "cancelled", label: "Cancelled" },

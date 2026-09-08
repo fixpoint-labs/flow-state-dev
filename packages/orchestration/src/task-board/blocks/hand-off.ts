@@ -60,7 +60,7 @@ import {
 import type { BlockDefinition, TaskBinding, TaskDispatchInput } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
-import type { TaskWorkerInput } from "../../tasks";
+import type { TaskWorker, TaskWorkerInput } from "../../tasks";
 import type { TaskSeatAddress } from "../hand-off";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import { assertJsonSafe } from "./json-safe";
@@ -85,7 +85,7 @@ export interface HandOffOptions {
  * the same value an inline worker would have received, which is what makes the
  * handed-off and inline paths agree on what the worker sees.
  */
-export function createHandOff(options: HandOffOptions): BlockDefinition<any, any> {
+export function createHandOff(options: HandOffOptions): TaskWorker {
   const { name, boardId, seat, address, binding } = options;
 
   const block = handler({
@@ -148,7 +148,7 @@ export function createHandOff(options: HandOffOptions): BlockDefinition<any, any
 
       const outcome = await dispatchThroughSeam(ctx, {
         type: "task",
-        target: address.target,
+        action: address.action,
         session: { key },
         payload: envelope,
         from: name,
@@ -157,6 +157,10 @@ export function createHandOff(options: HandOffOptions): BlockDefinition<any, any
         // Same source as every other field here: the claim ticket the board
         // minted from the row it had already claimed.
         provenance: { taskId: claim.taskId },
+        // A seat may name another flow. The author-facing dispatcher() already
+        // forwards this; omitting it here made the seam resolve on the sender
+        // and refuse `no-entry` against the wrong map.
+        ...(address.flowKind !== undefined ? { flowKind: address.flowKind } : {}),
       });
 
       if (!outcome.ok) {
@@ -180,12 +184,13 @@ export function createHandOff(options: HandOffOptions): BlockDefinition<any, any
       // Past this point the child owns the row, and nothing fallible remains:
       // stop asserting a lease this request no longer holds, and return.
       //
-      // KNOWN GAP, scoped to deferred-start deployments: with an external
-      // dispatcher or under flow-level `queue` concurrency the start is
-      // deferred past this call by design, so between here and the child's gate
-      // nobody holds the lease. If that delay exceeds the lease TTL another
-      // drain reclaims the row and the child then fails its gate as stale —
-      // bounded and safe per occurrence, but starvable under sustained backlog.
+      // Nobody renews the lease between here and the child's gate — with an
+      // external dispatcher or under flow-level `queue` concurrency the start
+      // is deferred past this call by design, so a queue deeper than the lease
+      // TTL leaves the row lapsed when the child arrives. That is no longer a
+      // refusal: the gate takes the row back with a fenced renewal on the same
+      // attempt and proceeds, and only a reclaim that actually won the write
+      // stops it (FIX-1305, `task-entry.ts`).
       currentLeaseRenewal()?.stop();
 
       return {
@@ -204,5 +209,8 @@ export function createHandOff(options: HandOffOptions): BlockDefinition<any, any
   // held by no board, which is what it would be.
   markDispatcher(block, { ...address });
   bindTaskDispatcher(block, binding);
-  return block;
+  // The block is declared over `z.unknown()` because the seam validates the
+  // envelope, not this block; what the drain hands it IS the packed worker
+  // input, which is the one place the cast is true.
+  return block as TaskWorker;
 }

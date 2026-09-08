@@ -26,27 +26,14 @@ export type {
 export { asRuntime } from "./block";
 
 export type {
-  DetachedProvenance,
-  DetachedRoutingSeed,
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
   SettleParentTaskInput,
-  SettleParentTaskResult,
-  StartDetachedInput,
-  StartDetachedRefusal,
-  StartDetachedResult
+  SettleParentTaskResult
 } from "./request-host";
 
 export { NoRequestHostError, requireRequestHost } from "./request-host";
-
-export type { WorkstreamBinding, WorkstreamBindings } from "./workstream";
-
-export {
-  declareWorkstreamBindings,
-  mergeWorkstreamBindings,
-  workstreamBindingKey
-} from "./workstream";
 
 export type {
   BlockDispatchType,
@@ -73,6 +60,8 @@ export {
   dispatchThroughSeam,
   markDispatcher,
   taskBindingOf,
+  framed,
+  readFramed,
   taskDispatchInputSchema,
   taskSessionKeyFor
 } from "./dispatch";
@@ -346,3 +335,24 @@ export type {
 } from "../schema/action-schema";
 
 export { applyGetOrPatchState, defineResource, resource } from "./resource";
+
+/**
+ * The coding-harness contract (LAB-152) — what a harness block is handed and
+ * what it hands back, plus the signatures a host feeds it configuration
+ * through. The matching runtime schemas are exported from the package root.
+ */
+export type {
+  HarnessBlock,
+  HarnessCallbackContext,
+  HarnessCostBasis,
+  HarnessResolver,
+  HarnessRunCost,
+  HarnessRunEnvelope,
+  HarnessRunHandle,
+  HarnessRunInput,
+  HarnessRunOutcome,
+  HarnessRunStatus,
+  HarnessRunUsage,
+  HarnessSessionHook,
+  HarnessSource,
+} from "./harness";

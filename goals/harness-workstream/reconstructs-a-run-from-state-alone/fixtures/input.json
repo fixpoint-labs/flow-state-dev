@@ -1,8 +1,0 @@
-{
-  "_comment": "Held out. Every assertion keys on these values round-tripped through a real dispatch, never on a literal in run.mts — swap them for another valid set and a correct implementation still passes. Basenames must be distinct: trailing-segment matching cannot be ambiguous, and the goal rejects a fixture that breaks it.",
-  "topic": "state-readback-proof",
-  "createPaths": ["ledger.txt", "summary.txt"],
-  "editPath": "notes.txt",
-  "seedContent": "opening line\n",
-  "planItemCount": 2
-}

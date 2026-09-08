@@ -88,6 +88,7 @@ export type { ResourceBackedOptions } from "./collection/resource-backed";
 export {
   isClaimable,
   claimDisposition,
+  committedLeaseSpan,
   isReady,
   leaseLapsed,
   readAbandonments,

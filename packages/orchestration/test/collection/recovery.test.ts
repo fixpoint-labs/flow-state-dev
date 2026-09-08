@@ -140,7 +140,7 @@ describe.each(BACKINGS)("recovery — admission (%s)", (_name, makeBacking) => {
     expect(await backing.collection.claim("w2", { eligibility: (x) => x.id === "t" })).toBeNull();
   });
 
-  it("never admits an awaiting_review row, however long the review takes", async () => {
+  it("never admits a parked row, however long the review takes", async () => {
     // `awaitReview` deliberately does not clear `leaseUntil`, so a lapsed lease
     // on a parked row is an ordinary state rather than an abandoned worker.
     // Review is an explicit park; the lease governs `in_progress` only.
@@ -154,7 +154,7 @@ describe.each(BACKINGS)("recovery — admission (%s)", (_name, makeBacking) => {
     backing.setNow(backing.now() + 10_000_000);
 
     expect(await backing.collection.claim("w2")).toBeNull();
-    expect(backing.collection.get("t")?.status).toBe("awaiting_review");
+    expect(backing.collection.get("t")?.status).toBe("parked");
   });
 
   it("is read by ALL THREE admission consumers, not just claim()", async () => {

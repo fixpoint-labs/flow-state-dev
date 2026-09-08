@@ -37,6 +37,7 @@ export {
   type EmitState,
 } from "./emit";
 export {
+  CLAUDE_SDK_SOURCE,
   sdkAgentHandleSchema,
   type SdkAgentHandle,
   type SdkResultSubtype,
@@ -78,7 +79,7 @@ export {
   type RemoteAgentTaskHandle,
   type RemoteAgentSource,
   type RemoteAgentStatus,
-} from "../shared/handle";
+} from "../shared";
 
 export {
   createWorkspaceAgentCapability,

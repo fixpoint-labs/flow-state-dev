@@ -7,7 +7,7 @@
  * with the process. So the flow has to be able to answer "which block runs
  * this row?" from strings alone, which is what a task entry is for: a plain
  * `{ block }` under `defineFlow({ tasks })`, addressed by the
- * `dispatcher({ type: "task", target })` the board holds at the seat.
+ * `dispatcher({ type: "task", action })` the board holds at the seat.
  *
  * **The gate.** The flow's entry is a plain block, but a `task` dispatch never
  * reaches it directly: `defineFlow` rebuilds every entry a reachable hand-off
@@ -48,7 +48,7 @@ function seat(target: string, session: "per-task" | "per-worker" = "per-task"): 
   return dispatcher({
     name: `seat-${target}-${seatCount}`,
     type: "task",
-    target,
+    action: target,
     session,
   }) as unknown as TaskWorker;
 }
@@ -108,7 +108,7 @@ describe("the gated task entry — what the flow carries for a handed-off seat",
       task: { actions: { implement: { block: worker("implement") } } },
     });
 
-    expect(board.handedOff[0]?.dispatch?.target).toBe("implement");
+    expect(board.handedOff[0]?.dispatch?.action).toBe("implement");
     expect(flow.task?.actions.implement.block.name).toBe("issue-work-implement-gate");
   });
 
@@ -220,7 +220,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
     expect(flow.task?.actions.review.block.name).toBe("review-work-review-gate");
   });
 
-  it('throws with the hand-off\'s coordinate when `tasks` is omitted', () => {
+  it('throws with the hand-off\'s seat when `tasks` is omitted', () => {
     // The real drain, nowhere else: the worker pool declares the blocks its
     // per-worker factory composes, so `defineFlow`'s walk reaches the hand-off
     // sitting in the worker router and refuses the flow before any request
@@ -294,5 +294,29 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
         task: { actions: { implement: { block: worker("implement") } } },
       })
     ).toThrow(/no task board reachable from the flow hands off to it/);
+  });
+});
+
+describe("a board reached only as a tool still lands its ledger on the flow", () => {
+  it("collects the durable collection through the task entry, not the tool edge", () => {
+    // The walk takes the tool edge to find the hand-off; resources are collected
+    // off the action roots alone. Those agree because the ledger is declared by
+    // the gate on the task entry, which is a root — so a board a model reaches
+    // only through `tools: [board.drain]` (FIX-1074) still prefetches its ledger.
+    const board = handOffBoard({ name: "tool-only-ledger", boardId: "tool-only-ledger" });
+    const agent = generator({
+      name: "agent-ledger",
+      model: "openai/gpt-5.4-mini",
+      prompt: "drain the board",
+      tools: [board.drain],
+    });
+    const flow = defineFlow({
+      kind: "tool-only-ledger",
+      actions: { run: { block: sequencer({ name: "run-ledger" }).step(agent) } },
+      task: { actions: { implement: { block: worker("implement-ledger") } } },
+    });
+    expect(Object.keys(flow.resources ?? {}).some((key) => key.includes("board-tasks-tasks"))).toBe(
+      true
+    );
   });
 });

@@ -105,7 +105,7 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
     // the framework resolves the addressed record and checks its owner before
     // the handler runs. Reclassified as `host`, the parent id would never be
     // loaded as a record and so never ownership- or tenant-checked.
-    case "list_session_workstreams":
+    case "list_session_children":
     case "get_session_state":
     case "get_resource_content":
     case "get_collection_item_content":

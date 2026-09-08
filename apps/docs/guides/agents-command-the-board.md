@@ -322,7 +322,7 @@ You'll meet the word "blocked" on both board surfaces. They are two different
 contracts with different triggers, so don't read one as the other:
 
 - **Delegation.** `runBoard` returns `status: "blocked"` when a task is left
-  `pending`, `in_progress`, `awaiting_review`, or `blocked`. Terminal tasks don't
+  `pending`, `in_progress`, `parked`, or `blocked`. Terminal tasks don't
   count toward it.
 - **A code-defined board.** Its final item carries
   `terminationReason: "blocked-by-failures"` when any task is not

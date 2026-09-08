@@ -26,7 +26,11 @@ export {
 // `claude --remote` (it requires a TTY); pass `resolvePtyClaudeCli` to do so.
 export { scriptPtyClaudeCliExec, resolvePtyClaudeCli, stripAnsi } from "./pty-exec";
 export { parseRemoteDispatchOutput, type ParsedRemoteDispatch } from "./parse-output";
-export { claudeRemoteHandleSchema, type ClaudeRemoteHandle } from "./types";
+export {
+  CLAUDE_CLI_REMOTE_SOURCE,
+  claudeRemoteHandleSchema,
+  type ClaudeRemoteHandle,
+} from "./types";
 export { ClaudeCliNotFoundError, ClaudeRemoteDispatchError } from "./errors";
 
 // Re-export the shared envelope so `/cli` consumers don't need a second import.
@@ -35,4 +39,4 @@ export {
   type RemoteAgentTaskHandle,
   type RemoteAgentSource,
   type RemoteAgentStatus,
-} from "../shared/handle";
+} from "../shared";

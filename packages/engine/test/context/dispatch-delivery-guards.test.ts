@@ -63,7 +63,7 @@ function guardedFlow(kind: string, observed: Observed) {
   const deliver = dispatcher({
     name: "deliver-work",
     type: "internal",
-    target: "work",
+    action: "work",
     inputSchema: z.object({ to: z.string(), note: z.string() }),
     session: { id: (input) => input.to },
     payload: (input) => ({ note: input.note })
@@ -72,7 +72,7 @@ function guardedFlow(kind: string, observed: Observed) {
   const spawn = dispatcher({
     name: "spawn-work",
     type: "internal",
-    target: "work",
+    action: "work",
     inputSchema: z.object({ key: z.string(), note: z.string() }),
     session: { key: (input) => input.key },
     payload: (input) => ({ note: input.note })
@@ -209,7 +209,7 @@ describe("a delivery into an existing session", () => {
       expect(record).toBeDefined();
       expect(readDispatchStamp(record?.source, record?.metadata)).toMatchObject({
         type: "internal",
-        target: "work",
+        action: "work",
         from: { block: "deliver-work", sessionId: "s_sender" },
         recipientLineageId: "lin_original"
       });
@@ -298,7 +298,7 @@ describe("the stamp is trusted only under a seam-stamped source", () => {
     const forged = {
       dispatch: {
         type: "internal",
-        target: "work",
+        action: "work",
         from: { block: "x", sessionId: "s" },
         recipientLineageId: "lin_victim"
       }
@@ -307,10 +307,32 @@ describe("the stamp is trusted only under a seam-stamped source", () => {
     expect(readDispatchStamp("internal", forged)?.recipientLineageId).toBe("lin_victim");
   });
 
-  it("gives the fenced workstream source no dispatch type", () => {
-    expect(dispatchTypeOf("workstream")).toBeUndefined();
-    expect(dispatchTypeOf("http")).toBe("public");
+  it("reads a pre-rename stamp that stored the entry as target", () => {
+    const legacy = {
+      dispatch: {
+        type: "internal",
+        target: "work",
+        from: { block: "x", sessionId: "s" }
+      }
+    };
+    expect(readDispatchStamp("internal", legacy)).toMatchObject({
+      type: "internal",
+      action: "work",
+      from: { block: "x", sessionId: "s" }
+    });
+  });
+
+  it("types a dispatch by the door it came through, and a caller-facing door as public", () => {
     expect(dispatchTypeOf("task")).toBe("task");
+    expect(dispatchTypeOf("internal")).toBe("internal");
+    expect(dispatchTypeOf("webhook")).toBe("webhook");
+    expect(dispatchTypeOf("chat")).toBe("chat");
+    expect(dispatchTypeOf("scheduled")).toBe("schedule");
+    // Every caller-facing transport — including one the framework has never
+    // heard of — delivers `public`; nothing in a body can pick another type.
+    expect(dispatchTypeOf("http")).toBe("public");
+    expect(dispatchTypeOf("some-third-party-transport")).toBe("public");
+    expect(dispatchTypeOf(undefined)).toBe("public");
   });
 });
 
@@ -333,7 +355,7 @@ describe("a failed enqueue-time materialization gives a `reject` key back", () =
     const spawn = dispatcher({
       name: "spawn-work",
       type: "internal",
-      target: "work",
+      action: "work",
       inputSchema: z.object({ key: z.string(), note: z.string() }),
       session: { key: (input) => input.key },
       payload: (input) => ({ note: input.note })

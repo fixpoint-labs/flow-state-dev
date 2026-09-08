@@ -9,7 +9,7 @@
  *   - CAS contention safety (no double-dispatch)
  *   - mid-drain enqueue (workers add new tasks during the drain)
  *   - worker failure: skip vs fail policies
- *   - awaiting_review: dispatcher skips, loop waits, resume wakes the loop
+ *   - parked: dispatcher skips, loop waits, resume wakes the loop
  *   - both onIdle modes (complete + wait)
  *   - individual remix blocks (select, claim, record)
  *
@@ -893,15 +893,15 @@ describe("taskBoard - failure handling", () => {
 });
 
 // ---------------------------------------------------------------------------
-// awaiting_review semantics
+// parked semantics
 // ---------------------------------------------------------------------------
 
-describe("taskBoard - awaiting_review", () => {
-  it("dispatcher skips awaiting_review; resume wakes the loop in onIdle: 'complete'", async () => {
-    // "park" is seeded directly in `awaiting_review` — the FIFO
+describe("taskBoard - parked", () => {
+  it("dispatcher skips parked; resume wakes the loop in onIdle: 'complete'", async () => {
+    // "park" is seeded directly in `parked` — the FIFO
     // dispatcher must skip it. While "trigger" runs, it schedules a
-    // `resumeFromReview` that flips "park" back to `pending`. The
-    // `complete`-mode loop counts the awaiting_review task as
+    // `unpark` that flips "park" back to `pending`. The
+    // `complete`-mode loop counts the parked task as
     // in-flight so it doesn't exit before the resume lands.
     let scheduled = false;
     const reviewWorker = handler({
@@ -918,7 +918,7 @@ describe("taskBoard - awaiting_review", () => {
             sequencer: ctx.getTarget("hitl")!,
           });
           setTimeout(() => {
-            collection.resumeFromReview("park").catch(() => undefined);
+            collection.unpark("park").catch(() => undefined);
           }, 60);
         }
         return { handled: input.goal };
@@ -932,12 +932,12 @@ describe("taskBoard - awaiting_review", () => {
       dispatcher: "fifo",
       workers: reviewWorker,
       initialTasks: [
-        { id: "park", goal: "park", status: "awaiting_review" },
+        { id: "park", goal: "park", status: "parked" },
         { id: "trigger", goal: "trigger" },
       ],
       onIdle: "complete",
       // FIX-621: prove event-driven wake. With a 50s idle-poll baseline,
-      // the test can only finish in time if `resumeFromReview` fans out
+      // the test can only finish in time if `unpark` fans out
       // a `task-change` item that wakes `.waitForCondition` directly
       // rather than waiting for the next tick.
       idlePollMs: 50_000,

@@ -246,7 +246,7 @@ that constructs and drains its own board; that's a new request with its own
 drain, not a shared board with a separate drainer.
 
 [Work that outlives the turn](./background-work) lays out the options side by
-side, including what a board's detached workers address and what they don't.
+side, including what a board's handed-off rows reach and what they don't.
 
 ## Related
 

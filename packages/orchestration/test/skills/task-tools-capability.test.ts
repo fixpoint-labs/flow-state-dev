@@ -516,14 +516,14 @@ describe("taskTools — the recovery list names tool-reachable calls", () => {
     expect(error).toContain("From here you can call blockTask or cancelTask.");
   });
 
-  it("names the calls available from awaiting_review without claiming pending", async () => {
+  it("names the calls available from parked without claiming pending", async () => {
     const error = await errorFrom(
       "blockTask",
       { taskId: "a", reason: "legal" },
-      ctxWithTask("awaiting_review"),
+      ctxWithTask("parked"),
     );
-    expect(error).toContain('task "a" is awaiting_review');
-    // `allowedTransitionsFrom("awaiting_review")` includes `pending`; no tool
+    expect(error).toContain('task "a" is parked');
+    // `allowedTransitionsFrom("parked")` includes `pending`; no tool
     // reaches it from here, so the recovery list must not mention it.
     expect(error).not.toContain("pending");
     expect(error).toContain("cancelTask");
@@ -561,7 +561,7 @@ describe("taskTools — the recovery list names tool-reachable calls", () => {
       ["pending", "completeTask"],
       ["in_progress", "blockTask"],
       ["blocked", "completeTask"],
-      ["awaiting_review", "blockTask"],
+      ["parked", "blockTask"],
     ];
     for (const [status, tool] of probes) {
       const error = await errorFrom(tool, { taskId: "a", reason: "r" }, ctxWithTask(status));
@@ -580,7 +580,7 @@ describe("taskTools — the recovery list names tool-reachable calls", () => {
       ["pending", "completeTask"],
       ["in_progress", "blockTask"],
       ["blocked", "completeTask"],
-      ["awaiting_review", "blockTask"],
+      ["parked", "blockTask"],
       ["completed", "blockTask"],
     ];
     for (const [status, tool] of probes) {

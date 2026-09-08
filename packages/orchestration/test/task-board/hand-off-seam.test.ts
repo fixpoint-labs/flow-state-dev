@@ -61,7 +61,7 @@ function handOffWith(session: "per-task" | "per-worker" | { key: (task: TaskWork
     name: "issue-work-hand-off-implement",
     boardId: "issue-work",
     seat: "implement",
-    address: { type: "task", target: "implement", session },
+    address: { type: "task", action: "implement", session },
     binding: BINDING,
   });
 }
@@ -161,7 +161,7 @@ describe("the parent releases its claim before the dispatch it cannot take back"
 
     expect(harness.spec()).toMatchObject({
       type: "task",
-      target: "implement",
+      action: "implement",
       session: { key: "task|10:issue-work|2:t1" },
       from: "issue-work-hand-off-implement",
       provenance: { taskId: "t1" },
@@ -211,7 +211,7 @@ describe("the parent releases its claim before the dispatch it cannot take back"
       name: "DispatchRefusedError",
       code: "dispatch-refused",
       refused: "no-entry",
-      address: { type: "task", target: "implement" },
+      address: { type: "task", action: "implement" },
     });
 
     expect(harness.timeline).toEqual(["release", "dispatch", "restore"]);
@@ -350,5 +350,40 @@ describe("the child session key", () => {
     // changes hands.
     expect(harness.timeline).toEqual([]);
     expect(harness.claimAfter()).toEqual(CLAIM);
+  });
+});
+
+describe("a seat that names another flow", () => {
+  it("forwards flowKind from the seat address through the seam", async () => {
+    // TaskSeatAddress allows flowKind (Jake required it legal on task). The
+    // author-facing dispatcher() already forwards it; the drain's hand-off
+    // is the path a real board takes, and omitting it makes the seam resolve
+    // on the sender — `no-entry` against the wrong flow.
+    const block = createHandOff({
+      name: "issue-work-hand-off-implement",
+      boardId: "issue-work",
+      seat: "implement",
+      address: {
+        type: "task",
+        action: "work",
+        session: "per-task",
+        flowKind: "task-recipient",
+      },
+      binding: BINDING,
+    });
+    const harness = drive({ seam: accepted, block });
+    await harness.run();
+
+    expect(harness.spec()).toMatchObject({
+      type: "task",
+      action: "work",
+      flowKind: "task-recipient",
+    });
+  });
+
+  it("omits flowKind when the seat addresses this flow", async () => {
+    const harness = drive({ seam: accepted });
+    await harness.run();
+    expect(harness.spec()?.flowKind).toBeUndefined();
   });
 });

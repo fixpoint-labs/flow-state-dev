@@ -6,6 +6,13 @@ entry dispatches a cloud coding task by shelling out to your local `claude` CLI
 in-process and streams its work through the flow's item stream, backed by the
 optional `@anthropic-ai/claude-agent-sdk` peer dependency.
 
+The `/sdk` entry is a **harness** — a coding agent driven as a block, returning
+the neutral run handle declared in `@flow-state-dev/core`.
+[`@flow-state-dev/codex`](../codex) is the other one, and
+[`@flow-state-dev/harness-manager`](../harness-manager) drives either from a task
+board. The `/cli` entry is not a harness: it is fire-and-forget, so there is no
+outcome, final message, usage or cost to report.
+
 ## Installation
 
 ```bash
@@ -82,7 +89,7 @@ Each dispatch appends a handle to `claudeRemoteTasks` in session state:
 
 ```ts
 type ClaudeRemoteHandle = {
-  source: "cli-remote";
+  source: "claude-code/cli-remote";
   status: "dispatched";
   sessionId: string | null;   // parsed from CLI output when present
   url: string | null;         // claude.ai session URL when present
@@ -95,7 +102,7 @@ type ClaudeRemoteHandle = {
 A later request reads `ctx.session.state.claudeRemoteTasks` to reference prior
 dispatches.
 
-### Running as detached background work (`/sdk`)
+### Running as background work (`/sdk`)
 
 The SDK agent keeps its own session state — `sdkSessionId` (the run it resumes)
 and `sdkAgentRuns` (the handles it has returned). Pass `detached: true` to run it
@@ -106,17 +113,40 @@ claudeCodeAgent({ detached: true });
 ```
 
 Nothing is declared, read, or written, and the SDK is handed no `resume`, so each
-run starts fresh. Use it when the agent runs as background work on a task board:
-those workers share one flow, so the board refuses one whose block declares
-session state. The run's own history is the workstream's item stream instead.
+run starts fresh. Use it when the agent runs as a task-board worker in a child
+session: rows may share that session, so the board refuses a hand-off whose block
+declares session state. The run's own history is the child session's item stream
+instead.
 
 The returned handle still carries the SDK `sessionId`, and as a worker's output
 it is persisted with the task — the option governs session state and resume, not
 the result.
 
-`createClaudeCodeAgentCapability({ detached: true })` takes the same option, and
-passing it is required rather than tidy: a capability declares the schema through
-a channel the board's refusal cannot see.
+`createClaudeCodeAgentCapability({ detached: true })` takes the same option, and you
+have to pass it: the board refuses a block whose capability declares the schema, and
+cannot see one a capability's preset adds at all.
+
+#### Continuing a background run
+
+To have the next job pick up the last one's conversation, pair two options:
+
+```ts
+claudeCodeAgent({
+  detached: true,
+  resume: (ctx) => lastSessionFor(ctx),   // `null` or `""` starts fresh
+  onSession: (id, ctx) => recordSessionFor(ctx, id),
+});
+```
+
+`onSession` fires **during** the run, as soon as the agent names its session —
+not from the returned handle, because a cancelled run returns none, and that is
+the run you most want to continue. What it reports is the session the agent
+confirmed it is in, which may not be the one you asked for: record what the hook
+gives you, and treat "never fired" as "nothing to continue" so the next attempt
+starts fresh instead of re-sending a session that is gone.
+
+Both are background-path only. In session the block already resumes and records
+the id itself, so passing either without `detached: true` throws at construction.
 
 ### Giving a run its own working directory (`/sdk`)
 
@@ -179,7 +209,7 @@ const checkoutFor = (ctx: object) => {
 };
 
 claudeCodeAgent({
-  cwd: (_input, ctx) => checkoutFor(ctx),
+  cwd: (ctx) => checkoutFor(ctx),
   // Which filesystem settings the run loads. Omitted, it loads all of them,
   // exactly as the CLI does.
   settingSources: ["user"],
@@ -190,7 +220,7 @@ claudeCodeAgent({
   // SDK is an optional peer here, so its own type is not imported). A value or
   // a resolver: the settings that confine a run name the directory it works
   // in, and that is per run.
-  sandbox: async (_input, ctx) => ({
+  sandbox: async (ctx) => ({
     enabled: true,
     filesystem: { allowWrite: [await checkoutFor(ctx)] },
   }),
@@ -268,7 +298,7 @@ over:
 
 ```ts
 const agent = claudeCodeAgent({
-  cwd: async (_input, ctx) => {
+  cwd: async (ctx) => {
     const dir = checkoutFor(
       ctx.session.identity.tenantId,
       ctx.session.identity.id,
@@ -360,8 +390,8 @@ resource collections and writes into them as it goes:
 claudeCodeAgent({ detached: true, recordWork: true });
 ```
 
-Entries are keyed as `<requestId>/<invocation>`, so a workstream reused across
-runs — and a request that runs the agent more than once — both answer per run.
+Entries are keyed as `<requestId>/<invocation>`, so a session reused across runs —
+and a request that runs the agent more than once — both answer per run.
 All three declare client state reads, so
 `GET /sessions/:id/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/`
 returns them; each row's payload is on `clientData`. Follow `nextCursor` — the
@@ -507,7 +537,7 @@ for the full surface.
 | Auth | claude.ai subscription | Anthropic credentials |
 | Progress | Watch via `/tasks`, claude.ai, mobile | Streamed live as flow-state-dev items |
 | Session | Cloud session handle | Persistent, resumed across requests |
-| As background work | Already fire-and-forget | Task-board worker with `detached: true`; the workstream's item stream is the run's record |
+| As background work | Already fire-and-forget | Task-board worker with `detached: true`; the child session's item stream is the run's record |
 | Reach for it when | Offloading long autonomous work | A real agent in the loop, observed step by step |
 
 ## Running tests
@@ -515,3 +545,7 @@ for the full surface.
 ```bash
 pnpm --filter @flow-state-dev/claude-code test
 ```
+
+## Documentation
+
+[Coding agents](https://flow-state.dev/docs/tools/coding-agents) · [Claude Code SDK agent](https://flow-state.dev/docs/tools/claude-code-sdk) · [Claude Code remote dispatch](https://flow-state.dev/docs/tools/claude-code-cli) · [Harness manager](https://flow-state.dev/docs/orchestration/harness-manager)

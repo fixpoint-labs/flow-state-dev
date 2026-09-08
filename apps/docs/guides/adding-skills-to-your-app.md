@@ -32,6 +32,7 @@ Create a `skills/` directory next to your flow definition and drop two folders i
 
 ```markdown
 ---
+name: check-news
 description: Answer questions about current events or breaking news. Use when freshness matters. Enforces recency discipline and cites publication dates.
 keywords: [news, latest, breaking, today, current, happening, recent]
 ---
@@ -52,6 +53,7 @@ If the freshest source you could find is stale, open the answer with that caveat
 
 ```markdown
 ---
+name: competitor-analysis
 description: Produce a competitor analysis. Use for landscape, comparison, or "who competes with X" questions. Enforces structure and source hygiene.
 keywords: [competitor, competitors, competition, compare, versus, landscape, market]
 ---

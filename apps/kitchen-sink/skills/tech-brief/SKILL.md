@@ -1,4 +1,5 @@
 ---
+name: tech-brief
 description: Produce a concise technology briefing on a topic, company, or product. Use when the user wants a quick but thorough tech rundown — what it is, why it matters, who the players are, and what the risks look like. A single worker does the research and writes the brief.
 keywords: [tech, brief, briefing, technology, overview, rundown, explain]
 argument-hint: <technology, product, or company>

@@ -128,7 +128,7 @@ export type CreateInboundTransportHostOptions = {
  *   wrong and someone should look.
  * - `aborted` — the run was cancelled before it left the concurrency queue,
  *   which is shutdown working as designed. Recording that as `failed` reports a
- *   successful cancellation as an execution failure to clients, to workstream
+ *   successful cancellation as an execution failure to clients, to child-session
  *   summaries, and to recovery, which reads terminal statuses to decide what
  *   needs attention.
  *
@@ -202,7 +202,7 @@ export function createInboundTransportHost(
    * and `waitUntil` both raise synchronously when called outside a request
    * scope. An escaping throw would therefore make a synchronous failure mean two
    * different things, and each caller reads it as only one — the pre-start one:
-   * `createDetachedStartOperation` reads it as "nothing was dispatched" and
+   * the dispatch operation reads it as "nothing was dispatched" and
    * settles the row it handed over, and the resume route reads it as
    * "setup failed" and reverts the suspension to `pending`, inviting a second
    * resume against a request whose run is still going. Two writers, one row
@@ -220,8 +220,8 @@ export function createInboundTransportHost(
    *
    * A `RuntimeLogger` is adapter- or app-supplied, so `warn`/`error` are
    * arbitrary code that can throw. Both callers here are on a path where that
-   * throw would be read as something else entirely: one runs before a detached
-   * dispatch has materialized, where `createDetachedStartOperation` reads a
+   * throw would be read as something else entirely: one runs before a
+   * dispatch has materialized, where the dispatch operation reads a
    * synchronous throw as "nothing was started" and settles the row — so a failed
    * log line would report work as never started when the only thing that failed
    * was the logging. The other is the containment inside

@@ -12,6 +12,18 @@
  * declares no such entry is refused by name; it never resolves another type's
  * map.
  *
+ * ## One flow, or another one
+ *
+ * An `internal` or `task` address may name a **different flow** — `flowKind`
+ * on the address. Delivery is the same door; what changes is which flow's
+ * entry map the target is resolved on, and therefore *when*. A same-flow address is
+ * resolved by `defineFlow`, which holds the map. A cross-flow address cannot
+ * be: the flow it names is registered separately, so the entry check happens
+ * at the seam, on the target flow the process actually has. That is a **miss
+ * with a name** — `flow-not-found` or `no-entry` — reaching the sending block
+ * as a thrown {@link DispatchRefusedError}, never a retry, a queue, or a
+ * fall-through to the sender's own map.
+ *
  * What differs per type is who owns the entry's input schema and who may put a
  * dispatch through the door. A block may dispatch a type only when it can
  * itself supply that type's trust: it holds its own request's authority
@@ -74,10 +86,14 @@ export type TaskSessionPolicy<TPayload = unknown> =
   | { readonly key: (task: TPayload, ctx: BlockContext) => string };
 
 /**
- * Where a dispatcher sends. Static by construction: `(type, target)` is what
- * `defineFlow` verifies, so a block's reachable set is declared rather than
- * computed at run time. A target chosen from data is a router over declared
+ * Where a dispatcher sends. Static by construction: `(type, action, flowKind)`
+ * is what the block declares, so its reachable set is declared rather than
+ * computed at run time. An action chosen from data is a router over declared
  * dispatchers, not a dynamic address.
+ *
+ * `defineFlow` verifies the same-flow pair. A cross-flow address is equally
+ * static and equally declared — it is simply verified one layer later, by the
+ * seam, against the flow the running process registered under that kind.
  *
  * A `task` address also carries the seat's session policy — declared once on
  * the dispatcher and read by the board that holds it, so the roster shows
@@ -86,14 +102,33 @@ export type TaskSessionPolicy<TPayload = unknown> =
 export type DispatchAddress =
   | {
       readonly type: "internal";
-      /** The entry name — `flow.internal.actions[target]`. */
-      readonly target: string;
+      /** The entry name — `flow.internal.actions[action]`. */
+      readonly action: string;
+      /**
+       * The flow the entry lives on, when it is **not this one**. Absent is
+       * same-flow, which is the whole of what `defineFlow` can check.
+       *
+       * A cross-flow address is declared exactly like a same-flow one — a
+       * string on the block, resolved by the walk it is reachable from — but
+       * the flow it names is registered independently of this one, so nothing
+       * at definition time can read its entry map. The check moves to the
+       * seam, where it stays a **named refusal**: `flow-not-found` when this
+       * process has no such flow, `no-entry` when the flow has no such entry.
+       * Never a retry, a queue, or a fall through to this flow's own map.
+       */
+      readonly flowKind?: string;
     }
   | {
       readonly type: "task";
-      /** The entry name — `flow.task.actions[target]`. */
-      readonly target: string;
+      /** The entry name — `flow.task.actions[action]`. */
+      readonly action: string;
       readonly session: TaskSessionPolicy<any>;
+      /**
+       * The flow the entry lives on, when it is **not this one**. Same skip
+       * as an `internal` cross-flow address: `defineFlow` cannot see the
+       * other flow's map, so the seam resolves it.
+       */
+      readonly flowKind?: string;
     };
 
 /**
@@ -128,9 +163,38 @@ export const taskDispatchInputSchema = z.object({
 
 export type TaskDispatchInput = z.infer<typeof taskDispatchInputSchema>;
 
-/** Length-prefix a field so field boundaries cannot migrate in a composed key. */
-function framed(value: string): string {
+/**
+ * Length-prefix a field so field boundaries cannot migrate in a composed key:
+ * `("u_ab", "c")` and `("u_a", "bc")` would otherwise concatenate identically.
+ * The writer's half of the codec; {@link readFramed} is the reader's.
+ */
+export function framed(value: string): string {
   return `${value.length}:${value}`;
+}
+
+/**
+ * Read one {@link framed} field starting at `at`: the value and where the next
+ * field begins, or `null` when the input does not have that shape.
+ *
+ * Strict about the shape `framed` writes — the digits must be exactly the
+ * decimal spelling of the value's length (no leading zeros) and the value must
+ * be fully present. An empty value is accepted: `framed("")` is `0:`, and a
+ * reader that needs non-empty fields checks that itself.
+ */
+export function readFramed(
+  input: string,
+  at: number
+): { value: string; next: number } | null {
+  const separator = input.indexOf(":", at);
+  if (separator === -1) return null;
+  const digits = input.slice(at, separator);
+  if (!/^\d+$/.test(digits)) return null;
+  const length = Number.parseInt(digits, 10);
+  if (String(length) !== digits) return null;
+  const start = separator + 1;
+  const end = start + length;
+  if (end > input.length) return null;
+  return { value: input.slice(start, end), next: end };
 }
 
 /**
@@ -175,13 +239,22 @@ export function taskSessionKeyFor(
  *   this principal's on this flow; refused by name otherwise. Never created —
  *   an unknown id is a typo, a stale reference, or a hallucinated value, and
  *   auto-creating turns all three into work nobody is watching.
+ * - `from` — the **seam-stamped sender**. The runtime reads
+ *   `metadata.dispatch.from.sessionId` through `readDispatchStamp` and delivers
+ *   into that session as an `id` would. The author names no session. A request
+ *   that was not dispatched has no sender (`no-sender`).
  */
-export type SessionTarget = { readonly key: string } | { readonly id: string };
+export type SessionTarget =
+  | { readonly key: string }
+  | { readonly id: string }
+  | { readonly from: true };
 
 /** What a dispatcher hands the seam. Every field is computed by the block that dispatches. */
 export type DispatchSpec = {
   readonly type: BlockDispatchType;
-  readonly target: string;
+  readonly action: string;
+  /** The flow the entry lives on, when it is not the sending request's own. */
+  readonly flowKind?: string;
   readonly session: SessionTarget;
   /** The entry's input. Validated by the entry's own schema on arrival. */
   readonly payload: unknown;
@@ -201,8 +274,14 @@ export type DispatchSpec = {
  * dispatched, so a refused caller still owns whatever it was handing over.
  */
 export type DispatchRefusal =
-  /** The flow declares no entry at `(type, target)`. Resolution never falls through. */
+  /** The flow declares no entry at `(type, action)`. Resolution never falls through. */
   | "no-entry"
+  /**
+   * A cross-flow address names a flow this process has not registered. The
+   * runtime half of an address `defineFlow` could not verify — a typo, a flow
+   * that was never deployed here, or one deployed behind a different host.
+   */
+  | "flow-not-found"
   /** An `id` target names a session that does not exist. */
   | "session-not-found"
   /** An `id` target names a session that is not this principal's, or not this flow's. */
@@ -218,7 +297,13 @@ export type DispatchRefusal =
    * queue, where the recipient's concurrency policy would not be applied to it.
    * A `key` child is unaffected.
    */
-  | "external-dispatcher";
+  | "external-dispatcher"
+  /**
+   * A `{ from: true }` target on a request the runtime did not dispatch — no
+   * trusted `metadata.dispatch.from`. A caller-written bag on an HTTP body is
+   * not a sender.
+   */
+  | "no-sender";
 
 /** Outcome of a dispatch. `adopted` says whether the child session already existed. */
 export type DispatchOutcome =
@@ -241,7 +326,7 @@ export type DispatchSeam = (spec: DispatchSpec) => Promise<DispatchOutcome>;
 /**
  * The context slot the runtime attaches its dispatch operation under.
  *
- * A symbol rather than a named member, deliberately: a `ctx.startDetached`-style
+ * A symbol rather than a named member, deliberately: a `ctx.dispatch`-style
  * verb is reachable from any handler body, which makes "which blocks dispatch"
  * unanswerable at definition time. Reaching the seam through
  * `dispatchThroughSeam` from a block marked with `markDispatcher` keeps the
@@ -281,7 +366,7 @@ export class DispatchRefusedError extends Error {
     readonly detail: string
   ) {
     super(
-      `Block "${blockName}" could not dispatch to ${address.type}:"${address.target}": ` +
+      `Block "${blockName}" could not dispatch to ${address.type}:"${address.action}": ` +
         `${refused} — ${detail}`
     );
     this.name = "DispatchRefusedError";
@@ -336,7 +421,16 @@ export type InternalEntry = ActionCore;
  * the packed worker input the row was claimed with, never the envelope, and
  * never runs against a row nothing verified.
  */
-export type TaskEntry = ActionCore;
+export type TaskEntry = ActionCore & {
+  /**
+   * The binding whose gate fronts this entry, set by `defineFlow` when it
+   * applies the gate. Read by the run-time routability check on a carried
+   * core: a task dispatcher produced at dispatch time must be held by the same
+   * board, or its rows would be claimed on one ledger and refused at another
+   * board's gate after the dispatch was accepted.
+   */
+  readonly gatedBy?: TaskBinding;
+};
 
 /**
  * What a task board binds onto the hand-off it installs at a `task` dispatcher
@@ -352,7 +446,7 @@ export type TaskEntry = ActionCore;
  */
 export type TaskBinding = {
   readonly boardId: string;
-  /** Wrap an entry in this board's claim gate. `target` is the entry's name on the flow. */
+  /** Wrap an entry in this board's claim gate. The second argument is the entry's name on the flow. */
   readonly gate: (entry: ActionCore, target: string) => ActionCore;
 };
 

@@ -16,9 +16,7 @@
  * to the public action endpoint still resolves a `public` entry by name — it
  * cannot pivot into a chat, webhook, schedule, task or internal handler.
  *
- * The fenced `workstream` source has no dispatch type and resolves nothing here;
- * `resolveActionCore` routes it to the flow's workstream core before asking.
- * The one other path with no static coordinate is the dynamic schedule, whose
+ * The one path with no static coordinate is the dynamic schedule, whose
  * core is produced at dispatch time by a resolver — handled upstream by a
  * carried core on the dispatch envelope (`resolvedActionCore`), see
  * `runAction`'s `resolveAction`.

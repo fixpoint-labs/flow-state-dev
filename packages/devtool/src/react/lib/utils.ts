@@ -8,7 +8,7 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * Enough of a session id to recognise, without filling the column it sits in.
  *
- * A derived Workstream id is a 32-character hash, so the whole value is both
+ * A derived ChildSession id is a 32-character hash, so the whole value is both
  * unreadable and too wide for a header crumb or a table cell — but the ends of
  * it are what a developer matches against a store dump or a log line.
  */

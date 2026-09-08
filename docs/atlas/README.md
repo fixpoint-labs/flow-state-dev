@@ -16,16 +16,19 @@ issue identifiers; anything under `apps/docs/` is published and may not.
 
 ## Contents
 
-- `conductor.html` — the Conductor meta-harness: what it is, how a run works,
-  and the threads still open.
+- `conductor.html` — the Conductor meta-harness encyclopedia: what it is, how
+  a run works, and the threads still open. Conductor is one Workforce team
+  config (coding-harness seats), not a sibling product. Product lock lives on
+  the Workforce atlas.
 - `framework.html` — the framework architecture atlas: every package and
   system in `@flow-state-dev`, how they compose, and the open refactor
   questions. Its counts are measured against a commit rather than maintained,
   so read them as of the branch that last touched it.
-- `workforce.html` — the other intended harness: Layer 2 conventions on the
-  same substrate, persistent agents, not this cycle. Triangulates so Conductor
-  does not harden a coding-only Layer 1.
-- `roadmap.html` — the public product horizon: three jobs (framework,
-  Workforce as a component, Conductor as the user product), the clocks, and
-  collaboration as wait on the existing Relay door. Sibling to Conductor and
-  Workforce; owned conceptually by FSD Strategy.
+- `workforce.html` — the Layer 2 product: roster / teams + seats + rooms +
+  thin helpers. One worker contract, DMs as static sessions, groups as a
+  board plus one session per subscriber, talk on the dispatch spine.
+  Conductor is a team config on this surface. The page teaches the lock and
+  the honesty tags; the factory is still proposed.
+- `roadmap.html` — the public product horizon. Still written in the older
+  three-jobs / sibling framing; Strategy owns that rewrite. Do not read it
+  as outranking the Workforce lock.

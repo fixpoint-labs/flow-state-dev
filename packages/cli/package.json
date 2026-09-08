@@ -64,7 +64,7 @@
     "commander": "^13.1.0"
   },
   "peerDependencies": {
-    "@flow-state-dev/devtool": "workspace:*"
+    "@flow-state-dev/devtool": "workspace:>=0.0.0"
   },
   "peerDependenciesMeta": {
     "@flow-state-dev/devtool": {

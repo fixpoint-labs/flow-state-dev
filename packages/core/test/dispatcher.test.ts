@@ -40,50 +40,125 @@ describe("dispatcher — the definition", () => {
     const block = dispatcher({
       name: "wake-epic",
       type: "internal",
-      target: "wake",
+      action: "wake",
       session: { id: () => "s_epic" }
     });
     expect(block.kind).toBe("handler");
-    expect(block.dispatch).toEqual({ type: "internal", target: "wake" });
+    expect(block.dispatch).toEqual({ type: "internal", action: "wake" });
   });
 
   it("keeps the address across connectInput and rescue rebuilds", () => {
     const block = dispatcher({
       name: "wake-epic",
       type: "internal",
-      target: "wake",
+      action: "wake",
       inputSchema: z.object({ id: z.string() }),
       session: { id: (input) => input.id }
     });
     const connected = block.connectInput<{ epic: string }>((from) => ({ id: from.epic }));
-    expect(connected.dispatch).toEqual({ type: "internal", target: "wake" });
+    expect(connected.dispatch).toEqual({ type: "internal", action: "wake" });
 
     const rescued = block.rescue([
       { block: handler({ name: "swallow", inputSchema: z.unknown(), execute: () => null }) }
     ]);
-    expect(rescued.dispatch).toEqual({ type: "internal", target: "wake" });
+    expect(rescued.dispatch).toEqual({ type: "internal", action: "wake" });
   });
 
-  it("refuses an empty target at construction", () => {
+  it("defaults type to internal when omitted", () => {
+    const block = dispatcher({
+      name: "wake-epic",
+      action: "wake",
+      session: { id: () => "s_epic" }
+    });
+    expect(block.dispatch).toEqual({ type: "internal", action: "wake" });
+  });
+
+  it("refuses an empty action at construction", () => {
     expect(() =>
-      dispatcher({ name: "blank", type: "internal", target: "", session: { key: () => "k" } })
-    ).toThrow(/non-empty target/);
+      dispatcher({ name: "blank", type: "internal", action: "", session: { key: () => "k" } })
+    ).toThrow(/non-empty action/);
   });
 
   it("is a task seat when its type is task, carrying the session policy on its address", () => {
     const seat = dispatcher({
       name: "hand-off-implement",
       type: "task",
-      target: "implement",
+      action: "implement",
       session: "per-task"
     });
     expect(seat.kind).toBe("handler");
-    expect(seat.dispatch).toEqual({ type: "task", target: "implement", session: "per-task" });
+    expect(seat.dispatch).toEqual({ type: "task", action: "implement", session: "per-task" });
+  });
+
+  it("is a task seat from the session policy when type is omitted", () => {
+    const perTask = dispatcher({
+      name: "hand-off-implement",
+      action: "implement",
+      session: "per-task"
+    });
+    expect(perTask.dispatch).toEqual({ type: "task", action: "implement", session: "per-task" });
+
+    const byKey = dispatcher({
+      name: "hand-off-by-topic",
+      action: "implement",
+      session: { key: (task: { taskId: string }) => task.taskId }
+    });
+    expect(byKey.dispatch).toEqual({
+      type: "task",
+      action: "implement",
+      session: { key: expect.any(Function) }
+    });
+  });
+
+  it("stays internal when a keyed session carries inputSchema or an explicit type", () => {
+    const withSchema = dispatcher({
+      name: "run-in-background",
+      action: "analyze",
+      inputSchema: z.object({ documentId: z.string() }),
+      session: { key: (input) => input.documentId }
+    });
+    expect(withSchema.dispatch).toEqual({ type: "internal", action: "analyze" });
+
+    const explicit = dispatcher({
+      name: "run-in-background",
+      type: "internal",
+      action: "analyze",
+      session: { key: () => "doc:1" }
+    });
+    expect(explicit.dispatch).toEqual({ type: "internal", action: "analyze" });
+  });
+
+  it("lets a task seat name another flow", () => {
+    const seat = dispatcher({
+      name: "hand-off-billing",
+      type: "task",
+      flowKind: "billing",
+      action: "charge",
+      session: "per-task"
+    });
+    expect(seat.dispatch).toEqual({
+      type: "task",
+      action: "charge",
+      session: "per-task",
+      flowKind: "billing"
+    });
+  });
+
+  it("refuses an empty flowKind on a task seat", () => {
+    expect(() =>
+      dispatcher({
+        name: "blank-flow",
+        type: "task",
+        flowKind: "",
+        action: "charge",
+        session: "per-task"
+      })
+    ).toThrow(/empty flowKind/);
   });
 
   it("refuses a task seat with no session policy, by name", () => {
     expect(() =>
-      dispatcher({ name: "no-policy", type: "task", target: "implement", session: undefined as never })
+      dispatcher({ name: "no-policy", type: "task", action: "implement", session: undefined as never })
     ).toThrow(/task session policy/);
   });
 
@@ -92,7 +167,7 @@ describe("dispatcher — the definition", () => {
       dispatcher({
         name: "forged",
         type: "webhook" as unknown as "internal",
-        target: "github/push",
+        action: "github/push",
         session: { key: () => "k" }
       })
     ).toThrow(/cannot supply the trust/);
@@ -105,7 +180,7 @@ describe("dispatcher — the body", () => {
     const block = dispatcher({
       name: "run-in-background",
       type: "internal",
-      target: "analyze",
+      action: "analyze",
       inputSchema: z.object({ documentId: z.string() }),
       session: { key: (input) => `doc:${input.documentId}` }
     });
@@ -116,7 +191,7 @@ describe("dispatcher — the body", () => {
     expect(calls).toEqual([
       {
         type: "internal",
-        target: "analyze",
+        action: "analyze",
         session: { key: "doc:d1" },
         payload: { documentId: "d1" },
         from: "run-in-background"
@@ -129,7 +204,7 @@ describe("dispatcher — the body", () => {
     const block = dispatcher({
       name: "wake-epic",
       type: "internal",
-      target: "wake",
+      action: "wake",
       inputSchema: z.object({ epicSessionId: z.string(), reason: z.string() }),
       session: { id: (input) => input.epicSessionId },
       payload: (input) => ({ reason: input.reason })
@@ -142,6 +217,23 @@ describe("dispatcher — the body", () => {
     expect(calls[0]?.payload).toEqual({ reason: "answered" });
   });
 
+  it("hands the seam { from: true } — no session id is computed from input", async () => {
+    const { calls, ctx } = seamRecording({ ...accepted, adopted: true });
+    const block = dispatcher({
+      name: "reply-to-sender",
+      type: "internal",
+      action: "receive-reply",
+      inputSchema: z.object({ note: z.string(), replyTo: z.string() }),
+      session: { from: true },
+      payload: (input) => ({ note: input.note })
+    });
+
+    await runForTest(block, { note: "done", replyTo: "s_forged" }, ctx);
+
+    expect(calls[0]?.session).toEqual({ from: true });
+    expect(calls[0]?.payload).toEqual({ note: "done" });
+  });
+
   it("throws DispatchRefusedError, by name, when the seam refuses", async () => {
     const { ctx } = seamRecording({
       ok: false,
@@ -151,7 +243,7 @@ describe("dispatcher — the body", () => {
     const block = dispatcher({
       name: "wake-epic",
       type: "internal",
-      target: "wake",
+      action: "wake",
       session: { id: () => "s_gone" }
     });
 
@@ -159,7 +251,7 @@ describe("dispatcher — the body", () => {
     expect(error).toBeInstanceOf(DispatchRefusedError);
     const refused = error as DispatchRefusedError;
     expect(refused.refused).toBe("session-not-found");
-    expect(refused.address).toEqual({ type: "internal", target: "wake" });
+    expect(refused.address).toEqual({ type: "internal", action: "wake" });
     expect(refused.blockName).toBe("wake-epic");
   });
 
@@ -167,7 +259,7 @@ describe("dispatcher — the body", () => {
     const block = dispatcher({
       name: "wake-epic",
       type: "internal",
-      target: "wake",
+      action: "wake",
       session: { id: () => "s_epic" }
     });
     await expect(runForTest(block, {}, createMockContext())).rejects.toBeInstanceOf(
@@ -186,29 +278,51 @@ describe("dispatcher — the body", () => {
       payload: { taskId: "t1", goal: "do it", attempts: 1, metadata: { topic: "FIX-1" } }
     };
 
-    const perTask = dispatcher({ name: "per-task", type: "task", target: "implement", session: "per-task" });
+    const perTask = dispatcher({ name: "per-task", type: "task", action: "implement", session: "per-task" });
     await runForTest(perTask, envelope, ctx);
     expect(calls[0]).toEqual({
       type: "task",
-      target: "implement",
+      action: "implement",
       session: { key: "task|10:issue-work|2:t1" },
       payload: envelope,
       from: "per-task",
       provenance: { taskId: "t1" }
     });
 
-    const perWorker = dispatcher({ name: "per-worker", type: "task", target: "implement", session: "per-worker" });
+    const perWorker = dispatcher({ name: "per-worker", type: "task", action: "implement", session: "per-worker" });
     await runForTest(perWorker, envelope, ctx);
     expect(calls[1]?.session).toEqual({ key: "worker|10:issue-work|9:implement" });
 
     const byTopic = dispatcher({
       name: "by-topic",
       type: "task",
-      target: "implement",
+      action: "implement",
       session: { key: (task: { metadata?: { topic?: string } }) => task.metadata?.topic ?? "" }
     });
     await runForTest(byTopic, envelope, ctx);
     expect(calls[2]?.session).toEqual({ key: "FIX-1" });
+  });
+
+  it("forwards flowKind on a task dispatch to the seam", async () => {
+    const { calls, ctx } = seamRecording();
+    const envelope = {
+      boardId: "issue-work",
+      seat: "charge",
+      taskId: "t1",
+      attempt: 1,
+      createdAt: 1,
+      payload: {}
+    };
+    const seat = dispatcher({
+      name: "hand-off-billing",
+      type: "task",
+      flowKind: "billing",
+      action: "charge",
+      session: "per-task"
+    });
+    await runForTest(seat, envelope, ctx);
+    expect(calls[0]?.flowKind).toBe("billing");
+    expect(calls[0]?.action).toBe("charge");
   });
 
   it("refuses an empty computed session key, naming the block", async () => {
@@ -216,7 +330,7 @@ describe("dispatcher — the body", () => {
     const block = dispatcher({
       name: "run-in-background",
       type: "internal",
-      target: "analyze",
+      action: "analyze",
       session: { key: () => "" }
     });
     await expect(runForTest(block, {}, ctx)).rejects.toThrow(

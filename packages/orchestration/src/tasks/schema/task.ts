@@ -7,7 +7,7 @@
  * narrows them at the consumer's call site.
  */
 import { z } from "zod";
-import { taskStatusSchema, type TaskStatus } from "./task-status";
+import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
 
 /** The base Task schema. */
 export const taskSchema = z.object({
@@ -28,7 +28,8 @@ export const taskSchema = z.object({
    */
   context: z.string().optional(),
 
-  status: taskStatusSchema,
+  // Decoded from a stored row, so it tolerates the pre-FIX-1245 member.
+  status: persistedTaskStatusSchema,
   attempts: z.number().int().nonnegative().default(0),
   /**
    * Optional retry budget. When set and `attempts < maxAttempts`, a
@@ -49,7 +50,7 @@ export const taskSchema = z.object({
    * `granted` counts AUTHORIZED failure retries — incremented when `fail()`
    * re-pends the task, not when the retry is later observed at claim time. It is
    * therefore not derivable from `attempts`, which also moves for re-claims
-   * after an `unblock`, a `resumeFromReview`, or a `reclaim` — none of which are
+   * after an `unblock`, a `unpark`, or a `reclaim` — none of which are
    * failure retries and none of which touch this field.
    *
    * `deniedByBudget` is what the board's `terminationReason` reads. It exists so
@@ -108,6 +109,30 @@ export const taskSchema = z.object({
   deps: z.array(z.string()).optional(),
   priority: z.number().optional(),
   leaseUntil: z.number().optional(),
+  /**
+   * The lease duration the current claim committed to, in milliseconds
+   * (FIX-1305). Written by `applyClaimToTask` from the duration the claim was
+   * made with, and read back by `committedLeaseSpan`.
+   *
+   * **Stored rather than re-derived, because `leaseUntil - updatedAt` is not
+   * the same number for long.** That subtraction is exact at the instant of
+   * the claim — both stamps come from one clock read inside the claim write —
+   * and it decays with every other write to the row: `setPriority`,
+   * `addLabel`, `removeLabel` and `patchMetadata` are all supported on an
+   * `in_progress` task and all advance `updatedAt` while leaving `leaseUntil`
+   * alone. Two consumers read the span (the renewal driver's cadence, and the
+   * claim gate taking a lapsed row back), and under the derivation a
+   * coordinator relabelling a running task would silently shorten one and
+   * refuse the other.
+   *
+   * **Absent on any task persisted before FIX-1305**, and on any task never
+   * claimed. Read it through {@link committedLeaseSpan}, which falls back to
+   * the old subtraction (BP-030) rather than treating absence as "no lease".
+   *
+   * Server-set, like `leaseUntil` and `claimedBy`: it is absent from
+   * `TaskInit`, so no caller and no model writes it.
+   */
+  leaseDurationMs: z.number().optional(),
 
   /**
    * Where the current attempt is running — the execution coordinate the

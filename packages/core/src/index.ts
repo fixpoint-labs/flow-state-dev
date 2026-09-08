@@ -119,16 +119,11 @@ export { defineCapability, getBaseCapability } from "./capability";
  */
 export { NoRequestHostError, requireRequestHost } from "./types/request-host";
 export type {
-  DetachedProvenance,
-  DetachedRoutingSeed,
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
   SettleParentTaskInput,
-  SettleParentTaskResult,
-  StartDetachedInput,
-  StartDetachedRefusal,
-  StartDetachedResult
+  SettleParentTaskResult
 } from "./types/request-host";
 
 /**
@@ -144,6 +139,8 @@ export {
   dispatchThroughSeam,
   markDispatcher,
   taskBindingOf,
+  framed,
+  readFramed,
   taskDispatchInputSchema,
   taskSessionKeyFor
 } from "./types/dispatch";
@@ -235,12 +232,9 @@ export { runRescue } from "./blocks/sequencer";
 export { composeSideChainSignal } from "./blocks/sequencer";
 export {
   defineFlow,
-  buildWorkstreamCore,
   resolveEntry,
-  workstreamDispatchInputSchema,
   type EntryCoordinate,
   type EntryMaps,
-  type WorkstreamDispatchInput,
 } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";
@@ -483,3 +477,14 @@ export type {
 // the top-level surface so flow authors import both from one place.
 export { SUSPENSION_SKIPPED } from "./types/suspension";
 export type { ResumeAction, SuspensionSkipped } from "./types/suspension";
+
+/**
+ * The coding-harness contract's runtime schemas (LAB-152). A harness block
+ * declares these as its input and output schemas; the types they validate are
+ * exported from `@flow-state-dev/core/types`.
+ */
+export {
+  harnessRunEnvelopeSchema,
+  harnessRunHandleSchema,
+  harnessRunInputSchema,
+} from "./types/harness";

@@ -1,11 +1,11 @@
 /**
- * The create-race branch of `startDetached` (FIX-999).
+ * The create-race branch of a `{ key }` dispatch (FIX-999).
  *
- * `startDetached` reads the derived child key, finds nothing, and creates with
+ * The seam reads the derived child key, finds nothing, and creates with
  * `expectedVersion: "absent"`. Between that read and that write another caller
  * can land the same child — the TOCTOU window the `"absent"` predicate exists to
  * close. Losing that race is **not** an error: if the winner's record is the same
- * child this call would have created, the loser adopts it and the detached work
+ * child this call would have created, the loser adopts it and the dispatch
  * proceeds. Refusing there drops work a caller legitimately asked for.
  *
  * These tests drive that branch directly, because it cannot be reached through a
@@ -20,36 +20,34 @@
  * stop, never as "reuse what I had cached".
  */
 import { describe, it, expect } from "vitest";
-import type { FlowInstance } from "@flow-state-dev/core";
 import { createRequestHost } from "../../src/context/create-request-host";
-import { deriveChildSessionId } from "../../src/context/detached-child";
+import { deriveDispatchChildSessionId } from "../../src/context/detached-child";
 import type { ExpectedVersion, SessionRecord } from "../../src/stores/types";
+import { CHILD_ENTRY, dispatchableFlow } from "./seam-harness";
 
 const IDENTITY = {
   userId: "u_alice",
   tenantId: undefined,
   orgId: undefined,
   /** The running request's session — the parent of anything it spawns. */
-  sessionId: "s_parent"
+  sessionId: "s_parent",
+  lineageId: "lin_race"
 };
 
-const SEED = { topic: "review" };
+const KEY = "review";
 
-/** Only `kind` and `workstream` are read by the verb under test. */
-const FLOW = {
-  kind: "seam-race",
-  workstream: { block: { name: "core" } }
-} as unknown as FlowInstance;
+const FLOW = dispatchableFlow("seam-race");
 
 /** The child this call would have created, as the winner already created it. */
 function winnerRecord(overrides: Partial<SessionRecord> = {}): SessionRecord {
-  const childId = deriveChildSessionId(
+  const childId = deriveDispatchChildSessionId(
     {
       userId: IDENTITY.userId,
       tenantId: IDENTITY.tenantId,
-      parentSessionId: IDENTITY.sessionId
+      parentSessionId: IDENTITY.sessionId,
+      lineageId: IDENTITY.lineageId
     },
-    SEED
+    KEY
   );
   const ts = 1_700_000_000_000;
   return {
@@ -61,6 +59,7 @@ function winnerRecord(overrides: Partial<SessionRecord> = {}): SessionRecord {
     flowKind: FLOW.kind,
     userId: IDENTITY.userId,
     parentSessionId: IDENTITY.sessionId,
+    lineageId: IDENTITY.lineageId,
     journal: [],
     ...overrides
   } as SessionRecord;
@@ -92,25 +91,29 @@ function raceLosingStores(currentValue: SessionRecord | undefined) {
   } as never;
 }
 
-describe("startDetached, losing the create race", () => {
+function seamOver(currentValue: SessionRecord | undefined, started: string[] = []) {
+  return createRequestHost({
+    stores: raceLosingStores(currentValue),
+    flow: FLOW,
+    identity: IDENTITY,
+    dispatchOperation: async ({ sessionId }) => {
+      started.push(sessionId);
+      return { requestId: "req_child" };
+    },
+    liveness: {
+      heartbeatIntervalMs: 10_000,
+      staleThresholdMs: 60_000,
+      staleSweepIntervalMs: 30_000
+    }
+  }).seam;
+}
+
+const SPEC = { ...CHILD_ENTRY, session: { key: KEY }, payload: {}, from: "racer" };
+
+describe("a { key } dispatch, losing the create race", () => {
   it("ADOPTS the winner's matching child instead of refusing", async () => {
     const started: string[] = [];
-    const { host } = createRequestHost({
-      stores: raceLosingStores(winnerRecord()),
-      flow: FLOW,
-      identity: IDENTITY,
-      startOperation: async ({ sessionId }) => {
-        started.push(sessionId);
-        return { requestId: "req_child" };
-      },
-      liveness: {
-        heartbeatIntervalMs: 10_000,
-        staleThresholdMs: 60_000,
-        staleSweepIntervalMs: 30_000
-      }
-    });
-
-    const result = await host.startDetached({ seed: SEED, input: {} });
+    const result = await seamOver(winnerRecord(), started)(SPEC);
 
     // The whole point: the loser proceeds, and says it adopted rather than created.
     expect(result).toMatchObject({ ok: true, adopted: true });
@@ -119,40 +122,22 @@ describe("startDetached, losing the create race", () => {
   });
 
   it("REFUSES when the winner's record is a different child", async () => {
-    const { host } = createRequestHost({
-      stores: raceLosingStores(winnerRecord({ flowKind: "some-other-flow" })),
-      flow: FLOW,
-      identity: IDENTITY,
-      startOperation: async () => ({ requestId: "req_child" }),
-      liveness: {
-        heartbeatIntervalMs: 10_000,
-        staleThresholdMs: 60_000,
-        staleSweepIntervalMs: 30_000
-      }
-    });
+    const result = await seamOver(winnerRecord({ flowKind: "some-other-flow" }))(SPEC);
+    expect(result).toMatchObject({ ok: false, refused: "key-occupied" });
+  });
 
-    const result = await host.startDetached({ seed: SEED, input: {} });
-
+  it("REFUSES when the winner's record sits on another lineage", async () => {
+    // A same-id pre-creation through the session route carries whatever
+    // lineage that route minted; adopting it would put every lineage-shared
+    // resource in the child on a different root than the parent's.
+    const result = await seamOver(winnerRecord({ lineageId: "lin_other" }))(SPEC);
     expect(result).toMatchObject({ ok: false, refused: "key-occupied" });
   });
 
   it("REFUSES when the conflict reports no current value — a tombstoned row is not adoptable", async () => {
     // `stores/types.ts`: an undefined current value means deleted; the caller
     // must stop rather than reuse a cached record.
-    const { host } = createRequestHost({
-      stores: raceLosingStores(undefined),
-      flow: FLOW,
-      identity: IDENTITY,
-      startOperation: async () => ({ requestId: "req_child" }),
-      liveness: {
-        heartbeatIntervalMs: 10_000,
-        staleThresholdMs: 60_000,
-        staleSweepIntervalMs: 30_000
-      }
-    });
-
-    const result = await host.startDetached({ seed: SEED, input: {} });
-
+    const result = await seamOver(undefined)(SPEC);
     expect(result).toMatchObject({ ok: false, refused: "key-occupied" });
   });
 });

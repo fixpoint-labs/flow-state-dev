@@ -14,14 +14,20 @@
  * through the seam. The seam does four things, in order, and refuses by name
  * at each:
  *
- * 1. **Resolve the entry.** `(type, target)` on the flow's own map, with no
- *    fallback — `no-entry` otherwise. The `defineFlow` walk already refused an
- *    address that resolves nothing, so this is the run-time half of the same
- *    rule, reached only by a dispatch the walk could not see (a carried core).
+ * 1. **Resolve the flow, then the entry.** The address names another flow or
+ *    it does not; a named one must be registered in this process —
+ *    `flow-not-found` otherwise. Then `(type, action)` on that flow's own map,
+ *    with no fallback — `no-entry` otherwise. For a same-flow address the
+ *    `defineFlow` walk already refused an address that resolves nothing, so
+ *    that check is the run-time half of the same rule, reached only by a
+ *    dispatch the walk could not see (a carried core). For a **cross-flow**
+ *    address it is the only half there is: `defineFlow` holds one flow's maps.
  * 2. **Resolve the session.** A `key` derives a child of the running session
  *    and mints or adopts it; an `id` names a session that must exist and be this
  *    principal's on this flow — `session-not-found` / `session-not-addressable`
- *    otherwise, never created.
+ *    otherwise, never created. `{ from: true }` is the same delivery as `id`,
+ *    addressed at the trusted `dispatchStamp.from` — `no-sender` when this
+ *    request was not dispatched.
  * 3. **Build the envelope**, from values the seam derived: the dispatch type as
  *    the source, the sender's principal, tenant and org, and server-assembled
  *    provenance under `metadata.dispatch` — including, for an `id` delivery,
@@ -30,17 +36,17 @@
  * 4. **Start it through the host operation**, resolving only once the host has
  *    *accepted* it.
  *
- * `startDetached` stays on the bundle behind the D-8 fence: unchanged, and
- * taking no new callers.
- *
  * Verbs whose preconditions a deployment has not met are not silently broken —
  * each has a named outcome in the public contract:
  *
- * - no host start operation wired → `startDetached` refuses `no-start-operation`
  * - no host dispatch operation wired → the seam refuses `no-dispatch-operation`
- * - the flow declares no workstream core → refuses `no-workstream-core`
  * - this request was not dispatched for a task → `parentTask()` resolves
  *   `undefined` and `settleParentTask` refuses `no-parent-task`
+ * - a `{ from: true }` target on a request the runtime did not dispatch →
+ *   the seam refuses `no-sender` (a caller-written `metadata.dispatch` is not
+ *   a sender)
+ * - a cross-flow address in a process with no flow registry wired, or naming a
+ *   flow it has not registered → `flow-not-found`
  * - the liveness gate refused → `livenessOf` is **absent from the bundle**
  */
 import type {
@@ -53,76 +59,17 @@ import type {
   RequestHost,
   SettleParentTaskInput,
   SettleParentTaskResult,
-  StartDetachedInput,
-  StartDetachedResult
 } from "@flow-state-dev/core/types";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
-import { workstreamBindingKey } from "@flow-state-dev/core/types";
-import { resolveEntry, workstreamDispatchInputSchema } from "@flow-state-dev/core";
+import { resolveEntry } from "@flow-state-dev/core";
+import type { DispatchStamp } from "../execution/dispatch-metadata";
 import type { RuntimeConfig } from "../runtime-config";
 import { resolveLineageId, resolveSessionStorageKey } from "../stores/scope-keys";
-import {
-  deriveChildSessionId,
-  deriveDispatchChildSessionId,
-  evaluateAdoption
-} from "./detached-child";
+import { deriveDispatchChildSessionId, evaluateAdoption } from "./detached-child";
 import type { DispatchOperation } from "./dispatch-operation";
 import { purgeStaleResourceState } from "./ensure-session-record";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
-
-/**
- * Starts a request the seam has already prepared a child session for. Supplied
- * by the host, because dispatch must go through the host-level arbiter and
- * enqueue-time materialization rather than straight to a dispatcher.
- */
-export type DetachedStartOperation = (spec: {
-  sessionId: string;
-  input: unknown;
-  /** Handler block name, carried as provenance only. */
-  actionName: string;
-  /** The flow the child belongs to — always the parent's own (FIX-982 P3a). */
-  flowKind: string;
-  /**
-   * The child's principal, tenant and org.
-   *
-   * Passed rather than re-read from the child record the seam just wrote: these
-   * are the values the seam **derived the child key from** and validated
-   * adoption against, so passing them is what makes the dispatch provably the
-   * same identity as the record. Re-reading would introduce a second source that
-   * can disagree, and the disagreement would be a request running under an
-   * identity the key was never derived for.
-   */
-  userId: string;
-  tenantId?: string;
-  orgId?: string;
-  /**
-   * Provenance stamped onto the request record — what a reader needs to tell
-   * *which* body of background work a detached request is. Server-assembled;
-   * never the caller's bag.
-   */
-  metadata?: Record<string, unknown>;
-  /**
-   * The runtime config the LAUNCHING request is running under, for the child to
-   * inherit (FIX-1077).
-   *
-   * A host is built once, but a caller may run a given request under a derived
-   * config — `fsdev run` builds `{ ...appConfig, modelResolver, logger }` so
-   * `--model` takes effect. The child is that request's own work continued in
-   * the background, so it runs under the same resolvers and logger rather than
-   * the host's construction-time ones. Absent → the host's own config applies.
-   */
-  runtimeConfig?: RuntimeConfig;
-}) => Promise<
-  | { requestId: string }
-  /**
-   * The dispatch never happened, definitively. Distinguished from a thrown
-   * rejection because the two need opposite handling by the caller: nothing
-   * started means the caller still owns whatever it was about to hand over, so
-   * it can settle it; a throw after the attempt cannot rule out a live child.
-   */
-  | { notStarted: true; reason: string }
->;
 
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
 export type ParentTaskBinding = {
@@ -149,18 +96,33 @@ export type RequestHostInputs = {
      */
     lineageId: string;
   };
-  /** Absent when this process executes requests but cannot start one. */
-  startOperation?: DetachedStartOperation;
   /** Absent when this process executes requests but cannot dispatch one. */
   dispatchOperation?: DispatchOperation;
   /**
-   * The config this request runs under, handed to the start and dispatch
-   * operations so a child inherits it rather than the host's construction-time
-   * one (FIX-1077). See `DetachedStartOperation` / `DispatchOperation`.
+   * Resolve another flow registered in this process, by kind — the flow
+   * registry, narrowed to the one question the seam asks.
+   *
+   * Only a **cross-flow** address consults it; the sending flow's own entries
+   * are resolved on `flow`, which is already here. Absent, every cross-flow
+   * address refuses `flow-not-found`, which is the honest answer for a process
+   * that cannot see past the one flow it was handed.
+   */
+  resolveFlow?: (kind: string) => FlowInstance | undefined;
+  /**
+   * The config this request runs under, handed to the dispatch operation so
+   * a child inherits it rather than the host's construction-time one
+   * (FIX-1077). See `DispatchOperation`.
    */
   effectiveRuntimeConfig?: RuntimeConfig;
   /** Absent unless this request was dispatched for a parent-board task. */
   parentTask?: ParentTaskBinding;
+  /**
+   * The running request's trusted dispatch stamp, already read through
+   * {@link readDispatchStamp}. A `{ from: true }` target delivers into
+   * `from.sessionId`. Absent when this request was not dispatched — a
+   * caller-written bag is not a sender.
+   */
+  dispatchStamp?: DispatchStamp;
   /** Everything the liveness gate needs. The gate runs here, once. */
   liveness: Omit<LivenessGateInputs, "registry">;
   now?: () => number;
@@ -204,278 +166,6 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     ...inputs.liveness
   });
 
-  const startDetached = async (args: StartDetachedInput): Promise<StartDetachedResult> => {
-    // Admission first: with no workstream core there is nothing to dispatch
-    // into, and resolution must not fall through to a caller-addressed action.
-    const core = flow.workstream;
-    if (core === undefined) {
-      return {
-        ok: false,
-        refused: "no-workstream-core",
-        detail: `flow "${flow.kind}" declares no workstream core, so it accepts no detached dispatch`
-      };
-    }
-    // THE ROUTABILITY GUARANTEE (FIX-1074). Every way a board can reach the
-    // runtime without reaching `flow.workstreamBindings` converges on one state:
-    // the flow has a workstream core, and no route for this board. Definition
-    // time cannot close that — a board constructed at dispatch does not exist
-    // when the flow is built — so the check that has to be uniform lives here,
-    // where the fact is knowable whatever produced the board.
-    //
-    // Refusing HERE and not at the child's dispatch is the whole point: the
-    // caller still holds its claim, so its recorder settles the row against a
-    // named refusal. Discovered one hop later, the row has already been handed
-    // over and nothing can settle it until its lease lapses.
-    //
-    // Shape-checked rather than assumed: `startDetached` is a general verb and a
-    // caller with no board passes whatever input its own core takes, so only an
-    // input that actually names a board is judged. `coordinateKey` is compared
-    // too — a flow may route a board's other workers and not this one.
-    //
-    // WHAT THIS PROVES, EXACTLY: that *some* declaration in this flow owns this
-    // address — not that the board making the call is that declaration. The two
-    // differ only when a board built at runtime reuses a registered board's
-    // `boardId` and coordinate, and they cannot be told apart here: nothing
-    // identifies the caller. `requestHost` is built once per request, not per
-    // block (see `runAction`'s `createExecutionContext` call), so everything this
-    // seam knows about who is calling arrives in `args`, from the caller. A token
-    // presented there would separate the accidental collision, but it would be a
-    // convention like `provenance.taskId` below, not an enforcement — and a
-    // convention documented as a guarantee is what this epic keeps paying for.
-    //
-    // What limits the damage is downstream and is real: the dispatch enters the
-    // REGISTERED board's runner, whose start gate re-reads the row from that
-    // board's own ledger and refuses unless `attempts`, `createdAt`,
-    // `incarnationId`, a live lease and `status === "in_progress"` all hold, and
-    // separately refuses unless the envelope's `coordinateKey` equals the
-    // coordinate re-derived from the row. Two boards on separate ledgers there
-    // fail the identity arms, so the collision costs a stalled row rather than a
-    // wrong settle. It is the two-boards-one-collection case that survives every
-    // arm — the row really is shared — and there the registered board's worker
-    // runs the runtime board's payload. Closing that needs caller identity
-    // threaded into the block context, which is the runtime's shape to change and
-    // not this check's (FIX-1074).
-    const addressed = workstreamDispatchInputSchema.safeParse(args.input);
-    if (addressed.success) {
-      const key = workstreamBindingKey(
-        addressed.data.boardId,
-        addressed.data.coordinateKey
-      );
-      if (flow.workstreamBindings?.get(key) === undefined) {
-        return {
-          ok: false,
-          refused: "board-not-routable",
-          detail:
-            `flow "${flow.kind}" declares no detached binding for board ` +
-            `"${addressed.data.boardId}" at coordinate "${addressed.data.coordinateKey}", so a ` +
-            `child dispatched for it would have no route. The board is reachable at runtime but ` +
-            `never reached the flow definition — declare it on a statically-reachable action, or ` +
-            `stop dispatching it detached.`
-        };
-      }
-    }
-
-    if (inputs.startOperation === undefined) {
-      return {
-        ok: false,
-        refused: "no-start-operation",
-        detail:
-          "this process executes requests but was not wired to start one; a deployment whose " +
-          "capabilities dispatch must supply a start operation in every process that runs them"
-      };
-    }
-
-    // The caller named none of this: the key is derived from the seed plus the
-    // running request's tenant, principal and parent session.
-    const childId = deriveChildSessionId(
-      {
-        userId: identity.userId,
-        tenantId: identity.tenantId,
-        parentSessionId: identity.sessionId,
-        lineageId: identity.lineageId
-      },
-      args.seed
-    );
-    const storageKey = resolveSessionStorageKey(childId, identity.tenantId);
-    const expected = {
-      flowKind: flow.kind,
-      userId: identity.userId,
-      tenantId: identity.tenantId,
-      orgId: identity.orgId,
-      parentSessionId: identity.sessionId
-    };
-
-    const existing = await stores.session.get(storageKey);
-    let adopted = false;
-
-    if (existing !== undefined) {
-      // Adoption validates the record's whole identity, not just the key — the
-      // seam is not the only writer at this id (see `evaluateAdoption`).
-      const verdict = evaluateAdoption(existing, expected);
-      if (!verdict.adoptable) {
-        return {
-          ok: false,
-          refused: "key-occupied",
-          detail: `the derived child key is held by a record whose ${verdict.mismatch} does not match this request`
-        };
-      }
-      // No label backfill here, deliberately. A child created by this writer
-      // already carries the labels this seed would stamp — the key is derived
-      // from the seed, so the same key means the same seed. The only records
-      // reached here without them predate the field, and rewriting a live
-      // record to add a display name would spend a store write and race every
-      // concurrent adopter to repair nothing a reader cannot already handle.
-      adopted = true;
-    } else {
-      const ts = nowMs();
-      const record: SessionRecord = {
-        id: storageKey,
-        // Session-state defaults, applied before the write — the create route
-        // parses initial state through the flow's schema precisely so typed
-        // block reads never observe missing keys, and execution does not
-        // retroactively initialize an existing record.
-        state: resolveSessionStateDefaults(flow) as SessionRecord["state"],
-        version: 0,
-        createdAt: ts,
-        updatedAt: ts,
-        flowKind: flow.kind,
-        userId: identity.userId,
-        journal: [],
-        ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
-        ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
-        parentSessionId: identity.sessionId,
-        // Inherited verbatim. Not a hash, not a re-derivation — the same
-        // value, so parent and child address one bucket by construction (FIX-1068).
-        lineageId: identity.lineageId,
-        // Canonical labels, stamped here and only here (FIX-1010). They are
-        // taken from the seed **this call already consumed to derive the child
-        // key**, not from `args.record` below — which is why a caller cannot
-        // forge one. Choosing a label and choosing which child you get are the
-        // same choice, so the stamp can never disagree with the record's
-        // identity; a value supplied alongside the seed could say anything.
-        //
-        // Top-level rather than inside `metadata` so a reader can tell a
-        // server-written field from the caller's bag without trusting the bag
-        // (BP-031 in spirit — the labels decide nothing, but a display field
-        // sourced from caller input still reads as server truth once it is on
-        // the wire). `metadata` keeps carrying `args.record` verbatim, and a
-        // `topic` key in there labels nothing.
-        //
-        // The labels are display-only and carry no authority; `SessionRecord`
-        // in `stores/types.ts` holds that contract.
-        ...label("topic", args.seed.topic),
-        ...label("coordinate", args.seed.key),
-        ...(args.record !== undefined ? { metadata: { ...args.record } } : {})
-      };
-
-      // Reclaim the id's resource-state tombstones before the create, and only
-      // on this branch — `existing === undefined`, so no child is being adopted
-      // here (FIX-1258). It matters more on this path than anywhere: a child's
-      // key is DERIVED from its seed, so the same seed always lands on the same
-      // key, and reuse is the norm rather than the exception — which is why
-      // this path has an adoption branch at all. Without it, a child whose
-      // session was deleted comes back with every static resource permanently
-      // unwritable. Before the create for the ordering reason
-      // `purgeStaleResourceState` carries: nothing may commit ahead of it.
-      await purgeStaleResourceState(stores, storageKey);
-
-      // Create-if-absent: this is how a caller wins or loses a create race,
-      // rather than silently overwriting a concurrent adopter's child.
-      const result = await stores.session.set(storageKey, record, "absent");
-      if (!result.ok) {
-        // `SetResult` is a discriminated union, so the conflict arm is reached
-        // by narrowing on `ok` — no cast, and the field name is checked against
-        // the store contract rather than asserted.
-        //
-        // An undefined `currentValue` means the row is TOMBSTONED, which
-        // `stores/types.ts` requires a caller to treat as deleted and stop on,
-        // never as "reuse what I had cached". So it refuses exactly like a
-        // mismatched record does; only a present, adoptable child is adopted.
-        const current = result.conflict.currentValue;
-        if (current === undefined || !evaluateAdoption(current, expected).adoptable) {
-          return {
-            ok: false,
-            refused: "key-occupied",
-            detail: "the derived child key was taken by a non-matching record during this call"
-          };
-        }
-        adopted = true;
-      }
-    }
-
-    // Start goes through the host operation and resolves only once the dispatch
-    // has been accepted — a rejected enqueue must surface as a failure, not as a
-    // Started with nothing running. The child record is deliberately left in
-    // place on failure: a retry adopts it, and deleting it would race a
-    // concurrent adopter.
-    const started = await inputs.startOperation({
-      sessionId: childId,
-      input: args.input,
-      actionName: core.block.name,
-      flowKind: flow.kind,
-      // The same identity the child key was derived from and adoption was
-      // validated against — see `DetachedStartOperation`.
-      userId: identity.userId,
-      ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
-      ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
-      // The routing seed, restated as request provenance. This is what lets a
-      // reader tell one body of background work from another on the request
-      // record itself, without resolving the child session first. Taken from the
-      // seed this call already consumed to derive the key — so it cannot
-      // disagree with the child it names — and never from `args.record`, which
-      // is the caller's own bag.
-      //
-      // `taskId` answers the next question down — not *which body* of work this
-      // is, but *which row* this run was spawned for — and it is the one fact
-      // here the seam did not derive itself. It comes through `args.provenance`,
-      // a channel whose contract is "put a fact here only when the runtime
-      // produced it", and pointedly NOT through `args.record`, which stays off
-      // the request record entirely.
-      //
-      // That contract is a convention, not an enforcement: `startDetached` is on
-      // the block context, so any block author can call it and pass any id. The
-      // two fields above cannot disagree with the child they name — the same
-      // seed derived its key — but this one is taken on trust, and a reader
-      // should not treat it as checked. It decides nothing, which is what
-      // contains it; see `StartDetachedInput.provenance`.
-      //
-      // Absent when the caller has no durable row behind it, which is an
-      // ordinary state and not a defect — a reader that finds no `taskId` has a
-      // run it cannot correlate to a board, exactly as before this field
-      // existed (BP-030).
-      metadata: {
-        workstream: {
-          topic: args.seed.topic,
-          ...(args.seed.key !== undefined ? { key: args.seed.key } : {}),
-          ...(args.provenance !== undefined
-            ? { taskId: args.provenance.taskId }
-            : {})
-        }
-      },
-      // The child continues THIS request's work, so it runs under THIS
-      // request's config — not the host's construction-time one.
-      ...(inputs.effectiveRuntimeConfig !== undefined
-        ? { runtimeConfig: inputs.effectiveRuntimeConfig }
-        : {})
-    });
-
-    if ("notStarted" in started) {
-      // Nothing was dispatched, so the caller still owns the work — returning a
-      // refusal rather than throwing is what lets it settle its own row instead
-      // of leaving it for the lease to recover. The host refuses synchronously
-      // for a small set of pre-dispatch conditions, the reachable one being a
-      // flow-level `reject` concurrency policy whose key the parent already
-      // holds (FIX-982).
-      return {
-        ok: false,
-        refused: "dispatch-rejected",
-        detail: `the host refused the dispatch before starting it: ${started.reason}`
-      };
-    }
-
-    return { ok: true, sessionId: childId, requestId: started.requestId, adopted };
-  };
-
   const refuse = (refused: DispatchRefusal, detail: string): Refused => ({
     ok: false,
     refused,
@@ -492,7 +182,10 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
    * purpose: a distinct reason would confirm that a session exists across a
    * boundary the caller cannot see past, which is an existence oracle.
    */
-  const resolveExistingSession = async (sessionId: string): Promise<ResolvedSession> => {
+  const resolveExistingSession = async (
+    sessionId: string,
+    targetFlow: FlowInstance
+  ): Promise<ResolvedSession> => {
     const storageKey = resolveSessionStorageKey(sessionId, identity.tenantId);
     const record = await stores.session.get(storageKey);
     if (
@@ -502,11 +195,16 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     ) {
       return refuse("session-not-found", `no session "${sessionId}" is reachable from this request`);
     }
-    if (record.flowKind !== flow.kind) {
+    // Compared against the flow the dispatch is ADDRESSED to, not the sender's.
+    // For a same-flow address those are the same value and this is the check it
+    // always was; for a cross-flow one it is what makes the delivery land on a
+    // session of the flow whose entry is about to run it. A session of some
+    // third flow is still refused by name.
+    if (record.flowKind !== targetFlow.kind) {
       return refuse(
         "session-not-addressable",
-        `session "${sessionId}" belongs to flow "${record.flowKind}", not "${flow.kind}"; ` +
-          `cross-flow delivery is not supported`
+        `session "${sessionId}" belongs to flow "${record.flowKind}", but this dispatch is ` +
+          `addressed to flow "${targetFlow.kind}"`
       );
     }
     // Compared as two bindings, not two values that happen to be set: an
@@ -547,8 +245,10 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
    */
   const resolveChildSession = async (
     key: string,
-    address: { type: string; target: string }
+    address: { type: string; action: string },
+    targetFlow: FlowInstance
   ): Promise<ResolvedSession> => {
+    const crossFlow = targetFlow.kind !== flow.kind;
     const childId = deriveDispatchChildSessionId(
       {
         userId: identity.userId,
@@ -556,16 +256,38 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         parentSessionId: identity.sessionId,
         lineageId: identity.lineageId
       },
-      key
+      key,
+      // Only for a cross-flow address, so every same-flow child keeps the id it
+      // has always derived — see `deriveDispatchChildSessionId`.
+      crossFlow ? targetFlow.kind : undefined
     );
     const storageKey = resolveSessionStorageKey(childId, identity.tenantId);
+    // A cross-flow child roots its OWN lineage instead of inheriting the
+    // sender's, because the lineage is a shared storage bucket: a
+    // `sharedToLineage` resource addresses `scopeType: "lineage"` at the lineage
+    // id, with no flow in the key. Handing the child the sender's lineage would
+    // put two flows' declarations on one durable cell — the exact collision the
+    // flow registry validates for at user and org scope, where it can see both
+    // schemas, and cannot see here. So the boundary the dispatch crosses is a
+    // storage boundary too: data reaches the child in the payload, which is what
+    // the entry's own schema validates.
+    //
+    // Deterministic, not `generateId("lin")`: the child id is derived, so
+    // adoption on retry has to be able to compare the lineage rather than accept
+    // whatever it finds (see `evaluateAdoption`'s note on pre-created records).
+    // Taken from `resolveLineageId` rather than spelled here, so it is the same
+    // value a reader falling back on a record that carries none would compute —
+    // one owner of the rule, not two that can drift.
+    const childLineageId = crossFlow
+      ? resolveLineageId({ id: storageKey })
+      : identity.lineageId;
     const expected = {
-      flowKind: flow.kind,
+      flowKind: targetFlow.kind,
       userId: identity.userId,
       tenantId: identity.tenantId,
       orgId: identity.orgId,
       parentSessionId: identity.sessionId,
-      lineageId: identity.lineageId
+      lineageId: childLineageId
     };
 
     const existing = await stores.session.get(storageKey);
@@ -589,28 +311,28 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // parses initial state through the flow's schema precisely so typed
       // block reads never observe missing keys, and execution does not
       // retroactively initialize an existing record.
-      state: resolveSessionStateDefaults(flow) as SessionRecord["state"],
+      state: resolveSessionStateDefaults(targetFlow) as SessionRecord["state"],
       version: 0,
       createdAt: ts,
       updatedAt: ts,
-      flowKind: flow.kind,
+      flowKind: targetFlow.kind,
       userId: identity.userId,
       journal: [],
       ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
       ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
       parentSessionId: identity.sessionId,
-      // Inherited verbatim. Not a hash, not a re-derivation — the same value,
-      // so parent and child address one bucket by construction (FIX-1068).
-      lineageId: identity.lineageId,
+      // Inherited verbatim for a same-flow child. Not a hash, not a
+      // re-derivation — the same value, so parent and child address one bucket
+      // by construction (FIX-1068). A cross-flow child roots its own; see above.
+      lineageId: childLineageId,
       // Display labels, stamped here and only here: the key this child was
       // derived from, and the entry it was dispatched for. Taken from the
       // values this call already consumed to derive the child, so they cannot
       // disagree with the record's identity — and carrying no authority, which
-      // is what keeps them safe (see `SessionRecord.topic`). The same two
-      // fields the detached start stamps, so the workstreams listing shows a
-      // dispatched child like any other.
-      topic: key,
-      coordinate: `${address.type}:${address.target}`
+      // is what keeps them safe (see `SessionRecord.topic`). They are the two
+      // fields the children listing reads.
+      ...label("topic", key),
+      ...label("coordinate", `${address.type}:${address.action}`)
     };
 
     // Reclaim the id's resource-state tombstones before the create (FIX-1258).
@@ -640,13 +362,70 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: false, delivery: "child" };
   };
 
+  /**
+   * Spec → store. `{ from: true }` is delivery into the stamped sender — the
+   * same path as `id`, with the id taken from the trusted `dispatchStamp`,
+   * not from the spec. The author cannot name a reply-to; a missing stamp is
+   * `no-sender`. Wrong principal / other flow / a replaced sender incarnation
+   * then share the `id` guards (replaced sender is `session-not-addressable`).
+   */
+  const resolveAddressedSession = async (
+    spec: DispatchSpec,
+    targetFlow: FlowInstance
+  ): Promise<ResolvedSession> => {
+    if ("from" in spec.session) {
+      const stamp = inputs.dispatchStamp;
+      if (stamp === undefined) {
+        return refuse(
+          "no-sender",
+          "this request was not dispatched, so there is no stamped sender to deliver back to"
+        );
+      }
+      const sender = await resolveExistingSession(stamp.from.sessionId, targetFlow);
+      if (!sender.ok) return sender;
+      // Present only on stamps written after this field shipped. A legacy
+      // record without it keeps the `{ id }` guards alone (BP-030).
+      if (
+        stamp.from.lineageId !== undefined &&
+        sender.recipientLineageId !== stamp.from.lineageId
+      ) {
+        return refuse(
+          "session-not-addressable",
+          `session "${stamp.from.sessionId}" is not the incarnation that dispatched this request`
+        );
+      }
+      return sender;
+    }
+    if ("id" in spec.session) {
+      return resolveExistingSession(spec.session.id, targetFlow);
+    }
+    return resolveChildSession(spec.session.key, spec, targetFlow);
+  };
+
   const seam: DispatchSeam = async (spec: DispatchSpec): Promise<DispatchOutcome> => {
-    // Admission first: the address must resolve on its own type's map. Never
-    // falls through to another type — a `task` dispatch cannot reach an action.
-    if (resolveEntry(flow, spec.type, spec.target) === undefined) {
+    // Which flow's maps the address resolves on. The sender's own unless the
+    // address names another — and a named one must be registered HERE: a flow
+    // deployed behind some other host is not reachable, and inventing a way to
+    // reach it would be a second delivery mechanism beside the one door.
+    const targetFlow =
+      spec.flowKind === undefined || spec.flowKind === flow.kind
+        ? flow
+        : inputs.resolveFlow?.(spec.flowKind);
+    if (targetFlow === undefined) {
+      return refuse(
+        "flow-not-found",
+        `no flow "${spec.flowKind}" is registered in this process, so the ${spec.type} entry ` +
+          `"${spec.action}" cannot be resolved`
+      );
+    }
+
+    // Admission: the address must resolve on its own type's map, on the flow it
+    // named. Never falls through to another type — a `task` dispatch cannot
+    // reach an action — and never to another flow's map.
+    if (resolveEntry(targetFlow, spec.type, spec.action) === undefined) {
       return refuse(
         "no-entry",
-        `flow "${flow.kind}" declares no ${spec.type} entry "${spec.target}"`
+        `flow "${targetFlow.kind}" declares no ${spec.type} entry "${spec.action}"`
       );
     }
 
@@ -658,10 +437,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       );
     }
 
-    const session =
-      "id" in spec.session
-        ? await resolveExistingSession(spec.session.id)
-        : await resolveChildSession(spec.session.key, spec);
+    const session = await resolveAddressedSession(spec, targetFlow);
     if (!session.ok) return session;
 
     // Start goes through the host operation and resolves only once the dispatch
@@ -671,11 +447,13 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     // it would race a concurrent adopter.
     const started = await inputs.dispatchOperation({
       source: spec.type,
-      target: spec.target,
+      action: spec.action,
       sessionId: session.sessionId,
       delivery: session.delivery,
       input: spec.payload,
-      flowKind: flow.kind,
+      // The flow the request BELONGS to — the one whose entry is about to run
+      // it, not the one that sent it.
+      flowKind: targetFlow.kind,
       // The same identity the child key was derived from, or the existing
       // session was validated against — see `DispatchOperation`.
       userId: identity.userId,
@@ -683,14 +461,27 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       ...(session.orgId !== undefined ? { orgId: session.orgId } : {}),
       // Server-assembled provenance for the request record: the address, the
       // sending block and session, the key (when a child was derived), the
-      // recipient's approved lineage (when an existing session was named), and
+      // recipient's approved lineage (when an existing session was addressed), and
       // the facts the sender supplied through `provenance` — a channel whose
       // contract is "put a fact here only when the runtime produced it".
       metadata: {
         dispatch: {
           type: spec.type,
-          target: spec.target,
-          from: { block: spec.from, sessionId: identity.sessionId },
+          action: spec.action,
+          // The flow the entry was resolved on, stamped only when the dispatch
+          // actually crossed a flow boundary — so a reader can tell a
+          // cross-flow arrival from an ordinary one without inferring it, and
+          // an old record with neither field still reads as same-flow (BP-030).
+          // The id comes off the resolved instance rather than the address: it
+          // is what the seam actually resolved, which is the only id it knows.
+          ...(targetFlow.kind !== flow.kind
+            ? { flowKind: targetFlow.kind, flowId: targetFlow.id }
+            : {}),
+          from: {
+            block: spec.from,
+            sessionId: identity.sessionId,
+            lineageId: identity.lineageId
+          },
           ...("key" in spec.session ? { key: spec.session.key } : {}),
           ...(session.recipientLineageId !== undefined
             ? { recipientLineageId: session.recipientLineageId }
@@ -757,7 +548,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     return inputs.parentTask.settle(input);
   };
 
-  const host: RequestHost = { startDetached, parentTask, settleParentTask };
+  const host: RequestHost = { parentTask, settleParentTask };
 
   if (gate.enabled) {
     const staleThresholdMs = gate.staleThresholdMs;
@@ -786,7 +577,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
  * renders a blank name where absence renders its fallback.
  *
  * For `coordinate` this is also a consistency rule rather than a preference:
- * `deriveChildSessionId` length-frames the seed, so `key: ""` and an absent
+ * `deriveDispatchChildSessionId` length-frames the key, so `key: ""` and an absent
  * `key` produce the **same child**. Stamping one of them an empty coordinate
  * would let two calls that provably land on the same record disagree about its
  * label, with the winner decided by whoever created it first.

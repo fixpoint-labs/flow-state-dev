@@ -28,7 +28,7 @@
  *
  * **Neither recorder writes to a row the worker parked for review** (FIX-1234).
  * A worker that calls `awaitReview()` on its own task has handed that row to a
- * human, and both `awaiting_review → completed` and `awaiting_review → errored`
+ * human, and both `parked → completed` and `parked → errored`
  * are legal transitions the ticket fence admits — so without an explicit status
  * read the park did not survive the very next step. See
  * {@link workerParkedItForReview}.
@@ -103,9 +103,9 @@ function stopLeaseRenewal(): void {
  * Every write below is advisory — `ifAllowed` plus the worker's claim — so the
  * natural assumption is that a row the worker moved out from under itself is
  * refused anyway. It is not. The claim ticket admits a row in `in_progress` *or*
- * `awaiting_review` (a parked row is still that attempt's row, which is what
- * lets a worker resume and settle it later), and `awaiting_review → completed`
- * and `awaiting_review → errored` are both legal transitions. So a worker that
+ * `parked` (a parked row is still that attempt's row, which is what
+ * lets a worker resume and settle it later), and `parked → completed`
+ * and `parked → errored` are both legal transitions. So a worker that
  * called `awaitReview()` on its own task and then returned normally had that
  * task **completed** by the success tap a moment later: the park never survived
  * the step that follows it, `onReview: "exit"` had nothing to excuse, and the
@@ -123,9 +123,9 @@ function stopLeaseRenewal(): void {
  * direction, not a race", on the grounds that a resume landing between the read
  * and the write moves the row to `pending`, which the fence declines anyway.
  * That is true of a **resume** and false of a **park**, and the difference is
- * the whole point: `awaiting_review` is in `ATTEMPT_OWNED_STATUSES`, so a
+ * the whole point: `parked` is in `ATTEMPT_OWNED_STATUSES`, so a
  * concurrent park lands the row in a status this attempt still owns and one that
- * `awaiting_review → completed` / `→ errored` can legally leave. Nothing in the
+ * `parked → completed` / `→ errored` can legally leave. Nothing in the
  * fence refused it, so a park arriving in that window was overwritten — the
  * defect this guard exists to stop, reachable through the guard itself.
  *
@@ -141,7 +141,7 @@ function workerParkedItForReview(
   collection: TaskCollectionRef,
   taskId: string
 ): boolean {
-  return collection.get(taskId)?.status === "awaiting_review";
+  return collection.get(taskId)?.status === "parked";
 }
 
 export interface RecordSuccessOptions {

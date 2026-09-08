@@ -58,10 +58,10 @@ interface FlowState<TSettings extends object = FlowStateSettings> {
 `dispose()` runs in order:
 
 1. Waits for background work still running in this process. A job handed to a queue is not waited for here — but if this process also *consumes* that queue, step 5 waits for whatever it has already claimed.
-2. Bounds that wait with `detachedDrainTimeoutMs`, default 30000 ms. It's a ceiling, not a target: work that finishes sooner is not delayed. `0` means don't wait at all.
+2. Bounds that wait with `dispatchDrainTimeoutMs`, default 30000 ms. It's a ceiling, not a target: work that finishes sooner is not delayed. `0` means don't wait at all.
 3. Cancels whatever is still running when the budget runs out, and gives it a brief window, inside that same budget rather than added to it, to unwind.
 4. Reports the request ids and session ids it gave up on, on stderr. That report prints even when the runtime's logger is silenced, since work may have been left unfinished.
-5. Closes the worker and releases pooled resources across every declared store adapter. Closing the worker waits for any queue job this process has already claimed, and that wait is **not** bounded by `detachedDrainTimeoutMs` — it takes as long as the job does. Size your platform's kill timeout for the longest job.
+5. Closes the worker and releases pooled resources across every declared store adapter. Closing the worker waits for any queue job this process has already claimed, and that wait is **not** bounded by `dispatchDrainTimeoutMs` — it takes as long as the job does. Size your platform's kill timeout for the longest job.
 
 Shutdown mostly does not write a terminal status on background work's behalf. It cancels the work rather than marking those records finished or failed. One case doesn't follow that yet: work still waiting behind a concurrency limit when shutdown reaches it is recorded `aborted` without ever having started. For what the cancelled work leaves in the task board and the request log, and how each recovers, see [What a stopped process leaves behind](../server/background-work.md#what-a-stopped-process-leaves-behind).
 

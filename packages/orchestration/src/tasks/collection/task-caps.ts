@@ -23,8 +23,8 @@
  *
  * Roughly *in-flight ⊆ enqueued ⊆ total*, but only **at creation time**. Tasks
  * also re-enter `pending` through the lifecycle (a retry under `maxAttempts`, an
- * `unblock`, a `resumeFromReview`, a reclaimed lease). Of those, only the RETRY
- * is bounded, and only by `maxTotalRetries`; `unblock` / `resumeFromReview` /
+ * `unblock`, a `unpark`, a reclaimed lease). Of those, only the RETRY
+ * is bounded, and only by `maxTotalRetries`; `unblock` / `unpark` /
  * `reclaim` remain deliberately uncapped and do not consume the retry budget —
  * so `pending` can still transiently exceed `maxEnqueuedTasks`. The hard runaway
  * bounds are `maxTotalTasks` on creation and `maxTotalRetries` on re-runs.
@@ -203,7 +203,7 @@ export interface TaskCapOptions {
    *   relative to real model calls, never over-spend — and refunding it would
    *   mean inferring abandonment from lease expiry, which the task substrate
    *   does not treat as evidence.
-   * - **Only failure retries count.** `unblock`, `resumeFromReview`, and
+   * - **Only failure retries count.** `unblock`, `unpark`, and
    *   `reclaim` also return a task to `pending` and do NOT consume the budget.
    *
    * Enforced only on the backings that can check atomically against the whole

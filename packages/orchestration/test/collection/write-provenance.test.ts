@@ -578,7 +578,7 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     await step("patchMetadata", () => collection.patchMetadata("t", { k: 1 }), true);
     await step("setAssignee", () => collection.setAssignee("t", "someone"), true);
     await step("awaitReview", () => collection.awaitReview("t", "look"), true);
-    await step("resumeFromReview", () => collection.resumeFromReview("t"), true);
+    await step("unpark", () => collection.unpark("t"), true);
     await step("block", () => collection.block("t", "waiting"), true);
     await step("unblock", () => collection.unblock("t"), true);
     await step("claim (2nd)", () => collection.claim("w"), true);
@@ -605,7 +605,7 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     const before = provenanceOf(collection, "t").revision!;
 
     const write = beginTaskWrite(collection.get("t"));
-    await collection.resumeFromReview("t", "with a token", { write });
+    await collection.unpark("t", "with a token", { write });
     const after = provenanceOf(collection, "t");
     expect(after.revision).toBe(before + 1);
     expect(after.writeLog).toEqual([{ id: write.id, revision: after.revision }]);

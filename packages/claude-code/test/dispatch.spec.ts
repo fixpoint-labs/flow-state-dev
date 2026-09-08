@@ -3,7 +3,12 @@ import { testBlock } from "@flow-state-dev/testing";
 import { claudeRemoteDispatch, CLAUDE_REMOTE_TASKS_KEY } from "../src/cli/dispatch";
 import type { ClaudeCliExec } from "../src/cli/resolve-cli";
 import { ClaudeCliNotFoundError, ClaudeRemoteDispatchError } from "../src/cli/errors";
-import type { ClaudeRemoteHandle } from "../src/cli/types";
+import { harnessRunEnvelopeSchema } from "@flow-state-dev/core";
+import {
+  CLAUDE_CLI_REMOTE_SOURCE,
+  claudeRemoteHandleSchema,
+  type ClaudeRemoteHandle,
+} from "../src/cli/types";
 
 /** Build a dispatch block whose CLI invocation is a controllable stub. */
 function withExec(exec: ClaudeCliExec) {
@@ -19,7 +24,7 @@ describe("claudeRemoteDispatch", () => {
 
     expect(error).toBeNull();
     const handle = output as ClaudeRemoteHandle;
-    expect(handle.source).toBe("cli-remote");
+    expect(handle.source).toBe(CLAUDE_CLI_REMOTE_SOURCE);
     expect(handle.status).toBe("dispatched");
     expect(handle.url).toBe(URL);
     expect(handle.sessionId).toBe("3f9a1c2d-1b2c-4d5e-8f90-abcdef012345");
@@ -39,7 +44,7 @@ describe("claudeRemoteDispatch", () => {
   it("appends to existing handles rather than replacing them", async () => {
     const block = withExec(async () => ({ stdout: `View at ${URL}\n`, stderr: "", code: 0 }));
     const prior: ClaudeRemoteHandle = {
-      source: "cli-remote",
+      source: CLAUDE_CLI_REMOTE_SOURCE,
       status: "dispatched",
       sessionId: "prior",
       url: null,
@@ -109,5 +114,35 @@ describe("claudeRemoteDispatch", () => {
     const { error } = await testBlock(block, { input: { instructions: "   " } });
 
     expect(error?.cause).toBeInstanceOf(ClaudeRemoteDispatchError);
+  });
+
+  // This door is fire-and-forget, so it is not a harness a manager can drive.
+  // It still writes `source`, though, and the convention that makes the field
+  // comparable is worth nothing if one writer of it sits outside the rule.
+  describe("the envelope it shares with harnesses", () => {
+    it("still parses as a neutral run envelope", async () => {
+      const block = withExec(async () => ({ stdout: `View at ${URL}\n`, stderr: "", code: 0 }));
+      const { output } = await testBlock(block, { input: { instructions: "Fix the bug" } });
+
+      const envelope = harnessRunEnvelopeSchema.parse(output);
+      expect(envelope.source).toBe("claude-code/cli-remote");
+      expect(envelope.status).toBe("dispatched");
+    });
+
+    it("reads a handle persisted under the old source spelling", async () => {
+      // Handles written before the convention are still in session state
+      // (BP-030); nothing branches on either spelling, so they read as one.
+      const parsed = claudeRemoteHandleSchema.parse({
+        source: "cli-remote",
+        status: "dispatched",
+        sessionId: null,
+        url: null,
+        dispatchedAt: 1,
+        instructions: "old one",
+        raw: "",
+      });
+
+      expect(parsed.source).toBe(CLAUDE_CLI_REMOTE_SOURCE);
+    });
   });
 });

@@ -55,9 +55,9 @@ export interface WorkRecorderOptions {
    * The run's own namespace, prefixed onto every key. May be more than one
    * path segment — see {@link WorkRecorderOptions} callers.
    *
-   * A workstream session is REUSED across runs, so without this a second run
+   * A child session is REUSED across runs, so without this a second run
    * would merge its file entries by path into the first run's rows and mix its
-   * plan items in, and a reader would get "what has this workstream ever done"
+   * plan items in, and a reader would get "what has this child session ever done"
    * in answer to "what did this run do".
    *
    * It must identify **one invocation of the agent**, not one request. Those

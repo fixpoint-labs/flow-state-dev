@@ -120,7 +120,7 @@ const titleScript: MockGeneratorScriptEntry[] = [
 ];
 
 /**
- * The detached worker's brief. It runs in a Workstream, not in the turn that
+ * The detached worker's brief. It runs in a child session, not in the turn that
  * filed it, so this text is the only thing that distinguishes "the background
  * work ran" from "the row was created and nothing happened".
  */

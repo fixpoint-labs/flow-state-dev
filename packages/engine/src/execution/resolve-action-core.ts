@@ -32,10 +32,6 @@
  * pivot resolution into an event handler, running it with forged input and no
  * transport authentication.
  *
- * The detached `workstream` source (FIX-999) keeps its existing terminal path
- * behind the D-8 fence: it resolves the single pre-assembled `flow.workstream`
- * core and nothing else, exactly as before, and takes no new callers.
- *
  * The one path with no static coordinate is the dynamic schedule, whose core
  * is produced at dispatch time by a resolver and cannot be reached from
  * `flow.schedules.static`. That case is handled upstream by a carried core on
@@ -44,7 +40,6 @@
  */
 import type { ActionCore, FlowInstance } from "@flow-state-dev/core/types";
 import { resolveEntry } from "./resolve-entry";
-import { WORKSTREAM_SOURCE } from "./transport-sources";
 
 /**
  * Find the `ActionCore` for a dispatch, or `undefined` when its type's map
@@ -57,12 +52,6 @@ export function resolveActionCore(
   source: string | undefined,
   metadata: unknown
 ): ActionCore | undefined {
-  // Detached dispatch (FIX-999), behind the fence. TERMINAL: it carries
-  // `actionName` as provenance only, and that name can collide with a public
-  // `flow.actions` key, so it resolves the workstream core or nothing.
-  if (source === WORKSTREAM_SOURCE) {
-    return flow.workstream;
-  }
 
   return resolveEntry<ActionCore>(flow, actionName, source, metadata);
 }

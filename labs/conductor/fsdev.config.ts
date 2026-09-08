@@ -20,7 +20,7 @@
  * dispatcher's own code. Numeric settings are validated there too; see
  * `positiveIntFromEnv` for why an unchecked one is charged to a task.
  *
- * **`detachedDrainTimeoutMs` is derived, not chosen.** Its default is tuned to a
+ * **`dispatchDrainTimeoutMs` is derived, not chosen.** Its default is tuned to a
  * serverless SIGTERM grace period, far shorter than a coding run, so an
  * in-process host that leaves it alone truncates a run on every shutdown. But
  * setting it to the agent's own deadline was barely better: a worker also waits
@@ -28,7 +28,7 @@
  * engine carves its cancellation reserve OUT of this budget — so the effective
  * wait was *less* than the agent deadline alone, and a valid near-deadline run
  * was cancelled before it could produce a verdict. `conductorFlow` derives the
- * number from all four terms; see `conductorDrainBudgetMs`. On a
+ * number from all four terms; see `harnessDrainBudgetMs`. On a
  * queue-consuming host the setting does not apply at all and the platform's kill
  * timeout is the real ceiling — see the README.
  */
@@ -36,7 +36,10 @@ import path from "node:path";
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "./src/flow";
-import { assertBaseRefExists, positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
+import {
+  assertBaseRefExists,
+} from "@flow-state-dev/harness-manager";
+import { positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
 
 function neverResolvesAModel(): never {
   throw new Error(
@@ -70,5 +73,5 @@ export default createFlowState({
   }) as ModelResolver,
   stores: { dev: { primary: filesystemStores({ rootDir: path.join(root, "data") }) } },
   defaultProfile: "dev",
-  detachedDrainTimeoutMs: drainBudgetMs,
+  dispatchDrainTimeoutMs: drainBudgetMs,
 });

@@ -735,12 +735,12 @@ describe("defineFlow", () => {
     // FIX-1068: a flow-level declaration overrides a block's under the same
     // accessor. Silently moving a resource between the running session and the
     // lineage that way breaks the block that declared it — a detached board
-    // claims rows in one place while its Workstream reads an empty ledger.
-    it("rejects a flow-level override that changes sharedToWorkstream", () => {
+    // claims rows in one place while its child session reads an empty ledger.
+    it("rejects a flow-level override that changes sharedToLineage", () => {
       const blockLedger = defineResourceCollection({
         pattern: "tasks/**",
         scope: "session",
-        sharedToWorkstream: true,
+        sharedToLineage: true,
         stateSchema: z.object({})
       });
       const flowLedger = defineResourceCollection({
@@ -760,18 +760,18 @@ describe("defineFlow", () => {
           actions: { run: { inputSchema: z.any(), block: worker } },
           resources: { ledger: flowLedger }
         })({ id: "override-shared" })
-      ).toThrow(/sharedToWorkstream/);
+      ).toThrow(/sharedToLineage/);
     });
 
     // FIX-1068: `defineResource` guards this too, but a resource can reach a
     // flow without passing through it, so the flow-build check has to stand on
     // its own — otherwise a user-scoped resource carrying the flag would build
     // clean and mean nothing at runtime.
-    it("rejects sharedToWorkstream on a non-session-scoped resource at flow build", () => {
+    it("rejects sharedToLineage on a non-session-scoped resource at flow build", () => {
       const shared = {
         ref: "leaked",
         scope: "user" as const,
-        sharedToWorkstream: true,
+        sharedToLineage: true,
         stateSchema: z.object({})
       };
 
@@ -781,7 +781,7 @@ describe("defineFlow", () => {
           actions: {},
           resources: { shared: shared as never }
         })({ id: "shared-outside-session" })
-      ).toThrow(/sharedToWorkstream: true on a user-scoped resource/);
+      ).toThrow(/sharedToLineage: true on a user-scoped resource/);
     });
   });
 

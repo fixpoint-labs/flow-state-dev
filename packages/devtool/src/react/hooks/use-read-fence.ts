@@ -38,7 +38,7 @@
  * some reads are keyed on more: a suspension listing on `(sessionId, status)`,
  * the debug content reads on `(sessionId, ref, topic)`.
  *
- * Used by `use-session-requests` and `use-workstreams`. Five other
+ * Used by `use-session-requests` and `use-child-sessions`. Five other
  * session-scoped hooks still read without any fence — FIX-1092 tracks
  * extending it to them.
  *

@@ -67,7 +67,7 @@ function buildNestedFlow() {
     boardId: "inner-board",
     collection: defineTaskCollection({ id: "inner-ledger", scope: "user" }),
     workers: {
-      deep: dispatcher({ name: "inner-hand-off", type: "task", target: "deep", session: "per-task" }),
+      deep: dispatcher({ name: "inner-hand-off", type: "task", action: "deep", session: "per-task" }),
     },
     initialTasks: [
       { id: "i1", goal: "the nested unit of work", assignee: "deep", input: { note: "inner" } },
@@ -98,7 +98,7 @@ function buildNestedFlow() {
     boardId: "outer-board",
     collection: defineTaskCollection({ id: "outer-ledger", scope: "user" }),
     workers: {
-      top: dispatcher({ name: "outer-hand-off", type: "task", target: "top", session: "per-task" }),
+      top: dispatcher({ name: "outer-hand-off", type: "task", action: "top", session: "per-task" }),
     },
     initialTasks: [
       { id: "o1", goal: "the outer unit of work", assignee: "top", input: { note: "outer" } },
@@ -106,7 +106,7 @@ function buildNestedFlow() {
   });
 
   const flow = defineFlow({
-    kind: "nested-detached",
+    kind: "nested-hand-off",
     actions: { start: { block: outerBoard.drain } },
     // Both boards' entries — neither is discovered through the other's
     // structure, so both must be declared explicitly. `defineFlow` gates each
@@ -114,7 +114,7 @@ function buildNestedFlow() {
     // seat's hand-off, the inner worker through the inner seat's, which sits
     // inside the outer worker's drain.
     task: { actions: { top: { block: outerWorker }, deep: { block: innerWorker } } },
-  })({ id: "nested-detached" });
+  })({ id: "nested-hand-off" });
 
   return { flow, ran };
 }
@@ -142,10 +142,10 @@ describe("a handed-off worker can run its own handed-off board", () => {
 
     const dispatched: RecordedDispatch[] = [];
     const record = {
-      dispatchOperation: async (spec: { sessionId: string; target: string; input: unknown }) => {
+      dispatchOperation: async (spec: { sessionId: string; action: string; input: unknown }) => {
         dispatched.push({
           sessionId: spec.sessionId,
-          actionName: spec.target,
+          actionName: spec.action,
           input: spec.input,
         });
         return { requestId: `child_${dispatched.length}` };

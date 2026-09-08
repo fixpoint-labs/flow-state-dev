@@ -27,23 +27,23 @@
  *
  * `drained` used to mean "every task reached a terminal status", which was the
  * same sentence as the one above while every worker ran inside the claiming
- * request. A board declaring `dispatch: { mode: "detached" }` breaks that
- * equivalence: the hand-off leaves the row `in_progress`, owned by a Workstream
+ * request. A board with a `dispatcher({ type: "task" })` seat breaks that
+ * equivalence: the hand-off leaves the row `in_progress`, owned by a child session
  * that settles it from its own session, and the launching request has no more
  * work to do on it. Counting it kept that request parked in `idleWait` until
- * the child finished — the whole point of detaching, undone by the exit
+ * the child finished — the whole point of handing off, undone by the exit
  * question.
  *
  * So the classifier now takes `runsElsewhere` and both of its counting arms
- * honour it. It is supplied by the board from its own detached declarations,
+ * honour it. It is supplied by the board from its own dispatcher seats,
  * and is `undefined` for every board that declares none — an inline board's
  * `in_progress` row still holds the drain open, unchanged and deliberately so.
  *
  * **The exclusion holds only while the row's lease does.** `runsElsewhere` says
  * where a row's work belongs; the lease says whether anyone is on it, and a
  * claimant that died before its child ever started leaves a row that is
- * detached by routing and abandoned in fact. So `countWaitable` requires both,
- * and a lapsed detached row goes back to holding the drain open until it is
+ * handed off by routing and abandoned in fact. So `countWaitable` requires both,
+ * and a lapsed handed-off row goes back to holding the drain open until it is
  * reclaimed. That also keeps this classifier agreeing with the wake test either
  * side of the lapse: `hasClaimableTask` reads the same lease, so before the
  * lapse a handed-off row is invisible to both, and after it the wake test stirs
@@ -90,8 +90,8 @@ export interface BoardQuiescenceOptions {
   /** `onIdle: "wait"` only — the caller's own termination test. */
   shouldExit?: (collection: TaskCollectionRef) => boolean;
   /**
-   * Rows whose work is *routed* to a Workstream rather than this drain
-   * (FIX-982). Omitted by every board that declares nothing detached, which is
+   * Rows whose work is *routed* to a child session rather than this drain
+   * (FIX-982). Omitted by every board with no dispatcher seat, which is
    * what keeps this classifier's answer for those boards bit-for-bit what it
    * was.
    *
@@ -152,7 +152,7 @@ export function classifyBoard(
   }
   const excuseParked = options.excuseParked === true;
   // Drained dominates: every task reached a terminal status, was handed to a
-  // Workstream that this drain is not the one waiting on, or is parked for a
+  // child session that this drain is not the one waiting on, or is parked for a
   // human this drain was told not to wait on.
   const inFlight = inFlightCount(collection, options.runsElsewhere, excuseParked);
   if (inFlight.waiting === 0) {

@@ -56,9 +56,11 @@ export {
   toSkill,
   kebabToCamel,
   camelToKebab,
+  MAX_COMPATIBILITY_LENGTH,
   MAX_DESCRIPTION_LENGTH,
   MAX_NAME_LENGTH,
   type ParsedSkillMd,
+  type ParseSkillMdOptions,
   type SubstitutionContext,
 } from "./skill-md";
 

@@ -16,6 +16,7 @@ import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { getPatternPrefix, isParameterizedPattern } from "@flow-state-dev/core/types";
 import type {
   BlockContext,
+  HarnessResolver,
   JsonObject,
   ResourceCollectionRef,
 } from "@flow-state-dev/core/types";
@@ -52,11 +53,17 @@ export interface WorkspaceAgentCapabilityOptions
    * A resolver rather than a constant, and not merely by convention: two runs
    * sharing one directory would each hydrate over the other's files and flush
    * the result back. Give each run its own.
+   *
+   * **Handed the context and nothing else**, like `cwd`, `sandbox` and `resume`
+   * on the agent block, and for the same reason. This used to also receive the
+   * run's input — whose `prompt` is the one value a caller, or a model holding
+   * this capability's agent as a tool, controls. A host that could read it could
+   * be written, in ordinary-looking code, to put the run's workspace wherever
+   * the caller asked. `HarnessResolver` in `@flow-state-dev/core/types` carries
+   * the full argument; this is the same hazard `cwd` has, under a different
+   * name.
    */
-  root: (
-    input: { prompt: string },
-    ctx: WorkspaceContext,
-  ) => string | Promise<string>;
+  root: HarnessResolver<string>;
   /**
    * Which collections to mount. Default: every collection on `ctx.resources`
    * whose pattern gives a directory to mount it at.
@@ -317,7 +324,7 @@ export function createWorkspaceAgentCapability(
     inputSchema: z.object({ prompt: z.string() }),
     execute: async (input, ctx) => {
       // Resolved ONCE, here, and read from the chain's state everywhere else.
-      const root = physicalPath(await resolveRoot(input, ctx as WorkspaceContext));
+      const root = physicalPath(await resolveRoot(ctx as WorkspaceContext));
       const projection = createProjection({
         place: createHostPlace(root),
         mounts: discoverMounts(ctx as WorkspaceContext, collections, exclude),
@@ -473,7 +480,7 @@ export function createWorkspaceAgentCapability(
     },
     // Owned by this capability: the directory is the projection's, and it is
     // READ from the registry rather than re-resolved. See `openWorkspaces`.
-    cwd: (_input, ctx) => rootFor(ctx as WorkspaceContext),
+    cwd: (ctx) => rootFor(ctx as WorkspaceContext),
     ...(contain
       ? {
           // An explicit setting wins. Containment is a default, not a lock.
@@ -486,8 +493,7 @@ export function createWorkspaceAgentCapability(
           ],
           sandbox:
             agentOptions.sandbox ??
-            ((_input: { prompt: string }, ctx: WorkspaceContext) =>
-              containmentSandbox(rootFor(ctx))),
+            ((ctx) => containmentSandbox(rootFor(ctx as WorkspaceContext))),
         }
       : {}),
   });

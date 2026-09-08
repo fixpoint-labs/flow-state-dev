@@ -2,7 +2,7 @@
 // @flow-state-dev/conductor — lab barrel (LAB-138).
 //
 // The harness manager: a board row becomes a watched, settled coding run. One
-// epic's board, one detached manager, a checkout that belongs to the run, and a
+// epic's board, one handed-off manager, a checkout that belongs to the run, and a
 // verdict read before the row is settled.
 //
 // **Deliberately three exports.** Everything inside this lab imports the

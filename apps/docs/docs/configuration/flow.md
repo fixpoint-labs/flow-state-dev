@@ -197,7 +197,7 @@ Declare resources on the flow (or on a block / capability). `scope` on `defineRe
 | `ref` | `string` | accessor key | Storage namespace id. |
 | `default` | JSON value | — | Initial state. |
 | `flowIsolation` | `boolean` | `false` | Per-flow keying for user/org resources. Rejected on session scope. |
-| `sharedToWorkstream` | `boolean` | `false` | Session resources resolve against the lineage root so child workstreams share them. Session-scope only. |
+| `sharedToLineage` | `boolean` | `false` | Session resources resolve against the lineage root, so a session and every session dispatched under it read and write one copy. Session-scope only. |
 | `prefetchMode` | `"eager"` \| `"lazy"` | `"eager"` | When the runtime loads the resource. |
 | `llmReadable` / `llmWritable` | `boolean` | — | Whether generators may read or write the resource. |
 | `client` | `ResourceClientConfig` | omitted — state stays private | Opens the resource to clients. For a single resource, declaring `expose`, `exclude`, or `data` (mutually exclusive) is the opt-in; a `client` carrying only `content` keeps state private. Collections gate state on `state.read` and ship the full item state when no projection is set. See [Client access](/docs/resources/client-access). |

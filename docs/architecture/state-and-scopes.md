@@ -142,13 +142,13 @@ Which of the two a write asks for is decided by intent, not by the caller: an ex
 
 **Retention is the guarantee.** Versions are never reused, and a tombstone keeps its version, so an observer from before a delete can never match the row that replaces it — at key altitude and at scope altitude alike. Nothing ages a tombstone out: no sweep, no timer, no retention window. The cost is one row per deleted key, in every scope.
 
-**A scope's re-creation is where that stops applying.** The two stores disagree about a reused id on purpose, and the disagreement has to be resolved somewhere. Scope `delete` is a hard delete, so a session id is genuinely free the moment its record is gone; resource state tombstones, so the same id still carries refusals. Left alone, those refusals outlive the session that earned them, and the next session under `chat-42` finds every **static** resource permanently unwritable — a static reference has no create-if-absent verb to fall back on the way a collection instance does. So `purgeTombstones` clears them, and the engine calls it at exactly one kind of moment: when a session record is *created* under that id — never when one is deleted. Three paths create one (the create-session route, a first action reaching `ensureSessionRecord`, and a detached child spawn), and each reclaims **immediately before** its create-if-absent, having first checked that no record exists. While a session is merely gone, its tombstones are still doing their job.
+**A scope's re-creation is where that stops applying.** The two stores disagree about a reused id on purpose, and the disagreement has to be resolved somewhere. Scope `delete` is a hard delete, so a session id is genuinely free the moment its record is gone; resource state tombstones, so the same id still carries refusals. Left alone, those refusals outlive the session that earned them, and the next session under `chat-42` finds every **static** resource permanently unwritable — a static reference has no create-if-absent verb to fall back on the way a collection instance does. So `purgeTombstones` clears them, and the engine calls it at exactly one kind of moment: when a session record is *created* under that id — never when one is deleted. Three paths create one (the create-session route, a first action reaching `ensureSessionRecord`, and a child session the dispatch seam mints), and each reclaims **immediately before** its create-if-absent, having first checked that no record exists. While a session is merely gone, its tombstones are still doing their job.
 
 The ordering carries the weight, because there is no transaction across the two stores. Creating first and reclaiming second would leave a committed session record sitting on intact tombstones whenever the reclamation failed or the process died between the two — and nothing retries it, since a second create answers 409 and an action-driven create adopts the record without reaching the reclamation. That session's static resources would be bricked for its whole life, which is the original defect made permanent. Reclaiming first commits nothing until it has succeeded, so a failure at either step leaves no record and the retry starts clean.
 
 **Known limit: the reclamation is not fenced against a concurrent creator.** Two creators can both read the id and both find nothing; the winner creates the session, its request deletes resource `R`, and the delayed loser then reclaims — removing the winner's tombstone before losing the session CAS itself. The next ordinary `patchState` on `R` holds no version, writes at `"absent"`, finds no row, and brings `R` back. That last step is not a rare actor: every fresh request legitimately holds no version, so the exposure is a deleted resource returning on the next normal write. The existence check narrows this to a genuine create race but cannot close it, because there is no cross-store transaction.
 
-Closing it needs a **scope generation**, which is already tracked and specced as FIX-1000 ("A create racing session deletion lands in a purged, caller-reusable scope — fence the scope generation"). That is the one remedy: don't reach for a second primitive, and in particular not for `lineageId`, which is a workstream address (FIX-1068) answering a different question. Until that lands, both orderings have a door, and reclaim-first is the one whose door is recoverable.
+Closing it needs a **scope generation**, which is already tracked and specced as FIX-1000 ("A create racing session deletion lands in a purged, caller-reusable scope — fence the scope generation"). That is the one remedy: don't reach for a second primitive, and in particular not for `lineageId`, which is a lineage address (FIX-1068) answering a different question. Until that lands, both orderings have a door, and reclaim-first is the one whose door is recoverable.
 
 It removes tombstones only, never a live row — state written under a scope id before that scope's record exists is a real pattern, and a blanket purge would silently delete it. What it does give up is the ABA guarantee *across* incarnations: a reclaimed key's version restarts at `1`, so a straggler from the previous session holding version `N` can match a row in the new one. That window opens only after a deliberate re-create under a reused id, and closing it is the same open problem `deleteAll` already has with a create of a never-existed key — both need a scope generation rather than a per-key predicate.
 
@@ -572,22 +572,22 @@ const scopeId = resolveResourceScopeId(userId, flow.kind, isolated); // bare id,
 - **Schema versioning / migration.** Flipping `isolateUserState` (or a resource's `flowIsolation`) on an existing flow/resource is a data-affecting change — existing shared records become invisible; new isolated records start fresh. No automatic migration.
 - **Cross-flow read validation.** The registry prevents incompatible writes; it does not re-parse stored state on every read.
 
-## Workstreams and Scope
+## Child sessions and scope
 
-A workstream is a **child session**, not a new scope level. The hierarchy stays `request → session → user → org`; a workstream occupies a different `session` cell and inherits the rest of its identity from the request that started it.
+Dispatched work runs in a **child session**, not a new scope level. The hierarchy stays `request → session → user → org`; a child session occupies a different `session` cell and inherits the rest of its identity from the request that dispatched it.
 
-This section covers what a workstream *addresses*. For what happens to it over its lifetime — where it runs per topology, whether it survives the process, what `dispose()` settles, and what recovers an abandoned run — see [Detached Work](./detached-work.md).
+This section covers what a child session *addresses*. For what happens to it over its lifetime — where it runs per topology, whether it survives the process, what `dispose()` settles, and what recovers an abandoned run — see [Dispatched Work](./dispatched-work.md).
 
-`startDetached` derives the child's session id rather than accepting one (`deriveChildSessionId`, `packages/engine/src/context/detached-child.ts`). The key material is the running request's `tenantId`, `userId` and `parentSessionId` plus the caller's routing seed (`topic` + optional `key`), each length-framed, hashed to `dsx_<sha256[0:32]>`. The caller supplies the *target* of the operation and never the *authority* for it. The derivation is deterministic, which is what makes "adopt if it already exists" the ordinary second-task-same-topic path rather than a conflict.
+The dispatch seam derives the child's session id rather than accepting one (`deriveDispatchChildSessionId`, `packages/engine/src/context/detached-child.ts`). The key material is the running request's `tenantId`, `userId`, `parentSessionId` and `lineageId`, the `dispatch` namespace, and the session key — a `dispatcher()`'s `{ key }` result, or the key a task seat's `session` policy composed — each length-framed, hashed to `dsx_<sha256[0:32]>`. The caller supplies the *target* of the operation and never the *authority* for it. The derivation is deterministic, which is what makes "adopt if it already exists" the ordinary retry path rather than a conflict.
 
-The child inherits `flowKind`, `userId`, `tenantId` and `orgId`, and records `parentSessionId`. `evaluateAdoption` re-checks all five before adopting a record found at the derived key — the public session-create route lets a same-principal caller pre-create a record sitting at that deterministic id, and `createExecutionContext` validates user, tenant and org bindings but not `flowKind` or `parentSessionId`.
+The child inherits `flowKind`, `userId`, `tenantId`, `orgId` and `lineageId`, and records `parentSessionId`. `evaluateAdoption` re-checks all six before adopting a record found at the derived key — the public session-create route lets a same-principal caller pre-create a record sitting at that deterministic id, and `createExecutionContext` validates user, tenant and org bindings but not `flowKind` or `parentSessionId`.
 
-### What each scope resolves to inside a workstream
+### What each scope resolves to inside a child session
 
 | Scope | In the child |
 |---|---|
 | `request` | Fresh — the child's own dispatch |
-| `session` | **A separate cell.** Own state blob, own items and history, own journal, own metadata, own session-scoped resources — except a resource declared `sharedToWorkstream` (below) |
+| `session` | **A separate cell.** Own state blob, own items and history, own journal, own metadata, own session-scoped resources — except a resource declared `sharedToLineage` (below) |
 | `user` | **The parent's cell.** `userId` is inherited, and `isolateUserState` keys on `${userId}:${flowKind}` with `flowKind` inherited too — so isolated and shared both resolve to the record the parent reads |
 | `org` | The parent's cell, by the same reasoning |
 
@@ -598,15 +598,15 @@ Tenant follows identity: the child's session storage key is `${tenantId}:dsx_...
 Four channels, and none of them is shared session state:
 
 1. **User and org scope** — live and shared, but keyed to the *principal*, not to the parent session. Two unrelated conversations belonging to the same user read the same cell.
-2. **`input` at spawn** — a one-shot payload handed to the dispatched request, frozen at dispatch.
-3. **`record` on `StartDetachedInput`** — caller bookkeeping persisted on the child session record. Metadata rather than state, and also frozen.
-4. **`parentTask()` / `settleParentTask()`** — one board row, server-stamped at spawn and closed over. Deliberately not a cross-session browser: one coordinate, one row.
+2. **The payload at dispatch** — a one-shot value handed to the dispatched request, frozen at dispatch. For a task hand-off it is the worker input the drain packed at claim time, inside the `task` envelope.
+3. **Provenance labels** — `topic` and `coordinate` on the child session record, and `metadata.dispatch` on the child's request record. Server-assembled, frozen, and display-only.
+4. **`parentTask()` / `settleParentTask()`** — one board row, server-stamped at dispatch and closed over. Deliberately not a cross-session browser: one coordinate, one row.
 
-**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host is closed at four verbs and passes behaviour rather than handles — no type on it names a store, a session record or a task row.
+**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host is closed at three verbs and passes behaviour rather than handles — no type on it names a store, a session record or a task row.
 
 ### Resources shared to the lineage (FIX-1068)
 
-Resources close the gap that state does not, and they close it without a cross-session seam. A session-scoped resource or collection declaring `sharedToWorkstream: true` resolves against the **lineage root** rather than the running session, so a parent and every descendant address one storage cell through the ordinary resource API. There is no new verb, no direction, and no cross-session read path: whether a resource is shared changes only where it stores.
+Resources close the gap that state does not, and they close it without a cross-session seam. A session-scoped resource or collection declaring `sharedToLineage: true` resolves against the **lineage root** rather than the running session, so a parent and every descendant address one storage cell through the ordinary resource API. There is no new verb, no direction, and no cross-session read path: whether a resource is shared changes only where it stores.
 
 **The lineage identity is minted, not derived.** A root session mints
 `SessionRecord.lineageId` when its record is created; every descendant inherits
@@ -629,7 +629,7 @@ value derived from its session storage key, prefixed so it can never *equal* tha
 key. This is defensive hygiene for records left by earlier commits in
 development, **not** an upgrade path from a released version — no version of this
 package has been published, so no deployed store holds session records or
-Workstream addresses predating any of this. The prefix is load-bearing: the storage scope is decided by
+child-session addresses predating any of this. The prefix is load-bearing: the storage scope is decided by
 comparing a resolved address against the lineage id, and if the fallback were the
 session key itself, an unstamped session's shared and unshared buckets would be
 indistinguishable — routing unshared resources into the lineage namespace.
@@ -655,7 +655,7 @@ Two creators satisfy the invariants without it, and neither is an oversight:
 - **`routes/session-routes.ts`** (the public create-session route) mints inline
   and writes `"absent"` itself, because it owes the caller a `409` naming the
   conflict rather than the helper's adopt-the-winner return.
-- **`context/create-request-host.ts`** (the Workstream path) *cannot* use it.
+- **`context/create-request-host.ts`** (the child-session path) *cannot* use it.
   `SessionRecordSeed` is `Omit<SessionRecord, "lineageId">`, so a caller is
   structurally forbidden from supplying an id — and a child must inherit its
   parent's **verbatim**, not mint a new one. It also runs `evaluateAdoption` on
@@ -664,8 +664,8 @@ Two creators satisfy the invariants without it, and neither is an oversight:
 So the rule a third creator has to follow is the pair of invariants, not the
 helper. **A new creator on the child side that reaches for `ensureSessionRecord`
 mints a fresh lineage for a session that should have inherited one** — which
-silently splits a Workstream's shared resources away from the conversation that
-owns them.
+silently splits a child session's shared resources away from the conversation
+that owns them.
 
 **The testing helpers are outside this contract, and that costs coverage rather
 than correctness.** `createTestContext` and `testFlow` seed a session record
@@ -677,10 +677,10 @@ hand-seed a `lineageId` themselves, so nothing in the suite drives the minting
 path. Removing the mint from `ensureSessionRecord` entirely leaves both the
 engine and integration suites green. FIX-1132 tracks closing that.
 
-Descendants get the id from `createRequestHost.startDetached`, copied verbatim.
-It is also part of the derived child session id, because otherwise a recreated
-session spawning the same seed derives the same child and *adopts* the previous
-lineage's workstream, silently inheriting a dead conversation's address.
+Descendants get the id from the dispatch seam in `createRequestHost`, copied
+verbatim. It is also part of the derived child session id, because otherwise a
+recreated session dispatching the same key derives the same child and *adopts*
+the previous lineage's child, silently inheriting a dead conversation's address.
 
 **The lineage is its own storage scope.** `StorageScopeType` adds `lineage`
 alongside the three declared scopes, so a lineage bucket is not addressable from
@@ -690,7 +690,7 @@ could occupy by picking the right session id — unguessable is a weaker propert
 than unaddressable. Adapters treat the value as opaque (a plain `TEXT` column,
 no constraint), so this needed no schema change and no migration.
 
-**Where resolution happens.** On the execution path, `resolveConfigScopeId` and `resolveResourceStorageScopeId` in `packages/engine/src/context/createExecutionContext.ts`. Both route the session scope on a `sharedToWorkstream` bucket map built the same way user/org build their `flowIsolation` buckets: singles by canonical storage key, collection instances by longest-matching prefix. Collections sharing a storage prefix must agree on the flag, refused at context construction like the `flowIsolation` case.
+**Where resolution happens.** On the execution path, `resolveConfigScopeId` and `resolveResourceStorageScopeId` in `packages/engine/src/context/createExecutionContext.ts`. Both route the session scope on a `sharedToLineage` bucket map built the same way user/org build their `flowIsolation` buckets: singles by canonical storage key, collection instances by longest-matching prefix. Collections sharing a storage prefix must agree on the flag, refused at context construction like the `flowIsolation` case.
 
 The HTTP read/write routes need the same answer and derive it from `packages/engine/src/resources/lineage-scope.ts`. **Which helper depends on what the route holds, and getting that wrong is a cross-session read:**
 
@@ -716,7 +716,7 @@ Two shapes make that precedence load-bearing rather than cosmetic:
 
 **Filtering a scan changes what it covers.** `loadedCollectionPrefixes` records coverage per `(scopeId, prefix)`, not per prefix, because a filtered scan read one bucket and may legitimately have returned nothing for keys another bucket owns. Recording the bare prefix would claim coverage the scan never had, and `isMissAuthoritative` would then answer "absent" for a row that exists — the read suppressed by its own correctness.
 
-**Sharing does not imply serialization.** Two workstreams writing one shared resource is ordinary same-resource contention, governed by the `expectedVersion` + `SetResult` contract every `ResourceStateStore` adapter implements (FIX-992). Nothing queues, locks or orders those writes.
+**Sharing does not imply serialization.** Two child sessions writing one shared resource is ordinary same-resource contention, governed by the `expectedVersion` + `SetResult` contract every `ResourceStateStore` adapter implements (FIX-992). Nothing queues, locks or orders those writes.
 
 ## Streaming Integration
 

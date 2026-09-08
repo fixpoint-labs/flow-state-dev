@@ -99,7 +99,8 @@ async function readOneSkillFolder(
   }
 
   // Validate up front so a malformed manifest never makes it into the bundle.
-  parseSkillMd(skillMd);
+  // The folder is the skill's identity; a declared `name` must agree with it.
+  parseSkillMd(skillMd, { expectedName: name });
 
   const files: SkillFile[] = [];
   await collectFiles(folderPath, folderPath, files, ignore);

@@ -26,16 +26,38 @@ import { INTERNAL_SOURCE, TASK_SOURCE } from "./transport-sources";
  */
 export type DispatchStamp = {
   readonly type: "internal" | "task";
-  readonly target: string;
-  readonly from: { readonly block: string; readonly sessionId: string };
+  readonly action: string;
+  /**
+   * The flow the entry was resolved on, present only when the dispatch crossed
+   * a flow boundary. Absent is same-flow — including on every record written
+   * before cross-flow addressing shipped (BP-030), which is the same reading.
+   */
+  readonly flowKind?: string;
+  /**
+   * The resolved flow INSTANCE's id, alongside `flowKind` and under the same
+   * condition. Provenance: it says which instance the seam resolved the entry
+   * on, which a `kind`-keyed read of the registry cannot recover afterwards.
+   */
+  readonly flowId?: string;
+  readonly from: {
+    readonly block: string;
+    readonly sessionId: string;
+    /**
+     * The sender incarnation at stamp time. Optional so a record written
+     * before the field shipped still parses (BP-030). `{ from: true }`
+     * compares it against the live session when present, so a deleted and
+     * recreated sender is not treated as who dispatched this request.
+     */
+    readonly lineageId?: string;
+  };
   readonly key?: string;
   /**
-   * The recipient incarnation the seam approved, present only for an `id`
-   * delivery. Acceptance and execution are not the same moment — a delivery
-   * can be accepted, wait behind a held concurrency key, and run later — and a
-   * recipient deleted and recreated under the same id in that window gets a new
-   * lineage that nothing downstream re-checks. `runAction`'s incarnation guard
-   * compares against this.
+   * The recipient incarnation the seam approved, present only for an
+   * existing-session delivery (`id` or `from`). Acceptance and execution are
+   * not the same moment — a delivery can be accepted, wait behind a held
+   * concurrency key, and run later — and a recipient deleted and recreated
+   * under the same id in that window gets a new lineage that nothing
+   * downstream re-checks. `runAction`'s incarnation guard compares against this.
    */
   readonly recipientLineageId?: string;
 };
@@ -57,10 +79,16 @@ export function readDispatchStamp(
   if (source !== INTERNAL_SOURCE && source !== TASK_SOURCE) return undefined;
   const dispatch = (metadata as { dispatch?: unknown } | undefined)?.dispatch;
   if (dispatch === null || typeof dispatch !== "object") return undefined;
-  const candidate = dispatch as Partial<DispatchStamp>;
+  const candidate = dispatch as Partial<DispatchStamp> & { readonly target?: unknown };
+  const action =
+    typeof candidate.action === "string"
+      ? candidate.action
+      : typeof candidate.target === "string"
+        ? candidate.target
+        : undefined;
   if (
     (candidate.type !== "internal" && candidate.type !== "task") ||
-    typeof candidate.target !== "string" ||
+    action === undefined ||
     candidate.from === null ||
     typeof candidate.from !== "object" ||
     typeof candidate.from.block !== "string" ||
@@ -68,8 +96,17 @@ export function readDispatchStamp(
   ) {
     return undefined;
   }
+  if (candidate.from.lineageId !== undefined && typeof candidate.from.lineageId !== "string") {
+    return undefined;
+  }
+  if (candidate.flowKind !== undefined && typeof candidate.flowKind !== "string") {
+    return undefined;
+  }
+  if (candidate.flowId !== undefined && typeof candidate.flowId !== "string") {
+    return undefined;
+  }
   if (candidate.recipientLineageId !== undefined && typeof candidate.recipientLineageId !== "string") {
     return undefined;
   }
-  return candidate as DispatchStamp;
+  return { ...candidate, action } as DispatchStamp;
 }

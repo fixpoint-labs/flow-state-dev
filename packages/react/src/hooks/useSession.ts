@@ -16,7 +16,7 @@ import {
   type SessionDetail,
   type SessionRequestSummary,
   type SessionStateSnapshotResponse,
-  type WorkstreamSummary
+  type ChildSessionSummary
 } from "@flow-state-dev/client";
 import type {
   ContentAudioDeltaEvent,
@@ -69,7 +69,7 @@ const IN_PROGRESS_LOOKUP_LIMIT = 10;
  * outright by any deployment that set a smaller ceiling — turning an ordinary
  * mount into a 400 and an empty axis. Sending nothing lets the route apply its
  * own default, which is always within its own bounds. An app that wants a
- * specific page says so with `workstreams: { limit }` and owns the result.
+ * specific page says so with `childSessions: { limit }` and owns the result.
  */
 
 /**
@@ -85,7 +85,7 @@ export type SessionItemsOptions =
 /**
  * Background-work list configuration for useSession.
  */
-export type SessionWorkstreamsOptions = {
+export type SessionChildSessionsOptions = {
   /**
    * Rows each read asks for, newest first. Omitted by default, which lets the
    * server apply its own page size.
@@ -96,8 +96,8 @@ export type SessionWorkstreamsOptions = {
    * one page is not reachable from the hook.
    *
    * The server caps this and rejects a larger value with a 400, which surfaces
-   * as `workstreamsStale` rather than rows. The cap defaults to 100 and is
-   * raised with `maxWorkstreamListLimit` on the server, so a value above what
+   * as `childSessionsStale` rather than rows. The cap defaults to 100 and is
+   * raised with `maxChildSessionListLimit` on the server, so a value above what
    * the deployment permits is a misconfiguration on the app's side, not a
    * silent truncation.
    */
@@ -119,7 +119,7 @@ export type UseSessionHookOptions = {
   orgId?: string;
   baseUrl?: string;
   items?: SessionItemsOptions;
-  workstreams?: SessionWorkstreamsOptions;
+  childSessions?: SessionChildSessionsOptions;
   /**
    * When true, on mount the hook checks if the session has an in-progress
    * request and re-attaches to its stream using cursor-based continuation.
@@ -213,7 +213,7 @@ export type SessionView = {
    * the start of every action, and whenever the app calls `refresh()`.
    *
    * One page of the most recent entries, newest first, sized by the server
-   * unless the app names a page with `workstreams: { limit }`. This is
+   * unless the app names a page with `childSessions: { limit }`. This is
    * all-time history rather than only what is running now, so it grows with
    * everything the conversation has ever started; past one page the oldest
    * finished work falls off the end and is not reachable from here.
@@ -222,15 +222,15 @@ export type SessionView = {
    * means only *not finished* — never render it as "running", "working" or
    * "thinking", and never treat it as proof a worker is alive.
    */
-  readonly workstreams: ReadonlyArray<WorkstreamSummary>;
+  readonly childSessions: ReadonlyArray<ChildSessionSummary>;
   /**
-   * True when the most recent attempt to re-read `workstreams` failed. The
+   * True when the most recent attempt to re-read `childSessions` failed. The
    * rows already read are kept rather than cleared, so this is the difference
    * between "this is the current list" and "this is the last list we could
    * get" — without it a job that has since failed renders as still running.
    * Cleared by the next successful read.
    */
-  readonly workstreamsStale: boolean;
+  readonly childSessionsStale: boolean;
   /** Returns items owned by a container scope (items where `ownedBy === blockInstanceId`). */
   getOwnedItems: (ownedBy: string) => OutputItem[];
   /** Returns items stamped with the given `agentName`. Useful for rendering per-agent panels. */
@@ -403,11 +403,11 @@ export function useSession(
   );
 
   // Read off as a primitive rather than memoizing the options object: callers
-  // pass `workstreams` as an inline literal, so a new object identity every
-  // render would re-create `refreshWorkstreams` and re-fire the mount read on
+  // pass `childSessions` as an inline literal, so a new object identity every
+  // render would re-create `refreshChildSessions` and re-fire the mount read on
   // every render. `undefined` when the app named no page — see the note on the
   // read below for why nothing is substituted here.
-  const workstreamLimit = options?.workstreams?.limit;
+  const childSessionLimit = options?.childSessions?.limit;
 
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [snapshot, setSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
@@ -422,10 +422,10 @@ export function useSession(
   const [resourceChanges, setResourceChanges] = useState<ResourceChangeNotice[]>([]);
   const resourceChangeSeqRef = useRef(0);
   // Background work running under this session. Read from the server, never
-  // derived from the conversation's own items — a Workstream is a separate
+  // derived from the conversation's own items — a ChildSession is a separate
   // session, not a message.
-  const [workstreams, setWorkstreams] = useState<WorkstreamSummary[]>([]);
-  const [workstreamsStale, setWorkstreamsStale] = useState(false);
+  const [childSessions, setChildSessions] = useState<ChildSessionSummary[]>([]);
+  const [childSessionsStale, setChildSessionsStale] = useState(false);
   // Two guards, and they answer different questions. The generation asks
   // "is this response still about the thing we are reading?" and advances
   // whenever the read identity changes (session id, or the client itself,
@@ -433,9 +433,9 @@ export function useSession(
   // responses that are both still relevant, which is newer?" — needed
   // because the mount read, an action-start read and a manual `refresh()`
   // all share one identity and can be in flight together.
-  const workstreamGenerationRef = useRef(0);
-  const workstreamSequenceRef = useRef(0);
-  const workstreamAppliedSequenceRef = useRef(0);
+  const childSessionGenerationRef = useRef(0);
+  const childSessionSequenceRef = useRef(0);
+  const childSessionAppliedSequenceRef = useRef(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
@@ -590,52 +590,52 @@ export function useSession(
    * One read per call — there is no digest and no coalescing, because the
    * panel is current as of the caller's last interaction and nothing else
    * triggers this. A failed read keeps the rows already on screen and raises
-   * `workstreamsStale`; it never clears the list, because showing nothing
+   * `childSessionsStale`; it never clears the list, because showing nothing
    * would claim the work went away.
    */
-  const refreshWorkstreams = useCallback(async () => {
+  const refreshChildSessions = useCallback(async () => {
     if (sessionId === undefined) {
-      setWorkstreams([]);
-      setWorkstreamsStale(false);
+      setChildSessions([]);
+      setChildSessionsStale(false);
       return;
     }
 
-    const generation = workstreamGenerationRef.current;
-    const sequence = ++workstreamSequenceRef.current;
+    const generation = childSessionGenerationRef.current;
+    const sequence = ++childSessionSequenceRef.current;
 
     try {
-      const rows = await sessionClient.listWorkstreams(
+      const rows = await sessionClient.listChildSessions(
         sessionId,
         // Omitted entirely when the app named no page, so the route applies
         // its own default rather than being handed a number this side guessed.
-        workstreamLimit === undefined ? undefined : { limit: workstreamLimit }
+        childSessionLimit === undefined ? undefined : { limit: childSessionLimit }
       );
 
       // Superseded: we are now reading a different session, or the same
       // session from a different backend.
-      if (generation !== workstreamGenerationRef.current) return;
+      if (generation !== childSessionGenerationRef.current) return;
       // A newer read of this same session already landed. Applying this one
       // would regress the list — including turning a finished row back into
       // an unfinished one.
-      if (sequence <= workstreamAppliedSequenceRef.current) return;
+      if (sequence <= childSessionAppliedSequenceRef.current) return;
 
-      workstreamAppliedSequenceRef.current = sequence;
-      setWorkstreams(rows);
-      setWorkstreamsStale(false);
+      childSessionAppliedSequenceRef.current = sequence;
+      setChildSessions(rows);
+      setChildSessionsStale(false);
     } catch {
-      if (generation !== workstreamGenerationRef.current) return;
+      if (generation !== childSessionGenerationRef.current) return;
       // A failure is an outcome, so it is ordered like one. Without this a
       // slow read that rejects after a newer read succeeded would flag fresh
       // rows as stale; and because a failure that skipped the ordering never
       // advanced the applied sequence, an older read settling later would
       // then be applied on top and clear the flag.
-      if (sequence <= workstreamAppliedSequenceRef.current) return;
+      if (sequence <= childSessionAppliedSequenceRef.current) return;
 
-      workstreamAppliedSequenceRef.current = sequence;
+      childSessionAppliedSequenceRef.current = sequence;
       // Keep the last known rows, but stop presenting them as current.
-      setWorkstreamsStale(true);
+      setChildSessionsStale(true);
     }
-  }, [sessionId, sessionClient, workstreamLimit]);
+  }, [sessionId, sessionClient, childSessionLimit]);
 
   const flushContentDeltas = useCallback(() => {
     flushHandleRef.current = null;
@@ -1070,23 +1070,23 @@ export function useSession(
     ]
   );
 
-  // Retire every workstream read in flight and clear the axis whenever what
+  // Retire every childSession read in flight and clear the axis whenever what
   // we are reading — or where we are reading it from — changes. Declared
   // before the load effect below so the generation has already advanced by
   // the time the new identity's first read is issued.
   useEffect(() => {
-    workstreamGenerationRef.current += 1;
-    workstreamAppliedSequenceRef.current = 0;
-    setWorkstreams([]);
-    setWorkstreamsStale(false);
+    childSessionGenerationRef.current += 1;
+    childSessionAppliedSequenceRef.current = 0;
+    setChildSessions([]);
+    setChildSessionsStale(false);
   }, [sessionId, sessionClient]);
 
   // The mount read. This is the only read that is not tied to a user
   // interaction: it covers arriving at a conversation that already has
   // background work running.
   useEffect(() => {
-    void refreshWorkstreams();
-  }, [refreshWorkstreams]);
+    void refreshChildSessions();
+  }, [refreshChildSessions]);
 
   useEffect(() => {
     if (sessionId === undefined) {
@@ -1370,9 +1370,9 @@ export function useSession(
       // Discovery, at the start of the interaction (not at its resolution).
       // This is what makes the panel current as of the moment the user acted,
       // and it is deliberately not gated on already knowing about a
-      // Workstream — gating it that way is how a just-launched job would
+      // ChildSession — gating it that way is how a just-launched job would
       // never be discovered at all.
-      void refreshWorkstreams();
+      void refreshChildSessions();
 
       // Auto-dismiss a stuck prior request before kicking off a new one.
       // The synthetic abort item from `dismissRequest` keeps the prior
@@ -1491,7 +1491,7 @@ export function useSession(
       itemConfig.enabled,
       attachToStream,
       refreshSnapshot,
-      refreshWorkstreams,
+      refreshChildSessions,
       dismissRequest,
       orgId
     ]
@@ -1552,8 +1552,8 @@ export function useSession(
     // Refreshes the whole view, background work included. Under the
     // interaction-only design this is also the app's way to bring a
     // just-launched job onto the screen without sending another action.
-    await Promise.all([refreshSnapshot(), refreshWorkstreams()]);
-  }, [refreshSnapshot, refreshWorkstreams]);
+    await Promise.all([refreshSnapshot(), refreshChildSessions()]);
+  }, [refreshSnapshot, refreshChildSessions]);
 
   const resumeLatestRequest = useCallback(async () => {
     if (sessionId === undefined) return;
@@ -1562,7 +1562,7 @@ export function useSession(
     // both `sendAction` and `performInlineReentry`, so it needs its own read:
     // retrying a failed parent after a child finished would otherwise leave
     // the panel stale.
-    void refreshWorkstreams();
+    void refreshChildSessions();
 
     const target = latestRequest;
     if (target === null) return;
@@ -1601,7 +1601,7 @@ export function useSession(
     recoveryClient,
     attachToStream,
     refreshLatestRequest,
-    refreshWorkstreams
+    refreshChildSessions
   ]);
 
   // Shared by resumeSuspension (FIX-811) and continueRequest (FIX-865): both
@@ -1615,7 +1615,7 @@ export function useSession(
       // Discovery — the shared path behind `resumeSuspension` and
       // `continueRequest`. A parent that launches background work after a
       // human approval gate comes through here, not through `sendAction`.
-      void refreshWorkstreams();
+      void refreshChildSessions();
 
       if (streamHandleRef.current !== null) {
         streamHandleRef.current.close();
@@ -1662,7 +1662,7 @@ export function useSession(
       attachToStream,
       refreshSnapshot,
       refreshLatestRequest,
-      refreshWorkstreams
+      refreshChildSessions
     ]
   );
 
@@ -1728,8 +1728,8 @@ export function useSession(
     latestRequest,
     items,
     resourceChanges,
-    workstreams,
-    workstreamsStale,
+    childSessions,
+    childSessionsStale,
     getOwnedItems,
     getItemsByAgent,
     getItemsByVisibility,

@@ -60,8 +60,8 @@ describe("POST /sessions — concurrent creates of one session id", () => {
     const { router, stores } = createRouter();
 
     const [first, second] = await Promise.all([
-      createSession(router, "workstream_topic_a", { writer: "A" }),
-      createSession(router, "workstream_topic_a", { writer: "B" })
+      createSession(router, "child_topic_a", { writer: "A" }),
+      createSession(router, "child_topic_a", { writer: "B" })
     ]);
 
     const statuses = [first.status, second.status].sort();
@@ -70,7 +70,7 @@ describe("POST /sessions — concurrent creates of one session id", () => {
     // The winner's record is what is stored — the loser did not overwrite it.
     const winner = first.status === 201 ? first : second;
     const winnerBody = (await winner.json()) as { session: { state: Record<string, unknown> } };
-    const stored = await stores.session.get("workstream_topic_a");
+    const stored = await stores.session.get("child_topic_a");
     expect(stored?.state).toEqual(winnerBody.session.state);
 
     const loser = first.status === 409 ? first : second;

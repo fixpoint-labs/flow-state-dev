@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, generator, defineCapability, defineResourceCollection } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
@@ -113,6 +113,46 @@ describe("createClaudeCodeAgentCapability", () => {
     expect(cap.sessionStateSchema).toBeDefined();
     const [tool] = cap.__presetDefs.tools.tools;
     expect(tool.config?.sessionStateSchema).toBeDefined();
+  });
+
+  it("forwards `resume` and `onSession` to the block it wraps", async () => {
+    // The capability spreads its options into `claudeCodeAgent`, so this holds
+    // by construction — and that is exactly why it is pinned. Every other agent
+    // option reaches the block that way, and an option added to the factory but
+    // not reachable through the capability is live in one door and inert in the
+    // other, with nothing saying so.
+    const spy = vi.fn();
+    const seen: string[] = [];
+    const cap = createClaudeCodeAgentCapability({
+      resolveClaudeAgent: () => ({
+        query: async function* (args: unknown) {
+          spy(args);
+          yield { type: "system", subtype: "init", session_id: "sess_named" };
+        },
+      }),
+      detached: true,
+      resume: () => "sess_prev",
+      onSession: (id: string) => {
+        seen.push(id);
+      },
+    }) as unknown as {
+      __presetDefs: { tools: { tools: BlockDefinition<any, any, any, any>[] } };
+    };
+
+    const [tool] = cap.__presetDefs.tools.tools;
+    await testBlock(tool, { input: { prompt: "go" } });
+
+    expect(spy.mock.calls[0][0].options?.resume).toBe("sess_prev");
+    expect(seen).toEqual(["sess_named"]);
+  });
+
+  it("refuses `resume` in-session through the capability too", () => {
+    // The refusal lives in the factory, so it reaches every door into it. A
+    // capability that swallowed it would leave a host asking for a resume it
+    // never gets, on the path a host is most likely to use.
+    expect(() =>
+      createClaudeCodeAgentCapability({ resume: () => "sess_prev" }),
+    ).toThrow(/in-session/i);
   });
 });
 

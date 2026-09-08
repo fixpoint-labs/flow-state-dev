@@ -8,8 +8,8 @@
  *
  * And the rule runs the other way too: **no fallback, for any type.** An event
  * dispatch whose coordinate matches nothing resolves nothing — it never reads
- * `flow.actions`, whatever name it carries — and the fenced `workstream`
- * source resolves the flow's workstream core or nothing.
+ * `flow.actions`, whatever name it carries. The `task` / `internal` half of
+ * that rule is pinned in `entry-admission.test.ts`.
  */
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
@@ -102,15 +102,6 @@ describe("resolveActionCore", () => {
     })({ id: "plain" });
     expect(resolveActionCore(plain, "run", "webhook", WEBHOOK_META)).toBeUndefined();
     expect(resolveActionCore(plain, "run", "http", WEBHOOK_META)).toBe(plain.actions.run);
-  });
-
-  // The fenced detached source: terminal on the workstream core, and never a
-  // typed entry — whatever name it carries.
-  it("resolves the workstream core, or nothing, for the workstream source", () => {
-    const flow = flowWithWebhook();
-    expect(flow.workstream).toBeUndefined();
-    expect(resolveActionCore(flow, "run", "workstream", undefined)).toBeUndefined();
-    expect(resolveActionCore(flow, "record-payment", "workstream", WEBHOOK_META)).toBeUndefined();
   });
 });
 

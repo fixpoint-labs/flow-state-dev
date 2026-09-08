@@ -58,12 +58,12 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   flowIsolation?: boolean;
   /**
    * Give this session-scoped collection ONE identity across the whole session
-   * lineage (FIX-1068). Same semantics as `ResourceConfig.sharedToWorkstream`,
+   * lineage (FIX-1068). Same semantics as `ResourceConfig.sharedToLineage`,
    * applied to every instance: a session and the background child sessions it
    * spawns resolve the collection against the lineage root, so they read and
    * write one instance set. Session-scope only; rejected at user/org scope.
    */
-  sharedToWorkstream?: boolean;
+  sharedToLineage?: boolean;
   stateSchema: ZodTypeAny;
   maxInstances?: number;
   eviction?: EvictionPolicy;
@@ -299,9 +299,9 @@ export function defineResourceCollection<
     );
   }
 
-  if (config.sharedToWorkstream === true && config.scope !== "session") {
+  if (config.sharedToLineage === true && config.scope !== "session") {
     throw new Error(
-      `defineResourceCollection() rejects sharedToWorkstream:true on ${config.scope}-scoped collections — ` +
+      `defineResourceCollection() rejects sharedToLineage:true on ${config.scope}-scoped collections — ` +
         `${config.scope} scope already spans every session in a lineage`
     );
   }

@@ -3,7 +3,7 @@
  *
  * The fold's whole contract is that each task ends up at its LATEST state, and
  * everything downstream trusts that: the Tasks panel renders the row from it,
- * and the Workstreams panel matches links against its `topic` and `assignee`.
+ * and the ChildSessions panel matches links against its `topic` and `assignee`.
  * A fold that lands on a stale snapshot is silent — every row still renders,
  * with the wrong values in it.
  */
@@ -77,7 +77,7 @@ function meta(options: {
         pending: 0,
         in_progress: 0,
         blocked: 0,
-        awaiting_review: 0,
+        parked: 0,
         completed: options.total,
         errored: 0,
         cancelled: 0,
@@ -275,5 +275,82 @@ describe("the two folds composed — a tie across requests", () => {
 
     expect(collection?.tasks[0]?.task.status).toBe("completed");
     expect(collection?.tasks[0]?.task.assignee).toBe("review");
+  });
+});
+
+/**
+ * FIX-1245 — a trace recorded before the `parked` rename.
+ *
+ * Item logs are immutable, so an old `task-change` still carries
+ * `awaiting_review` on the task and an old `task-board-meta` carries it as a
+ * counts key. The fold maps both forward: the counts ribbon reads only
+ * `counts.parked`, and the status presentation only knows `parked`.
+ */
+describe("legacy awaiting_review items", () => {
+  /** A meta item whose counts carry the pre-rename key instead of `parked`. */
+  function legacyMeta(parkedCount: number): TaskStreamItem {
+    return {
+      id: "meta_legacy",
+      type: "component",
+      status: "completed",
+      requestId: "req_legacy",
+      itemIndex: 0,
+      provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
+      ts: 1_000,
+      component: "task-board-meta",
+      key: "issues",
+      data: {
+        collectionId: "issues",
+        status: "completed",
+        counts: {
+          total: parkedCount,
+          pending: 0,
+          in_progress: 0,
+          blocked: 0,
+          awaiting_review: parkedCount,
+          completed: 0,
+          errored: 0,
+          cancelled: 0,
+        },
+      },
+    } as never;
+  }
+
+  it("reads a legacy task status as parked", () => {
+    const [collection] = groupCollections(
+      flattenTaskItems([
+        {
+          startedAt: 1_000,
+          items: [
+            change({ requestId: "req_1", ts: 1_000, taskId: "t1", status: "awaiting_review" }),
+          ],
+        },
+      ])
+    );
+
+    expect(collection?.tasks[0]?.task.status).toBe("parked");
+  });
+
+  it("folds a legacy counts key into parked", () => {
+    const [collection] = groupCollections(
+      flattenTaskItems([{ startedAt: 1_000, items: [legacyMeta(2)] }])
+    );
+
+    expect(collection?.boardMeta.counts?.parked).toBe(2);
+    expect(collection?.boardMeta.counts).not.toHaveProperty("awaiting_review");
+  });
+
+  it("leaves a post-rename meta untouched", () => {
+    const [collection] = groupCollections(
+      flattenTaskItems([
+        {
+          startedAt: 1_000,
+          items: [meta({ requestId: "req_1", ts: 1_000, status: "completed", total: 3 })],
+        },
+      ])
+    );
+
+    expect(collection?.boardMeta.counts?.parked).toBe(0);
+    expect(collection?.boardMeta.counts?.total).toBe(3);
   });
 });

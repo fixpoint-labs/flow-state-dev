@@ -28,10 +28,10 @@
  *
  * ## Why hand-off needs a reason of its own
  *
- * The structural test is `counts.completed === counts.total`, and a detached
+ * The structural test is `counts.completed === counts.total`, and a handed-off
  * board that did exactly what it was built to do fails it: the row it handed
- * over is still `in_progress`, owned by a Workstream. So every successful
- * detached drain announced itself as `"blocked-by-failures"` — permanently,
+ * over is still `in_progress`, owned by a child session. So every successful
+ * hand-off drain announced itself as `"blocked-by-failures"` — permanently,
  * since no later drain re-emits this item once the child settles. The feature
  * whose entire point is that background work is *visible* was reporting its own
  * success as a terminal failure.
@@ -98,11 +98,11 @@ export interface BoardMetaOptions {
 
 export interface BoardMetaCompletedOptions extends BoardMetaOptions {
   /**
-   * Rows whose work is routed to a Workstream (FIX-982) — the same predicate
+   * Rows whose work is routed to a child session (FIX-982) — the same predicate
    * the board hands its exit question, and for the same reason it has to be the
    * same one. See {@link isHandedOff}.
    *
-   * Absent for every board that declares nothing detached, which is what keeps
+   * Absent for every board with no dispatcher seat, which is what keeps
    * the reason this block reports bit-for-bit what it was for those boards.
    */
   runsElsewhere?: RunsElsewhere;
@@ -148,7 +148,7 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * "would this row be claimable if the parked rows completed?" — sees `B`'s
  * dependency unsatisfied and would report a stall on a board that only needs an
  * answer. So the seed set is everything that will resolve on its own (already
- * completed, parked and therefore answerable, or handed to a Workstream) and
+ * completed, parked and therefore answerable, or handed to a child session) and
  * the loop closes over the rows those release.
  *
  * **The condition is causal, not positional, and that distinction is the whole
@@ -243,7 +243,7 @@ function hasRowGoingNowhere(
   for (const task of all) {
     if (
       task.status === "completed" ||
-      task.status === "awaiting_review" ||
+      task.status === "parked" ||
       (task.status === "in_progress" && !leaseLapsed(task, now))
     ) {
       willResolve.add(task.id);
@@ -285,7 +285,7 @@ function hasRowGoingNowhere(
  * whose other workers then stop for their own reasons, leaves this reading
  * `true` with nothing parked any more.
  *
- * Rung 5 requires `counts.awaiting_review > 0` alongside it for that reason, and
+ * Rung 5 requires `counts.parked > 0` alongside it for that reason, and
  * the shape of that guard is deliberate. Three separate attempts were made to
  * enumerate the routes by which this verdict can go stale, and each turned up
  * another one. `"parked-for-review"` names a state, so the cheap and complete
@@ -340,11 +340,11 @@ function excusedParkedByPool(input: unknown): boolean {
  *   refused a retry (FIX-948). Read from a persisted denial marker, never
  *   inferred from `counts.retries === maxTotalRetries`, which does not
  *   establish that a refusal happened.
- * - `"handed-off"` — every remaining row is running in a Workstream (FIX-1074).
+ * - `"handed-off"` — every remaining row is running in a child session (FIX-1074).
  *   A success, not a stall; `counts.in_progress` is how many.
  * - `"parked-for-review"` — the board stopped because the work it has left is
  *   waiting on a person (FIX-1234). Only a board with `onReview: "exit"`
- *   reports it; `counts.awaiting_review` is how many.
+ *   reports it; `counts.parked` is how many.
  *
  * **The ladder's order is the contract.** First match wins:
  *
@@ -359,14 +359,14 @@ function excusedParkedByPool(input: unknown): boolean {
  * 5. the exit decision excused rows as parked, **and a row is still parked** →
  *    `parked-for-review`. The verdict comes from this drain's own pool, never
  *    from the rows as they stand now — but the reason names a state, so it is
- *    also checked against that state: a board with nothing in `awaiting_review`
+ *    also checked against that state: a board with nothing in `parked`
  *    never reports it, whatever the pool carried.
  * 6. every remaining row is handed off → `handed-off`.
  * 7. otherwise → `blocked-by-failures`.
  *
  * **On a board with no parked row the reason is exactly what it was before
  * FIX-1234.** Rung 5 is unreachable without a parked row — checkable by looking
- * at `counts.awaiting_review`, not by reasoning about how the verdict got here —
+ * at `counts.parked`, not by reasoning about how the verdict got here —
  * and rung 4 fires only where rung 7 already reported `blocked-by-failures` by
  * another route.
  *
@@ -396,7 +396,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         errored: collection.count({ status: "errored" }),
         cancelled: collection.count({ status: "cancelled" }),
         blocked: collection.count({ status: "blocked" }),
-        awaiting_review: collection.count({ status: "awaiting_review" }),
+        parked: collection.count({ status: "parked" }),
         in_progress: collection.count({ status: "in_progress" }),
         pending: collection.count({ status: "pending" }),
         /** Failure retries this board authorized (FIX-948). */
@@ -438,7 +438,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
             ? "blocked-by-failures"
             : hasRowGoingNowhere(all, remaining, now)
               ? "blocked-by-failures"
-              : excusedParkedByPool(input) && counts.awaiting_review > 0
+              : excusedParkedByPool(input) && counts.parked > 0
                 ? "parked-for-review"
                 : allRemainingHandedOff
                   ? "handed-off"
