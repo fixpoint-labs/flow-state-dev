@@ -79,7 +79,9 @@ shape to FIX-1325.*
    first-registered fallback** — that is what makes a seat addressable as itself rather than as
    its kind, and it is the contract FIX-1335 targets and FIX-1327 materializes against.
    **One hire per kind is enough for this epic**; same-kind multi-hire is Collab RC's proof, not
-   W2's, and no issue here should build toward it. Harness,
+   W2's, and no issue here should build toward it. **The compile boundary between the two
+   children:** the loader registers kinds — one blueprint per seat folder — and the factory mints
+   instances; a seat folder supplies config and a stable id, never a new action tree. Harness,
    model and persona references are instance config when they vary without changing the block
    graph; a difference that changes the action tree is a different flow kind, not another config
    key.
