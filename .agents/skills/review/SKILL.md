@@ -88,11 +88,11 @@ anyway, they get it.
      defects that divergence happened to walk into, returned tagged for you to classify;
      severity them as that lens would, up to and including must-fix. Note-only applies to
      the shapes, not to everything the lens hands back.
-   - **Model tiering** (AGENTS.md): dispatch **Correctness** and **Completeness** on
-     **Sonnet** — they check *decided* work against the spec/checklist, not open design.
-     **Coherence**, **Restraint** and **Alternatives** keep the judgment tier (Opus, the
-     default) — for Alternatives that covers its own fan-out too, which its skill states;
-     **Depth** inherits its skill's tier.
+   - **Claude model tiering** (AGENTS.md): dispatch **Correctness** and **Completeness**
+     on **Sonnet** — they check decided work. **Coherence**, **Restraint** and
+     **Alternatives** keep the judgment tier (Opus, including Alternatives' fanout);
+     **Depth** inherits its skill's tier. In **OMP**, use the native dispatch below
+     instead; the lens selection and criteria are unchanged.
 2. **Dedupe across lenses.** They overlap at the edges (a redundant capability is both a
    coherence conflict and bloat). Merge duplicate findings into one, attributed to the
    sharpest framing. Never double-count.
@@ -100,6 +100,153 @@ anyway, they get it.
    (bloat, drift) · **note** (depth follow-ups, observations).
 4. **Synthesize ONE report** — a verdict plus a single ranked table across all lenses,
    not four separate reports.
+
+## OMP native dispatch
+
+Harness adapter only. The **coordinator** runs this; `fsd-implementer` returns its
+patch/evidence and never launches reviewers. Claude keeps the Agent-tool path above
+and below. Shared lens selection and **Run** remain policy; this section supplies
+only native roles, frozen inputs, leaf fences, and result validation.
+
+| Selected lens | Native agent | Configured model role |
+|---|---|---|
+| Coherence | `fsd-coherence` | `@fsd_design_review` |
+| Restraint | `fsd-restraint` | `@fsd_design_review` |
+| Correctness | `fsd-correctness` | `@fsd_code_review` |
+| Completeness | `fsd-completeness` | `@fsd_code_review` |
+| Depth | `fsd-coherence`, explicitly assigned **Depth only** | `@fsd_design_review` |
+
+Dispatch only the selected lenses, not every role on every task. Agent frontmatter
+resolves the model aliases; do not pass Claude model names or a task `model` field.
+Unavailable roles/models are visible blockers, not grounds to silently substitute a
+different reviewer or drop a selected lens.
+
+### Freeze the review input
+
+Before fanout, the coordinator captures one immutable review bundle outside the
+mutable checkout. Record the exact base and head commit SHAs (never just a moving
+branch/PR name), the target scope, intent, spec/brief version, and verification logs.
+Provide readable base/head source snapshots and a diff, including surrounding code
+and callers needed by the lenses; reviewers cannot use shell/git to recover them.
+Capture line counts for Restraint. Snapshot the relevant authority documents too.
+
+For a dirty working diff, include both the committed change and the complete
+staged/unstaged delta: capture `git diff --binary HEAD`, plus the bytes and paths of
+all in-scope untracked files (which git diff omits). Preserve deletes, modes, and
+binary changes. Keep unrelated dirt out only with an explicit scope manifest.
+Capture while writers are paused; compute a content hash of the bundle manifest,
+including every captured file/patch/spec/evidence hash. Use
+`<base SHA>..<head SHA>+<bundle hash>` as `reviewedRevision` (the bundle hash also
+identifies clean snapshots). Do not call a live checkout immutable or assume task
+isolation automatically includes uncommitted files. Missing or unreadable snapshot
+content must surface as blocked; materialize needed files before review proceeds.
+
+Every lens gets the same manifest and source roots. Freeze them through the round;
+no sibling findings, implementer assurances, or proposed adjudication in first-pass
+prompts. Factual verification logs and the approved contract are shared evidence.
+Later writes create a new bundle/revision; never carry a clean verdict forward as
+approval of changed bytes.
+
+### Leaf contract and native API
+
+Native reviewers are read-only leaves. Apply only the assigned lens's shared skill
+or prompt; do any small exploration directly, not its nested Explore/Agent calls.
+Do not run validation, edit, subscribe/create mailbox handles, publish, or spawn.
+Ask for missing evidence through `blocked`; a missing **required** goal/red check
+is still a finding under the existing Completeness criteria, not a waiver.
+
+Use the following shared schema with `schemaMode: "strict"`. `summary` retains
+lens-specific context (e.g. Restraint's size baseline and justified keeps);
+`detail` retains its required analysis (kind/routing, Δlines, loss/tradeoff, etc.).
+Each evidence string must cite a captured path:line or log/spec reference and the
+observed fact supporting the finding; a filename alone is not evidence.
+
+In JavaScript Eval, set `reviewedRevision` to the captured identity and `reviewBrief`
+to the shared scope, bundle paths, spec and evidence references. Set `selectedLenses`
+to the selected ordinary lenses in lower case; Alternatives uses the phase dispatch
+below, not this findings schema. Dispatch one native task batch:
+
+```js
+const text = { type: "string", minLength: 1 };
+const reviewSchema = {
+  type: "object", additionalProperties: false,
+  required: ["reviewedRevision", "lens", "verdict", "summary", "findings", "blockers"],
+  properties: {
+    reviewedRevision: { type: "string", const: reviewedRevision },
+    lens: { enum: ["coherence", "restraint", "correctness", "completeness", "depth"] },
+    verdict: { enum: ["clean", "findings", "blocked"] },
+    summary: text,
+    findings: {
+      type: "array", items: {
+        type: "object", additionalProperties: false,
+        required: ["title", "severity", "where", "evidence", "recommendation", "detail"],
+        properties: {
+          title: text,
+          severity: { enum: ["must-fix", "should-fix", "note"] },
+          where: text,
+          evidence: { type: "array", minItems: 1, items: text },
+          recommendation: text,
+          detail: text
+        }
+      }
+    },
+    blockers: { type: "array", items: text }
+  }
+};
+const reviewTasks = selectedLenses.map(lens => ({
+  name: `Fsd${lens[0].toUpperCase()}${lens.slice(1)}`,
+  agent: lens === "depth" ? "fsd-coherence" : `fsd-${lens}`,
+  task: `# Target\n${reviewBrief}\nReviewed revision: ${reviewedRevision}
+# Change
+Read only. Apply the ${lens} lens from the shared review skill, not the full loop.
+Independent first pass; do not consult sibling reports.
+Skip all validation, builds, tests, linters, formatters, and runtime probes.
+# Acceptance
+Return the strict review schema for ${lens} with cited evidence or explicit blockers.`,
+  outputSchema: {
+    ...reviewSchema,
+    properties: { ...reviewSchema.properties, lens: { const: lens } }
+  },
+  schemaMode: "strict"
+}));
+const reviewJobs = await tool.task({
+  i: "Dispatching independent FSD reviews",
+  context: `# Goal\nReview ${reviewedRevision}.
+# Constraints
+Read only; no validation or external messages. No first-pass cross-contamination.
+# Contract
+All reviewers inspect the same frozen bundle. The coordinator alone adjudicates,
+dispatches accepted fixes, and synthesizes. Missing evidence is never approval.
+${reviewBrief}`,
+  tasks: reviewTasks
+});
+display(reviewJobs);
+```
+
+Collect **every** selected job from the returned IDs/artifact handles; completion is
+asynchronous. Do not use oneshot `completion` for a source-reading reviewer.
+
+For selected Alternatives, the coordinator runs `adhd` in review context, retaining
+its orchestration, scoring and clustering. Each frame/focus leaf uses `fsd-coherence`
+with an explicit **Alternatives phase, not coherence critique** assignment and strict
+phase schemas matching `adhd`'s outputs. Preserve its isolation and collect both waves;
+do not coerce generative outputs into ordinary findings or switch the user's session
+model. Shared **Run** governs pruning, routing and severity.
+
+### Validate the round
+
+The coordinator resolves conflicting claims against frozen evidence, not model vote.
+Only after all first passes finish may it request targeted clarification or dispatch
+accepted fixes; changed bytes require a new bundle/revision and affected re-review.
+
+Check schema **and semantics**: a clean result has no findings/blockers; findings
+requires at least one finding and no blockers; blocked requires a concrete blocker
+and may retain partial findings. Reject wrong revisions/lenses, unsupported
+evidence, or invalid output. A failed, missing, timed-out, or blocked selected
+reviewer means **review incomplete**, never clean/approved. Show each such failure
+alongside completed findings in the one synthesized report; retry or obtain the
+missing evidence before clearing that gate. Approval applies only to the stated
+reviewed revision.
 
 ## Correctness lens (prompt)
 

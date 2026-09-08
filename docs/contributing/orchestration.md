@@ -1051,6 +1051,12 @@ internals goes to that issue's implementer notes, not into its spec.
 
 ## Environment: cloud vs. local (PR subscriptions)
 
+The PR-subscription transports below describe **Claude**. OMP's local mailbox
+transport is documented in the
+[`agent-mailbox` skill](../../.agents/skills/agent-mailbox/SKILL.md#native-omp).
+It watches explicitly selected mailbox conversation threads, not general PR review
+or CI activity; it does not port the epic lifecycle's PR subscriptions.
+
 `subscribe_pr_activity` depends on a webhook relay GitHub can call back into — that relay
 exists only for Claude's **hosted/cloud environments** (Claude Code on the web, a managed
 remote execution environment). A **local** Claude Code CLI session has no publicly
@@ -1063,7 +1069,7 @@ succeeds: no event will ever arrive to wake the session.
 are similarly cloud-only and won't resolve locally. Check for either before relying on
 `subscribe_pr_activity` — don't assume cloud by default.
 
-**Local fallback: poll with `Monitor`, not a scheduler.** Both `Monitor` and `CronCreate`
+**Local Claude fallback: poll with `Monitor`, not a scheduler.** Both `Monitor` and `CronCreate`
 are harness-native (not cloud-gated), but they poll very differently, and for PR-watching
 `Monitor` is the better primitive:
 
@@ -1144,7 +1150,8 @@ creating — a resumed epic already has one — keep its brief current as the ha
 retire it at wrap (merged if it holds decisions, closed if not), or the directory fills with
 inboxes whose work ended.
 
-**Subscribe narrowly.** Every comment on a handle wakes *every* session attached to it. Take the
+**Subscribe narrowly.** Claude Cloud delivers every comment to attached sessions.
+OMP filters self-mail and mail addressed elsewhere before waking the model. Take the
 handles whose slug names the work you're running, plus anything you're asked to join, and leave
 the rest listed in your report. A subscription nobody needs is a standing tax on the board, paid
 by other people's sessions.
@@ -1299,7 +1306,7 @@ A closed list. Everything on it is something no sub-agent can hold, which is the
 it's here:
 
 - `.orchestration/` reads and writes (the status table, the epic record, handle caches).
-- PR subscriptions (`subscribe_pr_activity`) and, locally, the `watch-pr` Monitors.
+- PR subscriptions: `subscribe_pr_activity` in Claude Cloud and `watch-pr` Monitors in local Claude.
 - The epic's mailbox handle, whole: registering it, subscribing, keeping `handles/<slug>.md`
   current, retiring it at wrap, and replying from the table it already holds. Writing the
   brief is the same act as refreshing the epic-spec index — projecting the table it already

@@ -60,6 +60,34 @@ docs/
 | `pnpm --filter @flow-state-dev/kitchen-sink dev` | App | Run kitchen-sink dev server |
 
 
+## OMP development sessions
+
+OMP uses the shared development skills, with native agents in `.omp/agents/` and
+model-role mappings in `.omp/config.yml`. Restart OMP after changing these files.
+The shared `review` skill includes the native mixed-model dispatch path.
+
+Writing workers use isolated checkouts and return patches for deliberate integration;
+automatic application is disabled. An isolation preparation failure stops the worker.
+Do not bypass it by sending the same writing task into the shared checkout.
+
+Advisor selection and activation are separate: `/advisor status` reports the live
+state; `/advisor on` enables it for the session.
+
+At substantive session start, top-level sessions follow the `agent-mailbox` skill
+and state the relevant handle(s), or why none is relevant. Local delivery requires
+an authenticated `gh` CLI with access to `fixpoint-labs/agent-mailbox`.
+
+| Command | Purpose |
+|---------|---------|
+| `/mailbox subscribe <pr> <subscriber>` | Subscribe to a handle; addressed backlog arrives as an inbound follow-up |
+| `/mailbox status` | Inspect subscriptions, errors, and the session's posting identity |
+| `/mailbox unsubscribe <pr>` | Stop watching a handle |
+
+For delivery, session persistence, and subscription semantics, see
+[`agent-mailbox` → Native OMP](../../.agents/skills/agent-mailbox/SKILL.md#native-omp).
+
+Mailbox regressions: `node --test .omp/test/mailbox.test.mjs`.
+
 ## Versioning and Publishing
 
 This repo uses [Changesets](https://github.com/changesets/changesets) for semver, changelogs, and coordinated workspace version bumps. The contributor walk-through — when to write a fragment, the pre-1.0 discipline, multi-package PRs — lives in [`release-notes-workflow.md`](release-notes-workflow.md). The full publish runbook (CI pipeline, snapshots, first-publish ceremony) is in [`RELEASING.md`](RELEASING.md).

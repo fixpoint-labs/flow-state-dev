@@ -25,6 +25,10 @@ Both disciplines are embedded into the implementer sub-agent prompt at dispatch 
 
 ## Workflow
 
+**OMP:** apply the [native dispatch adapter](#5b2-dispatch-implementer-sub-agents)
+to every implementation and verification step below, including simple work and PR
+feedback re-entry. Checks run in verification leaves, not in the lifecycle coordinator.
+
 **Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open **implementation** PR (`gh pr list --search "FIX-N in:title,body" --state open`, or the URL recorded on the Linear issue). **Ignore the docs-only spec PR** (`spec(FIX-N)` title / `spec/FIX-N` branch from `issue-spec`, open or closed) — that's the spec artifact, not the implementation; matching it would wrongly jump to PR-feedback mode and skip the build. If an implementation PR exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
 
 ### Step 1: Pull the Linear Issue
@@ -195,6 +199,48 @@ Parse the spec's "Implementation Sequence" into discrete, ordered tasks. The spe
 Create a TodoWrite with all tasks.
 
 #### 5B.2: Dispatch Implementer Sub-agents
+
+**OMP dispatch adapter.** The coordinator owns this lifecycle; `fsd-implementer` is
+only a bounded leaf, not a substitute for the whole skill. This boundary also applies
+to Step 5A and Step 10 feedback fixes: the coordinator schedules implementation and
+verification, reads evidence, and never executes checks in its shared checkout.
+Dispatch approved slices with native `task` items
+(`agent: "fsd-implementer", isolated: true`) or Eval
+`agent(prompt, { agent: "fsd-implementer", isolated: true, apply: false, merge: false })`;
+its `@fsd_implement` alias replaces Claude's execution-model selection. Supply the
+same spec context and chosen discipline, but omit template instructions to commit,
+publish, or spawn. Keep unresolved design judgment in the coordinator.
+
+Independent owned slices may share one task batch; dependent slices stay ordered.
+Writing assignments skip all validation, builds, tests, linters, formatters, and
+runtime probes. Patches require explicit coordinator inspection and integration;
+completion alone does not apply or accept them.
+
+Use separate bounded, isolated `fsd-implementer` leaves with an explicit
+**verification-only, no source mutations** assignment for RED/reproduction and
+GREEN/final checks, including reviewer-requested reproductions. Supply the exact
+commands/scenarios, acceptance criteria, and frozen input snapshot (base revision
+plus all relevant integrated patches and dirty files); require the snapshot identity,
+commands, exit outcomes, and captured logs in the return. A failed or unavailable
+check returns evidence or a blocker, never an opportunistic fix.
+
+- **Before the corresponding fix is dispatched:** if RED/reproduction evidence is
+  missing, obtain a test/probe-only patch from a writing leaf first and deliberately
+  integrate it without changing the implementation. Dispatch a verification-only
+  leaf on that unchanged implementation plus the test/probe patch. Read the failing
+  output and establish that it fails for the intended reason before releasing the fix.
+- **After writers settle:** deliberately integrate accepted patches, freeze the
+  resulting snapshot, then dispatch a verification-only leaf for GREEN and final
+  checks. Read its evidence before review/acceptance. Any subsequent source change
+  requires a new frozen snapshot and the affected checks; never label stale evidence
+  as verification of the new state.
+
+The coordinator also dispatches the challenger, per-task compliance review, and
+Step 6's review directly, never through an implementer's recursive spawn. For native
+review roles, frozen inputs, schema, and synthesis use
+[`review` → OMP native dispatch](../review/SKILL.md#omp-native-dispatch).
+This adapter does not authorize leaf ticket/PR publication or mailbox subscription;
+external communication stays with the coordinator. Claude's path below is unchanged.
 
 For each task, sequentially dispatch an implementer sub-agent using the template in `./implementer-prompt.md`. The template has a `[Discipline]` slot — fill it based on Step 4.1:
 
