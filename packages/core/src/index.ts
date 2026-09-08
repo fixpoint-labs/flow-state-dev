@@ -7,7 +7,9 @@ export type {
   BlockOutput,
   BlockResult,
   DeclaredResources,
+  FlowContextView,
   FlowStateSettings,
+  InferFlowConfigFromSchema,
   LooseBlockContext,
 } from "./types/block";
 export type {
@@ -291,6 +293,8 @@ export type {
   ClientDataComputeFn,
   ClientDataContext,
   ScopeClientConfig,
+  FlowConfigInput,
+  FlowConfigValue,
   FlowDefinition,
   FlowInstance,
   FlowInstanceOptions,

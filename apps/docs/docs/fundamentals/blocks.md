@@ -565,6 +565,44 @@ const saveResult = handler({
 
 `ctx.parent` is `undefined` at the root level (the flow's top-level action block). This covers identity and input only — for reading a parent's *state*, see [Block State](/docs/advanced/block-state).
 
+### Reading the flow copy's settings
+
+A flow can be registered as several copies that differ by the settings each was created with. A
+block declares what it needs of whatever flow installs it, and reads it from `ctx.flow.config`:
+
+```ts
+const seatConfig = z.object({ harness: z.string(), model: z.string() });
+
+const engineerWork = handler({
+  name: "engineer-work",
+  flowConfigSchema: seatConfig,
+  execute: async (input, ctx) => {
+    const model = ctx.flow.config.model; // typed as string
+    // ...
+  },
+});
+```
+
+The value is read-only and fixed for the copy's life. `ctx.settings` is its sibling for the other
+altitude: `ctx.settings` is the whole process, one shape for every flow in it; `ctx.flow.config` is
+this copy, and two copies of one definition read different values.
+
+Declaring `flowConfigSchema` buys two things: the read is typed without an annotation, and the flow
+refuses when it cannot supply what the block asked for. The refusal lands in one of two places — if
+the flow declares no `configSchema` at all, where the flow is defined; otherwise where a copy is
+created, naming the flow, the copy's id and this block. A block that declares nothing reads
+`Readonly<Record<string, unknown>>` and has to parse for itself.
+
+Declare what the block *needs*, not what it adds. A `.default()` or a `.transform()` in a
+`flowConfigSchema` is refused where the copy is created: the bag is one object every block reads, so
+a value only this block's schema produces would either be invisible to it or visible to blocks it was
+never declared for. Defaults belong on the flow's `configSchema`.
+
+The block names no flow, so the same block drops into any flow whose settings satisfy it, checked
+again there. See [Flows](./flows.md#copies-that-differ-by-settings) for what belongs in the bag and
+what belongs in the copy's own storage, and [Flow options](../configuration/flow.md#instance-settings)
+for the field reference.
+
 ## Blocks are composable
 
 A sequencer is a block. A router is a block. This means you can nest them freely — a sequencer can contain routers, a router can dispatch to sequencers, sequencers can nest inside sequencers:

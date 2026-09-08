@@ -36,6 +36,14 @@ export type TestBlockOptions<TInput> = {
   /** Optional flow instance. When provided, its resource configs (including
    *  resource collections) are used instead of the auto-generated ones. */
   flow?: FlowInstance;
+  /**
+   * The flow copy's create-time config bag, read by the block under test as
+   * `ctx.flow.config`. Frozen, like production. Omit it and the block reads a
+   * frozen empty object — never `undefined`.
+   *
+   * Ignored when `flow` is supplied: that instance carries its own bag.
+   */
+  flowConfig?: Record<string, unknown>;
   request?: TestRequestSeed;
   session?: TestScopeSeed;
   user?: TestScopeSeed;

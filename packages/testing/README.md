@@ -92,6 +92,21 @@ const result = await testFlow({
 ```
 
 
+### Supplying the flow copy's settings
+
+`testBlock` (and `testSequencer` / `testRouter`, which delegate to it) accept `flowConfig` — the
+bag a block under test reads as `ctx.flow.config`, without minting a whole flow:
+
+```ts
+const result = await testBlock(engineerWork, {
+  input: { task: "review" },
+  flowConfig: { harness: "codex", model: "gpt-5.4" },
+});
+```
+
+Omit it and the block reads a frozen empty object, which is what an unconfigured flow gives it in
+production. Pass a real instance as `flow` and that instance's own bag is used instead.
+
 ### Seeding sequencer context in block tests
 
 `testBlock` and `testSequencer` accept `sequencer` to mock the nearest enclosing sequencer (`ctx.sequencer`) and capture sequencer instance state mutations in `result.stateChanges` with `scope: "block_instance"`.

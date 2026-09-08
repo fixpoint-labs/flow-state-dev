@@ -42,7 +42,7 @@ Narrative: [Engine setup](/docs/server/setup), [App configuration](/docs/cli/con
 | `models` | `FlowStateModelsConfig` | — | Shorthand model resolver. See [Models](#models). |
 | `modelResolver` | `ModelResolver` | built from `models` | Escape hatch. When set, `models` is ignored. Use for mocks or a fully custom resolver. |
 | `defaultProfile` | `string` | first declared profile | Active profile when `FSD_ENV` is unset. `NODE_ENV` is not consulted. |
-| `settings` | object | — | Read in blocks as `ctx.settings`. Type it by declaration-merging `FlowStateSettings`. |
+| `settings` | object | — | Read in blocks as `ctx.settings`. Type it by declaration-merging `FlowStateSettings`. Process-wide and one shape for every flow; for settings that differ between two registered copies of one flow, use [`config`](/docs/configuration/flow#instance-settings), read as `ctx.flow.config`. |
 | `voice` | `{ provider? }` | — | Runtime voice provider (TTS/STT). Distinct from a flow's `voice` speak defaults. |
 | `onError` | `(error, { method, path }) => void` | — | HTTP-level error sink. |
 | `errorCapture` | handler | off | Block-aware sink: failing block identity plus flow / request / session / user ids. You write the adapter; the framework ships no vendor SDK. |

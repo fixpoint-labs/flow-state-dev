@@ -509,6 +509,13 @@ function checkPair(
 }
 
 /**
+ * What a legacy structural instance reads when it carries no bag of its own —
+ * the same frozen empty object the flow factory gives a flow that declares no
+ * `configSchema`.
+ */
+const EMPTY_INSTANCE_CONFIG: Readonly<Record<string, unknown>> = Object.freeze({});
+
+/**
  * Validate an instance's identity against what is already registered and
  * return the instance the registry will hold — the input itself, or a copy
  * carrying the normalized cardinality when a legacy structural instance
@@ -531,6 +538,23 @@ function admitIdentity(
   const singletonWithoutId =
     (input as { id?: unknown }).id === undefined &&
     (declared === undefined || declared === null || declared === "singleton");
+  // A blueprint that cannot run on the bag it would have if nobody supplied
+  // one (FIX-1331). This is the only path where a required config bag could go
+  // missing silently: the types and CLI discovery both reject a `defineFlow`
+  // result, but the branch above deliberately tolerates one for JS and legacy
+  // callers, and would otherwise hand its blocks an empty bag and misbehave
+  // far from the cause. Forecloses nothing that works — a bare-registered
+  // singleton can never receive a bag anyway, because a blueprint and a mint
+  // of one flow cannot coexist in a registry (a default-id mint collides as
+  // `duplicate-id`; a custom-id one refuses earlier as
+  // `singleton-id-mismatch`).
+  if (singletonWithoutId && (input as { requiresConfig?: unknown }).requiresConfig === true) {
+    throw new FlowIdentityConflictError({
+      reason: "unminted-config",
+      kind: input.kind,
+      id: input.kind
+    });
+  }
   const flow: FlowInstance = singletonWithoutId ? { ...input, id: input.kind } : input;
   if (typeof flow.id !== "string" || flow.id.length === 0) {
     throw new FlowIdentityConflictError({ reason: "invalid-id", kind: flow.kind, id: String(flow.id) });
@@ -585,6 +609,16 @@ function admitIdentity(
     });
   }
 
+  // BP-030: an instance written before the config bag existed carries no
+  // `config` at all, and is admitted on the ordinary path rather than the
+  // blueprint branch above — it has an id. The contract every block relies on
+  // is that `ctx.flow.config` is a value and never `undefined`, so the old
+  // shape is normalized here, where the registry already tolerates a missing
+  // `cardinality` for the same reason.
+  const needsConfig = (flow as { config?: unknown }).config === undefined;
+  if (needsConfig) {
+    return { ...flow, cardinality, config: EMPTY_INSTANCE_CONFIG };
+  }
   return declared === cardinality && flow === input ? flow : { ...flow, cardinality };
 }
 

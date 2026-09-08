@@ -103,6 +103,7 @@ function buildFlatResourceMap(
 
 function createTestFlow(options: {
   flow?: FlowInstance;
+  flowConfig?: Record<string, unknown>;
   sessionId?: string;
   sessionResources?: Record<string, unknown>;
   userResources?: Record<string, unknown>;
@@ -110,7 +111,13 @@ function createTestFlow(options: {
   declaredResources?: DeclaredResources;
 }): FlowInstance {
   if (options.flow !== undefined) {
-    return options.flow;
+    // A hand-built instance may predate the config bag, or simply omit it.
+    // Production promises a block reads a value at `ctx.flow.config`, so the
+    // harness supplies the same empty bag the registry does rather than
+    // handing the block under test `undefined` (FIX-1331).
+    return (options.flow as { config?: unknown }).config === undefined
+      ? { ...options.flow, config: Object.freeze({}) }
+      : options.flow;
   }
 
   // FIX-435: every resource is intrinsically scoped; the test harness now
@@ -134,6 +141,10 @@ function createTestFlow(options: {
     cardinality: "singleton",
     requireUser: true,
     requiresOrg: false,
+    // Frozen, like a minted instance's: production promises a block reads a
+    // value here, never `undefined`, and a harness that disagreed with the
+    // runtime it stands in for would hide exactly that.
+    config: Object.freeze({ ...(options.flowConfig ?? {}) }),
     actions: {},
     isolateUserState: false,
     isolateOrgState: false,
@@ -418,6 +429,7 @@ export async function createTestContext<TInput = unknown>(
 ): Promise<TestContextRuntime> {
   const flow = createTestFlow({
     flow: options.flow,
+    flowConfig: options.flowConfig,
     sessionId: options.sessionId,
     sessionResources: options.session?.resources,
     userResources: options.user?.resources,

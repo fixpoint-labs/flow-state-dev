@@ -50,6 +50,7 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 |-------|------|---------|--------------|
 | `kind` | `string` | required | Flow type id. For a singleton flow it is also the instance id and the URL segment `/api/flows/:flowId`. |
 | `cardinality` | `"singleton" \| "collection"` | `"singleton"` | How many instances the definition can register. A singleton's instance id is its `kind` and a custom id is refused. A collection instance must be given an `id`, and only that id addresses it. Definition-only. |
+| `configSchema` | `ZodObject` | — | What a copy of this flow may be created with. The bag passed as `config` is parsed against it and frozen; blocks read it as `ctx.flow.config`. Must be a plain `z.object({ ... })`. Definition-only. |
 | `actions` | `Record<string, ActionConfig>` | required | Caller-addressed entry points (HTTP and, when enabled, MCP). |
 | `requireUser` | `boolean` | `true` | Shorthand for `authentication.requireUser`. If both are set, `authentication.requireUser` wins. |
 | `authentication` | `AuthenticationConfig` | — | Per-flow principal resolution. See [Authentication](#authentication). |
@@ -68,7 +69,47 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 | `isolateUserState` | `boolean` | `false` | Key user state (and the default for user resources) per flow instance — each named copy of a definition gets its own. A resource's own `flowIsolation` always wins. |
 | `isolateOrgState` | `boolean` | `false` | Org-scope equivalent of `isolateUserState`. |
 
-`mcp`, `webhooks`, and `schedules` belong on the definition. Passing them to the factory call (`defineFlow({ ... })({ mcp: ... })`) is rejected.
+`mcp`, `webhooks`, `schedules`, and `configSchema` belong on the definition. Passing them to the factory call (`defineFlow({ ... })({ mcp: ... })`) is rejected.
+
+## Instance settings
+
+The factory call takes `config`, alongside `id` and the per-instance overrides:
+
+```ts
+const engineer = defineFlow({
+  kind: "engineer",
+  cardinality: "collection",
+  configSchema: z.object({ harness: z.string(), model: z.string(), retries: z.number().default(1) }),
+  actions: { /* ... */ },
+});
+
+export const alice = engineer({ id: "eng-alice", config: { harness: "codex", model: "gpt-5.4" } });
+```
+
+What refuses, and when:
+
+| What | When |
+|------|------|
+| A key the schema doesn't declare, at the bag's top level | At the factory call, naming the flow, the instance id and the key |
+| A key the schema doesn't declare, inside a nested object | Refused only if that nested shape is written `.strict()`. Otherwise dropped, unless one of the nested object's own keys is required — then the parse fails on the missing key |
+| A value the schema rejects | At the factory call, with the schema's own message |
+| `config` on a flow with no `configSchema` | At the factory call |
+| A `configSchema` that isn't a plain `z.object({ ... })` — a union, an intersection, or an object wrapped in `.refine()` | Where the flow is defined. A rule spanning two settings belongs in the block that reads them |
+| A `configSchema` carrying a `.catchall(...)` | Where the flow is defined. A catchall accepts and keeps undeclared keys, which is the opposite of what a bag is. Put open-ended data in one declared key whose own schema is a record |
+| A block's `flowConfigSchema` that would *change* the bag — a `.default()`, a `.transform()`, a coercion | At the factory call, naming the block and the keys. A block declares what it needs of the flow, not what it contributes; put the default on the flow's `configSchema` |
+| A required setting, when the call omits `config` | At the factory call. The empty bag is parsed, so defaults apply and required settings do not |
+| A block declaring `flowConfigSchema` on a flow with no `configSchema` at all | Where the flow is defined, naming the flow and the block |
+| A bag that doesn't satisfy a block's `flowConfigSchema` | At the factory call, naming the flow, the instance id and the block |
+
+### The two schemas
+
+`configSchema` on the flow defines the bag: it says what a copy may carry, and it is what parses and
+freezes the values. `flowConfigSchema` on a block says what *that block* needs of any flow it is
+installed on — it types the block's read and makes the flow refuse when it cannot supply it. They
+coexist; neither replaces the other. See [Blocks](/docs/fundamentals/blocks#reading-the-flow-copys-settings).
+
+The given-versus-learned line, and when to reach for a copy rather than a second flow, are in
+[Flows](/docs/fundamentals/flows#copies-that-differ-by-settings).
 
 ## Actions
 

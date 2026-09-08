@@ -6,6 +6,7 @@ import type {
   BlockOutputHint,
   ConnectorFn,
   InferBlockResources,
+  InferFlowConfigFromSchema,
   InferStateFromSchema
 } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
@@ -92,7 +93,22 @@ export interface RouterConfig<
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
   TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
-> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "stateSchema"> {
+  // FIX-1331: what this block requires of the flow that installs it
+  // (`flowConfigSchema`), and the shape `ctx.flow.config` reads. Appended at
+  // the end so existing positional usages stay valid.
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfig extends object = InferFlowConfigFromSchema<TFlowConfigSchema>,
+> extends Omit<
+  BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
+  "execute" | "stateSchema" | "flowConfigSchema"
+> {
+  /**
+   * What this block requires of whatever flow installs it (FIX-1331). Types
+   * `ctx.flow.config` off this schema, and makes the flow refuse when it
+   * cannot supply a bag that satisfies it. Names no flow, so the block stays
+   * portable. See {@link BlockConfig.flowConfigSchema}.
+   */
+  flowConfigSchema?: TFlowConfigSchema;
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
@@ -116,7 +132,7 @@ export interface RouterConfig<
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TOrgState,
       TResources, TSequencerState, unknown, TMergedTargetSchemas,
-      TCapabilities, TSelfState, TParentState
+      TCapabilities, TSelfState, TParentState, TFlowConfig
     >
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
   validateRoute?: (
@@ -126,7 +142,7 @@ export interface RouterConfig<
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TOrgState,
       TResources, TSequencerState, unknown, TMergedTargetSchemas,
-      TCapabilities, TSelfState, TParentState
+      TCapabilities, TSelfState, TParentState, TFlowConfig
     >
   ) => Promise<boolean> | boolean;
   container?: {
@@ -161,13 +177,18 @@ export function router<
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
   TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
+  // FIX-1331: what this block requires of the flow that installs it
+  // (`flowConfigSchema`), and the shape `ctx.flow.config` reads.
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfig extends object = InferFlowConfigFromSchema<TFlowConfigSchema>,
 >(
   config: RouterConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
     TResourceDefs, TTargetSchemas, TUses,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
-    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
+    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState,
+    TFlowConfigSchema, TFlowConfig
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   // A route name must map to exactly ONE distinct definition (FIX-814): the

@@ -25,7 +25,10 @@ export type { StepOptions, StepOutcome } from "./internal/arg-shapes";
  * here; it falls back to `BlockContext`'s untyped default, same as before
  * this addressing mode existed.)
  */
-export type SequencerCtx<TStateSchema extends ZodTypeAny | undefined> =
+export type SequencerCtx<
+  TStateSchema extends ZodTypeAny | undefined,
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+> =
   BlockContext<
     Record<string, unknown>,
     Record<string, unknown>,
@@ -36,7 +39,9 @@ export type SequencerCtx<TStateSchema extends ZodTypeAny | undefined> =
     unknown,
     undefined,
     {},
-    InferStateFromSchema<TStateSchema>
+    InferStateFromSchema<TStateSchema>,
+    Record<string, unknown>,
+    import("../types/block").InferFlowConfigFromSchema<TFlowConfigSchema>
   >;
 
 export type ParallelStep<TCurrent> =
@@ -55,9 +60,10 @@ export type ParallelStepOutput<TStep> = TStep extends { outputSchema: { _output:
 export type BranchStep<
   TInput,
   TStateSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
 > = readonly [
   connector: ConnectorFn<TInput, any>,
-  condition: (input: any, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+  condition: (input: any, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
   block: BlockDefinition<any, any>
 ];
 
@@ -90,11 +96,12 @@ export type InlineConfig<
   TInput,
   TOutputSchema extends ZodTypeAny,
   TStateSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
   TOutput = z.infer<TOutputSchema>,
 > = Omit<FactoryConfig<TFactory>, "inputSchema" | "name" | "outputSchema" | "execute"> & {
   name?: string;
   outputSchema: TOutputSchema;
-  execute?: (input: TInput, ctx: SequencerCtx<TStateSchema>) => TOutput | Promise<TOutput>;
+  execute?: (input: TInput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => TOutput | Promise<TOutput>;
 };
 
 /**
@@ -104,10 +111,11 @@ export type InlineTapConfig<
   TFactory,
   TInput,
   TStateSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
 > = Omit<FactoryConfig<TFactory>, "inputSchema" | "name" | "outputSchema" | "execute"> & {
   name?: string;
   outputSchema?: ZodTypeAny;
-  execute?: (input: TInput, ctx: SequencerCtx<TStateSchema>) => unknown | Promise<unknown>;
+  execute?: (input: TInput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => unknown | Promise<unknown>;
 };
 
 /** Factory function type — matches handler(), generator(), router(). */
@@ -148,141 +156,142 @@ export interface SequencerDefinition<
   TInput,
   TOutput,
   TStateSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
 > extends BlockDefinition<any, any> {
   // step(block) — infer output from block's output schema
   step<TOutSchema extends ZodTypeAny>(
     block: BlockDefinition<any, TOutSchema>
-  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
   // step(block, options) — per-step dispatch options (FIX-1005)
   step<TOutSchema extends ZodTypeAny>(
     block: BlockDefinition<any, TOutSchema>,
     options: StepOptions
-  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
   // step(factory, inlineConfig) — inline block definition
   step<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
     factory: TFactory,
-    config: InlineConfig<TFactory, TOutput, TOutputSchema, TStateSchema>
-  ): SequencerDefinition<TInput, z.infer<TOutputSchema>, TStateSchema>;
+    config: InlineConfig<TFactory, TOutput, TOutputSchema, TStateSchema, TFlowConfigSchema>
+  ): SequencerDefinition<TInput, z.infer<TOutputSchema>, TStateSchema, TFlowConfigSchema>;
   // step(connector, block) — connector transforms, block output inferred
   step<TStepIn, TOutSchema extends ZodTypeAny>(
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>
-  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
   // step(connector, block, options) — both
   step<TStepIn, TOutSchema extends ZodTypeAny>(
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>,
     options: StepOptions
-  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
 
   // stepIf(condition, block) — conditional, union of current | block output
   stepIf<TOutSchema extends ZodTypeAny>(
-    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
     block: BlockDefinition<any, TOutSchema>
-  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
   // stepIf(condition, block, options) — per-step dispatch options (FIX-1005)
   stepIf<TOutSchema extends ZodTypeAny>(
-    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
     block: BlockDefinition<any, TOutSchema>,
     options: StepOptions
-  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
   // stepIf(condition, factory, inlineConfig) — conditional inline
   stepIf<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
-    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
     factory: TFactory,
-    config: InlineConfig<TFactory, TOutput, TOutputSchema, TStateSchema>
-  ): SequencerDefinition<TInput, TOutput | z.infer<TOutputSchema>, TStateSchema>;
+    config: InlineConfig<TFactory, TOutput, TOutputSchema, TStateSchema, TFlowConfigSchema>
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutputSchema>, TStateSchema, TFlowConfigSchema>;
   // stepIf(condition, connector, block) — conditional with connector
   stepIf<TStepIn, TOutSchema extends ZodTypeAny>(
-    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>
-  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
   // stepIf(condition, connector, block, options) — both
   stepIf<TStepIn, TOutSchema extends ZodTypeAny>(
-    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>,
     options: StepOptions
-  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
 
   map<TNext>(
-    mapper: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => TNext | Promise<TNext>
-  ): SequencerDefinition<TInput, TNext, TStateSchema>;
+    mapper: (input: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => TNext | Promise<TNext>
+  ): SequencerDefinition<TInput, TNext, TStateSchema, TFlowConfigSchema>;
 
   parallel<TSteps extends Record<string, ParallelStep<TOutput>>>(
     steps: TSteps,
     options?: { maxConcurrency?: number }
-  ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }, TStateSchema>;
+  ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }, TStateSchema, TFlowConfigSchema>;
 
   // forEach(block) — infer element output from block's output schema
   forEach<TOutSchema extends ZodTypeAny>(
     blockOrFactory:
       | BlockDefinition<any, TOutSchema>
-      | ((item: TOutput extends readonly (infer TItem)[] ? TItem : unknown, index: number, ctx: SequencerCtx<TStateSchema>) => BlockDefinition<any, TOutSchema>),
+      | ((item: TOutput extends readonly (infer TItem)[] ? TItem : unknown, index: number, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => BlockDefinition<any, TOutSchema>),
     options?: IterationOptions
-  ): SequencerDefinition<TInput, z.infer<TOutSchema>[], TStateSchema>;
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>[], TStateSchema, TFlowConfigSchema>;
   // forEach(connector, block) — connector provides items, block output inferred
   forEach<TStepIn, TOutSchema extends ZodTypeAny>(
     connector: ConnectorFn<TOutput, TStepIn[]>,
     blockOrFactory:
       | BlockDefinition<any, TOutSchema>
-      | ((item: TStepIn, index: number, ctx: SequencerCtx<TStateSchema>) => BlockDefinition<any, TOutSchema>),
+      | ((item: TStepIn, index: number, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => BlockDefinition<any, TOutSchema>),
     options?: IterationOptions
-  ): SequencerDefinition<TInput, z.infer<TOutSchema>[], TStateSchema>;
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>[], TStateSchema, TFlowConfigSchema>;
 
   // forEachSideChain(block) — fire-and-forget fan-out, dispatches each iteration as side-chain work
   forEachSideChain(
     blockOrFactory:
       | BlockDefinition<any, any>
-      | ((item: TOutput extends readonly (infer TItem)[] ? TItem : unknown, index: number, ctx: SequencerCtx<TStateSchema>) => BlockDefinition<any, any>),
+      | ((item: TOutput extends readonly (infer TItem)[] ? TItem : unknown, index: number, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => BlockDefinition<any, any>),
     options?: SideChainIterationOptions
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
   // forEachSideChain(connector, block) — connector provides items, each dispatched as side-chain work
   forEachSideChain<TStepIn>(
     connector: ConnectorFn<TOutput, TStepIn[]>,
     blockOrFactory:
       | BlockDefinition<any, any>
-      | ((item: TStepIn, index: number, ctx: SequencerCtx<TStateSchema>) => BlockDefinition<any, any>),
+      | ((item: TStepIn, index: number, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => BlockDefinition<any, any>),
     options?: SideChainIterationOptions
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
 
   // doUntil — loop block output inferred from schema
   doUntil<TOutSchema extends ZodTypeAny>(
-    condition: (value: z.infer<TOutSchema> | TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    condition: (value: z.infer<TOutSchema> | TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
     block: BlockDefinition<any, TOutSchema>
-  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
   doUntil<TStepIn, TOutSchema extends ZodTypeAny>(
-    condition: (value: z.infer<TOutSchema> | TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    condition: (value: z.infer<TOutSchema> | TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>
-  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
 
   // doWhile — loop block output inferred from schema
   doWhile<TOutSchema extends ZodTypeAny>(
-    condition: (value: z.infer<TOutSchema> | TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    condition: (value: z.infer<TOutSchema> | TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
     block: BlockDefinition<any, TOutSchema>
-  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
   doWhile<TStepIn, TOutSchema extends ZodTypeAny>(
-    condition: (value: z.infer<TOutSchema> | TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    condition: (value: z.infer<TOutSchema> | TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>
-  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema, TFlowConfigSchema>;
 
   loopBack(
     targetStepName: string,
     options: {
-      when?: (value: unknown, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>;
+      when?: (value: unknown, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>;
       maxIterations: number;
     }
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
 
-  sideChain(block: BlockDefinition<any, any>, options?: { name?: string }): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  sideChain(block: BlockDefinition<any, any>, options?: { name?: string }): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
   sideChain<TStepIn>(
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, any>,
     options?: { name?: string }
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
 
   /**
    * Conditional variant of `.sideChain()` — dispatches a fire-and-forget sidechain
@@ -297,72 +306,72 @@ export interface SequencerDefinition<
   sideChainIf(
     condition:
       | boolean
-      | ((value: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>),
+      | ((value: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>),
     block: BlockDefinition<any, any>,
     options?: { name?: string }
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
   sideChainIf<TStepIn>(
     condition:
       | boolean
-      | ((value: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>),
+      | ((value: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>),
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, any>,
     options?: { name?: string }
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
 
   waitForSideChain(options?: {
     failOnError?: boolean;
     timeoutMs?: number;
-  }): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  }): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
 
   tap(
     blockOrFn:
       | BlockDefinition<any, any>
-      | ((value: TOutput, ctx: SequencerCtx<TStateSchema>) => void | Promise<void>)
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+      | ((value: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => void | Promise<void>)
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
   tap<TFactory extends InlineBlockFactory>(
     factory: TFactory,
-    config: InlineTapConfig<TFactory, TOutput, TStateSchema>
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+    config: InlineTapConfig<TFactory, TOutput, TStateSchema, TFlowConfigSchema>
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
   tap<TStepIn>(
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, any>
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
 
   tapIf(
-    condition: (value: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    condition: (value: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
     blockOrFn:
       | BlockDefinition<any, any>
-      | ((value: TOutput, ctx: SequencerCtx<TStateSchema>) => void | Promise<void>)
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+      | ((value: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => void | Promise<void>)
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
   tapIf<TStepIn>(
-    condition: (value: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    condition: (value: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, any>
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
 
-  rescue(handlers: RescueHandlerSpec[]): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  rescue(handlers: RescueHandlerSpec[]): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
 
-  branch<TBranches extends Record<string, BranchStep<TOutput, TStateSchema>>>(
+  branch<TBranches extends Record<string, BranchStep<TOutput, TStateSchema, TFlowConfigSchema>>>(
     branches: TBranches
-  ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>, TStateSchema>;
+  ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>, TStateSchema, TFlowConfigSchema>;
 
   /** Run an array of blocks concurrently with the same input, collect all results as an ordered array. Like Promise.all. */
   stepAll<TSteps extends Array<ParallelStep<TOutput>>>(
     steps: [...TSteps],
     options?: { maxConcurrency?: number }
-  ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }, TStateSchema>;
+  ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }, TStateSchema, TFlowConfigSchema>;
 
   /** Try blocks sequentially in order. Return the first successful result; skip remaining blocks. Throws AggregateError if all fail. */
   stepAny(
     blocks: BlockDefinition<any, any>[]
-  ): SequencerDefinition<TInput, unknown, TStateSchema>;
+  ): SequencerDefinition<TInput, unknown, TStateSchema, TFlowConfigSchema>;
 
   /** Run blocks concurrently, return the first successful result, abort the rest. Throws AggregateError if all fail. */
   race(
     blocks: BlockDefinition<any, any>[],
     options?: { maxConcurrency?: number }
-  ): SequencerDefinition<TInput, unknown, TStateSchema>;
+  ): SequencerDefinition<TInput, unknown, TStateSchema, TFlowConfigSchema>;
 
   /**
    * Suspend the chain until `predicate` over the request's item stream
@@ -399,12 +408,12 @@ export interface SequencerDefinition<
         kind: "added" | "updated" | "done"
       ) => boolean;
     }
-  ): SequencerDefinition<TInput, { timedOut: boolean }, TStateSchema>;
+  ): SequencerDefinition<TInput, { timedOut: boolean }, TStateSchema, TFlowConfigSchema>;
 
   /** Exit the sequencer chain early if condition returns true. Current value becomes the sequencer output. */
   exitIf(
-    condition: (value: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+    condition: (value: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
 
   /**
    * Throw an error if `condition` returns true — a guard primitive for
@@ -414,9 +423,9 @@ export interface SequencerDefinition<
    * when a typed early-stop pattern is wanted.
    */
   throwIf(
-    condition: (value: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
-    error: Error | ((value: TOutput, ctx: SequencerCtx<TStateSchema>) => Error | Promise<Error>)
-  ): SequencerDefinition<TInput, TOutput, TStateSchema>;
+    condition: (value: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => boolean | Promise<boolean>,
+    error: Error | ((value: TOutput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => Error | Promise<Error>)
+  ): SequencerDefinition<TInput, TOutput, TStateSchema, TFlowConfigSchema>;
 
   /**
    * Build-time conformance check between the sequencer's declared `outputSchema`
@@ -437,15 +446,23 @@ export interface SequencerDefinition<
   // connectInput — native override returns SequencerDefinition (not a wrapper block)
   connectInput<TFrom>(
     mapper: ConnectorFn<TFrom, TInput>
-  ): SequencerDefinition<TFrom, TOutput, TStateSchema>;
+  ): SequencerDefinition<TFrom, TOutput, TStateSchema, TFlowConfigSchema>;
 }
 
 export type SequencerConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TInput = z.infer<TInputSchema>,
   TStateSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
 > = {
   name: string;
+  /**
+   * What this sequencer requires of whatever flow installs it (FIX-1331).
+   * Types `ctx.flow.config` in every DSL callback — connectors, taps,
+   * conditions — and makes the flow refuse when it cannot supply a bag that
+   * satisfies it. See {@link BlockConfig.flowConfigSchema}.
+   */
+  flowConfigSchema?: TFlowConfigSchema;
   description?: string;
   transient?: boolean;
   /**
@@ -473,7 +490,7 @@ export type SequencerConfig<
    * when the sequencer enters execution; a function receives `(input, ctx)`
    * and its return value is emitted.
    */
-  activeStatusMessage?: string | ((input: TInput, ctx: SequencerCtx<TStateSchema>) => string);
+  activeStatusMessage?: string | ((input: TInput, ctx: SequencerCtx<TStateSchema, TFlowConfigSchema>) => string);
   container?: {
     component?: string;
     label?: string | ((input: TInput) => string);

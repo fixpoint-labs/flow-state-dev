@@ -15,7 +15,12 @@ export type FlowIdentityConflictReason =
   /** The instance carries a cardinality that is neither policy. */
   | "invalid-cardinality"
   /** The instance has no usable id. */
-  | "invalid-id";
+  | "invalid-id"
+  /**
+   * A flow DEFINITION was handed over in place of an instance, and it cannot
+   * run without a config bag nobody can supply to a blueprint.
+   */
+  | "unminted-config";
 
 export interface FlowIdentityConflictDetails {
   reason: FlowIdentityConflictReason;
@@ -74,6 +79,11 @@ export class FlowIdentityConflictError extends Error {
           `expected "singleton" or "collection".`;
       case "invalid-id":
         return `Flow "${d.kind}" has no usable instance id; an id must be a non-empty string.`;
+      case "unminted-config":
+        return `Flow "${d.kind}" was registered as a definition rather than an instance, but it ` +
+          `cannot run without a config bag: its configSchema is not satisfied by an empty one, or a ` +
+          `block it reaches requires settings the defaults do not supply. Mint it first — ` +
+          `register ${d.kind}({ config: { ... } }), not the defineFlow(...) result.`;
     }
   }
 }

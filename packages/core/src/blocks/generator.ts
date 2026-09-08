@@ -13,6 +13,7 @@ import type {
   BlockDefinition,
   ConnectorFn,
   InferBlockResources,
+  InferFlowConfigFromSchema,
   InferStateFromSchema,
   RetryPolicy
 } from "../types/block";
@@ -61,6 +62,11 @@ import type {
 
 import { resolveActivePresets, flattenCapabilities, getBaseCapability } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
+import {
+  describeFlowConfigMismatch,
+  findFlowConfigMismatch,
+  type FlowConfigRequirement,
+} from "../helpers/flow-config";
 import { sanitizeToolName, computeToolAliases, assertUniqueToolNames } from "../helpers/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
@@ -421,13 +427,29 @@ export interface GeneratorConfig<
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
   TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
+  // FIX-1331: what this block requires of the flow that installs it
+  // (`flowConfigSchema`), and the shape `ctx.flow.config` reads. Appended at
+  // the end so existing positional usages stay valid.
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfig extends object = InferFlowConfigFromSchema<TFlowConfigSchema>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
     TResources, TSequencerState, unknown, TMergedTargetSchemas,
-    TCapabilities, TSelfState, TParentState
+    TCapabilities, TSelfState, TParentState, TFlowConfig
   >,
-> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "onCompleted" | "stateSchema"> {
+> extends Omit<
+  BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
+  "execute" | "onCompleted" | "stateSchema" | "flowConfigSchema"
+> {
+  /**
+   * What this block requires of whatever flow installs it (FIX-1331). Types
+   * `ctx.flow.config` off this schema, and makes the flow refuse when it
+   * cannot supply a bag that satisfies it. Names no flow, so the block stays
+   * portable. See {@link BlockConfig.flowConfigSchema}.
+   */
+  flowConfigSchema?: TFlowConfigSchema;
+
   onCompleted?: (
     output: TOutput,
     ctx: TCtx,
@@ -704,7 +726,43 @@ async function resolveTools<TInput, TCtx extends BlockContext>(
   }
 
   const resolved = typeof tools === "function" ? await tools(input, ctx) : tools;
-  return Array.isArray(resolved) ? resolved : [];
+  const blocks = Array.isArray(resolved) ? resolved : [];
+  assertToolsSatisfyFlowConfig(blocks, ctx);
+  return blocks;
+}
+
+/**
+ * Refuse a resolved tool whose `flowConfigSchema` the running copy's bag does
+ * not satisfy (FIX-1331).
+ *
+ * `defineFlow`'s walk takes a generator's STATIC `tools` array, so a tool it
+ * declares is checked at the mint and this is a no-op for it. A
+ * function-valued slot resolves per call against runtime values that do not
+ * exist at definition time, so its blocks are invisible to that walk — and
+ * without this they would run against a bag they declared they cannot accept,
+ * which is the same fail-quiet the mint-time check exists to remove.
+ *
+ * Here rather than at tool INVOCATION because the model should never be
+ * offered a tool that cannot run: this fires before the tool list reaches it.
+ * A tool declaring nothing costs one property read.
+ */
+function assertToolsSatisfyFlowConfig(blocks: readonly GeneratorTool[], ctx: BlockContext): void {
+  const requirements: FlowConfigRequirement[] = [];
+  for (const block of blocks) {
+    const schema = (block.config as { flowConfigSchema?: ZodTypeAny } | undefined)?.flowConfigSchema;
+    if (schema !== undefined) requirements.push({ blockName: block.name, schema });
+  }
+  if (requirements.length === 0) return;
+
+  // A hand-built context may carry no flow at all; an unconfigured flow reads
+  // the empty bag, which is what a mint would have checked against.
+  const bag = (ctx.flow?.config ?? {}) as Record<string, unknown>;
+  const mismatch = findFlowConfigMismatch(bag, requirements);
+  if (mismatch !== undefined) {
+    throw new Error(
+      describeFlowConfigMismatch("A generator resolved a tool whose flow", mismatch)
+    );
+  }
 }
 
 const AI_SDK_SCHEMA_SYMBOL = Symbol.for("vercel.ai.schema");
@@ -2550,10 +2608,14 @@ export function generator<
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
   TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
+  // FIX-1331: what this block requires of the flow that installs it
+  // (`flowConfigSchema`), and the shape `ctx.flow.config` reads.
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfig extends object = InferFlowConfigFromSchema<TFlowConfigSchema>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
     TResources, TSequencerState, unknown, TMergedTargetSchemas,
-    TCapabilities, TSelfState, TParentState
+    TCapabilities, TSelfState, TParentState, TFlowConfig
   >,
 >(
   config: GeneratorConfig<
@@ -2561,7 +2623,8 @@ export function generator<
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
     TResourceDefs, TTargetSchemas, TUses,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
-    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState, TCtx
+    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState,
+    TFlowConfigSchema, TFlowConfig, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses, stateSchema: effectiveStateSchema } = resolveCapabilities(config, "generator");

@@ -5,6 +5,7 @@ import type {
   BlockDefinition,
   ConnectorFn,
   InferBlockResources,
+  InferFlowConfigFromSchema,
   InferStateFromSchema
 } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
@@ -63,7 +64,22 @@ export interface HandlerConfig<
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
   TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
-> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "stateSchema"> {
+  // FIX-1331: what this block requires of the flow that installs it
+  // (`flowConfigSchema`), and the shape `ctx.flow.config` reads. Appended at
+  // the end so existing positional usages stay valid.
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfig extends object = InferFlowConfigFromSchema<TFlowConfigSchema>,
+> extends Omit<
+  BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
+  "execute" | "stateSchema" | "flowConfigSchema"
+> {
+  /**
+   * What this block requires of whatever flow installs it (FIX-1331). Types
+   * `ctx.flow.config` off this schema, and makes the flow refuse when it
+   * cannot supply a bag that satisfies it. Names no flow, so the block stays
+   * portable. See {@link BlockConfig.flowConfigSchema}.
+   */
+  flowConfigSchema?: TFlowConfigSchema;
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
@@ -92,7 +108,7 @@ export interface HandlerConfig<
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TOrgState,
       TResources, TSequencerState, TParentInput, TMergedTargetSchemas,
-      TCapabilities, TSelfState, TParentState
+      TCapabilities, TSelfState, TParentState, TFlowConfig
     >
   ) => Promise<TOutput> | TOutput;
 }
@@ -124,13 +140,19 @@ export function handler<
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
   TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
+  // FIX-1331: what this block requires of the flow that installs it
+  // (`flowConfigSchema`), and the shape `ctx.flow.config` reads. Appended at
+  // the end so existing positional usages stay valid.
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfig extends object = InferFlowConfigFromSchema<TFlowConfigSchema>,
 >(
   config: HandlerConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
     TResourceDefs, TTargetSchemas, TUses,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
-    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
+    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState,
+    TFlowConfigSchema, TFlowConfig
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, stateSchema } = resolveCapabilities(config, "handler");
@@ -250,6 +272,8 @@ handler.withDefaults = function withDefaults<
     TParentStateSchema extends ZodTypeAny | undefined = undefined,
     TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
     TParentState extends object = InferStateFromSchema<TParentStateSchema>,
+    TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+    TFlowConfig extends object = InferFlowConfigFromSchema<TFlowConfigSchema>,
   >(
     config: Omit<
       HandlerConfig<
@@ -257,7 +281,8 @@ handler.withDefaults = function withDefaults<
         TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
         TResourceDefs, TTargetSchemas, TUses,
         TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
-        TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
+        TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState,
+        TFlowConfigSchema, TFlowConfig
       >,
       keyof typeof defaults
     > & Partial<Pick<
@@ -266,7 +291,8 @@ handler.withDefaults = function withDefaults<
         TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
         TResourceDefs, TTargetSchemas, TUses,
         TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
-        TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
+        TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState,
+        TFlowConfigSchema, TFlowConfig
       >,
       keyof typeof defaults & keyof HandlerConfig
     >>,
@@ -279,7 +305,8 @@ handler.withDefaults = function withDefaults<
       TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
       TResourceDefs, TTargetSchemas, TUses,
       TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
-      TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
+      TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState,
+      TFlowConfigSchema, TFlowConfig
     >;
     return handler(merged);
   };

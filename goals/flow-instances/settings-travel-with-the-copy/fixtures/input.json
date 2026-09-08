@@ -1,0 +1,18 @@
+{
+  "userId": "u_seats",
+  "note": "ship it",
+  "east": {
+    "id": "seat-east",
+    "config": { "harness": "claude-code", "model": "opus", "retries": 4, "apiKey": "sk-east-never-published" }
+  },
+  "west": {
+    "id": "seat-west",
+    "config": { "harness": "codex", "model": "gpt-5.4", "retries": 2, "apiKey": "sk-west-never-published" }
+  },
+  "defaulted": {
+    "id": "seat-defaulted",
+    "config": { "harness": "cursor", "model": "composer", "apiKey": "sk-defaulted-never-published" },
+    "expectedRetries": 1
+  },
+  "typo": { "id": "seat-typo", "badKey": "harnes" }
+}
