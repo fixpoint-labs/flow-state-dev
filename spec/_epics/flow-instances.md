@@ -457,9 +457,13 @@ against #1640 and [#1650](https://github.com/fixpoint-labs/flow-state-dev/pull/1
 against #1649 — had their subtractions folded into the target PR and close
 unmerged once it lands.
 Separate acceptance and goal accountability remain for all five issues.
-FIX-1321 and FIX-1322 share only the future atomic implementation landing;
-each has its own spec gate (FIX-1321 satisfied, FIX-1322 pending), followed
-by the separately approved cross-spec pass before implementation.
+FIX-1321 and FIX-1322 share only the atomic implementation landing, now built
+in #1640; each had its own spec gate — all four floor specs are approved and
+their spec PRs closed unmerged — followed by the separately approved
+cross-spec pass before implementation.
+The approved this-cycle floor Proof is FIX-1321..1324. FIX-1331 is indexed
+in that table because it belongs to the epic's sequence, not because the
+owner has added it to the Proof set; its own gate is still open.
 FIX-1321's approved snapshot predates the Devtool scope expansion; its
 historical deferral is superseded by this current epic and Linear FIX-1321
 comment `340d9e06-f497-49a0-96fd-ea6df0d791e8`, without rewriting that snapshot.
@@ -471,8 +475,9 @@ refuses as `migration-required` until an operator attributes it; the procedure
 lives in `apps/docs/docs/persistence/overview.md`, written by #1640 and
 extended in place by #1646. One procedure, one named stop condition.
 
-**Current Linear edges (2026-09-07):** FIX-1323 is blocked by FIX-1321.
+**Current Linear edges (2026-09-08):** FIX-1323 is blocked by FIX-1321.
 FIX-1322 is related to FIX-1321 and FIX-1323, with no hard blocked-by edge.
+FIX-1331 is blocked by FIX-1321 and FIX-1322; FIX-1325 by FIX-1322.
 These recorded edges express neither a registry-first merge nor separate
 implementation ownership. Theme 8 governs the atomic FIX-1321 + FIX-1322
 landing and FIX-1323's required identity/owner prerequisites. The issue
