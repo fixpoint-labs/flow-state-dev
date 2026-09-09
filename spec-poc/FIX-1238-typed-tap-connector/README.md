@@ -30,6 +30,7 @@ factory, then the completion tap — and inserts things between the `forEach` an
 | 48 | nothing (today's wiring) | — | no error (no false positive) |
 | 72 | `.tap(block)` | **no** — `tap` returns `{ value }` unchanged | no error (correct) |
 | 53 | `.step(block)` with a declared output schema | yes | **yes** |
+| 63 | the same `.step(block)`, but on a `forEach` over a plain **handler** — element type preserved, not erased (PROBE F) | yes | **yes** |
 | 58 | `.step(block)` with no output schema | yes | **no** |
 | 78 | `.stepIf(cond, block)` | yes, on the config where `cond` holds | **yes** |
 
@@ -41,6 +42,12 @@ Two type facts underneath it:
   cannot assert the *element* shape — only that the flowing value is not some other type.
 - **Line 45 — `forEach` over a plain *handler* yields `CheckBoardOutput[]`.** The erasure is
   specific to the sequencer factory, which is exactly the drain's shape.
+
+Line 63 is the control for that pair: it re-runs line 53's insert on the handler-`forEach`, where
+the element type survives. The guard catches the insert either way, which is what makes the
+erasure a limit on *how much* the connector can assert (the element shape) rather than on
+*whether* it catches an inserted step at all. The drain is the sequencer shape, so rows 48–78
+above are the ones the spec argues from.
 
 The consequence for the spec: the connector is a real but **partial** guard. It closes the one
 hole the drain tests cannot cover (line 78 — a conditional insert on a config the tests don't
