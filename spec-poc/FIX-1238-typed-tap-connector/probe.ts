@@ -78,3 +78,35 @@ const stepIfInserted = afterForEachSeq
   .tap((exits: readonly CheckBoardOutput[]) => exits, meta);
 
 export { tapInserted, stepIfInserted };
+
+// PROBE I: a `.stepIf` inserted whose block declares NO output schema —
+// conditional AND schema-less, the quadrant PROBE E and PROBE H each cover
+// only half of. NO ERROR: the guard is blind here.
+const stepIfUnknownInserted = afterForEachSeq
+  .stepIf(() => true, unknownOut)
+  .tap((exits: readonly CheckBoardOutput[]) => exits, meta);
+
+export { stepIfUnknownInserted };
+
+// Why. A `stepIf` widens TOutput to `pre | stepOutput`. When the step DECLARES
+// an output the union is inspectable and the connector rejects it (this line
+// errors, printing `any[] | { totallyDifferent: string; }`). When it declares
+// nothing the step's output is `any`, `any` absorbs the union, and the result
+// is plain `any` — so the line below it does NOT error, and that silence is
+// the finding: conditionality is irrelevant, declaring an output is what
+// decides whether the guard can see the insert.
+const revealStepIfTyped: string = reveal(afterForEachSeq.stepIf(() => true, unrelated));
+const revealStepIfUnknown: string = reveal(afterForEachSeq.stepIf(() => true, unknownOut));
+export { revealStepIfTyped, revealStepIfUnknown };
+
+// PROBE J: can a regression test be COUPLED to the connector rather than to a
+// private copy of it? Only if the connector is a named binding the test can
+// import. A typed one rejects a bad input (the directive below is used, so no
+// error); a weakened `(exits: any)` one accepts it, leaving the directive
+// unused — TS2578. That failure is what makes the erosion test real.
+export const exitsConnectorTyped = (exits: readonly CheckBoardOutput[]) => exits;
+export const exitsConnectorWeak = (exits: any) => exits;
+// @ts-expect-error - a typed connector must reject a non-exits input
+exitsConnectorTyped({ totallyDifferent: "x" });
+// @ts-expect-error - a weakened connector accepts it, so this goes unused
+exitsConnectorWeak({ totallyDifferent: "x" });
