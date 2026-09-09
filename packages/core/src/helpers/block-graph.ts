@@ -1,16 +1,13 @@
 /**
  * Walking a block graph — every block reachable from a set of roots.
  *
- * Two callers on opposite sides of an import edge need the SAME walk.
- * `defineFlow` walks the action roots to resolve dispatch targets and to
- * collect the flow-config requirements a mint must check; `generator` walks
- * the blocks a function-valued `tools` slot returns, which `defineFlow`'s walk
- * cannot see. `defineFlow` already imports `generator`, so the walk cannot
- * live in either.
- *
- * It lives here rather than being written twice on purpose: a check that
- * traverses one level shallower than the walk it mirrors is invisible — it
- * type-checks, it runs, and it silently passes the case it was meant to catch.
+ * Its own module because its callers have nothing else in common: `defineFlow`
+ * resolves dispatch targets from this walk (and collects flow-config
+ * requirements off the same pass), `generator` walks what a function-valued
+ * `tools` slot returned, and `defineFlow` imports `generator`, so neither can
+ * host it. Written once rather than per caller because a check that traverses
+ * one level shallower than the walk it mirrors is invisible: it type-checks, it
+ * runs, and it silently passes the case it was written to catch (FIX-1336).
  */
 import type { BlockDefinition } from "../types/block";
 

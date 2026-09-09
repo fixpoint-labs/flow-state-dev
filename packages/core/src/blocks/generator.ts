@@ -749,15 +749,8 @@ async function resolveTools<TInput, TCtx extends BlockContext>(
  */
 function assertToolsSatisfyFlowConfig(blocks: readonly GeneratorTool[], ctx: BlockContext): void {
   const requirements: FlowConfigRequirement[] = [];
-  // The whole graph under each resolved tool, not just the tool itself: a tool
-  // is often a sequencer or router whose requirement is declared by a block
-  // inside it, and `walkBlockGraph` is the same walk the mint uses over static
-  // tools. Checking only the top level would leave the dynamic path one level
-  // shallower than the static one it mirrors.
-  //
-  // Deduped by schema REFERENCE, as the mint's `collectRequiredFlowConfig`
-  // dedupes: one shared schema across ten tools is one parse, and the two paths
-  // report the same block when they refuse.
+  // The whole graph under each tool, and deduped by schema reference — both as
+  // the mint's `collectRequiredFlowConfig` does, so the two paths agree.
   const seen = new Set<ZodTypeAny>();
   for (const block of walkBlockGraph(blocks as readonly BlockDefinition[])) {
     const schema = (block.config as { flowConfigSchema?: ZodTypeAny } | undefined)?.flowConfigSchema;
