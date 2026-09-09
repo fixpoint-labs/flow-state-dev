@@ -642,7 +642,7 @@ That is fine when the rewrite settles. Filling a `.default()`, stripping an unde
 
 A `.transform()` that returns something different on each pass is the case that does not settle. Under `z.object({ n: z.number().transform((v) => v + 1) })` the stored `n` climbs on every write even when the caller never touches it, and on a single resource the value you read back still looks plausible because the same shift re-applies on read.
 
-Writes through such a schema are now refused rather than allowed to corrupt the row:
+A write through such a schema is refused:
 
 ```
 Resource "counter" write failed stateSchema validation at "n": the schema does not
@@ -653,13 +653,13 @@ that same value.
 
 A schema that collapses its own output — one whose second parse returns `null` or another non-object rather than a different object — is refused the same way, and says so instead of naming a field that did not move.
 
-Every resource write runs the check, because they all share one parse path: `setState` / `patchState` / `updateState`, the same ops on collection instances, `collection.create()` and `upsert`, and the client create route `POST /sessions/:id/resources/:ref`. That route carries no initial state, so it seeds the row from the schema's parse of `{}` — and a schema that cannot produce a valid, stable object from `{}` now gets `400` rather than a `201` over a row every later write would reject. A required field with no `.default()` is the usual cause; give it one.
+Every resource write runs the check, because they all share one parse path: `setState` / `patchState` / `updateState` / `incState` / `pushState` / `getOrPatchState`, the same ops on collection instances, `collection.create()` and `upsert`, and the client create route `POST /sessions/:id/resources/:ref`. That route carries no initial state, so it seeds the row from the schema's parse of `{}`, and a schema that cannot produce a valid, settled object from `{}` answers `400` rather than creating a row every later write would reject. A required field with no `.default()` is the usual cause; give it one.
 
 A stored row that does not satisfy the check is read normally either way, but only one of the two kinds heals on its own:
 
 | The row's schema | What happens to the row |
 |---|---|
-| Parse settles | Read normally, and its next successful write stores a stable value |
+| Parse settles | Read normally, and its next successful write stores a settled value |
 | Parse does not settle | There is no next successful write — every mutation through that schema is refused, so nothing changes until the schema is fixed |
 
 For the second kind, make the parse idempotent first; the next write after that settles the row. A value that already drifted keeps what it drifted to until a write corrects it. If you need a derived value, compute it where you read the state rather than inside the state schema.

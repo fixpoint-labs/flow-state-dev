@@ -90,7 +90,7 @@ Deleting a resource on any store leaves a small marker row behind instead of rem
 
 Markers are reclaimed at exactly one moment: when a session record is **created** under a session id, the runtime clears that id's markers immediately before it writes the record. Reusing a session id therefore gives you writable resources again, rather than a session whose static resources are permanently refused. Nothing happens at delete time — while a session is merely gone, its markers are still doing their job.
 
-Reclamation carries two limits. A reclaimed key's version restarts at `1`, so the pre-delete guarantee above does not carry across a reused id: a worker still holding a version from the old session can match a row in the new one. And the reclamation is not fenced against a second creator racing it for the same id — the loser of that race can clear a marker inside the session that won, which lets the next ordinary write bring a deleted resource back. Both need a per-session generation to close, and neither is reachable without deliberately reusing a session id.
+A reclaimed key's version restarts at `1`, so the pre-delete guarantee above does not carry across a reused id: a worker still holding a version from the old session can match a row in the new one. And the reclamation is not fenced against a second creator racing it for the same id — the loser of that race can clear a marker inside the session that won, which lets the next ordinary write bring a deleted resource back. Neither is reachable without deliberately reusing a session id.
 
 ## What gets persisted
 

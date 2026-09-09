@@ -6,7 +6,9 @@ sidebar_position: 1
 
 Every scope's state mutators (`patchState`, `setState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) route through one of three paths inside the runtime. Which path you get depends on whether the scope writes to a store at all, and on whether anything outside this Node.js process can advance the version underneath you.
 
-This page is the machinery. If what you want is which mutator to reach for and what two concurrent writers end up with, that's [State Operations](/docs/fundamentals/state-operations#cas-semantics).
+Resource state is the other subject here. It lives in a separate store, keyed per resource, and carries its own version check along with a rule about what a `stateSchema` may do to a value on the way through.
+
+Both halves are machinery. If what you want is which mutator to reach for and what two concurrent writers end up with, that's [State Operations](/docs/fundamentals/state-operations#cas-semantics).
 
 ## Three write paths
 
@@ -64,7 +66,7 @@ The four scopes above hold one state record each. **Resource state** — the sta
 
 Resource state is versioned: every stored resource carries a version that increases by one on each committed write and is never reused. A write lands only if the version this context read is still current; otherwise it is refused and the mutator re-runs. The refusal reports the version that is actually current. The store is what compares, so the refusal reaches exactly as far as the store does: the in-memory, SQLite and Postgres stores compare inside the store, and the filesystem store compares under a guard held on the store instance.
 
-Every resource **state** mutator takes that check: `patchState`, `setState`, `updateState`, `incState`, `pushState`, and the same five on a collection instance. `incState` and `pushState` share their names with a scope bag but not that bag's exemption — on a resource the delta is re-applied against the value that won rather than sent to the store unversioned.
+Every resource **state** mutator takes that check: `patchState`, `setState`, `updateState`, `incState`, `pushState`, `getOrPatchState`, and the same six on a collection instance. `getOrPatchState` writes only on a miss, and that write takes the check like any other. `incState` and `pushState` share their names with a scope bag but not that bag's exemption — on a resource the delta is re-applied against the value that won rather than sent to the store unversioned.
 
 `writeContent` does not take it. A content write carries no version, so the store overwrites whatever body the key holds:
 
@@ -87,7 +89,7 @@ await ctx.resources.task.patchState({ note: "in progress" });
 
 You never write a version yourself.
 
-Two behaviours are worth expecting:
+Expect these refusals:
 
 ```ts
 await ctx.resources.task.patchState({ note: "x" });
@@ -116,7 +118,7 @@ On the filesystem store the comparison is held per key on the store instance. Th
 
 ## Schema-invalid resource writes {#schema-invalid-resource-writes}
 
-After `patchState`, `setState`, `updateState`, `incState`, or `pushState` returns on a `ResourceRef`, the stored state is a JSON object that satisfies that resource's `stateSchema`. Collection-instance refs from `get` or `create` expose the same five methods and the same contract.
+After `patchState`, `setState`, `updateState`, `incState`, `pushState`, or `getOrPatchState` returns on a `ResourceRef`, the stored state is a JSON object that satisfies that resource's `stateSchema`. Collection-instance refs from `get` or `create` expose the same six methods and the same contract.
 
 ```ts
 import { defineResource, handler, FlowError } from "@flow-state-dev/core";
@@ -203,9 +205,9 @@ that same value.
 
 A schema that collapses its own output — one whose second parse returns `null` or another non-object — is refused the same way, and says so rather than naming a field that did not move.
 
-Every resource write clears this bar: `setState` / `patchState` / `updateState` on singles and collection instances, `collection.create()` and `upsert`, and the client create route.
+Every resource write clears this bar: the six mutators above on singles and collection instances, `collection.create()` and `upsert`, and the client create route.
 
-Creates clear it on the value they seed. The client route carries no initial state, so it seeds the row from the schema's parse of `{}`; a schema that cannot produce a valid, settled object from `{}` answers [`400`](/docs/resources/client-access#what-the-write-endpoints-refuse) rather than creating a row every later write would reject. A required field with no `.default()` is the usual cause; give it one. `collection.create(key, seed)` is refused on the same grounds when the schema parses `seed` away to `null` and cannot produce a settled object from `{}`, which is the answer a bare `collection.create(key)` gives.
+Creates clear it on the value they seed. The client route carries no initial state, so it seeds the row from the schema's parse of `{}`; a schema that cannot produce a valid, settled object from `{}` answers [`400`](/docs/resources/client-access#what-the-write-endpoints-refuse) rather than creating a row every later write would reject. A required field with no `.default()` is the usual cause; give it one. `collection.create(key, seed)` is refused on the same grounds when the schema parses `seed` away to `null` and its parse of `{}` produces an object that does not settle, which is the answer a bare `collection.create(key)` gives.
 
 An ordinary `z.object({…}).nullable()` parses `{}` to `{}`, so the `setState(null)` reset above is unaffected.
 

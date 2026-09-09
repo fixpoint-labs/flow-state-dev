@@ -8,6 +8,8 @@ Every scope (`request`, `session`, `user`, `org`, and the optional `sequencer`) 
 
 For the conceptual overview of scopes and schema bubbling, see [State & Scopes](/docs/fundamentals/state-and-scopes). For the dispatch internals behind these operations, see [State Mutation Model](/docs/state/mutation-model).
 
+Resource state is a separate store, keyed per resource, and the verb names collide: `incState` and `pushState` exist on a resource too. Every resource state mutator there takes a version check, so read [the resource state store](/docs/state/mutation-model#the-resource-state-store-is-versioned-too) before carrying a rule from this page across.
+
 ## The seven operations
 
 All scope handles implement the same `ScopeStateOps` interface. Every operation returns `Promise<boolean>`: `true` when a write was accepted, `false` when nothing was written. Neither answer describes the stored value — see [What a write tells you](#what-a-write-tells-you).
@@ -268,7 +270,7 @@ const claimed = await ctx.session.patchState("owner", (current) => current ?? "w
 
 ### A version check is not a merge
 
-Carrying a version is not the same as merging, and `setState` is the call that catches people out. When a version-checked write loses the race, the runtime refreshes from the store and runs the write again — but "again" means three different things.
+Carrying a version is not the same as merging, and `setState` is the call that catches people out. When a version-checked write loses the race, the runtime refreshes from the store and runs the write again. What "again" means depends on the call:
 
 - `atomicState`, the updater form of `patchState`, and a multi-field `incState` re-run *your computation* against the value that won, so the two updates combine.
 - A multi-field `patchState` re-applies the fixed values you passed onto the refreshed state, so fields you didn't name survive and the ones you did are overwritten.
@@ -337,13 +339,13 @@ Version-checked writes don't all run the same loop, and which one you get depend
 |---|---|---|
 | `session`, `user`, `org` | CAS retry loop. A remote authority — another connection, another process — can advance the stored version under a stale read | `ConcurrentModificationError` |
 | `request` | A per-container FIFO queue, persisting under it, with the version check still underneath | `ConcurrentModificationError` |
-| `sequencer`, target containers | The same queue, with no store write behind it | Nothing — your mutator runs exactly once |
+| `sequencer`, target containers | The same queue, with no store write behind it | `ScopeMutationTimeoutError`, when queue wait plus execution outruns the budget. No version to conflict, and your mutator runs exactly once |
 
 Request scope is the one to read carefully. Its queue removes the conflicts between writers in the same run, so a fan-out commits every write in submission order. But the version check underneath can still lose to a writer the queue cannot order, such as a recovery continuation re-entering the same request. The operation then refreshes from the store and calls your mutator again. So treat a request-scope mutator the way you treat one on session, user, or org: a pure function of the state it receives, with no side effects.
 
 Sequencer state going through the queue doesn't mean it's lost on restart. The runtime still checkpoints sequencer state asynchronously at step boundaries, so a Phase 2 resume can rehydrate it. See [Sequencer State](/docs/advanced/sequencer-state).
 
-The dispatch is internal. Callers see the same `ScopeStateOps` API regardless of which path runs. [State Mutation Model](/docs/state/mutation-model) has the full breakdown, including the mutation timeout that bounds the queue path.
+The dispatch is internal. Callers see the same `ScopeStateOps` API regardless of which path runs. [State Mutation Model](/docs/state/mutation-model) has the full breakdown, including the mutation timeout that bounds mutations on scopes with no store.
 
 ## How much to keep in state
 

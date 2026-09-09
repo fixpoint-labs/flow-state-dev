@@ -496,7 +496,7 @@ from the content row, so the item reads fine and there's nothing to fill in. The
 server still attempts the content write when you send `content`, so the request
 still fails and the item still exists — treat the failed create the same way.
 
-Two more things can happen in that window, and neither shows up as an error.
+Other things can happen in that window without showing up as an error.
 Nothing fails; a wrong body is simply what you read back.
 
 - If a `DELETE` lands in that window, the create's body can be left behind
