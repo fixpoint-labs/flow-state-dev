@@ -10,7 +10,7 @@
  * shared predicate cannot live in either without a cycle.
  */
 import type { ZodError, ZodTypeAny } from "zod";
-import { deepEqual } from "./deep-equal";
+import { deepEqual, isPlainObject } from "./deep-equal";
 
 /** One block's declared requirement on the flow's config bag. */
 export type FlowConfigRequirement = {
@@ -76,11 +76,6 @@ export function findFlowConfigMismatch(
   return undefined;
 }
 
-/** A value Zod strips keys from, as opposed to one it compares whole. */
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * Every path where the parsed output holds something the bag does not.
  *
@@ -95,6 +90,16 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * What it still catches, at any depth, is the failure the rule is about: a key
  * the bag does not have, or a different value at a key it does. A `.default()`
  * three levels down is refused exactly like one at the top.
+ *
+ * **The accepted gap: a nested transform that REMOVES a key is not refused.**
+ * Descending means a key the bag holds and the parse does not is read as the
+ * requirement declaring narrowly, and a `.transform()` that drops a key is
+ * indistinguishable from that by output alone — telling them apart needs the
+ * schema, which is the schema-to-schema comparison this design rejected. It is
+ * the safe direction of the two: such a block's type UNDERSTATES the bag, so it
+ * reads a real value through a narrower type, where a `.default()` would read
+ * `undefined` through a type promising otherwise. A transform at the TOP level
+ * is still refused, by the non-object check above.
  */
 function contributedPaths(parsed: unknown, held: unknown, at: string): string[] {
   if (isPlainObject(parsed) && isPlainObject(held)) {

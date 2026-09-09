@@ -18,7 +18,16 @@
 
 const MAX_DEPTH = 32;
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+/**
+ * A record whose keys are the whole value — not a `Date`, a `Map`, or any other
+ * class instance that happens to be an object.
+ *
+ * Exported because the prototype check is the load-bearing part and is easy to
+ * get wrong: `typeof value === "object" && !Array.isArray(value)` admits a
+ * `Date`, and anything that then walks `Object.keys` sees an empty record and
+ * concludes two different dates are the same value.
+ */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null) return false;
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;

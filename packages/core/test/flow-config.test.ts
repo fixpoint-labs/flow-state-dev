@@ -485,6 +485,67 @@ describe("flow config bag — the promises, and their second paths", () => {
   });
 
   /**
+   * A `Date` is an object with no enumerable keys, so a comparison that decides
+   * "is this a record?" by `typeof` alone walks zero keys and calls two
+   * different dates equal. The check descends only into PLAIN objects — the
+   * same prototype test `deepEqual` uses — so a date reaches `deepEqual` and is
+   * compared by `getTime()`.
+   */
+  it("refuses a nested transform on a value that is an object but not a record", () => {
+    const replacement = new Date("2020-01-01T00:00:00.000Z");
+    const contributes = handler({
+      name: "date-transform",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      flowConfigSchema: z.object({ window: z.object({ at: z.date().transform(() => replacement) }) }),
+      execute: async () => ({})
+    });
+
+    const flow = defineFlow({
+      kind: "date-transform-flow",
+      cardinality: "collection",
+      configSchema: z.object({ window: z.object({ at: z.date() }) }),
+      actions: { work: { block: contributes } }
+    });
+
+    expect(() =>
+      flow({ id: "dt-1", config: { window: { at: new Date("2021-06-06T00:00:00.000Z") } } } as never)
+    ).toThrow(/block "date-transform" declares a flowConfigSchema that would change the bag.*window\.at/s);
+  });
+
+  /**
+   * The documented gap, pinned so it is a decision and not a surprise: a nested
+   * transform that DROPS a key mints, because dropping is indistinguishable
+   * from a narrow declaration without reading the schema. Safe direction — the
+   * block's type understates the bag rather than promising a value that is not
+   * there. If this test ever starts failing, the check gained schema awareness
+   * and the doc comment on `contributedPaths` needs updating with it.
+   */
+  it("accepts a nested transform that drops a key — the documented limitation", () => {
+    const drops = handler({
+      name: "drops-a-key",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      flowConfigSchema: z.object({
+        limits: z
+          .object({ retries: z.number(), timeout: z.number() })
+          .transform(({ retries }) => ({ retries }))
+      }),
+      execute: async () => ({})
+    });
+
+    const flow = defineFlow({
+      kind: "drops-key-flow",
+      cardinality: "collection",
+      configSchema: z.object({ limits: z.object({ retries: z.number(), timeout: z.number() }) }),
+      actions: { work: { block: drops } }
+    });
+
+    const bag = { limits: { retries: 3, timeout: 30 } };
+    expect(flow({ id: "dk-1", config: bag } as never).config).toEqual(bag);
+  });
+
+  /**
    * "The bag is closed, so a typo fails loudly."
    *
    * `.strict()` does NOT clear a `catchall`, so `z.object({...}).catchall(...)`
