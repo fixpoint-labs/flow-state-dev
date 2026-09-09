@@ -2,6 +2,7 @@
  * One coding flow with four static doors sharing the host-selected adapter.
  */
 import { defineFlow, sequencer, type harnessRunInputSchema } from "@flow-state-dev/core";
+import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockDefinition, HarnessCallbackContext, HarnessRunHandle } from "@flow-state-dev/core/types";
 import type { z } from "zod";
 import { codexAgent, type CodexAgentOptions } from "@flow-state-dev/codex";
@@ -59,15 +60,15 @@ function readStateId(
  * the dead id in place and `fixFsd` loops on it.
  */
 async function consumeStateId(ctx: HarnessCallbackContext, harness: HostHarness): Promise<string | null> {
-  let taken: string | null = null;
-  await ctx.session.atomicState((state: z.infer<typeof sessionStateSchema>) => {
-    const id = readStateId(state, harness);
-    if (id === null) return state;
-    taken = id;
-    const { [harness]: _removed, ...rest } = state.harnessSessions;
-    return { ...state, harnessSessions: rest };
-  });
-  return taken;
+  return (await withOutcome(
+    (mutator) => ctx.session.atomicState(mutator),
+    (state: z.infer<typeof sessionStateSchema>) => {
+      const id = readStateId(state, harness);
+      if (id === null) return { state, result: null };
+      const { [harness]: _removed, ...rest } = state.harnessSessions;
+      return { state: { ...state, harnessSessions: rest }, result: id };
+    },
+  )) ?? null;
 }
 
 function hostResolvers(options: FsdCodingHostOptions): Pick<CursorAgentOptions, "cwd" | "resume" | "onSession"> {
