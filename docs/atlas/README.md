@@ -25,8 +25,8 @@ issue identifiers; anything under `apps/docs/` is published and may not.
   questions. Its counts are measured against a commit rather than maintained,
   so read them as of the branch that last touched it.
 - `workforce.html` — the Layer 2 product: roster / teams + seats + rooms +
-  thin helpers. One worker contract, DMs as static sessions, groups as a
-  board plus one session per subscriber, talk on the dispatch spine.
+  thin helpers. Seats are flow instances; skills and boards share one
+  name → `BlockDefinition` list. `defineAgent` is a block factory (proposed).
   Conductor is a team config on this surface. The page teaches the lock and
   the honesty tags; the factory is still proposed.
 - `roadmap.html` — the public product horizon. Still written in the older
