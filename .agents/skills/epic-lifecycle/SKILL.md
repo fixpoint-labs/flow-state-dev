@@ -50,16 +50,11 @@ ends the turn:
   **≤ a couple of lines** of status, then exits. Token cost at the coordinator level is a
   small table across wakes, regardless of how much work the issues involve.
 - **Blind by design — so check, don't infer.** **A worker is finished when its completion
-  arrives: its task notification, or the status line it returns. Nothing else ends it.**
-  Not elapsed silence, however long. Not an unanswered message. And not a filesystem or
-  `origin` probe — a worker that has not committed yet has an unchanged worktree head and
-  no branch on `origin`, which is exactly what a dead one leaves behind, so those probes can
-  add evidence of life but can never establish death. **Never re-dispatch a row on any signal
-  short of that completion.** Duplicating a live task is the one coordination error nothing
-  downstream undoes, and a worker that happens to re-check `origin` before pushing is luck,
-  not a safety net. **And never promote a reviewer's restructuring ask to an instruction
-  before the number behind it exists** (BP-003) — having a worker measure it costs one call;
-  having a worker build it twice costs a run.
+  arrives — its task notification, or the status line it returns. Never re-dispatch on less.**
+  Not silence, not an unanswered message, and not a worktree or `origin` probe: a worker that
+  has not committed yet looks exactly like a dead one. **And never turn a reviewer's
+  restructuring ask into an instruction before the number behind it exists** (BP-003) —
+  measuring costs one call, building it twice costs a run.
 - **Event-driven, like the single-issue loop.** The coordinator is the event loop. It ends
   its turn while issues are idle and re-enters on PR events, a workflow completion, or a
   scheduled check-in; on re-entry it refreshes each row from Linear + PR state (cheap
