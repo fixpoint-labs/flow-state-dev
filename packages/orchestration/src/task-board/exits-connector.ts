@@ -6,8 +6,10 @@
  * parked for review (FIX-1234). That value reaches it only because the tap sits
  * directly after the worker `forEach`. This connector is the identity function,
  * so it changes nothing at run time; its job is to state the shape the tap
- * expects in a form the compiler checks, so wiring a step that declares a
- * different output in between fails the build at that line.
+ * expects in a form the compiler checks, so wiring a step that carries a
+ * different CONCRETE output in between fails the build at that line. A step
+ * whose output type is already `any` still slips past; the tap's own comment in
+ * `index.ts` spells out that residual and the three ways to land on it.
  *
  * It is a NAMED module rather than an inline arrow because a name is the only
  * handle a test can take: the drain leaves its own module as
