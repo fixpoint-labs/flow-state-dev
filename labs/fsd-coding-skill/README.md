@@ -72,9 +72,8 @@ Report both outputs if it fails again.
 There is no package barrel. Tests and `fsdev.config.ts` import source files
 directly:
 
-- `src/flow.ts` — `createFsdCodingFlow`: one `fsd-coding` singleton with
-  `implement`, `fix`, `openPr`, `fixFsd`
-- `src/host.ts` — host cwd / resume / onSession feeds (BP-031)
+- `src/flow.ts` — `createFsdCodingFlow`: host cwd / resume / onSession feeds
+  plus one `fsd-coding` singleton with `implement`, `fix`, `openPr`, `fixFsd`
 - `src/config-env.ts` — reading `FSD_CODING_*` for the config
 - `src/schemas.ts` — door names, prompt prefixes, input/state contracts
 

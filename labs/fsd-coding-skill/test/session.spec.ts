@@ -27,8 +27,7 @@ describe("provider-safe session continuity", () => {
         flow: createFsdCodingFlow({
           cwd: "/trusted",
           harness,
-          cursor: cursorGate,
-          resolveCursorClient: cursor.resolve,
+          cursor: { ...cursorGate, resolveCursorClient: cursor.resolve },
           codex: { ...codexGate, resolveCodexClient: codex.resolve },
         }),
         action: "implement",

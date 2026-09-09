@@ -5,7 +5,7 @@
  * (BP-031). They are never taken from action input. `--session` is the
  * fsdev flag that reuses filesystemStores session state across invocations.
  */
-import type { HostHarness } from "./host";
+import type { HostHarness } from "./schemas";
 
 export interface HostEnvOptions {
   harness: HostHarness;
