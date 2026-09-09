@@ -34,19 +34,10 @@ function resolveCapabilities(
     // (base, `.with()`- or `.presets()`-configured) is used as-is — refs need
     // no catalog and are never refused.
     if (typeof entry === "string") {
-      // No catalog → REFUSE (FIX-1327). This used to `continue`, and it is the
-      // one miss with nowhere for the author to find out: the agent declared a
-      // capability and ran without it, with no error and no warning. Refusing
-      // here puts the failure where the declaration is, before any block is
-      // built.
-      //
-      // Deliberately NOT extended to the unknown-key miss below. That path
-      // warns, and warn-and-drop is this package's documented
-      // additive-not-restrictive policy for catalog resolution — the same one
-      // `resolveCatalogTools` states for tools. Making capabilities strict
-      // while tools stay additive would split one policy in two; if that policy
-      // should change, it should change for both, deliberately, and not as a
-      // side effect of fixing the silent path.
+      // No catalog → refuse (FIX-1327): nowhere to resolve against, so the
+      // agent used to run without a capability it declared, silently. The
+      // unknown-key miss below stays warn-and-drop — the same additive policy
+      // `resolveCatalogTools` states for tools; change both or neither.
       if (!catalog) {
         throw new AgentCapabilityError(
           `materializeAgent: agent "${agentName}" declares capability "${entry}" as a ` +

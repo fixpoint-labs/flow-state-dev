@@ -290,19 +290,6 @@ describe("materializeAgent", () => {
       expect(inspectGenerator(block).uses ?? []).toContain(configured);
     });
 
-    it("refuses a string key when no capabilityCatalog is provided", () => {
-      // FIX-1327. This used to skip silently, so an agent declaring
-      // `usesCapabilities: ["memory"]` materialized with no memory and nothing
-      // anywhere said so — the define-time declaration and the running block
-      // disagreed, and only the declaration was visible to the author.
-      expect(() =>
-        materializeAgent(
-          makeAgent({ usesCapabilities: ["k"] }),
-          makeOpts({ shape: "standalone" }), // no capabilityCatalog
-        ),
-      ).toThrow(AgentCapabilityError);
-    });
-
     it("still resolves a string key against the capabilityCatalog", () => {
       const cap = defineCapability({ name: "catCap" });
       const block = materializeAgent(

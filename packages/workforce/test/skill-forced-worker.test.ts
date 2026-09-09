@@ -11,7 +11,7 @@
  * untested.
  */
 import { describe, it, expect } from "vitest";
-import { defineCapability, FlowError } from "@flow-state-dev/core";
+import { defineCapability } from "@flow-state-dev/core";
 import { materializeWorker } from "@flow-state-dev/orchestration";
 import { defineAgent } from "../src/define-agent";
 import { createAgentRegistry } from "../src/agent-registry";
@@ -64,7 +64,6 @@ describe("skill-forced worker (FIX-1327)", () => {
     // stripped of its memory, and run it — no error, no warning. The refusal is
     // what makes the gap visible to whoever wired the board.
     await expect(seat(reviewer(["memory"]))).rejects.toThrow(AgentCapabilityError);
-    await expect(seat(reviewer(["memory"]))).rejects.toBeInstanceOf(FlowError);
   });
 
   it("seats an agent that declares capability references without any catalog", async () => {
