@@ -60,14 +60,16 @@ after W2, not a criterion of it (theme 4).
 **Not doing:** Team, Channel, MessageBoard or Project as Layer 1 types; a second registry; hot
 addition of flow kinds after boot; a management bus, a delivery bus, or a second dispatcher; a
 second Agent type in the package; member-memory depth; **the Lab Proof itself** (its own stage —
-theme 4); the MCP client door (held by #1655 until the package and the lab both exist); ordered
+theme 4); **the four thin L2 helpers** (filed against that stage, which is their first real
+caller — theme 4); the MCP client door (held by #1655 until the package and the lab both exist); ordered
 multi-reply and who-may-reply policy (Collab RC).
 
 ## 2. Themes & long-horizon direction
 
 *Four decisions that sit above any single issue. Anything that constrains only one child is that
 child's spec, not a theme — the loader's scan mechanics belong to FIX-1335, and the factory's API
-shape, the helper names and their transport caveats to FIX-1325.*
+shape to FIX-1325. The helper names and their transport caveats belong to whichever issue
+eventually carries them, which is no longer a child of this epic (theme 4).*
 
 1. **One file shape, one registry — a seat is declared by one document.** The seat path is
    `teams/<teamId>/workers/<name>/` ([Atlas §06](../../docs/atlas/workforce.html)), seats nesting
@@ -110,6 +112,35 @@ shape, the helper names and their transport caveats to FIX-1325.*
    different flow kind, not another config key. How many seats per kind is the gate bar's
    question, not a second decision here.
 
+   **The identity is `team.name`, dot-joined — and a path is not an id.** A seat mints one
+   identity string, `engineering.lead`, and that string is what every later reference uses: the
+   flow instance id, an `agent-ref` value, a board key. **No folder is renamed.** The seat path
+   stays `teams/<teamId>/workers/<name>/`, slashes and all, exactly as theme 1 locks it. Only
+   the minted string joins with a dot.
+
+   *Why a slash cannot be the joiner:* a slash-joined id **registers, resolves, and is then
+   unreachable**. `defineFlow` accepts it, the registry admits and resolves it, and every HTTP
+   address for that seat 404s — `packages/engine/src/routes/parseFlowRoute.ts` rejoins the
+   incoming segments into one pathname before matching, so an escaped `/` and a real separator
+   are the same string by then. It boots clean and breaks the first time anybody talks to the
+   worker: invisible drift arriving through the front door, which is the failure shape theme 3
+   exists to refuse. Evidence is the run on `spec/FIX-1325`
+   (`spec-poc/FIX-1325-seat-addressing/NOTES.md`), corroborated by an independent read of
+   `parseFlowRoute` and `defineFlow`'s `resolveInstanceId`.
+
+   **Minted once, by FIX-1335.** The loader joins team and name in one helper; FIX-1325 uses
+   `manifest.id` verbatim and remints nothing. A `/`→`.` translation layer at the factory was
+   weighed and rejected — it would give every worker two names forever, and every later feature
+   would have to know which one it was holding. FIX-1335 §6 decision 2 (rewritten) and
+   [#1676](https://github.com/fixpoint-labs/flow-state-dev/pull/1676) decision 1 carry the
+   ruling.
+
+   **This supersedes a decision this epic already carried** — the same treatment theme 1 gives
+   the `WORKER.md` supersession, and said here rather than edited in quietly. The identity
+   entered this epic through FIX-1335's *approved* decision 2 as `engineering/lead`. Only the
+   joiner is corrected, on run evidence; the team-qualified half that decision was protecting is
+   unchanged.
+
 3. **Don't silently drop what a seat declared — and being a seat never requires being an Agent.**
    Where an *Agent* materialization path cannot honour a declared capability, tool, persona or
    model, it says so and names what it could not honour; it does not fail quietly (BP-030 —
@@ -133,13 +164,19 @@ shape, the helper names and their transport caveats to FIX-1325.*
    substrate (tenet 4). Demote means do not grow these types; it does not mean delete them.
 
 4. **The fence, with its reasons — and where this epic stops.**
-   - **The four thin L2 helpers are IN scope as veneer over *declared* dispatchers** — keyed
-     team, intake seat DM, room subscribe, board notify — riding FIX-1325, because each is *seat
-     addressing* over the roster row that issue produces. Names come from
-     [Atlas §08](../../docs/atlas/workforce.html); FIX-1325's spec takes them from there rather
-     than inventing alternatives. **They land with, or just ahead of, their first real caller** —
-     four APIs against no consumer is speculative surface — and if the surface grows, FIX-1325
-     **phases** it: the factory to the gate minimum, the helpers to epic-complete.
+   - **The four thin L2 helpers are seat addressing — and they are out of W2.** Keyed team,
+     intake seat DM, room subscribe, board notify; names from
+     [Atlas §08](../../docs/atlas/workforce.html), not invented. Each is a veneer over a
+     *declared* dispatcher riding the roster row FIX-1325 produces, which is why they were
+     scoped onto that issue. **The reopen fired, and the answer is to phase them, not to split
+     the issue:** nothing in this epic starts a conversation with a worker, so four APIs against
+     no consumer is exactly the speculative surface this fence forbids. **FIX-1325 done = the
+     seat factory.** The helpers come out of its delivery *and* out of W2's done bar, filed
+     against the **lab stage** below — their first real caller. Two of the four also need
+     addressing doors that are still named L1 gaps, so building them now means shipping them
+     incomplete or inventing an argument to hide the gap, which the next bullet refuses. This is
+     the fence applied as written: *a helper lands with, or just ahead of, its first real
+     caller.*
    - **A helper that needs a missing Layer 1 door names the gap; it does not ship a pretend
      argument.** Refuse by name and raise it here; do not route around it locally. *Why:* a
      hidden argument is how a foundation acquires a bus.
@@ -156,7 +193,8 @@ shape, the helper names and their transport caveats to FIX-1325.*
      reaches the files-only bar earlier. FIX-1337 follows FIX-1327 on the same materialization
      path and gates on its own spec. **Then, in order:** the **Lab Proof** — a thin
      pentest team (intake · recon · triage) on the file conventions alone, its own stage at
-     *"proposed · after W2"* — then **W1 MCP (FIX-1333)**, held by #1655 until the package and
+     *"proposed · after W2"*, and where the four helpers are now filed — then
+     **W1 MCP (FIX-1333)**, held by #1655 until the package and
      the lab both exist, then Collab RC. The lab is a stage after W2, **not a criterion of it and
      not a child**: the Atlas W2 row names *"Nesting the lab or Collab RC under W2 as extra
      package surface"* among the things that would fake this epic.
@@ -165,10 +203,10 @@ shape, the helper names and their transport caveats to FIX-1325.*
 
 | Issue | What it owns | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [FIX-1335](https://linear.app/fixpoint-labs/issue/FIX-1335) | Convention loader: scan `teams/<id>/workers/<name>/`, reading each seat's one `WORKER.md` (or `worker.ts`) into a **neutral per-worker manifest** — no `Agent`, no flow, no registry construction (themes 1–2) | spec | [#1665](https://github.com/fixpoint-labs/flow-state-dev/pull/1665) | — | In Spec Review |
-| [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) | The seat factory — a manifest becomes **one flow per seat, plus a registry entry only for opinionated seats**; INST-5 hire/mint as collection kinds, binding one exact flow-instance id + immutable create-time config. Carries the four thin helpers (theme 4) | spec | — | — | Backlog |
-| [FIX-1327](https://linear.app/fixpoint-labs/issue/FIX-1327) | Materialization honesty, **undocumented half**: the silent capability skip when no catalog is present — **honour or loudly refuse** | **bug** | — | [#1666](https://github.com/fixpoint-labs/flow-state-dev/pull/1666) | In Review |
-| [FIX-1337](https://linear.app/fixpoint-labs/issue/FIX-1337) | Materialization honesty, **documented half** and the other side of FIX-1327: a delegated agent drops a declared `outputSchema` and returns prose. Reverses a published contract, so it takes the spec route and its spec owns the migration path (theme 3) | spec | — | — | Ready to Spec |
+| [FIX-1335](https://linear.app/fixpoint-labs/issue/FIX-1335) | Convention loader: scan `teams/<id>/workers/<name>/`, reading each seat's one `WORKER.md` (or `worker.ts`) into a **neutral per-worker manifest** — no `Agent`, no flow, no registry construction. **Mints each worker's identity, `team.name`, once** (themes 1–2) | spec | [#1665](https://github.com/fixpoint-labs/flow-state-dev/pull/1665) | — | Spec Approved |
+| [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) | The seat factory — a manifest becomes **one flow per seat, plus a registry entry only for opinionated seats**; INST-5 hire/mint as collection kinds, binding one exact flow-instance id + immutable create-time config. Uses `manifest.id` verbatim; remints no identity. **The four thin helpers are not in this issue** (theme 4) | spec | [#1676](https://github.com/fixpoint-labs/flow-state-dev/pull/1676) | — | In Spec Review |
+| [FIX-1327](https://linear.app/fixpoint-labs/issue/FIX-1327) | Materialization honesty, **undocumented half**: the silent capability skip when no catalog is present — **honour or loudly refuse** | **bug** | — | [#1666](https://github.com/fixpoint-labs/flow-state-dev/pull/1666) (merged) | Done |
+| [FIX-1337](https://linear.app/fixpoint-labs/issue/FIX-1337) | Materialization honesty, **documented half** and the other side of FIX-1327: a delegated agent drops a declared `outputSchema` and returns prose. Reverses a published contract, so it takes the spec route and its spec owns the migration path (theme 3) | spec | [#1674](https://github.com/fixpoint-labs/flow-state-dev/pull/1674) | — | In Spec Review |
 
 *A bug carries no spec PR and no spec-approval gate by design — it routes straight to the fix,
 with its PR as the review surface
@@ -204,9 +242,17 @@ excludes is FIX-1337's, which is exactly why that row is on the spec route inste
 - **Must the loader land against a settled factory contract?** *Dissolved, round 4:* no. A walker
   producing neutral manifests depends on no seat contract, so the two may land in parallel (theme
   4). The seam survives; only the ordering it implied is gone.
-- **Do the four thin helpers ride FIX-1325, or earn their own issue?** *Settled per theme 4:*
-  they ride FIX-1325. Reopen only if FIX-1325's spec finds the helper surface larger than the
-  factory it wraps — and the answer then is to phase them, not to split the issue.
+- **Do the four thin helpers ride FIX-1325, or earn their own issue?** *Reopened and phased,
+  round 5:* neither. The reopen condition this line set fired on FIX-1325's spec, and the answer
+  it named — phase, don't split — is the one taken. FIX-1325's done bar is the seat factory; the
+  helpers leave W2's done bar entirely and are filed against the lab stage, their first real
+  caller (theme 4). Ratified on
+  [#1676](https://github.com/fixpoint-labs/flow-state-dev/pull/1676) decision 5. Not open here —
+  open at that stage.
+- **What joins a worker's team and name?** *Corrected on run evidence, round 5:* a dot —
+  `engineering.lead`. A slash-joined id registers, resolves, and is then unreachable over HTTP
+  (theme 2). The disk path is untouched, because a path is not an id. Minted once by FIX-1335,
+  with no translation layer. Not open.
 - **Settled where they are written, not re-argued here:** FIX-1310 stays related, not a child
   (§4); one hire per kind, two *distinct* kinds at the gate (§1); the honesty contract is scoped
   to opinionated-agent seats and a thin seat stops at `defineFlow` (theme 3); the proof is tiered
@@ -217,13 +263,20 @@ excludes is FIX-1337's, which is exactly why that row is on the spec route inste
 
 ## Atlas obligations
 
-**An action this epic owes, not a footnote.** Theme 1 supersedes the Atlas's *proposed*
-five-file factory-input split with one `WORKER.md` (or `worker.ts`) per seat. The Atlas is the
-direction artifact for this work, so leaving it proposing a layout we have decided against is the
-same drift we flag it for below — and worse, because a later reader would take the proposal as
-the lock, exactly as an earlier revision of this document did. **`docs/atlas/workforce.html` §06
-must be updated to match before this epic wraps**, with the superseded split marked as such
-rather than deleted, so the decision stays legible.
+**An action this epic owes, not a footnote.** Two Atlas sketches are superseded by decisions
+this epic made. Both must be **marked superseded — not deleted** — in
+`docs/atlas/workforce.html` **before this epic wraps**. The Atlas is the direction artifact for
+this work, so leaving it proposing shapes we have decided against is the same drift we flag it
+for below, and worse: a later reader takes the proposal for the lock, exactly as an earlier
+revision of this document did. Marking rather than deleting keeps the decision legible.
+
+| Atlas | What it proposes | Superseded by |
+|---|---|---|
+| **§06** file conventions | The five per-worker files — `role.md` · `personality.md` · `tools.md` · `skills/` · `resources/` (`:845-849`), tagged `FACTORY INPUTS · PROPOSED` | **Theme 1** — one `WORKER.md` (or `worker.ts`) per seat |
+| **§05** the worker contract | The `createWorkerFlow({ name, role, personality, tools, skills })` sketch (`:803-820`), itself marked *"PROPOSED V1 — thin factory helper. Not an export on main"* | **FIX-1325 decision 2** — a seat folder says *which* flow and *how it is configured*; it never describes what the flow does. Role, personality, tools and skills are not factory arguments |
+
+The two are one supersession seen twice: §06 is those five inputs on disk, §05 is the same five
+as a function's parameter list.
 
 *And a flag, for the Atlas owner — not a cross-cutting question for this epic. The Atlas is
 pinned at `15c814251`, where §03 tags FIX-1331 "about to land · not exists" and §19 gap 1 says
@@ -268,3 +321,11 @@ as live holds.*
   `worker.ts` for custom code on the same contract), per the Architect's ruling on #1665 and
   FIX-1335 §6 decision 1 — so theme 1 now says it **supersedes a proposal**, and the Atlas update
   that follows from it is recorded as an obligation this epic owes.
+- **Round-5 corrections (#1664, #1676, #1665)** — three settled items, no new argument. **Theme 2
+  gains the identity string:** a worker mints as `team.name`, dot-joined, because a slash-joined
+  id registers and resolves and is then unreachable over HTTP; the disk path keeps its slashes,
+  because a path is not an id. That supersedes the joiner half of FIX-1335's approved decision 2.
+  **Theme 4's helpers are phased out of W2:** the reopen condition §5 wrote fired, FIX-1325's done
+  bar is now the seat factory alone, and the four helpers are filed against the lab stage — their
+  first real caller. **The Atlas obligation gains §05:** `createWorkerFlow`'s parameter list is
+  the same supersession as §06's five files, seen from the other side.
