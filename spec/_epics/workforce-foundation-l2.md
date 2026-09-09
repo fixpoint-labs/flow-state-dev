@@ -15,7 +15,7 @@ who wants three collaborating workers hand-wires every one of them: a `defineFlo
 all, and their own convention for where any of it lives. There is no file layer on `main` and no
 seat concept — `packages/workforce` is a name-a-participant registry (382 lines, eight files)
 with one caller, `examples/guides/research-team`. When this epic lands, an author adds a folder
-and gets a seat: the tree is scanned into neutral seat manifests, each manifest resolves to one
+and gets a seat: each seat's `WORKER.md` scans into a neutral manifest, each manifest resolves to one
 exact flow instance carrying its own create-time configuration, and — **where that seat is an
 opinionated agent** — it also gets a registry entry, and the worker it materializes either
 honours what it declared or refuses loudly. A thin seat (intake, coordinator) is a `defineFlow`
@@ -69,16 +69,30 @@ multi-reply and who-may-reply policy (Collab RC).
 child's spec, not a theme — the loader's scan mechanics belong to FIX-1335, and the factory's API
 shape, the helper names and their transport caveats to FIX-1325.*
 
-1. **One file shape, one registry — and the seat is a folder, not a manifest file.** The locked
-   shape is `teams/<teamId>/workers/<name>/` with five entries inside it — `role.md`,
-   `personality.md`, `tools.md`, `skills/`, `resources/`
-   ([Atlas §06](../../docs/atlas/workforce.html) `:845-849`) — seats nest under the team they
-   seat, with **no `agents/` or `personas/` sibling** (FIX-912's sketch is superseded as a
-   delivery stream and no issue may re-open it) and **no single-manifest file**: a manifest is
-   what the loader *produces* from those five, never a file an author writes. The scan adds no
-   registry — *because* its whole value is that files and hand-written definitions produce the
-   same entries, so a second source of truth gives "what seats exist?" two answers and turns the
-   TypeScript escape hatch into a fork.
+1. **One file shape, one registry — a seat is declared by one document.** The seat path is
+   `teams/<teamId>/workers/<name>/` ([Atlas §06](../../docs/atlas/workforce.html)), seats nesting
+   under the team they seat; inside the folder, a seat is declared by **one `WORKER.md`** — or
+   **`worker.ts`** where the seat's shape is custom code on the same contract. Two doors, one
+   contract, neither privileged, and the Atlas seat row agrees in the singular: *"THE SEAT. ADD A
+   FILE TO ADD A SEAT."* **`WORKER.md`, not `AGENT.md`:** seat = roster slot, worker = any flow on
+   the one contract (thin intake and coordinator seats included), agent = the opinionated worker
+   case. A markdown document has the same breadth as the `.ts` door, so naming it for the narrow
+   case would teach that every worker is an agent — the collapse theme 3 exists to prevent.
+   FIX-1335 §6 decision 1 locks the name.
+
+   **This supersedes a proposal; it does not conform to a lock — and the difference matters.** The
+   Atlas's five per-worker files — `role.md` / `personality.md` / `tools.md` / `skills/` /
+   `resources/` (`:845-849`) — carry the tag **`FACTORY INPUTS · PROPOSED`** (`:850`) and are the
+   argument names of `createWorkerFlow`, itself marked *"PROPOSED V1 — thin factory helper. Not an
+   export on main"* (`:803`). None of it shipped, and the scan that would read it is still a named
+   gap (*"NO LOADER ON MAIN"*, `:874`). One document per seat is this epic's call **over** that
+   proposal, which is why **the Atlas owes an update** — an action this epic carries, recorded at
+   the end of this document, not a flag left for someone to notice.
+
+   **No second registry** — the scan's whole value is that files and hand-written definitions
+   produce the same entries, so a second source of truth gives "what seats exist?" two answers and
+   turns the TypeScript escape hatch into a fork. **No `agents/` or `personas/` sibling** either:
+   FIX-912's sketch is superseded as a delivery stream and no issue may re-open it.
 
 2. **A seat is one exact flow instance carrying its own create-time config** — configuration and
    identity, not a new execution primitive. **No kind-only address for a collection member and no
@@ -151,7 +165,7 @@ shape, the helper names and their transport caveats to FIX-1325.*
 
 | Issue | What it owns | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [FIX-1335](https://linear.app/fixpoint-labs/issue/FIX-1335) | Convention loader: scan `teams/<id>/workers/<name>/` into **neutral per-worker manifests** — no `Agent`, no flow, no registry construction (theme 2) | spec | [#1665](https://github.com/fixpoint-labs/flow-state-dev/pull/1665) | — | In Spec Review |
+| [FIX-1335](https://linear.app/fixpoint-labs/issue/FIX-1335) | Convention loader: scan `teams/<id>/workers/<name>/`, reading each seat's one `WORKER.md` (or `worker.ts`) into a **neutral per-worker manifest** — no `Agent`, no flow, no registry construction (themes 1–2) | spec | [#1665](https://github.com/fixpoint-labs/flow-state-dev/pull/1665) | — | In Spec Review |
 | [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) | The seat factory — a manifest becomes **one flow per seat, plus a registry entry only for opinionated seats**; INST-5 hire/mint as collection kinds, binding one exact flow-instance id + immutable create-time config. Carries the four thin helpers (theme 4) | spec | — | — | Backlog |
 | [FIX-1327](https://linear.app/fixpoint-labs/issue/FIX-1327) | Materialization honesty, **undocumented half**: the silent capability skip when no catalog is present — **honour or loudly refuse** | **bug** | — | [#1666](https://github.com/fixpoint-labs/flow-state-dev/pull/1666) | In Review |
 | [FIX-1337](https://linear.app/fixpoint-labs/issue/FIX-1337) | Materialization honesty, **documented half** and the other side of FIX-1327: a delegated agent drops a declared `outputSchema` and returns prose. Reverses a published contract, so it takes the spec route and its spec owns the migration path (theme 3) | spec | — | — | Ready to Spec |
@@ -201,13 +215,23 @@ excludes is FIX-1337's, which is exactly why that row is on the spec route inste
 
 ---
 
-*Footnote — Atlas-vs-code drift, flagged for the Atlas owner, not a cross-cutting question for
-this epic. The Atlas is pinned at `15c814251`, where §03 tags FIX-1331 "about to land · not
-exists" and §19 gap 1 says `get(kind)` still falls to the first registered instance. Neither
-holds on `main` today: `configSchema` / `config` and `ctx.flow.config` exist in
-`packages/core/src/flow/defineFlow.ts`, and the registry resolves by global id with no kind
-fallback. The direction is unaffected — both make W2 more buildable — but the pin needs a refresh
-so a later reader does not treat those rows as live holds.*
+## Atlas obligations
+
+**An action this epic owes, not a footnote.** Theme 1 supersedes the Atlas's *proposed*
+five-file factory-input split with one `WORKER.md` (or `worker.ts`) per seat. The Atlas is the
+direction artifact for this work, so leaving it proposing a layout we have decided against is the
+same drift we flag it for below — and worse, because a later reader would take the proposal as
+the lock, exactly as an earlier revision of this document did. **`docs/atlas/workforce.html` §06
+must be updated to match before this epic wraps**, with the superseded split marked as such
+rather than deleted, so the decision stays legible.
+
+*And a flag, for the Atlas owner — not a cross-cutting question for this epic. The Atlas is
+pinned at `15c814251`, where §03 tags FIX-1331 "about to land · not exists" and §19 gap 1 says
+`get(kind)` still falls to the first registered instance. Neither holds on `main` today:
+`configSchema` / `config` and `ctx.flow.config` exist in `packages/core/src/flow/defineFlow.ts`,
+and the registry resolves by global id with no kind fallback. The direction is unaffected — both
+make W2 more buildable — but the pin needs a refresh so a later reader does not treat those rows
+as live holds.*
 
 ## Epic evolution
 
@@ -232,9 +256,15 @@ so a later reader does not treat those rows as live holds.*
   fourth child: worker `z.string()` moves from documented-exception to a contract this epic
   deliberately changes, on the spec route, which is round 3's FIX-1327 tripwire firing as
   designed. Theme 3's carve-out is now tool resolution alone. **Redrew the FIX-1335/FIX-1325
-  split** against the verified Atlas — five files per seat and no manifest file (`:845-849`),
-  `defineFlow` every seat / `AgentRegistry` only if agent (`:876-877`, figcaption `:886`) — so
-  the loader stops at neutral manifests and the factory owns flow-per-seat plus the conditional
-  registry entry. **Dissolved the loader-after-factory ordering** on stronger grounds than the
-  review argued: a manifest walker depends on no seat contract at all, not merely on a
-  preserved-keys rule.
+  split** against the verified Atlas — *"defineFlow EVERY SEAT · AgentRegistry ONLY IF AGENT"*
+  (`:876-877`, figcaption `:886`) — so the loader stops at neutral manifests and the factory owns
+  flow-per-seat plus the conditional registry entry. **Dissolved the loader-after-factory
+  ordering** on stronger grounds than the review argued: a manifest walker depends on no seat
+  contract at all, not merely on a preserved-keys rule.
+- **Round-4 correction, same day** — theme 1 briefly claimed the Atlas *locked* a five-file
+  per-worker layout and that no author-written manifest file existed. Wrong on both counts: those
+  five files are tagged `FACTORY INPUTS · PROPOSED` and are `createWorkerFlow`'s arguments, and
+  that helper is *"Not an export on main"*. A seat is declared by **one `WORKER.md`** (or
+  `worker.ts` for custom code on the same contract), per the Architect's ruling on #1665 and
+  FIX-1335 §6 decision 1 — so theme 1 now says it **supersedes a proposal**, and the Atlas update
+  that follows from it is recorded as an obligation this epic owes.
