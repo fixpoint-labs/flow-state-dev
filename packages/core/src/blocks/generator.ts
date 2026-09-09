@@ -6,7 +6,6 @@ import { jsonSchema } from "ai";
 import { jsonrepair } from "jsonrepair";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { getZodTypeName } from "../helpers/zod-introspect";
-import { walkBlockGraph } from "../helpers/block-graph";
 import { assertStrictCompatible } from "../models/makeSchemaStrict";
 import type {
   BlockConfig,
@@ -66,6 +65,7 @@ import { buildBlock } from "./internal/build-block";
 import {
   describeFlowConfigMismatch,
   findFlowConfigMismatch,
+  walkBlockGraph,
   type FlowConfigRequirement,
 } from "../helpers/flow-config";
 import { sanitizeToolName, computeToolAliases, assertUniqueToolNames } from "../helpers/tool-name";
@@ -749,11 +749,6 @@ async function resolveTools<TInput, TCtx extends BlockContext>(
  */
 function assertToolsSatisfyFlowConfig(blocks: readonly GeneratorTool[], ctx: BlockContext): void {
   const requirements: FlowConfigRequirement[] = [];
-  // The whole graph under each resolved tool, not just the tool itself: a tool
-  // is often a sequencer or router whose requirement is declared by a block
-  // inside it, and `walkBlockGraph` is the same walk the mint uses over static
-  // tools. Checking only the top level would leave the dynamic path one level
-  // shallower than the static one it mirrors.
   for (const block of walkBlockGraph(blocks as readonly BlockDefinition[])) {
     const schema = (block.config as { flowConfigSchema?: ZodTypeAny } | undefined)?.flowConfigSchema;
     if (schema !== undefined) requirements.push({ blockName: block.name, schema });

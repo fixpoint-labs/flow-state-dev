@@ -35,10 +35,10 @@ import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } fr
 import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
 import { hasZodObjectCatchall, introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
-import { walkBlockGraph } from "../helpers/block-graph";
 import {
   describeFlowConfigIssues,
   describeFlowConfigMismatch,
+  walkBlockGraph,
   findFlowConfigMismatch,
   type FlowConfigRequirement,
 } from "../helpers/flow-config";

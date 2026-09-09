@@ -7,9 +7,11 @@
  * it at each mint over the blocks its walk can see; `generator`'s tool
  * resolution runs it over the blocks a function-valued `tools` slot returns,
  * which that walk cannot see. `defineFlow` already imports `generator`, so the
- * shared predicate cannot live in either without a cycle.
+ * shared predicate cannot live in either without a cycle. The walk that finds
+ * those blocks lives here for the same reason.
  */
 import type { ZodError, ZodTypeAny } from "zod";
+import type { BlockDefinition } from "../types/block";
 import { deepEqual } from "./deep-equal";
 
 /** One block's declared requirement on the flow's config bag. */
@@ -117,6 +119,28 @@ function contributedPaths(parsed: unknown, held: unknown, at: string): string[] 
     return paths;
   }
   return deepEqual(parsed, held) ? [] : [at];
+}
+
+function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
+  const tools = (block.config as { tools?: unknown }).tools;
+  return Array.isArray(tools) ? (tools as BlockDefinition[]) : [];
+}
+
+/**
+ * Every block reachable from the roots, through composition and a generator's
+ * static `tools` array. Rescue handlers are already on `childBlocks`.
+ */
+export function walkBlockGraph(roots: readonly BlockDefinition[]): BlockDefinition[] {
+  const seen = new Set<BlockDefinition>();
+  const queue: BlockDefinition[] = [...roots];
+  while (queue.length > 0) {
+    const block = queue.pop()!;
+    if (seen.has(block)) continue;
+    seen.add(block);
+    queue.push(...(block.childBlocks ?? []));
+    queue.push(...staticTools(block));
+  }
+  return [...seen];
 }
 
 /** Render a Zod failure so the offending key is in the message, not just a path. */
