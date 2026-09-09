@@ -1,3 +1,19 @@
+/**
+ * Run `tsc --noEmit` for the package in the current working directory.
+ *
+ * Every package's `typecheck` script routes through here, so this file is the
+ * single place that decides whether a typecheck happened. It must never report
+ * success without having run `tsc`: a green typecheck is evidence other work
+ * rests on (BP-003), and a check that passes when TypeScript is absent is a
+ * false green in exactly the checkouts where it is easiest to trust — a fresh
+ * clone, a new worktree, a container that skipped install.
+ *
+ * This script was scaffolded in Wave 1 with a regex import-scan fallback for
+ * when the registry was unreachable and dependencies could not be installed.
+ * That fallback checked no types yet printed "static typecheck passed", so it
+ * was removed. Don't reintroduce it: a missing `tsc` is a broken checkout, and
+ * the only honest thing to do is say so and fail.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -22,80 +38,22 @@ if (!fs.existsSync(srcDir)) {
   process.exit(1);
 }
 
-if (fs.existsSync(tscPath)) {
-  const tscRun = spawnSync(tscPath, ["-p", "tsconfig.json", "--noEmit"], {
-    cwd: packageDir,
-    stdio: "inherit"
-  });
-
-  process.exit(tscRun.status ?? 1);
-}
-
-const files = [];
-const importErrors = [];
-
-function walk(dirPath) {
-  for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
-    const fullPath = path.join(dirPath, entry.name);
-    if (entry.isDirectory()) {
-      walk(fullPath);
-      continue;
-    }
-
-    if (entry.isFile() && fullPath.endsWith(".ts")) {
-      files.push(fullPath);
-    }
-  }
-}
-
-function resolveRelativeImport(fromFilePath, specifier) {
-  const basePath = path.resolve(path.dirname(fromFilePath), specifier);
-  const candidates = [
-    basePath,
-    `${basePath}.ts`,
-    `${basePath}.tsx`,
-    `${basePath}.mts`,
-    `${basePath}.cts`,
-    path.join(basePath, "index.ts"),
-    path.join(basePath, "index.tsx")
-  ];
-
-  return candidates.some((candidate) => fs.existsSync(candidate));
-}
-
-walk(srcDir);
-
-const importPattern = /(?:import|export)\s+(?:[^"']+?\s+from\s+)?["']([^"']+)["']/g;
-
-for (const filePath of files) {
-  const content = fs.readFileSync(filePath, "utf8");
-
-  for (const match of content.matchAll(importPattern)) {
-    const specifier = match[1];
-
-    if (specifier.startsWith("/")) {
-      importErrors.push(`${filePath}: absolute import is not allowed (${specifier})`);
-      continue;
-    }
-
-    if (specifier.startsWith(".")) {
-      if (!resolveRelativeImport(filePath, specifier)) {
-        importErrors.push(`${filePath}: unresolved relative import (${specifier})`);
-      }
-      continue;
-    }
-
-    if (specifier.startsWith("@flow-state-dev/")) {
-      continue;
-    }
-  }
-}
-
-if (importErrors.length > 0) {
-  for (const error of importErrors) {
-    console.error(error);
-  }
+if (!fs.existsSync(tscPath)) {
+  console.error(
+    `typecheck failed: TypeScript is not installed (no ${path.relative(rootDir, tscPath)}). ` +
+      `NO types were checked. Run \`pnpm install\` at the repo root, then re-run.`
+  );
   process.exit(1);
 }
 
-console.log(`static typecheck passed (${path.relative(rootDir, packageDir)}): ${files.length} source file(s) validated`);
+const tscRun = spawnSync(tscPath, ["-p", "tsconfig.json", "--noEmit"], {
+  cwd: packageDir,
+  stdio: "inherit"
+});
+
+if (tscRun.error) {
+  console.error(`typecheck failed: could not run ${tscPath}: ${tscRun.error.message}`);
+  process.exit(1);
+}
+
+process.exit(tscRun.status ?? 1);
