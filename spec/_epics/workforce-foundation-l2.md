@@ -17,9 +17,10 @@ seat concept — `packages/workforce` is a name-a-participant registry (382 line
 with one caller, `examples/guides/research-team`. When this epic lands, an author adds a folder
 and gets a seat: each seat's `WORKER.md` scans into a neutral manifest, each manifest resolves to one
 exact flow instance carrying its own create-time configuration, and — **where that seat is an
-opinionated agent** — it also gets a registry entry, and the worker it materializes either
-honours what it declared or refuses loudly. A thin seat (intake, coordinator) is a `defineFlow`
-and stops there; being a seat never requires being an Agent, and no new registry is added.
+opinionated agent** — the block it resolves to either honours what it declared or refuses
+loudly. Every seat is a `defineFlow` instance; a thin seat (intake, coordinator) stops there,
+being a seat never requires being an Agent, and **no registry — new or existing — sits in the
+resolve path** (theme 2).
 
 **Which objective, and how much of the gap.** [`docs/objectives.md`](../../docs/objectives.md)
 **Goal 1 — validate through real usage**, and **Goal 4 — keep the foundation honest**. Goal 1's
@@ -30,8 +31,7 @@ part of it** (theme 4).
 
 **Holistic necessity.** Four issues, cut at two real seams. **The spine:** the loader (FIX-1335)
 answers *what seats exist* — files to neutral per-worker manifests; the factory (FIX-1325)
-answers *what one seat resolves to* — a flow per seat, plus a registry entry only where the seat
-is an opinionated agent. Two issues because those are two jobs, not because one has to land
+answers *what one seat resolves to* — a flow per seat, and nothing beside it (theme 2). Two issues because those are two jobs, not because one has to land
 first: a walker producing neutral manifests depends on no seat contract at all (theme 4).
 
 **The honesty half straddles the spec line, so it is also two.** FIX-1327 is the *undocumented*
@@ -50,14 +50,15 @@ did; FIX-1337 is the re-route, and FIX-1327 stays narrow.
 
 | | What has to be true | Why here |
 |---|---|---|
-| **Gate minimum** | Two seats of **distinct** worker kinds, each with **different create-time config**, hired on the real assembled path — **one hire per kind**, and **at least one of them thin** (flow-only, no `AgentRegistry` entry). Each resolves by its exact instance id and reads its own frozen `ctx.flow.config`. The opinionated-agent seat materializes a worker that honours its declaration or fails naming what it could not honour; the thin seat never touches the Agent layer at all. **Programmatic registration is acceptable at this bar** | This is the claim the objective rests on — a seat is a configured worker and it runs what it says. Distinct kinds because **same-kind multi-hire is not this epic's bar**: the Atlas gives W2 "one hire per kind is enough" and assigns the multi-hire proof to Collab RC. One seat thin because otherwise the epic can pass without ever exercising the thin-seat path (Atlas §04 proof B: one row seats a thin coordinator *and* a thick Agent). No loader required, so the set does not serialize behind FIX-1335 |
+| **Gate minimum** | Two seats of **distinct** worker kinds, each with **different create-time config**, hired on the real assembled path — **one hire per kind**, and **at least one of them thin** — a plain `defineFlow` worker that never goes through `defineAgent`. Each resolves by its exact instance id and reads its own frozen `ctx.flow.config`. The opinionated-agent seat resolves to a block that honours its declaration or fails naming what it could not honour; the thin seat never goes through `defineAgent` at all. **Programmatic registration is acceptable at this bar** | This is the claim the objective rests on — a seat is a configured worker and it runs what it says. Distinct kinds because **same-kind multi-hire is not this epic's bar**: the Atlas gives W2 "one hire per kind is enough" and assigns the multi-hire proof to Collab RC. One seat thin because otherwise the epic can pass without ever exercising the thin-seat path (Atlas §04 proof B: one row seats a thin coordinator *and* a thick Agent) — and the **discriminator moved with theme 2**: every seat is a flow instance now, so "no `AgentRegistry` entry" is true of both and proves nothing, which is why the thin row reads *never went through `defineAgent`*. No loader required, so the set does not serialize behind FIX-1335 |
 | **Epic-complete** | The same proof bootstrapped from **conventional files only** — seat folders on the locked tree produce the seats, with no programmatic registration anywhere in the path — **and the opinionated seat's declared `outputSchema` survives delegation or fails by name** (FIX-1337). **That is the whole finish line** | Files-only is what proves the *convention*, which is the objective; a green gate minimum with hand-registration proves the factory and says nothing about the file layer. The `outputSchema` clause is here because honesty that covers capabilities but not output shape leaves the same invisible drift one field over |
 
 **Gate-minimum-complete is not epic-complete:** without the files-only bootstrap the convention
 itself is unproven. **And epic-complete stops there** — the pentest Lab Proof is the next stage
 after W2, not a criterion of it (theme 4).
 
-**Not doing:** Team, Channel, MessageBoard or Project as Layer 1 types; a second registry; hot
+**Not doing:** Team, Channel, MessageBoard or Project as Layer 1 types; any registry in the seat
+resolve path — theme 2 removes the one that exists rather than adding a second; hot
 addition of flow kinds after boot; a management bus, a delivery bus, or a second dispatcher; a
 second Agent type in the package; member-memory depth; **the Lab Proof itself** (its own stage —
 theme 4); **the four thin L2 helpers** (filed against that stage, which is their first real
@@ -91,30 +92,58 @@ eventually carries them, which is no longer a child of this epic (theme 4).*
    proposal, which is why **the Atlas owes an update** — an action this epic carries, recorded at
    the end of this document, not a flag left for someone to notice.
 
-   **No second registry** — the scan's whole value is that files and hand-written definitions
-   produce the same entries, so a second source of truth gives "what seats exist?" two answers and
-   turns the TypeScript escape hatch into a fork. **No `agents/` or `personas/` sibling** either:
+   **One declaration source, not two** — the scan's whole value is that files and hand-written
+   definitions produce the same entries, so a second source of truth gives "what seats exist?"
+   two answers and turns the TypeScript escape hatch into a fork. (This was written as "no
+   second registry" when a registry was still in the picture; theme 2 removes the first one, so
+   the rule is about *declaration sources*, which is what it always meant.) **No `agents/` or `personas/` sibling** either:
    FIX-912's sketch is superseded as a delivery stream and no issue may re-open it.
 
 2. **A seat is one exact flow instance carrying its own create-time config** — configuration and
    identity, not a new execution primitive. **No kind-only address for a collection member and no
    first-registered fallback**: that is what makes a seat addressable as itself rather than as
    its kind, and it is the contract FIX-1325 owns and FIX-1327 / FIX-1337 materialize against.
-   **The compile boundary between the two spine children, quoting the lock —** *"defineFlow EVERY
-   SEAT · AgentRegistry ONLY IF AGENT"* ([Atlas](../../docs/atlas/workforce.html) `:876-877`;
-   figcaption `:886`: *"A scan that feeds `defineFlow` from this tree is a named gap. It adds a
-   registry entry only when that seat is an opinionated agent."*). **FIX-1335 stops at neutral
-   manifests** — no `Agent`, no flow, no registry construction. **FIX-1325 turns a manifest into
-   a flow per seat, plus a registry entry only for opinionated seats**, and thin seats (intake,
-   coordinator) must be expressible stopping at `defineFlow`. A seat folder supplies config and a
+   **The compile boundary between the two spine children.** The Atlas states its surviving half
+   and its superseded half in one breath — *"defineFlow EVERY SEAT · AgentRegistry ONLY IF
+   AGENT"* ([Atlas](../../docs/atlas/workforce.html) `:876-877`). The first clause holds; the
+   second is struck by the substrate fence below. **FIX-1335 stops at neutral manifests** — no
+   flow, no block, no registry construction. **FIX-1325 turns a manifest into a flow per seat,
+   full stop**: no conditional registry entry on either side of the seam, and thin seats
+   (intake, coordinator) are expressible stopping at `defineFlow`. A seat folder supplies config and a
    stable id, never a new action tree. Harness, model and persona references are instance config when they
    vary without changing the block graph; a difference that changes the action tree is a
    different flow kind, not another config key. How many seats per kind is the gate bar's
    question, not a second decision here.
 
+   **The substrate registers blocks, not Agents — owner-locked, and it is a Layer 1 change.**
+   A name resolves to a `BlockDefinition`, and to nothing else. `agentRegistry` /
+   `createAgentRegistry` and `agent-ref` **are not a runtime resolve path** — not in this epic
+   and not after it. A skills board and a task board assign the same way, name →
+   `BlockDefinition`, so the substrate carries one lookup shape instead of two. **`defineAgent`
+   is a block factory**: it builds a sequencer or generator configured to act agent-like
+   (persona, model, tools, capabilities), and its output is a `BlockDefinition`. A block
+   *pattern*, not a registrable species. **`materializeAgent` and `agentBlock` collapse into
+   that factory** — aliased, then deleted. *Why:* an Agent catalog standing beside the block
+   registry gives "what can this name run?" two answers, and the second answer carries a species
+   only one product knows about — the substrate fold tenet 4 refuses.
+
+   **The mechanism is Layer 1, and it lands in `@flow-state-dev/orchestration`.** This is not
+   Workforce deciding to stop using a registry; it is the substrate settling how a named worker
+   resolves, with Workforce (Layer 2) consuming it like any other caller — the same Layer 1
+   floor / Layer 2 product split this epic already rests on, sharpened. Orchestration already
+   resolves workers this way (`TaskWorkerRegistry` is `Record<string, BlockDefinition>`, and
+   `worker-step` connects those blocks directly), and `materializeAgent` / `agentBlock` already
+   return `BlockDefinition`, so the fence **removes the `agent-ref` detour rather than building
+   new machinery**. **No child of this epic delivers that mechanism** — theme 4 says when it
+   lands and who owns it.
+
+   **And a seat is not a board worker.** Workforce seats stay flow instances — dispatch targets
+   — and in-process board workers stay their own list. Same idea, different mechanism; no issue
+   may merge the two lists, and none may treat an Agent catalog as the roster.
+
    **The identity is `team.name`, dot-joined — and a path is not an id.** A seat mints one
    identity string, `engineering.lead`, and that string is what every later reference uses: the
-   flow instance id, an `agent-ref` value, a board key. **No folder is renamed.** The seat path
+   flow instance id, a board key, a worker key on a task board. **No folder is renamed.** The seat path
    stays `teams/<teamId>/workers/<name>/`, slashes and all, exactly as theme 1 locks it. Only
    the minted string joins with a dot.
 
@@ -156,12 +185,31 @@ eventually carries them, which is no longer a child of this epic (theme 4).*
    FIX-1327) *and* one documented one (output shape, FIX-1337), and stays satisfiable by the
    children the index carries.
    **Scoped to opinionated-agent seats**, per the gate bar's thin-seat row: no issue may route a
-   thin seat through the Agent layer to make it a seat. Served by deepening `defineAgent` / `createAgentRegistry` / `materializeAgent` **in
-   place**. *Why no second Agent type and no growth of the core type:* skills and orchestration
-   materialize against `packages/core/src/types/agent.ts` without importing Workforce, and engine
-   has no `AgentRegistry` import — a parallel Worker/Member type, or a `resources` / `memory` /
-   `sessions` field on the core type, breaks that seam and folds one product's knowledge into the
-   substrate (tenet 4). Demote means do not grow these types; it does not mean delete them.
+   thin seat through `defineAgent` to make it a seat.
+
+   **The contract binds to the behaviour, not to the symbol carrying it.** What this theme
+   requires is that *a block built from a declaration runs what it declared, or refuses by
+   name*. FIX-1327 landed that on `materializeAgent` and FIX-1337 changes the same path; when
+   `materializeAgent` collapses into the `defineAgent` factory (theme 2), the contract travels
+   with the behaviour. **The collapse must not quietly drop it** — that would be this theme's
+   own failure shape, arriving through a refactor.
+
+   **The carve-out survives the fence, because it is a different catalog.**
+   Additive-not-restrictive tool resolution lives in
+   `packages/orchestration/src/shared/resolve-catalog-tools.ts` and concerns a *tool* catalog,
+   not an agent one; theme 2 touches neither it nor its policy.
+
+   **What the fence supersedes here.** An earlier draft justified this theme by *preserving* the
+   core `Agent` / `AgentRegistry` seam — "skills and orchestration materialize against
+   `packages/core/src/types/agent.ts` without importing Workforce", closing with the Atlas's
+   *"demote means do not grow these types; it does not mean delete them"*
+   ([Atlas §04](../../docs/atlas/workforce.html) proof C). **The owner's fence goes further:**
+   `agentRegistry` / `createAgentRegistry` / `agent-ref` do die as a runtime resolve path, and
+   the Atlas line is superseded with them (recorded as an obligation at the end of this
+   document). The half that survives is the refusal itself — no parallel Worker/Member type, no
+   `resources` / `memory` / `sessions` field folded into a substrate type, no product registry
+   taught to engine (tenet 4). There is no second species now precisely because there is no
+   first one.
 
 4. **The fence, with its reasons — and where this epic stops.**
    - **The four thin L2 helpers are seat addressing — and they are out of W2.** Keyed team,
@@ -186,6 +234,22 @@ eventually carries them, which is no longer a child of this epic (theme 4).*
      *because* a runtime seat-join API is a second registration path that skips the file, which
      is the convention. **Deferred to Collab RC:** ordered multi-reply, who-may-reply policy,
      real cross-team addresses, multi-hire fan-out.
+   - **The substrate fence moves as documents now; the code kill is its own issue, after the
+     W2 factory lands.** Theme 2 is settled as *direction* from today: no epic-spec, no child
+     spec, and no new code may teach `agentRegistry` / `createAgentRegistry` / `agent-ref` as a
+     resolve path, or `materializeAgent` as the Workforce spine. **The deletion is not this
+     epic's.** Removing the `AgentRegistry` types, cutting the skills injection
+     (`materializeWorker`'s `agent-ref` branch and its `agentRegistry` dep) and rewiring
+     `examples/guides/research-team` is a **separate Linear issue, filed and taken after
+     FIX-1325's seat factory lands** — deliberately after, so the factory is not thrashed
+     mid-stream. **That issue is an `@flow-state-dev/orchestration` change, not a Workforce
+     cleanup** (theme 2: the mechanism is Layer 1), which is what decides who owns it and what
+     it touches. Until it lands the symbols still exist and still compile, and **FIX-1337 ships
+     against `materializeAgent` as it stands today**. What the interval forbids is *growth*: no
+     new `agentRegistry` call site, no new `agent-ref` consumer, no new path that resolves a
+     name through an Agent catalog. **Stopped teaching it is not deleted it** — read the fence
+     as a completed removal and you go hunting for symbols that are still on `main`; read the
+     survival as a reprieve and you grow the thing being killed.
    - **Sequencing, and the stages after — neither of them a child.** The Layer 1 floor has
      landed, so W2 is the kick. **FIX-1327 is independent. FIX-1335 and FIX-1325 may land in
      either order, or in parallel** — a manifest walker commits to nothing about seats, so the
@@ -203,10 +267,10 @@ eventually carries them, which is no longer a child of this epic (theme 4).*
 
 | Issue | What it owns | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [FIX-1335](https://linear.app/fixpoint-labs/issue/FIX-1335) | Convention loader: scan `teams/<id>/workers/<name>/`, reading each seat's one `WORKER.md` (or `worker.ts`) into a **neutral per-worker manifest** — no `Agent`, no flow, no registry construction. **Mints each worker's identity, `team.name`, once** (themes 1–2) | spec | [#1665](https://github.com/fixpoint-labs/flow-state-dev/pull/1665) | — | Spec Approved |
-| [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) | The seat factory — a manifest becomes **one flow per seat, plus a registry entry only for opinionated seats**; INST-5 hire/mint as collection kinds, binding one exact flow-instance id + immutable create-time config. Uses `manifest.id` verbatim; remints no identity. **The four thin helpers are not in this issue** (theme 4) | spec | [#1676](https://github.com/fixpoint-labs/flow-state-dev/pull/1676) | — | In Spec Review |
+| [FIX-1335](https://linear.app/fixpoint-labs/issue/FIX-1335) | Convention loader: scan `teams/<id>/workers/<name>/`, reading each seat's one `WORKER.md` (or `worker.ts`) into a **neutral per-worker manifest** — no `Agent`, no flow, no registry construction. **Mints each worker's identity, `team.name`, once** (themes 1–2). Manifest record is `{ id, declared, body, codePath? }` | spec | [#1665](https://github.com/fixpoint-labs/flow-state-dev/pull/1665) | — | Spec Approved |
+| [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) | The seat factory — a manifest becomes **one flow per seat, full stop**; INST-5 hire/mint as collection kinds, binding one exact flow-instance id + immutable create-time config. Uses `manifest.id` verbatim; remints no identity. **The four thin helpers are not in this issue** (theme 4) | spec | [#1676](https://github.com/fixpoint-labs/flow-state-dev/pull/1676) | — | In Spec Review — **being rewritten to theme 2's fence** (no conditional registry entry) |
 | [FIX-1327](https://linear.app/fixpoint-labs/issue/FIX-1327) | Materialization honesty, **undocumented half**: the silent capability skip when no catalog is present — **honour or loudly refuse** | **bug** | — | [#1666](https://github.com/fixpoint-labs/flow-state-dev/pull/1666) (merged) | Done |
-| [FIX-1337](https://linear.app/fixpoint-labs/issue/FIX-1337) | Materialization honesty, **documented half** and the other side of FIX-1327: a delegated agent drops a declared `outputSchema` and returns prose. Reverses a published contract, so it takes the spec route and its spec owns the migration path (theme 3) | spec | [#1674](https://github.com/fixpoint-labs/flow-state-dev/pull/1674) | — | In Spec Review |
+| [FIX-1337](https://linear.app/fixpoint-labs/issue/FIX-1337) | Materialization honesty, **documented half** and the other side of FIX-1327: a delegated agent drops a declared `outputSchema` and returns prose. Reverses a published contract, so it takes the spec route and its spec owns the migration path (theme 3). **The owner answered its contract question: both changes flip outright** — a delegated agent honours its declared shape, and a transform-bearing shape is refused uniformly — **with no deprecation cycle**. Ships against `materializeAgent` as it stands (theme 4) | spec | [#1674](https://github.com/fixpoint-labs/flow-state-dev/pull/1674) | — | In Spec Review |
 
 *A bug carries no spec PR and no spec-approval gate by design — it routes straight to the fix,
 with its PR as the review surface
@@ -253,9 +317,17 @@ excludes is FIX-1337's, which is exactly why that row is on the spec route inste
   `engineering.lead`. A slash-joined id registers, resolves, and is then unreachable over HTTP
   (theme 2). The disk path is untouched, because a path is not an id. Minted once by FIX-1335,
   with no translation layer. Not open.
+- **What does a seat's name resolve to?** *Owner-locked, round 6:* a `BlockDefinition`, and
+  nothing else. `agentRegistry` / `createAgentRegistry` / `agent-ref` are not a resolve path;
+  `defineAgent` is a block factory whose output is a `BlockDefinition`; `materializeAgent` and
+  `agentBlock` collapse into it. The mechanism is **Layer 1, in
+  `@flow-state-dev/orchestration`** (theme 2), and the code kill is a separate issue after
+  FIX-1325 lands (theme 4). Settled in session — not open, and not to be re-argued on a child
+  spec.
 - **Settled where they are written, not re-argued here:** FIX-1310 stays related, not a child
   (§4); one hire per kind, two *distinct* kinds at the gate (§1); the honesty contract is scoped
-  to opinionated-agent seats and a thin seat stops at `defineFlow` (theme 3); the proof is tiered
+  to opinionated-agent seats, and **every** seat stops at `defineFlow` while only an
+  opinionated one goes through `defineAgent` (themes 2–3); the proof is tiered
   and programmatic registration satisfies the gate (§1) — requiring files-only there would
   serialize the epic behind FIX-1335 for no product gain.
 
@@ -263,8 +335,8 @@ excludes is FIX-1337's, which is exactly why that row is on the spec route inste
 
 ## Atlas obligations
 
-**An action this epic owes, not a footnote.** Two Atlas sketches are superseded by decisions
-this epic made. Both must be **marked superseded — not deleted** — in
+**An action this epic owes, not a footnote.** Three Atlas surfaces are superseded by decisions
+this epic carries. All must be **marked superseded — not deleted** — in
 `docs/atlas/workforce.html` **before this epic wraps**. The Atlas is the direction artifact for
 this work, so leaving it proposing shapes we have decided against is the same drift we flag it
 for below, and worse: a later reader takes the proposal for the lock, exactly as an earlier
@@ -274,9 +346,13 @@ revision of this document did. Marking rather than deleting keeps the decision l
 |---|---|---|
 | **§06** file conventions | The five per-worker files — `role.md` · `personality.md` · `tools.md` · `skills/` · `resources/` (`:845-849`), tagged `FACTORY INPUTS · PROPOSED` | **Theme 1** — one `WORKER.md` (or `worker.ts`) per seat |
 | **§05** the worker contract | The `createWorkerFlow({ name, role, personality, tools, skills })` sketch (`:803-820`), itself marked *"PROPOSED V1 — thin factory helper. Not an export on main"* | **FIX-1325 decision 2** — a seat folder says *which* flow and *how it is configured*; it never describes what the flow does. Role, personality, tools and skills are not factory arguments |
+| **§04** the fence (proof C, `:552` · `:565` · `:671`), **§05**'s `createAgentRegistry([engMgr])` sketch (`:790-801`), **§06**'s *"AgentRegistry ONLY IF AGENT"* (`:876-877`, figcaption `:886`), and **§17**'s rows for the thin core types and `defineAgent` / registry impl | `agentRegistry` / `createAgentRegistry` / `materializeAgent` / `agent-ref` as the Workforce runtime spine and the way a named worker resolves — closing with *"demote means do not grow these types; it does not mean delete them"* | **Theme 2** — the substrate registers blocks, not Agents. Wrong on two counts: the mechanism is replaced, **and it was never Workforce's to own** — it is Layer 1, in `@flow-state-dev/orchestration` |
 
-The two are one supersession seen twice: §06 is those five inputs on disk, §05 is the same five
-as a function's parameter list.
+The first two are one supersession seen twice: §06 is those five inputs on disk, §05 is the same
+five as a function's parameter list. **The third is different in kind and needs saying plainly:**
+it is not a proposal the epic outgrew but a *fence the Atlas states as settled*, and this epic
+now contradicts it outright. Leaving it standing is worse than leaving a stale sketch — a reader
+weighing the two would reasonably take the Atlas's fence over an epic-spec's theme.
 
 *And a flag, for the Atlas owner — not a cross-cutting question for this epic. The Atlas is
 pinned at `15c814251`, where §03 tags FIX-1331 "about to land · not exists" and §19 gap 1 says
@@ -329,3 +405,19 @@ as live holds.*
   bar is now the seat factory alone, and the four helpers are filed against the lab stage — their
   first real caller. **The Atlas obligation gains §05:** `createWorkerFlow`'s parameter list is
   the same supersession as §06's five files, seen from the other side.
+
+- **Round-6 owner fence (in-session)** — **the substrate registers blocks, not Agents.**
+  `agentRegistry` / `createAgentRegistry` / `agent-ref` die as a runtime resolve path;
+  `defineAgent` becomes a block factory returning a `BlockDefinition`; `materializeAgent` and
+  `agentBlock` collapse into it; Workforce seats stay flow instances and are *not* the same list
+  as in-process board workers. **The mechanism is Layer 1 and lands in
+  `@flow-state-dev/orchestration`**, with Workforce consuming it — which is why no child of this
+  epic delivers it. Theme 2 carries the fence, theme 3 loses the "deepen the registry in place"
+  mechanism and re-reads its carve-outs (tool resolution survives — it is a tool catalog, not an
+  agent one), theme 4 carries the sequencing: **documents move now, the code kill is a separate
+  orchestration issue after FIX-1325's factory lands**, and nothing may grow an `agentRegistry`
+  in the interval. §1's gate bar keeps its criterion and changes its discriminator — "no
+  `AgentRegistry` entry" no longer separates a thin seat from a thick one, so the thin row now
+  reads *never went through `defineAgent`*. **The objective itself is untouched**: the fence
+  changes mechanism, not the outcome the owner approved. The Atlas obligation gains a third row,
+  and it is the first one that supersedes an Atlas *fence* rather than a proposal.
