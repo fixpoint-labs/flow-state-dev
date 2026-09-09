@@ -5,6 +5,7 @@
  */
 
 import {
+  FlowError,
   generator,
   type MaterializeAgentFn,
   type MaterializeAgentOptions,
@@ -20,7 +21,6 @@ import {
   taskTools as taskToolsCapability,
 } from "@flow-state-dev/orchestration";
 import { resolveAgentPersona } from "./resolve-persona";
-import { AgentCapabilityError } from "./errors";
 
 function resolveCapabilities(
   agentName: string,
@@ -30,30 +30,17 @@ function resolveCapabilities(
   if (!entries || entries.length === 0) return [];
   const out: DefinedCapability[] = [];
   for (const entry of entries) {
-    // A string is a catalog key (registry-resolved); a capability reference
-    // (base, `.with()`- or `.presets()`-configured) is used as-is — refs need
-    // no catalog and are never refused.
+    // A string is a catalog key; a capability reference is used as-is.
     if (typeof entry === "string") {
-      // No catalog → REFUSE (FIX-1327). This used to `continue`, and it is the
-      // one miss with nowhere for the author to find out: the agent declared a
-      // capability and ran without it, with no error and no warning. Refusing
-      // here puts the failure where the declaration is, before any block is
-      // built.
-      //
-      // Deliberately NOT extended to the unknown-key miss below. That path
-      // warns, and warn-and-drop is this package's documented
-      // additive-not-restrictive policy for catalog resolution — the same one
-      // `resolveCatalogTools` states for tools. Making capabilities strict
-      // while tools stay additive would split one policy in two; if that policy
-      // should change, it should change for both, deliberately, and not as a
-      // side effect of fixing the silent path.
+      // No catalog → refuse. Unknown keys still warn-and-skip (same additive
+      // policy as resolveCatalogTools).
       if (!catalog) {
-        throw new AgentCapabilityError(
+        throw new FlowError(
           `materializeAgent: agent "${agentName}" declares capability "${entry}" as a ` +
             `catalog key, but no capabilityCatalog was supplied. Supply one to whatever ` +
             `materializes this agent, or put the capability reference itself in ` +
             `usesCapabilities.`,
-          { agentName, capability: entry },
+          { code: "agent_capability_unresolved", details: { agentName, capability: entry } },
         );
       }
       // Same own-property requirement as the tool catalog above (FIX-965).

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
 import { materializeAgent } from "../src/materialize-agent";
-import { AgentCapabilityError, AGENT_CAPABILITY_UNRESOLVED } from "../src/errors";
 import { FlowError } from "@flow-state-dev/core";
 import { defineAgent } from "../src/define-agent";
 import { defineCapability } from "@flow-state-dev/core";
@@ -290,18 +289,26 @@ describe("materializeAgent", () => {
       expect(inspectGenerator(block).uses ?? []).toContain(configured);
     });
 
-    it("refuses a string key when no capabilityCatalog is provided", () => {
-      // FIX-1327. This used to skip silently, so an agent declaring
-      // `usesCapabilities: ["memory"]` materialized with no memory and nothing
-      // anywhere said so — the define-time declaration and the running block
-      // disagreed, and only the declaration was visible to the author.
-      expect(() =>
-        materializeAgent(
-          makeAgent({ usesCapabilities: ["k"] }),
-          makeOpts({ shape: "standalone" }), // no capabilityCatalog
-        ),
-      ).toThrow(AgentCapabilityError);
-    });
+    it.each(["worker", "standalone"] as const)(
+      "refuses a string key with no catalog on the %s shape",
+      (shape) => {
+        let caught: FlowError | undefined;
+        try {
+          materializeAgent(
+            makeAgent({ name: "researcher", usesCapabilities: ["memory"] }),
+            makeOpts({ shape }),
+          );
+        } catch (e) {
+          caught = e as FlowError;
+        }
+        expect(caught).toBeInstanceOf(FlowError);
+        expect(caught!.code).toBe("agent_capability_unresolved");
+        expect(caught!.details).toMatchObject({
+          agentName: "researcher",
+          capability: "memory",
+        });
+      },
+    );
 
     it("still resolves a string key against the capabilityCatalog", () => {
       const cap = defineCapability({ name: "catCap" });
@@ -323,64 +330,6 @@ describe("materializeAgent", () => {
       const names = (inspectGenerator(block).uses ?? []).map((u: any) => u?.name);
       expect(names).toContain("keyedCap");
       expect(names).toContain("refCap");
-    });
-  });
-
-  // FIX-1327. A refusal only helps if the author can act on it, so what is
-  // asserted here is the part a caller reads: a FlowError with a stable code
-  // that names the offending capability, on BOTH shapes — a worker seat must
-  // not be the one place a declaration goes quiet.
-  describe("capability refusal (FIX-1327)", () => {
-    it.each(["worker", "standalone"] as const)(
-      "refuses a catalog-key capability with no catalog on the %s shape",
-      (shape) => {
-        expect(() =>
-          materializeAgent(
-            makeAgent({ usesCapabilities: ["memory"] }),
-            makeOpts({ shape }),
-          ),
-        ).toThrow(AgentCapabilityError);
-      },
-    );
-
-    it("carries a machine-readable code and the offending capability", () => {
-      let caught: AgentCapabilityError | undefined;
-      try {
-        materializeAgent(
-          makeAgent({ name: "researcher", usesCapabilities: ["memory"] }),
-          makeOpts(),
-        );
-      } catch (e) {
-        caught = e as AgentCapabilityError;
-      }
-      expect(caught).toBeInstanceOf(FlowError);
-      expect(caught!.code).toBe(AGENT_CAPABILITY_UNRESOLVED);
-      expect(caught!.details).toMatchObject({
-        agentName: "researcher",
-        capability: "memory",
-      });
-    });
-
-    // The fence this fix deliberately stops at: a catalog that simply lacks the
-    // key stays on the additive-not-restrictive path the tool resolver
-    // documents. Only the case with NOWHERE to look throws. If this flips, it
-    // should flip for tools too, deliberately — not as fallout from this fix.
-    it("does NOT refuse when a catalog is present but lacks the key", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      expect(() =>
-        materializeAgent(
-          makeAgent({ usesCapabilities: ["memory"] }),
-          makeOpts({ capabilityCatalog: { other: defineCapability({ name: "other" }) } }),
-        ),
-      ).not.toThrow();
-      spy.mockRestore();
-    });
-
-    it("never refuses a capability reference — a ref needs no catalog", () => {
-      const cap = defineCapability({ name: "refOnly" });
-      expect(() =>
-        materializeAgent(makeAgent({ usesCapabilities: [cap] }), makeOpts()),
-      ).not.toThrow();
     });
   });
 
