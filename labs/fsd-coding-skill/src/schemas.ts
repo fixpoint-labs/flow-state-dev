@@ -31,6 +31,8 @@ export const sessionStateSchema = z.object({
 
 export const FLOW_KIND = "fsd-coding";
 
+export type HostHarness = "codex" | "cursor";
+
 export const DOORS = ["implement", "fix", "openPr", "fixFsd"] as const;
 export type CodingDoor = (typeof DOORS)[number];
 

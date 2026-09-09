@@ -27,8 +27,7 @@ function flowWith(recursor: ReturnType<typeof scriptedCursor>, extras: { model?:
   return createFsdCodingFlow({
     cwd: HOST_CWD,
     model: extras.model,
-    resolveCursorClient: recursor.resolve,
-    cursor: GATE_OFF,
+    cursor: { ...GATE_OFF, resolveCursorClient: recursor.resolve },
   });
 }
 
@@ -37,8 +36,7 @@ describe("fsd-coding flow wiring", () => {
     const { resolve } = scriptedCursor();
     const flow = createFsdCodingFlow({
       cwd: HOST_CWD,
-      resolveCursorClient: resolve,
-      cursor: GATE_OFF,
+      cursor: { ...GATE_OFF, resolveCursorClient: resolve },
     });
     expect(flow.kind).toBe(FLOW_KIND);
     expect(flow.id).toBe(FLOW_KIND);
@@ -112,8 +110,7 @@ describe("fsd-coding flow wiring", () => {
     const first = await testFlow({
       flow: createFsdCodingFlow({
         cwd: HOST_CWD,
-        resolveCursorClient: scripted.resolve,
-        cursor: GATE_OFF,
+        cursor: { ...GATE_OFF, resolveCursorClient: scripted.resolve },
       }),
       action: "implement",
       userId: USER,
@@ -127,8 +124,7 @@ describe("fsd-coding flow wiring", () => {
     const second = await testFlow({
       flow: createFsdCodingFlow({
         cwd: HOST_CWD,
-        resolveCursorClient: scripted.resolve,
-        cursor: GATE_OFF,
+        cursor: { ...GATE_OFF, resolveCursorClient: scripted.resolve },
       }),
       action: "fix",
       userId: USER,

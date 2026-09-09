@@ -2,11 +2,10 @@
  * One coding flow with four static doors sharing the host-selected adapter.
  */
 import { defineFlow, sequencer, type harnessRunInputSchema } from "@flow-state-dev/core";
-import type { BlockDefinition, HarnessRunHandle } from "@flow-state-dev/core/types";
+import type { BlockDefinition, HarnessCallbackContext, HarnessRunHandle } from "@flow-state-dev/core/types";
 import type { z } from "zod";
 import { codexAgent, type CodexAgentOptions } from "@flow-state-dev/codex";
 import { cursorAgent, type CursorAgentOptions } from "@flow-state-dev/cursor";
-import { createHostResolvers, type HostResolverOptions } from "./host";
 import {
   DOOR_PREFIX,
   FLOW_KIND,
@@ -14,6 +13,7 @@ import {
   sessionStateSchema,
   taskInputSchema,
   type FixFsdInput,
+  type HostHarness,
   type TaskInput,
 } from "./schemas";
 
@@ -22,7 +22,11 @@ type CodingAgent = BlockDefinition<
   z.ZodType<HarnessRunHandle, z.ZodTypeDef, unknown>
 >;
 
-export interface FsdCodingHostOptions extends HostResolverOptions {
+export interface FsdCodingHostOptions {
+  /** Host-selected adapter. Omitted means Cursor. */
+  harness?: HostHarness;
+  /** Directory the harness works in. Closed over — not taken from input. */
+  cwd: string;
   /** Explicit host model override; omitted preserves adapter bags/defaults. */
   model?: string;
   /** Explicit host opt-in for Codex sandbox network access. */
@@ -31,15 +35,32 @@ export interface FsdCodingHostOptions extends HostResolverOptions {
   additionalDirectories?: string[];
   /** Codex's supported thread/client bags and client seam. Host feeds win. */
   codex?: CodexAgentOptions;
-  /** SDK client seam. Tests inject a scripted double; live omits it. */
-  resolveCursorClient?: CursorAgentOptions["resolveCursorClient"];
-  /** Forwarded Cursor `agent` bag (model, apiKey). `local.cwd` is refused. */
-  agent?: CursorAgentOptions["agent"];
   /**
-   * Extra `cursorAgent` options. Tests pass the version-gate seam here.
-   * Host-owned keys (`cwd` / `resume` / `onSession`) still win after the spread.
+   * Extra `cursorAgent` options. Tests pass the version-gate seam and client
+   * double here. Host-owned keys (`cwd` / `resume` / `onSession`) still win
+   * after the spread.
    */
   cursor?: CursorAgentOptions;
+}
+
+function readStateId(ctx: HarnessCallbackContext, harness: HostHarness): string | null {
+  const state = ctx.session.state as Partial<z.infer<typeof sessionStateSchema>> | undefined;
+  const id = state?.harnessSessions?.[harness];
+  return typeof id === "string" && id !== "" ? id : null;
+}
+
+function hostResolvers(options: FsdCodingHostOptions): Pick<CursorAgentOptions, "cwd" | "resume" | "onSession"> {
+  const harness = options.harness ?? "cursor";
+  return {
+    cwd: () => options.cwd,
+    resume: (ctx) => readStateId(ctx, harness),
+    onSession: async (id, ctx) => {
+      await ctx.session.atomicState((state: z.infer<typeof sessionStateSchema>) => ({
+        ...state,
+        harnessSessions: { ...state.harnessSessions, [harness]: id },
+      }));
+    },
+  };
 }
 
 function wrapDoor<TInput extends z.ZodType>(
@@ -73,7 +94,7 @@ function fixFsdPrompt(input: FixFsdInput) {
  * Do not invent a collection / instance floor (FIX-1320).
  */
 export function createFsdCodingFlow(options: FsdCodingHostOptions) {
-  const resolvers = createHostResolvers(options);
+  const resolvers = hostResolvers(options);
   let agent: CodingAgent;
   switch (options.harness ?? "cursor") {
     case "codex":
@@ -100,22 +121,15 @@ export function createFsdCodingFlow(options: FsdCodingHostOptions) {
       if (options.additionalDirectories !== undefined) {
         throw new Error("FSD_CODING_ADD_DIR is only supported with FSD_CODING_HARNESS=codex");
       }
-      const configuredAgent = options.agent ?? options.cursor?.agent ?? { model: { id: "composer-2.5" } };
+      const configuredAgent = options.cursor?.agent ?? { model: { id: "composer-2.5" } };
       agent = cursorAgent({
         ...options.cursor,
         ...resolvers,
         name: "cursor-agent",
-        resolveCursorClient: options.resolveCursorClient ?? options.cursor?.resolveCursorClient,
         agent: options.model === undefined ? configuredAgent : {
           ...configuredAgent,
           model: { ...configuredAgent.model, id: options.model },
         },
-        ...(options.model === undefined ? {} : {
-          send: {
-            ...options.cursor?.send,
-            model: { ...options.cursor?.send?.model, id: options.model },
-          },
-        }),
       });
       break;
     }
