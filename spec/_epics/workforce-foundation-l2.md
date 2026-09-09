@@ -15,11 +15,11 @@ who wants three collaborating workers hand-wires every one of them: a `defineFlo
 all, and their own convention for where any of it lives. There is no file layer on `main` and no
 seat concept — `packages/workforce` is a name-a-participant registry (382 lines, eight files)
 with one caller, `examples/guides/research-team`. When this epic lands, an author adds a folder
-and gets a seat: the tree is scanned into today's registries, each seat resolves to one exact
-flow instance carrying its own create-time configuration, and — **where that seat is an
-opinionated agent** — the worker it materializes either honours what it declared or refuses
-loudly. A thin seat (intake, coordinator) is a `defineFlow` and stops there; being a seat never
-requires being an Agent.
+and gets a seat: the tree is scanned into neutral seat manifests, each manifest resolves to one
+exact flow instance carrying its own create-time configuration, and — **where that seat is an
+opinionated agent** — it also gets a registry entry, and the worker it materializes either
+honours what it declared or refuses loudly. A thin seat (intake, coordinator) is a `defineFlow`
+and stops there; being a seat never requires being an Agent, and no new registry is added.
 
 **Which objective, and how much of the gap.** [`docs/objectives.md`](../../docs/objectives.md)
 **Goal 1 — validate through real usage**, and **Goal 4 — keep the foundation honest**. Goal 1's
@@ -28,35 +28,34 @@ it removes the reason it stays open — the bespoke wiring every such app has to
 first real application on top of it is the **Lab Proof, which is the next stage after W2, not
 part of it** (theme 4).
 
-**Holistic necessity.** Three issues, and the honest question is whether it is two. The
-convention loader (FIX-1335) and the seat factory (FIX-1325) are one spine cut at a real seam:
-the loader answers *what seats exist*, the factory answers *what one seat resolves to*. They are
-two issues because the loader has to land against a settled factory contract, and specifying
-them together is how the file shape starts negotiating with the instance API. Materialization
-honesty (FIX-1327) is the weakest of the three alone — a backlog bug that predates this epic and
-would be fixed eventually anyway. It is **kept, and kept as a bug** (no spec, straight to the
-fix), because the factory's entire promise is that a seat runs what it declared, and today
-`materializeAgent` **silently skips a string-key capability when no catalog is present**
-(`if (!catalog) continue`): a seat declares a capability and runs without it, with no error and
-no warning. That is the whole of FIX-1327. **What is *not* the bug:** a worker's `z.string()`
-output, which core and `apps/docs` both document as deliberate and which FIX-1327 **preserves**
-(theme 3). Narrowed that way the fix reverses no documented contract, which is why it stays on
-the direct route; if it ever grows into *changing* that contract it has stopped being this
-epic's bug and must be re-routed to a spec
-([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec").
+**Holistic necessity.** Four issues, cut at two real seams. **The spine:** the loader (FIX-1335)
+answers *what seats exist* — files to neutral per-worker manifests; the factory (FIX-1325)
+answers *what one seat resolves to* — a flow per seat, plus a registry entry only where the seat
+is an opinionated agent. Two issues because those are two jobs, not because one has to land
+first: a walker producing neutral manifests depends on no seat contract at all (theme 4).
+
+**The honesty half straddles the spec line, so it is also two.** FIX-1327 is the *undocumented*
+drop — `materializeAgent` **silently skips a string-key capability when no catalog is present**
+(`if (!catalog) continue`): a seat declares a capability and runs without it, no error, no
+warning. Nothing documents that, so it stays a bug — no spec, straight to the fix. FIX-1337 is
+the *documented* one: a delegated agent drops a declared `outputSchema` and returns prose, which
+`packages/core/src/types/agent.ts` and `apps/docs` both publish as deliberate. Reversing a
+published contract takes the spec route, and that spec owns the migration path. **This is the
+FIX-1327 tripwire firing as designed** — this document warned that if the bug ever grew into
+*changing* the worker output contract it had to be re-routed to a spec
+([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec"). It
+did; FIX-1337 is the re-route, and FIX-1327 stays narrow.
 
 **Proof — tiered. The gate bar and the finish line are deliberately not the same.**
 
 | | What has to be true | Why here |
 |---|---|---|
 | **Gate minimum** | Two seats of **distinct** worker kinds, each with **different create-time config**, hired on the real assembled path — **one hire per kind**, and **at least one of them thin** (flow-only, no `AgentRegistry` entry). Each resolves by its exact instance id and reads its own frozen `ctx.flow.config`. The opinionated-agent seat materializes a worker that honours its declaration or fails naming what it could not honour; the thin seat never touches the Agent layer at all. **Programmatic registration is acceptable at this bar** | This is the claim the objective rests on — a seat is a configured worker and it runs what it says. Distinct kinds because **same-kind multi-hire is not this epic's bar**: the Atlas gives W2 "one hire per kind is enough" and assigns the multi-hire proof to Collab RC. One seat thin because otherwise the epic can pass without ever exercising the thin-seat path (Atlas §04 proof B: one row seats a thin coordinator *and* a thick Agent). No loader required, so the set does not serialize behind FIX-1335 |
-| **Epic-complete** | The same proof bootstrapped from **conventional files only** — seat folders on the locked tree produce the seats, with no programmatic registration anywhere in the path. **That is the whole finish line** | Files-only is what proves the *convention*, which is the objective. A green gate minimum with hand-registration proves the factory and says nothing about the file layer |
+| **Epic-complete** | The same proof bootstrapped from **conventional files only** — seat folders on the locked tree produce the seats, with no programmatic registration anywhere in the path — **and the opinionated seat's declared `outputSchema` survives delegation or fails by name** (FIX-1337). **That is the whole finish line** | Files-only is what proves the *convention*, which is the objective; a green gate minimum with hand-registration proves the factory and says nothing about the file layer. The `outputSchema` clause is here because honesty that covers capabilities but not output shape leaves the same invisible drift one field over |
 
 **Gate-minimum-complete is not epic-complete:** without the files-only bootstrap the convention
-itself is unproven, and this epic must not be declared to have served the objective on the first
-row alone. **And epic-complete stops there.** The pentest Lab Proof is the *next stage* after
-W2, not a criterion of it — theme 4, and the Atlas names nesting it under W2 among the things
-that would fake this epic.
+itself is unproven. **And epic-complete stops there** — the pentest Lab Proof is the next stage
+after W2, not a criterion of it (theme 4).
 
 **Not doing:** Team, Channel, MessageBoard or Project as Layer 1 types; a second registry; hot
 addition of flow kinds after boot; a management bus, a delivery bus, or a second dispatcher; a
@@ -70,21 +69,29 @@ multi-reply and who-may-reply policy (Collab RC).
 child's spec, not a theme — the loader's scan mechanics belong to FIX-1335, and the factory's API
 shape, the helper names and their transport caveats to FIX-1325.*
 
-1. **One file shape, one registry.** The locked shape is `teams/<teamId>/workers/<name>/`
-   ([Atlas §06](../../docs/atlas/workforce.html)) — seats nest under the team they seat, with
-   **no `agents/` or `personas/` sibling**: FIX-912's older sketch is superseded as a delivery
-   stream and no issue in this set may re-open it. The scan feeds **today's** registries and adds
-   none. *Why no second registry:* the scan's whole value is that files and hand-written
-   definitions produce the same entries, so a second source of truth gives "what seats exist?"
-   two answers and turns the TypeScript escape hatch into a fork.
+1. **One file shape, one registry — and the seat is a folder, not a manifest file.** The locked
+   shape is `teams/<teamId>/workers/<name>/` with five entries inside it — `role.md`,
+   `personality.md`, `tools.md`, `skills/`, `resources/`
+   ([Atlas §06](../../docs/atlas/workforce.html) `:845-849`) — seats nest under the team they
+   seat, with **no `agents/` or `personas/` sibling** (FIX-912's sketch is superseded as a
+   delivery stream and no issue may re-open it) and **no single-manifest file**: a manifest is
+   what the loader *produces* from those five, never a file an author writes. The scan adds no
+   registry — *because* its whole value is that files and hand-written definitions produce the
+   same entries, so a second source of truth gives "what seats exist?" two answers and turns the
+   TypeScript escape hatch into a fork.
 
 2. **A seat is one exact flow instance carrying its own create-time config** — configuration and
    identity, not a new execution primitive. **No kind-only address for a collection member and no
    first-registered fallback**: that is what makes a seat addressable as itself rather than as
-   its kind, and it is the contract FIX-1335 targets and FIX-1327 materializes against. **The
-   compile boundary between the two children:** the loader registers kinds — one blueprint per
-   seat folder — and the factory mints instances; a seat folder supplies config and a stable id,
-   never a new action tree. Harness, model and persona references are instance config when they
+   its kind, and it is the contract FIX-1325 owns and FIX-1327 / FIX-1337 materialize against.
+   **The compile boundary between the two spine children, quoting the lock —** *"defineFlow EVERY
+   SEAT · AgentRegistry ONLY IF AGENT"* ([Atlas](../../docs/atlas/workforce.html) `:876-877`;
+   figcaption `:886`: *"A scan that feeds `defineFlow` from this tree is a named gap. It adds a
+   registry entry only when that seat is an opinionated agent."*). **FIX-1335 stops at neutral
+   manifests** — no `Agent`, no flow, no registry construction. **FIX-1325 turns a manifest into
+   a flow per seat, plus a registry entry only for opinionated seats**, and thin seats (intake,
+   coordinator) must be expressible stopping at `defineFlow`. A seat folder supplies config and a
+   stable id, never a new action tree. Harness, model and persona references are instance config when they
    vary without changing the block graph; a difference that changes the action tree is a
    different flow kind, not another config key. How many seats per kind is the gate bar's
    question, not a second decision here.
@@ -93,14 +100,16 @@ shape, the helper names and their transport caveats to FIX-1325.*
    Where an *Agent* materialization path cannot honour a declared capability, tool, persona or
    model, it says so and names what it could not honour; it does not fail quietly (BP-030 —
    refuse, don't drop). *Why:* a seat that runs something other than what its files declare makes
-   the convention worse than hand-wiring, because the drift is invisible. **Two silent-looking
-   behaviours are documented, deliberate contracts and stay out of scope — this theme is not a
-   licence to reverse them:** worker `z.string()` output (`packages/core/src/types/agent.ts`:
-   *"Honored only for the STANDALONE shape — workers always emit `z.string()`"*, published in
-   `apps/docs`), and additive-not-restrictive tool resolution (`resolveCatalogTools` warns and
-   drops an unknown key by design, and its own doc names the policy). What remains in scope is
-   the **undocumented** silent drop — the capability skip when no catalog is present — which is
-   exactly FIX-1327, so this theme's contract is satisfiable by the children the index carries.
+   the convention worse than hand-wiring, because the drift is invisible. **One documented
+   contract stays out of scope — this theme is not a licence to reverse it:**
+   additive-not-restrictive tool resolution
+   (`packages/orchestration/src/shared/resolve-catalog-tools.ts` warns and drops an unknown key
+   by design, and its own doc names the policy). That is the whole carve-out. **The other
+   documented contract — worker `z.string()` — this epic now deliberately changes:** owned by
+   **FIX-1337** on the spec route, which decides the migration path for anyone who built on the
+   published text-only behaviour. So the theme covers the undocumented drop (the capability skip,
+   FIX-1327) *and* one documented one (output shape, FIX-1337), and stays satisfiable by the
+   children the index carries.
    **Scoped to opinionated-agent seats**, per the gate bar's thin-seat row: no issue may route a
    thin seat through the Agent layer to make it a seat. Served by deepening `defineAgent` / `createAgentRegistry` / `materializeAgent` **in
    place**. *Why no second Agent type and no growth of the core type:* skills and orchestration
@@ -127,8 +136,11 @@ shape, the helper names and their transport caveats to FIX-1325.*
      is the convention. **Deferred to Collab RC:** ordered multi-reply, who-may-reply policy,
      real cross-team addresses, multi-hire fan-out.
    - **Sequencing, and the stages after — neither of them a child.** The Layer 1 floor has
-     landed, so W2 is the kick. FIX-1327 is independent and may land first; FIX-1325 settles the
-     seat contract; FIX-1335 lands against it. **Then, in order:** the **Lab Proof** — a thin
+     landed, so W2 is the kick. **FIX-1327 is independent. FIX-1335 and FIX-1325 may land in
+     either order, or in parallel** — a manifest walker commits to nothing about seats, so the
+     "loader must land against a settled factory contract" hazard is dissolved, and parallel
+     reaches the files-only bar earlier. FIX-1337 follows FIX-1327 on the same materialization
+     path and gates on its own spec. **Then, in order:** the **Lab Proof** — a thin
      pentest team (intake · recon · triage) on the file conventions alone, its own stage at
      *"proposed · after W2"* — then **W1 MCP (FIX-1333)**, held by #1655 until the package and
      the lab both exist, then Collab RC. The lab is a stage after W2, **not a criterion of it and
@@ -139,15 +151,17 @@ shape, the helper names and their transport caveats to FIX-1325.*
 
 | Issue | What it owns | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [FIX-1335](https://linear.app/fixpoint-labs/issue/FIX-1335) | Convention loader: scan `teams/<id>/workers/<name>/` into today's workforce registries | spec | — | — | Backlog |
-| [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) | The seat factory — INST-5 hire/mint as collection kinds; a seat binds one exact flow-instance id + immutable create-time config. Carries the four thin helpers (theme 4) | spec | — | — | Backlog |
-| [FIX-1327](https://linear.app/fixpoint-labs/issue/FIX-1327) | Materialization honesty, **narrowed**: the silent capability skip when no catalog is present — **honour or loudly refuse**. The documented worker `z.string()` contract is preserved, not reversed (theme 3) | **bug** | — | — | Backlog |
+| [FIX-1335](https://linear.app/fixpoint-labs/issue/FIX-1335) | Convention loader: scan `teams/<id>/workers/<name>/` into **neutral per-worker manifests** — no `Agent`, no flow, no registry construction (theme 2) | spec | [#1665](https://github.com/fixpoint-labs/flow-state-dev/pull/1665) | — | In Spec Review |
+| [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) | The seat factory — a manifest becomes **one flow per seat, plus a registry entry only for opinionated seats**; INST-5 hire/mint as collection kinds, binding one exact flow-instance id + immutable create-time config. Carries the four thin helpers (theme 4) | spec | — | — | Backlog |
+| [FIX-1327](https://linear.app/fixpoint-labs/issue/FIX-1327) | Materialization honesty, **undocumented half**: the silent capability skip when no catalog is present — **honour or loudly refuse** | **bug** | — | [#1666](https://github.com/fixpoint-labs/flow-state-dev/pull/1666) | In Review |
+| [FIX-1337](https://linear.app/fixpoint-labs/issue/FIX-1337) | Materialization honesty, **documented half** and the other side of FIX-1327: a delegated agent drops a declared `outputSchema` and returns prose. Reverses a published contract, so it takes the spec route and its spec owns the migration path (theme 3) | spec | — | — | Ready to Spec |
 
 *A bug carries no spec PR and no spec-approval gate by design — it routes straight to the fix,
 with its PR as the review surface
 ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec"). The
 empty Spec PR cell on the FIX-1327 row is correct, not a gap; as narrowed it reverses no
-documented contract, which is what keeps it on the direct route.*
+documented contract, which is what keeps it on the direct route. The documented contract it
+excludes is FIX-1337's, which is exactly why that row is on the spec route instead.*
 
 **Related, deliberately not children.**
 
@@ -165,25 +179,25 @@ documented contract, which is what keeps it on the direct route.*
 
 **Closed — recorded with where the answer lives, so nobody re-opens them.**
 
-- **Who owns the Lab Proof?** *Dissolved, round 3:* nobody in this epic, because it is not this
-  epic's to own. The Atlas W2 row names *"Nesting the lab or Collab RC under W2 as extra package
-  surface"* among the things that would fake W2, and the Lab Proof is its own row at *"proposed ·
-  after W2."* W2 completes on the gate minimum plus the files-only bootstrap; the lab is the next
-  stage (theme 4). An earlier draft of this document made it an epic-complete criterion and
-  raised a fourth-child routing question — both are withdrawn.
-- **Does the worker path *support* declared structured output, or *refuse* it?** *Dissolved,
-  round 3:* neither — it **preserves** `z.string()`, which `packages/core/src/types/agent.ts` and
-  `apps/docs` both document as deliberate. FIX-1327 is narrowed to the undocumented silent
-  capability skip (theme 3, §1), and so reverses no contract and stays on the direct route.
+- **Who owns the Lab Proof?** *Dissolved, round 3:* nobody in this epic — the Atlas gives it its
+  own *"proposed · after W2"* row and names nesting it under W2 as a way to fake W2 (theme 4). An
+  earlier draft made it an epic-complete criterion; withdrawn.
+- **Does the worker path *support* declared structured output, or *refuse* it?** *Reopened and
+  owned, round 4:* the owner decided to change it. FIX-1327 stays narrowed to the undocumented
+  capability skip and stays a bug; the documented `z.string()` contract is **FIX-1337's** to
+  change, on the spec route, migration path included (theme 3, §1). Not open here — open in that
+  spec.
+- **Must the loader land against a settled factory contract?** *Dissolved, round 4:* no. A walker
+  producing neutral manifests depends on no seat contract, so the two may land in parallel (theme
+  4). The seam survives; only the ordering it implied is gone.
 - **Do the four thin helpers ride FIX-1325, or earn their own issue?** *Settled per theme 4:*
   they ride FIX-1325. Reopen only if FIX-1325's spec finds the helper surface larger than the
   factory it wraps — and the answer then is to phase them, not to split the issue.
-- **FIX-1310 stays related, not a child** — §4's related table.
-- **One hire per kind; the gate is two distinct kinds, differently configured** — §1's gate table.
-- **The honesty contract is scoped to opinionated-agent seats; a thin seat stops at `defineFlow`**
-  — theme 3, exercised by §1's gate table.
-- **The proof is tiered, and programmatic registration satisfies the gate** — §1. Requiring
-  files-only at the gate would serialize the whole epic behind FIX-1335 for no product gain.
+- **Settled where they are written, not re-argued here:** FIX-1310 stays related, not a child
+  (§4); one hire per kind, two *distinct* kinds at the gate (§1); the honesty contract is scoped
+  to opinionated-agent seats and a thin seat stops at `defineFlow` (theme 3); the proof is tiered
+  and programmatic registration satisfies the gate (§1) — requiring files-only there would
+  serialize the epic behind FIX-1335 for no product gain.
 
 ---
 
@@ -200,26 +214,27 @@ so a later reader does not treat those rows as live holds.*
 - **Epic drafted** — reduced Workforce foundation L2 to one convention-to-registry path, one
   seat-to-flow-instance factory, and honest Agent materialization; Team, MessageBoard, chat and
   collaboration stay outside the set.
-- **After round-1 epic review (#1657)** — named the locked `teams/<id>/workers/<name>/` path so
-  FIX-912's `agents/` sketch could not win by default; made FIX-1310 related-only with FIX-1335
-  as the loader child; put the four Atlas-named helpers in scope, riding FIX-1325; separated the
-  gate bar from the finish line.
-- **After the coordinator steer and Codex's findings (#1657)** — tiered the proof so programmatic
-  registration satisfies the gate, because the original bar serialized the set behind FIX-1335
-  for no product gain; collapsed §2 from seven themes to four; scoped the honesty contract to
-  opinionated-agent seats and required one thin seat at the gate, because requiring every seat to
-  be an Agent contradicts the lock; corrected the gate to two *distinct* kinds, since same-kind
-  multi-hire is Collab RC's proof.
+- **Round 1 (#1657)** — locked `teams/<id>/workers/<name>/` over FIX-912's `agents/` sketch;
+  FIX-1310 related-only with FIX-1335 as the loader child; four helpers in scope on FIX-1325;
+  gate bar separated from the finish line.
+- **Coordinator steer + Codex (#1657)** — tiered the proof so programmatic registration satisfies
+  the gate, un-serializing the set from FIX-1335; §2 from seven themes to four; honesty scoped to
+  opinionated-agent seats with one thin seat required at the gate; gate corrected to two
+  *distinct* kinds.
 - **Moved to `epic/workforce-foundation-l2` (PR #1664)** — `Process guards` exempts `spec/`
   content only on a `spec/*` or `epic/*` branch. Same content; #1657 closed unmerged.
-- **After round-2 epic review (#1664)** — trimmed §2 and §5 to coordination altitude, pushing
-  per-child constraints, helper names and the transport caveat to FIX-1325's spec; closed the
-  helpers-routing question and required helpers to land with their first real caller, phased if
-  the surface grows.
-- **After round-3 epic review (#1664)** — **removed the Lab Proof from the finish line**: the
-  Atlas names nesting it under W2 as a way to fake this epic and gives it its own "after W2"
-  stage, so epic-complete is the files-only bootstrap and the lab is the next stage, not a
-  criterion or a child. **Narrowed FIX-1327 and theme 3** to the *undocumented* silent drop,
-  because worker `z.string()` and additive-not-restrictive tool resolution are documented
-  contracts — as written the theme promised a refusal no child could deliver, and reversing
-  `z.string()` would have made the bug a contract change needing a spec.
+- **Round 2 (#1664)** — §2 and §5 trimmed to coordination altitude, per-child constraints pushed
+  to FIX-1325's spec; helpers must land with their first real caller, phased if the surface grows.
+- **Round 3 (#1664)** — Lab Proof removed from the finish line (its own stage after W2, not a
+  criterion or a child). FIX-1327 and theme 3 narrowed to the *undocumented* drop, because as
+  written the theme promised a refusal no child could deliver.
+- **Round-4 owner decisions and coordinator call (#1664, #1665)** — added **FIX-1337** as a
+  fourth child: worker `z.string()` moves from documented-exception to a contract this epic
+  deliberately changes, on the spec route, which is round 3's FIX-1327 tripwire firing as
+  designed. Theme 3's carve-out is now tool resolution alone. **Redrew the FIX-1335/FIX-1325
+  split** against the verified Atlas — five files per seat and no manifest file (`:845-849`),
+  `defineFlow` every seat / `AgentRegistry` only if agent (`:876-877`, figcaption `:886`) — so
+  the loader stops at neutral manifests and the factory owns flow-per-seat plus the conditional
+  registry entry. **Dissolved the loader-after-factory ordering** on stronger grounds than the
+  review argued: a manifest walker depends on no seat contract at all, not merely on a
+  preserved-keys rule.
