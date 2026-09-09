@@ -20,6 +20,7 @@ import {
   taskTools as taskToolsCapability,
 } from "@flow-state-dev/orchestration";
 import { resolveAgentPersona } from "./resolve-persona";
+import { AgentCapabilityError } from "./errors";
 
 function resolveCapabilities(
   agentName: string,
@@ -30,13 +31,22 @@ function resolveCapabilities(
   const out: DefinedCapability[] = [];
   for (const entry of entries) {
     // A string is a catalog key (registry-resolved); a capability reference
-    // (base or `.with()`-configured) is used as-is — refs need no catalog.
+    // (base, `.with()`- or `.presets()`-configured) is used as-is — refs need
+    // no catalog and are never refused.
     if (typeof entry === "string") {
-      // No catalog → a string key can't be resolved; skip SILENTLY, preserving
-      // the pre-FIX-732 behavior for string-key agents materialized without a
-      // capabilityCatalog (the change stays purely additive). The warn below
-      // fires only when a catalog IS present but the key is unknown.
-      if (!catalog) continue;
+      // No catalog → refuse (FIX-1327): nowhere to resolve against, so the
+      // agent used to run without a capability it declared, silently. The
+      // unknown-key miss below stays warn-and-drop — the same additive policy
+      // `resolveCatalogTools` states for tools; change both or neither.
+      if (!catalog) {
+        throw new AgentCapabilityError(
+          `materializeAgent: agent "${agentName}" declares capability "${entry}" as a ` +
+            `catalog key, but no capabilityCatalog was supplied. Supply one to whatever ` +
+            `materializes this agent, or put the capability reference itself in ` +
+            `usesCapabilities.`,
+          { agentName, capability: entry },
+        );
+      }
       // Same own-property requirement as the tool catalog above (FIX-965).
       if (!Object.hasOwn(catalog, entry)) {
         console.warn(
