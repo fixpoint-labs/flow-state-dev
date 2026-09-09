@@ -8,11 +8,11 @@
  * false green in exactly the checkouts where it is easiest to trust — a fresh
  * clone, a new worktree, a container that skipped install.
  *
- * This script was scaffolded in Wave 1 with a regex import-scan fallback for
- * when the registry was unreachable and dependencies could not be installed.
- * That fallback checked no types yet printed "static typecheck passed", so it
- * was removed. Don't reintroduce it: a missing `tsc` is a broken checkout, and
- * the only honest thing to do is say so and fail.
+ * This script once carried a regex import-scan fallback, added when the registry
+ * was unreachable and dependencies could not be installed. It checked no types
+ * yet printed "static typecheck passed", so it was removed. Don't reintroduce
+ * it: a missing `tsc` is a broken checkout, and the only honest thing to do is
+ * say so and fail.
  */
 import fs from "node:fs";
 import path from "node:path";

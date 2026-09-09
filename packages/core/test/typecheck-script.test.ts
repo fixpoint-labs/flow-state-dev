@@ -36,6 +36,17 @@ function makeRoot(): { root: string; packageDir: string } {
   return { root, packageDir };
 }
 
+/**
+ * The fake compiler is a POSIX shell script, so the two cases that need one are
+ * gated to POSIX. That is not a coverage gap on Windows: the script spawns the
+ * extensionless `node_modules/.bin/tsc` directly, which Windows cannot execute
+ * either (pnpm writes `tsc.cmd` there for it), so a shim that ran on Windows
+ * would be testing behaviour production does not have. The two assertions that
+ * carry this file — a missing toolchain fails, and never says "passed" — need
+ * no shim and run everywhere.
+ */
+const onPosix = process.platform !== "win32";
+
 /** Install a fake `tsc` that exits with `status`, standing in for the real compiler. */
 function installFakeTsc(root: string, status: number): void {
   const binDir = path.join(root, "node_modules", ".bin");
@@ -77,14 +88,14 @@ describe("typecheck script — never reports success without running tsc", () =>
     expect(output).toMatch(/pnpm install/);
   });
 
-  it("propagates a failing tsc rather than swallowing it", () => {
+  it.skipIf(!onPosix)("propagates a failing tsc rather than swallowing it", () => {
     const { root, packageDir } = makeRoot();
     installFakeTsc(root, 2);
 
     expect(run(root, packageDir).status).toBe(2);
   });
 
-  it("succeeds only when tsc actually ran and was clean", () => {
+  it.skipIf(!onPosix)("succeeds only when tsc actually ran and was clean", () => {
     const { root, packageDir } = makeRoot();
     installFakeTsc(root, 0);
 
