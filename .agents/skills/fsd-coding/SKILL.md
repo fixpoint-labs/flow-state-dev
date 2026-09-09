@@ -1,6 +1,6 @@
 ---
 name: fsd-coding
-description: Drive coding work through one FSD flow with a host-selected Codex or Cursor harness. Use whenever you would otherwise edit, test, commit, or open a PR yourself.
+description: Drive coding work through one FSD flow with a host-selected Codex or Cursor harness on a local machine or Grok box where that harness is already signed in. Use whenever you would otherwise edit, test, commit, or open a PR yourself on those hosts. Do not use on Cloud Agent VMs or nested cloud harnesses — do that work yourself.
 ---
 
 You are the **outer** coding agent. You do not implement the task yourself. You manage one FSD flow (`fsd-coding`) that commands the host-selected harness on this machine.
@@ -9,7 +9,7 @@ You are the **outer** coding agent. You do not implement the task yourself. You 
 
 This path runs on a **local machine or Grok box** where the selected harness is already signed in (`codex login`, or Cursor `CURSOR_API_KEY` / SDK login).
 
-**Out of scope:** cloud agent VMs and nested cloud harnesses. Do not try to sign a harness in from a Cloud Agent VM, and do not wrap this skill around another cloud coding agent.
+**Out of scope:** cloud agent VMs and nested cloud harnesses. If you are on a Cloud Agent VM, this skill does not apply — implement the task yourself. Do not try to sign a harness in from a Cloud Agent VM, and do not wrap this skill around another cloud coding agent.
 
 ## Mandatory path
 
@@ -59,6 +59,8 @@ Then retry the original door once. If it still fails, stop and report the two ou
 If the runner **never starts the door** — missing SDK, version-gate failure, invalid host flags, or `cursorAgent` / `codexAgent` construction errors — `fixFsd` uses the same construction path and will hit the same failure. Do not call `fixFsd` for those. Fix the host or environment, then retry the original door once. If it still fails, stop and report.
 
 ## Forbidden escapes
+
+These apply on a local machine or Grok box, where this skill is the path. On a Cloud Agent VM they do not — that host is out of v1.
 
 - Do not implement the user's coding task with your own editor, tests, or commits.
 - Do not just use git/gh directly to do the work. The exception is **auth that cannot go through the harness** (a missing login, a credential prompt the harness cannot see). Say so when you take that exception, then return to `fsdev run`.
