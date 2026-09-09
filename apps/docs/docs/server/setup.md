@@ -190,7 +190,7 @@ If you want to warm the runtime ahead of the first request (or surface a bad con
 
 ## Addressing an instance
 
-Each flow you pass to `createFlowState` is registered under its instance id, and that id is the first path segment of every flow route. For an ordinary flow the id is its `kind`: `/api/flows/support/...` reaches the `support` flow. A flow declared `cardinality: "collection"` registers one instance per id you give it, and each is reached only by that id:
+Each flow you pass to `createFlowState` is registered under its instance id, and a route that addresses a flow carries that id in the segment right after `/api/flows`. For an ordinary flow the id is its `kind`: `/api/flows/support/...` reaches the `support` flow. A flow declared `cardinality: "collection"` registers one instance per id you give it, and each is reached only by that id:
 
 ```ts
 const reviewFlow = defineFlow({ kind: "review", cardinality: "collection", ... });

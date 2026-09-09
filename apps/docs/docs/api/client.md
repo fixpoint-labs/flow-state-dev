@@ -203,8 +203,7 @@ if ((response.headers.get("content-type") ?? "").includes("text/event-stream")) 
 
 `resumeSuspension` error codes:
 - **400** — missing or invalid `action`, a `data` payload that fails `resumeSchema` validation (path-keyed `validationErrors` in the body), or no durability provider configured
-- **404** — unknown `flowKind` (an instance id; a multi-copy flow's bare kind is unknown), `requestId`, or `suspensionId`
-- **409 `wrong-instance-session` / `wrong-instance-request`** — the addressed instance is not the one that owns the session or request
+- **404** — unknown `flowKind` (an instance id; a multi-copy flow's bare kind is unknown), `requestId`, or `suspensionId`. A request owned by another copy of the same flow answers `404` too, with the same body as one that does not exist
 - **409** — request is not currently suspended, or this suspension is already resolved, or a concurrent resume is in progress
 - **410** — the suspension has expired (`timeoutMs` elapsed)
 
