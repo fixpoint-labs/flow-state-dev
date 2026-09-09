@@ -359,7 +359,7 @@ function normalizeInstanceConfig(
 /**
  * What the reachable blocks require of whatever flow installs them.
  *
- * Collected off `walkFlowGraph`'s closure — the same walk the dispatch-address
+ * Collected off `walkBlockGraph`'s closure — the same walk the dispatch-address
  * refusal reads, tool edge included — rather than off the action roots that
  * `declaredResources` and `requiresOrg` ride. A plain tool block that reads
  * `ctx.flow.config` has no action root of its own, so collecting off the roots
@@ -819,7 +819,7 @@ function validateEntryMaps(
  * two boards addressing one entry are each refused by name — every one of them
  * is a worker that could run against a row nothing verified.
  *
- * Reads the reachable closure {@link walkFlowGraph} builds, taking the tool
+ * Reads the reachable closure {@link walkBlockGraph} builds, taking the tool
  * edge, because a dispatcher is reachable only through
  * composition, a rescue handler or a tool edge, and the seam is reachable only
  * from blocks that carry an address — `dispatcher()` and the board's hand-off

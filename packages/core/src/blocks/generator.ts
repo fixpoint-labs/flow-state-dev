@@ -754,9 +754,16 @@ function assertToolsSatisfyFlowConfig(blocks: readonly GeneratorTool[], ctx: Blo
   // inside it, and `walkBlockGraph` is the same walk the mint uses over static
   // tools. Checking only the top level would leave the dynamic path one level
   // shallower than the static one it mirrors.
+  //
+  // Deduped by schema REFERENCE, as the mint's `collectRequiredFlowConfig`
+  // dedupes: one shared schema across ten tools is one parse, and the two paths
+  // report the same block when they refuse.
+  const seen = new Set<ZodTypeAny>();
   for (const block of walkBlockGraph(blocks as readonly BlockDefinition[])) {
     const schema = (block.config as { flowConfigSchema?: ZodTypeAny } | undefined)?.flowConfigSchema;
-    if (schema !== undefined) requirements.push({ blockName: block.name, schema });
+    if (schema === undefined || seen.has(schema)) continue;
+    seen.add(schema);
+    requirements.push({ blockName: block.name, schema });
   }
   if (requirements.length === 0) return;
 

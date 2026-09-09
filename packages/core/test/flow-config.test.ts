@@ -432,6 +432,59 @@ describe("flow config bag — the promises, and their second paths", () => {
   });
 
   /**
+   * The array case, asserted because the fix claims it rather than because
+   * anyone hit it: Zod strips undeclared keys inside `z.array(z.object(...))`
+   * exactly as it does inside a bare object, so an element-shaped requirement
+   * narrower than the bag's elements is reading, not contributing. A reviewer
+   * asked for proof this branch earns its place — this is the proof.
+   */
+  it("accepts an array requirement narrower than the bag's elements", () => {
+    const readsHosts = handler({
+      name: "reads-hosts",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      flowConfigSchema: z.object({ peers: z.array(z.object({ host: z.string() })) }),
+      execute: async () => ({})
+    });
+
+    const flow = defineFlow({
+      kind: "array-reads",
+      cardinality: "collection",
+      configSchema: z.object({
+        peers: z.array(z.object({ host: z.string(), port: z.number() }))
+      }),
+      actions: { work: { block: readsHosts } }
+    });
+
+    const bag = { peers: [{ host: "a", port: 1 }, { host: "b", port: 2 }] };
+    expect(flow({ id: "ar-1", config: bag } as never).config).toEqual(bag);
+  });
+
+  /** And a default inside an array element is still a contribution. */
+  it("refuses an array requirement that contributes a default to its elements", () => {
+    const contributes = handler({
+      name: "array-default",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      flowConfigSchema: z.object({
+        peers: z.array(z.object({ host: z.string(), weight: z.number().default(1) }))
+      }),
+      execute: async () => ({})
+    });
+
+    const flow = defineFlow({
+      kind: "array-block-default",
+      cardinality: "collection",
+      configSchema: z.object({ peers: z.array(z.object({ host: z.string() })) }),
+      actions: { work: { block: contributes } }
+    });
+
+    expect(() =>
+      flow({ id: "abd-1", config: { peers: [{ host: "a" }] } } as never)
+    ).toThrow(/block "array-default" declares a flowConfigSchema that would change the bag/);
+  });
+
+  /**
    * "The bag is closed, so a typo fails loudly."
    *
    * `.strict()` does NOT clear a `catchall`, so `z.object({...}).catchall(...)`
