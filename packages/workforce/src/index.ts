@@ -10,6 +10,7 @@
 export { defineAgent } from "./define-agent";
 export { createAgentRegistry } from "./agent-registry";
 export { materializeAgent } from "./materialize-agent";
+export { AgentCapabilityError, AGENT_CAPABILITY_UNRESOLVED } from "./errors";
 export { agentBlock, type AgentBlockOptions } from "./agent-block";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";

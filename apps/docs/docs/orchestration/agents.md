@@ -100,6 +100,8 @@ A standalone agent can return typed data instead of free text. Declare an `outpu
 
 `usesCapabilities` accepts two forms in the same array: a string key resolved against the materialize-time capability catalog, or a capability reference used as-is. A reference can be configured with `.with({ ... })`, and the preset typing carries through, the same way `generator({ uses })` consumes capabilities.
 
+A string key needs a catalog to resolve against. If you declare one and supply no catalog at all, materialization fails with an `AgentCapabilityError` naming the agent and the capability, rather than building an agent that quietly lacks it. A key that a supplied catalog doesn't carry is treated the same way as an unknown tool key: it warns and is skipped. Capability references carry themselves and never need a catalog.
+
 ```ts
 import { defineAgent } from "@flow-state-dev/workforce";
 import { tradingDeskCapability } from "./capabilities/trading-desk";
