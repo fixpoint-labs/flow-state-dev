@@ -250,6 +250,22 @@ eventually carries them, which is no longer a child of this epic (theme 4).*
      name through an Agent catalog. **Stopped teaching it is not deleted it** — read the fence
      as a completed removal and you go hunting for symbols that are still on `main`; read the
      survival as a reprieve and you grow the thing being killed.
+
+     **One constraint that issue inherits, because it is invisible from where it will be
+     written.** A `cardinality: "collection"` flow has **one block graph shared by every copy**;
+     only the config bag differs. `materializeAgent` resolves the model at *definition* time
+     (`packages/workforce/src/materialize-agent.ts:59-60`), and tools the same way through
+     `resolveCatalogTools` just below — so a collapsed factory that carries that resolution
+     across unchanged gives **every copy of a worker kind one shared model, whatever each
+     seat's file declared**. That is theme 3's failure shape exactly (declare it, lose it, no
+     error) and theme 2's guarantee broken (a seat is one exact instance carrying *its own*
+     config). **The collapsed factory must resolve persona, model and tools per copy, from
+     `ctx.flow.config`, not at definition time** — the substrate already allows it,
+     `ResolvableModel` accepting `(input, ctx) => …`
+     (`packages/core/src/blocks/generator.ts:194`). Recorded here as a constraint to inherit,
+     not a design: this epic does not write that Layer 1 API. It is written down at this
+     altitude because it is discoverable from the Layer 2 side and invisible from the Layer 1
+     one — nobody writing an orchestration cleanup has a reason to go looking for it.
    - **Sequencing, and the stages after — neither of them a child.** The Layer 1 floor has
      landed, so W2 is the kick. **FIX-1327 is independent. FIX-1335 and FIX-1325 may land in
      either order, or in parallel** — a manifest walker commits to nothing about seats, so the
@@ -420,4 +436,10 @@ as live holds.*
   `AgentRegistry` entry" no longer separates a thin seat from a thick one, so the thin row now
   reads *never went through `defineAgent`*. **The objective itself is untouched**: the fence
   changes mechanism, not the outcome the owner approved. The Atlas obligation gains a third row,
-  and it is the first one that supersedes an Atlas *fence* rather than a proposal.
+  and it is the first one that supersedes an Atlas *fence* rather than a proposal. **Theme 4's
+  handoff also carries one constraint the kill issue inherits** — a collection flow shares one
+  block graph across every copy, and `materializeAgent` resolves model and tools at definition
+  time, so the collapsed factory must resolve persona, model and tools **per copy from
+  `ctx.flow.config`** or every seat of a kind silently shares one model. Surfaced by FIX-1325's
+  rewrite; recorded at this altitude because it is invisible from the Layer 1 side where that
+  issue will be written.
