@@ -37,7 +37,11 @@ const OK_STREAM: CursorSdkMessage[] = [
   { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "done" }] } },
 ];
 
-export function scriptedCursor(opts: { agentId?: string; waitResult?: CursorRunResult } = {}) {
+export function scriptedCursor(opts: {
+  agentId?: string;
+  waitResult?: CursorRunResult;
+  resumeError?: Error;
+} = {}) {
   const rec: Recorder = { created: [], resumed: [], sent: [] };
 
   const makeRun = (): CursorRunLike => ({
@@ -72,6 +76,7 @@ export function scriptedCursor(opts: { agentId?: string; waitResult?: CursorRunR
     },
     async resume(id, options) {
       rec.resumed.push({ id, options });
+      if (opts.resumeError) throw opts.resumeError;
       return makeAgent(id);
     },
   });

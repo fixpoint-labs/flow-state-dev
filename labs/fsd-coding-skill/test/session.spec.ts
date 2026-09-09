@@ -79,4 +79,53 @@ describe("provider-safe session continuity", () => {
     expect(secondClient.rec.started).toHaveLength(1);
     expect(secondClient.rec.resumed).toEqual([]);
   });
+
+  it("forgets a Cursor id when resume fails before onSession reconfirms", async () => {
+    const stores = createInMemoryStores();
+    const first = scriptedCursor();
+    const opened = await testFlow({
+      flow: createFsdCodingFlow({
+        cwd: "/trusted",
+        cursor: { ...cursorGate, resolveCursorClient: first.resolve },
+      }),
+      action: "implement",
+      userId: "u",
+      sessionId: "stale",
+      input: { task: "first cut" },
+      stores,
+    });
+    expect(opened.status).toBe("completed");
+    expect(first.rec.created).toHaveLength(1);
+
+    const dead = scriptedCursor({ resumeError: new Error("agent expired") });
+    const failed = await testFlow({
+      flow: createFsdCodingFlow({
+        cwd: "/trusted",
+        cursor: { ...cursorGate, resolveCursorClient: dead.resolve },
+      }),
+      action: "fix",
+      userId: "u",
+      sessionId: "stale",
+      input: { task: "continue" },
+      stores,
+    });
+    expect(failed.status).not.toBe("completed");
+    expect(dead.rec.resumed.map((entry) => entry.id)).toEqual(["agent_1"]);
+
+    const retry = scriptedCursor();
+    const recovered = await testFlow({
+      flow: createFsdCodingFlow({
+        cwd: "/trusted",
+        cursor: { ...cursorGate, resolveCursorClient: retry.resolve },
+      }),
+      action: "fixFsd",
+      userId: "u",
+      sessionId: "stale",
+      input: { repro: "agent expired" },
+      stores,
+    });
+    expect(recovered.status).toBe("completed");
+    expect(retry.rec.resumed).toEqual([]);
+    expect(retry.rec.created).toHaveLength(1);
+  });
 });

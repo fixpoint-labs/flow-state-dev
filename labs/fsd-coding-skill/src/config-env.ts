@@ -5,6 +5,7 @@
  * (BP-031). They are never taken from action input. `--session` is the
  * fsdev flag that reuses filesystemStores session state across invocations.
  */
+import { delimiter } from "node:path";
 import type { HostHarness } from "./schemas";
 
 export interface HostEnvOptions {
@@ -73,7 +74,8 @@ export function readNetworkAccess(
 }
 
 /**
- * Codex-only extra writable directories (colon-separated). Cursor cannot honor them.
+ * Codex-only extra writable directories (PATH-style, `path.delimiter`).
+ * Cursor cannot honor them.
  */
 export function readAdditionalDirectories(
   harness: HostHarness,
@@ -81,7 +83,7 @@ export function readAdditionalDirectories(
 ): string[] | undefined {
   const raw = env.FSD_CODING_ADD_DIR;
   if (raw === undefined || raw === "") return undefined;
-  const dirs = raw.split(":").map((part) => part.trim()).filter((part) => part !== "");
+  const dirs = raw.split(delimiter).map((part) => part.trim()).filter((part) => part !== "");
   if (dirs.length === 0) return undefined;
   if (harness !== "codex") {
     throw new Error(

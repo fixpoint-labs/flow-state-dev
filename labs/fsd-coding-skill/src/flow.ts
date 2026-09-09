@@ -12,6 +12,7 @@ import {
   fixFsdInputSchema,
   sessionStateSchema,
   taskInputSchema,
+  type CodingDoor,
   type FixFsdInput,
   type HostHarness,
   type TaskInput,
@@ -43,17 +44,37 @@ export interface FsdCodingHostOptions {
   cursor?: CursorAgentOptions;
 }
 
-function readStateId(ctx: HarnessCallbackContext, harness: HostHarness): string | null {
-  const state = ctx.session.state as Partial<z.infer<typeof sessionStateSchema>> | undefined;
+function readStateId(
+  state: Partial<z.infer<typeof sessionStateSchema>> | undefined,
+  harness: HostHarness,
+): string | null {
   const id = state?.harnessSessions?.[harness];
   return typeof id === "string" && id !== "" ? id : null;
+}
+
+/**
+ * Hand the stored vendor id to this resume, then drop it. `onSession` writes
+ * it back only when the adapter reconfirms a live session. A failed
+ * `client.resume` / a Codex stream with no `thread.started` otherwise leaves
+ * the dead id in place and `fixFsd` loops on it.
+ */
+async function consumeStateId(ctx: HarnessCallbackContext, harness: HostHarness): Promise<string | null> {
+  let taken: string | null = null;
+  await ctx.session.atomicState((state: z.infer<typeof sessionStateSchema>) => {
+    const id = readStateId(state, harness);
+    if (id === null) return state;
+    taken = id;
+    const { [harness]: _removed, ...rest } = state.harnessSessions;
+    return { ...state, harnessSessions: rest };
+  });
+  return taken;
 }
 
 function hostResolvers(options: FsdCodingHostOptions): Pick<CursorAgentOptions, "cwd" | "resume" | "onSession"> {
   const harness = options.harness ?? "cursor";
   return {
     cwd: () => options.cwd,
-    resume: (ctx) => readStateId(ctx, harness),
+    resume: (ctx) => consumeStateId(ctx, harness),
     onSession: async (id, ctx) => {
       await ctx.session.atomicState((state: z.infer<typeof sessionStateSchema>) => ({
         ...state,
@@ -64,7 +85,7 @@ function hostResolvers(options: FsdCodingHostOptions): Pick<CursorAgentOptions, 
 }
 
 function wrapDoor<TInput extends z.ZodType>(
-  name: "implement" | "fix" | "openPr" | "fixFsd",
+  name: CodingDoor,
   inputSchema: TInput,
   toPrompt: (input: z.infer<TInput>) => string,
   agent: CodingAgent,

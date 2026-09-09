@@ -3,6 +3,7 @@
  *
  * A config file's checks are the code nobody runs until it is too late.
  */
+import { delimiter } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   readAdditionalDirectories,
@@ -67,8 +68,10 @@ describe("Codex-only permissions", () => {
     );
   });
 
-  it("splits colon-separated dirs for Codex", () => {
-    expect(readAdditionalDirectories("codex", { FSD_CODING_ADD_DIR: "/git:/objects" })).toEqual([
+  it("splits extra dirs on the platform path delimiter", () => {
+    expect(readAdditionalDirectories("codex", {
+      FSD_CODING_ADD_DIR: ["/git", "/objects"].join(delimiter),
+    })).toEqual([
       "/git",
       "/objects",
     ]);

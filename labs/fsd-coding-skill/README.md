@@ -47,9 +47,15 @@ export FSD_CODING_ADD_DIR="$(git rev-parse --git-dir):$(git rev-parse --git-comm
 ```
 
 `FSD_CODING_NETWORK_ACCESS` maps to Codex `thread.networkAccessEnabled` (needed
-for a sandboxed `git push`). `FSD_CODING_ADD_DIR` is colon-separated extra
-writable roots (`thread.additionalDirectories`). Cursor cannot honor either;
-the host refuses them when the selected harness is Cursor.
+for a sandboxed `git push`). `FSD_CODING_ADD_DIR` is PATH-style extra writable
+roots (`thread.additionalDirectories`), split on `path.delimiter` (`:` on
+Unix / Grok, `;` on Windows). Cursor cannot honor either; the host refuses
+them when the selected harness is Cursor.
+
+A door whose harness handle says `outcome: finished` is not done until the
+asked artifact is there — especially `openPr` (an open PR / URL). A finished
+turn that did not produce the artifact is a failure; call `fixFsd` before
+retrying.
 
 ### Self-heal
 

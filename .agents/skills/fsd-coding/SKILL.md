@@ -40,7 +40,7 @@ The trusted host chooses `FSD_CODING_HARNESS=codex|cursor`; **omitting it defaul
 
 ### Codex-only host permissions
 
-For Codex only, set `FSD_CODING_ADD_DIR` to a colon-separated list of extra writable directories (`thread.additionalDirectories`). For a linked Git worktree whose metadata lives outside the checkout, grant the worktree admin directory from `git rev-parse --git-dir`, the shared object database from `git rev-parse --git-common-dir` + `/objects`, and the current branch's shared ref and reflog parent directories. Do not grant the whole common `.git` directory, sibling worktrees, another source tree, or global Git/Codex configuration.
+For Codex only, set `FSD_CODING_ADD_DIR` to extra writable directories (`thread.additionalDirectories`), separated with the platform PATH delimiter (`:` on Unix / Grok, `;` on Windows). For a linked Git worktree whose metadata lives outside the checkout, grant the worktree admin directory from `git rev-parse --git-dir`, the shared object database from `git rev-parse --git-common-dir` + `/objects`, and the current branch's shared ref and reflog parent directories. Do not grant the whole common `.git` directory, sibling worktrees, another source tree, or global Git/Codex configuration.
 
 For Codex only, set `FSD_CODING_NETWORK_ACCESS=1` when a sandboxed run needs outbound network, such as `git push`. Cursor cannot honor either permission; the host refuses those variables when the selected harness is Cursor. If a door fails and you call `fixFsd`, pass the same host flags to `fixFsd` and to the one retry of the original door.
 
@@ -69,4 +69,16 @@ These apply on a local machine or Grok box, where this skill is the path. On a C
 
 ## What you return
 
-After each `fsdev run`, read the NDJSON on stdout (or `--capture`) and the process exit status. A completed harness handle with outcome `finished` is success. Failed, incomplete, cancelled, and transport outcomes are failure. On failure, follow **Self-heal**. On success, tell the owner what the harness did in one short paragraph.
+After each `fsdev run`, read the NDJSON on stdout (or `--capture`) and the process exit status.
+
+`outcome: "finished"` only means the vendor turn ended. It is not success by itself.
+
+Treat the door as success only when the requested artifact is actually there:
+
+- **implement / fix** — the asked change is in the checkout (the files, the named fix, or the tests that were supposed to go green). A finished turn that says it could not edit, or that leaves those tests red, is failure.
+- **openPr** — an open PR exists. Prefer a URL on the stream or handle; otherwise confirm with `gh pr view` (or the host's equivalent). A finished turn that did not open or update the PR is failure.
+- **fixFsd** — the repro is addressed enough to retry the original door.
+
+Failed, incomplete, cancelled, and transport outcomes are failure. A finished turn whose artifact is missing is also failure — follow **Self-heal**. Do not skip `fixFsd` because the handle said `finished`.
+
+On success, tell the owner what the harness did and where the artifact is (the PR URL for `openPr`) in one short paragraph.

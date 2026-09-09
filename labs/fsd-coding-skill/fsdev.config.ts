@@ -14,7 +14,8 @@
  *   FSD_CODING_CWD              required checkout the harness works in
  *   FSD_CODING_MODEL            optional adapter model override
  *   FSD_CODING_NETWORK_ACCESS   Codex only (`1` / `true`)
- *   FSD_CODING_ADD_DIR          Codex only, colon-separated extra writable dirs
+ *   FSD_CODING_ADD_DIR          Codex only, PATH-style extra writable dirs
+ *                               (`path.delimiter`: `:` on Unix, `;` on Windows)
  *
  * v1 runtime is a local machine or Grok box with the harness already signed
  * in. Cloud agent VMs and nested cloud harnesses are out of scope.
