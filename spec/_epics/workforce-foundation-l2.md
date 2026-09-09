@@ -421,7 +421,6 @@ as live holds.*
   bar is now the seat factory alone, and the four helpers are filed against the lab stage — their
   first real caller. **The Atlas obligation gains §05:** `createWorkerFlow`'s parameter list is
   the same supersession as §06's five files, seen from the other side.
-
 - **Round-6 owner fence (in-session)** — **the substrate registers blocks, not Agents.**
   `agentRegistry` / `createAgentRegistry` / `agent-ref` die as a runtime resolve path;
   `defineAgent` becomes a block factory returning a `BlockDefinition`; `materializeAgent` and
