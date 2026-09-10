@@ -11,50 +11,55 @@ scope.
 
 ## Run
 
-From this directory (`fsdev` config search is cwd-only):
+From this directory (`fsdev` config search is cwd-only), pass the host values
+on each command; no shell exports are required:
 
 ```bash
-export FSD_CODING_CWD="$(git rev-parse --show-toplevel)"
-# Optional. Omit defaults to Cursor.
-export FSD_CODING_HARNESS=codex
-# Optional host model override for the selected adapter.
-export FSD_CODING_MODEL=gpt-5.5
-
-pnpm fsdev run fsd-coding implement -i '{"task":"<what to build>"}' --session work-1
-pnpm fsdev run fsd-coding fix       -i '{"task":"<what is broken>"}' --session work-1
-pnpm fsdev run fsd-coding openPr    -i '{"task":"<PR title and body ask>"}' --session work-1
+env -u FSD_CODING_MODEL \
+  FSD_CODING_HARNESS=codex \
+  FSD_CODING_CWD=/absolute/path/to/target-checkout \
+  FSD_CODING_NETWORK_ACCESS=0 FSD_CODING_ADD_DIR= \
+  pnpm fsdev run fsd-coding implement -i '{"task":"<what to build>"}' --session work-1
 ```
 
-`FSD_CODING_HARNESS` is `codex`, `cursor`, or `claude`. **Omitting it defaults
-to Cursor.** Use the same choice on every door. Codex uses the logged-in
-account (`codex login`); Cursor needs its own working login or API key; Claude
-needs signed-in Claude Code / Anthropic credentials on the host. Codex and
-Cursor keep their SDK version gates. Claude uses `@flow-state-dev/claude-code/sdk`
-(`claudeCodeAgent`) — the in-process harness with an outcome, not the CLI
-fire-and-forget door. The live SDK is an optional peer
-(`@anthropic-ai/claude-agent-sdk`); tests inject `resolveClaudeAgent`.
+Command tools with `cwd` and `env` fields can pass these values directly.
+Resolve the target checkout from the outer session before running from this
+lab; it may be a different repository or linked worktree. The lab's process
+directory is not a safe target default. `FSD_CODING_CWD` must reach the child
+process, but need not exist in the parent shell.
 
-`FSD_CODING_CWD` is required. It is the checkout the harness works in. There
-is no safe default — this process's directory is the lab, not the repo.
+The outer agent resolves the harness, checkout, model, and permissions from
+owner choices and trusted session context, following
+[the skill's resolution rules](../../.agents/skills/fsd-coding/SKILL.md#resolve-host-values-from-this-session).
 
-`--session` is the FSD session, not a vendor conversation id. Reuse it across
-invocations so `onSession` ids survive in `.fsdev/data`.
+`FSD_CODING_HARNESS` accepts `codex`, `cursor`, or `claude`. Codex uses
+`codex login`; Cursor needs its own working login or API key; Claude needs
+signed-in Claude Code / Anthropic credentials. OMP is an outer harness, not
+one of these target adapters. Codex and Cursor keep their SDK version gates.
+Claude uses `@flow-state-dev/claude-code/sdk` (`claudeCodeAgent`), with the
+optional peer `@anthropic-ai/claude-agent-sdk`.
+
+For a model override, add `FSD_CODING_MODEL=<supported-target-model-id>`.
+
+`--session` is the FSD session, not a vendor conversation id. Reuse it with
+the same lab directory: that lab's `.fsdev/data` holds the resume state.
 
 Action input is only `{ task }` or `{ repro, notes? }`. Task text cannot choose
 the adapter, model, working directory, or resume id.
 
 ### Codex-only host permissions
 
-```bash
-export FSD_CODING_NETWORK_ACCESS=1
-export FSD_CODING_ADD_DIR="$(git rev-parse --git-dir):$(git rev-parse --git-common-dir)/objects"
-```
+Pass these through the same command-local environment when authorized:
+
+- `FSD_CODING_NETWORK_ACCESS=1` for outbound network.
+- `FSD_CODING_ADD_DIR=<extra-root>:<other-root>` for extra writable roots.
 
 `FSD_CODING_NETWORK_ACCESS` maps to Codex `thread.networkAccessEnabled` (needed
 for a sandboxed `git push`). `FSD_CODING_ADD_DIR` is PATH-style extra writable
 roots (`thread.additionalDirectories`), split on `path.delimiter` (`:` on
-Unix / Grok, `;` on Windows). Cursor and Claude cannot honor either; the
-host refuses them when the selected harness is not Codex.
+Unix / Grok, `;` on Windows). Limit linked-worktree grants as described in
+[the skill](../../.agents/skills/fsd-coding/SKILL.md#codex-only-host-permissions).
+Cursor and Claude cannot honor either enabled permission.
 
 A door whose harness handle says `outcome: finished` is not done until the
 asked artifact is there — especially `openPr` (an open PR / URL). A finished
@@ -73,6 +78,7 @@ pnpm fsdev run fsd-coding fixFsd \
   -i '{"repro":"<verbatim error and command>","notes":"<intent>"}' \
   --session work-1
 ```
+The snippet shows only the command; reuse the original tool `cwd` and `env`.
 
 Keep the same host flags and `--session`. Then retry the original door once.
 Report both outputs if it fails again.
@@ -87,8 +93,8 @@ directly:
 - `src/config-env.ts` — reading `FSD_CODING_*` for the config
 - `src/schemas.ts` — door names, prompt prefixes, input/state contracts
 
-`fsdev.config.ts` builds the flow from those host env vars and stores
-sessions under `.fsdev/data`.
+`fsdev.config.ts` builds the flow from the child process's host environment
+and stores sessions under `.fsdev/data`. No new runner or config file is needed.
 
 ## Verification
 
