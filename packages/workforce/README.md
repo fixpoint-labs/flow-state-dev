@@ -62,8 +62,8 @@ By default an agent emits free text (`z.string()`). Declare a structured `output
 
 Two rules bound what may be declared, and both are checked at materialization, which throws a `StrictSchemaError` naming the agent and the offending field path:
 
-- The root must be text (`z.string()`) or an object. Every other root is sent to the provider as a structured-output root, which must be an object.
-- No field may transform on parse (`z.string().transform(...)`). A durable board round-trips the task record through `JSON.stringify`, so a transformed value would read back as something else after a resume.
+- The root must be a bare `z.string()` or an object. Every other root — a wrapped string like `z.string().nullable()` included — is sent to the provider as a structured-output root, which must be an object.
+- No field may parse to a value JSON cannot carry. A durable board round-trips the task record through `JSON.stringify`, so a transform (`z.string().transform(...)`), a `z.date()` / `z.coerce.date()`, a `z.bigint()` or a `z.map()` would read back as something else after a resume. `.refine()` and `z.preprocess()` are fine: neither changes the parsed value's type.
 
 The declared shape is also subject to the same OpenAI-strict requirement as any generator output.
 

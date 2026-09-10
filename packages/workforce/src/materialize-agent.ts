@@ -67,11 +67,9 @@ function buildAgentGenerator(
   agent: Agent,
   opts: MaterializeAgentOptions,
 ): BlockDefinition {
-  // A declared result shape the provider can never accept is refused here,
-  // before any block is built and on both shapes alike (FIX-1337). Delegation
-  // used to make such a shape inert by substituting `z.string()`; now that the
-  // declaration is honored, the same shape would otherwise reach the
-  // generator's own check lazily — on first delegation, inside a running job.
+  // Refused before any block is built, on both shapes (FIX-1337). Substituting
+  // `z.string()` on the worker used to make an unusable shape inert; honoring
+  // the declaration makes it reachable, lazily, inside a running job.
   if (agent.outputSchema) {
     assertDeclarableOutputSchema(agent.outputSchema, agent.name);
   }
@@ -155,10 +153,8 @@ function buildAgentGenerator(
     itemVisibility,
     agentName: agent.name,
     inputSchema: isWorker ? workerInputSchema : z.object({ goal: z.string() }),
-    // One expression answers "what does this agent emit?" for both shapes: the
-    // shape the agent declared, or text when it declared none (FIX-1337). The
-    // substrate carries a task result untyped the whole way — onto the record,
-    // into the next worker's inputs, out through the settled board.
+    // One expression for both shapes (FIX-1337): the declared shape, or text.
+    // The substrate carries a task result untyped the whole way down.
     outputSchema: agent.outputSchema ?? z.string(),
     model,
     prompt: (_input: unknown, ctx: unknown) =>

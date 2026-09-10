@@ -324,6 +324,28 @@ describe("materializeAgent", () => {
       expect(() => assertStrictCompatible(z.number())).not.toThrow();
     });
 
+    it("refuses a wrapped text root, which the generator does not treat as text", () => {
+      // `z.string().nullable()` reads like text and is not: the generator asks
+      // for plain text only on a BARE z.string(), so this goes to the provider
+      // as a structured-output root and fails at the model call — the lazy
+      // in-job failure this check exists to prevent. Core owns the predicate
+      // (`requireTextOrObjectRoot`), so this cannot drift from what is sent.
+      const error = refusalFor(z.string().nullable());
+      expect(error.violations[0]).toMatchObject({ path: "$", typeName: "ZodNullable" });
+    });
+
+    it("refuses a coercing date, which is not a transform", () => {
+      // `z.coerce.date()` is a ZodDate, so the transform rule never sees it —
+      // and it parses to a Date all the same, which a durable board returns as
+      // a string. Same corruption, one type name over.
+      const withDate = z.object({ ticker: z.string(), asOf: z.coerce.date() });
+      expect(() => assertStrictCompatible(withDate)).not.toThrow();
+
+      const error = refusalFor(withDate);
+      expect(error.violations.map((v) => v.path)).toEqual(["$.asOf"]);
+      expect(error.message).toMatch(/Date/);
+    });
+
     it("refuses an array root the same way", () => {
       expect(refusalFor(z.array(z.object({ ticker: z.string() }))).violations[0]?.typeName).toBe(
         "ZodArray",

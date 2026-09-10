@@ -76,10 +76,11 @@ export interface Agent {
    *  task, not returned inline to the coordinator.
    *
    *  Subject to the same BP-016 OpenAI-strict requirement as any generator
-   *  output, and to two rules the declaration itself carries: the root must be
-   *  text or an object, and no field may transform on parse (a transformed value
-   *  would not survive a durable board's JSON round-trip). A shape breaking
-   *  either is refused by name at materialization, before any job runs. */
+   *  output, and to two rules the declaration itself carries: the root must be a
+   *  bare `z.string()` or an object, and no field may parse to a value JSON
+   *  cannot carry (a transform, a `Date`, a `BigInt`), since a durable board
+   *  round-trips a task result through `JSON.stringify`. A shape breaking either
+   *  is refused by name at materialization, before any job runs. */
   outputSchema?: ZodTypeAny;
   /** Tool-catalog keys this agent may reference. */
   allowedTools?: string[];
