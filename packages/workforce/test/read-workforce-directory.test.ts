@@ -136,6 +136,29 @@ Body.
     expect(workers[0]!.declared["escalation-window"]).toBe("30m");
   });
 
+  it("does not let a declared key reach the manifest through the prototype chain", async () => {
+    const { workers } = await readWorkforceDirectory(
+      tree({
+        "teams/engineering/workers/lead/WORKER.md": `---
+description: The lead.
+__proto__:
+  flow: injected-kind
+---
+Body.
+`,
+      }),
+    );
+
+    // `flow` selects which flow kind a worker runs, so a file that can make it
+    // resolve without ever declaring it is a routing decision derived from
+    // caller-controllable content (BP-031). No own key, no inherited one.
+    const declared = workers[0]!.declared;
+    expect(declared["flow"]).toBeUndefined();
+    expect("flow" in declared).toBe(false);
+    // And the key is still carried, as an ordinary key like any other.
+    expect(Object.keys(declared)).toContain("__proto__");
+  });
+
   it("treats a worker.ts-only folder as a valid seat rather than an error", async () => {
     const root = tree({
       ...HEALTHY,
@@ -308,6 +331,61 @@ Body.
       expect(errors).toHaveLength(1);
       expect(errors[0]!.path).toBe("teams/engineering/workers/borrowed");
       expect(errors[0]!.error.message).toMatch(/refused for safety/);
+    });
+
+    it("refuses a symlinked teams/ rather than reading a tree outside the root", async () => {
+      // The boundary case: `readdir` follows a directory symlink, so without a
+      // check here the loader reads worker files from outside the configured
+      // root and reports nothing.
+      const root = tree({ "outside/teams/engineering/workers/lead/WORKER.md": LEAD_MD });
+      symlinkSync(join(root, "outside/teams"), join(root, "teams"));
+
+      const { workers, errors } = await readWorkforceDirectory(root);
+
+      expect(workers).toEqual([]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams");
+      expect(errors[0]!.error.message).toMatch(/refused for safety/);
+    });
+
+    it("refuses a symlinked team folder instead of dropping its workers", async () => {
+      const root = tree({ ...HEALTHY, "outside/marketing/workers/lead/WORKER.md": LEAD_MD });
+      symlinkSync(join(root, "outside/marketing"), join(root, "teams/marketing"));
+
+      const { workers, errors } = await readWorkforceDirectory(root);
+
+      expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/marketing");
+      expect(errors[0]!.error.message).toMatch(/refused for safety/);
+    });
+
+    it("refuses a symlinked workers/ folder", async () => {
+      const root = tree({ ...HEALTHY, "outside/workers/lead/WORKER.md": LEAD_MD });
+      dir(root, "teams/marketing");
+      symlinkSync(join(root, "outside/workers"), join(root, "teams/marketing/workers"));
+
+      const { workers, errors } = await readWorkforceDirectory(root);
+
+      expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/marketing/workers");
+    });
+
+    it("reports a directory it cannot read instead of treating it as empty", async () => {
+      // Only genuine absence may read as empty. Every other `readdir` failure
+      // has to stay visible, or a whole team drops out of the roster with the
+      // caller's fatal-on-errors guard unable to see it. ENOTDIR stands in for
+      // the class here because the suite runs as root, where a permission bit
+      // would not deny us anything; EACCES takes the same branch.
+      const { workers, errors } = await readWorkforceDirectory(
+        tree({ ...HEALTHY, "teams/marketing/workers": "not a directory\n" }),
+      );
+
+      expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/marketing/workers");
+      expect(errors[0]!.error.message).toMatch(/could not be read/i);
     });
 
     it("refuses a symlinked WORKER.md rather than reading through it", async () => {

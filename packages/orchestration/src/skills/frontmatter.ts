@@ -13,6 +13,20 @@
  */
 
 /**
+ * A record with no prototype, for anything keyed by names a file chose.
+ *
+ * Assigning `__proto__` into a `{}` hits `Object.prototype`'s legacy setter: it
+ * creates no own key, and every later read of an *undeclared* key can resolve
+ * through the object the file supplied. For frontmatter that is both a lost key
+ * and a value arriving from nowhere. With no prototype there is no setter, so
+ * `__proto__` is stored and read back like any other key, and an undeclared key
+ * reads as `undefined`.
+ */
+function emptyRecord(): Record<string, unknown> {
+  return Object.create(null) as Record<string, unknown>;
+}
+
+/**
  * Tiny YAML-subset parser sufficient for convention-file frontmatter.
  *
  * Supports:
@@ -71,7 +85,11 @@ function parseMappingBlock(
   end: number,
   baseIndent: number,
 ): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+  // Null-prototype: a `__proto__:` key in a hand-written file would
+  // otherwise hit the legacy prototype setter instead of creating an own
+  // key, so a setting nobody declared could resolve through the chain —
+  // and the key the file did write would vanish. See `emptyRecord`.
+  const result = emptyRecord();
   let i = start;
   while (i < end) {
     const line = lines[i]!;
@@ -358,7 +376,7 @@ export function parseInlineMapping(text: string): Record<string, unknown> | null
   const trimmed = text.trim();
   if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
   const inner = trimmed.slice(1, -1).trim();
-  const out: Record<string, unknown> = {};
+  const out = emptyRecord();
   if (inner.length === 0) return out;
   for (const entry of splitTopLevelCommas(inner)) {
     const colon = findKeyColon(entry);

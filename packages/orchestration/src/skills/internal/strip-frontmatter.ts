@@ -8,15 +8,9 @@
  * not content to render into the system prompt.
  */
 
+import { splitFrontmatter } from "../frontmatter";
+
 /** Strip a leading `---`-delimited frontmatter block. Idempotent. */
 export function stripFrontmatter(text: string): string {
-  if (!text.startsWith("---")) return text;
-  const lines = text.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return text;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i]?.trim() === "---") {
-      return lines.slice(i + 1).join("\n").replace(/^\r?\n/, "");
-    }
-  }
-  return text;
+  return splitFrontmatter(text).body;
 }

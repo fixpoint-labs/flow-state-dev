@@ -53,16 +53,22 @@ export interface ReadWorkforceDirectoryResult {
   /** One record per worker that loaded, in walk order. */
   workers: WorkerManifest[];
   /**
-   * One entry per worker slot that could not produce a manifest, keyed by the
-   * slash-separated path of the slot relative to the root — deliberately not by
-   * the identity, because a slot that breaks the segment rules has no identity
-   * to be reported under.
+   * One entry per path that should have produced workers and did not, keyed by
+   * its slash-separated path relative to the root — deliberately not by an
+   * identity, because a folder that breaks the segment rules has no identity to
+   * be reported under.
+   *
+   * Usually a worker slot. It can also be a structural folder — `teams`,
+   * `teams/<id>`, `teams/<id>/workers` — when that folder is refused or
+   * unreadable, because the seats beneath it cannot be enumerated to be named
+   * individually and silence there would hide all of them at once.
    *
    * Collected rather than thrown, because a library that hands back data does
    * not get to set an app's boot policy. That makes treating a non-empty
    * `errors` as fatal the caller's call to make explicitly — and it is very
-   * often the right one: a reported slot is a seat the app was supposed to have,
-   * so booting past it boots a short roster with nothing said.
+   * often the right one: a reported path is a seat, or a set of seats, the app
+   * was supposed to have, so booting past it boots a short roster with nothing
+   * said.
    */
   errors: Array<{ path: string; error: Error }>;
 }
@@ -73,14 +79,16 @@ export interface ReadWorkforceDirectoryResult {
  *
  * Throws only when `root` itself cannot be read — a configured root that does
  * not exist is a wiring mistake, not a per-worker one. A root with no `teams/`
- * is an empty result and not an error: an app may declare no workers in files.
- * Every per-worker problem lands in `errors` instead, so one bad folder never
- * costs an app its other workers.
+ * is an empty result: an app may declare no workers in files. Everything else
+ * that goes wrong lands in `errors`, so one bad folder never costs an app its
+ * other workers.
  *
- * Nothing outside a worker slot is reported. A team's `resources/`, `skills/`
- * or `tools/` siblings, an org-level `workers/`, and any other path on the tree
- * are passed over in silence: the rule is *the path occupies a worker slot*,
- * not *the path looks like a worker*.
+ * Nothing outside a worker slot is reported *as a near-miss*. A team's
+ * `resources/`, `skills/` or `tools/` siblings, an org-level `workers/`, and
+ * any other path on the tree are passed over in silence: the rule is *the path
+ * occupies a worker slot*, not *the path looks like a worker*.
+ *
+ * Symlinks are never followed, at any level of the walk.
  */
 export async function readWorkforceDirectory(
   root: string,
@@ -96,47 +104,90 @@ export async function readWorkforceDirectory(
     );
   }
 
-  const teamsDir = path.join(root, "teams");
-  const teamEntries = await readDirectoryOrEmpty(teamsDir);
+  const teams = await openStructuralDirectory(path.join(root, "teams"), "teams", errors);
+  if (teams === undefined) return { workers, errors };
 
-  for (const teamId of teamEntries) {
+  for (const teamId of teams) {
     if (IGNORED_ENTRIES.has(teamId)) continue;
 
-    const teamDir = path.join(teamsDir, teamId);
+    const teamDir = path.join(root, "teams", teamId);
+    const teamPath = `teams/${teamId}`;
     const teamKind = await classify(teamDir);
-    // A symlinked team folder is refused, but the refusal is reported per worker
-    // slot below — reporting the team itself would name a path that is not a
-    // slot. Here it just means the team contributes nothing.
-    if (teamKind !== "directory" && teamKind !== "symlink") continue;
+    if (teamKind === "symlink") {
+      errors.push({ path: teamPath, error: refusedSymlink("team folder", teamId) });
+      continue;
+    }
+    if (teamKind !== "directory") continue;
 
-    const workersDir = path.join(teamDir, "workers");
-    const workerEntries =
-      teamKind === "symlink" ? [] : await readDirectoryOrEmpty(workersDir);
+    const workersPath = `${teamPath}/workers`;
+    const workerEntries = await openStructuralDirectory(
+      path.join(teamDir, "workers"),
+      workersPath,
+      errors,
+    );
+    if (workerEntries === undefined) continue;
 
     for (const workerName of workerEntries) {
       if (IGNORED_ENTRIES.has(workerName)) continue;
 
-      const workerDir = path.join(workersDir, workerName);
+      const workerDir = path.join(teamDir, "workers", workerName);
       const workerKind = await classify(workerDir);
       // A file under `workers/` does not occupy a worker slot — a slot is a
       // directory — so it is skipped rather than reported.
       if (workerKind === "absent" || workerKind === "file") continue;
 
-      const slotPath = `teams/${teamId}/workers/${workerName}`;
       try {
-        if (workerKind === "symlink") {
-          throw new Error(
-            `Symlinked worker folder "${workerName}" — refused for safety`,
-          );
-        }
+        if (workerKind === "symlink") throw refusedSymlink("worker folder", workerName);
         workers.push(await readWorkerSlot(root, teamId, workerName, workerDir));
       } catch (err) {
-        errors.push({ path: slotPath, error: err as Error });
+        errors.push({ path: `${workersPath}/${workerName}`, error: err as Error });
       }
     }
   }
 
   return { workers, errors };
+}
+
+/**
+ * List one of the walk's structural directories — `teams` or a team's
+ * `workers`. Returns its entries, or `undefined` when the walk cannot go that
+ * way, having reported the reason unless the folder is simply absent.
+ *
+ * Three outcomes, and keeping them apart is the point. **Absent** is silence: a
+ * root with no `teams/`, or a team that declares no workers, is a tree that
+ * does not go that way rather than a mistake. **A symlink** is refused without
+ * being read — `readdir` follows a directory symlink, so a `teams -> /outside`
+ * would otherwise load worker files from outside the configured root and report
+ * nothing. **Anything else** — a permission denial, a file where a folder
+ * belongs, a failing disk — is reported, because a directory that silently
+ * reads as empty takes every seat beneath it out of the roster while leaving
+ * `errors` empty, and a caller told to treat `errors` as fatal cannot see that.
+ */
+async function openStructuralDirectory(
+  target: string,
+  reportAs: string,
+  errors: ReadWorkforceDirectoryResult["errors"],
+): Promise<string[] | undefined> {
+  if ((await classify(target)) === "symlink") {
+    errors.push({ path: reportAs, error: refusedSymlink("directory", reportAs) });
+    return undefined;
+  }
+
+  try {
+    return await fs.readdir(target);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    errors.push({
+      path: reportAs,
+      error: new Error(`"${reportAs}" could not be read: ${(err as Error).message}`),
+    });
+    return undefined;
+  }
+}
+
+/** The one wording for a refused symlink, wherever the walk meets one. */
+function refusedSymlink(what: string, name: string): Error {
+  return new Error(`Symlinked ${what} "${name}" — refused for safety`);
 }
 
 /**
@@ -157,16 +208,18 @@ async function readWorkerSlot(
   const tsKind = await classify(path.join(workerDir, WORKER_TS));
 
   if (mdKind === "symlink" || tsKind === "symlink") {
-    throw new Error(
-      `Symlinked ${mdKind === "symlink" ? WORKER_MD : WORKER_TS} in ` +
-        `worker folder "${workerName}" — refused for safety`,
+    throw refusedSymlink(
+      mdKind === "symlink" ? WORKER_MD : WORKER_TS,
+      `${workerName}/${mdKind === "symlink" ? WORKER_MD : WORKER_TS}`,
     );
   }
 
   // Recorded, never imported. Joined onto the root the caller passed rather
   // than absolutised, so the path stays in the caller's own frame of reference.
   const codePath =
-    tsKind === "file" ? path.join(root, "teams", teamId, "workers", workerName, WORKER_TS) : undefined;
+    tsKind === "file"
+      ? path.join(root, "teams", teamId, "workers", workerName, WORKER_TS)
+      : undefined;
 
   if (mdKind !== "file") {
     if (codePath === undefined) {
@@ -273,18 +326,5 @@ async function classify(target: string): Promise<EntryKind> {
     return "absent";
   } catch {
     return "absent";
-  }
-}
-
-/**
- * List a directory, treating "not there" as empty. Used below the root, where
- * an absent folder means the tree simply does not go that way — a root with no
- * `teams/`, or a team that declares no workers.
- */
-async function readDirectoryOrEmpty(target: string): Promise<string[]> {
-  try {
-    return await fs.readdir(target);
-  } catch {
-    return [];
   }
 }
