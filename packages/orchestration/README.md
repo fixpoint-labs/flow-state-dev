@@ -129,7 +129,7 @@ throw on an illegal transition.
 
 A `TaskCollectionRef` you write yourself is a supported extension point, and a ref
 that drops the options argument — a two-parameter `complete(id, output)` satisfies
-the interface structurally — no longer takes a board down with an advisory
+the interface structurally — does not take a board down with an advisory
 write-back conflict. The substrate's
 own write-backs contain a throw they can attribute to a decline a conforming store
 would have made before committing: the late result is dropped and the drain
@@ -137,7 +137,7 @@ continues. The guarantee is board survival, not equivalence. It fires on a throw
 so a stale write the state machine happens to permit still commits and still
 clobbers, and no error a store never raises can be contained. Everything else —
 a store outage on a task the worker still holds, a write that committed and then
-failed on the way out — propagates unchanged. The qualifier is load-bearing: when
+failed on the way out — propagates unchanged. That qualifier matters: when
 the task was *already* settled or displaced before the call, the seam cannot tell
 an outage apart from the decline a conforming store would have made, and contains
 it. Don't build an alerting path on an error the substrate may drop.

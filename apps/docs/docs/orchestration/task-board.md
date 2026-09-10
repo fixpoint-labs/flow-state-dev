@@ -165,7 +165,7 @@ Most boards leave `onIdle` alone. Override when:
 
 A worker can park a task with `awaitReview` when it needs a human to look at something. By default the board treats that task the way it treats any other unfinished work: the drain stays open, and so does the request that started it, waiting for someone to move the task out of `parked`.
 
-That is the right default when the answer arrives in seconds. It is the wrong one when it arrives tomorrow, and the way it goes wrong is worth knowing. Nothing shortens the wait, but it does end: each worker stops after `maxIterations` (default `10000`), which on the default poll interval is most of a day. The task is left parked, and the board reports `terminationReason: "blocked-by-failures"` — on a board where nothing failed. The same item's `counts.parked` says a task is parked, so the payload contradicts itself, and a monitor watching the reason sees a failure every time somebody is asked a question.
+That is the right default when the answer arrives in seconds. It is the wrong one when it arrives tomorrow. Nothing shortens the wait, though it does end: each worker stops after `maxIterations` (default `10000`), which on the default poll interval is most of a day. The task is left parked, and the board reports `terminationReason: "blocked-by-failures"` even when nothing failed. Read `counts.parked` on the same item to tell a board waiting on a person from a board that hit an error.
 
 `onReview: "exit"` says the board should not wait:
 
@@ -617,7 +617,7 @@ If you write that ref by hand, `complete` and `fail` should accept and honor the
 
 A ref that ignores them throws instead, and the board contains that throw: it drops the late result and keeps draining. One misbehaving write-back costs one task, not every task the board hadn't claimed yet.
 
-Containment is not a substitute for the guards, though, and it is worth being clear about why. It fires on a throw. A stale write the state machine happens to permit — a worker reporting success on a task another worker has since taken over — doesn't throw. It commits, and it overwrites the result the current holder is about to record. Nothing outside your store can catch that, because the decision belongs inside the write. So honor the guards for the sake of your data; the board's survival is already covered. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
+Containment is not a substitute for the guards. It fires on a throw. A stale write the state machine happens to permit — a worker reporting success on a task another worker has since taken over — doesn't throw. It commits, and it overwrites the result the current holder is about to record. Nothing outside your store can catch that, because the decision belongs inside the write. So honor the guards for the sake of your data; the board's survival is already covered. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
 
 Write provenance is the one part you can skip. Maintaining it correctly means reproducing a bounded receipt log and its eviction flag, and the mutator that does that is internal to the two built-in backings — not a documented extension point today. A hand-written ref that leaves `revision`, `writeLog`, and `writeLogTruncated` unset is not wrong for it: callers asking [whether their write landed](task-substrate.md#telling-whether-your-write-landed) get `undefined`, which means "cannot tell", not "your write did not land".
 
@@ -652,3 +652,4 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 - [Plan and Execute](../patterns/plan-and-execute) — replan-loop wrapper.
 - [Flow policy](./flow-policy) — the observation ledger, `priorWork` shaping, and tool-result caching.
 - [Patterns Overview](../patterns/overview) — when to use which pattern.
+- [Human-in-the-Loop guide](/guides/human-in-the-loop) — pausing a single step for an approval with `ctx.suspend()`, and the card that resolves it.
