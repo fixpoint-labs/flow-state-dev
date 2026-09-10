@@ -161,8 +161,8 @@ const seats = hireWorkforce(workers, { kinds: { "worker-agent": workerAgentFlow,
 flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
-Two keys in `declared` are read by the factory: **`flow`** names the kind to instantiate, and
-**`description`** is the roster label. Everything else is that worker's settings, handed to the flow
+The factory reads **`flow`**, which names the kind to instantiate, and **`description`**, the roster
+label. Everything else is that worker's settings, handed to the flow
 verbatim and parsed against its `configSchema` — which is closed, so a setting the flow never declared
 is refused by name at the hire.
 
@@ -200,4 +200,4 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | Persona empty content | Execution time — resource resolved but `readContent()` returned null |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable | `readWorkforceDirectory` throws |
-| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `persona` declared twice, or a `codePath` with no `flow`. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, or `persona` declared twice. Collected: one error names every bad worker |
