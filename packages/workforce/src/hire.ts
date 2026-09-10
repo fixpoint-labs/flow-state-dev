@@ -146,13 +146,15 @@ export function hireWorkforce(
 
     const kind = manifest.declared.flow;
     if (typeof kind !== "string" || kind.trim().length === 0) {
-      // The code door the loader records but this issue has not wired. Told
-      // apart from a malformed record on purpose: the author did not make a
-      // mistake, they used a door that is not open yet, and the generic
-      // missing-flow message would read as the former.
+      // Two messages, because the fix differs. Both folders need a `flow:`,
+      // but one of them looks to its author like it already said something —
+      // it holds a `worker.ts` — so the message names that file and says why
+      // it is not enough. The generic message would leave them re-reading a
+      // folder that appears to declare a worker already.
       refuse(
         manifest.codePath !== undefined
-          ? "`worker.ts` is recorded but not yet wired; give this seat a `flow:` or remove the folder"
+          ? "needs a `flow:` in its `WORKER.md`: a `worker.ts` names no flow kind, so there is " +
+              "nothing to hire this seat into"
           : "declares no `flow:`, so there is no flow kind to hire it into"
       );
       continue;

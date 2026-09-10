@@ -255,7 +255,7 @@ describe("hireWorkforce", () => {
   });
 
   // 14
-  it("refuses a `worker.ts`-only record by naming the unwired door, not the generic missing-flow message", () => {
+  it("refuses a `worker.ts`-only record by naming that file, not the generic missing-flow message", () => {
     const codeDoor = refusalOf([
       record({ id: "engineering.tools", declared: {}, codePath: "/teams/engineering/workers/tools/worker.ts" })
     ]);
@@ -263,7 +263,10 @@ describe("hireWorkforce", () => {
 
     expect(codeDoor).toContain('worker "engineering.tools"');
     expect(codeDoor).toContain("worker.ts");
-    expect(codeDoor).toContain("not yet wired");
+    // The message has to point at the fix, not at the framework's roadmap: the
+    // author's next move is to add a `flow:`, not to wait for a feature.
+    expect(codeDoor).toContain("`flow:`");
+    expect(codeDoor).toContain("WORKER.md");
     // A row whose whole point is a better message is not proved by a throw.
     expect(codeDoor).not.toEqual(missingFlow);
     expect(missingFlow).not.toContain("worker.ts");
