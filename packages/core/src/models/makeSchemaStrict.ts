@@ -22,6 +22,7 @@ import {
   getZodRecordValueType,
 } from "../helpers/zod-introspect";
 import { StrictSchemaError, type StrictViolation } from "../errors/strict-schema-error";
+import { isTextOutputSchema, isObjectOutputRoot } from "./output-root";
 
 export type { StrictViolation } from "../errors/strict-schema-error";
 
@@ -84,6 +85,18 @@ export interface MakeSchemaStrictOptions {
   validate?: boolean;
   /** Label prefixed onto a thrown error's message (e.g. a generator name). */
   label?: string;
+  /**
+   * When `true` (with `validate`), also require the schema's ROOT to be
+   * something a model call can carry: a bare `z.string()` (sent as plain text)
+   * or an object (sent as a structured-output root). Defaults to `false`.
+   *
+   * Off by default because `generator()` accepts any root and fails at the
+   * provider; a caller that wants the failure *before* the call — an agent
+   * materializer deciding what an author may declare — opts in. The predicate
+   * is `output-root.ts`, the same one the generator routes on, so opting in
+   * cannot disagree with what actually gets sent.
+   */
+  requireTextOrObjectRoot?: boolean;
 }
 
 export function makeSchemaStrict(
@@ -92,7 +105,13 @@ export function makeSchemaStrict(
 ): ZodTypeAny {
   const strict = buildStrictSchema(schema);
   if (options?.validate) {
-    const violations = findStrictViolations(strict);
+    // Root check first: it describes the whole schema, so it reads before any
+    // per-field violation. Tested against the ORIGINAL schema — the strict
+    // transform rebuilds an object root and leaves every other root alone.
+    const violations = [
+      ...(options.requireTextOrObjectRoot === true ? findRootViolations(schema) : []),
+      ...findStrictViolations(strict),
+    ];
     if (violations.length > 0) {
       throw new StrictSchemaError(violations, options.label);
     }
@@ -135,6 +154,24 @@ function buildStrictSchema(schema: ZodTypeAny): ZodTypeAny {
  *
  * Primitives, enums, and literals are always strict-safe (the default case).
  */
+/**
+ * The root violation, when the caller asked for one (see
+ * `requireTextOrObjectRoot`). A root that is neither text nor an object is sent
+ * to the provider as a structured-output root, which must be an object.
+ */
+function findRootViolations(schema: ZodTypeAny): StrictViolation[] {
+  if (isTextOutputSchema(schema) || isObjectOutputRoot(schema)) return [];
+  return [
+    {
+      path: "$",
+      typeName: getZodTypeName(schema) ?? "unknown",
+      reason:
+        "root must be a bare z.string() or an object — every other root, a wrapped " +
+        "string included, is sent to the provider as a structured-output root",
+    },
+  ];
+}
+
 function findStrictViolations(schema: ZodTypeAny, path = "$"): StrictViolation[] {
   const typeName = getZodTypeName(schema);
   const issues: StrictViolation[] = [];
@@ -228,6 +265,10 @@ function findStrictViolations(schema: ZodTypeAny, path = "$"): StrictViolation[]
  * definition (see `generator()`), so a bad output schema fails at import. The
  * error's `violations` carry the offending path and Zod type for each issue.
  */
-export function assertStrictCompatible(schema: ZodTypeAny, label?: string): void {
-  makeSchemaStrict(schema, { validate: true, label });
+export function assertStrictCompatible(
+  schema: ZodTypeAny,
+  label?: string,
+  options?: Pick<MakeSchemaStrictOptions, "requireTextOrObjectRoot">,
+): void {
+  makeSchemaStrict(schema, { ...options, validate: true, label });
 }

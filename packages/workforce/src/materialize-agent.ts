@@ -21,6 +21,7 @@ import {
 } from "@flow-state-dev/orchestration";
 import { resolveAgentPersona } from "./resolve-persona";
 import { AgentCapabilityError } from "./errors";
+import { assertDeclarableOutputSchema } from "./assert-agent-output-schema";
 
 function resolveCapabilities(
   agentName: string,
@@ -66,6 +67,13 @@ function buildAgentGenerator(
   agent: Agent,
   opts: MaterializeAgentOptions,
 ): BlockDefinition {
+  // Refused before any block is built, on both shapes (FIX-1337). Substituting
+  // `z.string()` on the worker used to make an unusable shape inert; honoring
+  // the declaration makes it reachable, lazily, inside a running job.
+  if (agent.outputSchema) {
+    assertDeclarableOutputSchema(agent.outputSchema, agent.name);
+  }
+
   const model =
     opts.overrides?.model ?? agent.model ?? opts.defaultModelId ?? "intent/chat";
   const itemVisibility =
@@ -145,9 +153,9 @@ function buildAgentGenerator(
     itemVisibility,
     agentName: agent.name,
     inputSchema: isWorker ? workerInputSchema : z.object({ goal: z.string() }),
-    // Standalone agents honor a declared structured outputSchema; workers stay
-    // z.string() (the skills pattern machinery builds follow-on actions from text).
-    outputSchema: !isWorker && agent.outputSchema ? agent.outputSchema : z.string(),
+    // One expression for both shapes (FIX-1337): the declared shape, or text.
+    // The substrate carries a task result untyped the whole way down.
+    outputSchema: agent.outputSchema ?? z.string(),
     model,
     prompt: (_input: unknown, ctx: unknown) =>
       resolveAgentPersona(agent.persona, ctx as any),

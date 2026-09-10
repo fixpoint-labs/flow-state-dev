@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
 import { materializeAgent } from "../src/materialize-agent";
 import { AgentCapabilityError, AGENT_CAPABILITY_UNRESOLVED } from "../src/errors";
-import { FlowError } from "@flow-state-dev/core";
+import { FlowError, StrictSchemaError, assertStrictCompatible } from "@flow-state-dev/core";
 import { defineAgent } from "../src/define-agent";
 import { defineCapability } from "@flow-state-dev/core";
 import type { Agent, MaterializeAgentOptions } from "@flow-state-dev/core";
@@ -260,12 +260,17 @@ describe("materializeAgent", () => {
       expect(config.outputSchema.shape).toHaveProperty("rating");
     });
 
-    it("workers ignore outputSchema and stay z.string()", () => {
+    // Inverted at FIX-1337 — this case used to assert the opposite ("workers
+    // ignore outputSchema and stay z.string()"). One expression now answers for
+    // both shapes, so a seat emits what its files declare.
+    it("workers honor a declared structured outputSchema too", () => {
       const block = materializeAgent(
         makeAgent({ outputSchema: structured }),
         makeOpts(), // worker shape
       ) as any;
-      expect(inspectGenerator(block).outputSchema._def.typeName).toBe("ZodString");
+      const config = inspectGenerator(block);
+      expect(config.outputSchema._def.typeName).toBe("ZodObject");
+      expect(config.outputSchema.shape).toHaveProperty("rating");
     });
 
     it("standalone with no outputSchema defaults to z.string()", () => {
@@ -274,6 +279,115 @@ describe("materializeAgent", () => {
         makeOpts({ shape: "standalone" }),
       ) as any;
       expect(inspectGenerator(block).outputSchema._def.typeName).toBe("ZodString");
+    });
+
+    it("a worker with no outputSchema still emits text, unchanged", () => {
+      // The common case, and the whole first release for most callers: an agent
+      // that declared nothing has to be byte for byte what it was.
+      const block = materializeAgent(makeAgent(), makeOpts()) as any;
+      expect(inspectGenerator(block).outputSchema._def.typeName).toBe("ZodString");
+    });
+  });
+
+  describe("declared result shapes that are refused (FIX-1337)", () => {
+    /** Materialize an agent that declares `schema`, and return the refusal. */
+    function refusalFor(schema: z.ZodTypeAny, opts = makeOpts()): StrictSchemaError {
+      try {
+        materializeAgent(makeAgent({ name: "position-sizer", outputSchema: schema }), opts);
+      } catch (error) {
+        return error as StrictSchemaError;
+      }
+      throw new Error("expected materializeAgent to refuse the declared shape");
+    }
+
+    it("refuses a plainly incompatible shape by agent name and field path", () => {
+      const error = refusalFor(z.object({ meta: z.record(z.string()) }));
+      // Not merely "throws": an author has to be told which agent and which
+      // field, or the message is decoration.
+      expect(error).toBeInstanceOf(StrictSchemaError);
+      expect(error).toBeInstanceOf(FlowError);
+      expect(error.message).toContain('Agent "position-sizer"');
+      expect(error.message).toContain("$.meta");
+      expect(error.violations.map((v) => v.path)).toContain("$.meta");
+    });
+
+    it("refuses a root that is neither text nor an object", () => {
+      const error = refusalFor(z.number());
+      expect(error.message).toContain('Agent "position-sizer"');
+      expect(error.violations).toEqual([
+        expect.objectContaining({ path: "$", typeName: "ZodNumber" }),
+      ]);
+      // Why this needs its own case: core's strict assertion passes a
+      // non-object root silently, so every other check here can be green while
+      // the promise is false. The generator forwards such a root to the
+      // provider as a structured-output root, which must be an object.
+      expect(() => assertStrictCompatible(z.number())).not.toThrow();
+    });
+
+    it("refuses a wrapped text root, which the generator does not treat as text", () => {
+      // `z.string().nullable()` reads like text and is not: the generator asks
+      // for plain text only on a BARE z.string(), so this goes to the provider
+      // as a structured-output root and fails at the model call — the lazy
+      // in-job failure this check exists to prevent. Core owns the predicate
+      // (`requireTextOrObjectRoot`), so this cannot drift from what is sent.
+      const error = refusalFor(z.string().nullable());
+      expect(error.violations[0]).toMatchObject({ path: "$", typeName: "ZodNullable" });
+    });
+
+    it("refuses a coercing date, which is not a transform", () => {
+      // `z.coerce.date()` is a ZodDate, so the transform rule never sees it —
+      // and it parses to a Date all the same, which a durable board returns as
+      // a string. Same corruption, one type name over.
+      const withDate = z.object({ ticker: z.string(), asOf: z.coerce.date() });
+      expect(() => assertStrictCompatible(withDate)).not.toThrow();
+
+      const error = refusalFor(withDate);
+      expect(error.violations.map((v) => v.path)).toEqual(["$.asOf"]);
+      expect(error.message).toMatch(/Date/);
+    });
+
+    it("refuses an array root the same way", () => {
+      expect(refusalFor(z.array(z.object({ ticker: z.string() }))).violations[0]?.typeName).toBe(
+        "ZodArray",
+      );
+    });
+
+    it("refuses an output transform, naming the field that carries it", () => {
+      // Strict-compatibility does NOT exclude this: makeSchemaStrict unwraps
+      // ZodEffects, so the shape passes and parses to a Date — which a durable
+      // board reads back as a string after its JSON round-trip.
+      const withTransform = z.object({
+        ticker: z.string(),
+        asOf: z.string().transform((v) => new Date(v)),
+      });
+      expect(() => assertStrictCompatible(withTransform)).not.toThrow();
+
+      const error = refusalFor(withTransform);
+      expect(error.violations.map((v) => v.path)).toEqual(["$.asOf"]);
+      expect(error.message).toMatch(/transform/i);
+    });
+
+    it("refuses the same shapes on the standalone shape", () => {
+      // Uniform on both ways of running an agent, so "what may I declare?" has
+      // one answer that does not depend on how the agent is run.
+      const standalone = makeOpts({ shape: "standalone" });
+      expect(refusalFor(z.number(), standalone).violations[0]?.path).toBe("$");
+      expect(
+        refusalFor(z.object({ asOf: z.string().transform((v) => new Date(v)) }), standalone)
+          .violations[0]?.path,
+      ).toBe("$.asOf");
+    });
+
+    it("leaves a refinement alone — it does not change the parsed shape", () => {
+      const refined = z.object({ sizePct: z.number().refine((n) => n > 0, "must be positive") });
+      const block = materializeAgent(makeAgent({ outputSchema: refined }), makeOpts()) as any;
+      expect(inspectGenerator(block).outputSchema).toBe(refined);
+    });
+
+    it("passes a compatible shape through untouched", () => {
+      const schema = z.object({ ticker: z.string(), sizePct: z.number() });
+      const block = materializeAgent(makeAgent({ outputSchema: schema }), makeOpts()) as any;
+      expect(inspectGenerator(block).outputSchema).toBe(schema);
     });
   });
 
