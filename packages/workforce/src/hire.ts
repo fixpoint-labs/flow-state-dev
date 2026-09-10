@@ -48,12 +48,21 @@ type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
 >;
 
 /**
- * A flow of either shape: one that declares settings, or one that declares
- * none. Both halves are needed because a flow's settings schema sits in an
- * invariant position — `FlowType`'s own defaults pin it to `undefined`, so
- * bare `FlowType` means "a flow with no settings" rather than "any flow", and
- * pinning it to `ZodTypeAny` instead excludes the settings-less kind a thin
- * seat is hired into.
+ * A flow of either shape: one that declares settings, and one that declares
+ * none.
+ *
+ * **Do not collapse this to a single member.** It reads redundant and is not:
+ * a flow's settings schema sits in an invariant position (`config` is a
+ * deferred conditional on it), so neither half accepts the other's flows, and
+ * both kinds are hired here. Each collapse fails a different way, and both were
+ * hit while writing this:
+ *
+ * - bare `FlowType` pins `TConfigSchema` to its own default, `undefined`, so it
+ *   means "a flow that declares no settings". A configured kind is rejected —
+ *   *Type 'ZodObject<…>' is not assignable to type 'undefined'*.
+ * - `FlowOf<ZodTypeAny>` alone flips that failure onto the settings-less kind a
+ *   thin seat is hired into — *Type 'undefined' is not assignable to type
+ *   'ZodTypeAny'*.
  */
 type AnyFlowType = FlowOf<ZodTypeAny> | FlowOf<undefined>;
 
