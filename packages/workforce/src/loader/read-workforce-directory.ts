@@ -27,7 +27,7 @@ import {
 } from "@flow-state-dev/orchestration";
 import {
   REFUSED_PERSONA_KEY,
-  refusedPersonaKeyMessage,
+  REFUSED_PERSONA_KEY_MESSAGE,
   type WorkerManifest,
 } from "../manifest";
 
@@ -267,7 +267,7 @@ function parseWorkerMd(
 
   if (Object.hasOwn(declared, REFUSED_PERSONA_KEY)) {
     throw new Error(
-      `${WORKER_MD} in "${workerName}/" ${refusedPersonaKeyMessage()}`,
+      `${WORKER_MD} in "${workerName}/" ${REFUSED_PERSONA_KEY_MESSAGE}`,
     );
   }
 

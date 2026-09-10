@@ -156,6 +156,32 @@ describe("hireWorkforce", () => {
     }
   });
 
+  // 4 (the whitespace corner the docs promise). Because the two-sources refusal
+  // sits INSIDE the non-empty-body guard, a record whose body is only
+  // whitespace is a record with no body at all — so a frontmatter
+  // `instructions:` beside it is the only source and hires on that value rather
+  // than being refused. Pinned because the page states it; without this the
+  // prose rests on a guard nothing asserts.
+  it("hires on the frontmatter value when the body is only whitespace, rather than refusing two sources", () => {
+    const seat = hireOne(
+      record({
+        id: "engineering.lead",
+        declared: { flow: "worker-agent", instructions: "From the frontmatter." },
+        body: "   \n\t  \n"
+      })
+    );
+    expect(seat.config).toMatchObject({ instructions: "From the frontmatter." });
+  });
+
+  // 4 (the other half of "verbatim"). The emptiness test is on the TRIMMED
+  // body; the value handed over is not trimmed. A body that has content keeps
+  // its own leading and trailing whitespace, which the page also states.
+  it("hands a non-empty body over untrimmed, whitespace included", () => {
+    const padded = `\n\n  ${LEAD_BODY}  \n\n`;
+    const seat = hireOne(record({ ...lead, body: padded }));
+    expect(seat.config).toMatchObject({ instructions: padded });
+  });
+
   // 4 (continued) — a kind that declares no settings at all still hires a thin
   // seat: a record that declared nothing is handed no bag.
   it("hires a thin seat into a flow kind that declares no settings", () => {

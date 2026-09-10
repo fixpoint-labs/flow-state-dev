@@ -53,13 +53,11 @@ export const REFUSED_PERSONA_KEY = "persona";
  * seat factory so a record gets the same answer whichever one reads it.
  *
  * Written as the rule rather than as a change to it: a caller reading this has
- * a file to fix, not a history to catch up on. The caller supplies what it can
- * name — the loader prefixes the file, the factory the worker.
+ * a file to fix, not a history to catch up on. It names no subject, because the
+ * caller supplies what it can name — the loader prefixes the file, the factory
+ * the worker.
  */
-export function refusedPersonaKeyMessage(): string {
-  return (
-    `declares \`${REFUSED_PERSONA_KEY}:\`, which is not a setting a worker declares. ` +
-    `A worker's instructions are spelled \`${INSTRUCTIONS_KEY}:\`, and the flow's ` +
-    `\`configSchema\` must declare that key too.`
-  );
-}
+export const REFUSED_PERSONA_KEY_MESSAGE =
+  `declares \`${REFUSED_PERSONA_KEY}:\`, which is not a setting a worker declares. ` +
+  `A worker's instructions are spelled \`${INSTRUCTIONS_KEY}:\`, and the flow's ` +
+  `\`configSchema\` must declare that key too.`;

@@ -22,7 +22,7 @@ import type { ZodTypeAny } from "zod";
 import {
   INSTRUCTIONS_KEY,
   REFUSED_PERSONA_KEY,
-  refusedPersonaKeyMessage,
+  REFUSED_PERSONA_KEY_MESSAGE,
   type WorkerManifest
 } from "./manifest";
 
@@ -142,7 +142,7 @@ export function hireWorkforce(
     // and so accepts it, and the seat hires configured the old way carrying no
     // `instructions` at all, with nothing said anywhere.
     if (Object.hasOwn(settings, REFUSED_PERSONA_KEY)) {
-      refuse(refusedPersonaKeyMessage());
+      refuse(REFUSED_PERSONA_KEY_MESSAGE);
       continue;
     }
 
