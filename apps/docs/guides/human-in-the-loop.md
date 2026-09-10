@@ -11,6 +11,8 @@ This guide builds one approval gate from end to end. The server pauses a flow wi
 
 HITL is built on suspend/resume, which is part of [durable execution](/docs/advanced/durable-execution). That page covers the runtime mechanics in depth (checkpoints, the resume endpoint, retention). Here we focus on building a working approval flow and wiring the UI.
 
+If what you're gating is a board of tasks rather than one step of a flow, the task board has its own way to wait on a person: a worker parks the task, the drain returns, and a later request delivers the answer. See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onreview).
+
 ## How a pause works
 
 When a block calls `ctx.suspend()`, three things happen. The runtime saves a suspension record, emits a `suspension` item to the SSE stream, and closes the stream cleanly. The request is now parked. Nothing blocks a thread, and on serverless the function returns instead of timing out.
@@ -431,3 +433,4 @@ POST /:flowKind/requests/:requestId/resume
 - [React client](/docs/client/react#suspensions-and-approvals) — `useSuspensions`, the renderer registry, and inline rendering.
 - [Flow-aware components](/docs/ui/flow-aware-components) — the `Approval` card and the rest of the `chatAssistantRenderers` set.
 - [Block memoization and replay](/docs/advanced/block-memoization-and-replay) — why the suspending block re-runs, and how to guard side effects with `runOnce`.
+- [Task board](/docs/orchestration/task-board#waiting-on-a-person-onreview) — waiting on a person when the unit of work is a task on a board: parking it, letting the drain return, and delivering the answer later.

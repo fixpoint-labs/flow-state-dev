@@ -168,7 +168,7 @@ A board with a seat that hands off needs an explicit `boardId` and a `defineTask
 
 Read next: **[Seats that hand off](/docs/orchestration/task-board#seats-that-hand-off)** for the `session` policies, what the board refuses at construction, and what the drain reports.
 
-Some bounds are worth knowing before you reach for this.
+Handing off comes with bounds:
 
 **The board has to be reachable from the child session.** The child settles its own row, and resource scope resolves against whichever session is running, so a session-scoped board hydrates empty in the child and has nothing to settle. Give the collection `sharedToLineage: true` and the whole lineage settles against one ledger. `user` and `org` scope need nothing extra.
 

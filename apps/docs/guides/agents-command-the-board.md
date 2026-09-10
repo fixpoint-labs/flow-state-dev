@@ -286,8 +286,8 @@ The full message lists every declared agent with its blurb and tells the
 coordinator it can leave `assignee` unset instead —
 [Delegation](/docs/skills/delegation#what-the-coordinator-gets) has it verbatim.
 
-Catching it at creation rather than at dispatch is deliberate. A typo can't sit
-on the board and resurface twenty seconds later as a failed task.
+The rejection lands at creation rather than at dispatch, so a typo can't sit on
+the board and resurface twenty seconds later as a failed task.
 
 **No assignee at all.** Not a failure. The task runs on the default worker
 described above. Leaving `assignee` unset is how you say "anyone can do this," and it's the
@@ -307,11 +307,11 @@ errored. (Delegation has no opt-in cascade that cancels stranded dependents. Som
 patterns do, like [Supervisor](/docs/patterns/supervisor), but it isn't wired
 into this drain.)
 
-The other cause is deliberate. A coordinator can mark a task with `blockTask`
-when it's waiting on something outside the board, and such a task counts as
-unresolved, so the drain settles as `blocked` with nothing having failed. Same
-status, opposite meaning. Inspect the tasks before you treat a `blocked` board as
-a failure.
+The other cause is a task held back on purpose. A coordinator can mark one with
+`blockTask` when it's waiting on something outside the board, and such a task
+counts as unresolved, so the drain settles as `blocked` with nothing having
+failed. Same status, opposite meaning. Inspect the tasks before you treat a
+`blocked` board as a failure.
 
 Know what `blockTask` commits you to, though: it's one-way. No task tool moves a
 task back out of `blocked` — `cancelTask` is the only exit. So it retires a task

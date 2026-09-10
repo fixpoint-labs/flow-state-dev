@@ -86,7 +86,7 @@ Tool keys and agent keys share one namespace. An assignee names either kind, a m
 
 **What a tool task won't do: read an upstream task's result.** `deps` control *ordering* — the task waits for its dependencies to finish — but the tool receives only the `input` fixed when the task was added. Nothing from the upstream output reaches it. When a step has to consume what the previous step produced, assign it to an agent; agents get their dependencies' outputs in the prompt.
 
-One thing worth knowing: nothing checks that an assignable tool is model-free. If a catalog key points at a generator, assigning a task to it runs that generator, model turn and all. It's your catalog, and a tool that takes a model turn is a legitimate thing to have — just don't count on "assigned to a tool" meaning "cheap."
+Nothing checks that an assignable tool is model-free. If a catalog key points at a generator, assigning a task to it runs that generator, model turn and all. It's your catalog, and a tool that takes a model turn is a legitimate thing to have — just don't count on "assigned to a tool" meaning "cheap."
 
 ## Board and overrides
 
