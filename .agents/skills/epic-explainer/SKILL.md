@@ -165,9 +165,16 @@ awk '/^```/{f=!f; next} !f' "$F" | wc -w
 # 2. Fences balanced and all tagged — the two counts must be equal
 echo "$(grep -c '^```mermaid' "$F") opened / $(( $(grep -c '^```' "$F") / 2 )) pairs"
 
-# 3. Unquoted risky labels — must print nothing
-grep -nE '\[[^]"]*[(),;:/][^]]*\]' "$F"
+# 3. Unquoted risky labels, inside mermaid fences only — must print nothing
+awk '/^```mermaid/{f=1;next} /^```/{f=0} f{print FNR": "$0}' "$F" \
+  | grep -E '(\[[^]"]*[(),;:/][^]]*\])|(\|[^|"]*[(),;:/][^|]*\|)'
 ```
+
+Check 3 covers **node labels `[…]` and edge labels `|…|`** — the two places the quoting rule
+bites, and the two the worked example above uses. Scoping it to fence contents is what stops a
+markdown table's pipes from reading as a diagram edge. It does **not** cover
+`sequenceDiagram` message text, where a `:` is structural and a check would fire on every
+line; read those by eye.
 
 Then read it: **each diagram ≤ 10 nodes**, panels 1 and 2 sharing a node vocabulary, and
 no sentence anywhere that asks the reader for something. Those three are judgment, so
@@ -187,7 +194,10 @@ PR already exists and is where the file is read.
   holds.
 - **Never merges to the default branch**, and never lands under `docs/` or `apps/docs/` —
   it is an internal comprehension artifact about work in flight, not user-facing prose.
-- **Never invents mechanism.** Panels 2 and 4 are drawn from approved specs and merged
-  diffs. A shape nobody has approved is drawn as a forecast or not at all.
+- **Never invents mechanism.** Panels 2 and 4 draw from a ranked set of sources — a merged
+  diff, else an approved spec, else the epic-spec's own objective under a `(proposed)`
+  heading (`explainer-agent` → "know which tier you're on"). Tier 3 is what lets the first
+  build happen at the objective gate, where nothing is approved yet and the objective is the
+  thing being gated. A shape from *outside* those three isn't drawn at all.
 - **Never prompts the user** when dispatched — the coordinator owns every gate and all
   user interaction.
