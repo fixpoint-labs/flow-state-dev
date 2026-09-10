@@ -43,27 +43,51 @@ met or not; two of seven are not.
 
 ### Two things a future reader needs before touching anything here
 
-**1. FIX-963's spec — PR [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) — is
-STALE. Refresh it before implementing; do not build from it as written.** It converged in July
-and the substrate moved under it twice since. Two concrete breaks, both verified 2026-09-10:
+**1. FIX-963's spec — PR [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) —
+needs a targeted refresh, not a rewrite. Do the three repairs below, then build from it.** It
+converged in July, and the parts that carry the design still hold against `main`: the problem
+framing, the two-level three-outcome classifier, the persisted-item report, and the
+recorder-layer fix that covers all three backings. Three specific things decayed. All three were
+checked line by line against the spec's 874 lines and against live Linear on 2026-09-10, and the
+**third is a real hole** — someone picking this up cold will follow a dead pointer.
 
-- It names **`awaiting_review`** as a live attempt-owned status (§L2a of its state table).
-  FIX-1245 renamed that status to **`parked`**; on `main` the old string survives only as
-  `LEGACY_PARKED_STATUS` in `task-status.ts`, a dual-read tolerance, not a status.
-- It reasons about the **pre-FIX-1244 shared per-definition closure**, and sequences one of its
-  assertions behind **FIX-987** — which is now closed as **Duplicate**. FIX-1244 shipped a
-  request-scoped slot instead. The spec's premise about where a drain's run state lives is no
-  longer the premise on `main`.
+1. **Swap one stale identifier.** `awaiting_review` occurs **exactly once** in the whole spec —
+   a cell in the L2a classifier row (`status is attempt-owned (in_progress / awaiting_review)`).
+   FIX-1245 renamed that status to **`parked`**; on `main` the old string survives only as
+   `LEGACY_PARKED_STATUS` in `task-status.ts`, a dual-read tolerance, not a status. One cell.
+   The classifier's *rule* is unaffected — it still names no target status.
+2. **Re-examine one rejection whose premise moved.** At L496 the spec rejects
+   `BoardRunFlowState` as the report's carrier *because* it was built once in the
+   `taskBoard(...)` factory and therefore shared across requests: *"Using it would require a
+   shared-closure fix first — more complexity than the `getItems` re-read."* FIX-1244
+   request-scoped that slot, so the stated reason is gone. This weakens the **rejection**, not
+   the approach — the chosen `getItems` re-read still works, so nothing is invalidated. Re-run
+   the comparison and either re-reject on what's left or record that the fork reopened.
+3. **Re-home a deferred follow-up that now points at a closed ticket.** The spec sequences its
+   **overlapping-drains** assertion behind **FIX-987** in seven places, structurally — *"Land it
+   as a follow-up once FIX-987 is in, and reference this line."* FIX-987 was closed
+   **Duplicate** on 2026-08-24, so that pointer is dead. Its live successor is **FIX-1236**
+   (P High, Backlog, open, and already `related` to FIX-963). **The deferral itself is still
+   correct:** FIX-1244 made the run-state slot *request*-scoped, not *invocation*-scoped, so two
+   overlapping drains of one board inside one request still share `boardRunStateSlot(name)` and
+   still clobber each other. The test still cannot pass — it just needs a live ticket to wait on.
+
+**Not a break:** `FIX-1244` appears **nowhere** in the spec. No passage reasons about its old
+shape, and the two shared-closure mentions are L496 above and a multi-tenant row at L590 whose
+"true by construction from the per-request item buffer" claim still holds.
 
 **2. The idling cost this epic recorded now has three instances, not two.** The first two were
 FIX-964 and FIX-978: both sat at spec review for four weeks in July, both were resolved without
 ever being built — one descoped because a sibling shipped the mechanism, one canceled because a
 sibling shipped the fix — and the July review rounds spent on them bought nothing. **FIX-963 is
-the third, and it decayed differently: its spec converged, was never wrong, and is now stale
-anyway.** The first two say a review budget can be spent on a question the codebase is about to
-answer. The third says a *converged* spec is a perishable asset — the rounds bought a real answer,
-and holding it unimplemented for seven weeks spent it again. That is the argument against letting
-an epic idle, stated three times by three different mechanisms.
+the third, and it decayed differently and more mildly: its spec converged, was never wrong, and
+is still not wrong — but three of its edges have rotted, and one of them is a dependency that no
+longer exists.** The first two say a review budget can be spent on a question the codebase is
+about to answer. The third is narrower, and worth stating at its real size: what a converged spec
+loses while it waits is not usually its design, it is its *pointers* — a renamed status, a
+rejection whose premise moved, a ticket closed as a duplicate. Cheap to repair when someone
+checks, quietly misleading when nobody does. That is still an argument against letting an epic
+idle. It is a weaker one than the first two, and the difference is worth keeping.
 
 ---
 
@@ -87,7 +111,7 @@ per-operation `setAssignee` guard are on `main`.
 | FIX-951 | **Done** | The completed anchor. *OQ-A is closed — it asked whether FIX-951 was still in flight.* |
 | FIX-976 | **Done** | Decision 1's one bound issue. Shipped in [#1004](https://github.com/fixpoint-labs/flow-state-dev/pull/1004). |
 | FIX-948 | **Done** | Shipped as `maxTotalRetries` in [#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031). *OQ-C is closed by shipment.* |
-| FIX-963 | Backlog · P3 · **open at wrap** | **Still live — re-verified in code 2026-08-24.** Unblocked since FIX-989 shipped the detection primitive it needed. **Its spec ([#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992)) is now STALE** — see the wrap note above. Out of the epic's coordination 2026-09-10; **still a sub-issue of FIX-980**, not closed. |
+| FIX-963 | Backlog · P3 · **open at wrap** | **Still live — re-verified in code 2026-08-24.** Unblocked since FIX-989 shipped the detection primitive it needed. **Its spec ([#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992)) needs three targeted repairs before implementation, not a rewrite** — one of them a dead FIX-987 dependency; see the wrap note above. Out of the epic's coordination 2026-09-10; **still a sub-issue of FIX-980**, not closed. |
 | FIX-964 | ~~On Hold~~ | **DESCOPED 2026-08-24, owner call.** FIX-976's shipped widening closed most of it; the residue is narrow. Unparented, not closed — see §3.5. |
 | FIX-978 | ~~Canceled~~ | **CANCELED 2026-08-25 — subsumed by FIX-1005.** OQ-E settled against `main`; all three claims closed. Its one residue is FIX-1250's. |
 | FIX-993 | Ready to Spec · P2 · **open at wrap** | The judgment call §3.5 recommended keeping in. Never specced. Out of the epic's coordination 2026-09-10; **still a sub-issue of FIX-980**, not closed — it is a validation gap, and the epic wrapped without it. |
@@ -101,10 +125,11 @@ own write committed after a call that threw.
 **All three July spec PRs are resolved, and none of them by review.** #990 (FIX-978) is closed
 with its issue; #994 (FIX-964) is on hold with its issue descoped; and
 [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) (FIX-963) is still the live
-one — but it has now gone stale itself. **All three specs ended without a review finding
-resolving any of them**, which is the counter-argument to letting an epic sit: the review budget
-spent in July bought nothing on two of them because the codebase answered the question first,
-and bought an answer on the third that decayed before anyone built it. See the wrap note above.
+one — sound in its design, but carrying three edges that need repair first. **All three specs
+ended without a review finding resolving any of them**, which is the counter-argument to letting
+an epic sit: the review budget spent in July bought nothing on two of them because the codebase
+answered the question first, and bought an answer on the third that still stands while three of
+its pointers rotted around it. See the wrap note above.
 
 ### Track 2 — the human-wait board work (owner widening, 2026-08-24) — **complete**
 
@@ -114,7 +139,7 @@ All five original members shipped except FIX-1250, which is open at wrap.
 |---|---|---|
 | FIX-1234 | **Done** | Park/exit mode. Impl PR [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) **merged** 2026-08-25. The first Track-2 deliverable to land. |
 | FIX-1245 | **Done** 2026-09-05 | Renamed the shipped status `awaiting_review` → **`parked`**. `awaiting_review` survives on `main` only as `LEGACY_PARKED_STATUS` (dual-read, BP-030). *Retargeted 2026-08-24 from `needs_input`.* |
-| FIX-1244 | **Done** 2026-09-05 | Unblock-with-input, as a *new* request carrying a payload — not `continueRequest`, not `ctx.suspend`. Shipped a **request-scoped** run-state slot, which is what made FIX-987 a duplicate. D-1: FIX-1241 / [#1429](https://github.com/fixpoint-labs/flow-state-dev/pull/1429). |
+| FIX-1244 | **Done** 2026-09-05 | Unblock-with-input, as a *new* request carrying a payload — not `continueRequest`, not `ctx.suspend`. Shipped a **request-scoped** run-state slot, which is what made FIX-987 a duplicate — filed against **FIX-1236**, which is still open. Request-scoped is not *invocation*-scoped, so overlapping drains in one request still collide; FIX-963's deferred test now waits on FIX-1236. D-1: FIX-1241 / [#1429](https://github.com/fixpoint-labs/flow-state-dev/pull/1429). |
 | FIX-1238 | **Done** 2026-09-10 | The park-exit verdict's carrier depended on step adjacency and a break was silent; now typed at the completion tap. Impl PR [#1675](https://github.com/fixpoint-labs/flow-state-dev/pull/1675) **merged** `c32202319`. **The last deliverable of the epic.** The guard is *partial by construction* and its own comment says so — an inserted step whose output type has been erased to `any` still compiles. Closing that needs a `core` generics fix, filed as a follow-up. |
 | FIX-1250 | Backlog · P3 · **open at wrap** | `TaskWorkerInput` carries no claim ticket or incarnation id, so an **out-of-process** worker cannot fence a stale settle. Filed 2026-08-25 out of Conductor (LAB-138 / PR #1442), which had to re-derive the fence in userland. Out of the epic's coordination 2026-09-10; **still a sub-issue of FIX-980**, not closed. **Decision 3 is still binding on it.** |
 
@@ -170,7 +195,7 @@ number. **Refreshed 2026-09-10** against live Linear state, at wrap.
 |---|---|---|
 | **Track 1 — original honesty set** | 4 | FIX-951 ✅, FIX-976 ✅, FIX-948 ✅, FIX-963 *(FIX-964 descoped, FIX-978 canceled)* |
 | ├ **Shipped** | 3 | FIX-951 (anchor), FIX-976, FIX-948 |
-| └ **Open at wrap** | **1** | FIX-963 — spec #992 stale |
+| └ **Open at wrap** | **1** | FIX-963 — spec #992 sound, needs 3 targeted repairs |
 | **Track 1 — joined and shipped after the epic opened** | 4 | FIX-989 ✅, FIX-992 ✅, FIX-995 ✅, FIX-1001 ✅ |
 | **Track 1 — carried as a judgment call, never specced** | 1 | FIX-993 — **open at wrap** |
 | **Track 2 — human-wait board work** *(added 2026-08-24)* | 5 | FIX-1234 ✅, FIX-1245 ✅, FIX-1244 ✅, FIX-1238 ✅, FIX-1250 — **open at wrap** |
@@ -685,9 +710,10 @@ This decision used to say "the Decision-1-bound three wait." Three things retire
 > (the set is every open spec, never a file-colliding subset) stands unchanged and is what a
 > future epic should reuse; only its membership went to zero.
 >
-> *At wrap (2026-09-10) this is still the disposition, with one caveat: FIX-963's spec is now
-> **stale**, so "review it on its own merits" means refresh it first — a coherence pass was never
-> the thing it needed, and is still not.*
+> *At wrap (2026-09-10) this is still the disposition, with one caveat: FIX-963's spec needs
+> **three targeted repairs** first (see the wrap note at the top), so "review it on its own
+> merits" means repair those three, then review. A coherence pass was never the thing it needed,
+> and is still not — and none of the three repairs is a coherence finding.*
 
 ### Decision 3 — an expired lease is not evidence of abandonment; no issue in this set may assume otherwise
 
@@ -800,7 +826,7 @@ sub-issue of FIX-980**. The parent link is a historical trace, not live tracking
 | Issue | Title (short) | Linear | Spec PR | State of the work |
 |---|---|---|---|---|
 | **FIX-993** | Replan output can stamp an unvalidated `maxAttempts` onto a task | Ready to Spec · **P2** | — | Never specced. A validation gap, not a reporting gap — the epic's one deliberate judgment call, kept in and not reached. See §3.5. |
-| **FIX-963** | Recorder failure after a task commits is swallowed | Backlog · P3 | [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) · **STALE** | Re-verified live in `record-result.ts`. Implementable, but **its converged spec must be refreshed first** — it names `awaiting_review` and reasons about the pre-FIX-1244 shared closure. Details in the wrap note at the top. |
+| **FIX-963** | Recorder failure after a task commits is swallowed | Backlog · P3 | [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) · **needs 3 repairs** | Re-verified live in `record-result.ts`. Implementable, and **its converged spec is largely sound — three targeted repairs first, not a rewrite**: swap the single `awaiting_review` cell for `parked`; re-examine the L496 rejection whose shared-closure premise FIX-1244 removed; re-home the overlapping-drains follow-up off **FIX-987** (closed Duplicate) onto **FIX-1236**. Details in the wrap note at the top. |
 | **FIX-1250** | Workers get no claim identity for an out-of-process fence | Backlog · P3 | — | Carries the one residue OQ-E left when it closed FIX-978. **Decision 3 still binds it.** |
 
 **Project siblings** — *off-objective · direct-fix*, **not** parented under FIX-980, listed
@@ -1218,7 +1244,8 @@ removing the `?`, and nobody should retry it.
 - **Track 2 completed, 2026-09-05 → 2026-09-10.** FIX-1245 shipped the rename to **`parked`**
   (`awaiting_review` kept as `LEGACY_PARKED_STATUS`, dual-read per BP-030), FIX-1244 shipped
   unblock-with-input on a request-scoped run-state slot — which is what made **FIX-987** a
-  duplicate — and FIX-1238 shipped last, typing the park-exit verdict's carrier at the completion
+  duplicate of **FIX-1236** (still open) — and FIX-1238 shipped last, typing the park-exit
+  verdict's carrier at the completion
   tap ([#1675](https://github.com/fixpoint-labs/flow-state-dev/pull/1675), `c32202319`). FIX-1238
   is worth one line of its own: **its own spec recommended closing the issue instead of building
   it**, on evidence that neither of the ticket's stated preconditions had fired; the owner approved
@@ -1233,8 +1260,10 @@ removing the `?`, and nobody should retry it.
   (FIX-978), one descoped (FIX-964, *On Hold*). **Five of §1's seven completion criteria are met**,
   and §1 now says which two are not and who carries them. Three things are recorded above rather
   than here because a future reader needs them before they need the history: **FIX-963's spec
-  (#992) is stale and must be refreshed before implementation**; **the idling cost now has three
-  instances, the third being a converged spec that decayed rather than a wasted review**; and
+  (#992) needs three targeted repairs before implementation — a renamed status, a rejection whose
+  premise moved, and a follow-up sequenced behind a ticket now closed as a duplicate — and not a
+  rewrite**; **the idling cost now has three instances, the third being a converged spec whose
+  pointers rotted while its design held, rather than a wasted review**; and
   **OQ-D is still unanswered and still needs a human**, having now outlived both the issue that
   raised it and the epic that recorded it.
 - **The wrap's own lesson, applied to the wrap.** This epic's closing finding was that a fold is
@@ -1242,6 +1271,27 @@ removing the `?`, and nobody should retry it.
   (tenet 5). So this pass re-derived every surface in this document that restated a state it
   changed, not only the membership tables: §1's completion criteria (two now marked NOT MET rather
   than left reading as passed), §3.5's FIX-993 recommendation (spent, not pending), Decision 2's
-  "review FIX-963's spec on its own merits" (refresh it first), and the §3 index. The failure this
-  guards against is the concrete one: a completion criterion left reading as met is how an epic
-  wraps with the mechanism unbuilt and nobody noticing.
+  "review FIX-963's spec on its own merits" (repair its three edges first), and the §3 index. The
+  failure this guards against is the concrete one: a completion criterion left reading as met is
+  how an epic wraps with the mechanism unbuilt and nobody noticing.
+- **2026-09-10, correction pass — #992's staleness was overstated, and the drift proved the point
+  a second time.** The wrap above was written from a characterization of FIX-963's spec that did
+  not survive measurement against the actual 874-line document on #992. Three claims were checked
+  and all three came back weaker than written: `awaiting_review` occurs **once**, as a table cell,
+  not as live reasoning; the shared closure appears **twice** and never as the spec's foundation —
+  the load-bearing mention at L496 is the spec *rejecting* an alternative *because* of the
+  closure, so FIX-1244 weakens that rejection's premise without touching the approach the spec
+  chose; and **`FIX-1244` appears zero times**, so there was never a passage reasoning about its
+  old shape. What is genuinely broken is the thing the wrap pass found on its own and buried
+  underneath the overstatement: the **FIX-987** sequencing, seven references and structural, now
+  pointing at a ticket closed as a duplicate (successor **FIX-1236**, open in Backlog at P High).
+  The deferral is still correct — FIX-1244 request-scoped the run-state slot without
+  *invocation*-scoping it, so overlapping drains in one request still share
+  `boardRunStateSlot(name)` — it just needs a live ticket. Net: **"badly decayed, rewrite it"
+  became "largely sound, three specific repairs, one of them a dead dependency."** The
+  characterization had reached **eight** surfaces in this document by the time it was corrected —
+  the wrap note, §3's index row, the July-spec-PRs paragraph, the membership table, Decision 2's
+  caveat, the audit-log row, and two journal lines. That is tenet 5's failure mode arriving
+  exactly where the previous entry said it would, and the lesson sharpens: an overstated claim
+  propagates as fast as a correct one, so **the artifact to check first is the source claim, not
+  the surfaces repeating it.**
