@@ -1172,3 +1172,375 @@ sample and excluded from every rate above.**
 3. **Is a live worker duplicated again?** Fix A's only job. One instance this cycle; a second
    after the fix means the check is not being spent, and the next move is a handle the
    `epic-wake` script can refuse to re-dispatch rather than a rule the coordinator must remember.
+
+---
+
+## Cycle 8 — honest-task-substrate epic wrap (FIX-980) (2026-09-10)
+
+The epic's whole life, six weeks: **28 PRs rowed below**, plus one `settle-claim` POC
+([#1001](https://github.com/fixpoint-labs/flow-state-dev/pull/1001), merged), under epic
+[#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983)
+(opened 2026-07-29, closed unmerged 2026-08-16 while the epic was dormant, reopened 2026-08-24,
+closed at the wrap 2026-09-10). Two tracks under one name — Track 1 (write-path / drain report:
+FIX-951, FIX-976, FIX-989, FIX-992, FIX-995, FIX-948, FIX-1001) and Track 2 (human-wait board:
+FIX-1234, FIX-1238, FIX-1244, FIX-1245) — plus **three specs that were reviewed and never built**
+(FIX-964, FIX-978, FIX-963), which are rows, not absences.
+Reviewers: `chatgpt-codex-connector[bot]`, `cursor[bot]` (three automations — simplify, Code Snob
+subtraction, Grok second pass), `greptile-apps[bot]`, `github-code-quality[bot]`, plus the owner's
+`fsd-architect`, `second-look` and `FSD Review Moderator` seats.
+
+**Method — and the fourth definition of a round in this file, declared as such.** Two numbers per row:
+
+- **Passes** — automated review submissions from `cursor[bot]` + `chatgpt-codex-connector[bot]`,
+  counted from `GET /pulls/N/reviews`. This is **cycles 4, 5 and 7's pass metric, unchanged**, and it
+  is the only column in this entry comparable to an earlier cycle.
+- **Folds** — non-merge commits pushed after the first automated pass. This is a **new measurement,
+  introduced here, comparable to nothing before it.** It is not cycle 7's "waves" (which collapse
+  several passes on one head) and not cycles 1–5's "rounds". It earns a column because the *fold
+  loop itself* is this cycle's subject: the question is how many times an artifact was rewritten
+  under review, which no existing column answers. **Never set a fold count against an earlier
+  cycle's rounds.** Cycle 4 warned that two baselines had been invalidated by a definition change
+  and to check for a third; cycle 7 was the third. This is a fourth definition, added deliberately
+  and fenced rather than smuggled in under an old column name.
+
+`nit` is excluded from the rework signal. Direction artifacts (spec and epic PRs) take the
+spent-round rules. Endpoints per the table above: epic PR → epic close (**reached**, so #983 is a
+complete row, not a partial); spec PR → its approval; implementation PR → merge or close.
+**Three rows fall back to the wrap and are partials:** #992 and #994 (specs never approved, still
+open) and #1677 (open, unmerged).
+
+### The epic PR
+
+| PR | Kind | Passes | Folds | Feedback classes | Claims (looped / settled / verdicts) | Design felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|---|
+| [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) FIX-980 epic-spec | epic | **12** | **8** | design-off ×5 (the widened method set FIX-976 actually calls; terminal guard inside the atomic mutation, not at the boundary; FIX-963 coupled to mutation return values; `updateTask`'s multi-field write not atomic; cascade-skip omitted from the cancel-outcome migration) · **stale-restatement ×7** (count drift — "six issues" / "two of the eight" / "five remaining" / eight index rows; §1 and §3 contradicting each other on FIX-972's membership; the membership narrative repeated 4×; "Epic evolution is a palimpsest"; "Stop claiming Decision 1 resolves S3"; a Decision-3 parenthetical steering the reader away from a spec that does exist; the whole doc still describing `main` as of 07-30 after five merges) · over-engineered ×6 (simplification asks, all deferred) · docs-miss ×1 (blast radius understated **~4×**: "6 sites in 3 files" measured one of four widened methods; real figure ~22 sites / 4 files to compile, ~30 / 10 to be complete) · nit ×2 | 1 / 1 / **CONFIRMED** (with two gaps; POC [#1001](https://github.com/fixpoint-labs/flow-state-dev/pull/1001)) | **yes** — Decision 1's Option A survived, but its cost was wrong by 4× and two of its three named methods were the wrong ones | The correction re-derives every surface that restates the decision — cycle 2's finding, unchanged |
+
+### Track 2 — the human-wait board
+
+| PR | Kind | Passes | Folds | Feedback classes | Claims (looped / settled / verdicts) | Design felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|---|
+| [#1419](https://github.com/fixpoint-labs/flow-state-dev/pull/1419) FIX-1234 spec | spec | **12** | **8** | design-off ×4 (parked dependencies in complete mode; sibling workers not stopped after the park-exit decision; the carried verdict not isolated per drain invocation — raised **twice**, folds 2 and 3; `onReview: "exit"` refused against only one of two `onIdle` values) · missed-edge-case ×3 (retry-budget precedence in mixed outcomes; id-less `initialTasks`; explicitly-blocked rows masked by the park rung) · stale-restatement ×2 (every README publishing the outcome union; the detached-work architecture contract) · docs-miss ×1 (changeset) · **overclaim ×2** ("the parts to rebuild both are exported" overstates the public surface; a detached-recapture premise asserted, then **refuted** and swept in fold 8) · nit ×4 | 1 / 1 / **REFUTED** (the detached-recapture premise, settled by reading the code) | no | Budget: 2 folds. Spent 8 — see *the fold loop* |
+| [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) FIX-1234 | impl | **11** | **13** | missed-edge-case ×7 — **5 convergence** (a row the worker parked completed anyway; the parked-row refusal outside the atomic write; rung 5 unguarded on a parked row; unrelated ready rows and lapsed in-progress rows inside the park closure; stale park verdicts surviving another worker's cap hit) + 2 (session reuse on a resumed task; hand-off guarantee wider than the lease) · **overclaim ×3** (a false guarantee in the guide; design history inside an exported API comment; implementation history inside the release note) · stale-restatement ×1 (`parked` on every surface that claims the decline set) · over-engineered ×2 (`excusedParked` counted but only ever read as `> 0`) · nit ×5 | 2 / 2 (settled by **running** the example, not by POC) / — | no | Same convergence arithmetic tenet 5 has named since cycle 1 |
+| [#1461](https://github.com/fixpoint-labs/flow-state-dev/pull/1461) FIX-1244 spec | spec | **29** | **30** | **The worst overrun in this ledger.** Reached **round 25** by the author's own numbering. design-off ×5 (answer data in routing metadata; retries bound to the specific review request; a committed unpark recovered before refusing retries; a representable missing-task refusal; post-commit failure recovery inside the composed step — *"the most substantive thing this review has surfaced"*, arriving at ~round 22) · **overclaim ×6** (a §12 rename promise left standing while §7–§11 asserted the opposite — *"the same one-site-left-standing class as six earlier rounds"*, the author's words; an owner approval recorded as "settled" with nothing citeable — *"an unciteable settlement is indistinguishable from an invented one"*; a no-lost-answer guarantee wider than the stores whose CAS holds it; a wrong-ledger answer promised to always throw; two stale claims corrected in fold 19) · over-engineered ×4 (two verbs where one would do; Part I over budget, cut and restored twice) · spec-ambiguity ×3 · nit ×43 | 2 / 0 (both settled by **re-measurement**; the author's round-21 refutation of a reviewer was itself wrong) | **yes** — but the owner found it, not the review: *"resumeFromReview and unparkAndDrain. Why do we need both? … Is the wall of text in the spec really necessary?"* | **A hard stop after fold 2.** BP-040 was in force and did not bind — see *scoring* |
+| [#1571](https://github.com/fixpoint-labs/flow-state-dev/pull/1571) FIX-1244 | impl | **3** | **2** | missed-edge-case ×2 · nit ×0 | 0 / 0 / — | no | — a clean implementation off a 30-fold spec |
+| [#1513](https://github.com/fixpoint-labs/flow-state-dev/pull/1513) FIX-1245 | impl | **3** (5 with `greptile` + `github-code-quality`) | **5** | missed-edge-case ×4 — **all convergence, and the dual-read shipped missing three of its four readers** (`readTaskState` casts cached store JSON straight past the shim; in-flight counting; completion derivation from persisted item logs; a fourth read path in Conductor, closed on the last commit **eight days** after the first) · **overclaim ×1** (a comment saying "decoded from a stored row" when durable reads bypass that field's schema) · stale-restatement ×1 (the maintained atlases) · docs-miss ×1 (changeset omits the publishable DevTool package) · nit ×2 | 0 / 0 / — | no | BP-030's dual-read is only as strong as its least-guarded **reader** — the enforcement/verification split of cycle 1's class, on the read side |
+| [#1673](https://github.com/fixpoint-labs/flow-state-dev/pull/1673) FIX-1238 spec | spec | **2** | **2** | **2 findings, both above the bar, both from one reviewer.** overclaim ×1 (the spec's central claim — that the test-blind conditional break "becomes impossible" — was false; a schema-less `stepIf` insert erases to `any` and the guard has nothing to check) · **vacuous-assertion ×1** (the proposed regression test held a private copy of the connector, so weakening the production one left it green — *"contrary to the stated purpose of detecting exactly that simplification"*) | 1 / 1 / **REFUTED** (the reviewer re-ran the spec's own POC with `unknownOut` and got silence where the spec predicted an error) | **yes** — the guarantee narrowed from "conditional inserts" to "conditional inserts that declare an output", and §3.4 (close and re-grade) got stronger | **The only spec PR in this epic that stayed inside the two-fold budget** |
+| [#1675](https://github.com/fixpoint-labs/flow-state-dev/pull/1675) FIX-1238 | impl | **2** | **1** | **The same two shapes again, in the redesign the first pair produced.** overclaim ×1 (the wiring comment drew the guard's boundary at *"declares an output"*; `outputSchema: z.any()` declares one and compiles clean — the boundary is whether the output type is still **concrete**) · vacuous-assertion ×1 (the erosion test asserted only that the parameter is an array, so widening the element type to `readonly unknown[]` was **silent**: exit 0) | 0 / 0 / — | no | Both were caught. See *the four seats that missed them* |
+| [#1677](https://github.com/fixpoint-labs/flow-state-dev/pull/1677) FIX-1032 | impl | **1 (in flight)** | **1 (in flight)** | missed-edge-case ×2 · nit ×1 | 0 / 0 / — | no | — the fix for the lying instrument, still open |
+
+### Track 1 — write path and drain report
+
+Classified at headline altitude. Class counts are from the bots' finding titles and the folds
+that answered them; the two-line reading is the same in every row, so the detail is in
+*the dominant class* below rather than repeated ten times.
+
+| PR | Kind | Passes | Folds | Feedback classes | Design felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|
+| [#941](https://github.com/fixpoint-labs/flow-state-dev/pull/941) FIX-951 spec | spec | 7 | 5 | design-off ×2 · missed-edge-case ×3 · **overclaim ×2** (a heading saying "five writers" over a six-row table; a stale metadata-write requirement) · over-engineered ×2 · nit ×7 | no | Budget 2, spent 5 |
+| [#953](https://github.com/fixpoint-labs/flow-state-dev/pull/953) FIX-951 | impl | 3 | 3 | missed-edge-case ×2 (advisory writes not bound to the claimed attempt; no-op after settlement) · docs-miss ×1 | no | — |
+| [#995](https://github.com/fixpoint-labs/flow-state-dev/pull/995) FIX-976 spec | spec | **4** | **2** | over-engineered ×3 (scope levers, all taken) · spec-ambiguity ×2 · **stale-restatement ×1** (blast radius argued in three places) · nit ×4 | no | **inside budget** |
+| [#1004](https://github.com/fixpoint-labs/flow-state-dev/pull/1004) FIX-976 | impl | **1** | **1** | nit ×5 — **no finding above the bar** | no | — the cheapest implementation in the epic |
+| [#1005](https://github.com/fixpoint-labs/flow-state-dev/pull/1005) FIX-989 spec | spec | 5 | 5 | design-off ×3 · missed-edge-case ×4 · docs-miss ×2 · nit ×2 | no | Budget 2, spent 5 |
+| [#1128](https://github.com/fixpoint-labs/flow-state-dev/pull/1128) FIX-989 | impl | 7 | 8 | missed-edge-case ×6 — **convergence** (write tokens per incarnation; collision-free discriminator; withhold when either id is absent; cross-process-unique ids ×2 sites; truncation marker preserved across later writes) · docs-miss ×2 | no | Cycle 1's class |
+| [#1010](https://github.com/fixpoint-labs/flow-state-dev/pull/1010) FIX-992 spec | spec | 9 | 9 | design-off ×6 · missed-edge-case ×8 · over-engineered ×2 · nit ×3 | **yes** — split into three PRs after review | Budget 2, spent 9 |
+| [#1035](https://github.com/fixpoint-labs/flow-state-dev/pull/1035) FIX-992a | impl | 8 | 9 | missed-edge-case ×12 — **convergence across every backing** (tombstone revives guarded by version in Postgres **and** SQLite; blind writes bumped atomically in both; raced deletes treated as success in both; numeric `-1` rejected in both) + create/CAS races · **overclaim ×2** (adapter README's CAS guarantee; resource-state CAS docs) · nit ×4 | no | **The sharpest convergence instance in Track 1: eight findings are the same rule missing from its second adapter.** |
+| [#1036](https://github.com/fixpoint-labs/flow-state-dev/pull/1036) FIX-992c | impl | 8 | 6 | missed-edge-case ×5 · **overclaim ×3** ("Don't describe failed content writes as silent"; the failed-create content contract; the state-and-scopes CAS status) · stale-restatement ×1 (architecture route reference) · nit ×4 | no | Same |
+| [#1039](https://github.com/fixpoint-labs/flow-state-dev/pull/1039) FIX-992b | impl | 8 | 3 | missed-edge-case ×6 · **vacuous-assertion ×1** ("add a real no-op path before asserting notification silence" — the assertion passed because nothing exercised it) · docs-miss ×2 · nit ×4 | no | Same |
+| [#1011](https://github.com/fixpoint-labs/flow-state-dev/pull/1011) FIX-948 spec | spec | 6 | 6 | design-off ×2 · missed-edge-case ×3 · docs-miss ×2 · nit ×6 | no | Budget 2, spent 6 |
+| [#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031) FIX-948 | impl | 2 | 2 | missed-edge-case ×2 · nit ×3 | no | — |
+| [#1022](https://github.com/fixpoint-labs/flow-state-dev/pull/1022) FIX-995 spec | spec | 5 | 3 | missed-edge-case ×3 · over-engineered ×2 · nit ×5 | no | Budget 2, spent 3 |
+| [#1023](https://github.com/fixpoint-labs/flow-state-dev/pull/1023) FIX-995 | impl | 4 | 3 | missed-edge-case ×4 · **overclaim ×2** (a docblock documenting a function that had moved below it; `TaskTransitionOptions` still describing advisory declines as silent) · nit ×3 | no | Cycle 1's class |
+| [#1048](https://github.com/fixpoint-labs/flow-state-dev/pull/1048) FIX-1001 spec | spec | 10 | 8 | design-off ×5 · missed-edge-case ×7 · over-engineered ×2 · nit ×4 | no | Budget 2, spent 8 |
+| [#1292](https://github.com/fixpoint-labs/flow-state-dev/pull/1292) FIX-1001 | impl | 4 | 5 | missed-edge-case ×3 · docs-miss ×1 · nit ×2 | no | — |
+
+### The three specs that were reviewed and never built
+
+| PR | Kind | Passes | Folds | Spec lines | Findings | Outcome |
+|---|---|---|---|---|---|---|
+| [#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) FIX-978 spec | spec | **17** | **16** | **1,884** | **30 P1 · 12 P2** | Linear **Canceled** 2026-08-25. All three of its claims re-checked against `origin/main` and found already closed by sibling work. Two of its P1s were the reviewer escalating to *"keep implementation blocked on the unresolved design"* — the block held, and then the issue evaporated |
+| [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) FIX-963 spec | spec | **6 (partial)** | **6 (partial)** | 873 | 7 P1 · 6 P2 | Converged, never approved, **still open**. Now mildly decayed: it names `awaiting_review`, which survives on `main` only as `LEGACY_PARKED_STATUS` after FIX-1245 |
+| [#994](https://github.com/fixpoint-labs/flow-state-dev/pull/994) FIX-964 spec | spec | **5 (partial)** | **8 (partial)** | 365 | 6 P1 · 5 P2 | Descoped by the owner 2026-08-24/25. Issue **On Hold**, unparented from the epic, PR **still open** |
+
+**Total idled: 28 automated passes, 30 folds, 3,122 spec lines, 43 P1 findings, 0 lines shipped.**
+Three instances in one epic is a trend, not an anecdote — and the cost is concentrated: #990 alone
+is 1,884 lines and 30 P1s, more review than any *implementation* PR in this epic received.
+
+### The dominant class: the fold loop feeds itself
+
+**Ten of twelve spec PRs blew the two-fold budget.** The two that held (#995 → 2 folds,
+#1673 → 2 folds) are the exceptions; the rest ran 3, 5, 5, 6, 6, 8, 8, 9, 16 and **30**.
+
+The mechanism is visible in the data rather than inferred. On #1461: **29 automated passes across 30
+folds — a 1:1 ratio.** Every push drew a fresh review, and the review found something, and the
+finding drew another push. The author named it at fold 5:
+
+> Five rounds folded (budget is two; rounds 3–5 were spent deliberately on evidence-driven
+> findings). **I'm stopping now**, because the latest round flags the fix from the previous round —
+> each fix is drawing a reshaped finding rather than converging. Per the convergence rule, that's
+> the point to raise what's still open instead of pushing again.
+
+Twenty-five folds followed. The diagnosis was correct, the rule was quoted, and neither stopped it.
+
+**What each fold was actually spending itself on is the link to the honesty class.** #1461's own
+account of its worst fold: a §12 line promising a rename was added, then a wholesale revert left
+§7–§11 asserting the opposite, *"and an implementer following those would skip the rename. My
+defect, and **the same one-site-left-standing class as six earlier rounds**."* A direction document
+states one decision in many sections. Folding it into the section that owns it leaves the siblings
+asserting the old answer; the reviewer finds that on the next push; the fix creates the next one.
+**That is not review converging on a document — it is a document and a reviewer taking turns.**
+
+The tell that the loop was not tracking value: on #1461 the two findings that actually changed the
+design came from **outside** the loop. The owner, in two sentences, asked why two verbs existed and
+whether the wall of text was necessary — the restraint question 20 automated passes had not asked.
+And when a genuinely direction-level P1 did land at ~round 22, the implementation that followed it
+took **3 passes and 2 folds**.
+
+### An epic named "Honest task substrate" produced ~30 findings of the form *a claim that is not true*
+
+Counted across the corpus: of **~195 classified findings** (nits excluded), `missed-edge-case` is
+~86 and **`overclaim` is 23, with a further 3 `vacuous-assertion`** and 13 `stale-restatement`
+alongside. Prose or a test stating more than the code does is the second-largest family in this
+epic, and it appears at every altitude:
+
+- **Epic altitude (#983):** counts drifting across four surfaces; §1 and §3 contradicting each other;
+  *"Stop claiming Decision 1 resolves S3"*; a load-bearing cost figure wrong by ~4×; and the whole
+  document still describing a `main` that five merges had moved past.
+- **Spec altitude (#1673):** the spec's central guarantee was false, and the test it proposed to
+  protect that guarantee could not fail.
+- **Implementation altitude (#1675):** the *same two shapes*, in the redesign the first pair
+  produced — a comment drawing the guard's boundary in the wrong place, and an erosion test whose
+  only assertion was "is an array."
+- **Across the write path:** *"Don't describe failed content writes as silent"*; two README CAS
+  guarantees wider than the code; a comment claiming a value was "decoded from a stored row" when
+  durable reads bypass that schema; *"add a real no-op path before asserting notification silence."*
+
+This is the exact failure mode the epic exists to attack, in the epic's own output. It is also the
+engine of the fold loop above, which is why the two are one finding and not two.
+
+### The sharper shape: a summary is a claim, and checking its inputs is not checking it
+
+Two instances, and the second happened **during this wrap**, in the artifact announcing it.
+
+**Instance 1 — #1675's description.** After the wiring comment's overclaim was fixed in
+`5b99b1550`, the identical claim was left standing in the PR description. Author self-report; **not
+verifiable from the review record** (GitHub's body-edit history is not reachable from this session
+and no comment on the PR documents the sweep), so it is **excluded from every count in this entry**
+and carried only as testimony.
+
+**Instance 2 — the epic's retirement post on `agent-mailbox#7`** (open, updated 2026-09-10T01:12Z).
+It published *"The objective's first clause is met."* **Verified against the epic-spec on `0cc231c25`
+and live Linear: it is not.** The spec's §1 "What 'done' looks like" lists **seven** criteria.
+Criterion 2 — *"a drain's result distinguishes 'the work completed' from 'the work completed and then
+the recorder fell over' — at a surface that is persisted and branchable"* — is FIX-963 verbatim, and
+FIX-963 is **Backlog**, spec PR [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992)
+still open, never built. That criterion is not adjacent to the objective's first clause (*"every write
+path either did what it reported, or reported that it didn't"*) — **it is that clause.** Criterion 3
+is FIX-964's and is partial at best after the descope, by the epic-spec's own §3.5 row. **Two of
+seven NOT MET.** The same post said the three surviving issues *"stand alone now"*; FIX-963, FIX-993
+and FIX-1250 all still return `parent: FIX-980` — only FIX-964 is unparented, and it is *On Hold*,
+not Backlog. Corrected on the handle with an explicit `kind: correction` comment rather than a silent
+edit.
+
+**Why the second instance changes the reading.** Instance 1 looks like a rework-hygiene miss — fix
+the code, forget an artifact. Instance 2 cannot be that: **every input to the false sentence was
+verified.** The author checked each issue's Linear state and never re-derived the sentence about what
+those states added up to. So the class is not "update the other artifacts after a fold." It is:
+**a summarizing artifact inherits the verification burden of a claim, and verifying its inputs is not
+verifying it.**
+
+**And it is not new here — three more instances are on the record, in three different artifact kinds:**
+
+- **The epic-spec's own status block (#983, 2026-08-24):** *"the doc was describing a codebase that no
+  longer exists… the doc stopped tracking `main` on 2026-07-30."* Three rows wrong at once — FIX-976
+  and FIX-948 recorded as open when both had shipped, FIX-978/963/964 recorded In Review when all
+  three were Backlog. Found only when someone re-derived the block against live Linear.
+- **#1461's PR description:** *"The PR description says 'six rounds.' Two more landed after it."*
+- **#1461's review reply:** a summary asserting the owner had settled a decision, with nothing
+  citeable — *"an unciteable settlement is indistinguishable from an invented one."*
+
+**Five instances, five artifact kinds, six weeks — and the confound, stated plainly.** Every PR in
+this corpus has the same non-bot author. So this corpus **cannot** separate "this author's habit"
+from "this process's gap"; there is no second author in it to compare against. What the five
+instances do establish is narrower and still useful: the shape is not FIX-1238-specific and not
+wrap-post-specific. Whether it generalizes across authors is **unanswered**, and the fix below is
+scoped accordingly — a sharpening of a rule that already exists, not a new standing rule.
+
+**Does BP-003 already cover it? Substantially, yes — and that is the finding.** BP-003 requires every
+claimed deliverable to have an evidence path and pass criteria, and the epic-spec *had* seven of them.
+`CLAUDE.md` separately forbids writing user-facing prose while holding a spec or a diff, *"because
+context leaks even when you know the rules — that's what the isolation is for."* Both applied; neither
+was reached for, because neither names **prose about completion** as the thing under verification.
+That makes this an application gap with a nine-word cure, not a new rule.
+
+### Who actually caught the honesty defects — and it was never the author in the act of writing
+
+| Instance | Found by |
+|---|---|
+| Spec's central guarantee false; proposed test could not fail (#1673) | `chatgpt-codex-connector[bot]` |
+| Wiring comment's boundary wrong; erosion test vacuous (#1675) | `chatgpt-codex-connector[bot]` |
+| Epic-spec status block describing a two-week-old `main` (#983) | a re-derivation pass against live Linear |
+| §12 rename promise left standing against §7–§11 (#1461) | `chatgpt-codex-connector[bot]` |
+| Uncitable "settled" (#1461) | the `fsd-architect` seat challenging it |
+| *"The objective's first clause is met"* (`agent-mailbox#7`) | an isolated epic-spec sub-agent pass |
+
+**Six for six, by an automated or isolated check; zero by the writer.** That is the strongest
+argument in this entry for keeping the fix at the level of *what gets independently re-derived*
+rather than *what the writer should remember* — and it is why fix A is a freeze and fix C is a
+sharpening of an existing burden rather than a new discipline to hold.
+
+### The four seats that missed them — the concentration is real, and sharper than "a bot did better"
+
+On FIX-1238, `chatgpt-codex-connector[bot]` produced **all four** above-the-bar findings across both
+PRs, and **every other seat that read the same artifacts produced none.** Verified against the PRs:
+
+| Seat | On #1673 (spec) | On #1675 (impl) |
+|---|---|---|
+| `cursor[bot]` — simplify / Code Snob | **APPROVED direction.** Six comments, all editorial (ordering, duplication, a missing POC row). Explicitly **endorsed the test that could not fail**: *"the new `src/**` type-level regression test — I would **not** simplify this away… The test is the guard on the guard"* | *"too small / already tight. No POC."* Listed by name the eight files it read, including the type test and the tap comment, and pronounced the three-line contract irreducible |
+| `fsd-architect` | **Ratified** the approach, on the condition that the residual stay honestly stated — the condition the overclaim then violated | — |
+| `second-look` | *"Appropriately scoped."* No candidate cleared the gate | *"Appropriately scoped."* Independently checked the premise and the `TS2304` claim, both correct — and neither was the defect |
+| `greptile-apps[bot]` | — | — |
+
+**Two corrections to how this gets read.**
+
+First, *"four defects"* overstates the variety. It is **two shapes, twice**: an overclaim and an
+assertion that cannot fail, found at spec altitude, and then found **again** in the redesign the
+first finding produced. The second pair is the more expensive fact — the redesign was authored
+knowing exactly what the first pair was.
+
+Second, this bot's dominance is **not** FIX-1238-specific. It produced all 30 P1s on #990, 26 of 30
+passes on #1461, and every P1 on #1035, #1128 and #1513. What *is* specific to FIX-1238 is the
+**unanimous miss**: on no other artifact in this epic did four other seats read the same thing and
+all return "fine." The likeliest reason is uncomfortable and is a claim to test, not a finding:
+#1673 is the only spec PR in the epic small enough (2 folds, a 398-line spec) that a reviewer could hold
+all of it, and Cursor's approval reads like a reviewer who read all of it — and endorsed the defect.
+
+### The instruments that lied — reproduced, not taken on report
+
+`scripts/typecheck.mjs` runs `tsc` only when `node_modules/.bin/tsc` exists at the repo root.
+Otherwise it walks `src/**.ts`, regex-scans import specifiers, and prints
+`static typecheck passed (<pkg>): N source file(s) validated` with **exit 0**.
+
+Reproduced for this entry rather than quoted. A one-file package whose only source file contains
+three unambiguous type errors (`const x: number = "definitely not a number"`, an incompatible
+re-export, a property access on a type that has no such property), run through the real script with
+no `node_modules` present:
+
+```
+static typecheck passed (packages/probe): 1 source file(s) validated
+EXIT=0
+```
+
+**The trap is live in this repository today** — the worktree this entry was written in has no
+`node_modules/.bin/tsc`, so every `typecheck` run inside it would report success without checking
+anything. Filed as **FIX-1032** (High, *Ready to Spec*); the fix is open and unmerged at
+[#1677](https://github.com/fixpoint-labs/flow-state-dev/pull/1677). Its cost this epic, from the
+author's record on #1675: **four fabricated measurements**, and a worker came close to reporting an
+approved spec's central mechanism as broken. The same script has an inverse face — deps installed
+but `core`'s `dist` stale reports ~22 type errors in untouched files, which nearly got a correct fix
+rejected. A sibling instrument, `packages/orchestration/test/types.type-test.ts`, states that vitest
+typecheck covers it; nothing does (**FIX-1239**, High, Backlog).
+
+This is one step past what BP-003 currently covers. Its third bullet warns about *"a green result
+from a command aimed at a **neighbour** of the claim."* Here the command was aimed at exactly the
+right claim and reported success **without performing the check at all.** Same false green, different
+mechanism, and the existing sentence does not reach it.
+
+### Scoring previous cycles' fixes
+
+- **BP-040** (*spec review is a direction check — fold only what changes the approach, converge in
+  two rounds*), landed `1c69f65fe` 2026-08-08. **Carried/not-carried split, by ancestry, not
+  timestamps:** three spec PRs carry it from their first commit — #1419 (`959ec8e1e`), #1461
+  (`d37dc8bcd`), #1673 (`bc07d3a44`); the other nine forked before it (verified: `1c69f65fe` is not
+  an ancestor of #1048's head `954a293c6`). **The rule was in force and did not bind.** Post-BP-040
+  folds are **8, 30, 2** against a pre-BP-040 median of 6. The worst spec overrun in this ledger's
+  history happened **17 days after** BP-040 landed, on a branch carrying it, by an author who quoted
+  the convergence rule at fold 5 and folded 25 more times. n=3 is not a trend; one instance at 30
+  folds with the rule in the tree is still the cleanest available evidence that this class needs a
+  stop, not a sentence.
+- **Cycle 7's fixes A and B** (`epic-lifecycle` *Blind by design*, `write-block-tests` *parameterize
+  over carriers*) landed 2026-09-08 in `a85a17da9` / `c667f344a`. **Unscoreable against this epic —
+  the entire corpus is out of the sample.** Every branch forked before those commits and none merged
+  `main` afterwards; verified by ancestry on the branch heads, not by date (`git merge-base
+  --is-ancestor a85a17da9 5b99b1550` → exit 1, and the same for `c667f344a`). Per this file's own
+  rule that is *not a zero and not a pass*. Recorded so the next cycle does not read this entry's
+  silence as a failed fix.
+- **Cycle 1, fix A** (tenet 5's convergence clause): in force throughout. `missed-edge-case` is ~85
+  of ~145 classified findings and convergence is most of it — #1035's eight findings are one rule
+  missing from its second adapter; #1513 shipped a dual-read missing three of its four readers.
+  **Eight cycles, still the dominant class.** Consistent with cycles 4–7; nothing new to add, and
+  the fourth consecutive conclusion that the remaining work here is mechanism, not wording.
+
+### Upstream fixes — proposed, not written
+
+Per this skill's Step 6, nothing below is applied. `docs/philosophy.md`,
+`docs/contributing/best-practices.md` and the skills are **untouched** in this change; the entry
+records the proposal and the ledger rows land regardless of what the owner does with it.
+
+| # | Proposed fix | Altitude | Targets | How it gets scored |
+|---|---|---|---|---|
+| A | **`issue-spec` gains a hard stop, not a budget: after fold 2 the spec branch is frozen.** Remaining findings go into **one** comment as implementer notes, and the approval gate is raised with them attached. No further push to `spec/*` during review. | skill, spec-time — **mechanism** | the fold loop: 10 of 12 spec PRs over budget, #1461 at 30 | folds per spec PR next cycle. A freeze either shows up as a hard ceiling of 2 or it was not spent |
+| B | **Mint `vacuous-assertion` as a ledger feedback class** — an assertion that passes for a reason unrelated to what it claims to check. | ledger instrument only | the pre-registered watch, now in its **third** cycle | it becomes countable; if it does not recur, retire it |
+| C | **Sharpen BP-003's third bullet — one list, two more neighbours.** It already warns about *"a green result from a command aimed at a **neighbour** of the claim."* Add the two seen this epic: **(a) a command that never ran the check** — a missing toolchain taking a fallback path, a skipped suite, a type assertion in a file nothing typechecks; read what the command reports it *did*, not only its exit code. **(b) the claim's inputs instead of the claim** — a summary is a claim and carries a claim's burden; verifying every input and not re-deriving the sentence about what they add up to is checking a neighbour. | sharpen existing BP | (a) FIX-1032 + FIX-1239, four fabricated measurements · (b) five summary-overclaim instances across five artifact kinds | a false green reaching a report again; a completion summary contradicted by its own pass criteria |
+
+**Why A is a freeze and not a reminder.** The rule already exists (BP-040), was in the tree, was
+quoted by the author mid-loop, and did not bind. Cycles 4, 5, 6 and 7 each concluded that prose
+naming a class does not deter the class. A freeze is refusable in a way a budget is not.
+
+**What A costs, stated honestly.** On #1461 a real direction-level P1 arrived around round 22; under
+a freeze it would have reached the implementer as a note instead. That is what BP-040 prescribes, and
+the implementation off that spec took 3 passes and 2 folds — but the loss is real and A should be
+withdrawn if a frozen spec produces an implementation that has to be re-specced.
+
+### Dropped
+
+- **A tenet or BP clause for the convergence class.** Fifth cycle of the same answer, and the
+  reasoning has not changed: tenets 5 and 7 already name it in the always-loaded layer, tenet 5
+  already carries three parallel paragraphs of the arithmetic, and a fourth is the checklist growth
+  tenet 3 forbids. Cycle 7's fix B is the standing mechanism attempt and **could not be scored here**
+  (see above) — it deserves a cycle where the branches carry it before anything is added.
+- **A standalone rule about artifact drift after a fold** — *"a fold is not done when the diff is
+  right, it is done when every artifact repeating the claim is right."* Dropped **as a rule of its
+  own**, and folded into fix C(b) instead. Two reasons. The rework-hygiene framing does not fit the
+  second instance, where every input *was* verified and only the derived sentence was not — so the
+  rule would have been aimed at the wrong step. And the residue is `stale-restatement`, which cycle 2
+  minted and tenet 5's third paragraph owns; sharpening that a fifth time is the instrument
+  justifying itself. What survives is the narrower, uncovered half: a summary carries a claim's
+  verification burden. That is nine words on an existing BP, not a new one.
+- **A new BP for the summary-overclaim class.** Considered and rejected on the coordinator's own
+  test: BP-003 already requires pass criteria on every claimed deliverable and the epic-spec had
+  seven of them; `CLAUDE.md` already forbids writing prose while holding the diff. Two existing rules
+  covered it and neither was reached for. That is an application gap, and the cure is a scope clause
+  on the rule that exists — not a third rule to not reach for.
+- **A fix for the idling cost.** Three specs, 3,122 lines, 43 P1s, nothing shipped — and no cheap
+  cure survives contact. FIX-978's defect was real when specced and closed by sibling work weeks
+  later; FIX-964 and FIX-963 were owner scope calls, which is the owner's chair working correctly.
+  The one mechanically checkable half — *re-verify a converged spec against `main` before it enters
+  implementation* — is worth doing, but it belongs to fix A's frozen-spec gate rather than a rule of
+  its own, and it is not proposed separately. Recorded so a later cycle can see the cost was counted
+  and deliberately not acted on.
+- **A rule that reviewers should disagree, or that one reviewer is worth more than another.** Codex
+  found four defects four other seats missed on FIX-1238, and produced every P1 on five other PRs.
+  Tempting and wrong: weighting a reviewer is a configuration change, not a discipline, and the
+  #1673 data cuts the other way — Cursor's approval *endorsed* the defect in writing, which a weight
+  would not have caught. The `review` skill already composes parallel lenses.
+- **`overclaim` as a new feedback class.** It is the union of `docs-miss`, `stale-restatement` and
+  the new `vacuous-assertion`, and minting it would double-count. Used above as a reading, not
+  proposed as a label.
+
+### Claims to test next cycle
+
+1. **Does a freeze hold?** Fix A's only job. Folds per spec PR should show a ceiling of 2, with the
+   overflow visible as one implementer-notes comment. If folds stay above 2, the freeze was not
+   spent and the next move is a refusal the tooling can make, not a rule the coordinator remembers.
+2. **Does a small direction artifact get read?** The one spec in this epic inside budget is also the
+   only one where every above-the-bar finding was found — and the only one where four seats read the
+   same thing and all agreed it was fine while two defects sat in it. Both readings are available
+   from n=1. Score it by whether folds-under-2 correlates with findings-per-pass **rising**, which is
+   the good direction, or with findings falling, which would mean short specs are simply reviewed
+   less.
+3. **Score cycle 7's fixes A and B for real.** Unscoreable here because the whole corpus forked
+   before them. Next cycle's branches will carry them; check whether a live worker is duplicated
+   again, and whether a carrier-shaped defect reaches `main` on a chain whose tests were written
+   after fix B.
+4. **Does `vacuous-assertion` recur?** Three instances this cycle, in the epic whose subject was
+   honesty. If the class does not appear next cycle, retire the label rather than keeping it.
