@@ -25,10 +25,11 @@ issue identifiers; anything under `apps/docs/` is published and may not.
   questions. Its counts are measured against a commit rather than maintained,
   so read them as of the branch that last touched it.
 - `workforce.html` — the Layer 2 product: roster / teams + seats + rooms +
-  thin helpers. Seats are flow instances; skills and boards share one
-  name → `BlockDefinition` list. `defineAgent` is a block factory (proposed).
-  Conductor is a team config on this surface. The page teaches the lock and
-  the honesty tags; the factory is still proposed.
+  thin helpers. Seats are flow instances; workers are generators/flows with
+  instructions + model + tools; skills and boards share one
+  name → `BlockDefinition` list. `defineAgent` / `materializeAgent` are
+  invent-kill / placeholder — do not teach them as the path. Conductor is a
+  team config on this surface. The page teaches the lock and the honesty tags.
 - `roadmap.html` — the public product horizon. Still written in the older
   three-jobs / sibling framing; Strategy owns that rewrite. Do not read it
   as outranking the Workforce lock.
