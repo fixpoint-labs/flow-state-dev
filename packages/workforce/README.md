@@ -165,10 +165,16 @@ label. Everything else is that worker's settings, handed to the flow
 verbatim and parsed against its `configSchema` — which is closed, so a setting the flow never declared
 is refused by name at the hire.
 
-A record's **`body` reaches its flow as one setting, `persona`**. A flow kind that declares `persona`
-is an opinionated worker; one that does not refuses a body by name, so no worker flow has to check for
-one. A body that is empty or only whitespace contributes no `persona` key at all, and a record that
-declares `persona:` *and* carries a body is refused naming both sources.
+A record's **`body` reaches its flow as one setting, `instructions`**. A flow kind that declares
+`instructions` is an opinionated worker; one that does not refuses a body by name, so no worker flow
+has to check for one. A body that is empty or only whitespace contributes no `instructions` key at
+all, and a record that declares `instructions:` *and* carries a body is refused naming both sources.
+
+`persona:` is not a second spelling of it. A `WORKER.md` declaring it lands in
+`readWorkforceDirectory`'s `errors`, and a hand-built record declaring it is refused by
+`hireWorkforce`, naming the worker. It is never ignored and never aliased, because a key that only
+looked absent would leave the worker with no instructions and say nothing about it. Spell it
+`instructions:` in the file and `instructions` in the flow's `configSchema`.
 
 Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
 every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.
@@ -199,4 +205,4 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | Persona empty content | Execution time — resource resolved but `readContent()` returned null |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable | `readWorkforceDirectory` throws |
-| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, or `persona` declared twice. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |

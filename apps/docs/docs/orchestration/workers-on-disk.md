@@ -117,6 +117,7 @@ What lands in `errors`:
 
 - a worker folder with no `WORKER.md`, including one that holds only other files;
 - a `WORKER.md` with no frontmatter, or one whose `description` is missing, empty, or not a string;
+- a `WORKER.md` that declares `persona:`, which [is refused rather than read](#persona-is-refused-not-read);
 - a team or worker folder name that breaks the naming rules;
 - a symlink where a folder or a worker file belongs, refused rather than read;
 - a directory that exists but cannot be listed, reported under its own path (`teams`, `teams/<team>`, or `teams/<team>/workers`) so the seats beneath it are not lost silently.
@@ -172,7 +173,7 @@ export const workerAgentFlow = defineFlow({
   kind: "worker-agent",
   cardinality: "collection",
   configSchema: z.object({
-    persona: z.string(),
+    instructions: z.string(),
     model: z.string().default("openai/gpt-5.4-mini"),
     tools: z.array(z.string()).default([]),
   }),
@@ -193,7 +194,7 @@ export const intakeFlow = defineFlow({
 const lead = seats.find((seat) => seat.id === "engineering.lead")!;
 
 lead.config;
-// { persona: "You are the engineering lead. …",
+// { instructions: "You are the engineering lead. …",
 //   model: "openai/gpt-5.4-mini",
 //   tools: ["board", "search"] }
 ```
@@ -218,21 +219,25 @@ Settings are spelled the way the flow declares them. There is no translation bet
 
 Copies, ids, and settings bags are covered in [Flows](../fundamentals/flows.md#copies-that-differ-by-settings); addressing is in [How an instance is addressed](../fundamentals/flows.md#how-an-instance-is-addressed).
 
-### Instructions arrive as `persona`
+### The body arrives as `instructions`
 
-A record's `body` is the worker's instructions, and it reaches the flow as one setting named `persona`, alongside everything the record declared. That is the only setting name the hire imposes.
+A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. That is the only setting name the hire imposes.
 
-A flow that declares `persona` takes instructions. A flow that does not refuses a body by name, the same way it refuses any other undeclared setting, so no worker flow has to check for one:
+A flow kind that takes instructions declares `instructions` in its `configSchema`. One that does not refuses a body by name, the same way it refuses any other undeclared setting, so no worker flow has to check for one:
 
 ```
 hireWorkforce refused 1 of 3 workers; nothing was hired:
   - worker "support.intake" — Flow "intake" instance "support.intake"
-    has an invalid config bag: "persona" is not a declared setting.
+    has an invalid config bag: "instructions" is not a declared setting.
 ```
 
-A worker with no body is a **thin seat**: fully addressable, carrying no persona because none was written. A body that is only whitespace counts as none, and contributes no `persona` key.
+A worker with no body is a **thin seat**: fully addressable, carrying no instructions because none were written. A body that is only whitespace counts as none, and contributes no `instructions` key.
 
-Declaring `persona:` in the frontmatter *and* writing a body is refused, naming both sources. There is no precedence rule between them.
+Declaring `instructions:` in the frontmatter *and* writing a body is refused, naming both sources. There is no precedence rule between them.
+
+#### `persona:` is refused, not read
+
+`persona:` is not a second spelling of this setting. A `WORKER.md` that declares it lands in `errors` when the tree is read, naming the file; a hand-built record that declares it is refused by `hireWorkforce`, naming the worker. It is never ignored and never accepted as an alias, because a key that only looked absent would leave the worker with no instructions and say nothing about it. Spell the key `instructions:` in the file, and `instructions` in the flow's `configSchema`.
 
 ### When a hire is refused
 
@@ -243,8 +248,9 @@ A record is refused when it:
 - declares no `flow`, so there is no kind to hire it into;
 - names a kind that was not passed in `kinds`; the message lists the kinds that were;
 - declares a setting its flow never declared, or omits one its flow requires;
-- carries a body for a flow kind that declares no `persona`;
-- declares `persona:` and carries a body;
+- carries a body for a flow kind that declares no `instructions`;
+- declares `instructions:` and carries a body;
+- declares `persona:`, which is not a spelling of `instructions`;
 - shares an id with another record in the same call, which is two workers claiming one address.
 
 `kinds` itself is checked too. A flow passed under a key that is not its own `kind` is refused. The copy would otherwise come back carrying the right worker's id, and run the other kind's graph once you registered it.

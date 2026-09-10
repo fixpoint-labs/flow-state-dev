@@ -5,7 +5,7 @@
  * The design fact the rest of this file follows from: the flow's own closed
  * `configSchema` is the only gatekeeper. This module reads `flow` and
  * `description` and hands over everything else — a worker's instructions
- * included, as one setting, `persona`.
+ * included, as one setting, `instructions`.
  */
 
 import type {
@@ -19,13 +19,15 @@ import type {
   UserConfig
 } from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
-import type { WorkerManifest } from "./manifest";
+import {
+  INSTRUCTIONS_KEY,
+  REFUSED_PERSONA_KEY,
+  refusedPersonaKeyMessage,
+  type WorkerManifest
+} from "./manifest";
 
 /** The two keys the factory itself reads. Everything else is the worker's settings. */
 const RESERVED_KEYS = ["flow", "description"] as const;
-
-/** The single setting name the factory imposes: where a worker's body arrives. */
-const PERSONA_KEY = "persona";
 
 export interface HireOptions {
   /**
@@ -128,20 +130,36 @@ export function hireWorkforce(
 
     const settings = settingsOf(manifest);
 
+    // The refused key, caught before anything else looks at the bag.
+    // Checked here as well as in the loader because a hand-built roster never
+    // passes the loader, and this is the key the factory itself imposes.
+    //
+    // Left to fall through, it reaches the flow as an ordinary setting. A flow
+    // whose schema has been renamed refuses it, but as `"persona" is not a
+    // declared setting` — which reads as a misspelt setting, not as a key the
+    // framework refuses. The case that has to be caught here is the other one: a
+    // flow whose `configSchema` has NOT been renamed still declares `persona`
+    // and so accepts it, and the seat hires configured the old way carrying no
+    // `instructions` at all, with nothing said anywhere.
+    if (Object.hasOwn(settings, REFUSED_PERSONA_KEY)) {
+      refuse(refusedPersonaKeyMessage());
+      continue;
+    }
+
     // A body is instructions; whitespace is not. An empty string handed to a
-    // flow that declares `persona` would be a worse lie than omitting it — and
-    // it would turn every thin seat into a failed hire.
+    // flow that declares `instructions` would be a worse lie than omitting it —
+    // and it would turn every thin seat into a failed hire.
     if (manifest.body.trim().length > 0) {
-      if (Object.hasOwn(settings, PERSONA_KEY)) {
+      if (Object.hasOwn(settings, INSTRUCTIONS_KEY)) {
         refuse(
-          `declares "${PERSONA_KEY}" in its frontmatter and carries a body — two sources for one ` +
-            `setting, and there is no precedence rule. Remove one: a worker's instructions are ` +
-            `handed to its flow as "${PERSONA_KEY}".`
+          `declares "${INSTRUCTIONS_KEY}" in its frontmatter and carries a body — two sources for ` +
+            `one setting, and there is no precedence rule. Remove one: a worker's instructions are ` +
+            `handed to its flow as "${INSTRUCTIONS_KEY}".`
         );
         continue;
       }
       // Verbatim: the check is on the trimmed body, the value is the body.
-      settings[PERSONA_KEY] = manifest.body;
+      settings[INSTRUCTIONS_KEY] = manifest.body;
     }
 
     const kind = manifest.declared.flow;

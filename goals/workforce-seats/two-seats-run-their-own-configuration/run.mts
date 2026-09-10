@@ -251,7 +251,7 @@ async function ranOn(router: Router, sessionId: string) {
   });
   const body = (await res.json()) as {
     clientData?: {
-      session?: { ran?: { persona?: string | null; model?: string | null; desk?: string | null; runs?: number } };
+      session?: { ran?: { instructions?: string | null; model?: string | null; desk?: string | null; runs?: number } };
     };
   };
   return { status: res.status, ...(body.clientData?.session?.ran ?? {}) };
@@ -363,8 +363,8 @@ await runGoal(async () => {
     if (seenLead.status !== 200) failures.push(`${lead.id}: /state returned ${seenLead.status}`);
     // The body's whole journey, observed at the far end: file (or record) →
     // config bag → a block nested inside the action.
-    if ((seenLead.persona ?? "").trim() !== lead.body.trim()) {
-      failures.push(`${lead.id}: its nested block saw persona ${JSON.stringify(seenLead.persona)}`);
+    if ((seenLead.instructions ?? "").trim() !== lead.body.trim()) {
+      failures.push(`${lead.id}: its nested block saw instructions ${JSON.stringify(seenLead.instructions)}`);
     }
     if (seenLead.model !== lead.model) {
       failures.push(`${lead.id}: its nested block ran on model ${String(seenLead.model)}`);
@@ -383,8 +383,8 @@ await runGoal(async () => {
     if (seenIntake.desk !== intake.desk) {
       failures.push(`${intake.id}: its nested block saw desk ${String(seenIntake.desk)}`);
     }
-    if (seenIntake.persona != null) {
-      failures.push(`${intake.id}: a thin seat carried a persona (${String(seenIntake.persona)})`);
+    if (seenIntake.instructions != null) {
+      failures.push(`${intake.id}: a thin seat carried instructions (${String(seenIntake.instructions)})`);
     }
     if (seenIntake.model != null) {
       failures.push(`${intake.id}: read its sibling's model (${String(seenIntake.model)})`);
@@ -392,7 +392,7 @@ await runGoal(async () => {
     if (seenIntake.runs !== 1) failures.push(`${intake.id}: ran ${String(seenIntake.runs)} times`);
 
     evidence.push(
-      "after closing the store and rebuilding the host, each seat's nested block shows the settings its own record declared — the lead's body arrived as its persona — and no sibling's"
+      "after closing the store and rebuilding the host, each seat's nested block shows the settings its own record declared — the lead's body arrived as its instructions — and no sibling's"
     );
 
     // ---- (c) the bare flow kind is not an address -------------------------
@@ -426,7 +426,7 @@ await runGoal(async () => {
           records.find((r) => r.id === lead.id)!,
           ...(await roster(fixture.refusals.thinWithBody.dir))
         ],
-        names: [fixture.refusals.thinWithBody.id, "persona"]
+        names: [fixture.refusals.thinWithBody.id, "instructions"]
       }
     ];
 
