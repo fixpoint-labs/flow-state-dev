@@ -1,0 +1,110 @@
+/**
+ * Host environment reading — executed, not just typed.
+ *
+ * A config file's checks are the code nobody runs until it is too late.
+ */
+import { delimiter } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  readAdditionalDirectories,
+  readHarness,
+  readHostOptionsFromEnv,
+  readModel,
+  readNetworkAccess,
+  requireCwd,
+} from "../src/config-env";
+
+afterEach(() => {
+  delete process.env.FSD_CODING_HARNESS;
+  delete process.env.FSD_CODING_CWD;
+  delete process.env.FSD_CODING_MODEL;
+  delete process.env.FSD_CODING_NETWORK_ACCESS;
+  delete process.env.FSD_CODING_ADD_DIR;
+});
+
+describe("FSD_CODING_HARNESS", () => {
+  it("defaults to cursor when omitted", () => {
+    expect(readHarness({})).toBe("cursor");
+  });
+
+  it("accepts codex, cursor, or claude", () => {
+    expect(readHarness({ FSD_CODING_HARNESS: "codex" })).toBe("codex");
+    expect(readHarness({ FSD_CODING_HARNESS: "cursor" })).toBe("cursor");
+    expect(readHarness({ FSD_CODING_HARNESS: "claude" })).toBe("claude");
+  });
+
+  it("refuses any other name", () => {
+    expect(() => readHarness({ FSD_CODING_HARNESS: "conductor" })).toThrow(
+      /expected codex, cursor, or claude/,
+    );
+  });
+});
+
+describe("FSD_CODING_CWD", () => {
+  it("refuses an absent one rather than defaulting to process.cwd()", () => {
+    expect(() => requireCwd({})).toThrow(/FSD_CODING_CWD is not set/);
+  });
+});
+
+describe("FSD_CODING_MODEL", () => {
+  it("is omitted when unset", () => {
+    expect(readModel({})).toBeUndefined();
+  });
+
+  it("refuses whitespace-only", () => {
+    expect(() => readModel({ FSD_CODING_MODEL: "   " })).toThrow(/needs a value/);
+  });
+});
+
+describe("Codex-only permissions", () => {
+  it("refuses network access on Cursor", () => {
+    expect(() => readNetworkAccess("cursor", { FSD_CODING_NETWORK_ACCESS: "1" })).toThrow(
+      /only supported with FSD_CODING_HARNESS=codex/,
+    );
+  });
+
+  it("refuses extra dirs on Cursor", () => {
+    expect(() => readAdditionalDirectories("cursor", { FSD_CODING_ADD_DIR: "/git" })).toThrow(
+      /only supported with FSD_CODING_HARNESS=codex/,
+    );
+  });
+
+  it("refuses network access on Claude", () => {
+    expect(() => readNetworkAccess("claude", { FSD_CODING_NETWORK_ACCESS: "1" })).toThrow(
+      /only supported with FSD_CODING_HARNESS=codex/,
+    );
+  });
+
+  it("refuses extra dirs on Claude", () => {
+    expect(() => readAdditionalDirectories("claude", { FSD_CODING_ADD_DIR: "/git" })).toThrow(
+      /only supported with FSD_CODING_HARNESS=codex/,
+    );
+  });
+
+  it("splits extra dirs on the platform path delimiter", () => {
+    expect(readAdditionalDirectories("codex", {
+      FSD_CODING_ADD_DIR: ["/git", "/objects"].join(delimiter),
+    })).toEqual([
+      "/git",
+      "/objects",
+    ]);
+  });
+});
+
+describe("readHostOptionsFromEnv", () => {
+  it("assembles the host bag the config hands the flow", () => {
+    expect(readHostOptionsFromEnv({
+      FSD_CODING_HARNESS: "codex",
+      FSD_CODING_CWD: "/work",
+      FSD_CODING_MODEL: "gpt-5.5",
+      FSD_CODING_NETWORK_ACCESS: "true",
+      FSD_CODING_ADD_DIR: "/git",
+    })).toEqual({
+      harness: "codex",
+      cwd: "/work",
+      model: "gpt-5.5",
+      networkAccess: true,
+      additionalDirectories: ["/git"],
+    });
+  });
+});
