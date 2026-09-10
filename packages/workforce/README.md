@@ -100,6 +100,41 @@ const personas = definePersona({
 });
 ```
 
+## Hiring a workforce
+
+`hireWorkforce` turns worker records into one configured, addressable flow copy each — a **seat**. It
+reads no files, builds no flow graph, and registers nothing: you pass the flow kinds your app defined,
+and you register what comes back.
+
+```ts
+import { hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
+
+const workers: WorkerManifest[] = [
+  {
+    id: "engineering.lead",
+    declared: { flow: "worker-agent", description: "Holds the board.", model: "openai/gpt-5.4-mini" },
+    body: "You are the engineering lead. You break work into tasks and report what came back.",
+  },
+  { id: "engineering.intake", declared: { flow: "intake", description: "The front door." }, body: "" },
+];
+
+const seats = hireWorkforce(workers, { kinds: { "worker-agent": workerAgentFlow, intake: intakeFlow } });
+flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
+```
+
+Two keys in `declared` are read by the factory: **`flow`** names the kind to instantiate, and
+**`description`** is the roster label. Everything else is that worker's settings, handed to the flow
+verbatim and parsed against its `configSchema` — which is closed, so a setting the flow never declared
+is refused by name at the hire.
+
+A record's **`body` reaches its flow as one setting, `persona`**. A flow kind that declares `persona`
+is an opinionated worker; one that does not refuses a body by name, so no worker flow has to check for
+one. A body that is empty or only whitespace contributes no `persona` key at all, and a record that
+declares `persona:` *and* carries a body is refused naming both sources.
+
+Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
+every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.
+
 ## Exports
 
 | Export | Description |
@@ -110,6 +145,8 @@ const personas = definePersona({
 | `agentBlock(agent, opts?)` | Shorthand for standalone agent block. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
+| `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
+| `WorkerManifest` | One worker record: `{ id, declared, body, codePath? }`. |
 
 ## Error Semantics
 
@@ -121,3 +158,4 @@ const personas = definePersona({
 | No materializeAgent | Registry wired but materializer missing |
 | Persona path not found | Execution time — resource must be declared |
 | Persona empty content | Execution time — resource resolved but `readContent()` returned null |
+| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, or `persona` declared twice. Collected: one error names every bad worker |

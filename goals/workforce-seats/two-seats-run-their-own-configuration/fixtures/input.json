@@ -1,0 +1,48 @@
+{
+  "userId": "u_workforce_goal",
+  "note": "Take a look at the board and tell me what is blocked.",
+  "roster": {
+    "lead": {
+      "id": "engineering.lead",
+      "flow": "worker-agent",
+      "description": "Holds the engineering board and breaks work into tasks.",
+      "model": "openai/gpt-5.4",
+      "tools": [
+        "board",
+        "search"
+      ],
+      "body": "You are the engineering lead. You do not write code yourself — you break the\nrequest into tasks, assign them, and report what came back."
+    },
+    "intake": {
+      "id": "engineering.intake",
+      "flow": "intake",
+      "description": "The front door. Routes an incoming request to whoever should hold it.",
+      "desk": "mezzanine"
+    }
+  },
+  "refusals": {
+    "unknownKind": {
+      "dir": "unknown-kind",
+      "id": "engineering.scribe",
+      "flow": "note-taker",
+      "description": "Writes the meeting up afterwards.",
+      "body": "You take notes and post a summary."
+    },
+    "undeclaredSetting": {
+      "dir": "undeclared-setting",
+      "id": "engineering.analyst",
+      "flow": "worker-agent",
+      "description": "Reads the numbers.",
+      "key": "temperature",
+      "value": "0.2",
+      "body": "You read the numbers and say what changed."
+    },
+    "thinWithBody": {
+      "dir": "thin-with-body",
+      "id": "engineering.intake",
+      "flow": "intake",
+      "description": "The front door. Routes an incoming request to whoever should hold it.",
+      "body": "You greet whoever arrives and pass them on to the right desk."
+    }
+  }
+}
