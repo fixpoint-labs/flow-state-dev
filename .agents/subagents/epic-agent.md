@@ -76,6 +76,14 @@ Take the single action the dispatch calls for:
   Refresh the above-the-fold blocks whenever the objective materially changes; the contract
   never changes.
 
+  **Carry the links line's `Explainer:` entry forward.** When the epic has an
+  [explainer](../skills/epic-explainer/SKILL.md), `explainer-agent` puts an
+  `Explainer: <blob URL>` line there on its first build and never edits the description
+  again — the description is yours. So every refresh of the above-the-fold blocks must
+  **preserve that line**; the coordinator passes you the current URL, and dropping it is
+  how the one-click rendered view silently disappears from the PR. The explainer is a
+  separate document with a separate author: you never write, redraw or fold into it.
+
   **Never copy the running index into the description — link to the epic doc instead.** The
   index is a live projection of every issue's state and PR links, and it moves whenever any
   child issue moves. The description refreshes only on a material objective change, so a
