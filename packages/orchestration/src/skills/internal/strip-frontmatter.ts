@@ -8,7 +8,7 @@
  * not content to render into the system prompt.
  */
 
-import { splitFrontmatter } from "../frontmatter";
+import { splitFrontmatter } from "../../shared/frontmatter";
 
 /** Strip a leading `---`-delimited frontmatter block. Idempotent. */
 export function stripFrontmatter(text: string): string {

@@ -7,6 +7,13 @@
  * unchanged today. It builds no flow, no agent and no registry — turning a
  * record into a running seat is the seat factory's job.
  *
+ * Two rules run through the whole walk. **Symlinks are never followed**, at any
+ * level. And **only a worker slot is reported as a near-miss** — a directory
+ * directly under `teams/<id>/workers/`; the rule is *the path occupies a worker
+ * slot*, not *the path looks like a worker*, so a team's `resources/`,
+ * `skills/` or `tools/` siblings and an org-level `workers/` are passed over in
+ * silence.
+ *
  * Node-only (`node:fs`), which is why it ships behind the `./loader` subpath
  * rather than the package root.
  */
@@ -82,13 +89,6 @@ export interface ReadWorkforceDirectoryResult {
  * is an empty result: an app may declare no workers in files. Everything else
  * that goes wrong lands in `errors`, so one bad folder never costs an app its
  * other workers.
- *
- * Nothing outside a worker slot is reported *as a near-miss*. A team's
- * `resources/`, `skills/` or `tools/` siblings, an org-level `workers/`, and
- * any other path on the tree are passed over in silence: the rule is *the path
- * occupies a worker slot*, not *the path looks like a worker*.
- *
- * Symlinks are never followed, at any level of the walk.
  */
 export async function readWorkforceDirectory(
   root: string,
@@ -112,12 +112,16 @@ export async function readWorkforceDirectory(
 
     const teamDir = path.join(root, "teams", teamId);
     const teamPath = `teams/${teamId}`;
-    const teamKind = await classify(teamDir);
-    if (teamKind === "symlink") {
+    const team = await classify(teamDir);
+    if (team.kind === "symlink") {
       errors.push({ path: teamPath, error: refusedSymlink("team folder", teamId) });
       continue;
     }
-    if (teamKind !== "directory") continue;
+    if (team.kind === "unreadable") {
+      errors.push({ path: teamPath, error: unreadable("Team folder", teamId, team.error) });
+      continue;
+    }
+    if (team.kind !== "directory") continue;
 
     const workersPath = `${teamPath}/workers`;
     const workerEntries = await openStructuralDirectory(
@@ -131,13 +135,16 @@ export async function readWorkforceDirectory(
       if (IGNORED_ENTRIES.has(workerName)) continue;
 
       const workerDir = path.join(teamDir, "workers", workerName);
-      const workerKind = await classify(workerDir);
+      const slot = await classify(workerDir);
       // A file under `workers/` does not occupy a worker slot — a slot is a
       // directory — so it is skipped rather than reported.
-      if (workerKind === "absent" || workerKind === "file") continue;
+      if (slot.kind === "absent" || slot.kind === "file") continue;
 
       try {
-        if (workerKind === "symlink") throw refusedSymlink("worker folder", workerName);
+        if (slot.kind === "symlink") throw refusedSymlink("worker folder", workerName);
+        if (slot.kind === "unreadable") {
+          throw unreadable("Worker folder", workerName, slot.error);
+        }
         workers.push(await readWorkerSlot(root, teamId, workerName, workerDir));
       } catch (err) {
         errors.push({ path: `${workersPath}/${workerName}`, error: err as Error });
@@ -153,22 +160,20 @@ export async function readWorkforceDirectory(
  * `workers`. Returns its entries, or `undefined` when the walk cannot go that
  * way, having reported the reason unless the folder is simply absent.
  *
- * Three outcomes, and keeping them apart is the point. **Absent** is silence: a
- * root with no `teams/`, or a team that declares no workers, is a tree that
- * does not go that way rather than a mistake. **A symlink** is refused without
- * being read — `readdir` follows a directory symlink, so a `teams -> /outside`
- * would otherwise load worker files from outside the configured root and report
- * nothing. **Anything else** — a permission denial, a file where a folder
- * belongs, a failing disk — is reported, because a directory that silently
- * reads as empty takes every seat beneath it out of the roster while leaving
- * `errors` empty, and a caller told to treat `errors` as fatal cannot see that.
+ * Absence is the only silent outcome, and separating it from the rest is why
+ * this helper exists. A missing folder is a tree that does not go that way; a
+ * folder that exists and cannot be read is a set of seats the app has lost, and
+ * reading it as empty would drop them from the roster while leaving `errors`
+ * empty — which is exactly what a caller told to treat `errors` as fatal cannot
+ * see. The symlink check is what stops `readdir` following `teams -> /outside`
+ * and loading worker files from outside the configured root.
  */
 async function openStructuralDirectory(
   target: string,
   reportAs: string,
   errors: ReadWorkforceDirectoryResult["errors"],
 ): Promise<string[] | undefined> {
-  if ((await classify(target)) === "symlink") {
+  if ((await classify(target)).kind === "symlink") {
     errors.push({ path: reportAs, error: refusedSymlink("directory", reportAs) });
     return undefined;
   }
@@ -204,24 +209,30 @@ async function readWorkerSlot(
   // reported under, so there is nothing to be gained by reading its files.
   const id = mintWorkerId(teamId, workerName);
 
-  const mdKind = await classify(path.join(workerDir, WORKER_MD));
-  const tsKind = await classify(path.join(workerDir, WORKER_TS));
+  const md = await classify(path.join(workerDir, WORKER_MD));
+  const ts = await classify(path.join(workerDir, WORKER_TS));
 
-  if (mdKind === "symlink" || tsKind === "symlink") {
-    throw refusedSymlink(
-      mdKind === "symlink" ? WORKER_MD : WORKER_TS,
-      `${workerName}/${mdKind === "symlink" ? WORKER_MD : WORKER_TS}`,
-    );
+  if (md.kind === "symlink" || ts.kind === "symlink") {
+    const which = md.kind === "symlink" ? WORKER_MD : WORKER_TS;
+    throw refusedSymlink(which, `${workerName}/${which}`);
+  }
+
+  // A file that is there and unreadable is not a file that is missing: falling
+  // through would read this slot as a `worker.ts`-only seat, or as empty.
+  if (md.kind === "unreadable" || ts.kind === "unreadable") {
+    const which = md.kind === "unreadable" ? WORKER_MD : WORKER_TS;
+    const cause = md.kind === "unreadable" ? md.error : ts.error;
+    throw unreadable(which, `${workerName}/${which}`, cause);
   }
 
   // Recorded, never imported. Joined onto the root the caller passed rather
   // than absolutised, so the path stays in the caller's own frame of reference.
   const codePath =
-    tsKind === "file"
+    ts.kind === "file"
       ? path.join(root, "teams", teamId, "workers", workerName, WORKER_TS)
       : undefined;
 
-  if (mdKind !== "file") {
+  if (md.kind !== "file") {
     if (codePath === undefined) {
       throw new Error(
         `Worker folder "${workerName}" has neither a ${WORKER_MD} nor a ${WORKER_TS}`,
@@ -310,21 +321,45 @@ function validateSegment(segment: string, label: "Team" | "Worker"): void {
 }
 
 /** What a path is, without following symlinks. */
-type EntryKind = "directory" | "file" | "symlink" | "absent";
+type EntryKind = "directory" | "file" | "symlink" | "absent" | "unreadable";
+
+/** A path's kind, plus the failure behind an `unreadable` one. */
+interface Entry {
+  kind: EntryKind;
+  /** Set only for `unreadable`, so the report can say what went wrong. */
+  error?: Error;
+}
 
 /**
  * Classify a path without following symlinks. Symlinks are never followed: a
  * workforce tree can come from anywhere, and one could escape the root or point
  * at something sensitive.
+ *
+ * Only a missing path is `absent`. Every other failure is `unreadable` and
+ * stays distinct, for the same reason `openStructuralDirectory` keeps them
+ * apart: a directory that is readable but not searchable (`r--` rather than
+ * `r-x`) lists its children and then fails to stat any of them, so folding that
+ * into `absent` would drop every seat under it while leaving `errors` empty —
+ * the one thing a caller told to treat `errors` as fatal cannot see.
  */
-async function classify(target: string): Promise<EntryKind> {
+async function classify(target: string): Promise<Entry> {
   try {
     const stat = await fs.lstat(target);
-    if (stat.isSymbolicLink()) return "symlink";
-    if (stat.isDirectory()) return "directory";
-    if (stat.isFile()) return "file";
-    return "absent";
-  } catch {
-    return "absent";
+    if (stat.isSymbolicLink()) return { kind: "symlink" };
+    if (stat.isDirectory()) return { kind: "directory" };
+    if (stat.isFile()) return { kind: "file" };
+    // A socket, a FIFO, a device: not a worker slot, and not a mistake either.
+    return { kind: "absent" };
+  } catch (err) {
+    const failure = err as NodeJS.ErrnoException;
+    return failure.code === "ENOENT"
+      ? { kind: "absent" }
+      : { kind: "unreadable", error: failure };
   }
+}
+
+/** The one wording for a path that is there and could not be read. */
+function unreadable(what: string, name: string, cause: Error | undefined): Error {
+  const detail = cause === undefined ? "" : `: ${cause.message}`;
+  return new Error(`${what} "${name}" could not be read${detail}`);
 }

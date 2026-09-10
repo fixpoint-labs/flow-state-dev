@@ -8,8 +8,12 @@
  * core's `gray-matter` path: full YAML in one file and this subset in the other
  * is the divergence the shared module exists to prevent.
  *
- * Extracted verbatim from `skill-md.ts`, which still parses `SKILL.md` on top
- * of it. No behaviour changed in the move.
+ * Lives under `shared/` rather than `skills/` because neither convention file
+ * owns it — the same reason `resolve-catalog-tools` sits here.
+ *
+ * Extracted from `skill-md.ts`, which still parses `SKILL.md` on top of it, with
+ * one deliberate change: records are null-prototype, so a `__proto__:` key is
+ * carried as an ordinary key instead of replacing the record's prototype.
  */
 
 /**
@@ -85,10 +89,6 @@ function parseMappingBlock(
   end: number,
   baseIndent: number,
 ): Record<string, unknown> {
-  // Null-prototype: a `__proto__:` key in a hand-written file would
-  // otherwise hit the legacy prototype setter instead of creating an own
-  // key, so a setting nobody declared could resolve through the chain —
-  // and the key the file did write would vanish. See `emptyRecord`.
   const result = emptyRecord();
   let i = start;
   while (i < end) {
@@ -132,7 +132,7 @@ function parseMappingBlock(
         i = consumeBlock(lines, childStart, end, childIndent);
         continue;
       }
-      result[key] = rest === "" ? null : null;
+      result[key] = null;
       i++;
       continue;
     }

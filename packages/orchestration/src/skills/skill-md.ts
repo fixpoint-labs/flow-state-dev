@@ -16,8 +16,8 @@
  * inside `substitute()`.
  *
  * The frontmatter dialect itself — splitting the fences, parsing the YAML
- * subset — lives in `./frontmatter`, shared with the other convention file an
- * author writes by hand so the two never drift apart.
+ * subset — lives in `../shared/frontmatter`, shared with the other convention
+ * file an author writes by hand so the two never drift apart.
  */
 
 import type {
@@ -32,7 +32,7 @@ import {
   parseInlineMapping,
   parseScalar,
   splitFrontmatter,
-} from "./frontmatter";
+} from "../shared/frontmatter";
 
 // ---------------------------------------------------------------------------
 // Constants

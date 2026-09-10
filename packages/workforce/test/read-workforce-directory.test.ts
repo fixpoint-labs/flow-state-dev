@@ -20,12 +20,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import fsp from "node:fs/promises";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readWorkforceDirectory } from "../src/loader";
 
 const roots: string[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -370,6 +372,41 @@ Body.
       expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
       expect(errors).toHaveLength(1);
       expect(errors[0]!.path).toBe("teams/marketing/workers");
+    });
+
+    it("reports a worker slot it cannot stat instead of dropping it", async () => {
+      // The slot exists — `readdir` lists it — but `lstat` fails for a reason
+      // that is not absence. Treating that as "absent" takes the seat out of
+      // the roster with `errors` empty, which the caller's fatal-on-errors
+      // guard cannot see.
+      //
+      // The real-world route is a directory that is readable but not
+      // searchable (`r--` rather than `r-x`): `readdir` enumerates its children
+      // fine, then every `lstat` on one fails with EACCES — an ordinary
+      // permission mistake on a deploy, not exotic I/O.
+      //
+      // It is injected rather than provoked because the suite runs as root,
+      // which bypasses the search-permission check, so a chmod would not
+      // reproduce it here. What this proves is the branch: "not ENOENT" is
+      // reported rather than read as absence.
+      const root = tree({ ...HEALTHY, "teams/engineering/workers/locked/WORKER.md": LEAD_MD });
+      const locked = join(root, "teams/engineering/workers/locked");
+      const real = fsp.lstat.bind(fsp);
+      vi.spyOn(fsp, "lstat").mockImplementation(((target: Parameters<typeof real>[0]) => {
+        if (String(target) === locked) {
+          const err = new Error(`EACCES: permission denied, lstat '${locked}'`);
+          (err as NodeJS.ErrnoException).code = "EACCES";
+          return Promise.reject(err);
+        }
+        return real(target);
+      }) as unknown as typeof fsp.lstat);
+
+      const { workers, errors } = await readWorkforceDirectory(root);
+
+      expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/engineering/workers/locked");
+      expect(errors[0]!.error.message).toMatch(/could not be read/i);
     });
 
     it("reports a directory it cannot read instead of treating it as empty", async () => {

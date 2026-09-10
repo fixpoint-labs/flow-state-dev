@@ -49,11 +49,6 @@ export {
 } from "./collection";
 
 export {
-  splitFrontmatter,
-  parseFrontmatterYaml,
-} from "./frontmatter";
-
-export {
   parseSkillMd,
   serializeSkillMd,
   substitute,
