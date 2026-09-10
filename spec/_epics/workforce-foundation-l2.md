@@ -29,7 +29,9 @@ it removes the reason it stays open — the bespoke wiring every such app has to
 first real application on top of it is the **Lab Proof, which is the next stage after W2, not
 part of it** (theme 4).
 
-**Holistic necessity.** Four issues, cut at two real seams. **The spine:** the loader (FIX-1335)
+**Holistic necessity.** Four issues, cut at two real seams — **that is the spine, and it is what
+this epic delivers.** The roster in §4 is six: two follow-ups this epic *spawned* rather than
+owes, filed as the work went and not criteria of it (theme 4). **The spine:** the loader (FIX-1335)
 answers *what seats exist* — files to neutral per-worker manifests; the factory (FIX-1325)
 answers *what one seat resolves to* — a flow per seat, and nothing beside it (theme 2). Two issues because those are two jobs, not because one has to land
 first: a walker producing neutral manifests depends on no seat contract at all (theme 4).
@@ -352,40 +354,28 @@ excludes is FIX-1337's, which is exactly why that row is on the spec route inste
 
 ## 5. Open cross-cutting questions
 
-**Genuinely open.** Two, both raised by the round-7 fence update and neither settled by it.
-
-- **If `defineAgent` is killed, what still separates a thin seat from a thick one at the gate?**
-  §1's thin-seat row reads *"never went through `defineAgent`"* — a discriminator that only
-  discriminates while `defineAgent` exists, and the fence makes it an invent-kill candidate. Kill
-  it and the row is true of every seat, which is exactly how the round-6 discriminator ("no
-  `AgentRegistry` entry") stopped separating anything and had to be replaced once already.
-  **In plain terms:** the epic could pass its finish line without ever proving that a plain,
-  un-opinionated seat works — and that is the half of the objective which says being a seat never
-  requires being an Agent. **Recommendation:** re-anchor the row on behaviour rather than on a
-  symbol — *the thin seat declares no `instructions`, so nothing composes a generator prompt for
-  it* — which is what the shipped factory already discriminates on (`hireWorkforce` refuses a body
-  handed to a kind that never declared the key) and which survives the invent-kill either way.
-  **What would change my mind:** `defineAgent` surviving, in which case the row stands as written
-  and this closes with no edit. **Cost of being wrong:** a green epic whose thin-seat path was
-  never exercised, found by the first author who seats a coordinator. **Deliberately not folded**
-  — the row sits inside the approved gate bar, and the fence update said in terms not to reopen it.
-- **Do the two follow-up children move epic-complete?** The four spine children are Done and §1's
-  finish line — the files-only bootstrap plus the `outputSchema` clause — reads as met. The roster
-  is now six: **FIX-1342** (Ready to Spec, the `worker.ts` door taken out of FIX-1335 rather than
-  half-shipped) and **FIX-1344** (Backlog, the round-7 fence as work). §1 mentions neither, and
-  still says "four issues, cut at two real seams" — true of the spine, no longer true of the
-  roster. **In plain terms:** either W2 wraps having shipped one door instead of two and with its
-  teaching surface still anchored on symbols we have decided to kill, or W2 stays open on two
-  follow-ups its own objective never claimed. **Recommendation:** leave the finish line where it
-  is and let both run past the wrap as this epic's documented handoff — neither was a criterion,
-  both are honestly stated here and in the shipped error path, and FIX-1344's own scope says it
-  must not block the spine. **What would change my mind:** the wrap's docs-polish pass being
-  unable to describe the package honestly without the rename, or the second door turning out to
-  be load-bearing for the Lab Proof. **Cost of being wrong:** a wrap that publishes `persona` as
-  the seat key days before it is renamed, and a convention advertised with a door nobody can
-  open. **Deliberately not folded** — §1 is the approved gate surface.
+**Genuinely open.** None today. The two the round-7 fence update raised were ruled the same
+round and are recorded below.
 
 **Closed — recorded with where the answer lives, so nobody re-opens them.**
+
+- **Do the two follow-up children move epic-complete?** *Ruled, round 7: no.* The objective is
+  delivered by the four spine issues, all merged. **FIX-1342** and **FIX-1344** are work this epic
+  *spawned*, not work it owes — one holds a door cut before merge, the other a design shift that
+  arrived after the objective was met. Moving the finish line to cover them would mean an epic can
+  never complete while it is still generating good follow-ups, which is backwards: generating them
+  is a sign it went well. §1's count is a claim about the *spine* and now says so. Not open.
+- **If `defineAgent` is killed, what still separates a thin seat from a thick one at the gate?**
+  *Raised round 7, routed rather than answered.* §1's thin-seat row reads *"never went through
+  `defineAgent`"* — a discriminator that only discriminates while `defineAgent` exists. It sits
+  inside an approved gate, so changing it is the owner's call, and it is **recorded on FIX-1344 as
+  an open question the invent-kill must answer**, carrying the proposed re-anchor: *the thin seat
+  declares no `instructions`, so nothing composes a generator prompt for it* — which is what
+  `hireWorkforce` already discriminates on, so the bar would describe what the code does rather
+  than a symbol it happens to reference. **Worth naming as a class, because this is the second
+  time:** the same row was re-anchored in round 6 when "no `AgentRegistry` entry" stopped
+  separating anything. A claim pinned to a thing that then moves is the defect shape this epic
+  kept finding. Not open here — open on FIX-1344.
 
 - **Who owns the Lab Proof?** *Dissolved, round 3:* nobody in this epic — the Atlas gives it its
   own *"proposed · after W2"* row and names nesting it under W2 as a way to fake W2 (theme 4). An
@@ -416,7 +406,10 @@ excludes is FIX-1337's, which is exactly why that row is on the spec route inste
   not need to exist, and a worker is a generator or flow carrying `instructions`, a model and
   tools (theme 2). The mechanism is **Layer 1, in `@flow-state-dev/orchestration`** (theme 2), and
   the kill is **FIX-1344**, sequenced after the W2 factory and loader — both merged (theme 4).
-  Settled in session — not open, and not to be re-argued on a child spec.
+  **One symbol is deliberately unresolved:** the 2026-09-09 fence collapsed `materializeAgent`
+  *and* `agentBlock`, while the round-7 update names only the first and FIX-1344's kill list omits
+  `agentBlock`. Nothing is asserted about its fate here; the gap is recorded on FIX-1344. Otherwise
+  settled in session — not open, and not to be re-argued on a child spec.
 - **Settled where they are written, not re-argued here:** FIX-1310 stays related, not a child
   (§4); one hire per kind, two *distinct* kinds at the gate (§1); the honesty contract is scoped
   to opinionated-agent seats, and **every** seat stops at `defineFlow` while only an
@@ -542,6 +535,9 @@ as live holds.*
   **FIX-1342** — the `worker.ts` door, carried by FIX-1335's approved spec and taken out before
   merge on the owner's call rather than shipped half-built, so theme 1 now says which door ships
   and where the other went — and the four spine rows go to Done; and §5's closed *"what does a seat's name resolve to"* is narrowed. **The
-  objective and the gate are untouched** — the fence update says so in terms. Two things it does
-  *not* settle are recorded as genuinely open in §5: the gate bar's thin-seat discriminator still
-  names `defineAgent`, and whether a fifth child moves epic-complete.
+  objective and the gate are untouched** — the fence update says so in terms. Two things it did
+  *not* settle were raised rather than answered, and both were ruled the same round (§5):
+  **epic-complete does not move** — the spine delivered the objective and the two follow-ups are
+  work this epic spawned, not work it owes — and **the gate bar's thin-seat discriminator goes to
+  FIX-1344** as an open question the invent-kill must answer, since it still names `defineAgent`
+  and sits inside an approved gate. `agentBlock`'s fate is recorded there too, unasserted here.
