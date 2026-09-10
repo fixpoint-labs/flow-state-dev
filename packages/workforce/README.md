@@ -127,7 +127,7 @@ Each record is plain data:
 | `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. |
 | `declared` | The frontmatter exactly as written. Keys are not checked against a list. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
-| `codePath` | Set when the folder holds a `worker.ts`. Recorded, never imported. |
+| `codePath` | Set when the folder holds a `worker.ts`. Recorded, never imported. Put a `worker.ts` beside a `WORKER.md`: a folder holding only a `worker.ts` reads into a record that declares no flow kind, and `hireWorkforce` refuses it. |
 
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
 lowercase letters, digits and single hyphens, at most 64 characters.
@@ -200,4 +200,4 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | Persona empty content | Execution time — resource resolved but `readContent()` returned null |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable | `readWorkforceDirectory` throws |
-| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, or `persona` declared twice. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `persona` declared twice, or a `codePath` with no `flow`. Collected: one error names every bad worker |
