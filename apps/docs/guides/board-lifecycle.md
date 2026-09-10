@@ -133,7 +133,6 @@ lever for "when is the board's state still around":
 The default is `request`, and that's usually right — a block outside the drain
 (or a later drain in a replan loop) can see the same tasks. Opt into `sequencer`
 only when you want each `board.drain` call to get its own isolated collection.
-Omitting `backing` gives you the request backing, not that one.
 Reach for `resource` when the tasks themselves are the durable thing.
 
 **Multiple boards, one request.** Nothing stops you running several boards in
@@ -170,6 +169,8 @@ sibling action that lists `board.capability` in `uses` reads and writes the same
 durable tasks — including while the board is mid-drain, covered in
 [Handles inside one request share a task set](#handles-inside-one-request-share-a-task-set)
 below.
+
+About the collection itself:
 
 - **The scope lives on the collection, not the board.** `session` / `user` / `org`
   is set once on `defineTaskCollection`; the board just points at it.

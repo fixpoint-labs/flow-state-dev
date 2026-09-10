@@ -33,7 +33,7 @@ Read it bottom-up.
 
 **Agents.** A worker can be a plain block, or it can be an agent: a named, reusable participant with a persona, a model, and a set of tools. Register an agent once and assign board tasks to it by name. See [Agents](./agents).
 
-**A worker built for coding agents.** Beside the patterns sits `@flow-state-dev/harness-manager`: a board worker that turns a row into a supervised coding run — its own checkout, a verdict read before the row settles, a question it can ask a person, and the coding agent itself as a slot you fill. See [Harness manager](./harness-manager) for the worker, and [Coding agents](../tools/coding-agents) for the agents it can drive and the handle they hand back.
+**A worker built for coding agents.** Beside the patterns sits `@flow-state-dev/harness-manager`: a board worker that turns a task into a supervised coding run — its own checkout, a verdict read before the task settles, a question it can ask a person, and the coding agent itself as a slot you fill. See [Harness manager](./harness-manager) for the worker, and [Coding agents](../tools/coding-agents) for the agents it can drive and the handle they hand back.
 
 ## Two ways to drive a board
 
@@ -51,7 +51,7 @@ Dependencies are how you say "this can't start until that finishes." A task list
 
 A board also needs a rule for when to stop. By default it drains until either every task completed or nothing runnable is left (a failure upstream can strand the tasks that depended on it). You can also tell a board to wait indefinitely for work that arrives from outside, or to stop on a task that is waiting for a person and pick it up when the answer arrives. Those termination modes are covered in [Task board](./task-board), and the human-wait one in [Waiting on a person](./task-board#waiting-on-a-person-onreview).
 
-A drain normally runs inside the request that mounted it, so every worker's task finishes before that request does. The exception is a seat that hands its rows off. A seat holding a `dispatcher` sends each row it claims to a worker in a child session and moves on, so the drain can finish with the row still in flight and the child settles it when the work is done. See [Seats that hand off](./task-board#seats-that-hand-off) for what such a board requires, and [Work that outlives the turn](/guides/background-work) for that path beside the other background-work surfaces.
+A drain normally runs inside the request that mounted it, so every worker's task finishes before that request does. The exception is a worker declared to run in a child session instead of inline. The board claims a task for it as usual, hands the task to that child session, and moves on. The drain can finish while the task is still running, and the child session records the result when the worker is done. See [Seats that hand off](./task-board#seats-that-hand-off) for what such a board requires, and [Work that outlives the turn](/guides/background-work) for that path beside the other background-work surfaces.
 
 ## Start here
 

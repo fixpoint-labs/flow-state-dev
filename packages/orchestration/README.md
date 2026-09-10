@@ -127,20 +127,19 @@ the check and the write. A declined write is skipped and never throws; the call
 reports it on the returned `TaskWriteOutcome`. Omit the argument and the methods
 throw on an illegal transition.
 
-A `TaskCollectionRef` you write yourself is a supported extension point, and a ref
-that drops the options argument — a two-parameter `complete(id, output)` satisfies
-the interface structurally — does not take a board down with an advisory
-write-back conflict. The substrate's
-own write-backs contain a throw they can attribute to a decline a conforming store
-would have made before committing: the late result is dropped and the drain
-continues. The guarantee is board survival, not equivalence. It fires on a throw,
+A `TaskCollectionRef` you write yourself is a supported extension point. The
+substrate's own write-backs contain a throw they can attribute to a decline a
+conforming store would have made before committing: the late result is dropped and
+the drain continues. So a board keeps draining even against a ref that drops the
+options argument — a two-parameter `complete(id, output)` satisfies the interface
+structurally. The guarantee is board survival, not equivalence. It fires on a throw,
 so a stale write the state machine happens to permit still commits and still
 clobbers, and no error a store never raises can be contained. Everything else —
 a store outage on a task the worker still holds, a write that committed and then
-failed on the way out — propagates unchanged. That qualifier matters: when
-the task was *already* settled or displaced before the call, the seam cannot tell
-an outage apart from the decline a conforming store would have made, and contains
-it. Don't build an alerting path on an error the substrate may drop.
+failed on the way out — propagates unchanged. When the task was *already* settled
+or displaced before the call, the seam cannot tell an outage apart from the decline
+a conforming store would have made, and contains it. Don't build an alerting path
+on an error the substrate may drop.
 
 Every mutation method except `claim` and `reclaim` resolves to a
 `TaskWriteOutcome`: `recorded` (a field changed and a `task-change` item was
