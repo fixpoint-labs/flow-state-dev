@@ -159,7 +159,7 @@ type ChildSessionSummary = {
   parentSessionId: string;
   createdAt: number;
   updatedAt: number;
-  flowId?: string;          // the instance that owns the child; absent on rows written before owners were recorded
+  flowId?: string;          // the instance that owns the child; absent on a row that records no owner
   topic?: string;
   coordinate?: string;
   status?: "active" | "completed" | "failed" | "incomplete" | "aborted";

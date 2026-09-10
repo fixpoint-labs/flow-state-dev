@@ -320,3 +320,52 @@ describe("makeSchemaStrict validate option", () => {
     expect(() => makeSchemaStrict(schema)).not.toThrow();
   });
 });
+
+describe("assertStrictCompatible requireTextOrObjectRoot", () => {
+  // The rule the generator routes on: a BARE z.string() is asked for as plain
+  // text, and every other root is sent to the provider as a structured-output
+  // root, which must be an object. Callers that want that failure before the
+  // model call — an agent materializer deciding what an author may declare —
+  // opt in here rather than restating the predicate and drifting from it.
+  const on = { requireTextOrObjectRoot: true } as const;
+
+  it("accepts a bare string root and an object root", () => {
+    expect(() => assertStrictCompatible(z.string(), undefined, on)).not.toThrow();
+    expect(() =>
+      assertStrictCompatible(z.object({ a: z.string() }), undefined, on),
+    ).not.toThrow();
+  });
+
+  it("accepts an object root behind .refine() — the strict transform unwraps it", () => {
+    const schema = z.object({ a: z.string() }).refine(() => true);
+    expect(() => assertStrictCompatible(schema, undefined, on)).not.toThrow();
+  });
+
+  it("refuses a wrapped string root, which is NOT a text request", () => {
+    // z.string().nullable() reads like text and is not: the generator sends it
+    // as a structured-output root and the provider rejects it.
+    try {
+      assertStrictCompatible(z.string().nullable(), 'Agent "a"', on);
+      throw new Error("expected a refusal");
+    } catch (error) {
+      expect(error).toBeInstanceOf(StrictSchemaError);
+      expect((error as StrictSchemaError).violations[0]).toMatchObject({
+        path: "$",
+        typeName: "ZodNullable",
+      });
+    }
+  });
+
+  it("refuses a primitive and an array root", () => {
+    expect(() => assertStrictCompatible(z.number(), undefined, on)).toThrow(StrictSchemaError);
+    expect(() => assertStrictCompatible(z.array(z.object({ a: z.string() })), undefined, on)).toThrow(
+      StrictSchemaError,
+    );
+  });
+
+  it("changes nothing when the option is absent — the default for every other caller", () => {
+    expect(() => assertStrictCompatible(z.number())).not.toThrow();
+    expect(() => assertStrictCompatible(z.string().nullable())).not.toThrow();
+    expect(() => assertStrictCompatible(z.array(z.object({ a: z.string() })))).not.toThrow();
+  });
+});

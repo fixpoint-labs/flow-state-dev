@@ -6,10 +6,12 @@
  * package supplies `defineAgent`, `createAgentRegistry`, `materializeAgent`,
  * `agentBlock`, `definePersona`, and `createWorkforceCapability`.
  *
- * It also declares `WorkerManifest`, the record a workforce described in files
- * or written by hand is made of. Reading that description off disk is the
- * `./loader` subpath's job — kept out of the root so importing this package
- * does not pull a consumer onto `node:fs`.
+ * It also supplies the seat factory — `hireWorkforce`, which turns worker
+ * records into one configured, addressable flow copy each — and declares
+ * `WorkerManifest`, the record those workers are made of, whether described in
+ * files or written by hand. Reading that description off disk is the `./loader`
+ * subpath's job, kept out of the root so importing this package does not pull a
+ * consumer onto `node:fs`.
  */
 
 export { defineAgent } from "./define-agent";
@@ -19,4 +21,5 @@ export { AgentCapabilityError, AGENT_CAPABILITY_UNRESOLVED } from "./errors";
 export { agentBlock, type AgentBlockOptions } from "./agent-block";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
+export { hireWorkforce, type HireOptions } from "./hire";
 export type { WorkerManifest } from "./manifest";

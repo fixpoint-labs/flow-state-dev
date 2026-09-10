@@ -96,7 +96,15 @@ Mount `briefingBlock` in a sequencer or wire it as an action the same way you wo
 
 ## Structured output and capabilities
 
-A standalone agent can return typed data instead of free text. Declare an `outputSchema` and the materialized generator emits that shape, subject to the same OpenAI-strict requirement as any generator output. Delegation agents stay `z.string()` regardless. A delegated agent's output is read off its completed task on the board, not returned inline to the coordinator.
+An agent can return typed data instead of free text. Declare an `outputSchema` and the agent emits that shape both ways you run it: mounted directly, and delegated to a board as a task. A delegated agent's output is read off its completed task on the board, not returned inline to the coordinator.
+
+Two rules bound what you can declare.
+
+The root has to be a bare `z.string()` or an object. Anything else is sent to the provider as a structured-output root, and a structured root has to be an object, so a wrapped string like `z.string().nullable()` will not do.
+
+No field may parse to a value JSON cannot carry, because a task result is stored as JSON. That rules out a transform such as `z.string().transform(v => new Date(v))`, and the types that produce such a value directly: `z.date()`, `z.coerce.date()`, `z.bigint()`, `z.map()`. Validation is fine. A `.refine()` doesn't change the parsed value, so it round-trips like anything else.
+
+A shape that breaks either rule is refused when the agent is materialized, naming the agent and the offending field. The declared shape carries the same OpenAI-strict requirement as any generator output.
 
 `usesCapabilities` accepts two forms in the same array: a string key resolved against the materialize-time capability catalog, or a capability reference used as-is. A reference can be configured with `.with({ ... })`, and the preset typing carries through, the same way `generator({ uses })` consumes capabilities.
 
@@ -117,7 +125,7 @@ const positionSizer = defineAgent({
   name: "position-sizer",
   description: "Sizes a position into a typed decision.",
   persona: { path: "personas/portfolio-manager" },
-  outputSchema: positionSizerSchema, // standalone only
+  outputSchema: positionSizerSchema, // typed result, mounted or delegated
   usesCapabilities: [
     tradingDeskCapability.with({ valuationSpine: true }), // typed capability ref
     "marketDataAccess", // string key, resolved from the catalog

@@ -98,7 +98,7 @@ Narrative: [GoalSeekLoop](./goal-seek-loop).
 | `persona` | `string`, `{ template, state? }`, or `{ path }` | required | System-prompt source: a string, an inline template, or a resource path. |
 | `model` | `string` | materializer default, then `intent/chat` | Model id for the materialized generator. |
 | `itemVisibility` | `{ client, history }` | `{ client: true, history: false }` | Which items reach the client and history. |
-| `outputSchema` | Zod schema | free text (`z.string()`) | Structured output. Honored only for the standalone shape. Workers always emit text. |
+| `outputSchema` | Zod schema | free text (`z.string()`) | Structured output, honored both standalone and delegated. The root must be a bare `z.string()` or an object, and no field may parse to a value JSON cannot carry (a transform, `z.date()`, `z.bigint()`). |
 | `allowedTools` | `string[]` | omitted | Tool-catalog keys this agent may reference. |
 | `usesCapabilities` | capability refs or catalog keys | omitted | Capabilities composed via `uses`, including `.presets({ ... })`. A catalog key declared with no catalog supplied fails materialization rather than being dropped. |
 | `usesSkills` | `string[]` | omitted | Reserved. Accepted and ignored. |

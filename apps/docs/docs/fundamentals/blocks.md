@@ -587,8 +587,8 @@ The value is read-only and fixed for the copy's life. `ctx.settings` is its sibl
 altitude: `ctx.settings` is the whole process, one shape for every flow in it; `ctx.flow.config` is
 this copy, and two copies of one definition read different values.
 
-Declaring `flowConfigSchema` buys two things: the read is typed without an annotation, and the flow
-refuses when it cannot supply what the block asked for. The refusal lands in one of two places — if
+Declaring `flowConfigSchema` types the read without an annotation, and makes the flow
+refuse when it cannot supply what the block asked for. The refusal lands in one of two places — if
 the flow declares no `configSchema` at all, where the flow is defined; otherwise where a copy is
 created, naming the flow, the copy's id and this block. A block that declares nothing reads
 `Readonly<Record<string, unknown>>` and has to parse for itself.

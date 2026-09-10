@@ -25,7 +25,7 @@ Every request path the client builds already starts with `/api/flows`. Leave `ba
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
-| `flowKind` | `string` | required | The flow instance to call: its `kind` for an ordinary flow, the copy's own id for a flow that runs as several copies. See [Server setup](/docs/server/setup#addressing-an-instance). |
+| `flowKind` | `string` | required | The flow instance to call: its `kind` for an ordinary flow, the copy's own id for a flow that runs as several copies. See [Flows](/docs/fundamentals/flows#how-an-instance-is-addressed). |
 | `userId` | `string` | required | Caller identity sent on every request. The server still resolves the principal from your auth hook; this is the client's claim. |
 | `baseUrl` | `string` | same origin | Prefix put in front of `/api/flows/…`. Omit it for a same-origin app (Next.js route handler, the `node` host). Set an origin such as `https://api.example.com` when the API lives elsewhere. |
 | `fetcher` | `typeof fetch` | global `fetch` | Custom fetch (tests, extra headers). |

@@ -273,10 +273,10 @@ calls. The same hook runs for session reads and writes, session state,
 resource content, request control (stream, abort, resume, status), and the
 debug endpoints.
 
-Two things happen on each of those requests. The framework resolves a
-principal through your hook, then checks that the principal owns what the URL
-addressed. A session or request belongs to the `userId` it was created under,
-so a caller holding a valid credential for a different user gets a `403`:
+The framework resolves a principal through your hook on each of those
+requests, then checks that the principal owns what the URL addressed. A
+session or request belongs to the `userId` it was created under, so a caller
+holding a valid credential for a different user gets a `403`:
 
 ```
 GET /api/flows/sessions/abc123   no credential                    -> 401
@@ -289,7 +289,7 @@ Listing endpoints scope to the caller instead of rejecting. `GET
 parameter still works as a filter, but it can only narrow that set, never
 widen it.
 
-`POST /api/flows/:flowKind/sessions` takes the new session's `userId` and
+`POST /api/flows/:flowId/sessions` takes the new session's `userId` and
 `orgId` from the principal. A `userId` in the request body is ignored when a
 resolver is configured, the same way `orgId` is ignored on action calls.
 

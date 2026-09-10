@@ -383,6 +383,7 @@ For each block, verify you have tests for:
 - [ ] State mutations (if applicable)
 - [ ] Resource access (if applicable)
 - [ ] Capability integration (if block uses `uses: [capability]`)
+- [ ] Every carrier a declaration can arrive by (see *Parameterize over carriers* below), if the block declares `flowConfigSchema`, resources, or `requiresOrg`
 
 ### Step 6: Verify
 
@@ -393,6 +394,20 @@ pnpm --filter <affected-package> test
 All tests should pass. If a test fails, fix the test or the implementation — don't skip.
 
 ## Guidelines
+
+- **Parameterize over carriers, not just over kinds.** A declarative slot — `flowConfigSchema`,
+  a declared resource, `requiresOrg` — is found by framework code that *walks* to it, and the same
+  declaration can arrive by several carriers: on an action root, on a child block, on a statically
+  declared tool, on a tool a function returns at run time. Covering one carrier per block kind
+  proves the slot is read *somewhere*, not everywhere. Put the carriers in one `describe.each`, or
+  at minimum assert two carriers side by side in the same test file, so a walk that stops one level
+  short fails a test instead of quietly passing the case it was written for.
+
+  FIX-1336 is what this is for: the check on dynamically resolved tools read `flowConfigSchema` off
+  the top-level tools only, while the definition-time walk descended through composition. A block
+  declaring a requirement from inside a tool was checked when the tool was static and not when a
+  function returned it. It type-checked, it ran, and the declaration did nothing — the exact
+  fail-quiet the slot exists to remove, one level down.
 
 - **Mock at the model boundary.** For generators, mock `resolveModel` to return a fake model with a scripted `generate()`. Don't mock internal framework functions.
 - **Deterministic mocks.** Use handler blocks with scripted responses as mock sub-blocks in patterns. Avoid random data in tests.

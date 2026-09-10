@@ -228,7 +228,7 @@ Those eight fields are the whole row. The route sends this named set rather than
 a session record, so there is no `flowKind`, `userId`, `title` or `metadata` on
 it. `flowId` is the instance that owns the child, the one a cross-flow dispatch
 was sent to; it is the address to read or re-enter the child through, and is
-absent on a child written before owners were recorded.
+absent on a child that records no owner.
 
 `topic` and `coordinate` are display labels. `coordinate` is the entry the child
 was dispatched to, `<type>:<target>`: `internal:summarize` for an internal entry,

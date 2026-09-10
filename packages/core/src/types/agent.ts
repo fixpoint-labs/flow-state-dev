@@ -70,10 +70,17 @@ export interface Agent {
   /** Defaults to `{ client: true, history: false }` when undefined. */
   itemVisibility?: ItemVisibility;
   /** Structured output contract for the materialized generator. When omitted,
-   *  the agent emits free text (`z.string()`). Subject to the same BP-016
-   *  OpenAI-strict requirement as any generator output. Honored only for the
-   *  STANDALONE shape — workers always emit `z.string()` (skills pattern
-   *  machinery builds follow-on actions from text). */
+   *  the agent emits free text (`z.string()`). Honored on both shapes — mounted
+   *  directly and delegated to a board — so one declaration answers what the
+   *  agent emits however it is run. A delegated result is read off the completed
+   *  task, not returned inline to the coordinator.
+   *
+   *  Subject to the same BP-016 OpenAI-strict requirement as any generator
+   *  output, and to two rules the declaration itself carries: the root must be a
+   *  bare `z.string()` or an object, and no field may parse to a value JSON
+   *  cannot carry (a transform, a `Date`, a `BigInt`), since a durable board
+   *  round-trips a task result through `JSON.stringify`. A shape breaking either
+   *  is refused by name at materialization, before any job runs. */
   outputSchema?: ZodTypeAny;
   /** Tool-catalog keys this agent may reference. */
   allowedTools?: string[];

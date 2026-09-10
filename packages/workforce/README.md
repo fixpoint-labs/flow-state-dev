@@ -58,7 +58,14 @@ const block = agentBlock(analyst, { catalog });
 
 ## Structured Output & Capabilities
 
-By default an agent emits free text (`z.string()`). A **standalone** agent can declare a structured `outputSchema` instead, and the materialized generator emits that typed shape — subject to the same OpenAI-strict requirement as any generator output. Delegation agents (the worker shape) always emit `z.string()`, because the board hands each task's text result back to the skill that planned it.
+By default an agent emits free text (`z.string()`). Declare a structured `outputSchema` and the agent emits that typed shape on **both** shapes — mounted standalone, and delegated to a board as a worker — so one declaration answers what the agent emits however it is run. A delegated result lands on the completed task, where the coordinator reads it.
+
+Two rules bound what may be declared, and both are checked at materialization, which throws a `StrictSchemaError` naming the agent and the offending field path:
+
+- The root must be a bare `z.string()` or an object. Every other root — a wrapped string like `z.string().nullable()` included — is sent to the provider as a structured-output root, which must be an object.
+- No field may parse to a value JSON cannot carry. A durable board round-trips the task record through `JSON.stringify`, so a transform (`z.string().transform(...)`), a `z.date()` / `z.coerce.date()`, a `z.bigint()` or a `z.map()` would read back as something else after a resume. `.refine()` and `z.preprocess()` are fine: neither changes the parsed value's type.
+
+The declared shape is also subject to the same OpenAI-strict requirement as any generator output.
 
 `usesCapabilities` accepts either a **string key** (resolved against the materialize-time `capabilityCatalog`) or a **capability reference** used as-is — including a `.with({ ... })`-configured capability, which keeps full preset typing (the same way `generator({ uses })` consumes capabilities).
 
@@ -69,7 +76,7 @@ const pm = defineAgent({
   name: "portfolio-manager",
   description: "Sizes the position into a typed decision.",
   persona: { path: "personas/pm" },
-  outputSchema: portfolioDecisionSchema, // standalone only; workers stay string
+  outputSchema: portfolioDecisionSchema, // typed result, standalone or delegated
   usesCapabilities: [
     tradingDesk.with({ valuationSpine: true }),    // typed capability ref
     "someSharedSkill",                             // string key (catalog)
@@ -99,18 +106,6 @@ const personas = definePersona({
   contentTemplate: "You are a {{ state.role }}. {{ state.instructions }}",
 });
 ```
-
-## Exports
-
-| Export | Description |
-|--------|-------------|
-| `defineAgent(config)` | Create a validated Agent definition. |
-| `createAgentRegistry(agents)` | Build an AgentRegistry (errors on duplicate name). |
-| `materializeAgent(agent, opts)` | Turn an Agent into a worker-shaped or standalone BlockDefinition. |
-| `agentBlock(agent, opts?)` | Shorthand for standalone agent block. |
-| `definePersona(config)` | Declare a persona resource or collection. |
-| `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
-| `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker. Ships from the `./loader` subpath (Node only). |
 
 ## Reading a workforce from files
 
@@ -144,6 +139,55 @@ to run a short roster.
 
 The subpath is separate because the reader imports `node:fs`; the package root stays isomorphic.
 
+## Hiring a workforce
+
+`hireWorkforce` turns worker records into one configured, addressable flow copy each — a **seat**. It
+reads no files, builds no flow graph, and registers nothing: you pass the flow kinds your app defined,
+and you register what comes back.
+
+```ts
+import { hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
+
+const workers: WorkerManifest[] = [
+  {
+    id: "engineering.lead",
+    declared: { flow: "worker-agent", description: "Holds the board.", model: "openai/gpt-5.4-mini" },
+    body: "You are the engineering lead. You break work into tasks and report what came back.",
+  },
+  { id: "engineering.intake", declared: { flow: "intake", description: "The front door." }, body: "" },
+];
+
+const seats = hireWorkforce(workers, { kinds: { "worker-agent": workerAgentFlow, intake: intakeFlow } });
+flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
+```
+
+Two keys in `declared` are read by the factory: **`flow`** names the kind to instantiate, and
+**`description`** is the roster label. Everything else is that worker's settings, handed to the flow
+verbatim and parsed against its `configSchema` — which is closed, so a setting the flow never declared
+is refused by name at the hire.
+
+A record's **`body` reaches its flow as one setting, `persona`**. A flow kind that declares `persona`
+is an opinionated worker; one that does not refuses a body by name, so no worker flow has to check for
+one. A body that is empty or only whitespace contributes no `persona` key at all, and a record that
+declares `persona:` *and* carries a body is refused naming both sources.
+
+Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
+every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.
+
+## Exports
+
+| Export | Description |
+|--------|-------------|
+| `defineAgent(config)` | Create a validated Agent definition. |
+| `createAgentRegistry(agents)` | Build an AgentRegistry (errors on duplicate name). |
+| `materializeAgent(agent, opts)` | Turn an Agent into a worker-shaped or standalone BlockDefinition. |
+| `agentBlock(agent, opts?)` | Shorthand for standalone agent block. |
+| `definePersona(config)` | Declare a persona resource or collection. |
+| `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
+| `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker. Ships from the `./loader` subpath (Node only). |
+| `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
+| `WorkerManifest` | One worker record: `{ id, declared, body, codePath? }`. |
+
 ## Error Semantics
 
 | Error | When |
@@ -156,3 +200,4 @@ The subpath is separate because the reader imports `node:fs`; the package root s
 | Persona empty content | Execution time — resource resolved but `readContent()` returned null |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable | `readWorkforceDirectory` throws |
+| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, or `persona` declared twice. Collected: one error names every bad worker |

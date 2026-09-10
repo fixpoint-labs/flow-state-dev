@@ -176,11 +176,26 @@ the field-by-field reference is in [Flow configuration](../configuration/flow.md
 
 ### How an instance is addressed
 
-Every entry point reaches an instance by its **id**: the HTTP action routes, the CLI, webhooks, schedules, MCP, and a queue worker all carry the id, and nothing else. For a singleton the id is the kind, so `POST /api/flows/my-chat/actions/send` and `fsdev run my-chat send` look exactly as they always have. For a collection it is the id you registered: `POST /api/flows/review-east/actions/run`. The kind of a collection is not an address. `POST /api/flows/review/...` is a miss, not a fallback to whichever copy was registered first.
+Every entry point reaches an instance by its **id**. The HTTP action routes, the CLI, webhooks, schedules, MCP, and a queue worker all carry the id and nothing else.
+
+For a singleton the id is the kind: `POST /api/flows/my-chat/actions/send`, `fsdev run my-chat send`. For a collection it is the id you registered: `POST /api/flows/review-east/actions/run`. The kind of a collection is not an address — `POST /api/flows/review/...` is a miss, not a fallback to whichever copy was registered first.
+
+Route templates across these docs write the segment that carries the id as `:flowId`; some, following the router's own parameter name, write `:flowKind`. The value is the instance id either way.
 
 The `kind` still says what an instance *is*. Sessions and requests record it alongside the id, listings group by it, and the definition-level transports below apply to every instance of the definition.
 
-Saved work stays with the instance that created it. A session started through `review-east` records `review-east` as its owner, and a later call that names the same session through `review-west` is refused before anything runs. [Server setup](../server/setup.md#keeping-a-session-with-its-owner) shows the refusal; [Persistence](../persistence/overview.md#who-owns-a-record) covers what is recorded and how to attribute records written before owners were recorded.
+Saved work stays with the instance that created it. A session started through `review-east` records `review-east` as its owner, and a later call that names the same session through `review-west` is refused before anything runs. Every entry point enforces that, each in its own idiom:
+
+| Surface | What a mismatched address gets you |
+|---|---|
+| [HTTP action route](/docs/server/setup#keeping-a-session-with-its-owner) | `409 wrong-instance-session` (or `wrong-instance-request` when the call names a request id), before the action runs |
+| [Resume](/docs/advanced/durable-execution#resuming-a-suspended-request) | `404`, the same answer as a request that does not exist |
+| [Retry and continue](/docs/advanced/durable-execution#resuming-a-suspended-request) | `400`, naming the instance that does own the request |
+| [CLI](/docs/api/cli) | a non-zero exit, with the session untouched |
+| [Queue worker](/guides/background-jobs-bullmq) | an unrecoverable job failure rather than a retry |
+| [`runAction`](/docs/advanced/manual-flow-execution) | `FlowInstanceBindingMismatchError`, with nothing written |
+
+[Persistence](../persistence/overview.md#who-owns-a-record) covers what is recorded, and how to attribute records that name no owner.
 
 ### What the definition owns
 
