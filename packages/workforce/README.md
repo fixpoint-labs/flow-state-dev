@@ -110,6 +110,39 @@ const personas = definePersona({
 | `agentBlock(agent, opts?)` | Shorthand for standalone agent block. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
+| `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker. Ships from the `./loader` subpath (Node only). |
+
+## Reading a workforce from files
+
+Describe each worker in a folder instead of in code. `readWorkforceDirectory` walks
+`<root>/teams/<teamId>/workers/<workerName>/`, reads each worker's `WORKER.md`, and returns
+one record per worker.
+
+```ts
+import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
+
+const { workers, errors } = await readWorkforceDirectory("./workforce");
+if (errors.length) throw new Error(`workforce: ${errors.length} worker(s) failed to load`);
+```
+
+Each record is plain data:
+
+| Field | Description |
+|-------|-------------|
+| `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. |
+| `declared` | The frontmatter exactly as written. Keys are not checked against a list. |
+| `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
+| `codePath` | Set when the folder holds a `worker.ts`. Recorded, never imported. |
+
+`description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
+lowercase letters, digits and single hyphens, at most 64 characters.
+
+The reader builds nothing: no flow, no agent, no registry entry. It throws only when `root` itself
+cannot be read — a folder that produces no worker lands in `errors`, keyed by its path, and every
+other worker still loads. Treat a non-empty `errors` as fatal at startup unless you have a reason
+to run a short roster.
+
+The subpath is separate because the reader imports `node:fs`; the package root stays isomorphic.
 
 ## Error Semantics
 
@@ -121,3 +154,5 @@ const personas = definePersona({
 | No materializeAgent | Registry wired but materializer missing |
 | Persona path not found | Execution time — resource must be declared |
 | Persona empty content | Execution time — resource resolved but `readContent()` returned null |
+| Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
+| Workforce root unreadable | `readWorkforceDirectory` throws |

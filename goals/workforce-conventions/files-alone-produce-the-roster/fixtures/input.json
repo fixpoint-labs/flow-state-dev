@@ -1,0 +1,36 @@
+{
+  "note": "Held out from the implementation: nothing in the loader knows these ids, tokens or settings. Swap the tree and this file together for another valid pair and a correct loader still passes.",
+  "root": "workforce",
+  "expect": [
+    {
+      "id": "engineering.lead",
+      "marker": "TIDEPOOL-4417",
+      "declared": {
+        "description": "Holds the engineering board and breaks work into tasks.",
+        "flow": "worker-agent",
+        "model": "openai/gpt-5.4-mini",
+        "tools": ["board", "search"]
+      }
+    },
+    {
+      "id": "marketing.lead",
+      "marker": "SANDPIPER-9023",
+      "declared": {
+        "description": "Owns the launch calendar and the words that go out with it.",
+        "flow": "worker-agent",
+        "model": "openai/gpt-5.4-mini",
+        "tools": ["calendar"]
+      }
+    },
+    {
+      "id": "engineering.intake",
+      "marker": null,
+      "declared": {
+        "description": "Takes requests off the queue and puts them on the board.",
+        "flow": "intake"
+      }
+    }
+  ],
+  "expectErrorPaths": ["teams/engineering/workers/scribe"],
+  "silentPaths": ["teams/engineering/resources"]
+}

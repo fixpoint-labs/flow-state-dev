@@ -29,6 +29,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./loader": {
+      "types": "./dist/loader/index.d.ts",
+      "default": "./src/loader/index.ts"
     }
   },
   "license": "MIT",
@@ -44,6 +48,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./loader": {
+        "types": "./dist/loader/index.d.ts",
+        "default": "./dist/loader/index.js"
       }
     }
   },
@@ -58,8 +66,9 @@
   },
   "devDependencies": {
     "@flow-state-dev/testing": "workspace:*",
-    "vitest": "^3.2.4",
-    "typescript": "^5.9.3"
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
