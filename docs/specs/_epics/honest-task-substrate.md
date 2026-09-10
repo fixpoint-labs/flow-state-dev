@@ -1,6 +1,7 @@
 # Epic: Honest task substrate
 
-**WRAPPED 2026-09-10** — three issues open and unparented, not closed. See *Status* below.
+**WRAPPED 2026-09-10** — three issues still open and **not closed**; they remain Linear sub-issues
+of FIX-980, deliberately untouched. See *Status* below.
 
 **Epic issue:** [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980) · **Epic PR:** [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) *(closed unmerged)* · **Project:** Orchestration Primitives · **Branch:** `epic/honest-task-substrate` *(never deleted)*
 
@@ -16,9 +17,12 @@
 ## Status — WRAPPED 2026-09-10
 
 **This epic is closed. Three of its issues are still open, and closing the epic did not close
-them.** FIX-993, FIX-963 and FIX-1250 were unparented from FIX-980's coordination at the wrap.
-They stand alone now, at their own priorities, and each is picked up as an ordinary issue by
-whoever gets to it. Nothing about them is finished, and nothing about them is blocked.
+them.** FIX-993, FIX-963 and FIX-1250 left the epic's **coordination**, not its parent link: the
+wrap moved no Linear state, so all three are **still sub-issues of FIX-980** and sit exactly where
+they were. Treat them as ordinary standalone issues at their own priorities — nothing about them is
+finished, nothing about them is blocked, and nothing here is tracking them any more. The parent
+link is history, not a claim that this epic still owns them; unparent them if that reads wrong to a
+human, but the wrap deliberately did not.
 
 **Epic PR [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) is closed unmerged
 and stays closed.** The branch `epic/honest-task-substrate` is never deleted; this document is
@@ -83,10 +87,10 @@ per-operation `setAssignee` guard are on `main`.
 | FIX-951 | **Done** | The completed anchor. *OQ-A is closed — it asked whether FIX-951 was still in flight.* |
 | FIX-976 | **Done** | Decision 1's one bound issue. Shipped in [#1004](https://github.com/fixpoint-labs/flow-state-dev/pull/1004). |
 | FIX-948 | **Done** | Shipped as `maxTotalRetries` in [#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031). *OQ-C is closed by shipment.* |
-| FIX-963 | Backlog · P3 · **open at wrap** | **Still live — re-verified in code 2026-08-24.** Unblocked since FIX-989 shipped the detection primitive it needed. **Its spec ([#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992)) is now STALE** — see the wrap note above. Unparented from the epic 2026-09-10, not closed. |
+| FIX-963 | Backlog · P3 · **open at wrap** | **Still live — re-verified in code 2026-08-24.** Unblocked since FIX-989 shipped the detection primitive it needed. **Its spec ([#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992)) is now STALE** — see the wrap note above. Out of the epic's coordination 2026-09-10; **still a sub-issue of FIX-980**, not closed. |
 | FIX-964 | ~~On Hold~~ | **DESCOPED 2026-08-24, owner call.** FIX-976's shipped widening closed most of it; the residue is narrow. Unparented, not closed — see §3.5. |
 | FIX-978 | ~~Canceled~~ | **CANCELED 2026-08-25 — subsumed by FIX-1005.** OQ-E settled against `main`; all three claims closed. Its one residue is FIX-1250's. |
-| FIX-993 | Ready to Spec · P2 · **open at wrap** | The judgment call §3.5 recommended keeping in. Never specced. Unparented 2026-09-10, not closed — it is a validation gap, and the epic wrapped without it. |
+| FIX-993 | Ready to Spec · P2 · **open at wrap** | The judgment call §3.5 recommended keeping in. Never specced. Out of the epic's coordination 2026-09-10; **still a sub-issue of FIX-980**, not closed — it is a validation gap, and the epic wrapped without it. |
 
 Three further issues joined this track after the epic opened and have **shipped**:
 FIX-989 (durable write provenance, [#1128](https://github.com/fixpoint-labs/flow-state-dev/pull/1128)),
@@ -112,7 +116,7 @@ All five original members shipped except FIX-1250, which is open at wrap.
 | FIX-1245 | **Done** 2026-09-05 | Renamed the shipped status `awaiting_review` → **`parked`**. `awaiting_review` survives on `main` only as `LEGACY_PARKED_STATUS` (dual-read, BP-030). *Retargeted 2026-08-24 from `needs_input`.* |
 | FIX-1244 | **Done** 2026-09-05 | Unblock-with-input, as a *new* request carrying a payload — not `continueRequest`, not `ctx.suspend`. Shipped a **request-scoped** run-state slot, which is what made FIX-987 a duplicate. D-1: FIX-1241 / [#1429](https://github.com/fixpoint-labs/flow-state-dev/pull/1429). |
 | FIX-1238 | **Done** 2026-09-10 | The park-exit verdict's carrier depended on step adjacency and a break was silent; now typed at the completion tap. Impl PR [#1675](https://github.com/fixpoint-labs/flow-state-dev/pull/1675) **merged** `c32202319`. **The last deliverable of the epic.** The guard is *partial by construction* and its own comment says so — an inserted step whose output type has been erased to `any` still compiles. Closing that needs a `core` generics fix, filed as a follow-up. |
-| FIX-1250 | Backlog · P3 · **open at wrap** | `TaskWorkerInput` carries no claim ticket or incarnation id, so an **out-of-process** worker cannot fence a stale settle. Filed 2026-08-25 out of Conductor (LAB-138 / PR #1442), which had to re-derive the fence in userland. Unparented 2026-09-10, not closed. **Decision 3 is still binding on it.** |
+| FIX-1250 | Backlog · P3 · **open at wrap** | `TaskWorkerInput` carries no claim ticket or incarnation id, so an **out-of-process** worker cannot fence a stale settle. Filed 2026-08-25 out of Conductor (LAB-138 / PR #1442), which had to re-derive the fence in userland. Out of the epic's coordination 2026-09-10; **still a sub-issue of FIX-980**, not closed. **Decision 3 is still binding on it.** |
 
 **Related to Relay ([FIX-1197](https://linear.app/fixpoint-labs/issue/FIX-1197)), not parented
 under it or LAB-140.**
@@ -171,7 +175,7 @@ number. **Refreshed 2026-09-10** against live Linear state, at wrap.
 | **Track 1 — carried as a judgment call, never specced** | 1 | FIX-993 — **open at wrap** |
 | **Track 2 — human-wait board work** *(added 2026-08-24)* | 5 | FIX-1234 ✅, FIX-1245 ✅, FIX-1244 ✅, FIX-1238 ✅, FIX-1250 — **open at wrap** |
 | **Shipped under the epic, total** | **11** | FIX-951, FIX-976, FIX-948, FIX-989, FIX-992, FIX-995, FIX-1001, FIX-1234, FIX-1245, FIX-1244, FIX-1238 |
-| **Open at wrap** — unparented from the epic 2026-09-10, **not closed** | **3** | FIX-993 (P2), FIX-963 (P3), FIX-1250 (P3) |
+| **Open at wrap** — out of the epic's coordination 2026-09-10, **not closed**, Linear parent link left intact | **3** | FIX-993 (P2), FIX-963 (P3), FIX-1250 (P3) |
 | **Decision-1-bound** | **1** | FIX-976 *(shipped — the decision is spent)* |
 | **Project siblings** — off-objective, direct-fix, *not* parented | 2 | FIX-972 (PR #984), FIX-962 (PR #985) |
 | **Discovered work** — same defect family, filed separately, *not* parented | 1 | FIX-985 |
@@ -789,8 +793,9 @@ FIX-1250**:
 | **FIX-1238** | The park-exit verdict's carrier depends on step adjacency; a break is silent | **Done** 2026-09-10 | [#1673](https://github.com/fixpoint-labs/flow-state-dev/pull/1673) **closed unmerged** *(spec approved)* | [#1675](https://github.com/fixpoint-labs/flow-state-dev/pull/1675) **merged** `c32202319` |
 | **FIX-1250** | Workers get no claim identity, so an out-of-process worker can't fence a stale settle | Backlog · P3 · **open at wrap** | — | — |
 
-**Open at wrap — unparented from FIX-980 on 2026-09-10, not closed.** Each is now an ordinary
-standalone issue; the epic's coordination no longer covers them.
+**Open at wrap — 2026-09-10, not closed.** Each is now an ordinary standalone issue: the epic's
+coordination no longer covers them, though the wrap moved no Linear state, so each is **still a
+sub-issue of FIX-980**. The parent link is a historical trace, not live tracking.
 
 | Issue | Title (short) | Linear | Spec PR | State of the work |
 |---|---|---|---|---|
@@ -837,10 +842,12 @@ change if this call was wrong. Listed here so the epic's audit trail shows where
 **FIX-964 joins them by a different route** — it was genuinely on-objective, and left because
 the objective caught up with it rather than because it never belonged. Its row says why.
 
-**This is not the whole list of issues unparented from FIX-980.** Three more left at the wrap on
-2026-09-10 — FIX-993, FIX-963 and FIX-1250 — and they left for the opposite reason: they are
-on-objective and unfinished, and the epic stopped coordinating rather than they stopped belonging.
-They are indexed in §3 under *Open at wrap*, not here.
+**This is the whole list of issues actually detached from FIX-980.** Three more issues left the
+epic at the wrap on 2026-09-10 — FIX-993, FIX-963 and FIX-1250 — but they left the *coordination*
+only: the wrap moved no Linear state, so their parent links are intact and they are **not** listed
+here. They also left for the opposite reason: they are on-objective and unfinished, and the epic
+stopped coordinating rather than they stopped belonging. They are indexed in §3 under *Open at
+wrap*.
 
 | Issue | Linear | Why it isn't this epic |
 |---|---|---|
@@ -869,8 +876,8 @@ silent-acceptance defect, so it fits the shape; but it is a *validation* gap rat
 and not because the objective demanded it.
 
 > **What happened, 2026-09-10.** That recommendation was never acted on. FIX-993 is still *Ready to
-> Spec*, was never specced, and the epic wrapped around it — it went out unparented and open rather
-> than becoming the wrap's last blocker. **The recommendation is spent, not pending**: nothing in
+> Spec*, was never specced, and the epic wrapped around it — it went out open rather than becoming
+> the wrap's last blocker. **The recommendation is spent, not pending**: nothing in
 > the epic is waiting on FIX-993, and FIX-993 is waiting on nothing. It is a standalone P2. Read the
 > paragraph above as the record of a call that was made and then overtaken, not as an open action.
 
@@ -1218,8 +1225,9 @@ removing the `?`, and nobody should retry it.
   building it anyway, and it shipped with a knowingly **partial** guard whose residual is written
   at the wiring site. The honest-substrate standard applied to the epic's own tooling.
 - **WRAPPED 2026-09-10, on the owner's call, with three issues open.** FIX-993, FIX-963 and
-  FIX-1250 were unparented from FIX-980 and **not closed**; the epic stopped coordinating them
-  rather than finishing them. Epic PR #983 closed unmerged and stays closed; the branch and this
+  FIX-1250 are **not closed** and, because the wrap moved no Linear state, remain sub-issues of
+  FIX-980; the epic stopped coordinating them rather than finishing them, and the parent link was
+  deliberately left alone rather than tidied. Epic PR #983 closed unmerged and stays closed; the branch and this
   document remain, reachable from the FIX-980 Linear document. FIX-980 itself was left in
   *In Development* — **the wrap moved no Linear state.** Eleven issues shipped, one canceled
   (FIX-978), one descoped (FIX-964, *On Hold*). **Five of §1's seven completion criteria are met**,
