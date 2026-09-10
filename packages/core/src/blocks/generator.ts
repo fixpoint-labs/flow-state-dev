@@ -6,6 +6,7 @@ import { jsonSchema } from "ai";
 import { jsonrepair } from "jsonrepair";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { getZodTypeName } from "../helpers/zod-introspect";
+import { walkBlockGraph } from "../helpers/block-graph";
 import { assertStrictCompatible } from "../models/makeSchemaStrict";
 import type {
   BlockConfig,
@@ -748,9 +749,14 @@ async function resolveTools<TInput, TCtx extends BlockContext>(
  */
 function assertToolsSatisfyFlowConfig(blocks: readonly GeneratorTool[], ctx: BlockContext): void {
   const requirements: FlowConfigRequirement[] = [];
-  for (const block of blocks) {
+  // The whole graph under each tool, and deduped by schema reference — both as
+  // the mint's `collectRequiredFlowConfig` does, so the two paths agree.
+  const seen = new Set<ZodTypeAny>();
+  for (const block of walkBlockGraph(blocks as readonly BlockDefinition[])) {
     const schema = (block.config as { flowConfigSchema?: ZodTypeAny } | undefined)?.flowConfigSchema;
-    if (schema !== undefined) requirements.push({ blockName: block.name, schema });
+    if (schema === undefined || seen.has(schema)) continue;
+    seen.add(schema);
+    requirements.push({ blockName: block.name, schema });
   }
   if (requirements.length === 0) return;
 

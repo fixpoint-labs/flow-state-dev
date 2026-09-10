@@ -71,7 +71,7 @@ Not every scope-state write carries a version. An increment, an append, or a wri
 
 ### Concurrency by store
 
-Where the comparison happens differs by store, and it is worth knowing before you pick one. There are two arrangements. Either the store compares the version and writes as one indivisible step, or it holds a lock in memory while it reads, compares and writes. What separates them is how far the guarantee reaches.
+Where the comparison happens differs by store, and it is worth knowing before you pick one. Either the store compares the version and writes as one indivisible step, or it holds a lock in memory while it reads, compares and writes. What separates them is how far the guarantee reaches.
 
 | Store | Scope state | Resource state | Guarantee covers |
 |---|---|---|---|
@@ -90,7 +90,7 @@ Deleting a resource on any store leaves a small marker row behind instead of rem
 
 Markers are reclaimed at exactly one moment: when a session record is **created** under a session id, the runtime clears that id's markers immediately before it writes the record. Reusing a session id therefore gives you writable resources again, rather than a session whose static resources are permanently refused. Nothing happens at delete time — while a session is merely gone, its markers are still doing their job.
 
-Two things to know about that reclamation. A reclaimed key's version restarts at `1`, so the pre-delete guarantee above does not carry across a reused id: a worker still holding a version from the old session can match a row in the new one. And the reclamation is not fenced against a second creator racing it for the same id — the loser of that race can clear a marker inside the session that won, which lets the next ordinary write bring a deleted resource back. Both need a per-session generation to close, and neither is reachable without deliberately reusing a session id.
+A reclaimed key's version restarts at `1`, so the pre-delete guarantee above does not carry across a reused id: a worker still holding a version from the old session can match a row in the new one. And the reclamation is not fenced against a second creator racing it for the same id — the loser of that race can clear a marker inside the session that won, which lets the next ordinary write bring a deleted resource back. Neither is reachable without deliberately reusing a session id.
 
 ## What gets persisted
 

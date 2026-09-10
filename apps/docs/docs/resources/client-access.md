@@ -56,28 +56,11 @@ For collections, two additional permissions control mutations:
 
 #### Grant `update` alongside `create`
 
-Creating an item is two writes: the item's state, then its content. The server
-commits the state first, so the client that wins the race for a topic owns it,
-and a client that loses is turned away before it writes any content. That
-ordering is what stops two simultaneous creates from leaving one client's state
-paired with the other's body.
-
-The tradeoff sits at the other end. If the state write succeeds and the content
-write then fails, the item exists with **no content row at all** — reading its
-content gives you `null`, not an empty string. It still appears in listings, so
-nothing is lost quietly, and a `PATCH` to the item's content endpoint fills it
-in. That repair needs `update`.
-
-(If the collection declares `contentTemplate` or `contentTemplateRef`, the
-*repair* part doesn't apply — content is rendered from the item's state, so the
-item reads fine and there's nothing to fill in. The failure itself still
-happens: if you sent `content`, the server still tried to store it, so the
-request still fails and the item still exists.)
-
-A collection granting `create` on its own therefore has a gap: an authorized
-client can end up holding an item it can neither fill nor remove, because
-`PATCH` and `DELETE` are both refused. If your clients create items, grant
-`update` too:
+Creating an item is two writes, state then content, and the second one can fail
+on its own — leaving an item that exists with no content row. Repairing that
+means a `PATCH` to the item's content endpoint, which needs `update`. A
+collection granting `create` by itself has a gap: an authorized client can end
+up holding an item it can neither fill nor remove.
 
 ```ts
 client: {
@@ -86,7 +69,9 @@ client: {
 ```
 
 Adding `delete` gives them a second way out. Collections that are read-only, or
-that only your blocks write, are unaffected.
+that only your blocks write, are unaffected. [A create isn't final the moment it
+returns](#a-create-isnt-final-the-moment-it-returns) has the full sequence and
+the two other things that can go wrong in that window.
 
 ## Choosing the projection shape
 
@@ -275,7 +260,7 @@ function Artifact({ session, topic }) {
 
 The derived type follows how the projection was declared: `expose` gives a `Pick` of the state, `exclude` an `Omit`, the identity default the full state, and `data` the function's return type. Because the type comes from the definition, changing the projection turns a stale read into a compile error instead of a silent mismatch.
 
-This is a type-level convenience — the runtime payload is the same `JsonValue` the server has always sent. The hook applies the projection-backed cast at its boundary so call sites don't. Hooks default the parameter to `unknown`, so existing untyped call sites are unaffected.
+The typing is a compile-time convenience. The runtime payload is the same `JsonValue` the server sends either way — the hook applies the projection-backed cast at its boundary so call sites don't. The type parameter defaults to `unknown`, so an untyped call site keeps working.
 
 For the `data` escape hatch, annotate the function's return so the type is captured precisely (the projection function's `state` argument is loosely typed, so the return annotation is what threads the shape):
 
@@ -423,14 +408,34 @@ Under the hood, these hooks and clients talk to these endpoints:
 | `DELETE` | `/sessions/:id/resources/:ref/:topic` | Delete collection item |
 | `GET` | `/sessions/:id/resources/:ref/:topic` | Fetch collection item state |
 
-All paths are relative to `/api/flows`. Permissions are enforced server-side based on the resource's `client.content` config. Requests for resources without `client` config return 404.
+All paths are relative to `/api/flows`. Permissions are enforced server-side based on the resource's `client.content` config. Requests for resources without `client` config return 404. The two write endpoints refuse in their own ways: `POST` can answer `400` or `409`, and `DELETE` can answer `409` — see [what the write endpoints refuse](#what-the-write-endpoints-refuse).
 
 `:topic` is a multi-segment wildcard. Collections whose pattern allows nested keys (e.g. `memos/**` with topics like `p1/fundamentals`) work without special encoding — the client encodes slashes as `%2F` and the server decodes them back into the captured topic. The only restriction: a topic literally named `"content"` is shadowed by the `/:ref/content` route and isn't addressable via the state-get endpoint.
 
-### `POST` and `DELETE` can return 409
+### What the write endpoints refuse {#what-the-write-endpoints-refuse}
 
 Both write endpoints settle the item's state before they change anything else,
 so either can come back `409 Conflict`.
+
+#### `POST` returns 400 for a state schema it can't seed
+
+The create route carries no initial state, so the new item's state is seeded
+from the collection's `stateSchema` parsed against `{}`. A schema that can't
+produce a valid, settled object from `{}` is refused with `400`, naming the
+field. A required field with no `.default()` is the usual cause; give it one.
+
+```ts
+stateSchema: z.object({
+  title: z.string(),                    // 400 — nothing to seed it with
+  status: z.string().default("draft"),  // fine
+})
+```
+
+The same bar applies to `collection.create()` in flow code, and to every other
+resource state write. [The schema has to
+settle](/docs/state/mutation-model#the-schema-has-to-settle) is the full rule.
+
+#### 409 on a topic that already exists, or an item that moved
 
 `POST` returns 409 when the topic already exists. On SQLite and Postgres that
 covers the case where two clients create the same topic at once: one gets
@@ -466,11 +471,14 @@ it usually means something else touched the item mid-request. Deleting a topic
 that does not exist is still a `200`, so retrying a delete you already
 completed is safe.
 
-### A create isn't final the moment it returns
+### A create isn't final the moment it returns {#a-create-isnt-final-the-moment-it-returns}
 
 Item state and item content are stored separately, and `POST` writes them in
-that order. So there is a brief window where the item is already visible but
-its body hasn't landed yet. Three things follow.
+that order. Committing state first is what stops two simultaneous creates from
+pairing one client's state with the other's body: the client that wins the
+topic owns it, and the one that loses is turned away before it writes any
+content. The cost is a brief window where the item is already visible but its
+body hasn't landed yet.
 
 **A failed `POST` doesn't mean nothing was created.** If the content write
 fails, the request comes back as an error — but the state row committed before
@@ -488,8 +496,8 @@ from the content row, so the item reads fine and there's nothing to fill in. The
 server still attempts the content write when you send `content`, so the request
 still fails and the item still exists — treat the failed create the same way.
 
-The other two are worth knowing precisely because they *don't* show up as an
-error — nothing fails, and a wrong body is simply what you read back:
+Other things can happen in that window without showing up as an error.
+Nothing fails; a wrong body is simply what you read back.
 
 - If a `DELETE` lands in that window, the create's body can be left behind
   after the item is gone. A later create of the same topic **that sends no
@@ -497,11 +505,11 @@ error — nothing fails, and a wrong body is simply what you read back:
 - If a `PATCH` lands in that window, it returns `200` and is then overwritten
   by the create that was still finishing.
 
-Two practical habits cover all three: **send `content` with every `POST`** so a
-new item never inherits an old body, and treat a create as settled only once
-you've read the item back. If a create and a delete of the same topic can
-overlap in your app, serialize them client-side — the server can't order writes
-across two stores for you.
+Two habits cover all of it: **send `content` with every `POST`** so a new item
+never inherits an old body, and treat a create as settled only once you've read
+the item back. If a create and a delete of the same topic can overlap in your
+app, serialize them client-side — the server can't order writes across two
+stores for you.
 
 ## Live updates
 

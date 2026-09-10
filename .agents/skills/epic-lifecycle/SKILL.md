@@ -49,6 +49,12 @@ ends the turn:
   issue by **one bounded step** (via `issue-lifecycle`) in its own context and returns
   **≤ a couple of lines** of status, then exits. Token cost at the coordinator level is a
   small table across wakes, regardless of how much work the issues involve.
+- **Blind by design — so check, don't infer.** **A worker is finished when its completion
+  arrives — its task notification, or the status line it returns. Never re-dispatch on less.**
+  Not silence, not an unanswered message, and not a worktree or `origin` probe: a worker that
+  has not committed yet looks exactly like a dead one. **And never turn a reviewer's
+  restructuring ask into an instruction before the number behind it exists** (BP-003) —
+  measuring costs one call, building it twice costs a run.
 - **Event-driven, like the single-issue loop.** The coordinator is the event loop. It ends
   its turn while issues are idle and re-enters on PR events, a workflow completion, or a
   scheduled check-in; on re-entry it refreshes each row from Linear + PR state (cheap

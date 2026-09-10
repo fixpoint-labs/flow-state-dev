@@ -152,6 +152,7 @@ import {
   type TaskSeat,
   type TaskSeatRegistry,
 } from "./hand-off";
+import { boardExitsConnector } from "./exits-connector";
 import { createTaskGate } from "./task-entry";
 import { createHandOff } from "./blocks/hand-off";
 
@@ -1183,11 +1184,24 @@ export function taskBoard<
     // `test/task-board/task-board-park-exit-drain.test.ts` assert the reported
     // reason, so a rewiring fails there rather than silently.
     //
-    // Known fragility, deliberately not designed away here: this is ordering
-    // discipline, not a typed contract. Nothing stops a future step being
-    // inserted between the `forEach` and this tap, and the failure would be
-    // silent at the type level — caught only by those tests.
-    .tap(boardMetaCompleted)
+    // `boardExitsConnector` (FIX-1238) states that requirement to the compiler
+    // instead of leaving it to this comment. It is the identity function and
+    // changes nothing at run time. The guard is PARTIAL, and the line runs
+    // through whether the inserted step's output type is still something
+    // concrete by the time it reaches here: an insert carrying a real output
+    // type is a compile error at this line; an insert whose output type is
+    // already `any` is not. Declaring an output is NOT by itself enough to be
+    // caught. Three ways to land on the `any` side, all measured: a handler with
+    // no `outputSchema` (`boardMetaCompleted` is one), a handler that declares
+    // `outputSchema: z.any()`, and a composite exposed as
+    // `SequencerDefinition<any, any>` — however concrete its own inner steps
+    // are. In each case `any` absorbs the flowing type and leaves the connector
+    // nothing to check. Closing that half needs core's `forEach`-over-sequencer
+    // generics fixed (element type erases to `any[]`), which is out of scope
+    // here. So: the compiler catches an insert that carries a concrete output,
+    // the drain tests catch the unconditional one, and an `any`-typed insert on
+    // a board configuration those tests do not exercise is still silent.
+    .tap(boardExitsConnector, boardMetaCompleted)
     // FIX-610: teardown on the success path. The `.rescue` below also
     // runs teardown on errors so cleanup is symmetric — leaving stale
     // run-state across re-entries inside the same request would
