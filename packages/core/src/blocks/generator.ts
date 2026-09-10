@@ -8,6 +8,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { getZodTypeName } from "../helpers/zod-introspect";
 import { walkBlockGraph } from "../helpers/block-graph";
 import { assertStrictCompatible } from "../models/makeSchemaStrict";
+import { isTextOutputSchema } from "../models/output-root";
 import type {
   BlockConfig,
   BlockContext,
@@ -1086,9 +1087,6 @@ async function attemptCoercionRepair(
   }
 }
 
-function isTextOutputSchema(schema: ZodTypeAny): boolean {
-  return getZodTypeName(schema) === "ZodString";
-}
 
 function resolveGenerationCandidate(result: GeneratorModelResult): unknown {
   if (result.structuredOutput !== undefined) {

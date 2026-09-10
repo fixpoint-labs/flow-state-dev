@@ -23,6 +23,12 @@ export * from "./skills";
 // under `./shared` rather than `./skills` because neither layer owns it.
 export { resolveCatalogTools } from "./shared/resolve-catalog-tools";
 
+// The frontmatter dialect the hand-written convention files share.
+// `SKILL.md` and `WORKER.md` must accept the same frontmatter, and neither
+// owns it, so it sits beside the other cross-cutting helper rather than
+// under `./skills`.
+export { splitFrontmatter, parseFrontmatterYaml } from "./shared/frontmatter";
+
 // The lease-renewal async-context seam. Deliberately NOT on the `./tasks`
 // subpath: it needs `node:async_hooks`, and that subpath is published
 // browser-safe (`docs/architecture/items.md`). This entry already reaches

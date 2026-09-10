@@ -132,8 +132,7 @@ lever for "when is the board's state still around":
 
 The default is `request`, and that's usually right — a block outside the drain
 (or a later drain in a replan loop) can see the same tasks. Opt into `sequencer`
-only when you want each `board.drain` call to get its own isolated collection —
-note that omitting `backing` no longer gives you that; you have to ask for it.
+only when you want each `board.drain` call to get its own isolated collection.
 Reach for `resource` when the tasks themselves are the durable thing.
 
 **Multiple boards, one request.** Nothing stops you running several boards in
@@ -169,7 +168,9 @@ The board registers the collection on both its drain and `board.capability`, so 
 sibling action that lists `board.capability` in `uses` reads and writes the same
 durable tasks — including while the board is mid-drain, covered in
 [Handles inside one request share a task set](#handles-inside-one-request-share-a-task-set)
-below. Two things to keep in mind:
+below.
+
+About the collection itself:
 
 - **The scope lives on the collection, not the board.** `session` / `user` / `org`
   is set once on `defineTaskCollection`; the board just points at it.
@@ -179,7 +180,7 @@ below. Two things to keep in mind:
   Honor the [advisory write guards](/docs/orchestration/task-substrate#recording-a-result-that-may-no-longer-apply)
   in the ref you hand back. A board whose store ignores them still drains — it
   contains the write-back that would otherwise have thrown — but that task's
-  result is no longer protected from a worker that has moved on.
+  result is not protected from a worker that has moved on.
 
 So request A can `addTask` into it, the request ends, and request B — a
 different call, even a different session turn — can still see those tasks (same
@@ -187,9 +188,9 @@ different call, even a different session turn — can still see those tasks (sam
 
 What that does **not** give you is background processing. The tasks persisting
 does not mean anything is draining them. There is no worker sitting behind the
-collection pulling tasks off it. Processing still only happens the way it always
-does: when some request mounts a board over that collection and runs
-`board.drain`. So the shape of a durable board is:
+collection pulling tasks off it. Processing happens only when some request
+mounts a board over that collection and runs `board.drain`. So the shape of a
+durable board is:
 
 - Request A adds tasks to the resource-backed collection (maybe it drains them,
   maybe it just enqueues and returns).
