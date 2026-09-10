@@ -181,6 +181,12 @@ function declarationsOf(text: string): { front: Map<string, string>; body: strin
  * and not the other would quietly weaken whichever path is not running. Values
  * are compared whole: a substring check would let "openai/gpt-5.4-mini" pass
  * for "openai/gpt-5.4".
+ *
+ * **Temporary, and delete it here rather than move it.** This exists only while
+ * the fixture tree goes unread. Once `readWorkforceDirectory` lands, the run
+ * takes the loader path, the tree becomes the roster the assertions grade, and
+ * a drift between the two sources fails on its own — so this check, and the
+ * `declarationsOf` parse under it, go with it.
  */
 function declares(tree: string, id: string, expected: Record<string, string>, body: string): string[] {
   const path = workerFile(tree, id);
