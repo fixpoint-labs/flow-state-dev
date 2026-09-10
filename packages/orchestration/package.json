@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/orchestration",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Orchestration substrate for flow-state-dev: task collections, dispatchers, the task-board primitive, and the skills runtime.",
   "keywords": [
     "ai",

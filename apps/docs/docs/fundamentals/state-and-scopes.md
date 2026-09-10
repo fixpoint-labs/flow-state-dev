@@ -21,6 +21,8 @@ State is organized into four hierarchical scopes:
 
 Most of your state lives at the session level. The other three matter, but they show up after you've shipped your first conversation. Start with session.
 
+Not everything on the context is state. Read-only instance config arrives separately as `ctx.settings` — see [Engine setup → Settings](/docs/server/setup#settings).
+
 ## Session: the primary scope
 
 A session is one conversation. When a client sends a request to a flow with a `sessionId`, the framework loads that session's state, runs the action, and persists any changes. The next request with the same `sessionId` picks up where the last one left off.
@@ -64,7 +66,7 @@ await ctx.session.setStateRecord("byId", "doc-1", {
 await ctx.session.deleteStateRecord("byId", "doc-1");
 ```
 
-Each one writes a single key rather than the whole map, so two runs updating different keys don't overwrite each other. Two runs updating the *same* key do — the second write replaces the first, and both calls report success. [State Operations](/docs/fundamentals/state-operations#cas-semantics) has the rule per call, including the cases where `deleteStateRecord` reports that it did nothing.
+Each one writes a single key rather than the whole map, so two runs updating different keys don't overwrite each other. Two runs updating the *same* key do — the second write replaces the first, and both calls report success. [Concurrent writes](/docs/fundamentals/state-operations#cas-semantics) has the rule per call, including the cases where `deleteStateRecord` reports that it did nothing.
 
 ## Schema bubbling
 
@@ -278,7 +280,7 @@ What stays shared, on purpose: **user** and **org** scopes. Org-level policy and
 
 You read the tenant in a block the same way as any identity field: `ctx.session.identity.tenantId`. The session id you get back (`ctx.session.identity.id`, API responses) is always the bare id you sent — the tenant prefix is an internal storage detail.
 
-Single-tenant apps do nothing and change nothing: when no header is sent, keys are identical to before and there's no migration.
+Apps that never send the header do nothing: with no tenant id, a session keys on its own id alone. [Persistence](/docs/persistence/overview#tenant-isolation) covers the storage side, including what a persistent adapter does to an existing database.
 
 ## Why four scopes?
 

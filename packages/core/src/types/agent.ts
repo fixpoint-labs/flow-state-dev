@@ -81,7 +81,8 @@ export interface Agent {
    *  key resolved against the materialize-time `capabilityCatalog`, OR a
    *  capability reference used as-is — including `someCapability.presets({ ... })`,
    *  which keeps full preset typing (mirrors how `generator({ uses })` consumes
-   *  capabilities today). */
+   *  capabilities today). A string key declared with NO catalog to resolve it
+   *  against is refused at materialization rather than dropped. */
   usesCapabilities?: Array<string | DefinedCapability>;
   /** RESERVED — not resolved by FIX-702. */
   usesSkills?: string[];

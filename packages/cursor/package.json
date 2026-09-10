@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/cursor",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Cursor integration for flow-state-dev: run Cursor's coding agent as a block through the Cursor SDK.",
   "keywords": [
     "ai",

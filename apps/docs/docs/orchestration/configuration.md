@@ -100,7 +100,7 @@ Narrative: [GoalSeekLoop](./goal-seek-loop).
 | `itemVisibility` | `{ client, history }` | `{ client: true, history: false }` | Which items reach the client and history. |
 | `outputSchema` | Zod schema | free text (`z.string()`) | Structured output. Honored only for the standalone shape. Workers always emit text. |
 | `allowedTools` | `string[]` | omitted | Tool-catalog keys this agent may reference. |
-| `usesCapabilities` | capability refs or catalog keys | omitted | Capabilities composed via `uses`, including `.presets({ ... })`. |
+| `usesCapabilities` | capability refs or catalog keys | omitted | Capabilities composed via `uses`, including `.presets({ ... })`. A catalog key declared with no catalog supplied fails materialization rather than being dropped. |
 | `usesSkills` | `string[]` | omitted | Reserved. Accepted and ignored. |
 | `contextMode` | `"inline"` \| `"fork"` | omitted | Default activation when dispatched standalone. Only `"inline"` is honored. |
 

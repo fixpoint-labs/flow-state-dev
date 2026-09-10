@@ -10,7 +10,7 @@
  * shared predicate cannot live in either without a cycle.
  */
 import type { ZodError, ZodTypeAny } from "zod";
-import { deepEqual } from "./deep-equal";
+import { deepEqual, isPlainObject } from "./deep-equal";
 
 /** One block's declared requirement on the flow's config bag. */
 export type FlowConfigRequirement = {
@@ -66,17 +66,62 @@ export function findFlowConfigMismatch(
       return { kind: "contributes", requirement, keys: ["<the whole bag>"] };
     }
     // The requirement schema is not closed, so its output is normally a subset
-    // of the bag. A key whose parsed value differs from the bag's — including
-    // one the bag does not have at all — is the schema contributing rather
-    // than reading.
-    const contributed = Object.keys(parsed).filter(
-      (key) => !Object.hasOwn(bag, key) || !deepEqual(parsed[key], bag[key])
-    );
+    // of the bag — at every level. A path the parse HOLDS that the bag does not
+    // is the schema contributing rather than reading.
+    const contributed = contributedPaths(parsed, bag, "");
     if (contributed.length > 0) {
       return { kind: "contributes", requirement, keys: contributed };
     }
   }
   return undefined;
+}
+
+/**
+ * Every path where the parsed output holds something the bag does not.
+ *
+ * The subtlety this exists for: **Zod strips unknown keys at every level, not
+ * just the top.** A requirement naming one setting inside a nested object
+ * parses to a nested object SMALLER than the bag's, and comparing those two
+ * objects whole reads that narrowing as a contribution — refusing a block that
+ * is doing exactly what `flowConfigSchema` is for. So the comparison descends
+ * instead: through plain objects, and element-wise through same-length arrays
+ * (Zod strips inside `z.array(z.object(...))` too).
+ *
+ * What it still catches, at any depth, is the failure the rule is about: a key
+ * the bag does not have, or a different value at a key it does. A `.default()`
+ * three levels down is refused exactly like one at the top.
+ *
+ * **The accepted gap: a nested transform that REMOVES a key is not refused.**
+ * Descending means a key the bag holds and the parse does not is read as the
+ * requirement declaring narrowly, and a `.transform()` that drops a key is
+ * indistinguishable from that by output alone — telling them apart needs the
+ * schema, which is the schema-to-schema comparison this design rejected. It is
+ * the safe direction of the two: such a block's type UNDERSTATES the bag, so it
+ * reads a real value through a narrower type, where a `.default()` would read
+ * `undefined` through a type promising otherwise. A transform at the TOP level
+ * is still refused, by the non-object check above.
+ */
+function contributedPaths(parsed: unknown, held: unknown, at: string): string[] {
+  if (isPlainObject(parsed) && isPlainObject(held)) {
+    const paths: string[] = [];
+    for (const key of Object.keys(parsed)) {
+      const path = at === "" ? key : `${at}.${key}`;
+      if (!Object.hasOwn(held, key)) {
+        paths.push(path);
+        continue;
+      }
+      paths.push(...contributedPaths(parsed[key], held[key], path));
+    }
+    return paths;
+  }
+  if (Array.isArray(parsed) && Array.isArray(held) && parsed.length === held.length) {
+    const paths: string[] = [];
+    for (let i = 0; i < parsed.length; i++) {
+      paths.push(...contributedPaths(parsed[i], held[i], `${at}[${i}]`));
+    }
+    return paths;
+  }
+  return deepEqual(parsed, held) ? [] : [at];
 }
 
 /** Render a Zod failure so the offending key is in the message, not just a path. */

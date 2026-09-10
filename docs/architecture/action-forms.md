@@ -153,7 +153,7 @@ its input, puts it through a factory-only seam (`DISPATCH_SEAM`, attached to
 the block context by `createExecutionContext`, never a named member of
 `BlockContext`), and returns `{ sessionId, requestId, adopted }`. Its address
 (`type`, `action`) is fixed on the block, so `defineFlow` walks the flow graph
-(`walkFlowGraph`, including a `forEach` factory's declared `blocks`) and
+(`walkBlockGraph`, including a `forEach` factory's declared `blocks`) and
 refuses a dispatcher whose action the flow does not declare. A `task`
 dispatcher is a seat on a task board; the board binds its id and claim gate
 onto it, and `defineFlow` puts the addressed entry behind that gate.
