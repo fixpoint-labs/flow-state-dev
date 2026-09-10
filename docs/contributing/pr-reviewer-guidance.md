@@ -69,6 +69,14 @@ worth building, so blocks 1–3 state the problem in observable behaviour and pr
 decision in consequences — customers, promises, timing, reversibility. The full contract is
 [`asking-for-decisions.md`](asking-for-decisions.md); §3 below applies it.
 
+**Don't restate state a reader can query.** CI status, draft state, approval holds, test
+counts — all of it moves after the body is written and nothing fails when it does, so point
+at it instead and keep the pointer de-pinned: *the current head*, not a SHA a reviewer has
+to work out has been superseded. The distinction is durable fact versus live claim — *the
+review was pinned to `abc1234`* stays true forever, *`abc1234` is green* was true once.
+Where a claim about now must be in the body, it needs a guard that fails when it stops
+holding.
+
 **The contract moved below the fold; it did not go away.** It is the one lever we have on
 reviewers we can't instruct, and it measurably raises what comes back. But it says the
 same thing on every PR of its kind, which is exactly what a `<details>` is for.
