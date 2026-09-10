@@ -146,17 +146,7 @@ export function hireWorkforce(
 
     const kind = manifest.declared.flow;
     if (typeof kind !== "string" || kind.trim().length === 0) {
-      // Two messages, because the fix differs. Both folders need a `flow:`,
-      // but one of them looks to its author like it already said something —
-      // it holds a `worker.ts` — so the message names that file and says why
-      // it is not enough. The generic message would leave them re-reading a
-      // folder that appears to declare a worker already.
-      refuse(
-        manifest.codePath !== undefined
-          ? "needs a `flow:` in its `WORKER.md`: a `worker.ts` names no flow kind, so there is " +
-              "nothing to hire this seat into"
-          : "declares no `flow:`, so there is no flow kind to hire it into"
-      );
+      refuse("declares no `flow:`, so there is no flow kind to hire it into");
       continue;
     }
 

@@ -32,9 +32,6 @@ const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
 /** The document that describes a worker. */
 const WORKER_MD = "WORKER.md";
 
-/** The second door: custom code for a seat whose shape a document can't express. */
-const WORKER_TS = "worker.ts";
-
 /**
  * Pattern a team or worker folder name must match: lowercase `a-z`/`0-9` runs
  * joined by single hyphens. These are the skill-name rules, adopted rather than
@@ -145,7 +142,7 @@ export async function readWorkforceDirectory(
         if (slot.kind === "unreadable") {
           throw unreadable("Worker folder", workerName, slot.error);
         }
-        workers.push(await readWorkerSlot(root, teamId, workerName, workerDir));
+        workers.push(await readWorkerSlot(teamId, workerName, workerDir));
       } catch (err) {
         errors.push({ path: `${workersPath}/${workerName}`, error: err as Error });
       }
@@ -200,56 +197,34 @@ function refusedSymlink(what: string, name: string): Error {
  * one; the caller turns that into an `errors` entry keyed by the slot's path.
  */
 async function readWorkerSlot(
-  root: string,
   teamId: string,
   workerName: string,
   workerDir: string,
 ): Promise<WorkerManifest> {
   // Identity first: a slot whose segments break the rules has no id to be
-  // reported under, so there is nothing to be gained by reading its files.
+  // reported under, so there is nothing to be gained by reading its file.
   const id = mintWorkerId(teamId, workerName);
 
   const md = await classify(path.join(workerDir, WORKER_MD));
-  const ts = await classify(path.join(workerDir, WORKER_TS));
 
-  if (md.kind === "symlink" || ts.kind === "symlink") {
-    const which = md.kind === "symlink" ? WORKER_MD : WORKER_TS;
-    throw refusedSymlink(which, `${workerName}/${which}`);
+  if (md.kind === "symlink") {
+    throw refusedSymlink(WORKER_MD, `${workerName}/${WORKER_MD}`);
   }
 
   // A file that is there and unreadable is not a file that is missing: falling
-  // through would read this slot as a `worker.ts`-only seat, or as empty.
-  if (md.kind === "unreadable" || ts.kind === "unreadable") {
-    const which = md.kind === "unreadable" ? WORKER_MD : WORKER_TS;
-    const cause = md.kind === "unreadable" ? md.error : ts.error;
-    throw unreadable(which, `${workerName}/${which}`, cause);
+  // through would read this slot as empty rather than as broken.
+  if (md.kind === "unreadable") {
+    throw unreadable(WORKER_MD, `${workerName}/${WORKER_MD}`, md.error);
   }
 
-  // Recorded, never imported. Joined onto the root the caller passed rather
-  // than absolutised, so the path stays in the caller's own frame of reference.
-  const codePath =
-    ts.kind === "file"
-      ? path.join(root, "teams", teamId, "workers", workerName, WORKER_TS)
-      : undefined;
-
   if (md.kind !== "file") {
-    if (codePath === undefined) {
-      throw new Error(
-        `Worker folder "${workerName}" has neither a ${WORKER_MD} nor a ${WORKER_TS}`,
-      );
-    }
-    // The second door: a seat whose shape is code. Valid to this loader — it
-    // declares nothing and instructs nothing, and what a consumer does with a
-    // record that names no flow kind is that consumer's rule, not this one's.
-    return { id, declared: {}, body: "", codePath };
+    throw new Error(`Worker folder "${workerName}" has no ${WORKER_MD}`);
   }
 
   const text = await fs.readFile(path.join(workerDir, WORKER_MD), "utf8");
   const { declared, body } = parseWorkerMd(text, workerName);
 
-  return codePath === undefined
-    ? { id, declared, body }
-    : { id, declared, body, codePath };
+  return { id, declared, body };
 }
 
 /**

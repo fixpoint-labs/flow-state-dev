@@ -127,7 +127,6 @@ Each record is plain data:
 | `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. |
 | `declared` | The frontmatter exactly as written. Keys are not checked against a list. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
-| `codePath` | Set when the folder holds a `worker.ts`. Recorded, never imported. Put a `worker.ts` beside a `WORKER.md`: a folder holding only a `worker.ts` reads into a record that declares no flow kind, and `hireWorkforce` refuses it. |
 
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
 lowercase letters, digits and single hyphens, at most 64 characters.
@@ -186,7 +185,7 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
 | `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker. Ships from the `./loader` subpath (Node only). |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
-| `WorkerManifest` | One worker record: `{ id, declared, body, codePath? }`. |
+| `WorkerManifest` | One worker record: `{ id, declared, body }`. |
 
 ## Error Semantics
 

@@ -1,12 +1,10 @@
 {
-  "note": "Held out from the implementation: nothing in the loader knows these ids, tokens, settings or paths. Swap the tree and this file together for another valid pair and a correct loader still passes.",
+  "note": "Held out from the implementation: nothing in the loader knows these ids, tokens or settings. Swap the tree and this file together for another valid pair and a correct loader still passes.",
   "root": "workforce",
   "expect": [
     {
       "id": "engineering.lead",
       "marker": "TIDEPOOL-4417",
-      "codePath": null,
-      "codeMarker": null,
       "declared": {
         "description": "Holds the engineering board and breaks work into tasks.",
         "flow": "worker-agent",
@@ -17,8 +15,6 @@
     {
       "id": "marketing.lead",
       "marker": "SANDPIPER-9023",
-      "codePath": "teams/marketing/workers/lead/worker.ts",
-      "codeMarker": "ALBATROSS-3312",
       "declared": {
         "description": "Owns the launch calendar and the words that go out with it.",
         "flow": "worker-agent",
@@ -29,19 +25,10 @@
     {
       "id": "engineering.intake",
       "marker": null,
-      "codePath": null,
-      "codeMarker": null,
       "declared": {
         "description": "Takes requests off the queue and puts them on the board.",
         "flow": "intake"
       }
-    },
-    {
-      "id": "engineering.router",
-      "marker": null,
-      "codePath": "teams/engineering/workers/router/worker.ts",
-      "codeMarker": "KESTREL-7781",
-      "declared": {}
     }
   ],
   "expectErrorPaths": ["teams/engineering/workers/scribe"],

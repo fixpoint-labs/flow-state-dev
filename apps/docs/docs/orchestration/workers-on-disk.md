@@ -28,10 +28,9 @@ workforce/
       workers/
         intake/
           WORKER.md
-          worker.ts
 ```
 
-Three workers in two teams. Someone who does not write TypeScript can add a fourth, or change what one of them has been told to do, by editing a document. The support desk also carries a `worker.ts`, which is [its own case](#a-folder-that-holds-a-workerts).
+Three workers in two teams. Someone who does not write TypeScript can add a fourth, or change what one of them has been told to do, by editing a document.
 
 Every example below reads this tree.
 
@@ -82,7 +81,6 @@ interface WorkerManifest {
   id: string;                        // "engineering.lead"
   declared: Record<string, unknown>; // the frontmatter, exactly as written
   body: string;                      // the instructions below it, or "" for none
-  codePath?: string;                 // set when the folder also holds a worker.ts
 }
 ```
 
@@ -97,29 +95,11 @@ lead.declared;
 //   model: "openai/gpt-5.4-mini",
 //   tools: ["board", "search"] }
 lead.body;     // "You are the engineering lead. …"
-lead.codePath; // undefined
 ```
 
 Reading the tree starts nothing. No flow is built, nothing is registered, and no model is contacted. Turning records into workers you can talk to is a separate call.
 
 The subpath matters. `@flow-state-dev/workforce/loader` imports `node:fs`, so it only runs on Node. The package root, where `hireWorkforce` lives, stays isomorphic.
-
-### A folder that holds a worker.ts
-
-Some seats need more than a document can express, so a worker folder may also hold a `worker.ts`. The path to that file is recorded on the record as `codePath`. Nothing here imports it.
-
-A `worker.ts` goes **beside** a `WORKER.md`, not instead of one, which is how the support desk's folder is laid out above. A folder holding only a `worker.ts` is read into a record, but that record declares no flow kind, and [`hireWorkforce` refuses a record with no flow kind](#when-a-hire-is-refused). To hire the seat, give the folder a `WORKER.md` naming the kind it runs.
-
-```ts
-const intake = workers.find((worker) => worker.id === "support.intake")!;
-
-intake.declared.flow; // "intake"
-intake.codePath;      // "workforce/teams/support/workers/intake/worker.ts"
-```
-
-That worker hires off its `WORKER.md` like any other, and what your app does with `codePath` is yours to decide.
-
-`codePath` is the root you passed with the worker's path joined onto it, in your platform's separators. It is absolute only when your root was. Either way you can read it from where you called the loader, but resolve it before you `import()` it: a relative root leaves you with `workforce/teams/…`, which Node reads as a package name rather than a path. `path.resolve` or `pathToFileURL` settles that.
 
 ### When a folder is wrong
 
@@ -131,11 +111,11 @@ errors;
 //    error: Error('WORKER.md in "analyst/" must declare a non-empty `description`') }]
 ```
 
-Unlike `codePath`, an `errors[].path` never includes the root and is always slash-separated: it starts at `teams/`. It names the folder that failed so you can go find it. It is not a path you can open.
+An `errors[].path` never includes the root and is always slash-separated: it starts at `teams/`. It names the folder that failed so you can go find it. It is not a path you can open.
 
 What lands in `errors`:
 
-- a worker folder holding neither a `WORKER.md` nor a `worker.ts`;
+- a worker folder with no `WORKER.md`, including one that holds only other files;
 - a `WORKER.md` with no frontmatter, or one whose `description` is missing, empty, or not a string;
 - a team or worker folder name that breaks the naming rules;
 - a symlink where a folder or a worker file belongs, refused rather than read;
@@ -260,7 +240,7 @@ Every problem here is a startup misconfiguration, so every problem throws. They 
 
 A record is refused when it:
 
-- declares no `flow`, so there is no kind to hire it into. A record from a folder holding only a `worker.ts` is refused here too, since a `worker.ts` names no flow kind;
+- declares no `flow`, so there is no kind to hire it into;
 - names a kind that was not passed in `kinds`; the message lists the kinds that were;
 - declares a setting its flow never declared, or omits one its flow requires;
 - carries a body for a flow kind that declares no `persona`;

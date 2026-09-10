@@ -63,12 +63,6 @@ You are the engineering lead. You break the request into tasks.
 /** A healthy worker that must survive every failure spec in the same tree. */
 const HEALTHY = { "teams/engineering/workers/lead/WORKER.md": LEAD_MD };
 
-function byId(workers: Array<{ id: string }>, id: string) {
-  const found = workers.find((w) => w.id === id);
-  if (!found) throw new Error(`no manifest with id "${id}" in [${workers.map((w) => w.id)}]`);
-  return found;
-}
-
 describe("readWorkforceDirectory", () => {
   it("turns a worker folder into a manifest carrying what the file declared", async () => {
     const { workers, errors } = await readWorkforceDirectory(tree(HEALTHY));
@@ -84,7 +78,6 @@ describe("readWorkforceDirectory", () => {
     expect(workers[0]!.body).toBe(
       "You are the engineering lead. You break the request into tasks.\n",
     );
-    expect(workers[0]!.codePath).toBeUndefined();
   });
 
   it("mints a dot-joined, team-qualified identity from the folder", async () => {
@@ -161,36 +154,6 @@ Body.
     expect(Object.keys(declared)).toContain("__proto__");
   });
 
-  it("treats a worker.ts-only folder as a valid seat rather than an error", async () => {
-    const root = tree({
-      ...HEALTHY,
-      "teams/engineering/workers/router/worker.ts": "export default {};\n",
-    });
-    const { workers, errors } = await readWorkforceDirectory(root);
-
-    expect(errors).toEqual([]);
-    const router = byId(workers, "engineering.router");
-    expect(router.declared).toEqual({});
-    expect(router.body).toBe("");
-    expect(router.codePath).toBe(
-      join(root, "teams", "engineering", "workers", "router", "worker.ts"),
-    );
-  });
-
-  it("records worker.ts alongside a WORKER.md when a folder holds both", async () => {
-    const root = tree({
-      "teams/engineering/workers/lead/WORKER.md": LEAD_MD,
-      "teams/engineering/workers/lead/worker.ts": "export default {};\n",
-    });
-    const { workers, errors } = await readWorkforceDirectory(root);
-
-    expect(errors).toEqual([]);
-    expect(workers[0]!.declared["flow"]).toBe("worker-agent");
-    expect(workers[0]!.codePath).toBe(
-      join(root, "teams", "engineering", "workers", "lead", "worker.ts"),
-    );
-  });
-
   it("returns an empty result when the root has no teams/ at all", async () => {
     const { workers, errors } = await readWorkforceDirectory(
       tree({ "README.md": "no workers\n" }),
@@ -207,7 +170,7 @@ Body.
   });
 
   describe("a slot that cannot produce a manifest is reported, and the healthy worker still loads", () => {
-    it("reports a worker folder holding neither file", async () => {
+    it("reports a worker folder with no WORKER.md", async () => {
       const root = tree(HEALTHY);
       dir(root, "teams/engineering/workers/intake");
 
@@ -216,7 +179,22 @@ Body.
       expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
       expect(errors).toHaveLength(1);
       expect(errors[0]!.path).toBe("teams/engineering/workers/intake");
-      expect(errors[0]!.error.message).toMatch(/neither a WORKER\.md nor a worker\.ts/);
+      expect(errors[0]!.error.message).toMatch(/has no WORKER\.md/);
+    });
+
+    it("reports a folder holding only a worker.ts, rather than skipping it", async () => {
+      // A worker folder is a folder with a `WORKER.md` in it. A folder holding
+      // only code occupies a worker slot and produces no manifest, so it is
+      // named — the framework cannot run it, and pretending it loaded is the
+      // silent-short-roster failure in a different coat.
+      const { workers, errors } = await readWorkforceDirectory(
+        tree({ ...HEALTHY, "teams/engineering/workers/router/worker.ts": "export default {};\n" }),
+      );
+
+      expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/engineering/workers/router");
+      expect(errors[0]!.error.message).toMatch(/has no WORKER\.md/);
     });
 
     it("reports a WORKER.md with no frontmatter", async () => {
