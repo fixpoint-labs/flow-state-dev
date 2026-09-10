@@ -58,7 +58,14 @@ const block = agentBlock(analyst, { catalog });
 
 ## Structured Output & Capabilities
 
-By default an agent emits free text (`z.string()`). A **standalone** agent can declare a structured `outputSchema` instead, and the materialized generator emits that typed shape — subject to the same OpenAI-strict requirement as any generator output. Delegation agents (the worker shape) always emit `z.string()`, because the board hands each task's text result back to the skill that planned it.
+By default an agent emits free text (`z.string()`). Declare a structured `outputSchema` and the agent emits that typed shape on **both** shapes — mounted standalone, and delegated to a board as a worker — so one declaration answers what the agent emits however it is run. A delegated result lands on the completed task, where the coordinator reads it.
+
+Two rules bound what may be declared, and both are checked at materialization, which throws a `StrictSchemaError` naming the agent and the offending field path:
+
+- The root must be text (`z.string()`) or an object. Every other root is sent to the provider as a structured-output root, which must be an object.
+- No field may transform on parse (`z.string().transform(...)`). A durable board round-trips the task record through `JSON.stringify`, so a transformed value would read back as something else after a resume.
+
+The declared shape is also subject to the same OpenAI-strict requirement as any generator output.
 
 `usesCapabilities` accepts either a **string key** (resolved against the materialize-time `capabilityCatalog`) or a **capability reference** used as-is — including a `.with({ ... })`-configured capability, which keeps full preset typing (the same way `generator({ uses })` consumes capabilities).
 
@@ -69,7 +76,7 @@ const pm = defineAgent({
   name: "portfolio-manager",
   description: "Sizes the position into a typed decision.",
   persona: { path: "personas/pm" },
-  outputSchema: portfolioDecisionSchema, // standalone only; workers stay string
+  outputSchema: portfolioDecisionSchema, // typed result, standalone or delegated
   usesCapabilities: [
     tradingDesk.with({ valuationSpine: true }),    // typed capability ref
     "someSharedSkill",                             // string key (catalog)
