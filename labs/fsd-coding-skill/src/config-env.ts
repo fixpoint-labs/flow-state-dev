@@ -22,9 +22,9 @@ export interface HostEnvOptions {
 export function readHarness(env: NodeJS.ProcessEnv = process.env): HostHarness {
   const raw = env.FSD_CODING_HARNESS;
   if (raw === undefined || raw === "") return "cursor";
-  if (raw === "codex" || raw === "cursor") return raw;
+  if (raw === "codex" || raw === "cursor" || raw === "claude") return raw;
   throw new Error(
-    `FSD_CODING_HARNESS="${raw}" is invalid; expected codex or cursor`,
+    `FSD_CODING_HARNESS="${raw}" is invalid; expected codex, cursor, or claude`,
   );
 }
 
@@ -57,7 +57,7 @@ export function readModel(env: NodeJS.ProcessEnv = process.env): string | undefi
 }
 
 /**
- * Codex-only sandbox network permission. Cursor cannot honor it.
+ * Codex-only sandbox network permission. Cursor and Claude cannot honor it.
  */
 export function readNetworkAccess(
   harness: HostHarness,
@@ -75,7 +75,7 @@ export function readNetworkAccess(
 
 /**
  * Codex-only extra writable directories (PATH-style, `path.delimiter`).
- * Cursor cannot honor them.
+ * Cursor and Claude cannot honor them.
  */
 export function readAdditionalDirectories(
   harness: HostHarness,

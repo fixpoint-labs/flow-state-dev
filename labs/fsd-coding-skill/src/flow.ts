@@ -5,6 +5,7 @@ import { defineFlow, sequencer, type harnessRunInputSchema } from "@flow-state-d
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockDefinition, HarnessCallbackContext, HarnessRunHandle } from "@flow-state-dev/core/types";
 import type { z } from "zod";
+import { claudeCodeAgent, type ClaudeCodeAgentOptions } from "@flow-state-dev/claude-code/sdk";
 import { codexAgent, type CodexAgentOptions } from "@flow-state-dev/codex";
 import { cursorAgent, type CursorAgentOptions } from "@flow-state-dev/cursor";
 import {
@@ -43,6 +44,13 @@ export interface FsdCodingHostOptions {
    * after the spread.
    */
   cursor?: CursorAgentOptions;
+  /**
+   * Extra `claudeCodeAgent` options. Tests pass `resolveClaudeAgent`.
+   * Host-owned keys (`cwd` / `resume` / `onSession`) still win after the
+   * spread. The factory always sets `detached: true` so those host feeds
+   * are legal and session state stays `harnessSessions`.
+   */
+  claude?: ClaudeCodeAgentOptions;
 }
 
 function readStateId(
@@ -155,8 +163,24 @@ export function createFsdCodingFlow(options: FsdCodingHostOptions) {
       });
       break;
     }
+    case "claude": {
+      if (options.networkAccess) {
+        throw new Error("FSD_CODING_NETWORK_ACCESS is only supported with FSD_CODING_HARNESS=codex");
+      }
+      if (options.additionalDirectories !== undefined) {
+        throw new Error("FSD_CODING_ADD_DIR is only supported with FSD_CODING_HARNESS=codex");
+      }
+      agent = claudeCodeAgent({
+        ...options.claude,
+        ...resolvers,
+        detached: true,
+        name: "claude-agent",
+        ...(options.model === undefined ? {} : { model: options.model }),
+      });
+      break;
+    }
     default:
-      throw new Error(`invalid harness "${options.harness}"; expected codex or cursor`);
+      throw new Error(`invalid harness "${options.harness}"; expected codex, cursor, or claude`);
   }
 
   const definition = defineFlow({

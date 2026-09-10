@@ -26,12 +26,13 @@ export const sessionStateSchema = z.object({
   harnessSessions: z.object({
     codex: z.string().optional(),
     cursor: z.string().optional(),
+    claude: z.string().optional(),
   }).default({}),
 });
 
 export const FLOW_KIND = "fsd-coding";
 
-export type HostHarness = "codex" | "cursor";
+export type HostHarness = "codex" | "cursor" | "claude";
 
 export const DOORS = ["implement", "fix", "openPr", "fixFsd"] as const;
 export type CodingDoor = (typeof DOORS)[number];

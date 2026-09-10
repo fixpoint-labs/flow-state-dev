@@ -7,6 +7,7 @@ import { INTERNAL_SDK_VERSION_READER as CODEX_GATE, type CodexAgentOptions } fro
 import { TESTED_SDK_VERSION as CURSOR_SDK } from "@flow-state-dev/cursor";
 import { TESTED_SDK_VERSION as CODEX_SDK } from "@flow-state-dev/codex";
 import { createFsdCodingFlow } from "../src/flow";
+import { scriptedClaude } from "./scripted-claude";
 import { scriptedCodex } from "./scripted-codex";
 import { scriptedCursor } from "./scripted-cursor";
 
@@ -22,13 +23,15 @@ describe("provider-safe session continuity", () => {
     const stores = createInMemoryStores();
     const cursor = scriptedCursor();
     const codex = scriptedCodex();
-    for (const harness of ["cursor", "codex", "cursor", "codex"] as const) {
+    const claude = scriptedClaude();
+    for (const harness of ["cursor", "codex", "claude", "cursor", "codex", "claude"] as const) {
       const result = await testFlow({
         flow: createFsdCodingFlow({
           cwd: "/trusted",
           harness,
           cursor: { ...cursorGate, resolveCursorClient: cursor.resolve },
           codex: { ...codexGate, resolveCodexClient: codex.resolve },
+          claude: { resolveClaudeAgent: claude.resolve },
         }),
         action: "implement",
         userId: "u",
@@ -42,6 +45,8 @@ describe("provider-safe session continuity", () => {
     expect(cursor.rec.resumed.map((entry) => entry.id)).toEqual(["agent_1"]);
     expect(codex.rec.started).toHaveLength(1);
     expect(codex.rec.resumed.map((entry) => entry.id)).toEqual(["codex-thread"]);
+    expect(claude.rec.cwd).toEqual(["/trusted", "/trusted"]);
+    expect(claude.rec.resume).toEqual([undefined, "sess_claude"]);
   });
 
   it("does not persist a Codex session when no thread.started event arrives", async () => {

@@ -3,14 +3,14 @@
  *
  * Filesystem `dev` profile — `--session` reuses harness session ids written
  * by `onSession`. No generators; the coding run goes through the host-selected
- * Codex or Cursor adapter, which resolves its own model.
+ * Codex, Cursor, or Claude adapter, which resolves its own model.
  *
  *   cd labs/fsd-coding-skill
  *   FSD_CODING_CWD="$(git rev-parse --show-toplevel)" \
  *     pnpm fsdev run fsd-coding implement -i '{"task":"..."}' --session work-1
  *
  * Host flags (environment, never action input):
- *   FSD_CODING_HARNESS          codex | cursor (omit defaults Cursor)
+ *   FSD_CODING_HARNESS          codex | cursor | claude (omit defaults Cursor)
  *   FSD_CODING_CWD              required checkout the harness works in
  *   FSD_CODING_MODEL            optional adapter model override
  *   FSD_CODING_NETWORK_ACCESS   Codex only (`1` / `true`)

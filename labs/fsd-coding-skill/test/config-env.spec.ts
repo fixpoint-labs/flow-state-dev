@@ -27,14 +27,15 @@ describe("FSD_CODING_HARNESS", () => {
     expect(readHarness({})).toBe("cursor");
   });
 
-  it("accepts codex or cursor", () => {
+  it("accepts codex, cursor, or claude", () => {
     expect(readHarness({ FSD_CODING_HARNESS: "codex" })).toBe("codex");
     expect(readHarness({ FSD_CODING_HARNESS: "cursor" })).toBe("cursor");
+    expect(readHarness({ FSD_CODING_HARNESS: "claude" })).toBe("claude");
   });
 
   it("refuses any other name", () => {
-    expect(() => readHarness({ FSD_CODING_HARNESS: "claude" })).toThrow(
-      /expected codex or cursor/,
+    expect(() => readHarness({ FSD_CODING_HARNESS: "conductor" })).toThrow(
+      /expected codex, cursor, or claude/,
     );
   });
 });
@@ -64,6 +65,18 @@ describe("Codex-only permissions", () => {
 
   it("refuses extra dirs on Cursor", () => {
     expect(() => readAdditionalDirectories("cursor", { FSD_CODING_ADD_DIR: "/git" })).toThrow(
+      /only supported with FSD_CODING_HARNESS=codex/,
+    );
+  });
+
+  it("refuses network access on Claude", () => {
+    expect(() => readNetworkAccess("claude", { FSD_CODING_NETWORK_ACCESS: "1" })).toThrow(
+      /only supported with FSD_CODING_HARNESS=codex/,
+    );
+  });
+
+  it("refuses extra dirs on Claude", () => {
+    expect(() => readAdditionalDirectories("claude", { FSD_CODING_ADD_DIR: "/git" })).toThrow(
       /only supported with FSD_CODING_HARNESS=codex/,
     );
   });

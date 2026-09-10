@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Private lab: one FSD coding flow with four static doors and a host-selected Codex or Cursor harness. Drive it with `fsdev run`.",
+  "description": "Private lab: one FSD coding flow with four static doors and a host-selected Codex, Cursor, or Claude harness. Drive it with `fsdev run`.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root .",
@@ -11,6 +11,7 @@
     "fsdev": "tsx ../../packages/cli/bin/fsdev.ts"
   },
   "dependencies": {
+    "@flow-state-dev/claude-code": "workspace:*",
     "@flow-state-dev/codex": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/cursor": "workspace:*",

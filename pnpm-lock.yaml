@@ -667,6 +667,9 @@ importers:
 
   labs/fsd-coding-skill:
     dependencies:
+      '@flow-state-dev/claude-code':
+        specifier: workspace:*
+        version: link:../../packages/claude-code
       '@flow-state-dev/codex':
         specifier: workspace:*
         version: link:../../packages/codex

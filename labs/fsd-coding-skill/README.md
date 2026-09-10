@@ -1,9 +1,9 @@
 # FSD coding skill
 
 This private lab runs coding tasks through one FSD flow and a host-selected
-Codex or Cursor harness. Drive it with `fsdev run`. There is no private
-runner and no extra session file — `--session` plus the filesystem store is
-the resume path.
+Codex, Cursor, or Claude harness. Drive it with `fsdev run`. There is no
+private runner and no extra session file — `--session` plus the filesystem
+store is the resume path.
 
 **v1 runtime is a local machine or Grok box** where the selected harness is
 already signed in. Cloud agent VMs and nested cloud harnesses are out of
@@ -25,10 +25,14 @@ pnpm fsdev run fsd-coding fix       -i '{"task":"<what is broken>"}' --session w
 pnpm fsdev run fsd-coding openPr    -i '{"task":"<PR title and body ask>"}' --session work-1
 ```
 
-`FSD_CODING_HARNESS` is `codex` or `cursor`. **Omitting it defaults to Cursor.**
-Use the same choice on every door. Codex uses the logged-in account
-(`codex login`); Cursor needs its own working login or API key. Both adapters
-keep their SDK version gates.
+`FSD_CODING_HARNESS` is `codex`, `cursor`, or `claude`. **Omitting it defaults
+to Cursor.** Use the same choice on every door. Codex uses the logged-in
+account (`codex login`); Cursor needs its own working login or API key; Claude
+needs signed-in Claude Code / Anthropic credentials on the host. Codex and
+Cursor keep their SDK version gates. Claude uses `@flow-state-dev/claude-code/sdk`
+(`claudeCodeAgent`) — the in-process harness with an outcome, not the CLI
+fire-and-forget door. The live SDK is an optional peer
+(`@anthropic-ai/claude-agent-sdk`); tests inject `resolveClaudeAgent`.
 
 `FSD_CODING_CWD` is required. It is the checkout the harness works in. There
 is no safe default — this process's directory is the lab, not the repo.
@@ -49,8 +53,8 @@ export FSD_CODING_ADD_DIR="$(git rev-parse --git-dir):$(git rev-parse --git-comm
 `FSD_CODING_NETWORK_ACCESS` maps to Codex `thread.networkAccessEnabled` (needed
 for a sandboxed `git push`). `FSD_CODING_ADD_DIR` is PATH-style extra writable
 roots (`thread.additionalDirectories`), split on `path.delimiter` (`:` on
-Unix / Grok, `;` on Windows). Cursor cannot honor either; the host refuses
-them when the selected harness is Cursor.
+Unix / Grok, `;` on Windows). Cursor and Claude cannot honor either; the
+host refuses them when the selected harness is not Codex.
 
 A door whose harness handle says `outcome: finished` is not done until the
 asked artifact is there — especially `openPr` (an open PR / URL). A finished
