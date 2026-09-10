@@ -106,6 +106,7 @@ Every problem here is a startup misconfiguration, so every problem throws. They 
 
 - a record with no `flow`, so there is no kind to hire it into;
 - a record naming a kind that was not passed to `kinds`, with the kinds that were;
+- a flow passed under a key that is not its own kind, since the seat would otherwise run a different worker's graph;
 - a setting the flow never declared, or a required one the record omits, in the flow's own words;
 - a body handed to a flow kind with no `persona`;
 - two records claiming one id, which is two workers claiming one address;

@@ -13,7 +13,7 @@
  *
  * Run: pnpm tsx goals/workforce-seats/two-seats-run-their-own-configuration/run.mts
  */
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
@@ -57,11 +57,9 @@ stripIntentOverrides();
 const fixture = loadFixture<Fixture>(import.meta.url);
 const { lead, intake } = fixture.roster;
 
-type FlowFactory = HireOptions["kinds"][string];
-
 const kinds: HireOptions["kinds"] = {
-  [WORKER_AGENT_KIND]: workerAgentFlow as unknown as FlowFactory,
-  [INTAKE_KIND]: intakeFlow as unknown as FlowFactory
+  [WORKER_AGENT_KIND]: workerAgentFlow,
+  [INTAKE_KIND]: intakeFlow
 };
 
 // ---------------------------------------------------------------------------
@@ -146,6 +144,66 @@ const handBuiltRosters: Record<string, WorkerManifest[]> = {
   ]
 };
 
+/**
+ * The `WORKER.md` a record's id maps to — which is also the folder convention
+ * under test: "engineering.lead" lives at teams/engineering/workers/lead/.
+ */
+function workerFile(tree: string, id: string): string {
+  const [team, name] = id.split(".");
+  const base = tree === "teams" ? fixtureDir(import.meta.url) : join(fixtureDir(import.meta.url), tree);
+  return join(base, "teams", team ?? "", "workers", name ?? "", "WORKER.md");
+}
+
+/**
+ * What a `WORKER.md` declares: its frontmatter keys, and the body under them.
+ *
+ * Not a loader — it produces no records and nothing under test consumes it.
+ * It exists only to compare the two fixture sources to each other.
+ */
+function declarationsOf(text: string): { front: Map<string, string>; body: string } {
+  const parsed = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(text);
+  if (parsed === null) return { front: new Map(), body: text.trim() };
+  const front = new Map<string, string>();
+  for (const line of (parsed[1] ?? "").split("\n")) {
+    const at = line.indexOf(":");
+    if (at <= 0) continue;
+    front.set(line.slice(0, at).trim(), line.slice(at + 1).trim().replace(/^"(.*)"$/, "$1"));
+  }
+  return { front, body: (parsed[2] ?? "").trim() };
+}
+
+/**
+ * What keeps the two roster sources honest.
+ *
+ * The fixture tree is what the loader path reads; `input.json` is what every
+ * assertion grades against and what the hand-built path builds from. Nothing
+ * would otherwise notice them drifting apart — a model string changed in one
+ * and not the other would quietly weaken whichever path is not running. Values
+ * are compared whole: a substring check would let "openai/gpt-5.4-mini" pass
+ * for "openai/gpt-5.4".
+ */
+function declares(tree: string, id: string, expected: Record<string, string>, body: string): string[] {
+  const path = workerFile(tree, id);
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch {
+    return [`${id}: no WORKER.md at ${path}`];
+  }
+  const seen = declarationsOf(text);
+  const drift = Object.entries(expected)
+    .filter(([key, value]) => seen.front.get(key) !== value)
+    .map(
+      ([key, value]) =>
+        `${id}: its WORKER.md declares ${key}: ${JSON.stringify(seen.front.get(key) ?? null)}, input.json says ` +
+        `${JSON.stringify(value)} — the fixture tree and input.json have drifted`
+    );
+  if (seen.body !== body.trim()) {
+    drift.push(`${id}: its WORKER.md body differs from the one in input.json — the two sources have drifted`);
+  }
+  return drift;
+}
+
 /** One fixture tree's records, from whichever source this run is using. */
 async function roster(tree: string): Promise<WorkerManifest[]> {
   if (loader?.readWorkforceDirectory) {
@@ -213,14 +271,59 @@ await runGoal(async () => {
   const sessions: Record<string, string> = { [lead.id]: "s_lead", [intake.id]: "s_intake" };
 
   const records = await roster("teams");
-  const hire = () => hireWorkforce(records, { kinds });
+  // Hired once. Registering the same copies in each host is the shape an app
+  // has anyway — one hire at boot, whatever is built around it afterwards.
+  const seats = hireWorkforce(records, { kinds });
+
+  // ---- (0) the two roster sources still say the same thing ---------------
+  {
+    const { unknownKind, undeclaredSetting, thinWithBody } = fixture.refusals;
+    failures.push(
+      ...declares(
+        "teams",
+        lead.id,
+        {
+          description: lead.description,
+          flow: lead.flow,
+          model: lead.model,
+          tools: `[${lead.tools.join(", ")}]`
+        },
+        lead.body
+      ),
+      ...declares("teams", intake.id, { description: intake.description, flow: intake.flow, desk: intake.desk }, ""),
+      ...declares(
+        unknownKind.dir,
+        unknownKind.id,
+        { description: unknownKind.description, flow: unknownKind.flow },
+        unknownKind.body
+      ),
+      ...declares(
+        undeclaredSetting.dir,
+        undeclaredSetting.id,
+        {
+          description: undeclaredSetting.description,
+          flow: undeclaredSetting.flow,
+          [undeclaredSetting.key!]: undeclaredSetting.value!
+        },
+        undeclaredSetting.body
+      ),
+      ...declares(
+        thinWithBody.dir,
+        thinWithBody.id,
+        { description: thinWithBody.description, flow: thinWithBody.flow },
+        thinWithBody.body
+      )
+    );
+    evidence.push(
+      "every WORKER.md in the fixture trees declares exactly what input.json says it does, so neither roster source can drift from the other unnoticed"
+    );
+  }
 
   // ---- (a) one call, one copy per record, each answering to its own id ----
   {
     if (records.length !== 2) {
       failures.push(`the roster produced ${records.length} record(s), wanted 2`);
     }
-    const seats = hire();
     const ids = seats.map((s) => s.id);
     if (ids.join(",") !== [intake.id, lead.id].join(",")) {
       failures.push(`hired ${JSON.stringify(ids)}, wanted the two record ids in id order`);
@@ -234,7 +337,7 @@ await runGoal(async () => {
   // ---- (b) each seat runs on its OWN record's settings, read after a restart
   let stores: StoreRegistry = createSQLiteStores({ filename: dbFile }) as unknown as StoreRegistry;
   {
-    const router = host(stores, hire());
+    const router = host(stores, seats);
     for (const id of [lead.id, intake.id]) {
       const res = await act(router, id, sessions[id]!);
       const body = (await res.json()) as { request?: { id: string } };
@@ -248,7 +351,7 @@ await runGoal(async () => {
   (stores as unknown as { close(): void }).close();
   stores = createSQLiteStores({ filename: dbFile }) as unknown as StoreRegistry;
   {
-    const router = host(stores, hire());
+    const router = host(stores, seats);
 
     const seenLead = await ranOn(router, sessions[lead.id]!);
     if (seenLead.status !== 200) failures.push(`${lead.id}: /state returned ${seenLead.status}`);

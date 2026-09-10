@@ -145,7 +145,7 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | `agentBlock(agent, opts?)` | Shorthand for standalone agent block. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
-| `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. |
+| `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body, codePath? }`. |
 
 ## Error Semantics
@@ -158,4 +158,4 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | No materializeAgent | Registry wired but materializer missing |
 | Persona path not found | Execution time — resource must be declared |
 | Persona empty content | Execution time — resource resolved but `readContent()` returned null |
-| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a duplicate id, a setting or body the flow never declared, or `persona` declared twice. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, or `persona` declared twice. Collected: one error names every bad worker |

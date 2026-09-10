@@ -50,12 +50,10 @@ const doorFlow = defineFlow({
   actions: { run: { inputSchema, block: work } }
 });
 
-type FlowFactory = HireOptions["kinds"][string];
-
 const kinds: HireOptions["kinds"] = {
-  "worker-agent": workerAgentFlow as unknown as FlowFactory,
-  intake: intakeFlow as unknown as FlowFactory,
-  door: doorFlow as unknown as FlowFactory
+  "worker-agent": workerAgentFlow,
+  intake: intakeFlow,
+  door: doorFlow
 };
 
 const LEAD_BODY = "You are the engineering lead. You break work into tasks and report back.";
@@ -169,6 +167,22 @@ describe("hireWorkforce", () => {
     const message = refusalOf([record({ id: "engineering.sneak", declared: { flow: "constructor" } })]);
     expect(message).toContain('worker "engineering.sneak"');
     expect(message).toContain('"constructor"');
+  });
+
+  // 6 (the mis-keyed map) — a flow filed under another kind's name would mint
+  // and register fine, and then run the wrong worker's graph.
+  it("refuses a flow passed under a key that is not its own kind", () => {
+    let seats: FlowInstance[] | undefined;
+    let message = "";
+    try {
+      seats = hireWorkforce([lead], { kinds: { ...kinds, "worker-agent": intakeFlow } });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(seats).toBeUndefined();
+    expect(message).toContain('worker "engineering.lead"');
+    expect(message).toContain('"worker-agent"');
+    expect(message).toContain('"intake"');
   });
 
   // 7

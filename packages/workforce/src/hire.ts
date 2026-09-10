@@ -1,22 +1,24 @@
 /**
- * `hireWorkforce` — the seat factory: one worker record becomes one addressable,
- * configured copy of a flow the app already defined.
+ * The seat factory: a worker record becomes one addressable, configured copy of
+ * a flow the app already defined.
  *
- * A pure, synchronous map. It reads no files, opens no connections, registers
- * nothing, and builds no flow graph: the record says WHICH flow kind a worker
- * runs and HOW it is configured, never what it does step by step. The caller
- * registers what comes back, so a workforce read from disk and one written by
- * hand reach the registry by the same door.
- *
- * The factory reads two keys — `flow` and `description`. Everything else the
- * record declared is handed to the flow verbatim, and the flow's own
- * `configSchema` (closed before parsing) decides what is allowed. That is also
- * how a worker's instructions are carried: a non-empty body becomes one
- * setting, `persona`, so a flow that never declared one refuses the body by
- * name at the hire rather than each worker flow having to check for it.
+ * The design fact the rest of this file follows from: the flow's own closed
+ * `configSchema` is the only gatekeeper. This module reads `flow` and
+ * `description` and hands over everything else — a worker's instructions
+ * included, as one setting, `persona`.
  */
 
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type {
+  ActionConfig,
+  DeclaredResourceEntry,
+  FlowInstance,
+  FlowType,
+  OrgConfig,
+  RequestConfig,
+  SessionConfig,
+  UserConfig
+} from "@flow-state-dev/core/types";
+import type { ZodTypeAny } from "zod";
 import type { WorkerManifest } from "./manifest";
 
 /** The two keys the factory itself reads. Everything else is the worker's settings. */
@@ -27,11 +29,43 @@ const PERSONA_KEY = "persona";
 
 export interface HireOptions {
   /**
-   * Flow factories by kind, as the app defined them — what `defineFlow(...)`
-   * returns, called once per worker to mint that worker's copy. A record's
-   * `flow` names one.
+   * The flows the app defined, by kind — `defineFlow(...)` results, passed
+   * directly. A record's `flow` names one, and it is called once per worker to
+   * mint that worker's copy.
    */
-  kinds: Record<string, (options: { id: string; config?: Record<string, unknown> }) => FlowInstance>;
+  kinds: Record<string, AnyFlowType>;
+}
+
+/** A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere. */
+type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
+  Record<string, ActionConfig>,
+  SessionConfig | undefined,
+  RequestConfig | undefined,
+  UserConfig | undefined,
+  OrgConfig | undefined,
+  Record<string, DeclaredResourceEntry>,
+  TConfigSchema
+>;
+
+/**
+ * A flow of either shape: one that declares settings, or one that declares
+ * none. Both halves are needed because a flow's settings schema sits in an
+ * invariant position — `FlowType`'s own defaults pin it to `undefined`, so
+ * bare `FlowType` means "a flow with no settings" rather than "any flow", and
+ * pinning it to `ZodTypeAny` instead excludes the settings-less kind a thin
+ * seat is hired into.
+ */
+type AnyFlowType = FlowOf<ZodTypeAny> | FlowOf<undefined>;
+
+/**
+ * The one unsound spot, and deliberately here rather than at every call site: a
+ * flow's bag type belongs to that one definition, while a roster's settings are
+ * data whose shape is unknown until run time. The flow's `configSchema` checks
+ * it at the mint, per worker, so a type here would only restate a guarantee
+ * made somewhere else.
+ */
+function minter(flow: AnyFlowType): (options: { id: string; config?: Record<string, unknown> }) => FlowInstance {
+  return flow as unknown as (options: { id: string; config?: Record<string, unknown> }) => FlowInstance;
 }
 
 /** The worker's settings bag: what the record declared, minus the reserved keys. */
@@ -124,21 +158,32 @@ export function hireWorkforce(
       continue;
     }
 
+    // A flow filed under someone else's name. Nothing downstream would notice:
+    // the copy mints, registers under this worker's id, and then runs the other
+    // kind's graph whenever its settings happen to validate — a worker doing a
+    // different worker's job, which is the one failure this whole epic refuses.
+    if (factory.kind !== kind) {
+      refuse(
+        `declares flow kind "${kind}", but the flow passed under that key is kind "${String(factory.kind)}" — ` +
+          `this seat would run a different worker's graph. Pass each flow under its own kind.`
+      );
+      continue;
+    }
+
     try {
-      // The settings parse happens inside: the flow's own `configSchema` is
-      // closed before parsing, so an undeclared key refuses by name (`persona`
-      // included), a missing required one refuses, and the bag comes back
-      // frozen. No validation of our own — naming the worker is the whole
-      // contribution. A record that declared nothing passes no bag at all, so
-      // a flow kind that declares no `configSchema` still hires a thin seat.
+      // A record that declared nothing passes no bag at all: `{}` is refused by
+      // a flow kind that declares no `configSchema`, which would make a thin
+      // seat unhireable. For a flow that declares one the two are identical.
       seats.push(
-        factory(
+        minter(factory)(
           Object.keys(settings).length > 0
             ? { id: manifest.id, config: settings }
             : { id: manifest.id }
         )
       );
     } catch (error) {
+      // The flow's own refusal, with the worker's id in front of it. Adding a
+      // check of our own here would be a second gatekeeper.
       refuse(messageOf(error));
     }
   }
