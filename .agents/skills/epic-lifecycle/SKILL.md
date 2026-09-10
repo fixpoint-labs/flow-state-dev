@@ -36,7 +36,7 @@ ends the turn:
 | **EPIC_SETUP** | Resolve the set; discover or create the epic issue; `epic-agent` writes the epic-spec and opens the never-merged epic PR | Epic PR is open → AWAITING_OBJECTIVE |
 | **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold before their first action. Epic-PR review runs on the same two-round budget as a spec PR | An approving human comment or review lands on the epic PR |
 | **RUNNING** | Each sub-issue advances through its own `issue-lifecycle` in its own worktree, in parallel up to the cap. Per-issue spec-approval gates surface as they arrive; epic feedback fans down | Every sub-issue is merged, closed, or dropped |
-| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); **retire the epic's mailbox handle** per [`agent-mailbox`](../agent-mailbox/SKILL.md) → *Retiring a handle* — note it **merges** when it carries decisions, inverting our usual rule, and that retiring nothing leaves a dead inbox reading as live; dispatch `distill-lessons` and `polish-docs` as draft PRs | **Lessons always surfaces a draft PR** — the ledger rows are factual and must land; a clean epic gets a rows-only PR rather than no PR, since its row is the one the trend most needs. Only the *grounding proposal* inside it is skippable. **Docs-polish may be skipped entirely** (no docs touched), and "skipped, and why" is then a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
+| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); **retire the epic's mailbox handle** per [`agent-mailbox`](../agent-mailbox/SKILL.md) → *Retiring a handle* — note it **merges** when it carries decisions, inverting our usual rule, and that retiring nothing leaves a dead inbox reading as live; dispatch `distill-lessons` and `polish-docs` as draft PRs; refresh the explainer one last time if the epic has one | **Lessons always surfaces a draft PR** — the ledger rows are factual and must land; a clean epic gets a rows-only PR rather than no PR, since its row is the one the trend most needs. Only the *grounding proposal* inside it is skippable. **Docs-polish may be skipped entirely** (no docs touched), and "skipped, and why" is then a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
 
 ## How it stays safe and cheap
 
@@ -187,6 +187,22 @@ The epic-specific delta:
    (`lessons: <PR#> [proposal skipped: why]` — lessons **always** has a PR number, since a
    clean epic still lands its rows as a rows-only PR; only the proposal inside it is skippable
    · `docs_polish: <PR#|skipped: why>`, which *can* be skipped outright).
+
+   **`explainer`** lives here too. It has exactly two states, and the path is carried
+   *alongside* the state rather than replacing it: **`explainer: off`**, or
+   **`explainer: on`** — which gains ` · <path>` once the document exists
+   (`explainer: on · spec/_epics/<name>.explainer.md`). Every condition in this skill tests
+   **"is it `off`?"**, never `== on`, precisely so that recording the path can't switch the
+   refreshes off. Overwriting `on` with a bare path is the failure to avoid: the gate and
+   wrap refreshes would stop firing and the document would be frozen as a forecast.
+   The epic's [explainer](../epic-explainer/SKILL.md) is the diagram-first document that
+   shows what the work *does*, for whoever has to sign off on the next gate without reading
+   N specs. It is **opt-in per epic, decided once at setup and then automatic**: ask at
+   [Epic setup](#epic-setup-the-coordination-layer-every-run-has), record the answer, and
+   never re-derive it — a judgment re-made each wake either re-fires or quietly stops.
+   `epic-em` and `epic-pm` default it **on**; a plain `epic-lifecycle` run defaults it off.
+   `epic-wake` has no slot for it and needs none: it gates nothing, so it never blocks a
+   row and never enters the script's cap.
 2. **Run the wake.** Dispatch the **`epic-wake` workflow** with the table from
    `.orchestration/`. It does the refresh, the epic-gate check, the capped worker fan-out, the
    review budgets, the claim dedupe and the verdict routing — see
@@ -622,6 +638,14 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
     handles.
 
   Either way the coordinator holds only handles, never the spec text.
+- **Decide the explainer, once.** Ask whether this epic gets an
+  [explainer](../epic-explainer/SKILL.md) — a four-panel diagram document showing what the
+  work does — and record `explainer: on|off` in the epic record. **Frame it as what they
+  will be reading at each gate**, not as a feature: an epic whose gates they will judge from
+  the specs themselves doesn't need one, and an epic where they won't open a spec does. Under
+  `epic-em` / `epic-pm` it defaults **on** without asking, because that posture is exactly the
+  case where the user isn't in the specs. Decided here and nowhere else — re-deciding it per
+  wake is how it either re-fires forever or silently stops.
 - **Name which project objective this serves.** One line, in the dispatch to `epic-agent`, from
   [`docs/objectives.md`](../../../docs/objectives.md): which objective, and how much of its gap
   this closes. An epic serving none of them is worth surfacing *before* the gate — a product
@@ -637,9 +661,13 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
 
   **Two mechanics are yours, because `epic-wake` has no slot for this.** The script's cap is shared
   by the issue workers, the epic fold and settlements, and it knows nothing about a POC dispatch:
-  1. **It takes the fold's slot — never run it concurrently with a fold or a settlement.** One
-     `epic-agent` worktree at a time on the epic branch, or two dispatches race the same branch.
-     A wake that has a fold to do does the fold; the POC waits for the next one.
+  1. **It takes the fold's slot — never run it concurrently with a fold, a settlement, or an
+     explainer refresh.** One worktree at a time on the epic branch across **every** agent that
+     writes it (`epic-agent` and `explainer-agent` alike), or two dispatches race the same
+     branch and one push is lost. A wake that has a fold to do does the fold; the POC waits for
+     the next one. The explainer always yields to all three, since it gates nothing — which
+     matters most at the objective gate, where a first explainer build and an in-flight
+     end-state POC would otherwise collide.
   2. **Record it in the epic record, or it re-dispatches every wake.** `AWAITING_OBJECTIVE` wakes
      on every bot review and CI event, and the trigger is judgment — so it re-fires unless the
      answer is written down. Write `spec_poc: <path> · showed: <one line>` — or
@@ -737,6 +765,15 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   PR (grounding) and the epic PR (which closes unmerged). Skip only for an epic that touched no
   docs — and record it as `docs_polish: skipped: <why>` in the epic record, same as above, so
   the wrap terminates.
+
+- **Close the explainer's story.** Unless `explainer: off`, dispatch `explainer-agent` once at
+  wrap with trigger `wrap` — the final read of what actually shipped, drawn from merged diffs
+  rather than approved specs, which is the first time panels 2 and 4 can be facts instead of
+  forecasts. It pushes to the epic branch, which stays after the epic PR closes unmerged, so
+  the document survives the epic. Record `explainer: <path>` in the epic record and put the
+  link in the wrap report (the record becomes `explainer: on · <path>` — the state stays
+  `on`). Skipped outright when the epic never turned it on — that needs no
+  disposition token, because nothing was ever waiting on it.
 
 ## Intake — filing & queueing discovered issues
 
@@ -880,6 +917,15 @@ step. So:
   it genuinely needs a human call (a decision the spec doesn't settle) — with the specific
   question, not a vague "should I continue?". A prerequisite that simply needs to land is
   tracked and ordered by the coordinator, never a reason to idle.
+- **Unless `explainer: off`, refresh it *before* you surface a gate, never after.** Its
+  whole job is to be what the user reads while deciding, so a refresh that lands after the
+  ask is a document nobody opened. Dispatch `explainer-agent`, then surface the gate with
+  the link in it. It gates nothing itself: if the refresh fails or the agent reports a gap,
+  surface the gate anyway and say the explainer is stale — **never hold a gate on it.**
+  **It shares the epic branch, so it yields**: when an `epic-agent` fold, an end-state POC or
+  a settlement is in flight, the explainer waits for the next wake rather than racing that
+  worktree — one worktree at a time on `epic/<name>`, `explainer-agent` included. Because it
+  gates nothing, it is always the one that yields.
 - **Spec-approval gate is per issue, and only on the spec route.** Approvals are
   independent — issue B isn't blocked by issue A's pending spec, and a **bug** has no such
   gate at all. Never manufacture one: asking the user to approve a spec for an issue that
