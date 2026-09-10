@@ -54,7 +54,7 @@ const stateSchema = z.object({
 // The return value goes to the LLM now. The state persists for future turns.
 const researchTopic = handler({
   name: "research-topic",
-  input: z.object({ topic: z.string() }),
+  inputSchema: z.object({ topic: z.string() }),
   sessionStateSchema: stateSchema,
   execute: async (input, ctx) => {
     const findings = await fetchResearch(input.topic);
@@ -301,9 +301,9 @@ There's no hidden orchestration. No platform that your code has to conform to. Y
 // A block is a function with a typed contract
 const parseQuery = handler({
   name: "parse-query",
-  input: z.object({ message: z.string() }),
-  output: z.object({ intent: z.string(), entities: z.array(z.string()) }),
-  run: async (input) => {
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.object({ intent: z.string(), entities: z.array(z.string()) }),
+  execute: async (input) => {
     return parseIntent(input.message);
   },
 });

@@ -110,7 +110,7 @@ export default createFlowState({
 
 The wiring is local-only. The token is injected into the loopback page `fsdev dev` serves and nowhere else. `fsdev serve` and deploy paths ignore the `devtool` block.
 
-For a one-off you can skip the config and set a bearer token ad hoc in the Settings sheet (the gear icon). Precedence is straightforward: a `userId` from the config wins over a previously-saved Settings value on load.
+For a one-off you can skip the config and set a bearer token ad hoc in the Settings sheet (the gear icon). A `userId` from the config wins over a saved Settings value on load.
 
 ## Environment variables
 

@@ -66,8 +66,6 @@ export function createEchoAdapter(): InboundTransportAdapter {
 }
 ```
 
-Two things matter here.
-
 `source` is provenance. Every request the adapter dispatches carries it
 through to the `RequestRecord` and surfaces in DevTool as a small badge
 next to the action. The known values are `http`, `mcp`, `webhook`,
@@ -76,9 +74,11 @@ framework does not enforce an enum.
 
 ### The address on the envelope
 
-`flowKind` on the envelope is the flow **instance** the caller addressed. For an ordinary flow that is its kind. For a flow that runs as several named copies it is the copy's own id (`review-east`), never the bare kind, which resolves to nothing. Pass the address through unchanged; do not translate it, default it, or pick a copy on the caller's behalf.
+`flowKind` on the envelope is the id of the flow **instance** the caller addressed — see [Flows](/docs/fundamentals/flows#how-an-instance-is-addressed) for how that id is formed. Pass it through unchanged. Don't translate it, default it, or pick a copy on the caller's behalf.
 
-Before anything runs, the host checks the address against the records it names. A `sessionId` or `requestId` that belongs to another instance is refused with `FlowInstanceBindingMismatchError` before a record is written, so a refusal leaves no trace. New records are stamped with the addressed instance as their owner, and that owner is what every later re-entry through any transport is checked against. Transport trust (the signature you verified, the principal you resolved) says who may call; ownership says which copy a saved session belongs to. The two are separate checks, and the id is not a credential for either. See [Server setup](/docs/server/setup#keeping-a-session-with-its-owner) and [Persistence](/docs/persistence/overview#who-owns-a-record).
+Before anything runs, the host checks the address against the records it names. A `sessionId` or `requestId` that belongs to another instance is refused with `FlowInstanceBindingMismatchError` before a record is written, so a refusal leaves no trace. New records are stamped with the addressed instance as their owner, and that owner is what every later re-entry through any transport is checked against. [Persistence](/docs/persistence/overview#who-owns-a-record) covers what a record stores.
+
+Transport trust and ownership are separate checks. The signature you verified and the principal you resolved say who may call; ownership says which copy a saved session belongs to. The id is not a credential for either.
 
 ### Known sources
 

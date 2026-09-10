@@ -70,7 +70,7 @@ const east = reviewer({ id: "reviewer-east" });
 const west = reviewer({ id: "reviewer-west" });
 ```
 
-For one user, `east` and `west` now keep separate `lastSeenAt` values, and each still has its own when it reads back later. A flow with the default `cardinality: "singleton"` has exactly one copy whose id is its kind, so nothing about it changes.
+For one user, `east` and `west` keep separate `lastSeenAt` values. A flow with the default `cardinality: "singleton"` has exactly one copy, whose id is its kind, so its isolated state has one home.
 
 Two words that look alike and mean different things: a flow's `cardinality: "collection"` is about how many copies of the flow run, and a [resource collection](/docs/resources/collections) is about how many instances of one resource a scope holds. They are unrelated settings.
 

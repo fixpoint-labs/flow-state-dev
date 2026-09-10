@@ -19,7 +19,7 @@ All blocks share the same typed contract: input in, output out. Any block compos
 
 ## Flows tie everything together
 
-A flow defines your API: actions (entry points), state schemas, resources, clientData, lifecycle hooks. Register a flow with the server and you get REST endpoints for action execution, session management, SSE streaming, and state snapshots. No route wiring.
+A flow defines your API: actions (entry points), state schemas, resources, client projections, lifecycle hooks. Register a flow with the server and you get REST endpoints for action execution, session management, SSE streaming, and state snapshots. No route wiring.
 
 See [Flows](/docs/fundamentals/flows) and [Actions](/docs/fundamentals/actions).
 

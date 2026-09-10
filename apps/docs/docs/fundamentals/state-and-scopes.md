@@ -222,7 +222,7 @@ Internal state — intermediate processing, raw resource contents, block-private
 
 During streaming, `state_change` and `resource_change` events signal that the client view may be stale. The client refetches the authoritative snapshot on `request.completed`.
 
-Mutations to session, user, org, and request state all emit `state_change` items on the wire — the same shape block-instance and sequencer target state emit — so React's `useClientData` can reflect mid-stream patches without waiting for terminal status. See [`useClientData`](/docs/client/react#useclientdata--client-data). Resources have the same option: one declaring `client: { live: true }` streams its projected delta the same way (see [Resources: client access — Live updates](/docs/resources/client-access#live-updates)), so apps don't need to mirror resource status onto session state.
+Mutations to session, user, org, and request state all emit `state_change` items on the wire, in the same shape block-instance and sequencer target state emit, so React's `useClientData` can reflect mid-stream patches without waiting for terminal status. See [`useClientData`](/docs/client/react#useclientdata--client-data). Resources have the same option: one declaring `client: { live: true }` streams its projected delta the same way (see [Resources: client access — Live updates](/docs/resources/client-access#live-updates)), so apps don't need to mirror resource status onto session state.
 
 This mirrors how resources work: a resource without a `client` config is invisible to clients (see [Resources: client access](/docs/resources/client-access)). One mental model — `client` everywhere — instead of two.
 
