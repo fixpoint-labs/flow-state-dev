@@ -47,6 +47,20 @@ Sending an architecturally-critical fork up puts the user in the engineer's chai
 ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) → "When
 engineering detail is genuinely the ask").
 
+## The explainer is on by default here
+
+Absorbing the engineering decisions means the user stops reading specs — that is the whole
+point, and it is also how a product owner ends up ratifying gates on a body of work they can
+no longer picture. So under this posture the epic's
+[explainer](../epic-explainer/SKILL.md) defaults to **on**: set `explainer: on` at epic setup
+without asking, and every gate you surface carries its link.
+
+This adds no state and moves no gate — `explainer` is `epic-lifecycle`'s field and the
+explainer gates nothing. The delta is only the default, and the user can turn it off in a
+word. Two things it is not: it does **not** replace the six-part ask (a diagram shows the
+shape, it doesn't price the decision), and it is **not** a reason to absorb one more fork
+than the tests above allow.
+
 ## Absorbing the judgment doesn't shorten the path to it
 
 It changes **who decides** — not where the information lives, and not where the answer is written.
