@@ -146,15 +146,7 @@ export function hireWorkforce(
 
     const kind = manifest.declared.flow;
     if (typeof kind !== "string" || kind.trim().length === 0) {
-      // The code door the loader records but this issue has not wired. Told
-      // apart from a malformed record on purpose: the author did not make a
-      // mistake, they used a door that is not open yet, and the generic
-      // missing-flow message would read as the former.
-      refuse(
-        manifest.codePath !== undefined
-          ? "`worker.ts` is recorded but not yet wired; give this seat a `flow:` or remove the folder"
-          : "declares no `flow:`, so there is no flow kind to hire it into"
-      );
+      refuse("declares no `flow:`, so there is no flow kind to hire it into");
       continue;
     }
 

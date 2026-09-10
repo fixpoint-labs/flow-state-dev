@@ -7,7 +7,11 @@
  * `agentBlock`, `definePersona`, and `createWorkforceCapability`.
  *
  * It also supplies the seat factory — `hireWorkforce`, which turns worker
- * records into one configured, addressable flow copy each.
+ * records into one configured, addressable flow copy each — and declares
+ * `WorkerManifest`, the record those workers are made of, whether described in
+ * files or written by hand. Reading that description off disk is the `./loader`
+ * subpath's job, kept out of the root so importing this package does not pull a
+ * consumer onto `node:fs`.
  */
 
 export { defineAgent } from "./define-agent";

@@ -254,21 +254,6 @@ describe("hireWorkforce", () => {
     // No winner was picked: the hire refused rather than returning a seat.
   });
 
-  // 14
-  it("refuses a `worker.ts`-only record by naming the unwired door, not the generic missing-flow message", () => {
-    const codeDoor = refusalOf([
-      record({ id: "engineering.tools", declared: {}, codePath: "/teams/engineering/workers/tools/worker.ts" })
-    ]);
-    const missingFlow = refusalOf([record({ id: "engineering.tools", declared: {} })]);
-
-    expect(codeDoor).toContain('worker "engineering.tools"');
-    expect(codeDoor).toContain("worker.ts");
-    expect(codeDoor).toContain("not yet wired");
-    // A row whose whole point is a better message is not proved by a throw.
-    expect(codeDoor).not.toEqual(missingFlow);
-    expect(missingFlow).not.toContain("worker.ts");
-  });
-
   it("reads `description` for nothing, and keeps it out of the settings bag", () => {
     const seat = hireOne(lead);
     expect(Object.hasOwn(seat.config, "description")).toBe(false);

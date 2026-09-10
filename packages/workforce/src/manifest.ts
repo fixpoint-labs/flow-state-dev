@@ -24,6 +24,4 @@ export interface WorkerManifest {
    * Empty for a thin seat; reaches a hired flow as `config.persona`.
    */
   body: string;
-  /** Present when the folder holds a `worker.ts`. Recorded by the loader, never imported. */
-  codePath?: string;
 }
