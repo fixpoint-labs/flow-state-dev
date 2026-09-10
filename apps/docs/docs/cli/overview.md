@@ -12,7 +12,7 @@ The CLI is how you run the engine from the terminal. The command is `fsdev`. Ins
 
 | Command | What it does |
 |---------|--------------|
-| `fsdev run <flow> <action>` | Run one action in-process. NDJSON on stdout. |
+| `fsdev run <flow> <action>` | Run one action in-process. NDJSON on stdout, or readable text with `--format text`. |
 | `fsdev block <file>` | Run one block through the test harness. |
 | `fsdev chat [flow] [action]` | Interactive multi-turn session in the terminal. |
 | `fsdev dev` | HTTP + DevTool UI on localhost. |
@@ -39,6 +39,8 @@ This page is about running *your own* flows locally. To dispatch a coding task t
 ## Running flows
 
 `fsdev run <flow> <action>` executes an action and streams NDJSON to stdout. Each line is a JSON event: `item_added`, `content_delta`, `state_change`, `flow_complete`, or `error`. Pipe to `jq` or parse programmatically. Input comes from `-i` (inline JSON) or `-f` (file path).
+
+If you're watching a run rather than parsing it, `--format text` prints readable progress instead — assistant text as it streams, one line per tool call or status, and a final completed/failed line. See [Readable output](/docs/api/cli#fsdev-run-flowid-action).
 
 Session reuse: pass `--session <id>` to continue an existing session. State from the previous run is loaded. Useful for multi-turn flows.
 

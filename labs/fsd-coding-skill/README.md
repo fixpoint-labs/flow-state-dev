@@ -19,8 +19,22 @@ env -u FSD_CODING_MODEL \
   FSD_CODING_HARNESS=codex \
   FSD_CODING_CWD=/absolute/path/to/target-checkout \
   FSD_CODING_NETWORK_ACCESS=0 FSD_CODING_ADD_DIR= \
-  pnpm fsdev run fsd-coding implement -i '{"task":"<what to build>"}' --session work-1
+  pnpm --silent fsdev run fsd-coding implement -i '{"task":"<what to build>"}' --session work-1 \
+    --format text --log-level warn --capture .fsdev/runs/work-1-implement-1.json
 ```
+
+Use `fix` or `openPr` in place of `implement` for those doors.
+
+`pnpm --silent` keeps pnpm from echoing the whole task JSON ahead of the progress.
+`--format text` streams readable progress (a `▶ fsdev run` banner, `· status:` /
+`· tool call:` / `· tool failed:` lines, assistant text, and a final
+`✓ flow completed` or `✗ flow failed`) instead of raw NDJSON, which is unreadable
+at coding-run length. `--log-level warn` keeps errors on stderr without the
+per-block chatter. `--capture` keeps the full structured events and result, which
+the text stream omits on purpose — give each invocation its own path so a failed
+door, its `fixFsd`, and the retry each keep their evidence. Start the command as a
+managed live process and read its output while it runs — see
+[the skill](../../.agents/skills/fsd-coding/SKILL.md#run-it-as-a-managed-live-process).
 
 Command tools with `cwd` and `env` fields can pass these values directly.
 Resolve the target checkout from the outer session before running from this
@@ -40,6 +54,14 @@ Claude uses `@flow-state-dev/claude-code/sdk` (`claudeCodeAgent`), with the
 optional peer `@anthropic-ai/claude-agent-sdk`.
 
 For a model override, add `FSD_CODING_MODEL=<supported-target-model-id>`.
+
+### Claude host policy
+
+`fsdev.config.ts` passes `claude: { permissionMode: "acceptEdits" }`, so a Claude
+door applies file edits without prompting — a run nobody is sitting in front of
+cannot answer an edit prompt. It is a deliberate host choice, not a default:
+`acceptEdits` still honors denied tools and every other permission. Do not raise
+it to `bypassPermissions`, and do not widen other permissions to clear a failure.
 
 `--session` is the FSD session, not a vendor conversation id. Reuse it with
 the same lab directory: that lab's `.fsdev/data` holds the resume state.

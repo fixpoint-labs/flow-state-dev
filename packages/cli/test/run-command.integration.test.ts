@@ -545,6 +545,144 @@ describe("--capture", () => {
   });
 });
 
+describe("--format", () => {
+  it("defaults to NDJSON so existing scripts are unaffected", async () => {
+    await executeRunCommand("echo", "respond", {
+      input: '{"message": "default-format"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      quiet: true,
+    });
+
+    expect(stdoutLines.length).toBeGreaterThan(0);
+    for (const line of stdoutLines) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+    expect(parsedEvents().some((e) => e.type === "flow_complete")).toBe(true);
+  });
+
+  it("renders readable text instead of JSON events under --format text", async () => {
+    await executeRunCommand("echo", "respond", {
+      input: '{"message": "readable"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      format: "text",
+      quiet: true,
+    });
+
+    // Not a single line is a raw event dump.
+    for (const line of stdoutLines) {
+      expect(() => JSON.parse(line)).toThrow();
+    }
+    expect(stdoutLines.some((l) => l.startsWith("▶ fsdev run echo respond"))).toBe(true);
+    expect(stdoutLines.some((l) => l.startsWith("✓ flow completed in"))).toBe(true);
+  });
+
+  it("does not dump the flow output or trace state as text", async () => {
+    await executeRunCommand("echo", "respond", {
+      input: '{"message": "secret-payload"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      format: "text",
+      quiet: true,
+    });
+
+    const all = stdoutLines.join("\n");
+    // The handler's output object never reaches the readable stream.
+    expect(all).not.toContain("Echo: secret-payload");
+    expect(all).not.toContain("echo-flow");
+    expect(all).not.toContain("item_added");
+  });
+
+  it("distinguishes a failed flow and keeps the error message", async () => {
+    const result = await executeRunCommand("throwing", "fail", {
+      input: '{"message": "text-failure"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      format: "text",
+      quiet: true,
+    });
+
+    expect(result.success).toBe(false);
+    // Exit code is display-independent.
+    expect(process.exitCode).toBe(1);
+    const failure = stdoutLines.find((l) => l.startsWith("✗ flow failed"));
+    expect(failure).toBeDefined();
+    expect(failure).toContain("Intentional test error from flow");
+    expect(stdoutLines.some((l) => l.startsWith("✓ flow completed"))).toBe(false);
+  });
+
+  it("still writes the full structured capture in text mode", async () => {
+    const captureDir = mkdtempSync(join(tmpdir(), "fsdev-format-"));
+    try {
+      const capturePath = join(captureDir, "run.json");
+
+      await executeRunCommand("echo", "respond", {
+        input: '{"message": "capture-in-text"}',
+        cwd: fixturesDir,
+        stores: createInMemoryStores(),
+        format: "text",
+        capture: capturePath,
+        quiet: true,
+      });
+
+      const payload = JSON.parse(readFileSync(capturePath, "utf-8"));
+      // Display format changed; the evidence file did not.
+      expect(payload.result.success).toBe(true);
+      expect(payload.result.exitCode).toBe(0);
+      expect(payload.command.input).toEqual({ message: "capture-in-text" });
+      const events = payload.events as FlowEvent[];
+      expect(events.some((e) => e.type === "flow_complete")).toBe(true);
+      expect(events.some((e) => e.type === "item_added")).toBe(true);
+    } finally {
+      rmSync(captureDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the failure line to one physical line while capture holds the full error", async () => {
+    const captureDir = mkdtempSync(join(tmpdir(), "fsdev-bound-"));
+    try {
+      const capturePath = join(captureDir, "fail.json");
+
+      await executeRunCommand("throwing", "fail", {
+        input: '{"message": "bounded"}',
+        cwd: fixturesDir,
+        stores: createInMemoryStores(),
+        format: "text",
+        capture: capturePath,
+        quiet: true,
+      });
+
+      const failures = stdoutLines.filter((l) => l.startsWith("✗ flow failed"));
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).not.toContain("\n");
+
+      // The displayed line is a summary; the capture keeps the error verbatim,
+      // including the stack the text stream never shows.
+      const payload = JSON.parse(readFileSync(capturePath, "utf-8"));
+      expect(payload.result.error.message).toBe("Intentional test error from flow");
+      expect(typeof payload.result.error.stack).toBe("string");
+    } finally {
+      rmSync(captureDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an unknown --format before doing any flow work", async () => {
+    // The flow does not exist either. Seeing the format error proves the check
+    // runs before discovery, so a typo costs no config load.
+    const err = await executeRunCommand("nonexistent", "action", {
+      input: "{}",
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      format: "yaml",
+    }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_INVALID_ARGS);
+    expect(err.message).toContain('Invalid --format "yaml"');
+  });
+});
+
 describe("seed state", () => {
   it("seeds session state with inline JSON via --seed-session", async () => {
     const stores = createInMemoryStores();

@@ -1,5 +1,13 @@
 /**
- * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
+ * `fsdev run <flowKind> <action>` command — executes a flow action, streaming
+ * progress on stdout.
+ *
+ * Two stdout formats. `ndjson` (the default, so existing scripts are unaffected)
+ * emits one JSON event per line. `text` renders readable progress through the
+ * shared plain-text renderer in `../chat/render` — assistant text, one-line tool
+ * and status activity, a start banner, and a terminal completed/failed line.
+ * Neither format changes `--capture` or the exit code: both always reflect the
+ * full structured run.
  */
 import { ensureSessionRecord, ownsRecord } from "@flow-state-dev/engine";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -25,6 +33,7 @@ import { forceModelResolver } from "../model-override";
 import { parseInputArg } from "../parse-input";
 import { CliError } from "../resolve-block";
 import { collectValues } from "../cli-options";
+import { createPlainTextRenderer, compactProgressText } from "../chat/render";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 
 /** NDJSON event types emitted to stdout during flow execution. */
@@ -49,6 +58,27 @@ export interface FlowRunResult {
 /** Writes a single NDJSON line to stdout. */
 function emitNdjson(event: FlowEvent): void {
   process.stdout.write(JSON.stringify(event) + "\n");
+}
+
+/** How `fsdev run` renders progress on stdout. */
+type RunOutputFormat = "ndjson" | "text";
+
+const RUN_OUTPUT_FORMATS: readonly RunOutputFormat[] = ["ndjson", "text"];
+
+/**
+ * Resolves `--format`, defaulting to `ndjson` so existing scripts that parse
+ * stdout keep working. Rejected before any flow work happens, so a typo costs
+ * nothing.
+ */
+function resolveRunFormat(value: string | undefined): RunOutputFormat {
+  if (value === undefined) return "ndjson";
+  if ((RUN_OUTPUT_FORMATS as readonly string[]).includes(value)) {
+    return value as RunOutputFormat;
+  }
+  throw new CliError(
+    `Invalid --format "${value}". Expected: ${RUN_OUTPUT_FORMATS.join(" | ")}`,
+    EXIT_INVALID_ARGS,
+  );
 }
 
 /**
@@ -86,7 +116,7 @@ function parseSeedArg(value: string, label: string): Record<string, unknown> {
 export function registerRunCommand(program: Command): void {
   program
     .command("run <flowKind> <action>")
-    .description("Execute a flow action with streaming NDJSON output")
+    .description("Execute a flow action, streaming progress on stdout")
     .option("-i, --input <json>", "Inline JSON input")
     .option("-f, --input-file <path>", "Path to JSON input file")
     .option("-m, --model <model>", "Override model for generator blocks run in this process")
@@ -96,9 +126,10 @@ export function registerRunCommand(program: Command): void {
     .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
     .option("--no-config", "Ignore fsdev.config.* and use directory discovery")
-    .option("--quiet", "Suppress runtime logs on stderr (NDJSON on stdout still emitted)")
+    .option("--quiet", "Suppress runtime logs on stderr (stdout output is unaffected)")
     .option("--log-level <level>", "Stderr log level: debug | info | warn | error (default: info)")
     .option("--capture <path>", "Write the full structured run output to a JSON file")
+    .option("--format <format>", "Stdout format: ndjson | text (default: ndjson)")
     .action(async (flowKind: string, action: string, options: RunCommandOptions) => {
       try {
         await executeRunCommand(flowKind, action, options);
@@ -136,6 +167,12 @@ export interface RunCommandOptions {
   logLevel?: RuntimeLoggerLevel;
   /** When set, writes the full structured run output to this JSON file. */
   capture?: string;
+  /**
+   * stdout format. `ndjson` (default) emits one JSON event per line; `text`
+   * renders readable progress for a human or an outer harness tailing the log.
+   * Independent of `--capture`, which always writes the full structured events.
+   */
+  format?: string;
 }
 
 /** Final on-disk shape written by `--capture`. */
@@ -177,6 +214,9 @@ export async function executeRunCommand(
   actionName: string,
   options: RunCommandInternalOptions,
 ): Promise<FlowRunResult> {
+  // 0. Reject an unknown --format before loading config or touching a store.
+  const format = resolveRunFormat(options.format);
+
   // 0-1. Load .env, resolve the runtime source (app config vs directory
   // discovery), and surface import failures — the shared prelude. When the app
   // ships an fsdev.config.*, the CLI runs the app's own wiring (registry, stores,
@@ -323,13 +363,25 @@ export async function executeRunCommand(
     const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const captureEnabled = options.capture !== undefined && options.capture !== "";
     const capturedEvents: FlowEvent[] = [];
+
+    // Text mode reuses the shared renderer. `transientStatus: "lines"` and no
+    // `isTTY`: this stdout is usually a pipe, so there is no cursor to redraw
+    // and piped and terminal output stay identical.
+    const renderer =
+      format === "text"
+        ? createPlainTextRenderer(process.stdout, { transientStatus: "lines" })
+        : undefined;
+
+    // Capture is display-independent — always the full structured stream.
     const recordEvent = (event: FlowEvent): void => {
       if (captureEnabled) capturedEvents.push(event);
-      emitNdjson(event);
+      if (format === "ndjson") emitNdjson(event);
     };
     const responseEmitter = createResponseEmitter({
       requestId,
       onEvent: (event) => {
+        // Rendered as it arrives, not assembled at completion.
+        renderer?.onEvent(event);
         const ndjsonEvent = mapStreamEventToNdjson(event);
         if (ndjsonEvent !== undefined) {
           recordEvent(ndjsonEvent);
@@ -357,6 +409,10 @@ export async function executeRunCommand(
       baseRuntimeConfig !== undefined
         ? { ...baseRuntimeConfig, modelResolver, logger }
         : { modelResolver, logger };
+
+    // Start banner, written before the first block runs — an outer harness uses
+    // it as the readiness signal.
+    renderer?.onSystem(`▶ fsdev run ${flowKind} ${actionName} (session ${sessionId})`);
 
     const startMs = Date.now();
     let result: ExecutionResult;
@@ -393,7 +449,9 @@ export async function executeRunCommand(
 
     const durationMs = Date.now() - startMs;
 
-    // 8. Emit terminal NDJSON event
+    // 8. Emit the terminal event, plus a terminal line in text mode. That line
+    //    says only that the flow settled — never the output. The full error
+    //    detail stays in `--capture`.
     if (success) {
       recordEvent({
         type: "flow_complete",
@@ -401,11 +459,13 @@ export async function executeRunCommand(
         durationMs,
         items: result.items.length,
       });
+      renderer?.onSystem(`✓ flow completed in ${durationMs}ms (${result.items.length} items)`);
     } else {
       recordEvent({
         type: "error",
         message: error!.message,
       });
+      renderer?.onSystem(`✗ flow failed after ${durationMs}ms: ${compactProgressText(error!.message)}`);
     }
 
     const runResult: FlowRunResult = {

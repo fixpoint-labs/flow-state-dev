@@ -12,7 +12,7 @@ sidebar_label: CLI
 
 ### `fsdev run <flowId> <action>`
 
-Execute a flow action with streaming NDJSON output.
+Execute a flow action, streaming progress to stdout.
 
 ```bash
 fsdev run my-agent chat -i '{"message": "Hello!"}'
@@ -33,12 +33,34 @@ The first argument is the flow **instance** id — see [Flows](/docs/fundamental
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
+| `--format <format>` | Stdout format: `ndjson` \| `text` (default: `ndjson`) |
+| `--capture <path>` | Write the full structured events and result to a JSON file, whichever format stdout shows |
+| `--quiet` | Suppress `[flow-state] *` runtime logs on stderr. Does not affect stdout |
+| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (default: `info`) |
 
 When a config is loaded, `fsdev run` looks up the flow by instance id in the config's registry and uses its stores. `--model <id>` still applies, routed through the config's own resolver (your gateways and providers stay in effect), and it covers the generators that run in this process but not [background work handed to a queue](/docs/cli/overview#model-overrides). `--flow-dir` together with a config is an error; the message suggests `--no-config` if directory discovery is what you want. The config's FlowState is disposed on exit, and disposal waits for any background work the run started in this process. See [App Configuration](/docs/cli/configuration) and [Background work](/docs/cli/overview#background-work).
 
+**Readable output:**
+
+`--format text` prints progress a person can follow instead of JSON events. Reach for it when you or an agent are watching a long run; keep the default when a script is parsing stdout.
+
+```text
+▶ fsdev run coding implement (session work-1)
+· status: Reading the failing test...
+· tool call: apply-patch
+· tool failed: run-tests — 2 assertions failed
+✓ flow completed in 41208ms (17 items)
+```
+
+Assistant text streams as the model produces it. Tool calls, statuses, and errors get one line each; a tool that fails says so on its own line. Reasoning, traces, tool arguments, and tool results stay out — this is a progress log, not a dump of the run.
+
+Lines appear as events arrive, including when stdout is a pipe, so a long run never looks hung. The final line is `✓ flow completed` or `✗ flow failed: <message>`. That tells you the action settled, not that it produced the artifact you wanted — check the artifact, or `--capture`, for that.
+
+`--format` changes the display only. `--capture` still writes the full structured events and result, and exit codes are unchanged.
+
 **NDJSON events:**
 
-Each line of stdout is a JSON object with a `type` field:
+The default format. Each line of stdout is a JSON object with a `type` field:
 
 ```jsonl
 {"type":"item_added","item":{"id":"...","type":"message","role":"assistant"}}

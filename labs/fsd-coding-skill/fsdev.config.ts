@@ -13,6 +13,10 @@
  *   FSD_CODING_ADD_DIR          Codex only, PATH-style extra writable dirs
  *                               (`path.delimiter`: `:` on Unix, `;` on Windows)
  *
+ * The Claude adapter runs with `permissionMode: "acceptEdits"` — an unattended
+ * door cannot answer an edit prompt. Denied tools and every other permission
+ * still apply; this is not `bypassPermissions`.
+ *
  * v1 runtime is a local machine or Grok box with the harness already signed
  * in. Cloud agent VMs and nested cloud harnesses are out of scope.
  */
@@ -33,7 +37,12 @@ const root = path.join(process.cwd(), ".fsdev");
 const host = readHostOptionsFromEnv();
 
 export default createFlowState({
-  flows: { [FLOW_KIND]: createFsdCodingFlow(host) },
+  flows: {
+    [FLOW_KIND]: createFsdCodingFlow({
+      ...host,
+      claude: { permissionMode: "acceptEdits" },
+    }),
+  },
   modelResolver: Object.assign(neverResolvesAModel, {
     resolveId: neverResolvesAModel,
   }) as ModelResolver,

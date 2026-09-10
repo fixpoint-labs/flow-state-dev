@@ -53,6 +53,26 @@ Options:
 | `--quiet` | Suppress `[flow-state] *` runtime logs on stderr |
 | `--log-level <level>` | Stderr log level: `debug \| info \| warn \| error` (default: `info`) |
 | `--capture <path>` | Write the full structured run output to a JSON file (additive with stdout) |
+| `--format <format>` | Stdout format: `ndjson \| text` (default: `ndjson`) |
+
+#### Readable output
+
+`--format text` swaps the JSON event stream for readable progress, for when a person or an outer agent is watching the run rather than a script parsing it:
+
+```text
+▶ fsdev run coding implement (session work-1)
+· status: Reading the failing test...
+· tool call: apply-patch
+· tool failed: run-tests — 2 assertions failed
+· status: Retrying with the corrected import...
+✓ flow completed in 41208ms (17 items)
+```
+
+Assistant text streams as it arrives; tool calls, statuses, and errors each get one line. Reasoning, traces, tool arguments, and tool results are not printed — this format is a progress log, not a dump. The last line is always either `✓ flow completed` or `✗ flow failed: <message>`.
+
+Lines are written as events arrive, so progress is visible while the flow is still running even when stdout is a pipe with no TTY. There are no cursor-redraw escapes, so piped and terminal output are identical.
+
+A completed flow means the action settled, not that it produced what you asked for. Check the artifact itself, or `--capture`, before treating a run as done.
 
 #### Stderr runtime logs
 
@@ -70,11 +90,11 @@ By default `fsdev run` emits `[flow-state] *` runtime events to stderr at `info`
 }
 ```
 
-Stdout NDJSON streaming continues unchanged when `--capture` is set — you get both. Parent directories are created as needed.
+Stdout streaming continues unchanged when `--capture` is set — you get both. The file holds the full structured events and result whichever `--format` stdout is showing, so `--format text` costs you no evidence. Parent directories are created as needed.
 
 #### NDJSON streaming
 
-Events stream to stdout as blocks execute, one JSON object per line:
+The default format. Events stream to stdout as blocks execute, one JSON object per line:
 
 ```jsonl
 {"type":"item_added","item":{"id":"...","type":"message","role":"assistant"}}

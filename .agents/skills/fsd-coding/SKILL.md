@@ -50,7 +50,7 @@ Codex can invoke a command tool with:
 
 ```json
 {
-  "command": "pnpm fsdev run fsd-coding implement -i '{\"task\":\"<what to build>\"}' --session work-1",
+  "command": "pnpm --silent fsdev run fsd-coding implement -i '{\"task\":\"<what to build>\"}' --session work-1 --format text --log-level warn --capture .fsdev/runs/work-1-implement-1.json",
   "cwd": "/absolute/path/to/implementation/labs/fsd-coding-skill",
   "env": {
     "FSD_CODING_HARNESS": "codex",
@@ -60,6 +60,20 @@ Codex can invoke a command tool with:
   }
 }
 ```
+
+Always pass these run flags, and `pnpm --silent`:
+
+- `pnpm --silent` — without it pnpm echoes the whole script line first, which for
+  a coding door means the entire task JSON lands in the log ahead of any progress.
+- `--format text` — readable progress on stdout as the run happens. Without it you
+  get raw NDJSON, which is unreadable at coding-run length.
+- `--log-level warn` — keeps warnings and errors on stderr, drops the per-block
+  `[flow-state]` chatter that would bury the progress lines.
+- `--capture <path>` — the full structured events and result on disk. `--format
+  text` deliberately shows no output payload, so this is your post-run evidence.
+  Write it under the lab's `.fsdev/`, with a **path unique to this invocation**
+  (session + door + attempt). A failed door, its `fixFsd`, and the retry are three
+  separate pieces of evidence; a shared path overwrites the failure you need.
 
 These paths and the harness are examples, not defaults. Apply the env values
 over the inherited environment, preserving `PATH`, `HOME`, and credentials.
@@ -75,6 +89,38 @@ an env/config sidecar.
 
 Use `fix` or `openPr` in place of `implement` for those doors.
 Do not switch providers to escape a failure.
+
+### Run it as a managed live process
+
+A coding door runs for many minutes. Start it as a **managed process whose output
+you can read while it runs**, and read the progress as it arrives. An async bash
+job followed only by `wait` blocks until exit and hands you everything at the end —
+the output is not lost, but it stays hidden for the whole run, which defeats the
+point of watching one.
+
+On **OMP**, start it through the hub and follow its log:
+
+- **Start** — `op: "start"`, `name` (a stable handle for this door), `application`
+  (`pnpm`), `args` (the argument list above, starting `--silent`), `cwd` (the
+  absolute lab directory), `env` (the resolved host values), `pty: false` (stdout
+  is a pipe; the text format needs no terminal), and
+  `ready: { log: "▶ fsdev run", timeout: 60 }` — the CLI prints that banner before
+  the first block runs.
+- **First read** — `op: "logs"`, `name`. This is what returns the cursor; `start`
+  does not.
+- **Then follow** — `op: "logs"`, `name`, `cursor`, `follow: true`, `timeout: 30`,
+  passing the cursor from the previous read each time so you only get new output.
+  Repeat while the door runs.
+- **At exit** — read the final logs, then the process **exit code**, then the
+  `--capture` file and the asked-for artifact.
+
+On another harness, use its own native live-terminal equivalent — whatever it
+already has for "start a long process and read its output as it arrives." Do not
+add a runner, a sidecar file, or a polling script to get there.
+
+Whatever the harness, the progress you read is the run's own stdout: a `▶ fsdev
+run` banner, `· status:` / `· tool call:` / `· tool failed:` lines, streamed
+assistant text, and a final `✓ flow completed` or `✗ flow failed` line.
 
 `--session` names the FSD session, not the vendor conversation. Reuse the same id so filesystemStores keep the confirmed Codex / Cursor / Claude ids `onSession` wrote. Do not invent a JSON sidecar or a second runner.
 
@@ -93,11 +139,12 @@ For Codex only, pass `FSD_CODING_NETWORK_ACCESS=1` when an authorized sandboxed 
 If a **declared door started** and then FSD or the selected harness errors while doing real work, **do not retry the same door**. Call `fixFsd` with the repro first, keeping the **same selected harness**, host model choice, checkout, and `--session`:
 
 ```bash
-pnpm fsdev run fsd-coding fixFsd \
+pnpm --silent fsdev run fsd-coding fixFsd \
   -i '{"repro":"<verbatim error + what you ran>","notes":"<what you were trying to do>"}' \
-  --session "<same id>"
+  --session "<same id>" --format text --log-level warn --capture <its-own-path>
 ```
-The snippet shows only the command; reuse the original tool `cwd` and `env`.
+The snippet shows only the command; reuse the original `cwd` and `env`, and start
+it as a managed live process the same way.
 
 Then retry the original door once. If it still fails, stop and report the two outputs. Do not invent a third path.
 
@@ -114,9 +161,13 @@ These apply on a local machine or Grok box, where this skill is the path. On a C
 
 ## What you return
 
-After each `fsdev run`, read the NDJSON on stdout (or `--capture`) and the process exit status.
+While the door runs, read the readable progress. After it exits, read the process
+exit status and the `--capture` file — that is where the structured events and the
+result live, since the text stream deliberately prints no output payload.
 
-`outcome: "finished"` only means the vendor turn ended. It is not success by itself.
+`outcome: "finished"` only means the vendor turn ended. It is not success by
+itself — and neither is a `✓ flow completed` line, which says only that the flow
+settled without erroring.
 
 Treat the door as success only when the requested artifact is actually there:
 
