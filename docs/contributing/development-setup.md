@@ -192,7 +192,7 @@ The testing package (`@flow-state-dev/testing`) provides framework-specific harn
 
 - `tsconfig.base.json` at the repo root defines base settings and path mappings
 - Each package has its own `tsconfig.json` extending the base
-- `scripts/typecheck.mjs` provides offline TypeScript checking (handles registry unavailability)
+- `scripts/typecheck.mjs` runs `tsc --noEmit` for one package; it requires the root TypeScript install, and fails with a message naming `pnpm install` when that is missing
 
 ## Key Files to Know
 
