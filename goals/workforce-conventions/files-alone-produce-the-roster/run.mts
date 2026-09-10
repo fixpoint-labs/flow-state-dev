@@ -2,15 +2,18 @@
  * Goal check — a folder tree an author actually writes produces the roster.
  *
  * Two teams, a worker called `lead` in each, a thin seat with no instructions,
- * a mistyped worker file, and a team-level knowledge folder. Read the root once
+ * a folder whose shape is code, a folder holding both a document and code, a
+ * mistyped worker file, and a team-level knowledge folder. Read the root once
  * and the app has its workers: right identities, right settings, each one's own
- * instructions, the mistyped folder named, and the knowledge folder passed over.
+ * instructions, each recorded code path pointing at the right file, the mistyped
+ * folder named, and the knowledge folder passed over.
  *
  * Nothing is registered anywhere in this path and no worker is written in
  * TypeScript. Real path, no model. See goal.md for the contract.
  *
  * Run: pnpm tsx goals/workforce-conventions/files-alone-produce-the-roster/run.mts
  */
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
 import { fixtureDir, loadFixture, runGoal } from "../../lib/index.mts";
@@ -18,6 +21,10 @@ import { fixtureDir, loadFixture, runGoal } from "../../lib/index.mts";
 type Expected = {
   id: string;
   marker: string | null;
+  /** Root-relative path to this worker's `worker.ts`, or null when it has none. */
+  codePath: string | null;
+  /** A token written only inside that file, so the recorded path can be graded. */
+  codeMarker: string | null;
   declared: Record<string, unknown>;
 };
 type Fixture = {
@@ -78,6 +85,36 @@ await runGoal(async () => {
         failures.push(`${expected.id} carries ${other.id}'s instructions (${other.marker})`);
       }
     }
+
+    // 5. The second door. A folder whose shape is code is a valid seat: the
+    //    loader records the path and never imports it. Graded by opening the
+    //    file the loader named and looking for a token written in that one
+    //    file only — a path assertion alone would pass on a fabricated string,
+    //    and `toBeDefined` would pass on the wrong file.
+    if (expected.codePath === null) {
+      if (worker.codePath !== undefined) {
+        failures.push(`${expected.id} recorded a code path it has none of: ${worker.codePath}`);
+      }
+    } else if (worker.codePath === undefined) {
+      failures.push(`${expected.id} did not record its worker.ts at ${expected.codePath}`);
+    } else if (worker.codePath !== join(root, expected.codePath)) {
+      failures.push(
+        `${expected.id} recorded ${worker.codePath} — the file is at ${join(root, expected.codePath)}`,
+      );
+    } else {
+      let code: string;
+      try {
+        code = readFileSync(worker.codePath, "utf8");
+      } catch (err) {
+        failures.push(`${expected.id} recorded a path that opens nothing: ${(err as Error).message}`);
+        continue;
+      }
+      if (expected.codeMarker !== null && !code.includes(expected.codeMarker)) {
+        failures.push(
+          `${expected.id} recorded a path to the wrong file: no ${expected.codeMarker} in ${worker.codePath}`,
+        );
+      }
+    }
   }
 
   // 5. The mistyped folder is named, so the app can refuse to boot short.
@@ -93,6 +130,8 @@ await runGoal(async () => {
     }
   }
 
+  const withCode = fixture.expect.filter((e) => e.codePath !== null);
+
   return {
     failures,
     evidence:
@@ -100,6 +139,9 @@ await runGoal(async () => {
       `${workers.map((w) => w.id).join(", ")}; ` +
       `${errors.length} slot(s) reported (${reported.join(", ") || "none"}). ` +
       `Each body matched the held-out marker written only in its own folder, and no ` +
-      `body carried another worker's. Nothing was registered and no model ran.`,
+      `body carried another worker's. ` +
+      `${withCode.length} recorded code path(s) opened to a file carrying that folder's own ` +
+      `marker (${withCode.map((e) => e.id).join(", ") || "none"}), and no other worker ` +
+      `recorded one. Nothing was registered, nothing was imported, and no model ran.`,
   };
 });
