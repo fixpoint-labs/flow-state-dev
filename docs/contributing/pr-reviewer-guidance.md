@@ -74,8 +74,9 @@ counts — all of it moves after the body is written and nothing fails when it d
 at it instead and keep the pointer de-pinned: *the current head*, not a SHA a reviewer has
 to work out has been superseded. The distinction is durable fact versus live claim — *the
 review was pinned to `abc1234`* stays true forever, *`abc1234` is green* was true once.
-Where a claim about now must be in the body, it needs a guard that fails when it stops
-holding.
+The default move is to point, not to snapshot. Only where a claim about
+now genuinely must sit in prose does it need a guard that fails when it stops holding —
+and then something that actually breaks when stale, not a second snapshot.
 
 **The contract moved below the fold; it did not go away.** It is the one lever we have on
 reviewers we can't instruct, and it measurably raises what comes back. But it says the
