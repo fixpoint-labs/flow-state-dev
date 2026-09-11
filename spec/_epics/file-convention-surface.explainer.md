@@ -41,22 +41,25 @@ already had — ratified, not aligned — and gain levels plus a duplicate-name 
 
 ```mermaid
 flowchart TD
-  R["FIX-1352 rooms"] --> LAB["FIX-1355 pentest lab Proof"]
-  RES["FIX-1354 resources"] --> LAB
-  SK["FIX-1356 skills"] --> LAB
+  C["FIX-1353 channels"] -.->|"folds in · no code"| R["FIX-1352 rooms"]
+  C -.->|"filed"| ATL["FIX-1358 atlas reconcile"]
+  R -->|"walk primitives"| RES["FIX-1354 resources"]
+  R -->|"walk primitives"| SK["FIX-1356 skills"]
+  R --> LAB["FIX-1355 pentest lab Proof"]
+  RES --> LAB
+  SK --> LAB
   K["FIX-1342 kinds-map fence"] --> LAB
-  C["FIX-1353 channels"] -.->|"folded into rooms"| R
-  C -.->|"filed"| A["FIX-1358 atlas reconcile"]
+  BOOT["FIX-1357 boot scan"] --> LAB
   classDef inflight fill:#9a6700,color:#fff
   classDef todo stroke-dasharray:5 5
   class R,RES,SK,K,C inflight
-  class LAB,A todo
+  class LAB,ATL,BOOT todo
 ```
 
 As of the objective gate. Amber is in flight, dashed is not started, nothing has shipped;
-the epic doc's index is the live copy. FIX-1357 (boot scan) is also open and sits off this
-path. **The lab is the only consumer, and it is sequenced last** — every convention is built
-before the thing that would prove it, which §5 carries as the epic's standing question.
+the epic doc's index is the live copy. **The lab is the only consumer, and everything points
+at it** — every convention is built before the thing that would prove it, and the lab is
+sequenced last. §5 carries that as the epic's standing question.
 
 ---
 
