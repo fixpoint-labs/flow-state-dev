@@ -477,6 +477,56 @@ describe("parseSkillMd — delegation agents", () => {
     expect(() => parseSkillMd(text)).toThrow(/can't be set alongside `agent-ref`/);
   });
 
+  it("rejects tools/model/visibility/context-supply beside prompt-ref (file is source of truth)", () => {
+    // Dual-write: the prompt file owns generator config. A leftover skill-entry
+    // field would either silently lose or silently win — reject and point at
+    // the file's frontmatter, same spirit as agent-ref + inline tuning.
+    const tools = withFrontmatter(
+      [`agents:`, `  analyzer:`, `    prompt-ref: ./reference/analyze.md`, `    tools: [search]`].join("\n"),
+    );
+    expect(() => parseSkillMd(tools)).toThrow(
+      /can't be set alongside `prompt-ref`[\s\S]*frontmatter of `\.\.\/reference\/analyze\.md`|prompt file[\s\S]*frontmatter/,
+    );
+    expect(() => parseSkillMd(tools)).toThrow(/`tools`/);
+
+    const model = withFrontmatter(
+      [`agents:`, `  a:`, `    prompt-ref: ./x.md`, `    model: openai/gpt-5.4-mini`].join("\n"),
+    );
+    expect(() => parseSkillMd(model)).toThrow(/`model`/);
+
+    const visibility = withFrontmatter(
+      [`agents:`, `  a:`, `    prompt-ref: ./x.md`, `    visibility: sub`].join("\n"),
+    );
+    expect(() => parseSkillMd(visibility)).toThrow(/`visibility`/);
+
+    const supply = withFrontmatter(
+      [`agents:`, `  a:`, `    prompt-ref: ./x.md`, `    context-supply: conversation`].join("\n"),
+    );
+    expect(() => parseSkillMd(supply)).toThrow(/`context-supply`/);
+  });
+
+  it("still accepts tools/model/visibility on an inline prompt entry", () => {
+    // The tiny case: a one-line persona that never earned its own file may
+    // keep generator config on the skill entry. prompt-ref is what forbids it.
+    const text = withFrontmatter(
+      [
+        `agents:`,
+        `  writer:`,
+        `    prompt: You write the report.`,
+        `    tools: [search]`,
+        `    model: openai/gpt-5.4-mini`,
+        `    visibility: sub`,
+      ].join("\n"),
+    );
+    const { state } = parseSkillMd(text);
+    expect(state.agents?.writer).toEqual({
+      prompt: "You write the report.",
+      tools: ["search"],
+      model: "openai/gpt-5.4-mini",
+      itemVisibility: { client: true, history: false },
+    });
+  });
+
   it("rejects agent-overrides without agent-ref", () => {
     const text = withFrontmatter(
       [
@@ -597,8 +647,6 @@ describe("serializeSkillMd — delegation agents round-trip", () => {
         `agents:`,
         `  market:`,
         `    prompt-ref: ./reference/market.md`,
-        `    tools: [search]`,
-        `    visibility: sub`,
         `  vet:`,
         `    agent-ref: research-analyst`,
         `    agent-overrides:`,
@@ -632,15 +680,14 @@ describe("serializeSkillMd — delegation agents round-trip", () => {
   });
 
   // FIX-920 — context-supply must survive a serialize → parse round-trip.
-  // Uses prompt-ref (not an inline `prompt:`) so the whole-map assertion isn't
-  // tripped by the pre-existing block-scalar trailing-newline quirk on inline
-  // prompts; the point here is that `contextSupply` round-trips.
-  it("round-trips `context-supply: conversation`", () => {
+  // Stays on the inline `prompt:` entry (the tiny case). Beside `prompt-ref`
+  // the field is rejected — the prompt file owns it.
+  it("round-trips `context-supply: conversation` on an inline prompt", () => {
     const text = withFrontmatter(
       [
         `agents:`,
         `  summarizer:`,
-        `    prompt-ref: ./reference/summarizer.md`,
+        `    prompt: Summarize the discussion.`,
         `    context-supply: conversation`,
       ].join("\n"),
     );
@@ -648,6 +695,8 @@ describe("serializeSkillMd — delegation agents round-trip", () => {
     const out = serializeSkillMd(parsed.state, parsed.body);
     const reparsed = parseSkillMd(out);
     expect(reparsed.state.agents?.summarizer?.contextSupply).toBe("conversation");
-    expect(reparsed.state.agents).toEqual(parsed.state.agents);
+    expect(reparsed.state.agents?.summarizer?.contextSupply).toEqual(
+      parsed.state.agents?.summarizer?.contextSupply,
+    );
   });
 });

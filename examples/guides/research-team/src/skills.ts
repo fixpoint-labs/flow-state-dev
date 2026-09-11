@@ -12,8 +12,8 @@
 // executes the graph with concurrency and dependency gating. The board runs the
 // agents — there are no per-agent tools.
 //
-// The `catalog` carries the leaf tools the agents reference via `tools:`
-// (search, fetch). Because the agents are LLMs
+// The `catalog` carries the leaf tools the agents reference from their
+// prompt-file frontmatter `tools:` (search, fetch). Because the agents are LLMs
 // that call `search`, the skill path (the flow's `chat` action) needs two keys:
 // a model key, and one search-provider key — `search` throws when no provider is
 // configured, while `fetch` falls through to a builtin and needs none. The

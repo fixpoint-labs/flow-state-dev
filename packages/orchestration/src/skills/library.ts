@@ -33,6 +33,7 @@
 import { z } from "zod";
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import { findBundledFile } from "./internal/bundled-files";
+import { parseAgentPromptFile } from "./internal/agent-prompt-file";
 import { specsCollide } from "./internal/agent-key-reconcile";
 import type {
   DeclaredResourceEntry,
@@ -493,14 +494,18 @@ export function createSkillsLibrary(
               `\`agentRegistry\`/\`materializeAgent\` to resolve it with.`,
           );
         }
-        if (
-          spec.promptRef !== undefined &&
-          findBundledFile(entry.files, spec.promptRef) === undefined
-        ) {
-          throw new Error(
-            `skills: delegation agent "${agentKey}" (skill "${skillName}") declares ` +
-              `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
-          );
+        if (spec.promptRef !== undefined) {
+          const file = findBundledFile(entry.files, spec.promptRef);
+          if (file === undefined) {
+            throw new Error(
+              `skills: delegation agent "${agentKey}" (skill "${skillName}") declares ` +
+                `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
+            );
+          }
+          // Fail at bind time on a malformed prompt-file frontmatter, not at
+          // first drain. The file is the agent unit; a bad YAML is a config
+          // error the same way a missing file is.
+          parseAgentPromptFile(file.content, agentKey);
         }
       }
     }

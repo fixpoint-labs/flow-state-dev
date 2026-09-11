@@ -5,12 +5,11 @@ argument-hint: <researcher-secret> <audit-token> <handoff-code>
 agents:
   researcher:
     prompt-ref: ./reference/researcher.md
-    tools: [taskTools]
   auditor:
     prompt-ref: ./reference/auditor.md
 ---
 
-This skill defines its own team. The two `agents:` above are inline prompt agents — each
+This skill defines its own team. The two `agents:` above are prompt-ref seats — each
 one's persona is a file in this skill folder, so the whole team travels with the skill.
 
 You run the board. When the user asks you to collect the team's codes:

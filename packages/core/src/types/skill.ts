@@ -49,8 +49,9 @@ export type SkillContextMode = "inline";
  *
  * An agent is defined one of two ways (exactly one resolution field is set,
  * validated at parse time):
- *   - **inline** — `prompt` (or `promptRef`) plus optional `tools`/`model`/
- *     `visibility`. Travels inside the skill folder; a skill stays code-free.
+ *   - **inline** — `prompt` (body in the skill entry, optional `tools`/`model`/
+ *     `visibility` beside it) or `promptRef` (a Markdown file whose YAML
+ *     frontmatter owns those fields). Travels inside the skill folder.
  *   - **registry** — `agentRef` (+ optional `agentOverrides`), resolving a
  *     named agent through the supplied AgentRegistry.
  *
@@ -63,6 +64,12 @@ export interface AgentSpec {
   prompt?: string;
   /** Inline agent: skill-folder-relative path to a persona prompt file. */
   promptRef?: string;
+  /**
+   * Optional roster blurb. On a `prompt-ref` agent this is read from the
+   * prompt file's frontmatter `description` when present; the coordinator
+   * prefers it over the first body line.
+   */
+  description?: string;
   /** Registry agent: agent registry key — resolves through the supplied AgentRegistry. */
   agentRef?: string;
   /** REPLACE-semantic overrides applied to the resolved registry agent. Requires agentRef. */

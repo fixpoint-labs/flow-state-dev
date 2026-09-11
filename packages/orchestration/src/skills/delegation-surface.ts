@@ -63,8 +63,8 @@ import type { TaskCollectionRef } from "../tasks";
 import { taskBoard } from "../task-board";
 import { readActivations, type ActivationLocation } from "./activation-store";
 import { skillManifestKey } from "./collection";
+import { applyAgentPromptFile, clipRosterLine } from "./internal/agent-prompt-file";
 import { findBundledFile } from "./internal/bundled-files";
-import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { isValidAgentKey } from "./skill-md";
 import { materializeToolSeat, materializeWorker } from "./worker-materializer";
 import { specsCollide } from "./internal/agent-key-reconcile";
@@ -315,12 +315,15 @@ export async function collectAgentSources(
  * build-time skill never depends on collection seeding order. Falls through
  * unchanged (materializeWorker reads the live collection) when not bundled.
  */
-function withBundledPrompt(spec: AgentSpec, files: SkillFile[] | undefined): AgentSpec {
+function withBundledPrompt(
+  spec: AgentSpec,
+  files: SkillFile[] | undefined,
+  agentKey = "agent",
+): AgentSpec {
   if (spec.promptRef === undefined) return spec;
   const file = findBundledFile(files, spec.promptRef);
   if (!file) return spec;
-  const { promptRef: _promptRef, ...rest } = spec;
-  return { ...rest, prompt: stripFrontmatter(file.content) };
+  return applyAgentPromptFile(spec, file.content, agentKey);
 }
 
 // ---------------------------------------------------------------------------
@@ -567,7 +570,7 @@ function buildRosterPurposes(sources: DelegationAgentSource[]): Map<string, stri
   for (const source of sources) {
     for (const [key, spec] of Object.entries(source.agents)) {
       if (purposes.has(key)) continue;
-      purposes.set(key, agentPurpose(withBundledPrompt(spec, source.files), source.files));
+      purposes.set(key, agentPurpose(withBundledPrompt(spec, source.files, key), source.files));
     }
   }
   return purposes;
@@ -776,7 +779,7 @@ async function buildTools(
       }
       seenSpecs.set(agentKey, spec);
 
-      const resolvedSpec = withBundledPrompt(spec, source.files);
+      const resolvedSpec = withBundledPrompt(spec, source.files, agentKey);
       boardWorkers[agentKey] = await materializeWorker(agentKey, resolvedSpec, {
         catalog: deps.catalog,
         ...(deps.agentRegistry ? { agentRegistry: deps.agentRegistry } : {}),
@@ -838,14 +841,9 @@ async function buildTools(
  */
 export function agentPurpose(spec: AgentSpec, files?: SkillFile[]): string {
   if (spec.agentRef) return `agent \`${spec.agentRef}\``;
-  const body = withBundledPrompt(spec, files).prompt;
-  if (body) {
-    const firstLine = body
-      .split("\n")
-      .map((l: string) => l.trim())
-      .find(Boolean);
-    if (firstLine) return firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
-  }
+  const resolved = withBundledPrompt(spec, files);
+  if (resolved.description) return clipRosterLine(resolved.description);
+  if (resolved.prompt) return clipRosterLine(resolved.prompt);
   return "a delegation agent";
 }
 

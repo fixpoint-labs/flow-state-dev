@@ -38,7 +38,7 @@ import { z } from "zod";
 import type { TaskWorkerInput } from "../tasks";
 import { taskWorkerInputSchema } from "../task-board";
 import { skillFileKey } from "./collection";
-import { stripFrontmatter } from "./internal/strip-frontmatter";
+import { applyAgentPromptFile } from "./internal/agent-prompt-file";
 import { substitute } from "./skill-md";
 import { taskTools as taskToolsCapability } from "./task-tools-capability";
 import { resolveCatalogTools } from "../shared/resolve-catalog-tools";
@@ -228,17 +228,18 @@ export async function materializeWorker(
   }
 
   // 2 & 3. prompt-ref / prompt — both build a generator with the substituted
-  //        body as the system prompt.
-  const baseBody = await resolvePromptBody(agentKey, spec, deps);
-  const substituted = substitute(baseBody, { arguments: deps.input ?? "" });
+  //        body as the system prompt. A still-unresolved `prompt-ref` is
+  //        hydrated from the file (body + frontmatter tools/model/…).
+  const resolved = await resolvePromptDrivenSpec(agentKey, spec, deps);
+  const substituted = substitute(resolved.prompt ?? "", { arguments: deps.input ?? "" });
 
   // `taskTools` in the tools array is shorthand for the capability. An agent
   // that lists it gets the eight addTask/…/listTasks tools. For a mid-drain
   // fan-out agent, resolve them against the drain board (deps.boardTaskTools);
   // otherwise the own-state singleton.
-  const usesTaskTools = spec.tools?.includes("taskTools") ?? false;
+  const usesTaskTools = resolved.tools?.includes("taskTools") ?? false;
   const taskToolsCap = deps.boardTaskTools ?? taskToolsCapability;
-  const catalogToolKeys = spec.tools?.filter((t) => t !== "taskTools");
+  const catalogToolKeys = resolved.tools?.filter((t) => t !== "taskTools");
   const tools = resolveCatalogTools(
     agentKey,
     catalogToolKeys,
@@ -248,15 +249,15 @@ export async function materializeWorker(
 
   // Model resolution: per-agent `model:` wins, then the deps' default, then a
   // neutral `"intent/chat"` fallback so a delegation skill works out of the box.
-  const modelId = spec.model ?? deps.defaultModelId ?? "intent/chat";
+  const modelId = resolved.model ?? deps.defaultModelId ?? "intent/chat";
 
   // FIX-920: a `conversation` agent inherits the parent conversation via the
   // generator `history` slot, bounded to the last N whole turns. Output
   // isolation (below) is independent — the agent reads prior history but its
   // own steps still stay out of host history. If the author also made output
   // history-visible, that isolation is defeated: warn, don't silently proceed.
-  const inheritsConversation = spec.contextSupply === "conversation";
-  if (inheritsConversation && spec.itemVisibility?.history === true) {
+  const inheritsConversation = resolved.contextSupply === "conversation";
+  if (inheritsConversation && resolved.itemVisibility?.history === true) {
     // `buildDelegationTools` re-materializes every worker on each generator
     // execution, so a raw console.warn here fires once per step. Collapse it to
     // one emission per (skill, agent) config via the shared warn-once helper.
@@ -270,7 +271,7 @@ export async function materializeWorker(
 
   return generator({
     name: `skillWorker_${deps.skillName}_${agentKey}`,
-    itemVisibility: spec.itemVisibility ?? { client: true, history: false },
+    itemVisibility: resolved.itemVisibility ?? { client: true, history: false },
     ...(inheritsConversation
       ? { history: { limit: { turns: CONVERSATION_HISTORY_TURNS } } }
       : {}),
@@ -286,13 +287,17 @@ export async function materializeWorker(
   }) as unknown as BlockDefinition;
 }
 
-/** Read the agent's prompt body — inline for `prompt`, file-read for `prompt-ref`. */
-async function resolvePromptBody(
+/**
+ * Resolve a prompt-driven spec to an inline `prompt` + file-owned tuning.
+ * Bundled skills arrive already hydrated (`withBundledPrompt`); a live
+ * collection read hydrates here.
+ */
+async function resolvePromptDrivenSpec(
   agentKey: string,
   spec: AgentSpec,
   deps: WorkerMaterializationDeps,
-): Promise<string> {
-  if (spec.prompt !== undefined) return spec.prompt;
+): Promise<AgentSpec> {
+  if (spec.prompt !== undefined) return spec;
   // Parser-enforced invariant: exactly one of the resolution fields is set on
   // every AgentSpec, and the caller has already dispatched the agent-ref branch
   // before reaching here.
@@ -311,7 +316,7 @@ async function resolvePromptBody(
     );
   }
   const content = (await ref.readContent()) ?? "";
-  return stripFrontmatter(content);
+  return applyAgentPromptFile(spec, content, agentKey);
 }
 
 /** Build the per-invocation user turn from the substrate's TaskWorkerInput. */

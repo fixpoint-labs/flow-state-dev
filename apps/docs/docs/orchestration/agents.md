@@ -27,10 +27,8 @@ description: Multi-angle company research delivered by a small team of analysts.
 agents:
   market-analyst:
     prompt-ref: ./reference/market.md
-    tools: [search, fetch]
   financial-analyst:
     prompt-ref: ./reference/financials.md
-    tools: [search, fetch]
   synthesizer:
     prompt-ref: ./reference/synthesis.md
 ---
@@ -43,7 +41,18 @@ You run the board. Extract the target from the user's message, then:
 4. Call `runBoard` once. Surface the synthesizer task's report as-is.
 ```
 
-The persona is either `prompt` (the body inline in the frontmatter) or `prompt-ref` (a path to a Markdown file beside the `SKILL.md`). Beside it you can set `tools` (catalog keys the agent may call itself), `model`, `visibility`, and `context-supply`. Every field is in [Delegation](../skills/delegation#declaring-agents).
+The persona is either `prompt` (the body inline in the frontmatter) or `prompt-ref` (a path to a Markdown file beside the `SKILL.md`). On a `prompt:` entry, `tools`, `model`, `visibility`, and `context-supply` sit on the skill entry. On a `prompt-ref` entry the skill lists only the seat name and the path; those fields go in the prompt file's YAML frontmatter:
+
+```md
+---
+description: Analyzes one competitor.
+tools: [search, fetch]
+model: openai/gpt-5.4-mini
+---
+You analyze one competitor…
+```
+
+Every field is in [Delegation](../skills/delegation#declaring-agents).
 
 Nothing in your app code registers these agents. The skill folder carries its own team, so copying the folder into another app carries the team with it. The only app-side wiring is the tool catalog the agents' `tools` keys resolve against.
 
@@ -51,7 +60,7 @@ A delegated agent returns free text. An agent entry has no output-schema field, 
 
 ### The roster the coordinator sees
 
-The coordinating generator picks assignees off a roster the skill builds from its `agents:` map: each agent key with a one-line purpose beside it. That purpose is the first non-blank line of the agent's prompt, cut off past 80 characters. So an inline persona's opening line doubles as routing copy. Write it as a summary of what the agent does, not as a preamble.
+The coordinating generator picks assignees off a roster the skill builds from its `agents:` map: each agent key with a one-line purpose beside it. For a `prompt-ref` agent, that purpose is the prompt file's optional frontmatter `description` when present; otherwise the first non-blank line of the body, cut off past 80 characters. An inline `prompt:` has no file, so it uses the first line of the persona. Write that line, or `description`, as a summary of what the agent does, not as a preamble.
 
 ## A tool, by its catalog key
 
