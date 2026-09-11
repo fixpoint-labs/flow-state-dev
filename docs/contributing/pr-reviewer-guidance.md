@@ -125,6 +125,12 @@ Rules, all cheap to check:
   diagram is genuinely clearer. Never keep both out of politeness.
 - **Two is the ceiling**, and the second one needs a reason.
 
+**On a spec or epic PR, that one diagram is already spoken for.** Every spec carries a
+[visual explainer](../../.agents/skills/spec-explainer/SKILL.md) beside it, and its *After*
+panel is what goes in block 2, followed by a one-line link to the full document. So the
+question on those PRs is not *does a diagram earn its place* — one is standard — but whether
+anything justifies a **second**, and the bar for that is the same as anywhere else.
+
 ## 3. What's asked of you
 
 **This is the last block written for the product owner, and it is the one they came for.**

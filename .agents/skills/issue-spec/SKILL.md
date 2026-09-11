@@ -443,7 +443,29 @@ Publish the **full spec (Part I + Part II)** in two places that must hold identi
 
    **Spec evolution goes at the bottom**, where [`spec-template.md`](../../../docs/contributing/spec-template.md) puts it — not at the top. It is the change story: the derivation, which never leads (BP-039). Keep the document title and the `Part I` heading — structural navigation is exempt — but Part I §1's problem statement is the first **content** in the document, with no metadata, status block, or timeline above it.
 
-2. **Open the spec PR ready for review.** Get onto `spec/<ISSUE-ID>` — and **which command depends on whether Step 4 already created it for a POC**, because the create form resets the branch:
+2. **Write `spec/<ISSUE-ID>.explainer.md`** — the visual explainer, beside the spec.
+   **Every spec gets one.** Three panels and almost no prose: *today*, *after*, and *where
+   the decision fell*. [`spec-explainer`](../spec-explainer/SKILL.md) is canonical for the
+   panel set, the source tiers, the prose budget, the mermaid grammar and the three
+   verification commands — read it and apply it; don't re-derive it here.
+
+   It exists because the spec is written to be argued with, which is not the same as
+   readable. The person at the approval gate is the least likely of anyone to read all of
+   Part I, and this is what they look at instead.
+
+   **It decides nothing.** No asks, no open questions, no recommendations — those live in
+   §6, §12 and the PR body, where someone is accountable for answering them. Showing what
+   *was* decided is the job of panel 3; showing what is still open is not.
+
+   Panel 2 is normally drawn from this spec's own proposed approach and so is headed
+   `## 2. After (proposed)` — at the gate the proposal is exactly what is being approved.
+   Re-draw it without the marker if a later round approves the direction.
+
+   For a spec whose whole answer is *don't build this* — a fold, a close, a scope cut —
+   panel 3 is the one that earns the document: where each half of the issue went, and
+   anything the spec found that nobody owns.
+
+3. **Open the spec PR ready for review.** Get onto `spec/<ISSUE-ID>` — and **which command depends on whether Step 4 already created it for a POC**, because the create form resets the branch:
 
    - **No POC (the common case): create it** on fresh `origin/main` — worktree-safe, so it's correct whether you're in the coordinator's checkout or a worktree spun off it (see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Worktree branching): `git fetch origin main && git checkout -B spec/<ISSUE-ID> origin/main`.
    - **Step 4 built a POC: the branch already exists and carries commits. Do NOT run the line above** — `-B … origin/main` resets it, discarding every POC commit and leaving §7 and the POC block pointing at files that aren't in the PR. You are already on the branch in the same worktree, so just verify it (`git branch --show-current`) and commit onto it; if you somehow aren't, check it out **without** re-basing on main — `git checkout spec/<ISSUE-ID>` (or `git fetch origin spec/<ISSUE-ID> && git checkout -B spec/<ISSUE-ID> origin/spec/<ISSUE-ID>` if it was already pushed).
@@ -457,23 +479,30 @@ Publish the **full spec (Part I + Part II)** in two places that must hold identi
    - **First collapsed block: the contract** — `## How to review this` from [`spec-template.md`](../../../docs/contributing/spec-template.md), pasted **verbatim**. Smoothing it weakens the only instruction an external bot ever receives, and no spec PR ships without it.
    - **Second collapsed block: the engineering calls** — the §6 Decisions that didn't pass the filters, one bullet each with what a wrong one costs, in the engineer's register.
    - **Third collapsed block: the rest of Part I** — §3 tradeoffs, §4 focus practices, §5 examples, §6 in full. Blocks 1–3 already carry §1, §2 and the filtered §6 Decisions, so it picks up where they stop and nothing is said twice.
-   - **Budget:** the spec-PR row in [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → Budgets.
+   - **The explainer reaches the body as exactly one panel plus one link.** Put the *After*
+     panel in block 2 — it answers *what does this do* — then a one-line
+     `**[→ Visual explainer](<absolute blob URL>)**` naming what the other panels show. The
+     doc carries the rest; a body capped at ~400 words and two diagrams can't. **Use an
+     absolute `https://github.com/<owner>/<repo>/blob/<branch>/<path>` URL** — a relative
+     link in a PR body resolves against the repo root, not the PR, and 404s. Name the file
+     on the links line too: `visual explainer: spec/<ISSUE-ID>.explainer.md`.
+   - **Budget:** the spec-PR row in [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → Budgets. **The explainer panel is the diagram that row's budget anticipates** — it does not license a second one.
    - **If a Step 4 POC was built**, add a collapsed POC block: one runnable command per artifact, the question it answers, and that it's throwaway.
 
    Part II (the directional Build Plan) is reviewed via the committed doc diff, not pasted into the body. The PR is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the design *before* any code is written. Because this PR is never merged (it's closed unmerged once the spec is approved), it is also the place to show **fuller worked examples** that would bloat the spec — as collapsed PR-description sections or committed throwaway example files. Keep the spec doc's own examples small (Part I §5); put anything larger here, so the implementing agent isn't forced to wade through it.
 
    **`<details>` belongs in the PR body, not in the spec doc.** `spec/<ISSUE-ID>.md` is mirrored verbatim to a Linear document, which renders the tag as raw HTML; the spec's own Part I / Part II split is already its fold.
 
-3. **Publish to Linear.** Check for an existing spec document on the issue: `update_document` if one exists, else `create_document` linked to the issue — with the same content as the repo doc (the full spec).
+4. **Publish to Linear.** Check for an existing spec document on the issue: `update_document` if one exists, else `create_document` linked to the issue — with the same content as the repo doc (the full spec).
 
-4. **Update issue relations and comment**:
+5. **Update issue relations and comment**:
    - Add/update dependency relations discovered during research (`save_issue` with `blockedBy` / `blocks`).
    - Add a publishing comment, **problem first** per [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) — not a status label. One or two sentences on what's broken and the approach taken, then the ask (approve the direction, or raise a Decision), then any open questions. Keep that opening within the Linear-issue budget. **Linear renders neither `<details>` nor collapsed blocks**, so the detail — the **Decisions & rules** block from Part I §6 verbatim, and the link to the **spec PR** — goes below a `---` under a `## Detail` heading. The durable record lives on the issue so a reviewer can evaluate the direction without opening the full spec.
    - If open questions exist, flag the issue for discussion.
 
-5. **Mirror every change to Linear.** `spec/<ISSUE-ID>.md` is the review surface and goes read-only when the PR closes — the branch is kept, but nothing edits it again unless the PR is re-opened for a post-approval POC; the Linear document is what survives. Any later edit — most often from spec-PR review (Step 6.5) — is mirrored to Linear in the same change set, so the durable copy is never the stale one.
+6. **Mirror every change to Linear.** `spec/<ISSUE-ID>.md` is the review surface and goes read-only when the PR closes — the branch is kept, but nothing edits it again unless the PR is re-opened for a post-approval POC; the Linear document is what survives. Any later edit — most often from spec-PR review (Step 6.5) — is mirrored to Linear in the same change set, so the durable copy is never the stale one.
 
-6. **Move the issue to "In Spec Review"** with `save_issue`, *after* the repo doc, PR, Linear document, and publishing comment are all in place. If the team has no "In Spec Review" state, fall back to the closest equivalent and note it in the comment.
+7. **Move the issue to "In Spec Review"** with `save_issue`, *after* the repo doc, PR, Linear document, and publishing comment are all in place. If the team has no "In Spec Review" state, fall back to the closest equivalent and note it in the comment.
 
 ### Step 6.5: Respond to spec-PR review
 
@@ -504,6 +533,12 @@ Two instincts to override, because both run the wrong way:
 **Escalate genuinely debatable feedback to the user.** When a suggestion is *spec-level* and both the reviewer's and the spec's positions are defensible — a scope change, a reversed decision — don't silently accept it: surface it as a decision they can make, in full — all six parts, per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md). **Recommend**; you have researched this and they haven't. `AskUserQuestion` gets a crisp choice; the framing still has to be there. Relaying the reviewer's wording is not an ask — it hands them a debate instead of a decision. This is for direction forks only; a below-the-bar comment is never worth a user prompt.
 
 #### 6.5.2 Re-draft, don't append — the anti-addenda rule
+
+**The explainer is one of the surfaces a re-draft reconciles.** A folded finding that moves
+the approach moves whichever panel drew it, and a panel still showing the superseded shape
+is the defect this rule exists to prevent — worse than stale prose, because a diagram is
+what the gate actually looks at. Feedback that changes only wording moves no panel: below
+the bar is below the bar. Re-run the skill's three checks on any explainer you touch.
 
 **Canonical; `issue-implement` 10.6 points here.** Two triggers: a **direction change** (a different approach, a dropped/added deliverable, a reversed decision), or **growth** past ~1.3× the artifact's length when review opened or was last re-drafted — cumulative, never round-over-round; a re-draft carries a `Re-draft:` trailer so `git log --grep` finds that baseline, and a file created during review baselines at first commit. Either way, re-read it whole and rewrite the affected sections into one coherent document; do **not** bolt a "reconciliation / AUTHORITATIVE" section onto the top that contradicts the body — incoherent spec, incoherent implementation (tenet 1). Small clarifications can be inline. On a spec: Part I and Part II, kept in sync with Linear. **On a direction change, record the pivot as one line in the spec's Spec evolution timeline** (`- **After spec review** — <what changed>, because <why>.`) — so the why isn't lost. Neither a growth-only re-draft nor a §13 note earns one; neither changed a decision.
 
