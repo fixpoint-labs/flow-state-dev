@@ -87,7 +87,7 @@ convention pointing at it; the epic doc's index is the live copy.
 flowchart LR
   A["behind us<br/>FIX-1356 skills · #1728<br/>FIX-1342 fence · #1712"]
   B["ready, not started<br/>FIX-1367 admission"]
-  G{{"objective gate<br/>unstamped"}}
+  G{{"objective gate<br/>state to confirm"}}
   C["still first<br/>FIX-1311 ChannelFlow"]
   D["then the conventions<br/>FIX-1352 · FIX-1354"]
   E["last<br/>FIX-1355 lab Proof"]
@@ -105,5 +105,5 @@ flowchart LR
 ```
 
 Two landed, both off the critical path. That path still starts at FIX-1311, unstarted.
-FIX-1356's register unblocked FIX-1367, which is ready and holding — the objective gate is
-unstamped, so nothing ramps.
+FIX-1356's register unblocked FIX-1367, which is ready but unstarted — the gate's own state
+needs confirming first (§3).
