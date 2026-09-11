@@ -58,6 +58,7 @@ flowchart TD
   BOOT["FIX-1357 boot scan"]
   LAB["FIX-1355 pentest lab Proof"]
   ATL["FIX-1358 atlas"]
+  CFG["FIX-1367 WorkerConfig admission"]
   DOOR -->|blocks| CH
   DOOR -.->|"phased behind, blocks nothing"| REST
   CH -->|walk primitives| RES
@@ -68,17 +69,20 @@ flowchart TD
   K --> LAB
   BOOT --> LAB
   CH --> ATL
+  SK -->|"seat register, filled by hire"| CFG
   classDef inflight fill:#9a6700,color:#fff
   classDef todo stroke-dasharray:5 5
   class CH,RES,SK,K inflight
-  class DOOR,REST,LAB,ATL,BOOT todo
+  class DOOR,REST,LAB,ATL,BOOT,CFG todo
 ```
 
 As of the objective gate. Amber is in flight, dashed is not started, nothing has shipped; the
 epic doc's index is the live copy. Two things to read off it. **The one item that blocks anything
 is the one nobody has started** — the notify door, sequenced first while three of its dependents
-sit in spec review. And **the lab is still the only consumer**, last in line, with every
-convention pointing at it. §5 carries both.
+sit in spec review. And **the lab is still the only consumer that declares anything in files** —
+last in line, with every convention pointing at it. FIX-1367 is the near miss: hire hands a kind
+the skills register, so skills gains a caller early, but it reads records rather than a file. §5
+carries both.
 
 ---
 

@@ -162,8 +162,9 @@ of this section, because two of its six items no longer exist in that form.
 | 1 | **Channels file convention** | [FIX-1352](https://linear.app/fixpoint-labs/issue/FIX-1352) | One L2 file type. Absorbs what were floor items 1 and 2 |
 | 2 | Resources file convention | [FIX-1354](https://linear.app/fixpoint-labs/issue/FIX-1354) | Unchanged |
 | 3 | Skills file convention | [FIX-1356](https://linear.app/fixpoint-labs/issue/FIX-1356) | Unchanged |
-| 4 | Thin pentest lab Proof | [FIX-1355](https://linear.app/fixpoint-labs/issue/FIX-1355) | Last. The first consumer of any of it |
-| 5 | Kinds-map fence — not `worker.ts` hire | [FIX-1342](https://linear.app/fixpoint-labs/issue/FIX-1342) | Unchanged |
+| 4 | **Thin `WorkerConfig` admission** | [FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367) | **Added 2026-09-11.** Hire invokes the flow with the right config: the `skills` bag from item 3's register, plus an always-present extension placeholder for kind-owned schema. Soft-blocked on that register; blocks nothing |
+| 5 | Thin pentest lab Proof | [FIX-1355](https://linear.app/fixpoint-labs/issue/FIX-1355) | Last. The first consumer of any of it |
+| 6 | Kinds-map fence — not `worker.ts` hire | [FIX-1342](https://linear.app/fixpoint-labs/issue/FIX-1342) | Unchanged |
 
 **Item 0 is the door, not the board.** The scope is quoted, because the difference is the whole
 point of the second comment:
@@ -184,6 +185,39 @@ exists to free — the single most expensive way to read this section wrong.
 **Still held — recorded, not scheduled.** Dynamic addresses; cross-flow; Collab RC /
 [FIX-1341](https://linear.app/fixpoint-labs/issue/FIX-1341); MCP
 ([FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333)) until the lab.
+
+### Item 4 — what makes "a seat works" honest
+
+**Added by the owner and the Architect on 2026-09-11**
+([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/1718#issuecomment-5639946995)).
+Quoted, because the honesty claim is the part that decides something:
+
+> Epic honesty for "a seat works" includes hire invoking the flow with correct config (`skills`
+> bag from FIX-1356 + extension placeholder for kind-owned schema). **Non-agent Proof on 1367 is
+> the contract gate.**
+
+Until this item lands, a seat can be minted and still be handed nothing it declared. So the
+epic's "a seat works" claim rests on hire calling the flow with a config the kind actually
+admits — the `skills` bag sourced from item 3's seat register, and one always-present extension
+placeholder that kind-owned schema validates.
+
+**The gate is one sentence, and it turns on the door rather than the payload.** The non-agent
+Proof on [FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367) — a hireable kind that is
+not an agent *accepts* `skills` and may ignore them — is the contract gate. **Empty or unused is
+fine; the absent door is not.** An agent E2E does not stand in for it.
+
+**The W2 path proof is a different proof, and stays where it is.** Folder → records → mint
+(Option 1 on [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) /
+[FIX-1335](https://linear.app/fixpoint-labs/issue/FIX-1335)) belongs to W2 and lives on
+[#1664](https://github.com/fixpoint-labs/flow-state-dev/pull/1664). This epic does not conflate
+the two, and no W2 spine spec is reopened for this contract: W2 proves a seat is *minted*, W3
+proves it is *configured*.
+
+**The contract floor itself lives on FIX-1367, not here.** Its thin fields, its delivery path
+into the instance config bag, and its own invent-kill clause — no mandatory `model` / `memory` /
+`tools` / `activate` on the thin door, those staying with the agent kind
+([FIX-1359](https://linear.app/fixpoint-labs/issue/FIX-1359), a parallel epic this item does
+not wait on) — are the issue's to state and enforce. Named here, not reproduced; a copy rots.
 
 ### Channel replaces room
 
@@ -221,14 +255,15 @@ Its items 1 and 2 are now the one channels convention; item 0 above is new.
 | FIX-1311 | **Message board — the minimal notify door**: collection + subscribers in state + `reactTo` + declared dispatchers | spec | — | — | Backlog — **first on the floor, and not started** |
 | FIX-1342 | Kinds-map fence — seats stay `WORKER.md`; custom kinds are flow factories | spec | [#1702](https://github.com/fixpoint-labs/flow-state-dev/pull/1702) *(closed at approval)* | [#1712](https://github.com/fixpoint-labs/flow-state-dev/pull/1712) *(draft)* | Spec Approved |
 | FIX-1352 | Channels file convention (either-source; declaration-only) | spec | [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711) | — | In Spec Review |
-| FIX-1353 | *L2 channels fold* — being **closed as a duplicate** of the channels convention | — | [#1714](https://github.com/fixpoint-labs/flow-state-dev/pull/1714) | — | Closing |
+| FIX-1353 | *L2 channels fold* — **closed as a duplicate** of the channels convention | — | [#1714](https://github.com/fixpoint-labs/flow-state-dev/pull/1714) | — | Duplicate |
 | FIX-1354 | Resources file convention | spec | [#1715](https://github.com/fixpoint-labs/flow-state-dev/pull/1715) | — | In Spec Review |
 | FIX-1355 | Thin pentest lab Proof | spec | — | — | Backlog |
-| FIX-1356 | Skills file convention | spec | [#1716](https://github.com/fixpoint-labs/flow-state-dev/pull/1716) | — | In Spec Review |
+| FIX-1356 | Skills file convention | spec | [#1716](https://github.com/fixpoint-labs/flow-state-dev/pull/1716) *(closed at approval)* | [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728) *(draft)* | In Review |
 | FIX-1357 | Kinds + blocks boot scan (file-convention registration) | spec | — | — | Backlog |
 | FIX-1358 | Atlas: channel replaces room (one convention + board pre-req) | *unset* | — | — | Backlog |
+| FIX-1367 | Thin `WorkerConfig` admission — hire fills `skills` from FIX-1356's seat register; extension placeholder for kind-owned schema | spec | — | — | Todo — soft-blocked on FIX-1356's register ([#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728)) |
 
-Five things this table does not say on its own:
+Six things this table does not say on its own:
 
 - **FIX-1311 carries the `Feature` label**, so its route is `spec` and its spec is unwritten. The
   critical-path item is the one with the least done to it.
@@ -239,8 +274,12 @@ Five things this table does not say on its own:
   this epic found, and a reshuffle is exactly how such a thing disappears.
 - **FIX-1358 is unlabelled**, so its route is unset and its blank Spec PR cell records an
   unanswered question rather than a `direct` route. Whoever labels it settles that.
+- **FIX-1367's dependency is on the register's *read* side**, which is what #1728 ships.
+  Registration — wiring those skills onto a live seat — is an explicit non-goal there, and is what
+  item 4 exists to do. A merged #1728 does not make the bag reach a kind.
 - **Linear nesting and `blockedBy` belong to the Linear Manager**, per the owner's own comment. As
-  of this writing Linear already nests all nine under FIX-1351 and records FIX-1311 `blocks`
+  of this writing Linear already nests all ten under FIX-1351 (FIX-1367 included, parented at
+  creation) and records FIX-1311 `blocks`
   FIX-1352 / FIX-1353 / FIX-1358 — at whole-issue granularity, where the cut above says only *the
   door* blocks. Recorded here for the Linear Manager; not changed from this document.
 
@@ -283,8 +322,11 @@ gate.
   the first thing that would declare a channel, resource, or skill in files. **The 2026-09-11
   floor rewrite does not answer this**, and is easy to misread as having done so: it puts the
   message-board notify door first, which gives the channels convention a *mechanism* to bind, not
-  a *consumer* that declares one in a file. **Decides:** the owner — it is a sequencing call on
-  the floor. **Blocks:** nothing today.
+  a *consumer* that declares one in a file. **Item 4 narrows the question without closing it:**
+  FIX-1367's non-agent Proof consumes the skills register through hire, so skills gains a caller
+  ahead of the lab — but it reads records, it does not declare a skill in a file, and channels and
+  resources gain nothing. **Decides:** the owner — it is a sequencing call on the floor.
+  **Blocks:** nothing today.
 
 - **Collection-vs-N-singles row compatibility at the resources ref form is unclaimed.** Raised by
   FIX-1354 §12. The atlas's worked shape for team documents is
@@ -332,3 +374,9 @@ gate.
   as named L1 composition — while the `Channel` L1 substrate kill stands unchanged. The pending
   stamp in §3 is gone: it was answered in a different shape than it was written, so the section
   was rewritten rather than ticked off.
+- **FIX-1367 joins the floor as item 4** — thin `WorkerConfig` admission, on the owner's and the
+  Architect's call of 2026-09-11. It makes the epic's "a seat works" claim turn on hire invoking
+  the flow with a config the kind admits, and its **non-agent Proof is the contract gate**. The
+  W2 path proof (folder → records → mint) is explicitly a different proof and stays on #1664; no
+  W2 spine spec is reopened. §5's consumer question narrows to channels and resources plus the
+  file path, rather than closing.
