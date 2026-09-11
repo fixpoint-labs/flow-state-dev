@@ -24,7 +24,7 @@ code, not files. Nothing proves the pieces hold together under real multi-seat p
 
 ---
 
-## 2. After — the whole team is describable in files
+## 2. After (proposed) — the whole team is describable in files
 
 ```mermaid
 flowchart LR
@@ -34,7 +34,7 @@ flowchart LR
   TREE --> RES["resources/ · handbook.md"]
 ```
 
-Every piece of a team becomes describable in files, and that is the epic. Rooms go from
+This is the objective under approval, and no sub-spec has been approved yet. Every piece of a team becomes describable in files, and that is the epic. Rooms go from
 nothing to a folder; documents gain a file convention beside `defineResource`, which stays and
 is what the new loader calls. Skills keep the convention they already had — ratified, not
 aligned — and gain levels plus a duplicate-name refusal.
