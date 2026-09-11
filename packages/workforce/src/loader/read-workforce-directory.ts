@@ -30,32 +30,19 @@ import {
   REFUSED_PERSONA_KEY_MESSAGE,
   type WorkerManifest,
 } from "../manifest";
+import { validateSegment } from "./segments";
+import {
+  classify,
+  openStructuralDirectory,
+  refusedSymlink,
+  unreadable,
+} from "./structural-directory";
 
 /** Filenames that are never a worker folder — editor and OS droppings. */
 const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
 
 /** The document that describes a worker. */
 const WORKER_MD = "WORKER.md";
-
-/**
- * Pattern a team or worker folder name must match: lowercase `a-z`/`0-9` runs
- * joined by single hyphens. These are the skill-name rules, adopted rather than
- * shared: the minted identity becomes a flow instance id and a board key, while
- * each segment is separately a path segment on disk, and lowercase-hyphen is the
- * one shape safe in all of them.
- *
- * The allowlist excludes `.`, and that exclusion is load-bearing rather than
- * incidental: `.` is the joiner, so a dotted segment would make the minted id
- * impossible to split back into a team and a name — `a.b.lead` could be read
- * two ways. Do not relax this to admit `.`.
- */
-const SEGMENT_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-/** Longest legal team or worker folder name. */
-const MAX_SEGMENT_LENGTH = 64;
-
-/** Folder names the framework reserves. */
-const RESERVED_SEGMENTS = new Set(["_meta"]);
 
 /** What `readWorkforceDirectory` hands back. */
 export interface ReadWorkforceDirectoryResult {
@@ -106,10 +93,13 @@ export async function readWorkforceDirectory(
     );
   }
 
-  const teams = await openStructuralDirectory(path.join(root, "teams"), "teams", errors);
-  if (teams === undefined) return { workers, errors };
+  const teams = await openStructuralDirectory(path.join(root, "teams"), "teams");
+  if (teams.refusal !== undefined) {
+    errors.push({ path: "teams", error: teams.refusal.error });
+  }
+  if (teams.entries === undefined) return { workers, errors };
 
-  for (const teamId of teams) {
+  for (const teamId of teams.entries) {
     if (IGNORED_ENTRIES.has(teamId)) continue;
 
     const teamDir = path.join(root, "teams", teamId);
@@ -126,14 +116,16 @@ export async function readWorkforceDirectory(
     if (team.kind !== "directory") continue;
 
     const workersPath = `${teamPath}/workers`;
-    const workerEntries = await openStructuralDirectory(
+    const workerSlots = await openStructuralDirectory(
       path.join(teamDir, "workers"),
       workersPath,
-      errors,
     );
-    if (workerEntries === undefined) continue;
+    if (workerSlots.refusal !== undefined) {
+      errors.push({ path: workersPath, error: workerSlots.refusal.error });
+    }
+    if (workerSlots.entries === undefined) continue;
 
-    for (const workerName of workerEntries) {
+    for (const workerName of workerSlots.entries) {
       if (IGNORED_ENTRIES.has(workerName)) continue;
 
       const workerDir = path.join(teamDir, "workers", workerName);
@@ -155,46 +147,6 @@ export async function readWorkforceDirectory(
   }
 
   return { workers, errors };
-}
-
-/**
- * List one of the walk's structural directories — `teams` or a team's
- * `workers`. Returns its entries, or `undefined` when the walk cannot go that
- * way, having reported the reason unless the folder is simply absent.
- *
- * Absence is the only silent outcome, and separating it from the rest is why
- * this helper exists. A missing folder is a tree that does not go that way; a
- * folder that exists and cannot be read is a set of seats the app has lost, and
- * reading it as empty would drop them from the roster while leaving `errors`
- * empty — which is exactly what a caller told to treat `errors` as fatal cannot
- * see. The symlink check is what stops `readdir` following `teams -> /outside`
- * and loading worker files from outside the configured root.
- */
-async function openStructuralDirectory(
-  target: string,
-  reportAs: string,
-  errors: ReadWorkforceDirectoryResult["errors"],
-): Promise<string[] | undefined> {
-  if ((await classify(target)).kind === "symlink") {
-    errors.push({ path: reportAs, error: refusedSymlink("directory", reportAs) });
-    return undefined;
-  }
-
-  try {
-    return await fs.readdir(target);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    errors.push({
-      path: reportAs,
-      error: new Error(`"${reportAs}" could not be read: ${(err as Error).message}`),
-    });
-    return undefined;
-  }
-}
-
-/** The one wording for a refused symlink, wherever the walk meets one. */
-function refusedSymlink(what: string, name: string): Error {
-  return new Error(`Symlinked ${what} "${name}" — refused for safety`);
 }
 
 /**
@@ -289,67 +241,4 @@ function mintWorkerId(teamId: string, workerName: string): string {
   validateSegment(teamId, "Team");
   validateSegment(workerName, "Worker");
   return `${teamId}.${workerName}`;
-}
-
-/** Validate one path segment against the naming rules. Throws on a break. */
-function validateSegment(segment: string, label: "Team" | "Worker"): void {
-  if (segment.length > MAX_SEGMENT_LENGTH) {
-    throw new Error(
-      `${label} folder name "${segment}" exceeds ${MAX_SEGMENT_LENGTH} characters`,
-    );
-  }
-  if (RESERVED_SEGMENTS.has(segment)) {
-    throw new Error(`${label} folder name "${segment}" is reserved`);
-  }
-  if (!SEGMENT_PATTERN.test(segment)) {
-    throw new Error(
-      `${label} folder name "${segment}" must be lowercase letters, digits, and single ` +
-        `hyphens (not at the start or end) — it becomes part of the worker's identity, ` +
-        `which is joined with a "."`,
-    );
-  }
-}
-
-/** What a path is, without following symlinks. */
-type EntryKind = "directory" | "file" | "symlink" | "absent" | "unreadable";
-
-/** A path's kind, plus the failure behind an `unreadable` one. */
-interface Entry {
-  kind: EntryKind;
-  /** Set only for `unreadable`, so the report can say what went wrong. */
-  error?: Error;
-}
-
-/**
- * Classify a path without following symlinks. Symlinks are never followed: a
- * workforce tree can come from anywhere, and one could escape the root or point
- * at something sensitive.
- *
- * Only a missing path is `absent`. Every other failure is `unreadable` and
- * stays distinct, for the same reason `openStructuralDirectory` keeps them
- * apart: a directory that is readable but not searchable (`r--` rather than
- * `r-x`) lists its children and then fails to stat any of them, so folding that
- * into `absent` would drop every seat under it while leaving `errors` empty —
- * the one thing a caller told to treat `errors` as fatal cannot see.
- */
-async function classify(target: string): Promise<Entry> {
-  try {
-    const stat = await fs.lstat(target);
-    if (stat.isSymbolicLink()) return { kind: "symlink" };
-    if (stat.isDirectory()) return { kind: "directory" };
-    if (stat.isFile()) return { kind: "file" };
-    // A socket, a FIFO, a device: not a worker slot, and not a mistake either.
-    return { kind: "absent" };
-  } catch (err) {
-    const failure = err as NodeJS.ErrnoException;
-    return failure.code === "ENOENT"
-      ? { kind: "absent" }
-      : { kind: "unreadable", error: failure };
-  }
-}
-
-/** The one wording for a path that is there and could not be read. */
-function unreadable(what: string, name: string, cause: Error | undefined): Error {
-  const detail = cause === undefined ? "" : `: ${cause.message}`;
-  return new Error(`${what} "${name}" could not be read${detail}`);
 }

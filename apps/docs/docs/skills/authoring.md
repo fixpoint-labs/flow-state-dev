@@ -23,6 +23,12 @@ Files inside the folder are bundled with the skill when it's seeded into the res
 
 A symlinked skill folder is reported as an error and not loaded. A symlink inside a skill folder is skipped.
 
+A skill folder is the same folder wherever it sits. In an app that keeps skills at several levels —
+shared across the app, per team, beside one worker — where the folder sits is what decides who can
+reach the skill, and the file says nothing about it. There is no `scope:` key; a `SKILL.md` that
+declares one is refused when it's read as part of a worker's set. See
+[Where skills folders live](./overview#where-skills-folders-live).
+
 ## SKILL.md frontmatter
 
 The file opens with a YAML frontmatter block delimited by `---`, followed by the Markdown body:

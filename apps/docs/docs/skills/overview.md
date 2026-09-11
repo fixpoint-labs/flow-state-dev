@@ -48,7 +48,7 @@ A matched skill is inline instructions. Its substituted body is injected into th
 
 A bound skill can additionally **delegate**: if it declares an `agents:` field, the generator gets a private task board, the `taskTools` to plan on it, and `runBoard` — it assigns the work as tasks (assignees, deps, structured input) and runs the whole graph by draining the board. Each assignee is a prompt-driven agent, or a catalog tool that runs without a model turn. [Authoring a delegating skill](/guides/agents-command-the-board) walks that path end to end; see [Delegation](./delegation) for the frontmatter shape and how the skill drives its board.
 
-Fork mode was removed. A skill no longer runs as an isolated sub-agent. For "run this as a sub-agent and get the result back," declare an agent, assign it a single task, and call `runBoard`. For the fork-like case where the sub-agent should inherit the conversation so far and still return only its result, mark it `context-supply: conversation` — see [Context supply](../orchestration/context-supply).
+A skill does not run as an isolated sub-agent. For "run this as a sub-agent and get the result back," declare an agent, assign it a single task, and call `runBoard`. For the fork-like case where the sub-agent should inherit the conversation so far and still return only its result, mark it `context-supply: conversation` — see [Context supply](../orchestration/context-supply).
 
 ## Binding skills to one generator
 
@@ -139,6 +139,69 @@ export const featuresCapability = defineCapability({
 
 See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 
+## Where skills folders live
+
+`readSkillsDirectory` takes a root, so a skills folder can sit wherever you point it. In an app that
+describes its workers in folders (see [Workers on disk](/docs/orchestration/workers-on-disk)), one
+worker's skills are spread across three folders: the whole app's, its team's, and any sitting beside
+the worker itself.
+
+```
+workforce/org/skills/triage/SKILL.md
+workforce/teams/pentest/skills/port-scan/SKILL.md
+workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md
+```
+
+`readSeatSkills` from `@flow-state-dev/workforce/loader` reads all three for one worker:
+
+```ts
+import { readSeatSkills } from "@flow-state-dev/workforce/loader";
+
+const { skills, errors } = await readSeatSkills("./workforce", {
+  team: "pentest",
+  worker: "recon",
+});
+```
+
+Every skill folder at those three levels is read, so nothing has to be listed anywhere for a skill to
+be included. The records come back level by level — org, then team, then the worker's own — and each
+one is the `{ name, skillMd, files }` shape `readSkillsDirectory` returns. Skill names stay bare,
+with no team prefix.
+
+Two calls naming different teams read different folders, so each result holds only what that call
+read. A `review` under `teams/pentest/` and a `review` under `teams/audit/` are two skills, and
+neither result carries the other's.
+
+`errors` is one entry per thing that should have reached the worker and did not: a level that
+exists and cannot be listed, a skill folder that failed to load, a symlink on the way to a level,
+a `SKILL.md` the reader refuses, or one name reaching the worker from more than one level. Each
+entry is `{ kind, path, error }`, keyed by a path relative to the root, and `kind` names which of
+those conditions it is, so a caller can tolerate one class and still refuse another. An absent
+level is empty rather than an error, but a `root` that cannot be read throws.
+
+A collision carries one more field, `paths`. Narrow on `kind` to reach it:
+
+```ts
+for (const entry of errors) {
+  if (entry.kind === "duplicate-skill-name") {
+    // every file competing for the name: two or three, one per level
+    console.error(entry.error.message, entry.paths);
+  } else {
+    console.error(`${entry.kind} at ${entry.path}`, entry.error);
+  }
+}
+```
+
+A contested name is dropped rather than resolved. Every copy stays out of `skills`, whichever level
+it came from: a folder beside the worker does not override its team's, and a team's does not
+override the org's. `path` on that entry is `paths[0]`, the level the name was first seen at. It keys the entry; it
+does not rank the files. Rename one or delete one to get the skill back.
+
+`readSeatSkills` returns records and installs nothing. Turning a set into a live catalog is the
+caller's job: pass `skills` as the `initialSkills` of the capability you build for that worker. See
+the [`@flow-state-dev/workforce` README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/workforce#reading-one-seats-skills)
+for the full surface.
+
 ## What ships in the package
 
 | Export | Purpose |
@@ -146,6 +209,7 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 | `createSkillsCapability(options)` | The one-line wiring path. Returns a capability with three presets — `tools`, `context`, `runSkill` — all on by default. Drop the tool-call path at the use site with `cap.with({ runSkill: false })`. |
 | `createSkillActivator(options)` | The up-front skill router. Returns a `.tap`-able sequencer. See [Activation paths](./activation). |
 | `readSkillsDirectory(root)` | Walk a filesystem tree and return `InitialSkill[]` for `initialSkills`. Node only. |
+| `readSeatSkills(root, { team, worker })` | One worker's skills across the org, team and worker levels of a workforce tree. Ships from `@flow-state-dev/workforce/loader`. Node only. |
 | `createRunSkillTool(options)` | The `runSkill` router as a standalone tool, for custom wiring outside the capability. |
 | `inlineActivate` | The inline-mode handler, for custom wiring. |
 | `parseSkillMd`, `serializeSkillMd` | Frontmatter + body parsing, for tools that build skills programmatically. |
