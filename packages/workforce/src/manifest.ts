@@ -1,11 +1,12 @@
 /**
- * The worker record — the shape both halves of the on-disk workforce agree on,
+ * The on-disk records — the shapes the halves of a file convention agree on,
  * and the wordings they refuse a file with.
  *
- * Declared once here, node-free, so the loader (which reads folders) and the
- * seat factory (which reads nothing) never hold two spellings of one record —
- * and, for the same reason, so a refusal reads the same whichever door a file
- * arrives at.
+ * Declared once here, node-free, so the loaders (which read folders) and the
+ * consumers that turn a record into something runnable (which read nothing)
+ * never hold two spellings of one record — and, for the same reason, so a
+ * refusal reads the same whichever door a file arrives at. A worker is a
+ * `WorkerManifest`; a file-declared document is a `ResourceDoc`.
  */
 
 /**
@@ -105,3 +106,98 @@ export const duplicateSkillNameMessage = (
 ): string =>
   `Skill "${name}" reaches seat "${seat}" from ${paths.length} levels — ` +
   `${paths.join(" and ")}. Remove one: there is no precedence rule.`;
+
+/**
+ * One file-declared document, as read off disk or hand-built. The resources
+ * convention's record, mirroring {@link WorkerManifest}'s three fields.
+ *
+ * Named a document rather than a manifest deliberately: `ResourceManifest` is
+ * already the framework's name for the client-facing list of a session's public
+ * resources over HTTP, and one term cannot carry both meanings.
+ */
+export interface ResourceDoc {
+  /**
+   * Storage-key namespace and accessor key — a bare `<name>` at the org level,
+   * `teams/<teamId>/<name>` for a team's. Path-joined, not dot-joined: this is
+   * the key the atlas fixes for a team document, and unlike a worker id it
+   * never routes, so a `/` in it is safe. Minted by the loader, in one helper.
+   */
+  ref: string;
+  /** Frontmatter exactly as written — keys as the file spelled them, values uninterpreted. */
+  declared: Record<string, unknown>;
+  /** The document itself: Markdown body verbatim, frontmatter removed. */
+  body: string;
+}
+
+/**
+ * The settings the resources convention derives, and therefore refuses to let a
+ * document declare.
+ *
+ * Every one of these is a field the convention itself supplies: where the
+ * document is stored (`scope`), which row it is (`ref`), the shape and starting
+ * value of its state, and its body. A derived field that frontmatter can
+ * overwrite was never derived — carried verbatim, `ref:` silently redirects a
+ * document's storage row, `content:` replaces the Markdown body, and a YAML
+ * `stateSchema:` string constructs successfully and fails much later, when the
+ * engine calls `safeParse` on a string.
+ *
+ * This is the rule the whole convention set shares — a status the framework
+ * grants is derived from the path, never declared — applied to the full set a
+ * convention derives rather than to one key.
+ */
+export const DERIVED_RESOURCE_KEYS = [
+  "scope",
+  "ref",
+  "stateSchema",
+  "default",
+  "content",
+  "contentFile",
+  "contentTemplate",
+  "contentTemplateRef",
+] as const;
+
+/**
+ * The one setting a document may name but not choose freely.
+ *
+ * `prefetchMode: "lazy"` is not derived — it is rejected downstream. Every
+ * file-declared document is installed at flow level, and `defineFlow` refuses a
+ * lazy single there because a flow-level declaration has no per-block load
+ * trigger. Refused here with the reason, rather than left for an app to
+ * discover as a failure to boot.
+ */
+const REFUSED_PREFETCH_MODE = "lazy";
+
+/**
+ * Say why a document's declaration is refused, or `undefined` when nothing is.
+ *
+ * Checked at both doors — the loader that parses a file, and the function that
+ * builds resources from records — because a `ResourceDoc[]` can be hand-built
+ * and never pass the loader, the same two-door reason `hireWorkforce` has.
+ *
+ * Names no subject: the caller supplies what it can name, the loader the file
+ * and the install half the ref, exactly as {@link REFUSED_PERSONA_KEY_MESSAGE}
+ * does.
+ */
+export function refusedDeclarationMessage(
+  declared: Record<string, unknown>,
+): string | undefined {
+  for (const key of DERIVED_RESOURCE_KEYS) {
+    if (Object.hasOwn(declared, key)) {
+      return (
+        `declares \`${key}:\`, which is a setting the convention derives from where the ` +
+        `file sits, not one a resource declares. Drop it, or declare this resource in ` +
+        `code with defineResource() instead.`
+      );
+    }
+  }
+
+  if (declared["prefetchMode"] === REFUSED_PREFETCH_MODE) {
+    return (
+      `declares \`prefetchMode: "${REFUSED_PREFETCH_MODE}"\`, which a file-declared ` +
+      `resource cannot be: it is installed at flow level, and a flow-level declaration ` +
+      `has no per-block load trigger to load it on. Drop the key.`
+    );
+  }
+
+  return undefined;
+}
