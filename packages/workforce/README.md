@@ -171,8 +171,8 @@ A skill beside the worker is included without appearing in that worker's `skills
 `skills:` list names the shared skills a seat wants; the folder is already the seat's.
 
 Two workers on different teams read different folders, so `pentest`'s `review` and `audit`'s
-`review` are two skills and neither seat sees the other's. Skill names stay bare — nothing is
-prefixed with a team.
+`review` are two skills, and each seat's set carries only its own. Skill names stay bare — nothing
+is prefixed with a team.
 
 One name reaching a single worker from two of its levels is refused, naming both paths:
 

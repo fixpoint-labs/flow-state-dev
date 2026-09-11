@@ -163,14 +163,15 @@ const { skills: initialSkills, errors } = await readSeatSkills("./workforce", {
 ```
 
 A skill beside the worker is included without being listed in that worker's `skills:`. Two workers on
-different teams read different folders, so two teams can each keep a `review` and neither worker sees
-the other's. Skill names stay bare.
+different teams read different folders, so each team can keep its own `review` and neither set
+carries the other's. Skill names stay bare — nothing is prefixed with a team.
 
 One name reaching a single worker from two of its levels is refused, naming both paths, and left out
 of `skills`. Rename or delete one; a worker-level folder does not override its team's.
 
-Each worker's skills install into that worker's own collection, at whatever scope you give it. See the
-[`@flow-state-dev/workforce` README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/workforce#reading-one-seats-skills)
+`readSeatSkills` returns records and installs nothing. Turning a set into a live catalog is the
+caller's job: pass `skills` as the `initialSkills` of the capability you build for that worker. See
+the [`@flow-state-dev/workforce` README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/workforce#reading-one-seats-skills)
 for the full surface.
 
 ## What ships in the package
