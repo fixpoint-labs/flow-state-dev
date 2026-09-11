@@ -14,14 +14,14 @@ flowchart LR
   TREE --> SK["skills/ · SKILL.md, one level"]
   CODE["TypeScript code"] --> RES["resources"]
   CH["a channel"]
-  CH -.-> BOARD["waking its subscribers"]
+  CH -.-> KIND["no kind to be an instance of"]
   classDef none stroke-dasharray:5 5
-  class CH,BOARD none
+  class CH,KIND none
 ```
 
 Workers and skills are already file-declared; a document is declared in code, with
-`defineResource`. **A channel has no declaration surface at all** — not code, not files — and
-nothing named wakes its subscribers.
+`defineResource`. **A channel has no declaration surface at all** — not code, not files — and no
+kind to be an instance of.
 
 ---
 
@@ -34,12 +34,12 @@ flowchart LR
   TREE --> CH["channels/ · CHANNEL.md"]
   TREE --> RES["resources/ · handbook.md"]
   CODE["TypeScript code"] --> RES
-  CH --> BOARD["board notify · L1 composition"]
+  CH --> CF["ChannelFlow · default L2 kind"]
 ```
 
-A team becomes describable in files. A channel goes from nothing to a folder and gains a board
-that wakes subscribers — reusing today's collection and `reactTo`, not a new package type. Two
-sub-specs are approved; the objective is not.
+A team becomes describable in files. A channel goes from nothing to a folder naming a flow kind —
+the default ChannelFlow, posted into and read back as one clean transcript. Two sub-specs are
+approved; the objective is not.
 
 ---
 
@@ -47,8 +47,8 @@ sub-specs are approved; the objective is not.
 
 ```mermaid
 flowchart TD
-  DOOR["FIX-1311 door · collection, reactTo, declared dispatchers"]
-  REST["FIX-1311 rest · brief, housekeeper, retirement, CAS"]
+  DOOR["FIX-1311 default ChannelFlow · subscribe, post, transcript"]
+  REST["brief · housekeeper · retirement · CAS"]
   CH["FIX-1352 channels convention"]
   RES["FIX-1354 resources"]
   SK["FIX-1356 skills"]
@@ -57,8 +57,8 @@ flowchart TD
   LAB["FIX-1355 pentest lab Proof"]
   ATL["FIX-1358 atlas"]
   CFG["FIX-1367 WorkerConfig admission"]
-  DOOR -->|blocks| CH
-  DOOR -.->|"phased behind, blocks nothing"| REST
+  DOOR -->|"kind before instances"| CH
+  DOOR -.->|"out of admission, blocks nothing"| REST
   CH -->|walk primitives| RES
   CH -->|walk primitives| SK
   CH --> LAB
