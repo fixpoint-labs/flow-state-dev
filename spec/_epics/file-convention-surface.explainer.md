@@ -38,8 +38,8 @@ flowchart LR
 ```
 
 A team becomes describable in files. A channel goes from nothing to a folder naming a flow kind —
-the default ChannelFlow, posted into and read back as one clean transcript. Two sub-specs are
-approved; the objective is not.
+the default ChannelFlow, posted into and read back as one clean transcript. The objective was
+approved on 2026-09-11.
 
 ---
 
@@ -87,13 +87,13 @@ convention pointing at it; the epic doc's index is the live copy.
 flowchart LR
   A["behind us<br/>FIX-1356 skills · #1728<br/>FIX-1342 fence · #1712"]
   B["ready, not started<br/>FIX-1367 admission"]
-  G{{"objective gate<br/>state to confirm"}}
+  G{{"objective gate<br/>approved 22:52Z"}}
   C["still first<br/>FIX-1311 ChannelFlow"]
   D["then the conventions<br/>FIX-1352 · FIX-1354"]
   E["last<br/>FIX-1355 lab Proof"]
   A -->|"register landed"| B
-  G -.->|"holds every start"| B
-  G -.->|"holds every start"| C
+  G -.->|"passed"| B
+  G -.->|"passed"| C
   C -->|"kind before instance"| D
   D --> E
   classDef shipped fill:#1a7f37,color:#fff
@@ -105,5 +105,5 @@ flowchart LR
 ```
 
 Two landed, both off the critical path. That path still starts at FIX-1311, unstarted.
-FIX-1356's register unblocked FIX-1367, which is ready but unstarted — the gate's own state
-needs confirming first (§3).
+FIX-1356's register unblocked FIX-1367, which is ready and not started. The objective cleared
+its gate on 2026-09-11.
