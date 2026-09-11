@@ -152,5 +152,3 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 | `skillActivationSourceSchema`, `matchedSkillSchema` | Runtime Zod schemas mirroring the `SkillActivationSource` / `MatchedSkill` types from `@flow-state-dev/core`. |
 
 Continue to [Activation paths](./activation) for up-front vs. mid-flow, or [Authoring skills](./authoring) for the SKILL.md format reference.
-
-TEMP (reverted in the next commit) — proving the docs CI gate fails on a broken internal link: [workers on disk](/orchestration/workers-on-disk).
