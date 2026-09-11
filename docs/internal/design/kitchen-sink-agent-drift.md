@@ -26,14 +26,15 @@ cannot be hired.
 
 **Kitchen-sink runs the expensive half of both subsystems the agent kind shares with it.** It
 picked `system()` over `createMemoryCapability` for memory, and the activator with its LLM
-classifier tier left on for skills. Copied forward as defaults, that is a recurring per-turn
-model-call bill on every seat anybody ever hires.
+classifier tier left on for skills. Copied forward as defaults, that is a recurring model-call
+bill on every seat anybody ever hires. **§2c prices it precisely** — read that table before
+citing a number.
 
 **The epic has already ruled on that** (signed off on PR #1736, 2026-09-11): the canonical
 out-of-the-box paths are the **light** ones — skills **library + binding**, and **read-side**
 memory. The LLM classifier tier and the full `system()` capture pipeline are **opt-in, one
-config line each**. The evidence is §2 below; the implementing calls stay with their owners
-(skills merge and activation → FIX-1362, the kind's composition → FIX-1363).
+config line each**. The implementing calls stay with their owners (skills merge and activation
+→ FIX-1362, the kind's composition → FIX-1363).
 
 The asymmetry is why: light → heavy is additive, one line. Heavy → light is a breaking change
 to rosters already hired.
@@ -49,10 +50,13 @@ to rosters already hired.
 | `createSkillsLibrary` + `.with(binding)` + separate `createSkillActivator` | `apps/docs/docs/skills/binding.md`, `activation.md` | **Uses this** (`flows/chat-agent/shared/capabilities/features.ts`) |
 | `createSkillsCapability` + `readSkillsDirectory` — one capability carrying collection, `activeSkills` fragment, catalog tools, body formatter, default-on `runSkill` preset | `createSkillsCapability` header | Not used |
 
-The two overlap heavily and cross-reference each other; `createSkillsCapability`'s own header
-says to drop its `runSkill` preset when you activate up front. **Library + binding is the
-epic-approved canonical path for the kind** — it is the one with a working activator behind it
-and the one a per-seat register composes with.
+The two overlap heavily and cross-reference each other. **Both work with the activator** —
+`createSkillsCapability`'s own header tells callers doing up-front activation to drop its
+default `runSkill` preset, and it exposes the same `skills` collection and session
+`activeSkills` slot the activator drives. The differentiator is not activation: it is the
+**per-generator binding surface** (`.with(binding)`), which is what a per-seat register
+composes with. **Library + binding is the epic-approved canonical path for the kind** on that
+basis. FIX-1362 should reconcile the two entry points, not assume only one can activate.
 
 → **FIX-1362** owns the final merge/activation rule. The comparison above is so it need not
 re-derive one.
@@ -65,33 +69,34 @@ re-derive one.
 ### 2b. The activator kitchen-sink builds is missing its first-turn seed
 
 `features.ts` passes `initialSkills` to `createSkillsLibrary` but constructs the activator as
-`createSkillActivator({ activeState })` — **no `initialSkills`**. The option's own contract
-(`packages/orchestration/src/skills/skill-activator.ts`) says why that matters:
-
-> Bundled defaults to seed **before** the matcher tiers scan the collection. The matcher runs
-> upstream of the generator, so it can't rely on the binding reader's lazy seeding — on a fresh
-> collection the slash/keyword/classifier tiers would otherwise see an empty catalog on turn 1
-> and match nothing. Pass the same `initialSkills` given to `createSkillsLibrary`.
-
-`createSkillActivator` only prepends its seed step when `initialSkills` is non-empty, so
-kitchen-sink's activator has no seed step at all.
+`createSkillActivator({ activeState })` — **no `initialSkills`**. The matcher runs upstream of
+the generator, so it cannot rely on the binding reader's lazy seeding: on a fresh collection all
+three tiers see an empty catalog on turn 1 and match nothing. `createSkillActivator` only
+prepends its seed step when `initialSkills` is non-empty, so kitchen-sink's activator has no seed
+step at all. → `packages/orchestration/src/skills/skill-activator.ts`, the `initialSkills`
+option contract.
 
 **This is a bug in the demo, not a shape to port.** The kind must pass the same `initialSkills`
 to both. → **FIX-1362** / **FIX-1363**.
 
 ### 2c. The per-turn cost, stated precisely
 
-Corrected from an earlier "two or more on every turn" — the real shape is conditional, and the
-conclusion survives it:
+Corrected from an earlier "two or more on every turn". The real shape is per-gate, and each gate
+is a different kind: one unconditional, one input-conditional, one threshold-latching, one
+cadence-limited. The conclusion survives all four:
 
 | Cost | When it fires |
 |---|---|
 | LLM classifier — one structured-output generator call | Only on turns **not** resolved by the slash or keyword tier. Both later tiers are `.tapIf(!ctx.sequencer?.state.resolved, …)`, so a `/skill` prefix or keyword hit short-circuits it. Ordinary conversational turns match neither and do pay it. |
 | `system()` capture observer — one background generator call | **Every** turn (`captureFromItems` as a `.sideChain` in `run/run.ts`) |
-| Consolidation / prune / digest / janitor chains | Cadence-gated, not per turn. `run/cognition.ts`: the digest "refreshes after consolidation/prune actually mutate the semantic store … not on every turn" |
+| Semantic **prune** — one generator call | **Threshold-gated, and it can recur every turn.** `pruneGuard` tests only `facts.length >= pruneThreshold` (default 20) — there is no cadence or last-run condition, and `memorySystemCapture` wires prune as a `.sideChain()` on every turn. Once the store sits at or above the threshold, a conservative prune that removes nothing leaves it there, so the call fires again next turn. |
+| Consolidation / digest / janitor chains | Genuinely cadence-gated. `consolidationGuard` tests `turnsSinceConsolidation >= minInterval` against `lastConsolidationTurn`; `run/cognition.ts`: the digest "refreshes after consolidation/prune actually mutate the semantic store … not on every turn" |
 
 So: one extra call on every turn, two on every turn that skills don't resolve deterministically,
-plus periodic maintenance. That is the bill a default sets for everybody.
+and a third on every turn once the semantic store is at its prune threshold — plus genuinely
+periodic consolidation. That is the bill a default sets for everybody. Note the asymmetry: prune
+is the one maintenance chain that is *not* cadence-limited, so it is the one most likely to be
+mis-costed as "occasional".
 
 ### 2d. App-flat, session-global activation is not a per-seat register
 
@@ -102,32 +107,28 @@ is `org ∪ team ∪ worker-local`, per seat. **Name the difference; do not copy
 
 ### 2e. Most of `chat-agent` is not agent-kind material
 
-Beyond the spine, the app carries five thinking-style pattern pipelines with a classifier and
-router, a bias check, perspective capture (`@thought-fabric/core/identity`), an artifacts
-subsystem, a bash sandbox with environment-selected providers, optional MCP, four durable
-human-in-the-loop actions, voice, and auto-titling.
+The spine is `flows/chat-agent/run/` plus `shared/capabilities/features.ts`. **Everything else
+under `flows/chat-agent/` is demo surface** — thinking-style pipelines, bias check, perspective
+capture, artifacts, a bash sandbox, optional MCP, human-in-the-loop actions, voice, auto-titling.
 
-All of it is good demo surface. **None of it belongs in an out-of-the-box default.** The demo is
-roughly ten times the surface the kind needs. "Present in kitchen-sink" is not evidence of
-"belongs in the kind".
+All of it is good demo surface. **None of it belongs in an out-of-the-box default.** "Present in
+kitchen-sink" is not evidence of "belongs in the kind".
 
 ### 2f. The killed agent surface is still taught where users can reach it
 
 `defineAgent` / `materializeAgent` / `AgentRegistry` are FIX-1344's kill targets. Outside
-`packages/workforce/src` and its tests they survive in **15 user-reachable sites**:
+`packages/workforce/src` and its tests they survive across four categories of user-reachable
+surface: **published docs pages** (`apps/docs/docs/`, `apps/docs/guides/`), **the Atlas**,
+**package READMEs**, and **one runnable example** (`examples/guides/research-team/` — code a
+user copies).
 
-- **7 published pages** — `apps/docs/docs/orchestration/{agents,configuration,overview}.md`,
-  `apps/docs/docs/skills/delegation.md`,
-  `apps/docs/guides/{building-agents,building-a-research-team,agents-command-the-board}.md`
-- **5 Atlas files** — `docs/atlas/README.md` **and the four rendered atlases**
-  `{workforce,conductor,framework,roadmap}.html`. These are not drafts:
-  `.github/workflows/pages.yml` uploads `docs/atlas` as the GitHub Pages site root, so each
-  serves at `/<name>.html`.
-- **2 package READMEs** — `packages/workforce/README.md`, `packages/orchestration/README.md`
-- **1 runnable example** — `examples/guides/research-team/` (README, `src/agents.ts`,
-  `src/skills.ts`, a bundled `SKILL.md`) — code a user copies
+The count drifts, so it is deliberately not enumerated here. The one finding worth carrying is
+the easy-to-miss one: **the Atlas is four rendered `.html` files, not just its README.**
+`docs/atlas/{workforce,conductor,framework,roadmap}.html` are not drafts —
+`.github/workflows/pages.yml` uploads `docs/atlas` as the GitHub Pages site root, so each serves
+at `/<name>.html`. A repair that greps only `*.md` misses all four.
 
-→ **FIX-1366** owns the repair and should re-derive rather than trust this count:
+→ **FIX-1366** owns the repair and should derive its own list:
 
 ```
 grep -rl "defineAgent\|materializeAgent\|AgentRegistry\|createAgentRegistry" \
