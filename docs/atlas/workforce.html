@@ -204,7 +204,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <a href="#layers">02 &middot; Layer 1 vs Layer 2</a>
     <a href="#vision">03 &middot; Build-out</a>
     <a href="#lab">03 &middot; Lab Proof</a>
-    <a href="#fence">04 &middot; Seats vs name&#8594;block</a>
+    <a href="#fence">04 &middot; Seats, kinds, blocks</a>
     <a class="grp">The convention</a>
     <a href="#contract">05 &middot; The worker contract</a>
     <a href="#files">06 &middot; File conventions</a>
@@ -232,35 +232,35 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <header class="masthead">
   <p class="eyebrow">Living design</p>
   <h1>Workforce is the product. Conductor is a team on it.</h1>
-  <p class="standfirst">Workforce is the <strong>Layer&nbsp;2 product</strong>: roster / teams + seats + rooms + thin helpers. It can ship for a client (OnSecurity is a GTM name, not an impl) and for personal or org workforces. A <strong>seat</strong> binds a <strong>worker</strong>, not an Agent. Seats are <strong>flow instances</strong> (dispatch targets). Skills and task boards share one in-process list: <strong>name &#8594; <code>BlockDefinition</code></strong>. Those are not the same list. A worker is any flow on the contract; thin sequencers count. <strong><code>defineAgent</code></strong> is a block factory that emits a <code>BlockDefinition</code> &#8212; proposed; today it returns an <code>Agent</code> config. It is not a registry species. <strong>Conductor</strong> is one consumer: a Workforce team whose seats include coding-harness workers. The roster <em>names</em> the harness; <strong>omp</strong> (opinionated Pi harness) can fill that seat &#8212; proposed, not integrated. One harness-manager stack. Layer&nbsp;1 stays substrate. The kick is the <strong>W2</strong> package, then a thin <a href="#lab">lab Proof</a>. MCP is a proposed client door (<a href="#mcp">&#167;15</a>), <strong>held</strong> until those run. The sequence is <a href="#vision">&#167;03</a>. The two lists are <a href="#fence">&#167;04</a>. Astra gaps stay in <a href="#gaps">&#167;19</a>.</p>
+  <p class="standfirst">Workforce is the <strong>Layer&nbsp;2 product</strong>: roster / teams + seats + rooms + thin helpers. It can ship for a client (OnSecurity is a GTM name, not an impl) and for personal or org workforces. A <strong>seat</strong> binds a <strong>worker</strong>, not an Agent. Seats are <strong>flow instances</strong> (dispatch targets), declared as <code>WORKER.md</code>. <strong>Workers</strong> are generators or flows with <strong>instructions + model + tools</strong>. Hire takes a <strong>kinds</strong> map &#8212; built-in and custom flow factories; a seat&#8217;s <code>flow:</code> only names a registered kind. Skills and task boards share one in-process list: <strong>name &#8594; <code>BlockDefinition</code></strong>. Those are not the seat list. Thin sequencers count. Do not teach <code>defineAgent</code> as a block factory, or <code>materializeAgent</code> as the spine &#8212; invent-kill / placeholder; see <a href="#fence">&#167;04</a>. Hire / <code>WORKER.md</code> body key is <strong><code>instructions</code></strong>. <strong>Persona</strong> is a later persona-builder, not a v1 species. <strong>Conductor</strong> is one consumer: a Workforce team whose seats include coding-harness workers. The roster <em>names</em> the harness; <strong>omp</strong> (opinionated Pi harness) can fill that seat &#8212; proposed, not integrated. One harness-manager stack. Layer&nbsp;1 stays substrate. <strong>W2</strong> foundation is mostly done except the FIX-1342 rewrite. Next is <strong>W3</strong> &#8212; the file-convention surface &#8212; then a thin <a href="#lab">lab Proof</a>. MCP is a proposed client door (<a href="#mcp">&#167;15</a>), <strong>held</strong> until the lab runs. Collab RC stays later. The sequence is <a href="#vision">&#167;03</a>. Seats stay documents; kinds and blocks are the code door &#8212; <a href="#fence">&#167;04</a>. Astra gaps stay in <a href="#gaps">&#167;19</a>.</p>
   <div class="key">
     <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
     <span><i class="sw-dash"></i> proposed &#8212; named, not built</span>
     <span><i class="sw" style="background: var(--prose-soft); border: 1.2px solid var(--prose)"></i> later / cut &#8212; not foundation</span>
   </div>
-  <p class="sib">Pinned to <code>origin/main</code> at <code>41d8b6367</code> (2026-09-09). Conductor is a Workforce config, not a sibling product and not a parallel Proof. The old lock &#8212; separate tracks, later triangulation &#8212; is <strong>superseded</strong>. Chat-sdk is gone (<a href="https://linear.app/fixpoint-labs/issue/FIX-1330">FIX-1330</a>). Cross-flow dispatch exists on this pin (<code>dispatcher({ flowKind })</code>; #1600 landed as <code>7843f23f7</code>). Hire-id, dynamic addresses, and multi-hire still wait on instances (<a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a>). <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code> <strong>exists</strong>. Owner fence (Jake + Architect, 2026-09-09): stop teaching <code>agentRegistry</code> / <code>agent-ref</code> as the resolve path; park the code kill behind W2. Not a D-n. GTM timing stays Strategy.</p>
+  <p class="sib">Pinned to <code>origin/main</code> at <code>7b7169db1</code> (2026-09-10). Conductor is a Workforce config, not a sibling product and not a parallel Proof. The old lock &#8212; separate tracks, later triangulation &#8212; is <strong>superseded</strong>. Chat-sdk is gone (<a href="https://linear.app/fixpoint-labs/issue/FIX-1330">FIX-1330</a>). Cross-flow dispatch exists on this pin (<code>dispatcher({ flowKind })</code>; #1600 landed as <code>7843f23f7</code>). Hire-id, dynamic addresses, and multi-hire still wait on instances (<a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a>). <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code> <strong>exists</strong>. <code>readWorkforceDirectory</code> and <code>hireWorkforce</code> <strong>exist</strong> (#1689 / #1687). Owner fence (Jake + Architect, 2026-09-10): workers are generators/flows with <code>instructions</code> + model + tools; seats stay flow instances; kill <code>materializeAgent</code>; <code>defineAgent</code> is an invent-kill candidate &#8212; do not teach it as a block factory. Persona is later persona-builder only. Hire / <code>WORKER.md</code> body key is <code>instructions</code> (maps to generator <code>prompt</code>). Default system prompt for all workers is proposed: compose into the prompt slot (array). Softens the 2026-09-09 &#8220;<code>defineAgent</code> = block factory&#8221; teach. Owner park: rooms are L2 &#8212; one roster, system + helper-minted; <a href="#collab">Collab later</a>, not W2. Room lock (Jake / Cycle PM / Architect / Systems Thinker, 2026-09-10): W2 stays the landed foundation except the FIX-1342 rewrite &#8212; do not stuff the next surface into done W2. New epic <strong>W3 &#8212; file-convention surface</strong>: rooms, L2 communication channels (sessions / boards, not Channel L1), resources, and skills declared in the tree at the level they belong; kinds + blocks file scan is the <em>code</em> door; seats stay document-first. Kill <code>worker.ts</code> as WorkerManifest / default-export config / app-compose-a-record. Kill framework runtime-import of seat <code>worker.ts</code> (bundled hosts). Custom kinds / singletons are <strong>flow factories</strong> on the worker contract &#8212; same boot scan as coming block conventions; built-ins mix in; seat <code>flow:</code> only names a registered kind. Atlas matches the #1702 brief; it does not invent another door. W3 grows the tree scan without shipping Collab RC. Lab Proof still after conventions; MCP held until the lab runs. Not a D-n. GTM timing stays Strategy.</p>
 </header>
 
 <section id="what">
   <div class="sec-head"><span class="sec-num">01</span><h2>What Workforce is</h2></div>
-  <p class="lede">Workforce is the shippable product surface. Conductor is one team on it, not a sibling. Two lists. Do not collapse them. A <strong>seat</strong> is a roster slot that binds a <strong>worker</strong> &#8212; a <strong>flow instance</strong>, the dispatch target. Skills and task boards assign from a different list: <strong>name &#8594; <code>BlockDefinition</code></strong>. A worker is any flow on the contract &#8212; thin sequencers count (intake, coordinator, harness-manager). <strong>Agent</strong> (product) is an opinionated worker: sequencer + generators + persona + durable member memory. <code>defineAgent</code> is how that opinion becomes a block, not a catalog row. A seat can be any worker, not always an agent. Collaboration is the rooms and the dispatch spine. The product target is <strong>teams, plural</strong>. The build-out is <a href="#vision">&#167;03</a>.</p>
+  <p class="lede">Workforce is the shippable product surface. Conductor is one team on it, not a sibling. Three hire lists. Do not collapse them. A <strong>seat</strong> is a roster slot that binds a <strong>worker</strong> &#8212; a <strong>flow instance</strong>, the dispatch target, declared as <code>WORKER.md</code>. A worker is a generator or flow with <strong>instructions + model + tools</strong> &#8212; thin sequencers count (intake, coordinator, harness-manager). Hire needs a <strong>kinds</strong> map of flow factories; a seat&#8217;s <code>flow:</code> only names one. Skills and task boards assign from a different list: <strong>name &#8594; <code>BlockDefinition</code></strong>. <strong>Agent</strong> (product, later) is an opinionated worker. v1 does not mint a persona species; the hire / <code>WORKER.md</code> body key is <code>instructions</code>. A seat can be any worker, not always an agent. Collaboration is the rooms and the dispatch spine. The product target is <strong>teams, plural</strong>. The build-out is <a href="#vision">&#167;03</a>.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
       <h5>Seat</h5><span class="role">roster slot · binds a worker</span>
-      <p>The slot on a team or project roster. It names a <strong>flow instance</strong>, not an Agent catalog row. Minimum contract (all today&#8217;s L1): named worker flow on a team/roster key + static DM session + dispatcher / settle / claim door. Same-flow DM address <strong>exists</strong>. Cross-flow seat wake <strong>exists</strong> (<code>dispatcher({ flowKind })</code>). Hire-by-id and dynamic addresses still wait on INST (FIX-1320), not on #1600. Do not stuff seats into <code>AgentRegistry</code>.</p>
+      <p>The slot on a team or project roster. It names a <strong>flow instance</strong>, not an Agent catalog row. Declared as <code>WORKER.md</code> &#8594; manifest. <code>flow:</code> names a kind already on the hire map. Minimum contract (all today&#8217;s L1): named worker flow on a team/roster key + static DM session + dispatcher / settle / claim door. Same-flow DM address <strong>exists</strong>. Cross-flow seat wake <strong>exists</strong> (<code>dispatcher({ flowKind })</code>). Hire-by-id and dynamic addresses still wait on INST (FIX-1320), not on #1600. Do not stuff seats into <code>AgentRegistry</code>. Do not teach <code>worker.ts</code> as a seat record.</p>
     </div>
     <div class="card" style="--tc: var(--code)">
-      <h5>Worker</h5><span class="role">any flow on the contract</span>
-      <p>A sequencer flow. Thin is allowed. Intake, coordinator, and harness-manager are workers. The factory is proposed. A hand-written <code>defineFlow</code> that keeps the contract is still a worker. See <a href="#contract">&#167;05</a>.</p>
+      <h5>Worker</h5><span class="role">generator / flow · instructions + model + tools</span>
+      <p>A generator or a sequencer flow. Thin is allowed. Intake, coordinator, and harness-manager are workers. Frontmatter + <code>WORKER.md</code> body supply settings and <code>instructions</code>. A custom kind is a <strong>flow factory</strong> that fits this contract and lands on the hire <code>kinds</code> map &#8212; same boot story as coming block file conventions. See <a href="#contract">&#167;05</a> and <a href="#fence">&#167;04</a>.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
-      <h5>Agent</h5><span class="role">product = L2 opinion</span>
-      <p>The thick worker: sequencer + generators + persona + durable member memory. <code>defineAgent</code> is a <strong>block factory</strong> &#8212; proposed to emit a <code>BlockDefinition</code> (agent-shaped sequencer/generator). Today it returns an <code>Agent</code> config; <code>materializeAgent</code> / <code>agentBlock</code> then build that block. Collapse those into the factory. Park the code kill behind W2. Do not grow <code>agentRegistry</code> / <code>agent-ref</code>. See <a href="#fence">&#167;04</a>.</p>
+      <h5>Agent</h5><span class="role">later opinion · not v1 hire</span>
+      <p>The thick worker, later: sequencer + generators + durable member memory. <strong>Persona</strong> is a later <em>persona-builder</em> that formats structured fields into a prompt &#8212; not the hire / <code>WORKER.md</code> key. v1 body key is <code>instructions</code>. <code>defineAgent</code> may not need to exist (invent-kill candidate). <code>materializeAgent</code> is a placeholder &#8212; kill it; do not teach it. Do not grow <code>agentRegistry</code> / <code>agent-ref</code>. See <a href="#fence">&#167;04</a>.</p>
     </div>
     <div class="card" style="--tc: var(--gone)">
       <h5>Not</h5><span class="role">invent kills</span>
-      <p>No Channel / Team / TeamFlow / MessageBoard L1. No second Agent model. No stuffing seats into an Agent catalog. No hot-dynamic kinds to paper over L1 gaps. No second control plane &#8212; MCP is a client door onto intake / boards / <code>dispatcher()</code>, <a href="#mcp">&#167;15</a>. Thin seats do not need member memory. Identity lives on agent/member scope, not on the seat. See <a href="#fence">&#167;04</a> and <a href="#intake">&#167;11</a>.</p>
+      <p>No Channel / Team / TeamFlow / MessageBoard L1. No second Agent model. No stuffing seats into an Agent catalog. No <code>worker.ts</code> as WorkerManifest / default-export config / app-compose-a-record. No framework runtime-import of seat <code>worker.ts</code>. No hot-dynamic kinds after boot. No second control plane &#8212; MCP is a client door onto intake / boards / <code>dispatcher()</code>, <a href="#mcp">&#167;15</a>. Thin seats do not need member memory. Identity lives on agent/member scope, not on the seat. See <a href="#fence">&#167;04</a> and <a href="#intake">&#167;11</a>.</p>
     </div>
   </div>
 
@@ -353,11 +353,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-code" x="34" y="168" width="280" height="72" rx="4"/>
         <text class="t-s f-code" x="48" y="190">exists &#183; old surface</text>
         <text class="t-xs" x="48" y="210">defineAgent &#8594; Agent config</text>
-        <text class="t-xs" x="48" y="226">materializeAgent / agentBlock</text>
+        <text class="t-xs" x="48" y="226">KILL. DO NOT TEACH</text>
         <rect class="n-prop" x="330" y="168" width="280" height="72" rx="4"/>
-        <text class="t-s f-accent" x="344" y="190">proposed foundation</text>
+        <text class="t-s f-accent" x="344" y="190">the teach</text>
         <text class="t-xs" x="344" y="210">SEAT = FLOW INSTANCE</text>
-        <text class="t-xs" x="344" y="226">defineAgent &#8594; BlockDefinition</text>
+        <text class="t-xs" x="344" y="226">WORKER = INSTR + MODEL + TOOLS</text>
         <rect class="n-prop" x="624" y="168" width="280" height="72" rx="4"/>
         <text class="t-s f-accent" x="638" y="190">proposed collab RC</text>
         <text class="t-xs" x="638" y="210">TEAMS PLURAL &#183; INTAKE &#183; ROOMS</text>
@@ -373,7 +373,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-s" x="34" y="376">taskBoard workers: name &#8594; BlockDefinition &#183; dispatcher() &#183; do not invent Agent L1</text>
       </svg>
     </div>
-    <figcaption><b>The product sits on primitives.</b> Layer&nbsp;1 already has the doors Workforce uses: a flow instance, a session, a resource, a board whose workers are <code>name &#8594; BlockDefinition</code>, and a dispatcher. <code>defineAgent</code> / <code>materializeAgent</code> / <code>AgentRegistry</code> exist as the old surface &#8212; do not grow them; the code kill parks behind W2. Do not fold Workforce into core. Do not invent Team / Channel / MessageBoard here.</figcaption>
+    <figcaption><b>The product sits on primitives.</b> Layer&nbsp;1 already has the doors Workforce uses: a flow instance, a session, a resource, a board whose workers are <code>name &#8594; BlockDefinition</code>, and a dispatcher. <code>defineAgent</code> / <code>materializeAgent</code> / <code>AgentRegistry</code> exist as the old surface &#8212; invent-kill / placeholder; do not grow them and do not teach them as the path. Do not fold Workforce into core. Do not invent Team / Channel / MessageBoard here.</figcaption>
   </figure>
 
   <div class="tw">
@@ -383,7 +383,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>What it is</td><td>Substrate. Composable primitives with almost no product opinion.</td><td>The product. Roster / teams + seats + rooms + thin helpers over the substrate.</td></tr>
         <tr><td>Who it is for</td><td>Authors who will compose their own harness.</td><td>Clients and personal/org workforces. Conductor is one team config on this layer.</td></tr>
         <tr><td>What it must not do</td><td>Absorb one product&#8217;s knowledge. That is tenet&nbsp;4. Do not mint Team / Channel / MessageBoard here.</td><td>Invent a primitive the substrate does not have. Compose, or file a Layer&nbsp;1 gap. Do not fold this layer into core.</td></tr>
-        <tr><td>Phased implement</td><td>In flight: <a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a> INST-1..3 for hire-id / multi-hire. <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code> exists. Cross-flow exists (<code>dispatcher({ flowKind })</code>). W2 mints a flow instance per seat. It does not scan seats into <code>AgentRegistry</code>. One hire per kind is enough for the lab.</td><td><strong>W2</strong> package is next. <strong>Lab Proof</strong> follows. <strong>W1</strong> MCP is held until package + lab. Collab RC later (INST as needed for multi-hire). See <a href="#vision">&#167;03</a>.</td></tr>
+        <tr><td>Phased implement</td><td>In flight: <a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a> INST-1..3 for hire-id / multi-hire. <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code> exists. Cross-flow exists (<code>dispatcher({ flowKind })</code>). W2 mints a flow instance per seat from <code>WORKER.md</code>. It does not scan seats into <code>AgentRegistry</code>. Hire already takes <code>{ kinds }</code>. One hire per kind is enough for the lab.</td><td><strong>W2</strong> foundation is mostly done except the FIX-1342 rewrite. <strong>W3</strong> (file-convention surface) is next. <strong>Lab Proof</strong> follows conventions. <strong>W1</strong> MCP is held until the lab runs. Collab RC later (INST as needed for multi-hire). See <a href="#vision">&#167;03</a>.</td></tr>
       </tbody>
     </table>
   </div>
@@ -391,73 +391,87 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="vision">
   <div class="sec-head"><span class="sec-num">03</span><h2>Build-out</h2></div>
-  <p class="lede">The target is still the <strong>full RC collaboration story</strong>: more than one team, rooms they share, dispatch across those teams. The teach order is no longer MCP-first. <strong>W2</strong> is the package &#8212; next, the kick. A thin <a href="#lab">lab Proof</a> demonstrates that package. <strong>W1 MCP</strong> is held until both run. <strong>Collab RC</strong> is later, after foundation + lab (INST as needed for multi-hire). Cross-flow exists. Hire-id / dynamic / multi-hire still wait on INST. Tag every row exists, proposed, or held. Do not invent a TeamFlow, Channel, MessageBoard, second Agent, management bus, or Project type. Orientation cards live in <a href="#what">&#167;01</a>. The three words live in <a href="#fence">&#167;04</a>. The MCP door is <a href="#mcp">&#167;15</a>.</p>
+  <p class="lede">The target is still the <strong>full RC collaboration story</strong>: more than one team, rooms they share, dispatch across those teams. Rooms are one L2 roster (system + helper-minted) &#8212; Collab later, not W2 and not W3. The teach order is no longer MCP-first. <strong>W2</strong> is the landed foundation &#8212; mostly done except the FIX-1342 rewrite. <strong>W3</strong> is next: grow the file-convention surface (kinds + blocks scan as the code door; rooms, L2 channels, resources, skills in the tree). A thin <a href="#lab">lab Proof</a> demonstrates those conventions. <strong>W1 MCP</strong> is held until the lab runs. <strong>Collab RC</strong> is later, after W2 &#8594; W3 &#8594; lab (INST as needed for multi-hire). Cross-flow exists. Hire-id / dynamic / multi-hire still wait on INST. Tag every row exists, proposed, or held. Do not invent a TeamFlow, Channel, MessageBoard, second Agent, management bus, or Project type. Do not revive <code>defineAgent</code> as a factory. Orientation cards live in <a href="#what">&#167;01</a>. Seats / kinds / blocks live in <a href="#fence">&#167;04</a>. The MCP door is <a href="#mcp">&#167;15</a>.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 560" role="img" aria-label="Build-out in teach order. First, W2 foundation, the kick: file conventions scan to a flow instance per seat, defineAgent as a block factory onto the name-to-block list, knobs via ctx.flow.config which exists, thin helpers over declared dispatchers. Second, lab Proof: a thin pentest team on file conventions alone, no MCP. Third, W1 MCP held until package plus lab, then a client door. Fourth, Collab RC later: teams plural helpers, multi-hire Proof, board notify with real addresses, INST as needed. Bottom band: cross-flow exists, FIX-1331 exists, INST still named for multi-hire. Cut: no TeamFlow, Channel, MessageBoard Layer 1, second Agent, management bus, Project type, or stuffing seats into AgentRegistry.">
-        <rect class="n-prop" x="16" y="16" width="214" height="300" rx="5"/>
-        <text class="t-lbl" x="30" y="38">1 &#183; W2 FOUNDATION</text>
-        <text class="t-b f-accent" x="30" y="64">next. the kick.</text>
-        <text class="t-xs" x="30" y="90">teams/&lt;id&gt;/workers/&lt;name&gt;/</text>
-        <text class="t-xs" x="30" y="108">SCAN &#8594; FLOW INSTANCE</text>
-        <text class="t-xs" x="30" y="126">NOT AgentRegistry</text>
-        <text class="t-xs" x="30" y="144">KNOBS: ctx.flow.config</text>
-        <text class="t-xs" x="30" y="162">FIX-1331 &#183; EXISTS</text>
-        <text class="t-xs" x="30" y="186">THIN HELPERS OVER DISPATCH</text>
-        <text class="t-xs" x="30" y="204">keyed team &#183; intake DM</text>
-        <text class="t-xs" x="30" y="222">room subscribe &#183; board notify</text>
-        <text class="t-xs" x="30" y="246">NO loadWorkforce() EXPORT</text>
-        <text class="t-b f-accent" x="30" y="292">proposed. next.</text>
+      <svg viewBox="0 0 940 560" role="img" aria-label="Build-out in teach order. First, W2 foundation, mostly done except the FIX-1342 rewrite: WORKER.md seats, hire and loader exist, kinds map at hire, no worker.ts as a seat record, no framework import of seat worker.ts. Second, W3 file-convention surface, next: kinds and blocks file scan as the code door, rooms and L2 channels and resources and skills declared in the tree, seats stay documents, no Collab RC, no Channel Layer 1, no defineAgent factory. Third, lab Proof after those conventions: a thin pentest team, no MCP. Fourth, W1 MCP held until the lab runs. Fifth, Collab RC later: one Layer 2 room roster, not W3. Bottom band: cross-flow exists, FIX-1331 exists, INST still named for multi-hire. Cut: no TeamFlow, Channel, MessageBoard Layer 1, worker.ts as manifest, framework import of seat worker.ts, defineAgent factory, or stuffing seats into AgentRegistry.">
+        <rect class="n-code" x="16" y="16" width="176" height="300" rx="5"/>
+        <text class="t-lbl f-code" x="26" y="38">1 &#183; W2 FOUNDATION</text>
+        <text class="t-b" x="26" y="64">mostly done</text>
+        <text class="t-xs" x="26" y="90">WORKER.md &#8594; SEAT</text>
+        <text class="t-xs" x="26" y="108">hire + loader EXIST</text>
+        <text class="t-xs" x="26" y="126">hire needs { kinds }</text>
+        <text class="t-xs" x="26" y="150">FIX-1342 REWRITE</text>
+        <text class="t-xs" x="26" y="168">kinds door, not .ts record</text>
+        <text class="t-xs" x="26" y="192">NO worker.ts AS MANIFEST</text>
+        <text class="t-xs" x="26" y="210">NO FRAMEWORK import()</text>
+        <text class="t-xs" x="26" y="234">NOT AgentRegistry</text>
+        <text class="t-b f-code" x="26" y="292">exists. rewrite left.</text>
 
-        <path class="ln-acc" d="M230,166 L244,166"/>
+        <path class="ln-acc" d="M192,166 L200,166"/>
 
-        <rect class="n-prop" x="244" y="16" width="214" height="300" rx="5"/>
-        <text class="t-lbl" x="258" y="38">2 &#183; LAB PROOF</text>
-        <text class="t-b f-accent" x="258" y="64">thin pentest team</text>
-        <text class="t-xs" x="258" y="90">INTAKE + RECON + TRIAGE</text>
-        <text class="t-xs" x="258" y="108">NO 4TH SEAT UNTIL FAN-IN</text>
-        <text class="t-xs" x="258" y="132">PROJECTS = BOARDS / RESOURCES</text>
-        <text class="t-xs" x="258" y="150">NO Project TYPE</text>
-        <text class="t-xs" x="258" y="174">WRITE &#8594; TASK / DISPATCH</text>
-        <text class="t-xs" x="258" y="192">FILE CONVENTIONS ALONE</text>
-        <text class="t-xs" x="258" y="216">NO MCP IN LAB V1</text>
-        <text class="t-xs" x="258" y="234">NOT ONSECURITY. NOT A PRODUCT.</text>
-        <text class="t-b f-accent" x="258" y="292">proposed. after W2.</text>
+        <rect class="n-prop" x="200" y="16" width="176" height="300" rx="5"/>
+        <text class="t-lbl" x="210" y="38">2 &#183; W3 FILE SURFACE</text>
+        <text class="t-b f-accent" x="210" y="64">next. the kick.</text>
+        <text class="t-xs" x="210" y="90">kinds + blocks SCAN</text>
+        <text class="t-xs" x="210" y="108">THE CODE DOOR</text>
+        <text class="t-xs" x="210" y="132">rooms / L2 channels</text>
+        <text class="t-xs" x="210" y="150">resources / skills</text>
+        <text class="t-xs" x="210" y="168">IN THE TREE</text>
+        <text class="t-xs" x="210" y="192">seats stay DOCS</text>
+        <text class="t-xs" x="210" y="216">NO Collab RC HERE</text>
+        <text class="t-xs" x="210" y="234">NO Channel L1</text>
+        <text class="t-b f-accent" x="210" y="292">proposed. next.</text>
 
-        <path class="ln-acc" d="M458,166 L472,166"/>
+        <path class="ln-acc" d="M376,166 L384,166"/>
 
-        <rect class="n-prose" x="472" y="16" width="214" height="300" rx="5"/>
-        <text class="t-lbl" x="486" y="38">3 &#183; W1 MCP</text>
-        <text class="t-b" x="486" y="64">held</text>
-        <text class="t-xs" x="486" y="90">UNTIL PACKAGE + LAB RUN</text>
-        <text class="t-xs" x="486" y="114">THEN: send / focus / status</text>
-        <text class="t-xs" x="486" y="132">INTAKE + BOARDS</text>
-        <text class="t-xs" x="486" y="150">+ dispatcher()</text>
-        <text class="t-xs" x="486" y="174">validateDispatch</text>
-        <text class="t-xs" x="486" y="192">STATIC + SAME-FLOW FIRST</text>
-        <text class="t-xs" x="486" y="216">NO BUS. NO CHAT-SDK.</text>
-        <text class="t-xs" x="486" y="234">HIRE-ID / DYNAMIC: INST</text>
-        <text class="t-b" x="486" y="292">proposed. held. &#167;15</text>
+        <rect class="n-prop" x="384" y="16" width="176" height="300" rx="5"/>
+        <text class="t-lbl" x="394" y="38">3 &#183; LAB PROOF</text>
+        <text class="t-b f-accent" x="394" y="64">after conventions</text>
+        <text class="t-xs" x="394" y="90">INTAKE + RECON + TRIAGE</text>
+        <text class="t-xs" x="394" y="108">NO 4TH SEAT UNTIL FAN-IN</text>
+        <text class="t-xs" x="394" y="132">PROJECTS = BOARDS</text>
+        <text class="t-xs" x="394" y="150">FILE CONVENTIONS ALONE</text>
+        <text class="t-xs" x="394" y="174">WRITE &#8594; TASK / DISPATCH</text>
+        <text class="t-xs" x="394" y="198">NO MCP IN LAB V1</text>
+        <text class="t-xs" x="394" y="216">NOT ONSECURITY</text>
+        <text class="t-xs" x="394" y="234">NOT A PRODUCT</text>
+        <text class="t-b f-accent" x="394" y="292">proposed. after W3.</text>
 
-        <path class="ln-acc" d="M686,166 L700,166"/>
+        <path class="ln-acc" d="M560,166 L568,166"/>
 
-        <rect class="n-prop" x="700" y="16" width="224" height="300" rx="5"/>
-        <text class="t-lbl" x="714" y="38">4 &#183; COLLAB RC</text>
-        <text class="t-b f-accent" x="714" y="64">later</text>
-        <text class="t-xs" x="714" y="90">AFTER FOUNDATION + LAB</text>
-        <text class="t-xs" x="714" y="108">INST AS NEEDED</text>
-        <text class="t-xs" x="714" y="132">TEAMS PLURAL HELPERS</text>
-        <text class="t-xs" x="714" y="150">MULTI-HIRE PROOF</text>
-        <text class="t-xs" x="714" y="168">BOARD NOTIFY</text>
-        <text class="t-xs" x="714" y="186">REAL ADDRESSES</text>
-        <text class="t-xs" x="714" y="210">NOT NESTED UNDER W2</text>
-        <text class="t-xs" x="714" y="228">NOT THE LAB</text>
-        <text class="t-b f-accent" x="714" y="292">proposed. after lab.</text>
+        <rect class="n-prose" x="568" y="16" width="176" height="300" rx="5"/>
+        <text class="t-lbl" x="578" y="38">4 &#183; W1 MCP</text>
+        <text class="t-b" x="578" y="64">held</text>
+        <text class="t-xs" x="578" y="90">UNTIL THE LAB RUNS</text>
+        <text class="t-xs" x="578" y="114">THEN: send / focus / status</text>
+        <text class="t-xs" x="578" y="132">INTAKE + BOARDS</text>
+        <text class="t-xs" x="578" y="150">+ dispatcher()</text>
+        <text class="t-xs" x="578" y="174">validateDispatch</text>
+        <text class="t-xs" x="578" y="192">STATIC + SAME-FLOW FIRST</text>
+        <text class="t-xs" x="578" y="216">NO BUS. NO CHAT-SDK.</text>
+        <text class="t-xs" x="578" y="234">HIRE-ID / DYNAMIC: INST</text>
+        <text class="t-b" x="578" y="292">proposed. held. &#167;15</text>
+
+        <path class="ln-acc" d="M744,166 L752,166"/>
+
+        <rect class="n-prop" x="752" y="16" width="172" height="300" rx="5"/>
+        <text class="t-lbl" x="762" y="38">5 &#183; COLLAB RC</text>
+        <text class="t-b f-accent" x="762" y="64">later</text>
+        <text class="t-xs" x="762" y="90">AFTER W2 &#8594; W3 &#8594; LAB</text>
+        <text class="t-xs" x="762" y="108">ONE L2 ROOM ROSTER</text>
+        <text class="t-xs" x="762" y="132">SYSTEM + HELPER-MINTED</text>
+        <text class="t-xs" x="762" y="150">NOT THE W3 SCAN</text>
+        <text class="t-xs" x="762" y="174">MULTI-HIRE / REAL ADDR</text>
+        <text class="t-xs" x="762" y="192">INST AS NEEDED</text>
+        <text class="t-xs" x="762" y="216">NOT W2. NOT W3.</text>
+        <text class="t-xs" x="762" y="234">NO Channel L1</text>
+        <text class="t-b f-accent" x="762" y="292">proposed. after lab.</text>
 
         <rect class="n-code" x="16" y="332" width="908" height="56" rx="5"/>
         <text class="t-s" x="34" y="356">Cross-flow exists (dispatcher({ flowKind })). FIX-1331 knobs exist (ctx.flow.config). INST / FIX-1320 still named for hire-id, dynamic addresses, and multi-hire.</text>
-        <text class="t-xs" x="34" y="376">W2 MINTS A FLOW INSTANCE PER SEAT. NOT AgentRegistry. ONE HIRE PER KIND IS ENOUGH FOR THE LAB. MULTI-HIRE IS NOT THE KICK.</text>
+        <text class="t-xs" x="34" y="376">W2 MINTS A FLOW INSTANCE PER SEAT FROM WORKER.md. HIRE NEEDS { kinds }. W3 SCANS KINDS + BLOCKS. NOT AgentRegistry. MULTI-HIRE IS NOT THE KICK.</text>
 
         <rect class="n-prose" x="16" y="404" width="908" height="64" rx="5"/>
         <text class="t-lbl" x="34" y="426">LATER / NOT NOW</text>
@@ -465,15 +479,15 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
         <rect class="n-prose" x="16" y="484" width="908" height="60" rx="5"/>
         <text class="t-lbl" x="34" y="506">CUT &#183; KILL INVENT</text>
-        <text class="t-s" x="34" y="528">no TeamFlow / Channel / MessageBoard L1 &#183; no second Agent &#183; no Agent catalog as roster &#183; no management bus &#183; no Project type</text>
+        <text class="t-s" x="34" y="528">no TeamFlow / Channel / MessageBoard L1 &#183; no worker.ts-as-manifest &#183; no framework import(seat worker.ts) &#183; no defineAgent factory &#183; no Agent catalog as roster</text>
       </svg>
     </div>
-    <figcaption><b>W2 &#8594; lab &#8594; MCP held.</b> The package is the kick. The lab proves that package on file conventions alone. MCP waits. Collab RC is later &#8212; teams plural, multi-hire, real addresses &#8212; not a folder under W2 and not the lab. Hire-id / dynamic / multi-hire still INST. Later stays later. One harness-manager stack. Conductor consumes it.</figcaption>
+    <figcaption><b>W2 &#8594; W3 &#8594; lab &#8594; MCP held.</b> W2 is the landed foundation except the FIX-1342 rewrite. W3 grows the file-convention surface &#8212; kinds + blocks scan as the code door; seats stay documents. The lab proves those conventions. MCP waits. Collab RC is later &#8212; one L2 room roster (system + helper-minted), teams plural, multi-hire, real addresses &#8212; not a folder under W2 or W3 and not the lab. Hire-id / dynamic / multi-hire still INST. Later stays later. One harness-manager stack. Conductor consumes it.</figcaption>
   </figure>
 
   <div id="lab">
   <h3>Lab Proof &#8212; a thin pentest team</h3>
-  <p>Three seats on the W2 file tree: <strong>intake</strong>, <strong>recon</strong>, <strong>triage</strong>. A fourth (prioritizer) waits until those three prove fan-in. Projects are boards and resources, not a <code>Project</code> type. Reactive means a finding or asset write becomes a task and a dispatch to the next seat. The lab must run on file conventions alone &#8212; that is what proves the package surface. No full platform. <strong>No MCP in lab v1.</strong> Not a second product. Not OnSecurity.</p>
+  <p>Three seats on the convention tree: <strong>intake</strong>, <strong>recon</strong>, <strong>triage</strong>. A fourth (prioritizer) waits until those three prove fan-in. Projects are boards and resources, not a <code>Project</code> type. Reactive means a finding or asset write becomes a task and a dispatch to the next seat. The lab runs <strong>after W3 conventions</strong>, on that file surface alone &#8212; that is what proves the package. No full platform. <strong>No MCP in lab v1.</strong> Not a second product. Not OnSecurity.</p>
   </div>
 
   <figure>
@@ -527,42 +541,47 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <table>
       <thead><tr><th>Epic</th><th>Status</th><th>What is true on this pin</th><th>What would fake it</th></tr></thead>
       <tbody>
-        <tr><td>W2 &#8212; Workforce foundation L2</td><td><span class="tag t-prop">proposed · next</span></td><td>The kick. File conventions (<code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>), scan to a <strong>flow instance</strong> per seat (named gap, no <code>loadWorkforce()</code>), seat factory, knobs via <code>ctx.flow.config</code> (FIX-1331 <strong>exists</strong>). <code>defineAgent</code> as block factory onto the name&#8594;<code>BlockDefinition</code> list &#8212; proposed; today it returns <code>Agent</code>. Thin L2 helpers over declared dispatchers: keyed team, intake seat DM, room subscribe, board notify. Names already on this page. One hire per kind is enough. Code kill of <code>agentRegistry</code> / <code>agent-ref</code> parks behind this landing. Do not grow that surface now.</td><td>A TeamFlow, Channel, MessageBoard L1, second Agent, management bus, or Project type. Scanning seats into <code>AgentRegistry</code>. Teaching <code>agent-ref</code> as the skills resolve path. Inventing the loader as an export. Nesting the lab or Collab RC under W2 as extra package surface.</td></tr>
-        <tr><td>Lab Proof &#8212; thin pentest team</td><td><span class="tag t-prop">proposed · after W2</span></td><td>Intake + recon + triage. Projects = boards / resources. Reactive = finding or asset write &#8594; task / dispatch to the next seat. Must run on file conventions alone. No full platform. No MCP in lab v1. Not OnSecurity. Not a second product. Prioritizer waits until those three prove fan-in.</td><td>Standing up OnSecurity. A Project type. A fourth seat before fan-in. Shipping MCP inside the lab. Claiming the lab is the product.</td></tr>
-        <tr><td>W1 &#8212; Workforce MCP</td><td><span class="tag t-prose">proposed · held</span></td><td>Held until the package exists and the lab runs. Then a client door (send / focus / status) over intake + boards + <code>dispatcher()</code>; <code>validateDispatch</code>; static / same-flow first. Contract and cuts: <a href="#mcp">&#167;15</a>. Later MCP (hire-by-id / dynamic address) still INST.</td><td>Unblocking MCP before the package and lab. A second control plane. A new MCP package. Filing Linear from this page.</td></tr>
-        <tr><td>Collab RC</td><td><span class="tag t-prop">proposed · after foundation + lab</span></td><td>Teams plural helpers, multi-hire Proof, board notify with <em>real</em> addresses. INST as needed (FIX-1320) for hire-id / dynamic / multi-hire. Same-flow fan-out, <code>claim</code>, and <code>dispatcher({ flowKind })</code> exist now. Not nested under W2. Not the pentest lab.</td><td>A one-team-only API. A <code>TeamFlow</code>. Channel / MessageBoard L1. Shipping Collab RC as the lab. Teaching cross-flow as still refused.</td></tr>
-        <tr><td>Later / not now</td><td><span class="tag t-gone">horizon</span></td><td>Member-memory depth. OKF. Hot-dynamic kinds. Conductor-as-config polish (the lock is now; the wire is not). OnSecurity GTM. Strategy owns GTM.</td><td>Pulling any of these into W2 or the lab so the atlas looks finished. Claiming <code>omp</code> or OnSecurity shipped. Treating Conductor-as-config as a later peel-off.</td></tr>
+        <tr><td>W2 &#8212; Workforce foundation L2</td><td><span class="tag t-code">mostly done</span></td><td>Landed foundation. File conventions (<code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/WORKER.md</code>) &#8212; <code>readWorkforceDirectory</code> <strong>exists</strong> (#1689). Seat hire &#8212; <code>hireWorkforce</code> <strong>exists</strong> (#1687); body still arrives as the <code>persona</code> setting today, leave it; teach the key as <code>instructions</code>. Scan to a <strong>flow instance</strong> per seat. Hire already takes <code>{ kinds }</code>. Knobs via <code>ctx.flow.config</code> (FIX-1331 <strong>exists</strong>). Remaining: FIX-1342 rewrite &#8212; teach the kinds door; do not teach <code>worker.ts</code> as a seat record. Thin L2 helpers over declared dispatchers: keyed team, intake seat DM, room subscribe, board notify &#8212; still proposed. One hire per kind is enough. Do <em>not</em> rewrite W2 around keeping <code>defineAgent</code>. Do not grow <code>agentRegistry</code> / <code>agent-ref</code> / <code>materializeAgent</code>. W2 does not scan <code>teams/&lt;id&gt;/rooms</code> and does not ship the room roster. Do not stuff W3 into this epic.</td><td>A TeamFlow, Channel, MessageBoard L1, second Agent, management bus, or Project type. Teaching <code>worker.ts</code> as WorkerManifest / default-export config / app-compose-a-record. Framework runtime-import of seat <code>worker.ts</code>. Teaching <code>defineAgent</code> as a block factory. Teaching <code>materializeAgent</code> as the spine. Nesting W3, the lab, or Collab RC under W2.</td></tr>
+        <tr><td>W3 &#8212; File-convention surface</td><td><span class="tag t-prop">proposed · next</span></td><td>Grow the tree scan. <strong>Code door:</strong> kinds + blocks file scan / register into <code>hireWorkforce(..., { kinds })</code> and the name&#8594;<code>BlockDefinition</code> list. Built-ins mix in. Custom kinds and singletons are <strong>flow factories</strong> on the worker contract &#8212; same boot story as coming block conventions. Seat <code>flow:</code> only names a registered kind. <strong>Document door stays:</strong> seats = <code>WORKER.md</code> &#8594; manifest. Also declare rooms, L2 communication channels (sessions / boards &#8212; not Channel L1), resources, and skills in the tree at the level they belong. Does <em>not</em> ship Collab RC (system / dynamic room roster stays later). Does not revive <code>defineAgent</code> or Channel / MessageBoard L1. Brief: #1702.</td><td>Stuffing this into done W2. Teaching <code>worker.ts</code> as a second seat door. Framework <code>import()</code> of seat <code>worker.ts</code> at hire. A TS-as-manifest compose path. Reviving <code>defineAgent</code> as a factory. Shipping the Collab room roster as W3. Inventing Channel / MessageBoard L1 so the tree looks like a package.</td></tr>
+        <tr><td>Lab Proof &#8212; thin pentest team</td><td><span class="tag t-prop">proposed · after W3</span></td><td>Intake + recon + triage. Projects = boards / resources. Reactive = finding or asset write &#8594; task / dispatch to the next seat. Must run on the convention surface alone. No full platform. No MCP in lab v1. Not OnSecurity. Not a second product. Prioritizer waits until those three prove fan-in.</td><td>Standing up OnSecurity. A Project type. A fourth seat before fan-in. Shipping MCP inside the lab. Claiming the lab is the product. Running the lab before W3 conventions.</td></tr>
+        <tr><td>W1 &#8212; Workforce MCP</td><td><span class="tag t-prose">proposed · held</span></td><td>Held until the conventions exist and the lab runs. Then a client door (send / focus / status) over intake + boards + <code>dispatcher()</code>; <code>validateDispatch</code>; static / same-flow first. Contract and cuts: <a href="#mcp">&#167;15</a>. Later MCP (hire-by-id / dynamic address) still INST.</td><td>Unblocking MCP before W3 and the lab. A second control plane. A new MCP package. Filing Linear from this page.</td></tr>
+        <tr><td>Collab RC</td><td><span class="tag t-prop">proposed · after W2 &#8594; W3 &#8594; lab</span></td><td>One L2 room roster, two lanes: <strong>system rooms</strong> (from code or <code>teams/&lt;id&gt;/rooms</code> / team config; <strong>stable ids</strong>; seeded at boot/hire; undeletable) and <strong>dynamic rooms</strong> minted by Collab helpers onto that <em>same</em> list (deletable). Both bind existing L1 sessions / boards / dispatch. Teams plural helpers, multi-hire Proof, board notify with <em>real</em> addresses. INST as needed (FIX-1320) for hire-id / dynamic / multi-hire. Same-flow fan-out, <code>claim</code>, and <code>dispatcher({ flowKind })</code> exist now. Not nested under W2 or W3. W3 may declare rooms as files; that is not this roster. Not the pentest lab. Park: FIX-1341. See <a href="#collab">&#167;14</a>.</td><td>A one-team-only API. A <code>TeamFlow</code>. Channel / MessageBoard L1. A second room surface beside the roster. Shipping Collab RC as the lab, as W2, or as W3. Teaching cross-flow as still refused.</td></tr>
+        <tr><td>Later / not now</td><td><span class="tag t-gone">horizon</span></td><td>Member-memory depth. OKF. Hot-dynamic kinds. Conductor-as-config polish (the lock is now; the wire is not). OnSecurity GTM. Strategy owns GTM.</td><td>Pulling any of these into W2, W3, or the lab so the atlas looks finished. Claiming <code>omp</code> or OnSecurity shipped. Treating Conductor-as-config as a later peel-off.</td></tr>
       </tbody>
     </table>
   </div>
 
   <div class="note">
     <span class="lbl">The plural door still holds</span>
-    <p>If adding a second team requires a new argument, a new helper, or a Team type, W2 shipped the wrong API. Key the team on day one. Address a room by the seats that subscribe to it, not by &#8220;this team&#8217;s rooms.&#8221; Collab RC is then more rows in the map, plus real addresses when INST has landed &#8212; not a rewrite, and not a W2 workstream.</p>
+    <p>If adding a second team requires a new argument, a new helper, or a Team type, W2 shipped the wrong API. Key the team on day one. Address a room by the seats that subscribe to it, not by &#8220;this team&#8217;s rooms.&#8221; Collab RC is then the L2 room roster (system + helper-minted) plus more rows in the map, plus real addresses when INST has landed &#8212; not a rewrite, and not a W2 or W3 workstream. W3 may put room <em>files</em> in the tree; that is not the Collab roster.</p>
   </div>
 
   <div class="note">
-    <span class="lbl">W2 is the kick. MCP is held.</span>
-    <p>MCP stays held until the Workforce package exists and a lab demonstrates it. The door&#8217;s contract, holds, and cuts still live in <a href="#mcp">&#167;15</a>. Do not POC that door on today&#8217;s doors before the package and lab run.</p>
+    <span class="lbl">W3 is next. MCP is held.</span>
+    <p>MCP stays held until W3 conventions exist and a lab demonstrates them. The door&#8217;s contract, holds, and cuts still live in <a href="#mcp">&#167;15</a>. Do not POC that door on today&#8217;s doors before those run. Do not fold W3 into done W2.</p>
   </div>
 </section>
 
 <section id="fence">
-  <div class="sec-head"><span class="sec-num">04</span><h2>Seats vs name&#8594;block</h2></div>
-  <p class="lede">The fence. Two lists. A <strong>seat</strong> is a roster slot that binds a <strong>worker</strong>. That worker is a <strong>flow instance</strong> &#8212; the dispatch target. Skills and task boards assign from a different list: <strong>name &#8594; <code>BlockDefinition</code></strong>. Same idea (a named assignable target), different mechanism. Do not stuff seats into an Agent catalog to join them. <code>defineAgent</code> is a <strong>block factory</strong> that emits a <code>BlockDefinition</code> (proposed). Today it returns an <code>Agent</code> config; <code>materializeAgent</code> / <code>agentBlock</code> then build the block. Collapse those into the factory. Park the code kill behind W2. Stop growing <code>agentRegistry</code> / <code>createAgentRegistry</code> / <code>agent-ref</code> now. A team is still Layer&nbsp;2: seats + shared rooms + dispatch. A <strong>roster</strong> is the seat-list. Do not invent Team / TeamFlow / Channel / MessageBoard L1.</p>
+  <div class="sec-head"><span class="sec-num">04</span><h2>Seats, kinds, blocks</h2></div>
+  <p class="lede">The fence. Three lists at hire. A <strong>seat</strong> is a roster slot that binds a <strong>worker</strong>. That seat is a <strong>flow instance</strong> &#8212; the dispatch target &#8212; declared as <code>WORKER.md</code> &#8594; manifest. A worker is a generator or flow with <strong>instructions + model + tools</strong>. <strong>Kinds</strong> are flow factories (<code>defineFlow</code> results). Built-ins mix with custom kinds and singletons. Hire already takes <code>{ kinds }</code>; a seat&#8217;s <code>flow:</code> only names a registered kind. Skills and task boards assign from a different list: <strong>name &#8594; <code>BlockDefinition</code></strong>. Same idea (a named assignable target), different mechanism. Do not stuff seats into an Agent catalog to join them. Do <em>not</em> teach <code>worker.ts</code> as a WorkerManifest / default-export config / app-compose-a-record. Do <em>not</em> teach framework runtime-import of seat <code>worker.ts</code>. The code door is the kinds + blocks boot scan &#8212; W3; same story as coming block file conventions. Do <em>not</em> teach <code>defineAgent</code> as a block factory &#8594; <code>BlockDefinition</code> &#8212; invent-kill candidate; it may not need to exist. Do <em>not</em> teach <code>materializeAgent</code> as the spine &#8212; placeholder; kill it. Hire / <code>WORKER.md</code> body key is <code>instructions</code> (maps to generator <code>prompt</code>). <strong>Persona</strong> is a later persona-builder, not a v1 species. Default system prompt for all workers is proposed: compose into the prompt slot (array). Stop growing <code>agentRegistry</code> / <code>createAgentRegistry</code> / <code>agent-ref</code> now. A team is still Layer&nbsp;2: seats + shared rooms + dispatch. A <strong>roster</strong> is the seat-list. Do not invent Team / TeamFlow / Channel / MessageBoard L1.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
       <h5>Seat</h5><span class="role">flow instance · dispatch target</span>
       <p>Not the agent. Not a catalog row. Minimum contract (all today&#8217;s L1): named worker flow on a team/roster key + static DM session + dispatcher / settle / claim door. Same-flow DM address exists. Cross-flow seat wake exists (<code>dispatcher({ flowKind })</code>). Hire-by-id and dynamic addresses still wait on INST (FIX-1320). Thin seats skip member memory. Identity is not stored on the seat.</p>
     </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Kinds</h5><span class="role">flow factories · hire map</span>
+      <p>What <code>hireWorkforce(..., { kinds })</code> already takes. Built-ins (<code>worker-agent</code>, &#8230;) plus custom kinds and singletons. A custom kind is a <strong>flow factory</strong> that fits the worker contract &#8212; W3 scans / registers it at boot, same story as coming block file conventions. A seat never invents a kind. Do not productize <code>worker.ts</code> as a seat record.</p>
+    </div>
     <div class="card" style="--tc: var(--code)">
       <h5>Name &#8594; block</h5><span class="role">in-process list · not the roster</span>
-      <p>One worker list for skills and task boards. Assign the same way: name &#8594; <code>BlockDefinition</code>. <code>taskBoard({ workers })</code> already takes that map. Skills should too. This list is not the seat roster and not <code>AgentRegistry</code>.</p>
+      <p>One worker list for skills and task boards. Assign the same way: name &#8594; <code>BlockDefinition</code>. <code>taskBoard({ workers })</code> already takes that map. Skills should too. W3 scans this list from files. This list is not the seat roster and not <code>AgentRegistry</code>.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
-      <h5>defineAgent</h5><span class="role">block factory · not a species</span>
-      <p>Builds a sequencer/generator configured to act agent-like (persona, model, tools, caps). Output is a <code>BlockDefinition</code> only &#8212; <span class="tag t-prop">proposed</span>. Today <code>defineAgent</code> returns <code>Agent</code>; <code>materializeAgent</code> / <code>agentBlock</code> produce the block. Collapse into the factory. No second Agent type. Engine never sees a product registry.</p>
+      <h5>Instructions</h5><span class="role">v1 hire key · prompt slot</span>
+      <p>Hire / <code>WORKER.md</code> body maps to generator <code>prompt</code> via <code>instructions</code>. Today <code>hireWorkforce</code> still hands the body as <code>persona</code> &#8212; leave that; teach the intended key. Proposed: a configurable default system prompt for all workers, composed into the prompt slot as an array (<code>prompt: [default, instructions]</code>). Not a new species. Persona-builder is later.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Team</h5><span class="role">L2 · not a type</span>
@@ -570,9 +589,55 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
   </div>
 
+  <figure id="doors">
+    <div class="fig-body">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Three hire lists and two doors. Left solid: seats are the document door, WORKER.md to WorkerManifest, flow colon names a registered kind, hireWorkforce already takes a kinds map. Centre dashed: kinds are the code door, defineFlow factories, built-ins plus custom kinds and singletons, W3 boot scan into the kinds map, not a seat record, not framework import of worker.ts. Right dashed: blocks are the other code door, name to BlockDefinition for skills and boards, W3 file scan, built-ins mix in. Bottom cut: no worker.ts as WorkerManifest, no default-export config, no app-compose-a-record, no framework runtime import of seat worker.ts, no defineAgent factory, no materializeAgent spine.">
+        <rect class="n-code" x="16" y="16" width="292" height="248" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="38">SEATS &#183; DOCUMENT DOOR</text>
+        <text class="t-b" x="34" y="64">WORKER.md &#8594; manifest</text>
+        <text class="t-xs" x="34" y="90">EXISTS &#183; #1689 / #1687</text>
+        <text class="t-xs" x="34" y="108">flow: NAMES A KIND</text>
+        <text class="t-xs" x="34" y="126">hireWorkforce(docs, { kinds })</text>
+        <text class="t-s" x="34" y="156">the roster. stay document-first.</text>
+        <text class="t-xs" x="34" y="180">NOT worker.ts AS A RECORD</text>
+        <text class="t-xs" x="34" y="198">NOT A DEFAULT EXPORT</text>
+        <text class="t-b f-code" x="34" y="230">a folder you can hire</text>
+
+        <rect class="n-prop" x="324" y="16" width="292" height="248" rx="5"/>
+        <text class="t-lbl" x="342" y="38">KINDS &#183; CODE DOOR</text>
+        <text class="t-b f-accent" x="342" y="64">flow factories</text>
+        <text class="t-xs" x="342" y="90">defineFlow RESULTS</text>
+        <text class="t-xs" x="342" y="108">BUILT-INS + CUSTOM / SINGLETONS</text>
+        <text class="t-xs" x="342" y="126">FIT THE WORKER CONTRACT</text>
+        <text class="t-s" x="342" y="156">W3 &#183; boot scan / register</text>
+        <text class="t-xs" x="342" y="180">SAME STORY AS BLOCK FILES</text>
+        <text class="t-xs" x="342" y="198">NOT HOT-DYNAMIC AFTER BOOT</text>
+        <text class="t-xs" x="342" y="216">NOT A SEAT MANIFEST</text>
+        <text class="t-b f-accent" x="342" y="244">what flow: points at</text>
+
+        <rect class="n-prop" x="632" y="16" width="292" height="248" rx="5"/>
+        <text class="t-lbl" x="650" y="38">BLOCKS &#183; CODE DOOR</text>
+        <text class="t-b f-accent" x="650" y="64">name &#8594; BlockDefinition</text>
+        <text class="t-xs" x="650" y="90">SKILLS / BOARDS</text>
+        <text class="t-xs" x="650" y="108">taskBoard({ workers }) EXISTS</text>
+        <text class="t-xs" x="650" y="126">NOT THE SEAT ROSTER</text>
+        <text class="t-s" x="650" y="156">W3 &#183; file scan</text>
+        <text class="t-xs" x="650" y="180">BUILT-INS MIX IN</text>
+        <text class="t-xs" x="650" y="198">NOT defineAgent FACTORY</text>
+        <text class="t-xs" x="650" y="216">NOT AgentRegistry</text>
+        <text class="t-b f-accent" x="650" y="244">a block you assign</text>
+
+        <rect class="n-prose" x="16" y="280" width="908" height="64" rx="5"/>
+        <text class="t-s" x="34" y="304">CUT: worker.ts as WorkerManifest &#183; default-export config &#183; app-compose-a-record &#183; framework import(seat worker.ts) &#183; defineAgent factory &#183; materializeAgent spine</text>
+        <text class="t-xs" x="34" y="324">THE REAL DOOR IS A FLOW FACTORY ON THE KINDS MAP. ATLAS MATCHES #1702. IT DOES NOT INVENT ANOTHER DOOR.</text>
+      </svg>
+    </div>
+    <figcaption><b>Documents hire seats. Files register kinds and blocks.</b> A seat is a <code>WORKER.md</code>. Custom graphs are new kinds &#8212; flow factories that fit the worker contract &#8212; scanned into <code>{ kinds }</code> at boot the same way blocks will be. Built-ins mix in. <code>flow:</code> only names something already on that map. Do not teach <code>worker.ts</code> as a second seat record, and do not have the framework import one at hire.</figcaption>
+  </figure>
+
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 320" role="img" aria-label="Two lists. Left solid: Workforce seats are flow instances, dispatch targets, not an Agent catalog. Right: skills and task boards share one in-process name to BlockDefinition list. taskBoard already takes that map. defineAgent proposed as the block factory that feeds it. Bottom cut: do not stuff seats into AgentRegistry, do not grow agent-ref, materializeAgent and agentBlock collapse into the factory after W2.">
+      <svg viewBox="0 0 940 320" role="img" aria-label="Two lists. Left solid: Workforce seats are flow instances, dispatch targets, not an Agent catalog. Right: skills and task boards share one in-process name to BlockDefinition list. taskBoard already takes that map. Bottom cut: do not stuff seats into AgentRegistry, do not grow agent-ref, do not teach materializeAgent as the Workforce spine or defineAgent as a block factory.">
         <rect class="n-code" x="16" y="16" width="444" height="216" rx="5"/>
         <text class="t-lbl f-code" x="34" y="38">SEATS &#183; FLOW INSTANCES</text>
         <text class="t-b" x="34" y="64">dispatch targets</text>
@@ -591,21 +656,21 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="498" y="108">Record&lt;name, BlockDefinition&gt;</text>
         <text class="t-s" x="498" y="140">skills assign the same way</text>
         <text class="t-xs" x="498" y="158">PROPOSED. TODAY: agent-ref</text>
-        <text class="t-xs" x="498" y="176">defineAgent &#8594; BlockDefinition</text>
-        <text class="t-xs" x="498" y="194">PROPOSED. TODAY: Agent config</text>
+        <text class="t-xs" x="498" y="176">NOT defineAgent FACTORY</text>
+        <text class="t-xs" x="498" y="194">A BLOCK YOU ASSIGN BY NAME</text>
         <text class="t-b f-code" x="498" y="220">a block you can assign</text>
 
         <rect class="n-prose" x="16" y="248" width="908" height="56" rx="5"/>
         <text class="t-s" x="34" y="272">CUT: stuffing seats into createAgentRegistry &#183; agent-ref as the resolve path &#183; materializeAgent as the Workforce spine</text>
-        <text class="t-xs" x="34" y="292">CODE KILL PARKS BEHIND W2. STOP GROWING THE OLD SURFACE NOW. SAME IDEA, DIFFERENT MECHANISM.</text>
+        <text class="t-xs" x="34" y="292">STOP GROWING THE OLD SURFACE. SAME IDEA, DIFFERENT MECHANISM. defineAgent IS NOT THE JOIN.</text>
       </svg>
     </div>
-    <figcaption><b>Two lists.</b> A seat is a flow instance you dispatch to. A board or skill worker is a <code>BlockDefinition</code> you assign by name. <code>taskBoard({ workers })</code> already is that map. Skills should be too. <code>defineAgent</code> feeds the block list, not a catalog. Do not invent a third list, and do not use <code>AgentRegistry</code> to fake the join.</figcaption>
+    <figcaption><b>Seats and blocks stay different lists.</b> A seat is a flow instance you dispatch to. A board or skill worker is a <code>BlockDefinition</code> you assign by name. <code>taskBoard({ workers })</code> already is that map. Skills should be too. Kinds are the hire map those seats name &#8212; not a third join via <code>AgentRegistry</code>, and not a <code>defineAgent</code> factory.</figcaption>
   </figure>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 400" role="img" aria-label="Seat versus worker versus defineAgent. Left solid: a seat is a flow instance. Centre solid: a worker is any flow on the contract. Right dashed: defineAgent is a block factory that emits a BlockDefinition, proposed. Today it returns Agent config and materializeAgent builds the block. Bottom cut: no Agent catalog as roster, park the old surface kill behind W2.">
+      <svg viewBox="0 0 940 400" role="img" aria-label="Seat versus worker versus prompt composition. Left solid: a seat is a flow instance, the dispatch target. Centre solid: a worker is a generator or flow with instructions, model, and tools. Right dashed: the generator prompt slot is an array — a proposed default system prompt plus per-worker instructions. Bottom cut: no defineAgent factory lock, no materializeAgent spine, no persona species at hire, no Agent catalog as roster.">
         <rect class="n-code" x="16" y="16" width="292" height="268" rx="5"/>
         <text class="t-lbl f-code" x="34" y="38">SEAT &#183; FLOW INSTANCE</text>
         <text class="t-b" x="34" y="64">dispatch target</text>
@@ -621,37 +686,37 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
         <rect class="n-code" x="324" y="16" width="292" height="268" rx="5"/>
         <text class="t-lbl f-code" x="342" y="38">WORKER &#183; THE CONTRACT</text>
-        <text class="t-b" x="342" y="64">any flow on it</text>
-        <text class="t-xs" x="342" y="90">A SEQUENCER FLOW</text>
+        <text class="t-b" x="342" y="64">instr + model + tools</text>
+        <text class="t-xs" x="342" y="90">GENERATOR OR FLOW</text>
         <text class="t-xs" x="342" y="108">THIN SEQUENCERS COUNT</text>
         <text class="t-xs" x="342" y="132">INTAKE &#183; COORDINATOR</text>
         <text class="t-xs" x="342" y="150">HARNESS-MANAGER</text>
-        <text class="t-s" x="342" y="176">factory &#183; proposed</text>
+        <text class="t-s" x="342" y="176">WORKER.md body = instructions</text>
         <text class="t-xs" x="342" y="194">HAND-WRITTEN defineFlow</text>
         <text class="t-xs" x="342" y="212">IS STILL A WORKER</text>
         <text class="t-xs" x="342" y="238">ONE CONTRACT. SEE &#167;05</text>
         <text class="t-b f-code" x="342" y="266">not two member kinds</text>
 
         <rect class="n-prop" x="632" y="16" width="292" height="268" rx="5"/>
-        <text class="t-lbl" x="650" y="38">defineAgent &#183; FACTORY</text>
-        <text class="t-b f-accent" x="650" y="64">&#8594; BlockDefinition</text>
-        <text class="t-xs" x="650" y="90">PERSONA + MODEL + TOOLS</text>
-        <text class="t-xs" x="650" y="108">A BLOCK PATTERN. NOT A SPECIES</text>
-        <text class="t-s" x="650" y="140">today on main &#183; exists</text>
-        <text class="t-xs" x="650" y="158">defineAgent &#8594; Agent config</text>
-        <text class="t-xs" x="650" y="176">materializeAgent &#8594; block</text>
-        <text class="t-xs" x="650" y="194">agentBlock &#8594; standalone</text>
-        <text class="t-xs" x="650" y="220">COLLAPSE INTO THE FACTORY</text>
-        <text class="t-xs" x="650" y="238">KILL PARKS BEHIND W2</text>
-        <text class="t-b f-accent" x="650" y="266">do not grow the old path</text>
+        <text class="t-lbl" x="650" y="38">PROMPT SLOT &#183; ARRAY</text>
+        <text class="t-b f-accent" x="650" y="64">compose, don&#8217;t mint</text>
+        <text class="t-xs" x="650" y="90">DEFAULT SYSTEM PROMPT</text>
+        <text class="t-xs" x="650" y="108">+ PER-WORKER INSTRUCTIONS</text>
+        <text class="t-s" x="650" y="140">proposed. prompt: [&#8230;]</text>
+        <text class="t-xs" x="650" y="158">NOT A PERSONA SPECIES</text>
+        <text class="t-xs" x="650" y="176">PERSONA-BUILDER &#183; LATER</text>
+        <text class="t-xs" x="650" y="194">hire today still says persona</text>
+        <text class="t-xs" x="650" y="220">LEAVE THAT. TEACH instructions</text>
+        <text class="t-xs" x="650" y="238">NOT A NEW TYPE</text>
+        <text class="t-b f-accent" x="650" y="266">the generator already joins</text>
 
         <rect class="n-prose" x="16" y="300" width="908" height="84" rx="5"/>
         <text class="t-lbl" x="34" y="322">CUT</text>
-        <text class="t-s" x="34" y="346">no second Agent type &#183; no Team / Channel / MessageBoard L1 &#183; no Agent catalog as roster &#183; no memory on the seat</text>
-        <text class="t-xs" x="34" y="368">STOP GROWING agentRegistry / agent-ref. THE CODE KILL IS AFTER W2, NOT A D-n.</text>
+        <text class="t-s" x="34" y="346">no defineAgent factory lock &#183; no materializeAgent spine &#183; no persona hire species &#183; no worker.ts-as-manifest &#183; no Agent catalog as roster</text>
+        <text class="t-xs" x="34" y="368">STOP GROWING agentRegistry / agent-ref. defineAgent MAY NOT NEED TO EXIST. KINDS ARE FLOW FACTORIES. NOT A D-n.</text>
       </svg>
     </div>
-    <figcaption><b>Seat the flow. Factory the block.</b> Product Agent is the opinion on a worker flow. <code>defineAgent</code> is how that opinion becomes a <code>BlockDefinition</code>, not a row in a catalog. Growing <code>AgentRegistry</code> so seats and skills look like one list is the failure this fence exists to stop.</figcaption>
+    <figcaption><b>Seat the flow. Prompt the worker.</b> A seat is the dispatch target. A worker is instructions + model + tools on a generator or flow. The default system prompt, when it lands, is another entry in the existing prompt slot &#8212; not a persona type and not a <code>defineAgent</code> factory. Growing <code>AgentRegistry</code> so seats and skills look like one list is the failure this fence exists to stop.</figcaption>
   </figure>
 
   <figure>
@@ -693,27 +758,27 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   </figure>
 
   <h3>Prove before growing the old surface</h3>
-  <p>These are not L1 substrate refuses. They are questions this page will not paper over by adding a field or a catalog. Until each is proved, the product Agent stays Layer&nbsp;2 opinion on the worker you already have, and <code>defineAgent</code> stays a factory onto the name&#8594;block list.</p>
+  <p>These are not L1 substrate refuses. They are questions this page will not paper over by adding a field or a catalog. Until each is proved, the product Agent stays later Layer&nbsp;2 opinion on the worker you already have. Do not paper the cut with a <code>defineAgent</code> factory.</p>
 
   <div class="tw">
     <table>
       <thead><tr><th>#</th><th>Prove</th><th>Atlas opinion</th><th>What growing the seam would fake</th></tr></thead>
       <tbody>
-        <tr><td>A</td><td>Durable memory / identity on agent/member scope, not the seat</td><td><span class="tag t-prop">opinion</span> <code>flowIsolation</code> resources on the worker flow. Persona is a prompt source, not a store. Thin seats do not need this. Prove isolated org/user rows outlive a DM and a project room, then key them per member. See <a href="#memory">&#167;07</a>.</td><td><code>Agent.resources</code>, <code>Agent.memory</code>, memory on the seat, a durable identity bag on the core type. No such fields on this pin.</td></tr>
+        <tr><td>A</td><td>Durable memory / identity on agent/member scope, not the seat</td><td><span class="tag t-prop">opinion</span> <code>flowIsolation</code> resources on the worker flow. v1 prompt source is <code>instructions</code>, not a persona store. Thin seats do not need this. Prove isolated org/user rows outlive a DM and a project room, then key them per member. See <a href="#memory">&#167;07</a>.</td><td><code>Agent.resources</code>, <code>Agent.memory</code>, memory on the seat, a durable identity bag on the core type. No such fields on this pin.</td></tr>
         <tr><td>B</td><td>Seat bind: worker &#8594; roster row &#8594; session, no Team type</td><td><span class="tag t-prop">proposed</span> A keyed row (<code>teamId</code> + seat) names a worker flow instance, an optional harness, and the session the room helpers open. Prove one row can seat a thin coordinator and a thick Agent without a Team object. Prove a second team is another key, not a new type. Thin seats skip member memory. They are not catalog rows.</td><td>A Team type whose job is to hold the bind. A singleton team with no key. <code>Agent.sessions</code>. Requiring every seat to be an Agent. Stuffing the row into <code>AgentRegistry</code>.</td></tr>
-        <tr><td>C</td><td>Foundation treats <code>defineAgent</code> as a block factory, not a catalog species</td><td><span class="tag t-prop">proposed</span> Today on main: <code>defineAgent</code> returns <code>Agent</code>; <code>createAgentRegistry</code> / <code>materializeAgent</code> / <code>agent-ref</code> exist; one caller (<code>examples/guides/research-team</code>). Teach: <code>defineAgent</code> &#8594; <code>BlockDefinition</code>; one name&#8594;block list for skills and boards; seats stay flow instances. Code kill of the old surface parks behind W2. Stop growing it now. Engine never sees a product registry.</td><td>Scanning seats into <code>AgentRegistry</code>. Teaching <code>agent-ref</code> as the skills resolve path. A second Agent type. A second registry. Growing <code>materializeAgent</code> as the Workforce spine.</td></tr>
+        <tr><td>C</td><td>Workers are generators/flows with instructions + model + tools; seats stay flow instances</td><td><span class="tag t-gone">invent-kill</span> Today on main: <code>defineAgent</code> returns <code>Agent</code>; <code>createAgentRegistry</code> / <code>materializeAgent</code> / <code>agent-ref</code> exist; one caller (<code>examples/guides/research-team</code>). Hire still names the body <code>persona</code> &#8212; leave it. Teach: <code>instructions</code> &#8594; generator <code>prompt</code>; seats = <code>WORKER.md</code>; hire needs <code>{ kinds }</code>; one name&#8594;block list for skills and boards. Custom kinds are flow factories (W3 scan). <code>defineAgent</code> may not need to exist. <code>materializeAgent</code> is a placeholder &#8212; kill it; do not teach it. Stop growing the old surface now. Engine never sees a product registry.</td><td>Teaching <code>defineAgent</code> as a block factory. Teaching <code>materializeAgent</code> as the Workforce spine. Teaching <code>worker.ts</code> as a WorkerManifest / compose-a-record door. Teaching <code>persona</code> as the v1 hire species. Scanning seats into <code>AgentRegistry</code>. A second Agent type.</td></tr>
       </tbody>
     </table>
   </div>
 
   <pre class="code"><i>// EXISTS &#8212; old surface. packages/core/src/types/agent.ts</i>
-<i>// defineAgent today returns this config, not a BlockDefinition.</i>
-<i>// agent-ref / AgentRegistry / materializeAgent exist. Do not grow them.</i>
-<i>// Code kill parks behind W2. Engine has no AgentRegistry import.</i>
+<i>// defineAgent today returns this config. Invent-kill candidate — do not teach as a factory.</i>
+<i>// agent-ref / AgentRegistry / materializeAgent exist. Do not grow them. Do not teach them.</i>
+<i>// Engine has no AgentRegistry import. Hire / WORKER.md body key is instructions.</i>
 type Agent = {
   name: string;
   description: string;
-  persona: PersonaSource;          <i>// prompt source. not a memory store</i>
+  persona: PersonaSource;          <i>// old field. v1 hire key is instructions</i>
   model?: string;
   itemVisibility?: ItemVisibility;
   outputSchema?: ZodTypeAny;       <i>// standalone only. workers emit text</i>
@@ -727,19 +792,19 @@ type Agent = {
 
 <section id="contract">
   <div class="sec-head"><span class="sec-num">05</span><h2>The worker contract</h2></div>
-  <p class="lede">One factory. One flow per worker. Same shape every time. The worker <em>is</em> a sequencer flow. Product Agent is that flow when it also carries generators, a persona, and durable member memory &#8212; Layer&nbsp;2 opinion, not a second type. Thin seats skip that opinion. The file tree that declares those workers is <a href="#files">&#167;06</a>. SOP files are later. Do not grow the core <code>Agent</code> type or invent Team as Layer&nbsp;1.</p>
+  <p class="lede">One flow per worker. Same shape every time. The worker <em>is</em> a generator or a sequencer flow with <strong>instructions + model + tools</strong>. Product Agent is later opinion, not a second type. Thin seats skip that opinion. v1 hire / <code>WORKER.md</code> body key is <code>instructions</code>. Persona-builder is later. The file tree that declares those workers is <a href="#files">&#167;06</a>. SOP files are later. Do not grow the core <code>Agent</code> type or invent Team as Layer&nbsp;1. Do not rewrite this contract around <code>defineAgent</code>.</p>
 
   <figure>
     <div class="fig-body">
       <svg viewBox="0 0 940 420" role="img" aria-label="The proposed worker factory. A dashed factory box on the left reads a worker folder of files for role, personality, tools, and skills, then emits one defineFlow of the same shape. Three worker flows sit on the right, each the same box: public and internal actions, isolated org and user resources, the same contract. A fourth dashed box below is the escape hatch: a custom flow that still implements the contract.">
         <rect class="n-prop" x="16" y="16" width="300" height="248" rx="5"/>
-        <text class="t-lbl" x="34" y="38">FACTORY &#183; PROPOSED V1</text>
+        <text class="t-lbl" x="34" y="38">HIRE &#183; EXISTS</text>
         <text class="t-b f-accent" x="34" y="64">one worker contract</text>
-        <text class="t-s" x="34" y="90">reads a worker folder</text>
-        <text class="t-xs" x="34" y="114">ROLE &#183; V1 INPUT</text>
-        <text class="t-xs" x="34" y="132">PERSONALITY &#183; V1 INPUT</text>
-        <text class="t-xs" x="34" y="150">TOOLS &#183; V1 INPUT</text>
-        <text class="t-xs" x="34" y="168">SKILLS &#183; V1 INPUT</text>
+        <text class="t-s" x="34" y="90">reads a WORKER.md</text>
+        <text class="t-xs" x="34" y="114">FRONTMATTER &#183; SETTINGS</text>
+        <text class="t-xs" x="34" y="132">BODY &#183; INSTRUCTIONS</text>
+        <text class="t-xs" x="34" y="150">MODEL + TOOLS</text>
+        <text class="t-xs" x="34" y="168">SKILLS IF DECLARED</text>
         <text class="t-s" x="34" y="200">emits one defineFlow</text>
         <text class="t-xs" x="34" y="222">SAME SHAPE EVERY TIME</text>
         <text class="t-xs" x="34" y="244">FLOW KIND = THE WORKER</text>
@@ -765,24 +830,24 @@ type Agent = {
         <text class="t-lbl" x="378" y="142">THE SHAPE &#183; EVERY WORKER FLOW</text>
         <text class="t-s" x="378" y="168">actions / internal / task entries the contract names</text>
         <text class="t-s" x="378" y="190">org + user resources, flowIsolation on by default</text>
-        <text class="t-s" x="378" y="212">persona, tools, skills bound from the folder</text>
+        <text class="t-s" x="378" y="212">instructions, tools, skills bound from the folder</text>
         <text class="t-xs" x="378" y="240">A SESSION OF THIS FLOW IS THE WORKER IN A ROOM</text>
 
         <rect class="n-prop" x="16" y="284" width="908" height="112" rx="5"/>
-        <text class="t-lbl" x="34" y="306">ESCAPE HATCH &#183; PROPOSED V1</text>
-        <text class="t-b f-accent" x="34" y="332">a custom flow is allowed</text>
-        <text class="t-s" x="34" y="354">if it still implements the contract: same entries, same isolation, same address</text>
-        <text class="t-xs" x="34" y="376">THE FACTORY IS THE DEFAULT. THE CONTRACT IS THE LAW. NOT A MODULE-SWAP HOOK. NOT A NEW AGENT TYPE.</text>
+        <text class="t-lbl" x="34" y="306">CUSTOM KIND &#183; FLOW FACTORY</text>
+        <text class="t-b f-accent" x="34" y="332">a defineFlow that fits the contract</text>
+        <text class="t-s" x="34" y="354">lands on the hire kinds map. W3 scans / registers it. seat flow: only names that kind</text>
+        <text class="t-xs" x="34" y="376">NOT worker.ts AS A MANIFEST. NOT A DEFAULT-EXPORT CONFIG. NOT A MODULE-SWAP HOOK. NOT A NEW AGENT TYPE.</text>
       </svg>
     </div>
-    <figcaption><b>Same shape, then compose.</b> The factory is how most workers are born. The contract is what a worker <em>is</em>. A hand-written flow that keeps the contract is still a worker. A folder that does not emit that shape is not. Which harness a worker runs on is a <strong>field on a keyed roster row</strong>, proposed &#8212; not a file in the folder, not a Layer&nbsp;1 Harness type. The tree is <a href="#files">&#167;06</a>. The team product is <a href="#teams">&#167;10</a>.</figcaption>
+    <figcaption><b>Same shape, then hire.</b> Most seats are a <code>WORKER.md</code>. The contract is what a worker <em>is</em>. A custom kind is a flow factory that keeps that contract and lands on <code>{ kinds }</code>. A folder that does not emit a seat document is not a seat. Which harness a worker runs on is a <strong>field on a keyed roster row</strong>, proposed &#8212; not a file in the folder, not a Layer&nbsp;1 Harness type. The tree is <a href="#files">&#167;06</a>. The team product is <a href="#teams">&#167;10</a>.</figcaption>
   </figure>
 
 
   <div class="cards">
     <div class="card" style="--tc: var(--accent)">
-      <h5>role / personality / tools / skills</h5><span class="role">proposed v1 factory inputs</span>
-      <p>Declared on <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. The factory emits one <code>defineFlow</code>. Org- and team-level <code>skills/</code> / <code>resources/</code> sit higher in that tree. Not fields to grow onto <code>Agent</code>. See <a href="#files">&#167;06</a>.</p>
+      <h5>WORKER.md · instructions + settings</h5><span class="role">exists · the v1 file</span>
+      <p>Declared on <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/WORKER.md</code>. Frontmatter is settings; body is <code>instructions</code>. <code>readWorkforceDirectory</code> reads it; <code>hireWorkforce</code> mints the flow instance. Org- and team-level <code>skills/</code> / <code>resources/</code> sit higher in that tree. Not fields to grow onto <code>Agent</code>. See <a href="#files">&#167;06</a>.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>keyed roster + harness seat</h5><span class="role">proposed compose</span>
@@ -809,54 +874,49 @@ type Agent = {
         <text class="t-xs" x="34" y="140">SEE &#167;12</text>
 
         <rect class="n-prop" x="480" y="16" width="444" height="168" rx="5"/>
-        <text class="t-lbl" x="498" y="38">2 &#183; TS HATCH &#183; PROPOSED</text>
-        <text class="t-b f-accent" x="498" y="64">same shapes</text>
-        <text class="t-xs" x="498" y="90">Agent + defineFlow</text>
-        <text class="t-xs" x="498" y="108">NOT A PARALLEL API</text>
-        <text class="t-xs" x="498" y="140">THE TREE AND THE SCAN ARE &#167;06</text>
+        <text class="t-lbl" x="498" y="38">2 &#183; CUSTOM KIND &#183; W3</text>
+        <text class="t-b f-accent" x="498" y="64">a flow factory</text>
+        <text class="t-xs" x="498" y="90">defineFlow ON THE WORKER CONTRACT</text>
+        <text class="t-xs" x="498" y="108">REGISTERED ONTO { kinds }</text>
+        <text class="t-xs" x="498" y="140">NOT worker.ts AS A SEAT RECORD</text>
       </svg>
     </div>
-    <figcaption><b>The contract is the law.</b> The factory is the default. A hand-written flow that keeps the contract is still a worker. How those files sit on disk, what a scan may call, and how a new seat is added are <a href="#files">&#167;06</a>.</figcaption>
+    <figcaption><b>The contract is the law.</b> Seats are documents. A hand-written flow that keeps the contract is a kind, not a second seat door. How those files sit on disk, what a scan may call, and how a new seat is added are <a href="#files">&#167;06</a>.</figcaption>
   </figure>
 
-  <pre class="code"><i>// EXISTS &#8212; old surface. Do not grow. Kill parks behind W2.</i>
-<i>// defineAgent returns Agent. materializeAgent / agentBlock &#8594; BlockDefinition (a generator).</i>
+  <pre class="code"><i>// EXISTS &#8212; old surface. Do not grow. Do not teach as the path.</i>
+<i>// defineAgent returns Agent. Invent-kill candidate. May not need to exist.</i>
+<i>// materializeAgent / agentBlock exist as placeholder. Kill. Do not teach.</i>
 <i>// createAgentRegistry is a name&#8594;Agent map. Not a seat list. Not the board worker map.</i>
 import { <b>defineAgent</b>, <b>createAgentRegistry</b>, <b>materializeAgent</b> } from <em>"@flow-state-dev/workforce"</em>;
 
 const engMgr = <b>defineAgent</b>({
   name: <em>"eng-manager"</em>,
   description: <em>"Staffs issues and holds engineering process."</em>,
-  persona: <em>"You are the engineering manager."</em>,
+  persona: <em>"You are the engineering manager."</em>,  <i>// old field</i>
   model: <em>"openai/gpt-5.4-mini"</em>,
   allowedTools: [<em>"board"</em>, <em>"search"</em>],
 });
+<i>// Do not copy this path. Research-team is the only caller.</i></pre>
 
-const registry = <b>createAgentRegistry</b>([engMgr]);
-<i>// materializeAgent(engMgr, opts) &#8594; a generator BlockDefinition. Not a worker flow.</i></pre>
+  <pre class="code"><i>// EXISTS &#8212; the v1 path. packages/workforce loader + hire.</i>
+<i>// WORKER.md body is instructions. hireWorkforce still hands it as persona — leave that.</i>
+import { <b>readWorkforceDirectory</b> } from <em>"@flow-state-dev/workforce/loader"</em>;
+import { <b>hireWorkforce</b> } from <em>"@flow-state-dev/workforce"</em>;
 
-  <pre class="code"><i>// PROPOSED V1 &#8212; thin factory helper. Not an export on main.</i>
-<i>// Wraps defineFlow. Does not invent a second worker type.</i>
-<b>createWorkerFlow</b>({
-  name: <em>"eng-manager"</em>,
-  role: <em>"./teams/engineering/workers/eng-manager/role.md"</em>,
-  personality: <em>"./teams/engineering/workers/eng-manager/personality.md"</em>,
-  tools: <em>["board", "search"]</em>,
-  skills: <em>["staff-issue", "write-spec"]</em>,
-})
-<i>// &#8594; one defineFlow({ kind: "eng-manager", ... }) of the contract shape</i>
-<i>// Seat path is teams/&lt;teamId&gt;/workers/&lt;name&gt;/ — see &#167;06</i>
-<i>// a hand-written defineFlow is the thin-seat escape hatch — same contract</i>
-<i>// defineAgent, once it is the block factory, feeds the name&#8594;block list</i>
-<i>// SOP paths are not inputs. Roster / harness seat live outside this call.</i>
-<i>// A directory scan that fills defineFlow is a named gap. &#167;06</i>
-<i>// Do not stuff the seat into AgentRegistry. Seats are flow instances.</i>
-<i>// Do not write loadWorkforce() here as if it shipped.</i></pre>
+const { workers } = await <b>readWorkforceDirectory</b>(<em>"./workforce"</em>);
+<b>hireWorkforce</b>(workers, { kinds });
+<i>// workers[0].body  — instructions (maps to generator prompt)</i>
+<i>// workers[0].id    — "engineering.lead"</i>
+<i>// Seat is the hired flow instance. Not an AgentRegistry row.</i>
+<i>// Proposed: default system prompt composed into prompt: [default, instructions]</i>
+<i>// Do not stuff the seat into AgentRegistry.</i>
+<i>// Do not write loadWorkforce() or createWorkerFlow() as if they shipped.</i></pre>
 </section>
 
 <section id="files">
   <div class="sec-head"><span class="sec-num">06</span><h2>File conventions</h2></div>
-  <p class="lede">The product folders are <strong><code>teams/</code></strong>. A <strong>roster</strong> is a seat-list &#8212; a team roster today, later a project roster if one earns it. A <strong>team</strong> is the Layer&nbsp;2 product: that roster plus shared rooms plus dispatch. Not an L1 <code>Team</code> type. Not a TeamFlow. <strong>Projects are not a folder.</strong> They live as resources, boards, sessions, and content &#8212; the same move as plan = board + <code>readContent()</code>. Scan feeds today&#8217;s <code>defineFlow</code> for every seat &#8212; a <strong>flow instance</strong>, the dispatch target. Do not stuff seats into <code>AgentRegistry</code>. <code>defineAgent</code> (once the block factory) feeds the name&#8594;<code>BlockDefinition</code> list, not a catalog. A TypeScript escape hatch emits those same shapes. A workforce tree loader is a named gap. Do not invent <code>loadWorkforce()</code>.</p>
+  <p class="lede">The product folders are <strong><code>teams/</code></strong>. A <strong>roster</strong> is a seat-list &#8212; a team roster today, later a project roster if one earns it. A <strong>team</strong> is the Layer&nbsp;2 product: that roster plus shared rooms plus dispatch. Not an L1 <code>Team</code> type. Not a TeamFlow. <strong>Projects are not a folder.</strong> They live as resources, boards, sessions, and content &#8212; the same move as plan = board + <code>readContent()</code>. <code>readWorkforceDirectory</code> walks <code>WORKER.md</code> into a manifest; <code>hireWorkforce</code> mints a <strong>flow instance</strong> per seat &#8212; the dispatch target. Body key is <code>instructions</code>. Hire needs <code>{ kinds }</code>. Seats stay <strong>document-first</strong>. The code door is a kinds + blocks file scan &#8212; <strong>W3</strong>; custom kinds are flow factories on the worker contract, same boot story as coming block conventions. W3 also grows the tree: rooms, L2 communication channels (sessions / boards, not Channel L1), resources, and skills at the level they belong. That scan does not ship Collab RC. Do not stuff seats into <code>AgentRegistry</code>. Do not teach <code>worker.ts</code> as a seat record. Do not invent <code>loadWorkforce()</code>.</p>
 
   <figure>
     <div class="fig-body">
@@ -876,13 +936,13 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <text class="t-xs" x="58" y="196">skills/</text>
         <text class="t-xs" x="200" y="196">SAME SKILL.md WIRING, THIS TEAM</text>
         <text class="t-s f-accent" x="58" y="226">workers/&lt;name&gt;/</text>
-        <text class="t-xs" x="58" y="244">THE SEAT. ADD A FILE TO ADD A SEAT.</text>
-        <text class="t-s" x="82" y="270">role.md</text>
-        <text class="t-s" x="82" y="288">personality.md</text>
-        <text class="t-s" x="82" y="306">tools.md</text>
+        <text class="t-xs" x="58" y="244">THE SEAT. ADD A WORKER.md.</text>
+        <text class="t-s" x="82" y="270">WORKER.md</text>
+        <text class="t-s" x="82" y="288">frontmatter = settings</text>
+        <text class="t-s" x="82" y="306">body = instructions</text>
         <text class="t-s" x="82" y="324">skills/</text>
         <text class="t-s" x="82" y="342">resources/</text>
-        <text class="t-xs" x="250" y="270">FACTORY INPUTS &#183; PROPOSED</text>
+        <text class="t-xs" x="250" y="270">EXISTS &#183; #1689 LOADER</text>
         <text class="t-xs" x="250" y="288">MEMBER SCOPE IS THE NAMED GAP</text>
         <text class="t-xs" x="250" y="342">SEE &#167;07</text>
 
@@ -906,19 +966,19 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <rect class="n-prose" x="592" y="232" width="332" height="152" rx="5"/>
         <text class="t-lbl" x="610" y="254">WORKFORCE TREE SCAN</text>
         <text class="t-b" x="610" y="280">named gap</text>
-        <text class="t-xs" x="610" y="304">NO LOADER ON MAIN</text>
-        <text class="t-xs" x="610" y="322">DO NOT INVENT loadWorkforce()</text>
-        <text class="t-xs" x="610" y="348">defineFlow EVERY SEAT</text>
+        <text class="t-xs" x="610" y="304">readWorkforceDirectory</text>
+        <text class="t-xs" x="610" y="322">EXISTS. NOT loadWorkforce()</text>
+        <text class="t-xs" x="610" y="348">hireWorkforce EVERY SEAT</text>
         <text class="t-xs" x="610" y="366">NOT INTO AgentRegistry</text>
 
         <rect class="n-prop" x="592" y="400" width="332" height="104" rx="5"/>
-        <text class="t-lbl" x="610" y="422">TS ESCAPE &#183; PROPOSED</text>
-        <text class="t-xs" x="610" y="444">HAND-WRITTEN defineFlow</text>
-        <text class="t-xs" x="610" y="462">defineAgent &#8594; block list</text>
-        <text class="t-xs" x="610" y="480">NOT A CATALOG ROW.</text>
+        <text class="t-lbl" x="610" y="422">KINDS + BLOCKS &#183; W3</text>
+        <text class="t-xs" x="610" y="444">BOOT SCAN / REGISTER</text>
+        <text class="t-xs" x="610" y="462">FLOW FACTORIES + BLOCKS</text>
+        <text class="t-xs" x="610" y="480">NOT worker.ts AS A SEAT.</text>
       </svg>
     </div>
-    <figcaption><b>The tree is the scope story.</b> Product folders stay <code>teams/</code>. Workers nest under the team they seat. There is no <code>projects/</code> tree and no <code>agents/</code> sibling. <code>defineFlow</code> exists and takes in-memory values. <code>createAgentRegistry</code> exists as the old surface &#8212; do not grow it. <code>readSkillsDirectory</code> exists and walks <code>SKILL.md</code> only. A scan that feeds <code>defineFlow</code> from this tree is a named gap. It does not add an <code>AgentRegistry</code> row.</figcaption>
+    <figcaption><b>The tree is the scope story.</b> Product folders stay <code>teams/</code>. Workers nest under the team they seat. There is no <code>projects/</code> tree and no <code>agents/</code> sibling. <code>WORKER.md</code> is the seat file: settings in frontmatter, <code>instructions</code> in the body. <code>readWorkforceDirectory</code> and <code>hireWorkforce</code> exist. W3 grows kinds + blocks scan and the rest of the tree (rooms, L2 channels, resources, skills) without shipping Collab RC. <code>createAgentRegistry</code> exists as the old surface &#8212; do not grow it. A scan does not add an <code>AgentRegistry</code> row.</figcaption>
   </figure>
 
   <figure>
@@ -939,7 +999,7 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
         <text class="t-b f-accent" x="342" y="64">same path</text>
         <text class="t-s" x="342" y="90">teams/eng/workers/</text>
         <text class="t-s" x="342" y="108">  copy-editor/</text>
-        <text class="t-xs" x="342" y="134">ROLE / PERSONALITY / TOOLS</text>
+        <text class="t-xs" x="342" y="134">WORKER.md &#183; INSTRUCTIONS</text>
         <text class="t-xs" x="342" y="152">NEXT BOOT SEES IT</text>
         <text class="t-xs" x="342" y="178">NO SPECIAL RUNTIME API</text>
         <text class="t-xs" x="342" y="196">NO SECOND REGISTRY</text>
@@ -976,24 +1036,30 @@ const registry = <b>createAgentRegistry</b>([engMgr]);
     </div>
     <div class="card" style="--tc: var(--gone)">
       <h5>Not</h5><span class="role">cut</span>
-      <p>No <code>loadWorkforce()</code>. No stuffing seats into <code>AgentRegistry</code>. No auto-reg of Team / Channel / Project / MessageBoard. No <code>agents/</code> sibling. No hot-dynamic kinds after boot.</p>
+      <p>No <code>loadWorkforce()</code>. No stuffing seats into <code>AgentRegistry</code>. No <code>worker.ts</code> as WorkerManifest. No framework <code>import()</code> of seat <code>worker.ts</code>. No auto-reg of Team / Channel / Project / MessageBoard L1. No <code>agents/</code> sibling. No hot-dynamic kinds after boot. No <code>defineAgent</code> factory.</p>
     </div>
   </div>
 
-  <pre class="code"><i>// EXISTS &#8212; in-memory. No tree walk. Registry is the old surface; do not grow it.</i>
+  <div class="note">
+    <span class="lbl">W3 may declare rooms. Collab RC is still later</span>
+    <p>W3 can put room and L2 channel files in the tree at the level they belong. That is a scan target, not the Collab system / dynamic roster. W2 still walks <code>workers/</code> only. The L2 room roster (undeletable system + helper-minted) is <a href="#collab">&#167;14</a> &#8212; after W2 &#8594; W3 &#8594; lab. No Channel / MessageBoard L1.</p>
+  </div>
+
+  <pre class="code"><i>// EXISTS &#8212; in-memory old surface. Do not grow. Do not teach as the path.</i>
 import { <b>defineAgent</b>, <b>createAgentRegistry</b> } from <em>"@flow-state-dev/workforce"</em>;
 import { <b>defineFlow</b> } from <em>"@flow-state-dev/core"</em>;
 
 const registry = <b>createAgentRegistry</b>([engMgr]);  <i>// name&#8594;Agent. Not a seat.</i>
 const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });  <i>// the seat, once instanced</i>
 <i>// taskBoard({ workers: { "eng-manager": block } }) exists &#8212; name&#8594;BlockDefinition.</i>
+<i>// That map does not depend on a defineAgent factory.</i>
 <i>// readSkillsDirectory(root) exists and walks SKILL.md only.</i></pre>
 
-  <pre class="code"><i>// PROPOSED &#8212; TypeScript escape hatch. Same shapes. Not a parallel API.</i>
-<i>// A hand-written defineFlow is a thin seat if it keeps the contract.</i>
-<i>// defineAgent &#8594; BlockDefinition onto the name&#8594;block list. Not a catalog row.</i>
-<i>// A scan, if it lands, calls defineFlow for every seat. No AgentRegistry write.</i>
-<i>// It does not mint Team or Project types.</i>
+  <pre class="code"><i>// EXISTS &#8212; the v1 path. Not a parallel API. Not defineAgent.</i>
+<i>// Seats are WORKER.md. hireWorkforce(workers, { kinds }) already.</i>
+<i>// A custom kind is a defineFlow factory on that kinds map (W3 scan).</i>
+<i>// WORKER.md body = instructions. No AgentRegistry write.</i>
+<i>// Do not export a WorkerManifest from worker.ts. Do not import() one.</i>
 <i>// Do not write loadWorkforce() here as if it shipped.</i></pre>
 </section>
 
@@ -1585,7 +1651,7 @@ const teamDocs = <b>defineResourceCollection</b>({
 
   <div class="note">
     <span class="lbl">Matrix is proposed Layer 2</span>
-    <p>Same-flow N-session fan-out is the runtime &#8212; board + one session per subscriber, <code>dispatcher()</code> &#215; N. Reverse <code>{ from: true }</code> exists. Cross-flow exists (<code>dispatcher({ flowKind })</code>). Ordered multi-reply is proposed composition on those pins, not a sequencer. The matrix (which room) is still proposed Layer&nbsp;2. Hire-id and dynamic addresses still wait on INST. Do not invent a peer-edge graph, a route-resolver substrate, or a Layer&nbsp;1 Channel / MessageBoard package.</p>
+    <p>Same-flow N-session fan-out is the runtime &#8212; board + one session per subscriber, <code>dispatcher()</code> &#215; N. Reverse <code>{ from: true }</code> exists. Cross-flow exists (<code>dispatcher({ flowKind })</code>). Ordered multi-reply is proposed composition on those pins, not a sequencer. The matrix (which room) is still proposed Layer&nbsp;2. Hire-id and dynamic addresses still wait on INST. Do not invent a peer-edge graph, a route-resolver substrate, or a Layer&nbsp;1 Channel / MessageBoard package. The L2 room roster &#8212; system rooms plus helper-minted rooms on that same list &#8212; is Collab later, not this section. See <a href="#collab">&#167;14</a>.</p>
   </div>
 
   <pre class="code"><i>// EXISTS &#8212; open a DM. createSessionClient, packages/client.</i>
@@ -1648,7 +1714,7 @@ const room = {
 <i>// worker&#8596;worker across flows: dispatcher({ flowKind }). Hire-id still INST.</i></pre>
 
   <h3>Room helpers &#8212; proposed wrappers, multi-team from day one</h3>
-  <p>Same-flow N-rooms exist. Claim exclusion exists. Who may reply is proposed Layer&nbsp;2. Ordered multi-reply is proposed. The helpers below wrap those facts. They take a <strong>team key</strong>. Rooms are addressable across teams. They are not a second session model, not a Channel package, and not a one-team-only API. If a helper would need hire-id, a dynamic address, or multi-hire, that is INST (gap 1) &#8212; see <a href="#gaps">&#167;19</a> &#8212; not a pretend export.</p>
+  <p>Same-flow N-rooms exist. Claim exclusion exists. Who may reply is proposed Layer&nbsp;2. Ordered multi-reply is proposed. The helpers below wrap those facts. They take a <strong>team key</strong>. Rooms are addressable across teams. They are not a second session model, not a Channel package, and not a one-team-only API. W2 names the wrappers over Layer&nbsp;1 sessions. Minting a dynamic room onto the L2 roster is Collab later &#8212; <a href="#collab">&#167;14</a>. If a helper would need hire-id, a dynamic address, or multi-hire, that is INST (gap 1) &#8212; see <a href="#gaps">&#167;19</a> &#8212; not a pretend export.</p>
 
   <figure>
     <div class="fig-body">
@@ -2086,7 +2152,7 @@ const team = <b>defineResourceCollection</b>({
 
 <section id="members">
   <div class="sec-head"><span class="sec-num">12</span><h2>One worker contract</h2></div>
-  <p class="lede">The worker <em>is</em> a <strong>sequencer flow</strong>. Product Agent is that same flow when it also carries generators, a persona, and durable member memory. The generator half is a <code>BlockDefinition</code> from <code>defineAgent</code> (proposed). Today that block is built by <code>materializeAgent</code> from an <code>Agent</code> config. Not two types. Not two team member kinds. Kill sequencer-versus-agent as a fork. Intake can be a thin sequencer on that contract and still be a seat. An eng-manager can be the same contract with the Agent opinion. Which harness a seat runs on is a team field, not a third kind. See <a href="#contract">&#167;05</a>, <a href="#fence">&#167;04</a>, and <a href="#intake">&#167;11</a>.</p>
+  <p class="lede">The worker <em>is</em> a <strong>generator or sequencer flow</strong> with instructions + model + tools. Product Agent is later opinion on that same flow. Not two types. Not two team member kinds. Kill sequencer-versus-agent as a fork. Intake can be a thin sequencer on that contract and still be a seat. An eng-manager can be the same contract with more generators. Which harness a seat runs on is a team field, not a third kind. See <a href="#contract">&#167;05</a>, <a href="#fence">&#167;04</a>, and <a href="#intake">&#167;11</a>.</p>
 
   <figure>
     <div class="fig-body">
@@ -2112,7 +2178,7 @@ const team = <b>defineResourceCollection</b>({
         <rect class="n-prop" x="704" y="16" width="220" height="184" rx="5"/>
         <text class="t-lbl" x="720" y="38">GENERATOR CALLS</text>
         <text class="t-s f-accent" x="720" y="68">when judgment is the job</text>
-        <text class="t-xs" x="720" y="94">PROPOSED: defineAgent</text>
+        <text class="t-xs" x="720" y="94">INSTRUCTIONS + MODEL + TOOLS</text>
         <text class="t-xs" x="720" y="112">&#8594; BlockDefinition</text>
         <text class="t-xs" x="720" y="138">THAT BLOCK LIVES IN</text>
         <text class="t-xs" x="720" y="156">THE SAME FLOW</text>
@@ -2122,7 +2188,7 @@ const team = <b>defineResourceCollection</b>({
         <text class="t-s" x="34" y="246">CUT: sequencer-vs-agent as two types &#183; two team member kinds &#183; a second Agent model</text>
       </svg>
     </div>
-    <figcaption><b>One contract. Generator calls are optional steps.</b> Layer&nbsp;1 already has sequencer and generator as block kinds. The convention does not promote them into two worker types. A seat names a worker flow. That flow may or may not carry the product Agent opinion. <code>defineAgent</code> is the factory for those generator calls, not a catalog species &#8212; <a href="#fence">&#167;04</a>.</figcaption>
+    <figcaption><b>One contract. Generator calls are optional steps.</b> Layer&nbsp;1 already has sequencer and generator as block kinds. The convention does not promote them into two worker types. A seat names a worker flow. That flow may or may not carry generators. Those generator calls are not a <code>defineAgent</code> factory lock &#8212; <a href="#fence">&#167;04</a>.</figcaption>
   </figure>
 </section>
 
@@ -2172,7 +2238,63 @@ const team = <b>defineResourceCollection</b>({
 
 <section id="collab">
   <div class="sec-head"><span class="sec-num">14</span><h2>Collaboration</h2></div>
-  <p class="lede">Workers talk on the <strong>dispatch spine</strong>. Reverse address is <code>{ from: true }</code> &#8212; it exists. Cross-flow is the same door (<code>dispatcher({ flowKind })</code>) &#8212; it exists. Which room is proposed Layer&nbsp;2 &#8212; team + context, then this door. See <a href="#channels">&#167;08</a>. The epic name Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> handler. Do not grow a second bus beside it. A client door onto this spine is <a href="#mcp">&#167;15</a> &#8212; MCP tools over intake / boards / <code>dispatcher()</code>, not a management bus.</p>
+  <p class="lede">Workers talk on the <strong>dispatch spine</strong>. Reverse address is <code>{ from: true }</code> &#8212; it exists. Cross-flow is the same door (<code>dispatcher({ flowKind })</code>) &#8212; it exists. Rooms are Layer&nbsp;2: <strong>one roster, two lanes</strong> &#8212; proposed, Collab later, not W2. Which session is proposed Layer&nbsp;2 &#8212; team + context, then this door. See <a href="#channels">&#167;08</a>. The epic name Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> handler. Do not grow a second bus beside it. A client door onto this spine is <a href="#mcp">&#167;15</a> &#8212; MCP tools over intake / boards / <code>dispatcher()</code>, not a management bus.</p>
+
+  <h3>Room roster &#8212; one list, two lanes</h3>
+  <p>Owner park (Jake + Architect, 2026-09-09). Rooms are L2 (invent-kill Channel / MessageBoard L1). <strong>One roster, two lanes:</strong></p>
+  <ol>
+    <li><strong>System rooms</strong> &#8212; from code or <code>teams/&lt;id&gt;/rooms</code> / team config; <strong>stable ids</strong>; seeded at boot/hire; <strong>undeletable</strong>.</li>
+    <li><strong>Dynamic rooms</strong> &#8212; minted by Collab helpers; <strong>deletable</strong>.</li>
+  </ol>
+  <p>Both bind existing L1 sessions / boards / dispatch. Sequence: after W2 &#8594; W3 &#8594; lab &#8594; MCP held &#8594; Collab RC; <strong>do not nest under W2 or W3</strong>. W3 may declare rooms as files; that is not this roster. W2 still walks <code>workers/</code> only. Either-source declaration and the <code>system</code> flag must survive into Collab RC. Park: FIX-1341. Closest existing board ticket: FIX-1311 &#8212; fence/rewrite when Collab opens; do not rush it as next. Do not invent Channel / MessageBoard / TeamFlow L1 so the roster looks like a package.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 340" role="img" aria-label="One Layer 2 room roster, two lanes, proposed Collab later. Left dashed: system rooms declared in code or under teams slash id slash rooms or team config, stable ids, seeded at boot or hire, flagged system, undeletable. Right dashed: dynamic rooms minted by Collab helpers onto that same roster, deletable. Both bind existing Layer 1 sessions, boards, and dispatch. Bottom cut: not a Channel or MessageBoard Layer 1, not a second room surface, not a W2 scan target.">
+        <rect class="n-prop" x="16" y="16" width="446" height="200" rx="5"/>
+        <text class="t-lbl" x="34" y="38">SYSTEM &#183; PROPOSED &#183; COLLAB LATER</text>
+        <text class="t-b f-accent" x="34" y="64">declared rooms</text>
+        <text class="t-xs" x="34" y="90">IN CODE, OR teams/&lt;id&gt;/rooms</text>
+        <text class="t-xs" x="34" y="108">OR TEAM CONFIG</text>
+        <text class="t-xs" x="34" y="132">STABLE IDS. SEEDED AT BOOT / HIRE</text>
+        <text class="t-xs" x="34" y="150">FLAGGED system. UNDELETABLE</text>
+        <text class="t-s" x="34" y="186">same L2 roster</text>
+
+        <rect class="n-prop" x="478" y="16" width="446" height="200" rx="5"/>
+        <text class="t-lbl" x="496" y="38">DYNAMIC &#183; PROPOSED &#183; COLLAB LATER</text>
+        <text class="t-b f-accent" x="496" y="64">helper-minted rooms</text>
+        <text class="t-xs" x="496" y="90">MINTED BY COLLAB HELPERS</text>
+        <text class="t-xs" x="496" y="108">ON THAT SAME LIST</text>
+        <text class="t-xs" x="496" y="132">DELETABLE</text>
+        <text class="t-xs" x="496" y="150">NOT A SECOND SURFACE</text>
+        <text class="t-s" x="496" y="186">same L2 roster</text>
+
+        <rect class="n-box" x="16" y="232" width="446" height="88" rx="5"/>
+        <text class="t-lbl" x="34" y="254">BIND</text>
+        <text class="t-s" x="34" y="278">existing L1 sessions &#183; boards &#183; dispatch</text>
+        <text class="t-xs" x="34" y="300">W2 HELPERS WRAP SESSIONS. THE ROSTER IS COLLAB.</text>
+
+        <rect class="n-prose" x="478" y="232" width="446" height="88" rx="5"/>
+        <text class="t-lbl" x="496" y="254">CUT</text>
+        <text class="t-s" x="496" y="278">no Channel / MessageBoard / TeamFlow L1</text>
+        <text class="t-xs" x="496" y="300">NOT W2 NEXT. DO NOT SCAN rooms/ IN THE PACKAGE.</text>
+      </svg>
+    </div>
+    <figcaption><b>One roster. Two lanes. Not a Channel package.</b> System rooms are declared and undeletable. Helper-minted rooms join that list; they do not open a second surface. Both bind Layer&nbsp;1 that already exists. W2 still ships the package (files + scan + seat factory + thin helpers). This roster waits.</figcaption>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Claim</th><th>Status</th><th>Pin</th></tr></thead>
+      <tbody>
+        <tr><td>L2 room roster</td><td><span class="tag t-prop">proposed · Collab later</span></td><td>One list, two lanes. Not a W2 scan target. Not a Channel package. Either-source declaration + <code>system</code> flag must survive into Collab RC. Park: FIX-1341.</td></tr>
+        <tr><td>System rooms</td><td><span class="tag t-prop">proposed · Collab later</span></td><td>From code or <code>teams/&lt;id&gt;/rooms</code> / team config. <strong>Stable ids</strong>. Seeded at boot/hire. Flagged <code>system</code>. <strong>Undeletable</strong>.</td></tr>
+        <tr><td>Dynamic rooms</td><td><span class="tag t-prop">proposed · Collab later</span></td><td>Minted by Collab helpers onto that same roster. <strong>Deletable</strong>. Not a second surface. W2 thin helpers wrap L1 sessions; they do not ship this roster.</td></tr>
+        <tr><td>Bind</td><td><span class="tag t-real">exists as L1 pieces</span></td><td>Sessions, boards, and <code>dispatcher()</code> already exist. The roster names those targets. It does not mint a new session type.</td></tr>
+        <tr><td>Channel / MessageBoard / TeamFlow L1</td><td><span class="tag t-gone">cut</span></td><td>Invent kill. Rooms stay Layer&nbsp;2 convention over the spine below. No MessageBoard sequencer.</td></tr>
+      </tbody>
+    </table>
+  </div>
 
   <figure>
     <div class="fig-body">
@@ -2245,12 +2367,12 @@ const replyToSender = <b>dispatcher</b>({
 
 <section id="mcp">
   <div class="sec-head"><span class="sec-num">15</span><h2>Workforce MCP &#8212; a client door, not a control plane</h2></div>
-  <p class="lede">This is <strong>W1</strong>. <strong>Held</strong> until the W2 package exists and the <a href="#lab">lab Proof</a> runs. The persistent core Workforce runs in the background. A user who already has Claude or ChatGPT still needs to send work or manage focus. That is a <strong>proposed Layer&nbsp;2 door</strong> onto intake, boards, and <code>dispatcher()</code>. Not a second control plane. Not a second Agent inbox. Not a chat-sdk revival. Cross-flow dispatch exists (<code>dispatcher({ flowKind })</code>). Later MCP &#8212; hire-by-id and a dynamic MCP address &#8212; waits on INST (FIX-1320), not on #1600. That is not the v1 door. W2 is the kick; this door is after the lab. See <a href="#vision">&#167;03</a>.</p>
+  <p class="lede">This is <strong>W1</strong>. <strong>Held</strong> until W3 conventions exist and the <a href="#lab">lab Proof</a> runs. The persistent core Workforce runs in the background. A user who already has Claude or ChatGPT still needs to send work or manage focus. That is a <strong>proposed Layer&nbsp;2 door</strong> onto intake, boards, and <code>dispatcher()</code>. Not a second control plane. Not a second Agent inbox. Not a chat-sdk revival. Cross-flow dispatch exists (<code>dispatcher({ flowKind })</code>). Later MCP &#8212; hire-by-id and a dynamic MCP address &#8212; waits on INST (FIX-1320), not on #1600. That is not the v1 door. W3 is next; this door is after the lab. See <a href="#vision">&#167;03</a>.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--accent)">
       <h5>Client door</h5><span class="role">W1 · held</span>
-      <p>Held until package + lab. Then Claude / ChatGPT calls three tools. Those tools land on the existing MCP adapter, then on the intake seat, the boards, and <code>dispatcher()</code>. The core keeps running. The client does not become a second product face. No MCP in lab v1.</p>
+      <p>Held until W3 + lab. Then Claude / ChatGPT calls three tools. Those tools land on the existing MCP adapter, then on the intake seat, the boards, and <code>dispatcher()</code>. The core keeps running. The client does not become a second product face. No MCP in lab v1.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>v1 tools</h5><span class="role">proposed names</span>
@@ -2391,17 +2513,20 @@ const replyToSender = <b>dispatcher</b>({
       <thead><tr><th>The piece</th><th>Status</th><th>What the source actually is</th></tr></thead>
       <tbody>
         <tr><td>Thin <code>Agent</code> / <code>AgentRegistry</code> types in core</td><td><span class="tag t-real">exists · old surface</span></td><td>Type seam skills still use for <code>agent-ref</code> / <code>materializeAgent</code>. Named participant fields: persona, model, tools, optional <code>itemVisibility</code>, <code>outputSchema</code>, <code>usesCapabilities</code>. No <code>resources</code>, <code>members</code>, <code>channels</code>, <code>inbox</code>, session, or memory. <code>usesSkills</code> is RESERVED. <code>contextMode</code> documents that only <code>"inline"</code> is honored. Not a room. Not a team. Not the product Agent. Not the seat roster. Engine has no <code>AgentRegistry</code> import. Do not grow. Code kill parks behind W2. <code>packages/core/src/types/agent.ts</code></td></tr>
-        <tr><td><code>defineAgent</code></td><td><span class="tag t-real">exists · returns Agent</span> <span class="tag t-prop">proposed &#8594; BlockDefinition</span></td><td>Today: validates and returns an <code>Agent</code> config (<code>packages/workforce/src/define-agent.ts</code>). Proposed: a block factory that emits a <code>BlockDefinition</code> (agent-shaped sequencer/generator). Not a registry species. Not a seat.</td></tr>
-        <tr><td><code>createAgentRegistry</code> / <code>materializeAgent</code></td><td><span class="tag t-real">exists · old surface</span></td><td>In-memory name&#8594;<code>Agent</code> map, then a generator <code>BlockDefinition</code>. FIX-1327 landed: missing <code>capabilityCatalog</code> refuses. Worker shape still forces <code>z.string()</code> (FIX-1337). Collapse into <code>defineAgent</code>. Do not grow. Kill parks behind W2. Not a flow factory. Not the seat roster.</td></tr>
-        <tr><td>Product Agent (sequencer + generators + persona + member memory)</td><td><span class="tag t-prop">proposed · L2</span></td><td>The Workforce opinion on the worker contract. A seat may be this, or a thin sequencer. Thin seats skip the registry and member memory. Do not grow the core type to look like this.</td></tr>
+        <tr><td><code>defineAgent</code></td><td><span class="tag t-real">exists · returns Agent</span> <span class="tag t-gone">invent-kill candidate</span></td><td>Today: validates and returns an <code>Agent</code> config (<code>packages/workforce/src/define-agent.ts</code>). May not need to exist. Do <em>not</em> teach it as a block factory &#8594; <code>BlockDefinition</code>. Not a registry species. Not a seat. Do not rewrite W2 around keeping it.</td></tr>
+        <tr><td><code>createAgentRegistry</code> / <code>materializeAgent</code></td><td><span class="tag t-real">exists · placeholder</span> <span class="tag t-gone">kill</span></td><td>In-memory name&#8594;<code>Agent</code> map, then a generator <code>BlockDefinition</code>. FIX-1327 landed: missing <code>capabilityCatalog</code> refuses. Worker shape still forces <code>z.string()</code> (FIX-1337 interim until delete). Do not teach. Do not grow. Not a flow factory. Not the seat roster. Not the Workforce spine.</td></tr>
+        <tr><td>Product Agent (later opinion)</td><td><span class="tag t-prop">later · L2</span></td><td>Sequencer + generators + durable member memory. Persona is a later persona-builder, not the v1 hire key. A seat may be this, or a thin sequencer. Thin seats skip member memory. Do not grow the core type to look like this.</td></tr>
         <tr><td>Minimum seat contract</td><td><span class="tag t-real">exists as L1 pieces</span></td><td>Named worker flow + static session + dispatcher / settle / claim. Same-flow DM address exists. Cross-flow seat wake exists (<code>dispatcher({ flowKind })</code>). The roster row that binds them is proposed convention. Hire-id still INST.</td></tr>
-        <tr><td><code>agentBlock</code></td><td><span class="tag t-real">exists · old surface</span></td><td>Shorthand for the standalone <code>materializeAgent</code> shape. Used nowhere outside the workforce package. Collapses into the <code>defineAgent</code> factory. Kill parks behind W2.</td></tr>
-        <tr><td><code>definePersona</code></td><td><span class="tag t-real">exists</span></td><td>Sugar over <code>defineResource</code> / <code>defineResourceCollection</code>. Collection default scope is <code>org</code>. Used nowhere outside the package. FIX-796 (inline <code>contentTemplate</code> treated as a file path) is an independent backlog bug &#8212; not on the readiness sequence.</td></tr>
+        <tr><td><code>agentBlock</code></td><td><span class="tag t-real">exists · placeholder</span> <span class="tag t-gone">kill</span></td><td>Shorthand for the standalone <code>materializeAgent</code> shape. Used nowhere outside the workforce package. Do not teach. Do not collapse into a <code>defineAgent</code> factory.</td></tr>
+        <tr><td><code>definePersona</code></td><td><span class="tag t-real">exists</span> <span class="tag t-prop">later persona-builder</span></td><td>Sugar over <code>defineResource</code> / <code>defineResourceCollection</code>. Collection default scope is <code>org</code>. Used nowhere outside the package. <strong>Not</strong> the hire / <code>WORKER.md</code> key. v1 body key is <code>instructions</code>. Persona-builder (structured fields &#8594; prompt) is later. FIX-796 is an independent backlog bug &#8212; not on the readiness sequence.</td></tr>
+        <tr><td><code>readWorkforceDirectory</code></td><td><span class="tag t-real">exists</span></td><td>Walks <code>teams/&lt;id&gt;/workers/&lt;name&gt;/WORKER.md</code> into <code>{ id, declared, body }</code>. Body is instructions. <code>packages/workforce/src/loader/read-workforce-directory.ts</code>. Does not mint a flow, an Agent, or a registry row.</td></tr>
+        <tr><td><code>hireWorkforce</code></td><td><span class="tag t-real">exists</span></td><td>Seat factory. Mints one flow instance per manifest. Body still arrives as the <code>persona</code> setting &#8212; leave it; teach <code>instructions</code>. <code>packages/workforce/src/hire.ts</code>.</td></tr>
+        <tr><td>Default system prompt for all workers</td><td><span class="tag t-prop">proposed</span></td><td>Configure once (hire / team / workforce). Compose into every worker&#8217;s generator <code>prompt</code> slot as an array: default + per-worker <code>instructions</code>. Not a new Agent or persona species. The generator prompt slot already joins array entries.</td></tr>
         <tr><td><code>createWorkforceCapability</code></td><td><span class="tag t-none">stub</span></td><td>A <code>// TODO</code> that returns <code>defineCapability({ name: "workforce" })</code> after a duplicate-name check. No presets.</td></tr>
         <tr><td><code>examples/guides/research-team</code></td><td><span class="tag t-real">exists</span></td><td>The only caller of the old surface. One <code>defineAgent</code> + registry + <code>materializeAgent</code> resolves a skill via <code>agent-ref</code>. Inline persona, session scope, a single flow. Rewire after W2; do not copy this path.</td></tr>
         <tr><td>Kitchen-sink</td><td><span class="tag t-gone">unused</span></td><td>Depends on the package in <code>package.json</code>. Imports it in zero source files.</td></tr>
         <tr><td><code>dispatcher()</code></td><td><span class="tag t-real">exists</span></td><td>Send door. <code>internal</code> / <code>task</code>. Session <code>{ key }</code>, <code>{ id }</code>, or <code>{ from: true }</code>. Cross-flow via <code>dispatcher({ flowKind })</code> exists. Envelope <code>from</code> is still provenance. Hire-id still INST.</td></tr>
-        <tr><td>Workforce MCP (proposed L2 client door)</td><td><span class="tag t-prose">proposed · held</span></td><td>Held until W2 package + lab Proof. See <a href="#mcp">&#167;15</a> and <a href="#vision">&#167;03</a>.</td></tr>
+        <tr><td>Workforce MCP (proposed L2 client door)</td><td><span class="tag t-prose">proposed · held</span></td><td>Held until W3 conventions + lab Proof. See <a href="#mcp">&#167;15</a> and <a href="#vision">&#167;03</a>.</td></tr>
         <tr><td>Session routes</td><td><span class="tag t-real">exists</span></td><td><code>create_session</code>, list, get, delete, patch. Enough for factory bootstrap. No seed field on <code>defineFlow</code>.</td></tr>
         <tr><td>Same-flow group fan-out (board + N sessions)</td><td><span class="tag t-real">exists</span></td><td>A board (working set) plus one session per subscriber on the same flow. A post is <code>dispatcher()</code> &#215; N into those sessions. Pin: <code>create_session</code> + <code>dispatcher({ session: { id } })</code>. Cross-flow via <code>flowKind</code> exists. Hire-id still INST.</td></tr>
         <tr><td><code>flowIsolation</code></td><td><span class="tag t-real">exists</span></td><td>User/org resources key per flow when true. Default false. Rejected at session scope. The member-identity <em>proof</em>, not a per-seat store. See <a href="#memory">&#167;07</a>.</td></tr>
@@ -2409,20 +2534,21 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td><code>taskBoard</code> + <code>taskSchema</code></td><td><span class="tag t-real">exists</span></td><td>Unified plan/task primitive. Status set includes <code>parked</code>. Content for the prose half is <code>readContent()</code>.</td></tr>
         <tr><td>Reply-storm exclusion via <code>TaskCollectionRef.claim</code></td><td><span class="tag t-real">exists</span></td><td>One holder per post. Same CAS <code>taskBoard</code> drain uses. Eligibility narrows to that post. Who may attempt the claim is proposed Layer&nbsp;2. No board-lock type.</td></tr>
         <tr><td>Ordered multi-reply via board coordinator</td><td><span class="tag t-prop">proposed</span></td><td>Team role, L2 worker. Files N reply tasks with <code>deps</code>. Work is <code>dispatcher()</code> into that subscriber session. Idle chain before newer posts. Broke path is lease / <code>parked</code> / retry. No MessageBoard sequencer. No coordinator Layer&nbsp;1 type. No new lease type. See <a href="#channels">&#167;08</a>.</td></tr>
-        <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed · W2 next</span></td><td>This page. The kick. No <code>createWorkerFlow</code> export. No <code>org/</code> · <code>teams/</code> · <code>workers/</code> tree in the repo. <code>workforce.config</code> is not a file. Seat path is <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. SOP is later. See <a href="#files">&#167;06</a> and <a href="#vision">&#167;03</a>.</td></tr>
+        <tr><td>Worker file convention</td><td><span class="tag t-real">exists</span></td><td><code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/WORKER.md</code>. Frontmatter = settings; body = <code>instructions</code>. No <code>createWorkerFlow</code> export. <code>workforce.config</code> is not a file. SOP is later. See <a href="#files">&#167;06</a>.</td></tr>
         <tr><td><code>readSkillsDirectory</code></td><td><span class="tag t-real">exists</span></td><td>Walks <code>&lt;root&gt;/&lt;skill&gt;/SKILL.md</code> (depth 1) into <code>createSkillsCapability</code> <code>initialSkills</code>. <code>packages/orchestration/src/skills/read-directory.ts</code>. Skills wiring, not a workforce tree scan.</td></tr>
-        <tr><td>Workforce tree scan into <code>defineFlow</code></td><td><span class="tag t-prose">named gap</span></td><td><code>defineFlow</code> is explicit. <code>createAgentRegistry</code> takes an in-memory <code>Agent[]</code> &#8212; old surface, do not grow. No directory loader on main walks <code>org/</code> · <code>teams/</code> · <code>workers/</code>. Do not invent <code>loadWorkforce()</code>. If a scan lands, every seat is a flow instance. It does not write <code>AgentRegistry</code>. <code>defineAgent</code> feeds the name&#8594;block list. No second registry. No auto-reg of Team / Channel / Project / MessageBoard types. See <a href="#files">&#167;06</a>.</td></tr>
-        <tr><td>New seat = add the file</td><td><span class="tag t-prop">proposed</span></td><td>A new team seat is a folder on the same path bootstrap would scan. Not a runtime join API. Hot-dynamic flow kinds after boot are a named gap. Architect: load-time file + scan.</td></tr>
+        <tr><td>Workforce tree scan into a flow instance</td><td><span class="tag t-real">exists</span></td><td><code>readWorkforceDirectory</code> + <code>hireWorkforce</code> mint a flow instance per seat. They do not write <code>AgentRegistry</code>. The name&#8594;block list for skills and boards does not depend on <code>defineAgent</code>. Do not invent <code>loadWorkforce()</code>. No auto-reg of Team / Channel / Project / MessageBoard types. See <a href="#files">&#167;06</a>.</td></tr>
+        <tr><td>New seat = add a WORKER.md</td><td><span class="tag t-prop">proposed</span></td><td>A new team seat is a document on the same path bootstrap would scan. Custom kinds are flow factories on the <code>{ kinds }</code> map &#8212; W3 file scan, not a <code>worker.ts</code> seat record. Not a runtime join API. Hot-dynamic flow kinds after boot are a named gap. Architect: load-time file + scan.</td></tr>
         <tr><td><code>projects/</code> code tree / <code>Project</code> L1 type</td><td><span class="tag t-gone">cut</span></td><td>Does not exist. Projects are resources / boards / sessions / content. Same pattern as plan = board + <code>readContent()</code>. No folder beside <code>teams/</code>.</td></tr>
         <tr><td>Keyed teams + harness on the seat</td><td><span class="tag t-prop">proposed</span></td><td>A seat is <code>teamId</code> + row. It can name a harness and inherit that harness&#8217;s subscriptions when they exist. One team in the map is fine. A singleton with no key is not. The stack is <code>@flow-state-dev/harness-manager</code>. Conductor is a consumer team. No second manager. No Team type. Seat field not on main.</td></tr>
         <tr><td>Conductor as a Workforce team</td><td><span class="tag t-real">lock</span> <span class="tag t-prop">wiring proposed</span></td><td>The product lock: Conductor is one Workforce config, not a sibling. The lab still sits on Layer&nbsp;1 dispatch. Factory, seat&#8594;harness bind, and <code>omp</code> in that seat are proposed. See <a href="#conductor">&#167;16</a>.</td></tr>
         <tr><td><code>@flow-state-dev/harness-manager</code></td><td><span class="tag t-real">exists</span></td><td>The one supervised-run stack. Slot takes a harness factory. Claude Code and Codex fill it today. No <code>omp</code> package on this pin.</td></tr>
         <tr><td><code>omp</code> (opinionated Pi harness)</td><td><span class="tag t-prop">proposed</span></td><td>A named harness that can fill a coding seat. Not in tree. Do not claim integration.</td></tr>
         <tr><td>#1612 operator-console half (PI-1..3)</td><td><span class="tag t-gone">cut / park</span></td><td>Conductor-only surface that does not ride Workforce. Park it. Do not grow a second product face from it.</td></tr>
-        <tr><td>Room helpers (<code>openDm</code>, <code>fanOutBoardPost</code>, &#8230;)</td><td><span class="tag t-prop">proposed</span></td><td>Named wrappers over Layer&nbsp;1 already in this table. Multi-team from day one: <code>{ team, seat }</code>, rooms addressable across teams. Not exports. See <a href="#api">&#167;18</a>. Same-flow fan-out exists; the helper is the name.</td></tr>
-        <tr><td>Team intake seat + <code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Every team names an intake worker with a static DM. Address-the-team is that session. Capability. See <a href="#intake">&#167;11</a> and <a href="#fence">&#167;04</a>. <code>createWorkforceCapability</code> is still a stub &#8212; do not read it as this. A Claude / ChatGPT client reaches this seat through the proposed MCP door &#8212; held until package + lab. See <a href="#mcp">&#167;15</a>.</td></tr>
-        <tr><td>Lab Proof (thin pentest team)</td><td><span class="tag t-prop">proposed</span></td><td>Intake + recon + triage on the W2 file tree. Projects = boards / resources. Reactive write &#8594; task / dispatch. No MCP in lab v1. Not OnSecurity. Not a second product. See <a href="#lab">&#167;03</a>.</td></tr>
-        <tr><td>Build-out (W2 / lab / MCP held / Collab RC)</td><td><span class="tag t-prop">proposed</span></td><td>W2 package next. Lab Proof after W2. W1 MCP held until package + lab. Collab RC after foundation + lab; INST as needed for multi-hire. Later: member-memory depth, OKF, hot-dynamic, Conductor polish, OnSecurity GTM. See <a href="#vision">&#167;03</a>.</td></tr>
+        <tr><td>Room helpers (<code>openDm</code>, <code>fanOutBoardPost</code>, &#8230;)</td><td><span class="tag t-prop">proposed</span></td><td>Named wrappers over Layer&nbsp;1 already in this table. Multi-team from day one: <code>{ team, seat }</code>, rooms addressable across teams. Not exports. See <a href="#api">&#167;18</a>. Same-flow fan-out exists; the helper is the name. W2 names the wrap. Minting onto the L2 room roster is Collab later &#8212; <a href="#collab">&#167;14</a>.</td></tr>
+        <tr><td>L2 room roster (system + helper-minted)</td><td><span class="tag t-prop">proposed · Collab later</span></td><td>One list, two lanes. System rooms: code or <code>teams/&lt;id&gt;/rooms</code> / team config; stable ids; seeded at boot/hire; undeletable. Dynamic rooms: Collab-helper minted, same list, deletable. Both bind existing L1 sessions / boards / dispatch. W3 may declare room files; that is not this roster. No Channel / MessageBoard L1. Park: FIX-1341. Closest board ticket: FIX-1311. See <a href="#collab">&#167;14</a>.</td></tr>
+        <tr><td>Team intake seat + <code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Every team names an intake worker with a static DM. Address-the-team is that session. Capability. See <a href="#intake">&#167;11</a> and <a href="#fence">&#167;04</a>. <code>createWorkforceCapability</code> is still a stub &#8212; do not read it as this. A Claude / ChatGPT client reaches this seat through the proposed MCP door &#8212; held until W3 + lab. See <a href="#mcp">&#167;15</a>.</td></tr>
+        <tr><td>Lab Proof (thin pentest team)</td><td><span class="tag t-prop">proposed · after W3</span></td><td>Intake + recon + triage on the convention tree. Projects = boards / resources. Reactive write &#8594; task / dispatch. No MCP in lab v1. Not OnSecurity. Not a second product. See <a href="#lab">&#167;03</a>.</td></tr>
+        <tr><td>Build-out (W2 / W3 / lab / MCP held / Collab RC)</td><td><span class="tag t-prop">proposed</span></td><td>W2 mostly done except FIX-1342 rewrite. W3 next: file-convention surface (kinds + blocks scan; rooms / L2 channels / resources / skills in the tree; seats stay documents). Lab Proof after W3. W1 MCP held until the lab runs. Collab RC after W2 &#8594; W3 &#8594; lab: one L2 room roster (system + helper-minted), INST as needed for multi-hire. Later: member-memory depth, OKF, hot-dynamic, Conductor polish, OnSecurity GTM. See <a href="#vision">&#167;03</a> and <a href="#collab">&#167;14</a>.</td></tr>
         <tr><td>Strategy RC gates</td><td><span class="tag t-prop">proposed</span></td><td>Five gates, taught until they are true. Not a calendar. GTM stays Strategy. See <a href="#gates">&#167;20</a>.</td></tr>
         <tr><td>L2 routing matrix (which room)</td><td><span class="tag t-prop">proposed</span></td><td>See <a href="#channels">&#167;08</a>. Package docs must not fork this matrix. Proposed Layer&nbsp;2 convention. Cross-flow exists; hire-id / dynamic still INST.</td></tr>
         <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-real">exists</span></td><td>Existing-session delivery to the seam-stamped sender. <code>packages/core/src/blocks/dispatcher.ts</code>. Documented in <code>docs/architecture/action-forms.md</code>.</td></tr>
@@ -2434,7 +2560,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note">
     <span class="lbl">The package is Layer 2 sugar, not the harness</span>
-    <p><code>@flow-state-dev/workforce</code> is documented as agent registry and materialization. CLAUDE.md still calls it &#8220;Layer&nbsp;2 on orchestration.&#8221; What landed is the old surface &#8212; name a participant, look it up, turn it into a generator block. That is not the product Agent and not a seat. W2 extends this package: scan to a flow instance per seat, and <code>defineAgent</code> as a block factory onto the name&#8594;block list. It does not grow <code>agentRegistry</code>. Engine never sees a product registry. The lab Proof is how we know that surface works. Read the package as evidence of the old path, not as evidence a team shipped. Package docs must not fork the room matrix on this page. See <a href="#fence">&#167;04</a> proof&nbsp;C.</p>
+    <p><code>@flow-state-dev/workforce</code> is still documented as agent registry and materialization. What landed on that path is the old surface &#8212; do not teach it. What also landed: <code>readWorkforceDirectory</code> and <code>hireWorkforce</code>. A seat is a flow instance. A worker is instructions + model + tools. The name&#8594;block list for skills and boards does not depend on a <code>defineAgent</code> factory. Engine never sees a product registry. The lab Proof is how we know the file surface works. Package docs must not fork the room matrix on this page. See <a href="#fence">&#167;04</a> proof&nbsp;C.</p>
   </div>
 </section>
 
@@ -2509,9 +2635,9 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td>5</td><td><code>external-dispatcher</code> on <code>{ id }</code></td><td><span class="tag t-real">exists as refuse</span></td><td>Existing-session delivery past an external queue refuses by name (<code>create-request-host.ts</code> / <code>dispatch-operation</code>). <code>openDm</code> wake and same-flow <code>fanOutBoardPost</code> use <code>{ id }</code>. On BullMQ they refuse. The helper must surface that, not retry as <code>{ key }</code>. This is the session-addressability half of gap 7.</td></tr>
         <tr><td>6</td><td>Member memory scope</td><td><span class="tag t-prose">named gap</span></td><td>Identity / memory live on agent/member scope, not on the seat. <code>flowIsolation</code> exists and keys per flow kind, not per seat. Thin seats do not need this. Prove isolation first &#8212; in-flight L1 / INST. Member-memory depth is later / not now, not W1 or W2. Do not put <code>memory</code> on the core <code>Agent</code> type or on the seat to close it. See <a href="#memory">&#167;07</a>.</td></tr>
         <tr><td>7</td><td>Full conversation through dispatch</td><td><span class="tag t-prose">blocked-on</span></td><td>The proof is A &#8594; B &#8594; <code>{ from: true }</code> reply &#8594; later messages into the <em>existing</em> session. Layer&nbsp;1 path: FIX-1312 reverse <strong>exists</strong> + gap 4 <strong>exists</strong> + existing-session via external queue (gap 5). Workforce must <strong>not</strong> invent a delivery bus. Remaining hold is session addressability past a queue, plus multi-hire on FIX-1320.</td></tr>
-        <tr><td>8</td><td>Board as address-model test</td><td><span class="tag t-prop">proposed · L2</span></td><td>FIX-1311 stays Layer&nbsp;2 assembly: collections + subscriptions in state + <code>reactTo</code>. <code>reactTo</code> exists (in-session, inline). Pressure: addresses-as-data vs statically declared dispatch targets &#8212; <code>dispatch.ts</code> says a target chosen from data is a router over declared dispatchers, not a dynamic address. Need that Layer&nbsp;1 composition explicit before Workforce mints a &#8220;dynamic dispatcher.&#8221; Teams = roster (FIX-1310). Static-target notify can prove as L1 now &#8212; that is not the pentest Lab Proof, and not MCP.</td></tr>
+        <tr><td>8</td><td>Board as address-model test</td><td><span class="tag t-prop">proposed · L2</span></td><td>FIX-1311 stays Layer&nbsp;2 assembly: collections + subscriptions in state + <code>reactTo</code>. <code>reactTo</code> exists (in-session, inline). Pressure: addresses-as-data vs statically declared dispatch targets &#8212; <code>dispatch.ts</code> says a target chosen from data is a router over declared dispatchers, not a dynamic address. Need that Layer&nbsp;1 composition explicit before Workforce mints a &#8220;dynamic dispatcher.&#8221; Teams = roster (FIX-1310). Room-roster park is FIX-1341 (Collab later) &#8212; fence/rewrite FIX-1311 when Collab opens; do not rush it as W2 next. See <a href="#collab">&#167;14</a>. Static-target notify can prove as L1 now &#8212; that is not the pentest Lab Proof, and not MCP.</td></tr>
         <tr><td>9</td><td>Durable task collections for delegation</td><td><span class="tag t-none">backlog</span></td><td><a href="https://linear.app/fixpoint-labs/issue/FIX-957">FIX-957</a>. Skills delegation still constructs the board with <code>backing: "sequencer"</code> (<code>delegation-surface.ts</code>) &#8212; turn-scoped. A hand-built durable collection already exists. Standing teams must not get a second Workforce task store. Separate from FIX-1246 (gap 3).</td></tr>
-        <tr><td>10</td><td><code>materializeAgent</code> collapse</td><td><span class="tag t-prose">park behind W2</span></td><td>FIX-1327 landed: missing catalog refuses. Worker <code>z.string()</code> is FIX-1337. The owner fence collapses <code>materializeAgent</code> / <code>agentBlock</code> into the <code>defineAgent</code> factory. Do not grow this surface. The code kill is after W2, not a D-n. Persona FIX-796 is independent &#8212; do not sequence it here.</td></tr>
+        <tr><td>10</td><td><code>materializeAgent</code> kill</td><td><span class="tag t-gone">placeholder · kill</span></td><td>FIX-1327 landed: missing catalog refuses. Worker <code>z.string()</code> is FIX-1337 interim until delete. Owner fence (2026-09-10): kill <code>materializeAgent</code>; do not teach, grow, or forever-patch against it. <code>defineAgent</code> is an invent-kill candidate &#8212; do not collapse into a factory. Persona FIX-796 is independent &#8212; do not sequence it here.</td></tr>
       </tbody>
     </table>
   </div>
@@ -2542,10 +2668,10 @@ const replyToSender = <b>dispatcher</b>({
 
         <rect class="n-prose" x="706" y="16" width="218" height="148" rx="5"/>
         <text class="t-lbl" x="718" y="38">THEN</text>
-        <text class="t-b" x="718" y="64">factory collapse</text>
-        <text class="t-xs" x="718" y="88">PARK BEHIND W2</text>
+        <text class="t-b" x="718" y="64">kill old surface</text>
+        <text class="t-xs" x="718" y="88">materializeAgent KILL</text>
         <text class="t-xs" x="718" y="106">FIX-1327 LANDED</text>
-        <text class="t-xs" x="718" y="132">DO NOT GROW agent-ref</text>
+        <text class="t-xs" x="718" y="132">DO NOT TEACH defineAgent</text>
 
         <rect class="n-box" x="16" y="180" width="908" height="84" rx="5"/>
         <text class="t-lbl" x="34" y="202">POC-READY &#183; TEACH HONESTLY</text>
@@ -2660,10 +2786,10 @@ const replyToSender = <b>dispatcher</b>({
 
 <section id="cuts">
   <div class="sec-head"><span class="sec-num">21</span><h2>Cuts</h2></div>
-  <p class="lede">Held on purpose. Do not invent these because the thought exists. A seat is a flow instance. Product Agent is L2. <code>defineAgent</code> is a block factory. Foundation is a thin wrapper over today&#8217;s Layer&nbsp;1, keyed for N teams, with an intake seat on each. A <code>TeamFlow</code>, an Agent catalog as roster, a Project type, or a second dispatch surface is how that kick fails. The lab is not OnSecurity and does not ship MCP. A one-team-only API is how Collab RC becomes a rewrite. RC gates stay proposed until they are true. Conductor is a Workforce config, not a sibling ship. GTM is not this page.</p>
+  <p class="lede">Held on purpose. Do not invent these because the thought exists. A seat is a flow instance. A worker is instructions + model + tools. Product Agent is later L2. Do not teach <code>defineAgent</code> as a block factory. Foundation is a thin wrapper over today&#8217;s Layer&nbsp;1, keyed for N teams, with an intake seat on each. A <code>TeamFlow</code>, an Agent catalog as roster, a Project type, or a second dispatch surface is how that kick fails. The lab is not OnSecurity and does not ship MCP. A one-team-only API is how Collab RC becomes a rewrite. RC gates stay proposed until they are true. Conductor is a Workforce config, not a sibling ship. GTM is not this page.</p>
 
   <div class="tension">
-    <h5>This page teaches the product lock. It does not ship the factory</h5>
+    <h5>This page teaches the product lock. It does not invent a factory</h5>
     <p>Workforce is the product. Conductor is a team on it. Updating this atlas is the work. Implementing helpers is a later kick. Atlas-only may merge. Strategy owns GTM timing.</p>
   </div>
 
@@ -2694,7 +2820,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>No Layer 1 Channel, Team, Project, MessageBoard, or OKF packages</h5>
-    <p>Those words are convention over sessions, teams, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms, a MessageBoard sequencer, or a shared group session several workers enter, is a second architecture. Same cut: no peer-edge graph, no second send door, no route-resolver under the matrix, no coordinator Layer&nbsp;1 type. Which room is Layer&nbsp;2 &#8212; see <a href="#channels">&#167;08</a>. OKF stays an example, not a Workforce dependency.</p>
+    <p>Those words are convention over sessions, teams, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. Rooms are one L2 roster, two lanes (system + helper-minted) &#8212; Collab later, not W2, not a Channel package. A package that mints rooms as Layer&nbsp;1, a MessageBoard sequencer, or a shared group session several workers enter, is a second architecture. Same cut: no peer-edge graph, no second send door, no route-resolver under the matrix, no coordinator Layer&nbsp;1 type. Which session is Layer&nbsp;2 &#8212; see <a href="#channels">&#167;08</a>. The roster lock is <a href="#collab">&#167;14</a>. OKF stays an example, not a Workforce dependency.</p>
   </div>
 
   <div class="tension">
@@ -2704,7 +2830,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>No Agent catalog as roster. No agent-ref growth. No sequencer-vs-agent as two types</h5>
-    <p>Files declare into today&#8217;s <code>defineFlow</code>. Seats are flow instances. Skills and task boards assign name&#8594;<code>BlockDefinition</code>. <code>defineAgent</code> is a block factory, not a catalog species. <code>agentRegistry</code> / <code>agent-ref</code> exist as the old surface &#8212; do not grow them; the kill parks behind W2. A TypeScript escape hatch emits those same shapes. The worker is a sequencer flow; generator calls do not mint a second type. See <a href="#fence">&#167;04</a>, <a href="#contract">&#167;05</a>, and <a href="#members">&#167;12</a>.</p>
+    <p>Files declare into today&#8217;s <code>defineFlow</code>. Seats are flow instances from <code>WORKER.md</code>. Hire needs a kinds map. Skills and task boards assign name&#8594;<code>BlockDefinition</code> &#8212; that list does not depend on a <code>defineAgent</code> factory. Custom kinds are flow factories scanned onto <code>{ kinds }</code> (W3). <code>agentRegistry</code> / <code>agent-ref</code> / <code>materializeAgent</code> exist as the old surface &#8212; do not grow them and do not teach them. Do not teach <code>worker.ts</code> as a seat record. The worker is a generator or flow with instructions + model + tools; generator calls do not mint a second type. See <a href="#fence">&#167;04</a>, <a href="#contract">&#167;05</a>, and <a href="#members">&#167;12</a>.</p>
   </div>
 
   <div class="tension">
@@ -2724,7 +2850,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>No module-swap hooks</h5>
-    <p>Later. The escape hatch is a custom flow that keeps the contract, not a plugin slot that swaps the factory&#8217;s guts. Adding hooks before a second implementation exists is bloat.</p>
+    <p>Later. A custom kind is a flow factory that keeps the contract, not a plugin slot and not a <code>worker.ts</code> seat record. Adding hooks before a second implementation exists is bloat.</p>
   </div>
 
   <div class="tension">
@@ -2759,13 +2885,13 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>Do not grow agentRegistry. Do not grow the core Agent type</h5>
-    <p>Today&#8217;s core <code>Agent</code> / <code>AgentRegistry</code> / <code>agent-ref</code> is the old surface. The worker is a flow instance. <code>defineAgent</code> is a block factory. Growing the catalog so seats and skills look like one list is how Layer&nbsp;1 absorbs a Workforce opinion. The code kill parks behind W2.</p>
+    <p>Today&#8217;s core <code>Agent</code> / <code>AgentRegistry</code> / <code>agent-ref</code> is the old surface. The worker is a flow instance with instructions + model + tools. <code>defineAgent</code> may not need to exist. Growing the catalog so seats and skills look like one list is how Layer&nbsp;1 absorbs a Workforce opinion.</p>
     <span class="ask">When that build exists, the first question is still &#8220;is this a resource the worker&#8217;s flow declares, or a new field on the core Agent type?&#8221; &#8212; and the cheaper answer is usually the resource.</span>
   </div>
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is the Layer&nbsp;2 product: one worker contract on Layer&nbsp;1 &#8212; a sequencer flow; generator calls do not mint a second type. A seat is a <strong>flow instance</strong> (dispatch target), not an Agent catalog row. Skills and task boards share one in-process list: name &#8594; <code>BlockDefinition</code>. <code>defineAgent</code> is a block factory that emits that block &#8212; proposed; today it returns an <code>Agent</code> config. <code>agentRegistry</code> / <code>agent-ref</code> / <code>materializeAgent</code> exist as the old surface; do not grow them; the code kill parks behind W2. Product Agent is L2 opinion (sequencer + generators + persona + member memory). Do not fold Workforce into core. Conductor is one Workforce team whose seats include coding-harness workers. The roster names the harness. <code>omp</code> can fill that seat and is proposed, not integrated. One harness-manager stack. Park Conductor-only surfaces that skip Workforce (#1612 console half). Sequence: W2 package (file conventions, scan to a flow instance per seat, <code>defineAgent</code> as block factory, knobs via <code>ctx.flow.config</code>, thin helpers) &#8594; lab Proof (thin pentest: intake + recon + triage; boards not a Project type; no MCP) &#8594; W1 MCP held until those run &#8594; Collab RC later (teams plural, multi-hire Proof, board notify with real addresses; INST as needed). A user who already has Claude or ChatGPT reaches this surface through that proposed MCP client door (<a href="#mcp">&#167;15</a>), not a control plane. Later / not now: member-memory depth, OKF, hot-dynamic, Conductor-as-config polish, OnSecurity GTM. A roster is a seat-list. A team is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders are <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/</code>. Projects live as resources, boards, sessions, and content &#8212; no <code>projects/</code> tree, no <code>Project</code> type. A new seat is a file on that path. Scan feeds today&#8217;s <code>defineFlow</code> for every seat. It does not write <code>AgentRegistry</code>. A tree scan is a named gap. Hot-dynamic kinds after boot are a named gap. Address-the-team is an intake seat, a worker with a static DM. Identity lives on agent/member scope, not on the seat. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2. RC gates are proposed until they are true. No second Agent. No Agent catalog as roster. No one-team-only API. No management bus. Cross-flow exists (<code>dispatcher({ flowKind })</code>). Hire-id, dynamic addresses, and multi-hire wait on FIX-1320. GTM is Strategy.</p>
+    <p>Workforce is the Layer&nbsp;2 product: one worker contract on Layer&nbsp;1 &#8212; a generator or sequencer flow with <strong>instructions + model + tools</strong>; generator calls do not mint a second type. A seat is a <strong>flow instance</strong> (dispatch target), not an Agent catalog row. Skills and task boards share one in-process list: name &#8594; <code>BlockDefinition</code> &#8212; that list does not depend on a <code>defineAgent</code> factory. <code>defineAgent</code> / <code>materializeAgent</code> / <code>agentRegistry</code> exist as the old surface; invent-kill / placeholder; do not teach them and do not grow them. Hire / <code>WORKER.md</code> body key is <code>instructions</code> (maps to generator <code>prompt</code>). Persona is a later persona-builder. Default system prompt for all workers is proposed: compose into the prompt slot (array). Product Agent is later L2 opinion. Do not fold Workforce into core. Conductor is one Workforce team whose seats include coding-harness workers. The roster names the harness. <code>omp</code> can fill that seat and is proposed, not integrated. One harness-manager stack. Park Conductor-only surfaces that skip Workforce (#1612 console half). Sequence: W2 foundation (mostly done except FIX-1342 rewrite; <code>WORKER.md</code> seats; hire needs <code>{ kinds }</code>) &#8594; W3 file-convention surface (kinds + blocks scan as the code door; rooms / L2 channels / resources / skills in the tree; seats stay documents; no Collab RC) &#8594; lab Proof (thin pentest: intake + recon + triage; boards not a Project type; no MCP) &#8594; W1 MCP held until the lab runs &#8594; Collab RC later (one L2 room roster, system + helper-minted; teams plural; multi-hire Proof; board notify with real addresses; INST as needed). A user who already has Claude or ChatGPT reaches this surface through that proposed MCP client door (<a href="#mcp">&#167;15</a>), not a control plane. Later / not now: member-memory depth, OKF, hot-dynamic, Conductor-as-config polish, OnSecurity GTM, persona-builder. A roster is a seat-list. A team is that roster plus shared rooms plus dispatch &#8212; Layer&nbsp;2, not an L1 <code>Team</code> type, not a TeamFlow. Product folders are <code>teams/&lt;teamId&gt;/workers/&lt;name&gt;/WORKER.md</code>. Projects live as resources, boards, sessions, and content &#8212; no <code>projects/</code> tree, no <code>Project</code> type. A new seat is a <code>WORKER.md</code> on that path. Custom kinds are flow factories on the hire map &#8212; not a <code>worker.ts</code> seat record. <code>readWorkforceDirectory</code> + <code>hireWorkforce</code> exist. They do not write <code>AgentRegistry</code>. Hot-dynamic kinds after boot are a named gap. Address-the-team is an intake seat, a worker with a static DM. Identity lives on agent/member scope, not on the seat. Knowledge is four uses of existing <code>user</code> / <code>org</code> resources. Helpers take a team key from day one. Ordered multi-reply is proposed Layer&nbsp;2. RC gates are proposed until they are true. No second Agent. No Agent catalog as roster. No one-team-only API. No management bus. Cross-flow exists (<code>dispatcher({ flowKind })</code>). Hire-id, dynamic addresses, and multi-hire wait on FIX-1320. GTM is Strategy.</p>
   </div>
 </section>
 
