@@ -41,6 +41,29 @@ import {
   refusedSymlink,
 } from "./structural-directory";
 
+/**
+ * Why one thing that should have reached the seat did not — the discriminant on
+ * every entry in {@link ReadSeatSkillsResult.errors}.
+ *
+ * Six conditions land in one flat array, and a caller that wants to tolerate
+ * one class while refusing another needs to tell them apart without matching on
+ * `error.message`. That is all this is for: the message text is unchanged, and
+ * every entry still carries the `path` it always did.
+ */
+export type SeatSkillErrorKind =
+  /** A level's `skills/` folder is there and could not be listed — every skill under it is missing. */
+  | "unlistable-level"
+  /** A folder between the root and a level is a symlink, so nothing below it was read. Reported once, under that folder's path. */
+  | "refused-symlinked-ancestor"
+  /** A level's own `skills/` folder is a symlink, so the level was not read. */
+  | "refused-symlinked-level"
+  /** One skill folder inside a level did not load — an unusable name, a symlinked folder, or a missing, unreadable or malformed `SKILL.md`. */
+  | "skill-load-failed"
+  /** A `SKILL.md` declares the refused `scope:` key, so that skill is left out of the set. */
+  | "refused-scope-key"
+  /** One name reached the seat from two of its levels, so the name is left out of the set entirely. */
+  | "duplicate-skill-name";
+
 /** Which seat to read for. Both segments name folders in the tree. */
 export interface ReadSeatSkillsOptions {
   /** The team the seat belongs to — `teams/<team>/`. */
@@ -66,14 +89,15 @@ export interface ReadSeatSkillsResult {
    * One entry per thing that should have reached the seat and did not, keyed by
    * its slash-separated path relative to `root` — a level that could not be
    * listed, a skill folder that could not be read, or a name the seat would
-   * have seen twice.
+   * have seen twice. Which of those it is, is on the entry's `kind`; see
+   * {@link SeatSkillErrorKind}.
    *
    * Collected rather than thrown, so one bad folder does not cost a seat its
    * other skills. Treating a non-empty `errors` as fatal is the caller's call
    * to make explicitly, and it is usually the right one: every entry is a skill
    * the seat was supposed to have.
    */
-  errors: PathReport[];
+  errors: PathReport<SeatSkillErrorKind>[];
 }
 
 /**
@@ -120,7 +144,7 @@ export async function readSeatSkills(
     );
   }
 
-  const errors: PathReport[] = [];
+  const errors: PathReport<SeatSkillErrorKind>[] = [];
   // Structural folders already refused, so a shared one — `teams`, the team's
   // own folder — is reported once rather than once per level beneath it.
   const refused = new Set<string>();
@@ -142,18 +166,34 @@ export async function readSeatSkills(
 
     // Gate the level through the shared primitive: it is what keeps an absent
     // folder silent, a symlinked one refused, and an unreadable one reported.
-    if ((await openStructuralDirectory(dir, level, errors)) === undefined) continue;
+    const opened = await openStructuralDirectory(dir, level);
+    if (opened.refusal !== undefined) {
+      errors.push({
+        kind:
+          opened.refusal.reason === "symlink"
+            ? "refused-symlinked-level"
+            : "unlistable-level",
+        path: level,
+        error: opened.refusal.error,
+      });
+    }
+    if (opened.entries === undefined) continue;
 
     const { skills, errors: perSkill } = await readSkillsDirectory(dir);
 
     for (const { name, error } of perSkill) {
-      errors.push({ path: `${level}/${name}`, error });
+      // The shared reader reports one failure per skill folder without saying
+      // which — a symlinked folder and a malformed `SKILL.md` arrive the same
+      // way — so they land here under one kind rather than being told apart by
+      // re-reading the message this change exists to stop callers parsing.
+      errors.push({ kind: "skill-load-failed", path: `${level}/${name}`, error });
     }
 
     for (const skill of skills) {
       const where = `${level}/${skill.name}`;
       if (declaresScope(skill)) {
         errors.push({
+          kind: "refused-scope-key",
           path: where,
           error: new Error(`SKILL.md in "${where}/" ${REFUSED_SKILL_SCOPE_KEY_MESSAGE}`),
         });
@@ -176,6 +216,7 @@ export async function readSeatSkills(
       continue;
     }
     errors.push({
+      kind: "duplicate-skill-name",
       path: paths[paths.length - 1]!,
       error: new Error(duplicateSkillNameMessage(name, worker, paths)),
     });
@@ -201,7 +242,7 @@ export async function readSeatSkills(
 async function refusedOnTheWay(
   root: string,
   level: string,
-  errors: PathReport[],
+  errors: PathReport<SeatSkillErrorKind>[],
   refused: Set<string>,
 ): Promise<boolean> {
   const components = level.split("/");
@@ -213,7 +254,11 @@ async function refusedOnTheWay(
 
     if ((await classify(path.join(root, ...ancestor))).kind === "symlink") {
       refused.add(reportAs);
-      errors.push({ path: reportAs, error: refusedSymlink("directory", reportAs) });
+      errors.push({
+        kind: "refused-symlinked-ancestor",
+        path: reportAs,
+        error: refusedSymlink("directory", reportAs),
+      });
       return true;
     }
   }

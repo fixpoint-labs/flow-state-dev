@@ -186,7 +186,8 @@ One name reaching a single worker from two of its levels is refused, naming both
 
 ```ts
 errors;
-// [{ path: "teams/pentest/skills/triage",
+// [{ kind: "duplicate-skill-name",
+//    path: "teams/pentest/skills/triage",
 //    error: Error('Skill "triage" reaches seat "recon" from 2 levels — org/skills/triage
 //                  and teams/pentest/skills/triage. Remove one: there is no precedence
 //                  rule.') }]
@@ -198,6 +199,10 @@ worker-level folder does not override its team's.
 A level that isn't in the tree is empty, not an error — an app may keep no org skills, and a
 worker may have none of its own. A level that exists and cannot be listed lands in `errors` under
 its own path, and so does a skill folder that fails to load, under `<level>/<folder>`.
+
+Every entry carries a `kind` alongside its `path` and `error`, naming which of the six conditions
+in the table below it is. Match on that rather than on the message text when you want to tolerate
+one class — a malformed skill folder, say — while still refusing another.
 
 A `root` that cannot be read throws instead:
 `Failed to read workforce directory "./workforce": ENOENT ...`.
@@ -292,9 +297,10 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | Workforce root unreadable | `readWorkforceDirectory` throws |
 | Bad `team` or `worker` name | `readSeatSkills` throws |
 | Skills root unreadable | `readSeatSkills` throws |
-| Skills level unreadable | Collected in `readSeatSkills`'s `errors`, keyed by the level's path — an absent level is empty instead |
-| Skill folder fails to load | Collected in `readSeatSkills`'s `errors`, keyed by `<level>/<folder>` |
-| Symlinked folder on the way to a level | Collected in `readSeatSkills`'s `errors`, keyed by that folder's path — never followed |
-| One skill name at two of a seat's levels | Collected in `readSeatSkills`'s `errors`, naming both paths; the name is left out of `skills` |
-| `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors`, keyed by the skill's path |
+| Skills level unreadable | Collected in `readSeatSkills`'s `errors` as `kind: "unlistable-level"`, keyed by the level's path — an absent level is empty instead |
+| Skill folder fails to load | Collected in `readSeatSkills`'s `errors` as `kind: "skill-load-failed"`, keyed by `<level>/<folder>` |
+| Symlinked folder on the way to a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-ancestor"`, keyed by that folder's path — never followed |
+| Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
+| One skill name at two of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, naming both paths; the name is left out of `skills` |
+| `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
 | Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |

@@ -174,9 +174,10 @@ neither result carries the other's.
 
 `errors` is one entry per thing that should have reached the worker and did not — an unreadable
 level, a skill folder that failed to load, or a name reaching the worker from two of its levels
-(refused, naming both paths, and left out of `skills`). Each entry is `{ path, error }`, keyed by a
-path relative to the root. An absent level is empty rather than an error, but a `root` that cannot be
-read throws.
+(refused, naming both paths, and left out of `skills`). Each entry is `{ kind, path, error }`, keyed
+by a path relative to the root. `kind` names which of those conditions it is, so a caller can
+tolerate one class and still refuse another. An absent level is empty rather than an error, but a
+`root` that cannot be read throws.
 
 `readSeatSkills` returns records and installs nothing. Turning a set into a live catalog is the
 caller's job: pass `skills` as the `initialSkills` of the capability you build for that worker. See

@@ -20,6 +20,9 @@ export {
   readSeatSkills,
   type ReadSeatSkillsOptions,
   type ReadSeatSkillsResult,
+  type SeatSkillErrorKind,
 } from "./read-seat-skills";
+
+export type { PathReport } from "./structural-directory";
 
 export type { WorkerManifest } from "../manifest";

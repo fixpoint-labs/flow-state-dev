@@ -93,10 +93,13 @@ export async function readWorkforceDirectory(
     );
   }
 
-  const teams = await openStructuralDirectory(path.join(root, "teams"), "teams", errors);
-  if (teams === undefined) return { workers, errors };
+  const teams = await openStructuralDirectory(path.join(root, "teams"), "teams");
+  if (teams.refusal !== undefined) {
+    errors.push({ path: "teams", error: teams.refusal.error });
+  }
+  if (teams.entries === undefined) return { workers, errors };
 
-  for (const teamId of teams) {
+  for (const teamId of teams.entries) {
     if (IGNORED_ENTRIES.has(teamId)) continue;
 
     const teamDir = path.join(root, "teams", teamId);
@@ -113,14 +116,16 @@ export async function readWorkforceDirectory(
     if (team.kind !== "directory") continue;
 
     const workersPath = `${teamPath}/workers`;
-    const workerEntries = await openStructuralDirectory(
+    const workerSlots = await openStructuralDirectory(
       path.join(teamDir, "workers"),
       workersPath,
-      errors,
     );
-    if (workerEntries === undefined) continue;
+    if (workerSlots.refusal !== undefined) {
+      errors.push({ path: workersPath, error: workerSlots.refusal.error });
+    }
+    if (workerSlots.entries === undefined) continue;
 
-    for (const workerName of workerEntries) {
+    for (const workerName of workerSlots.entries) {
       if (IGNORED_ENTRIES.has(workerName)) continue;
 
       const workerDir = path.join(teamDir, "workers", workerName);

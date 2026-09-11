@@ -318,3 +318,140 @@ describe("readSeatSkills — the configured root", () => {
     expect(errors).toEqual([]);
   });
 });
+
+describe("readSeatSkills — which condition each report is", () => {
+  // Six conditions land in one flat `errors` array. Before `kind`, the only way
+  // to tell them apart was a regex over the message, so a caller could not
+  // tolerate one class while refusing another. Each case below pins one
+  // specific kind to one specific scenario — asserting only that some kind is
+  // present would pass with every entry mistagged the same way.
+
+  it("tags a level that exists and cannot be listed", async () => {
+    await fs.mkdir(path.join(root, "teams", "pentest"), { recursive: true });
+    await fs.writeFile(path.join(root, "teams", "pentest", "skills"), "not a folder");
+
+    const { errors } = await readSeatSkills(root, { team: "pentest", worker: "recon" });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.kind).toBe("unlistable-level");
+    expect(errors[0]!.path).toBe("teams/pentest/skills");
+  });
+
+  it("tags a symlinked folder on the way to a level apart from the level itself", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "seat-skills-outside-"));
+    try {
+      await fs.mkdir(path.join(root, "teams"), { recursive: true });
+      await fs.symlink(outside, path.join(root, "teams", "pentest"), "dir");
+
+      const { errors } = await readSeatSkills(root, { team: "pentest", worker: "recon" });
+
+      // `teams/pentest` is an ancestor of two of the three levels, so it is
+      // reported once under its own path — not once per level beneath it.
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.kind).toBe("refused-symlinked-ancestor");
+      expect(errors[0]!.path).toBe("teams/pentest");
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("tags a level's own skills folder being a symlink", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "seat-skills-outside-"));
+    try {
+      await fs.mkdir(path.join(root, "org"), { recursive: true });
+      await fs.symlink(outside, path.join(root, "org", "skills"), "dir");
+
+      const { errors } = await readSeatSkills(root, { team: "pentest", worker: "recon" });
+
+      // The leaf is classified by the shared primitive rather than by the
+      // ancestor walk, so it is a distinct condition from the one above.
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.kind).toBe("refused-symlinked-level");
+      expect(errors[0]!.path).toBe("org/skills");
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("tags a skill folder that failed to load", async () => {
+    await writeSkill("teams/pentest/skills", "broken", "no frontmatter at all");
+
+    const { errors } = await readSeatSkills(root, { team: "pentest", worker: "recon" });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.kind).toBe("skill-load-failed");
+    expect(errors[0]!.path).toBe("teams/pentest/skills/broken");
+  });
+
+  it("tags a SKILL.md that declares the refused scope key", async () => {
+    await writeSkill(
+      "teams/pentest/skills",
+      "greedy",
+      `---\ndescription: picks its own scope\nscope: team\n---\n\nbody\n`,
+    );
+
+    const { errors } = await readSeatSkills(root, { team: "pentest", worker: "recon" });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.kind).toBe("refused-scope-key");
+    expect(errors[0]!.path).toBe("teams/pentest/skills/greedy");
+  });
+
+  it("tags a name the seat would have seen twice", async () => {
+    await writeSkill("org/skills", "triage", body("org triage"));
+    await writeSkill("teams/pentest/skills", "triage", body("team triage"));
+
+    const { errors } = await readSeatSkills(root, { team: "pentest", worker: "recon" });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.kind).toBe("duplicate-skill-name");
+  });
+
+  it("keeps four conditions apart in one read rather than tagging them alike", async () => {
+    // The case the discriminant exists for: one seat, several things wrong at
+    // once, and a caller that wants to tolerate a malformed folder while still
+    // refusing a contested name.
+    await writeSkill("org/skills", "triage", body("org triage"));
+    await writeSkill("org/skills", "broken", "no frontmatter at all");
+    await writeSkill(
+      "org/skills",
+      "greedy",
+      `---\ndescription: picks its own scope\nscope: org\n---\n\nbody\n`,
+    );
+    await writeSkill("teams/pentest/skills", "triage", body("team triage"));
+    // A file where the seat's own skills folder belongs: present, not listable.
+    await fs.mkdir(path.join(root, "teams", "pentest", "workers", "recon"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(root, "teams", "pentest", "workers", "recon", "skills"),
+      "not a folder",
+    );
+
+    const { skills, errors } = await readSeatSkills(root, {
+      team: "pentest",
+      worker: "recon",
+    });
+
+    expect(errors.map((e) => `${e.kind} @ ${e.path}`).sort()).toEqual([
+      "duplicate-skill-name @ teams/pentest/skills/triage",
+      "refused-scope-key @ org/skills/greedy",
+      "skill-load-failed @ org/skills/broken",
+      "unlistable-level @ teams/pentest/workers/recon/skills",
+    ]);
+    // Nothing uncontested survived this tree, so none is silently dropped.
+    expect(names(skills)).toEqual([]);
+  });
+
+  it("carries the message text unchanged beside the kind", async () => {
+    // `kind` is additive: a caller still reading the message keeps working.
+    await writeSkill("org/skills", "triage", body("org triage"));
+    await writeSkill("teams/pentest/skills", "triage", body("team triage"));
+
+    const { errors } = await readSeatSkills(root, { team: "pentest", worker: "recon" });
+
+    expect(errors[0]!.kind).toBe("duplicate-skill-name");
+    expect(errors[0]!.error.message).toMatch(/no precedence rule/);
+    expect(errors[0]!.error.message).toContain("org/skills/triage");
+  });
+});

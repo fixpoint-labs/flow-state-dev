@@ -19,10 +19,18 @@ import fs from "node:fs/promises";
  * slash-separated path relative to the tree root — deliberately not by an
  * identity, because a folder that breaks the naming rules has no identity to be
  * reported under.
+ *
+ * `Kind` is the reader's own closed union of the conditions it can report, and
+ * every entry carries one. Required rather than optional on purpose: a flat
+ * array of reports is otherwise only tellable apart by matching on
+ * `error.message`, and requiring the tag is what stops a condition added later
+ * landing untagged.
  */
-export interface PathReport {
+export interface PathReport<Kind extends string> {
   path: string;
   error: Error;
+  /** Which of the reader's conditions this entry is. */
+  kind: Kind;
 }
 
 /** What a path is, without following symlinks. */
@@ -64,9 +72,28 @@ export async function classify(target: string): Promise<Entry> {
 }
 
 /**
+ * What {@link openStructuralDirectory} found at a structural folder.
+ *
+ * Three outcomes, and the two that are not the happy path stay apart: `entries`
+ * is set when the folder listed, `refusal` when it is there and the walk will
+ * not go through it, and neither when it is simply absent — the one silent
+ * outcome.
+ */
+export interface OpenedDirectory {
+  /** The folder's entries. Set only when it listed. */
+  entries?: string[];
+  /** Why the walk stopped here, when that is worth reporting. */
+  refusal?: {
+    /** `symlink` when the folder is a link; `unreadable` when it is there and `readdir` failed. */
+    reason: "symlink" | "unreadable";
+    error: Error;
+  };
+}
+
+/**
  * List one of a walk's structural directories — `teams`, a team's `workers`, a
- * level's `skills`. Returns its entries, or `undefined` when the walk cannot go
- * that way, having reported the reason unless the folder is simply absent.
+ * level's `skills`. Returns its entries, or the reason the walk cannot go that
+ * way, or neither when the folder is simply absent.
  *
  * Absence is the only silent outcome, and separating it from the rest is why
  * this helper exists. A missing folder is a tree that does not go that way; a
@@ -74,26 +101,29 @@ export async function classify(target: string): Promise<Entry> {
  * and reading it as empty would drop them while leaving `errors` empty. The
  * symlink check is what stops `readdir` following `teams -> /outside` and
  * loading files from outside the configured root.
+ *
+ * Hands the reason back rather than filing a report itself, because which
+ * condition a refusal counts as belongs to the reader: this helper serves more
+ * than one, and their conditions are not the same.
  */
 export async function openStructuralDirectory(
   target: string,
   reportAs: string,
-  errors: PathReport[],
-): Promise<string[] | undefined> {
+): Promise<OpenedDirectory> {
   if ((await classify(target)).kind === "symlink") {
-    errors.push({ path: reportAs, error: refusedSymlink("directory", reportAs) });
-    return undefined;
+    return { refusal: { reason: "symlink", error: refusedSymlink("directory", reportAs) } };
   }
 
   try {
-    return await fs.readdir(target);
+    return { entries: await fs.readdir(target) };
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    errors.push({
-      path: reportAs,
-      error: new Error(`"${reportAs}" could not be read: ${(err as Error).message}`),
-    });
-    return undefined;
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    return {
+      refusal: {
+        reason: "unreadable",
+        error: new Error(`"${reportAs}" could not be read: ${(err as Error).message}`),
+      },
+    };
   }
 }
 
