@@ -44,7 +44,7 @@ describe("materializeWorker — prompt-driven branches", () => {
     expect(JSON.stringify(promptSlot)).toContain("ACME Corp");
   });
 
-  it("reads prompt-ref content from the skill collection and strips frontmatter", async () => {
+  it("reads prompt-ref content from the skill collection and hydrates body", async () => {
     const collection = createMockSkillsCollection();
     await collection.create(skillFileKey("demo", "reference/market.md"), {});
     const ref = collection.getOptional(skillFileKey("demo", "reference/market.md"));

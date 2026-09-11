@@ -33,8 +33,8 @@ import {
   splitFrontmatter,
 } from "../shared/frontmatter";
 import {
+  AGENT_TUNING_KEYS,
   parseAgentTuning,
-  parseVisibilityField,
   presentTuningKeys,
   promptRefDualWriteError,
 } from "./internal/agent-prompt-file";
@@ -307,7 +307,9 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
   // instead of the skill-authored one. Reject them and point at
   // `agent-overrides`.
   if ("agent-ref" in obj) {
-    const inlineTuning = ["tools", "model", "visibility"].filter((k) => k in obj);
+    const inlineTuning = AGENT_TUNING_KEYS.filter(
+      (k) => k !== "context-supply" && k in obj,
+    );
     if (inlineTuning.length > 0) {
       throw new Error(
         `SKILL.md agent \`${key}\`: ${inlineTuning.map((k) => `\`${k}\``).join(", ")} ` +
@@ -359,27 +361,14 @@ function parseAgentOverrides(agentKey: string, v: unknown): AgentOverrides {
       );
     }
   }
+  const tuning = parseAgentTuning(
+    obj,
+    `SKILL.md agent \`${agentKey}\` agent-overrides`,
+  );
   const out: AgentOverrides = {};
-  if ("tools" in obj) {
-    const t = obj["tools"];
-    if (!Array.isArray(t) || !t.every((x) => typeof x === "string")) {
-      throw new Error(`SKILL.md agent \`${agentKey}\`: \`agent-overrides.tools\` must be a string list`);
-    }
-    out.tools = t as string[];
-  }
-  if ("model" in obj) {
-    const m = obj["model"];
-    if (typeof m !== "string") {
-      throw new Error(`SKILL.md agent \`${agentKey}\`: \`agent-overrides.model\` must be a string`);
-    }
-    out.model = m;
-  }
-  if ("visibility" in obj) {
-    out.itemVisibility = parseVisibilityField(
-      `SKILL.md agent \`${agentKey}\` agent-overrides`,
-      obj["visibility"],
-    );
-  }
+  if (tuning.tools !== undefined) out.tools = tuning.tools;
+  if (tuning.model !== undefined) out.model = tuning.model;
+  if (tuning.itemVisibility !== undefined) out.itemVisibility = tuning.itemVisibility;
   return out;
 }
 
