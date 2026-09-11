@@ -195,11 +195,13 @@ The epic-specific delta:
    **"is it `off`?"**, never `== on`, precisely so that recording the path can't switch the
    refreshes off. Overwriting `on` with a bare path is the failure to avoid: the gate and
    wrap refreshes would stop firing and the document would be frozen as a forecast.
-   The epic's [explainer](../epic-explainer/SKILL.md) is the diagram-first document that
+   The epic's [explainer](../spec-explainer/SKILL.md) is the diagram-first document that
    shows what the work *does*, for whoever has to sign off on the next gate without reading
    N specs. It is **opt-in per epic, decided once at setup and then automatic**: ask at
    [Epic setup](#epic-setup-the-coordination-layer-every-run-has), record the answer, and
    never re-derive it — a judgment re-made each wake either re-fires or quietly stops.
+   Every **issue** spec gets one unconditionally (`issue-spec` Step 6); at *epic* altitude it
+   is opt-in because the epic explainer is refreshed repeatedly rather than written once.
    `epic-em` and `epic-pm` default it **on**; a plain `epic-lifecycle` run defaults it off.
    `epic-wake` has no slot for it and needs none: it gates nothing, so it never blocks a
    row and never enters the script's cap.
@@ -638,8 +640,8 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
     handles.
 
   Either way the coordinator holds only handles, never the spec text.
-- **Decide the explainer, once.** Ask whether this epic gets an
-  [explainer](../epic-explainer/SKILL.md) — a four-panel diagram document showing what the
+- **Decide the epic explainer, once.** Ask whether this epic gets an
+  [explainer](../spec-explainer/SKILL.md) — a four-panel diagram document showing what the
   work does — and record `explainer: on|off` in the epic record. **Frame it as what they
   will be reading at each gate**, not as a feature: an epic whose gates they will judge from
   the specs themselves doesn't need one, and an epic where they won't open a spec does. Under

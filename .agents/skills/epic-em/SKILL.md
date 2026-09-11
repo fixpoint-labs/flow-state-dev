@@ -52,7 +52,7 @@ engineering detail is genuinely the ask").
 Absorbing the engineering decisions means the user stops reading specs — that is the whole
 point, and it is also how a product owner ends up ratifying gates on a body of work they can
 no longer picture. So under this posture the epic's
-[explainer](../epic-explainer/SKILL.md) defaults to **on**: set `explainer: on` at epic setup
+[explainer](../spec-explainer/SKILL.md) defaults to **on**: set `explainer: on` at epic setup
 without asking, and every gate you surface carries its link.
 
 This adds no state and moves no gate — `explainer` is `epic-lifecycle`'s field and the
