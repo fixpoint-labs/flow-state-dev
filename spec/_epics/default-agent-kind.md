@@ -15,38 +15,47 @@ already decided to delete. When this epic lands, a `WORKER.md` with nothing but 
 produces a seat that talks, remembers within the scopes we already ship, and can use the skills
 registered to it — and a team that wants something different names their own kind on one line.
 
-**Which objective, and how much of its gap it closes.** [`docs/objectives.md`](../../docs/objectives.md)
+**Which objective, and how it is proven.** [`docs/objectives.md`](../../docs/objectives.md)
 **Goal 1 — Validate through real usage**; the published objective on FIX-1359 is *"Workforce
 multi-seat real usage (OOTB agent seat)."*
 
-The honest answer is **not much of it, as currently cut.** The project's lead measure is *goals
-passing over goals defined*, and six of this epic's seven issues add **surface** — a kind, a
-skill bind, a memory attach, docs. Only FIX-1365 (Thin Proof: hire the OOTB agent kind) is
-shaped to produce a goal check, and it is marked *optional / last*. So on today's cut this epic
-can complete in full and move the lead measure by zero. That is the single most important thing
-to weigh at this gate, and §5 carries it as a question rather than quietly resolving it.
+Six of the seven issues add **surface** — a kind, a skill bind, a memory attach, docs. The
+seventh, **FIX-1365 (Thin Proof: hire the OOTB agent kind), is required**, and it is the only
+child shaped to produce a goal check. The epic cannot finish without it. That decision (D-4,
+Architect + Cycle PM on [PR #1730](https://github.com/fixpoint-labs/flow-state-dev/pull/1730),
+2026-09-11) is what makes this set answerable against the project's lead measure — goals passing
+over goals defined — instead of a set that can complete in full and move that number by zero.
+An OOTB agent seat nobody has hired is a claim, not a capability.
 
 **Holistic necessity.** Seven issues, and the composition question is whether it's really six.
 
 - **The substance is four**: FIX-1361 (the kind's contract), FIX-1363 (the kind itself),
   FIX-1362 (per-seat skills into it), FIX-1364 (memory onto existing scopes). Drop any and the
   OOTB seat is missing something a real app needs on day one.
-- **FIX-1360 (kitchen-sink drift audit) is cheap reconnaissance that pays for itself.** The
-  Architect's own framing is that kitchen-sink may be behind the Workforce hire surface, so
-  without the audit FIX-1361 specs a contract against a baseline nobody has checked.
+- **FIX-1360 (kitchen-sink drift audit) is cheap reconnaissance that pays for itself.** Review
+  asked for it to become a research section inside FIX-1363's spec. Kept as an issue: the drift
+  note is cited by FIX-1361, FIX-1362, FIX-1363 and FIX-1364, and one shared artifact beats four
+  specs each re-reading the same app.
 - **FIX-1366 (Atlas teach) is not optional** despite being docs. The teach path is what
   currently points people at `defineAgent`; a kind that ships while the Atlas still teaches the
   killed surface leaves two documented ways to build an agent.
-- **FIX-1361 is the one I'd challenge.** A standalone "Spec:" issue sits awkwardly next to our
-  own routing, where FIX-1363 writes and gates its own spec anyway
+- **FIX-1361 was challenged at the gate and kept — seven stands.** Three reviewers made the same
+  argument: a standalone "Spec:" issue sits awkwardly next to our own routing, where FIX-1363
+  writes and gates its own spec anyway
   ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec").
-  Kept as locked, but if FIX-1361's document turns out to *be* FIX-1363's spec, that is the
-  signal the set was six.
+  The Architect's answer (PR #1730, 2026-09-11) is that the chain needs a contract artifact
+  *before* implementation starts, and that collapsing pre-emptively is the wrong direction.
+  **The collapse trigger is named and live**: if FIX-1361's deliverable turns out to *be*
+  FIX-1363's gated spec — the same document, carrying no decisions of its own — collapse then.
+- **FIX-1362 and FIX-1364 stay two issues, and neither folds into FIX-1363.** Also challenged at
+  the gate. They are different scopes with different decisions to make (theme 7's skills merge
+  and isolation rule; theme 4's named-gap honesty), not two halves of one change.
 
 **Not doing.** No second Agent L1 type and no growing `AgentRegistry` into a product Agent. No
 new memory-isolation primitive — existing scopes only, and a gap gets named rather than faked.
 No persona builder (the hire body key is `instructions`). No Collab or channel roster — that
 stays on W3 / FIX-1341. No MCP door. This epic is **parallel to** W3 (FIX-1351), not under it.
+FIX-1365 being required does not widen it: a thin hire of the OOTB agent kind, nothing more.
 
 ## 2. Themes & long-horizon direction
 
@@ -61,9 +70,13 @@ stays on W3 / FIX-1341. No MCP door. This epic is **parallel to** W3 (FIX-1351),
 2. **The agent kind consumes prompt composition; it never invents one.** Generator slots stay
    `prompt` / `context` / `history` / `user`. The hire and `WORKER.md` body key is
    `instructions`. The default worker system prompt is one shared config composed as
-   `prompt: [default, instructions]`. That composition is FIX-1344's to ship (see theme 6); an
-   issue here that finds itself defining a second prompt system has hit a cross-cutting question
-   and comments up on this PR rather than deciding locally.
+   `prompt: [default, instructions]`, and **FIX-1344 owns shipping it** (theme 6).
+   **FIX-1363 consumes that composition and defines no second default-prompt config anywhere in
+   this epic** — decided by the Architect on PR #1730, 2026-09-11. If FIX-1363 starts before
+   FIX-1344 part 2 lands, it ships against `instructions` alone with an **explicit seam** for
+   `default` to drop into. FIX-1363 is therefore *unblocked by* W2, not sequenced behind it, and
+   an issue here that finds itself defining a second prompt system has hit a cross-cutting
+   question and comments up on this PR rather than deciding locally.
 
 3. **No second registry, and no child waits on the first one dying.** `defineAgent`,
    `materializeAgent` and `AgentRegistry` are kill targets owned by FIX-1344 / PR #1713 — all
@@ -83,19 +96,30 @@ stays on W3 / FIX-1341. No MCP door. This epic is **parallel to** W3 (FIX-1351),
    flow factories do. No `worker.ts` as a `WorkerManifest` seat door — that fence is W3's
    (FIX-1342) and this epic does not reopen it.
 
+   **The built-in's own admission is part of that contract, not an assumed default.**
+   `hireWorkforce` today refuses a record that declares no `flow:` ("declares no `flow:`, so
+   there is no flow kind to hire it into", `packages/workforce/src/hire.ts`) and resolves only
+   factories explicitly passed in `options.kinds`. So nothing in the current surface makes an
+   instructions-only `WORKER.md` hireable: either an omitted `flow:` selects the built-in kind,
+   or the built-in reaches `kinds` without the app naming it. Until one is chosen, §1's headline
+   path does not exist. **FIX-1361 decides it, FIX-1363 ships it**, and §5 carries the fork
+   because answering it the narrow way changes what §1 promises. Raised by Codex review on
+   PR #1730 and verified against the source.
+
 6. **The two soft deps live in other epics, and one of them is only half shipped.** Neither is a
    parent. This is the sequencing fact most likely to be read wrong, so it is stated in parts:
 
    | Dep | Epic | State (verified 2026-09-11) | What this epic needs from it |
    |---|---|---|---|
    | **FIX-1344** part 1 — `instructions` key | W2 / FIX-1332 | **Merged** (PR #1701). `INSTRUCTIONS_KEY` live at `packages/workforce/src/manifest.ts:38`, handled in `hire.ts` | Nothing further — the body key is settled |
-   | **FIX-1344** part 2 — configurable default worker system prompt | W2 / FIX-1332 | **Not shipped.** No default-prompt config exists in `packages/workforce/src` | This is the `default` half of theme 2's `prompt: [default, instructions]`. FIX-1363 composes it |
+   | **FIX-1344** part 2 — configurable default worker system prompt | W2 / FIX-1332 | **Not shipped.** No default-prompt config exists in `packages/workforce/src` | The `default` half of theme 2. **FIX-1363 consumes it and does not define one** — `instructions` alone plus an explicit seam if part 2 has not landed |
    | **FIX-1344** part 3 — invent-kill of the `defineAgent` cluster | W2 / FIX-1332 | **Not merged.** PR #1713 (`fix/remove-define-agent-cluster`) is an open draft; all three symbols still live | Nothing — theme 3 says no child waits on it |
    | **FIX-1356** — skills file convention | W3 / FIX-1351 | **In Review.** Impl PR #1728 open | The load rules FIX-1362's per-seat register consumes |
 
    **FIX-1344 is not "done".** Its Linear state is `In Development` and only part 1 has landed.
    Sequencing FIX-1363 as if the default prompt already exists is the specific mistake this row
-   exists to prevent; §5 carries the open question of what FIX-1363 does about it.
+   exists to prevent — and theme 2 is why that mistake no longer costs anything: the kind is
+   built against `instructions` with a seam, whenever part 2 arrives.
 
 7. **Skills isolate at per-seat registration, not at the skill name.** The earlier
    "globally unique skill names across teams" direction on FIX-1356 is **withdrawn**. A seat's
@@ -105,6 +129,16 @@ stays on W3 / FIX-1341. No MCP door. This epic is **parallel to** W3 (FIX-1351),
    the same name twice in **one** seat's view still needs refuse-or-precedence, and that exact
    merge rule is FIX-1362's decision to make. FIX-1356 owns the convention and the load rules;
    **the runtime bind of the registered set into the agent kind is FIX-1362's**, here.
+
+   **Registration alone does not isolate storage, and today it doesn't.**
+   `createSkillsLibrary` defaults its collection to the key `skills` at **`org` scope**
+   (`packages/orchestration/src/skills/library.ts`), so two seats in one org registering the same
+   bare `SKILL.md` name resolve to the same collection entry — one team's skill overwrites or
+   bleeds into another's. The promise above therefore holds at the *view* level and not yet at
+   the *storage* level. **Per-seat isolation has to be a real resource identity** — distinct
+   collection key, prefix or scope per team/seat — not a per-seat register over one shared
+   collection. FIX-1361 states that isolation contract and FIX-1362 implements it. Raised by
+   Codex review on PR #1730 and verified against the source.
 
 8. **Kitchen-sink is characterization, not the product API.** `apps/kitchen-sink` (especially
    `chat-agent` and the skill activator) is the closest working composition of the agent shape
@@ -116,11 +150,13 @@ stays on W3 / FIX-1341. No MCP door. This epic is **parallel to** W3 (FIX-1351),
 
 ## 3. Shape of the whole
 
-**No end-state POC was built for this epic.** The end state the Architect locked is narrow —
-one built-in kind, on an existing hire surface, with three known attachments — and the division
-question is about *sequencing*, not about a surface two issues might both want to own. If the
-gate surfaces real disagreement about whether the agent kind and the skill bind are one issue or
-two, that is when a POC earns its cost.
+**No end-state POC was built for this epic, and the gate did not change that.** The trigger this
+section named — real disagreement about whether the agent kind and the skill bind are one issue
+or two — did fire at review. It was settled in prose instead: FIX-1362 and FIX-1364 carry
+decisions of their own (the skills merge and isolation rule; named-gap honesty), which is a
+different kind of separation from a surface two issues would both want to own. The end state the
+Architect locked is still narrow — one built-in kind, on an existing hire surface, with three
+known attachments — so a POC would buy sequencing confidence the mermaid below already gives.
 
 What the division should be judged on instead is that **this epic is a chain, not a fan-out**:
 
@@ -131,13 +167,14 @@ flowchart TD
   C -->|kind to bind into| D[FIX-1362<br/>per-seat skills]
   C -->|kind to attach to| E[FIX-1364<br/>memory + gap honesty]
   C --> F[FIX-1366<br/>Atlas teach]
-  D --> G[FIX-1365<br/>Thin Proof · optional]
+  D --> G[FIX-1365<br/>Thin Proof · required]
   E --> G
 ```
 
 Only **FIX-1360 and FIX-1361 are startable today**, and FIX-1361 largely wants FIX-1360's drift
 note first. Everything after FIX-1361 sequences behind it; the only genuine parallelism in the
-set is FIX-1362 and FIX-1364 once the kind exists. Seven issues under one epic will therefore
+set is FIX-1362 and FIX-1364 once the kind exists. FIX-1365 being required does not move it
+earlier — it still waits on FIX-1362 and FIX-1364. Seven issues under one epic will therefore
 not run seven-wide, and expecting that throughput is how this epic gets read as stalled when it
 is merely serial.
 
@@ -151,40 +188,53 @@ is merely serial.
 | [FIX-1362](https://linear.app/fixpoint-labs/issue/FIX-1362) | Per-seat skill register + activate in the agent kind | spec | — | — | Backlog |
 | [FIX-1364](https://linear.app/fixpoint-labs/issue/FIX-1364) | Memory attach on existing scopes + named gaps | spec | — | — | Backlog |
 | [FIX-1366](https://linear.app/fixpoint-labs/issue/FIX-1366) | Atlas teach: OOTB agent kind | spec | — | — | Backlog |
-| [FIX-1365](https://linear.app/fixpoint-labs/issue/FIX-1365) | Thin Proof: hire the OOTB agent kind *(optional / last)* | spec | — | — | Backlog |
+| [FIX-1365](https://linear.app/fixpoint-labs/issue/FIX-1365) | Thin Proof: hire the OOTB agent kind — **required**, the epic's Goal 1 check | spec | — | — | Backlog |
 
 *No child carries a Linear category label yet, so every route reads **spec** by the fail-closed
 default ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a
 spec"). Labelling one **Bug** re-routes it, and an empty Spec PR cell would then be correct.*
 
 **Not children, deliberately:** FIX-1344 (W2 soft dep), FIX-1356 (W3 convention), FIX-1355 (W3
-lab), persona builder, Collab. They are linked from theme 6 and must not be re-parented here —
-Linear allows one parent, and both already have theirs.
+lab), FIX-1367 (thin `WorkerConfig` — W3 hire admission; the agent kind *consumes* that bag and
+does not own its contract), persona builder, Collab. They are linked from theme 6 and must not be
+re-parented here — Linear allows one parent, and they already have theirs.
 
 ## 5. Open cross-cutting questions
 
-- **Does `persona` survive as a reserved future concept, or is it deleted with the `defineAgent`
-  cluster in #1713?** The epic body reserves `persona` for a later persona-builder opinion,
-  while PR #1713 deletes the `defineAgent` / `definePersona` cluster outright — so the reserved
-  concept may have no surface left to be reserved on. Raised by the coordinator, asked of the
-  Architect on this epic's mailbox handle. **Blocks nothing.** Every theme above is written
-  against `instructions` alone and none of them names `persona`, so either answer leaves this
-  document standing; the only thing that changes is whether FIX-1366's Atlas page says "persona
-  is reserved for later" or says nothing at all.
+- **Does an instructions-only `WORKER.md` select the built-in kind, or must a seat name it?**
+  Raised by Codex review on this PR and verified against `packages/workforce/src/hire.ts`: a
+  record with no `flow:` is refused today, and only factories passed to `hireWorkforce` resolve.
+  So §1's headline — a `WORKER.md` carrying nothing but instructions produces a working seat —
+  has no path in the current surface. Two answers: **(a)** an omitted `flow:` selects the
+  built-in kind, which therefore has to reach the `kinds` map without the app naming it; or
+  **(b)** the objective narrows to "one line — `flow: agent` — plus registering the built-in".
+  **Blocks nothing today** (FIX-1361 has not started), but it must be answered *inside*
+  FIX-1361's contract, because FIX-1363 builds whatever it says and (b) changes what §1 promises.
+  **Recommendation: (a)** — the objective is about the seat working out of the box, and a
+  required registration line is the same paper cut `defineAgent` made people pay.
 
-- **Does FIX-1363 wait for FIX-1344's default worker system prompt, or define it?** Theme 6
-  establishes that part 2 has not shipped. FIX-1363 needs a `default` to compose with
-  `instructions`, and it can either block on W2 delivering it or ship the agent kind against
-  instructions alone and compose the default when it arrives. Neither issue can settle this
-  alone, because the answer moves work between two epics. **Blocks nothing today** — FIX-1363 is
-  not startable until FIX-1361 lands anyway — but it must be answered before FIX-1363 is specced.
+- **~~Does `persona` survive as a reserved future concept, or is it deleted with the
+  `defineAgent` cluster in #1713?~~** *Resolved (Architect, this PR, 2026-09-11):* `persona`
+  stays a **reserved later opinion** — a persona builder that compiles to a prompt — and never a
+  hire key. PR #1713 may delete the `definePersona` / `defineAgent` surface outright; the
+  reservation is conceptual, not a live symbol, so nothing here depends on it surviving.
+  **FIX-1366 teaches `instructions` only and does not document an empty reserved `persona`**
+  until there is a product surface to document. Every theme above stands either way.
 
-- **Does this epic close any of the lead measure, or only add surface?** §1 says it adds surface:
-  the only child shaped to produce a goal check is FIX-1365, and it is optional. The choice is to
-  promote FIX-1365 from optional to required (the epic then proves itself against Goal 1), or to
-  accept this epic as enabling work measured by the epic that uses it. **This is the owner's
-  call, and it is the substance of the objective gate** — it is raised in the epic PR's
-  *What's asked of you* rather than left as a list entry here.
+- **~~Does FIX-1363 wait for FIX-1344's default worker system prompt, or define it?~~**
+  *Resolved (Architect, this PR, 2026-09-11):* neither. FIX-1344 owns **shipping** the shared
+  default worker system prompt; FIX-1363 **consumes** `prompt: [default, instructions]` and
+  defines no second default-prompt config in this epic. Starting before part 2 lands is fine —
+  `instructions` alone with an explicit seam for `default`. It does not block on the #1713
+  deletion and it does not fork prompt composition. Net: FIX-1363 is unblocked by W2, not
+  sequenced behind it. Folded into theme 2 and theme 6's table.
+
+- **~~Does this epic close any of the lead measure, or only add surface?~~** *Resolved (D-4,
+  Architect + Cycle PM on this PR, 2026-09-11 — explicitly not a Jake D-n):* **FIX-1365 is
+  required**, not optional. It is the epic's Goal 1 check and the epic cannot finish without it.
+  Sequencing is unchanged — still after FIX-1362 and FIX-1364; required does not mean
+  parallelizable earlier — and it does not expand into Collab or a fat lab. Linear is stamped:
+  FIX-1365 retitled "(required)", priority raised P4 → P2. Folded into §1, §3, §4.
 
 ---
 
@@ -195,3 +245,10 @@ Linear allows one parent, and both already have theirs.
   (theme 6), because "FIX-1344 is done" would mis-sequence FIX-1363; and the honest read that
   the set adds surface rather than goal checks (§1, §5), because the objective gate is where
   that is decidable and nowhere else is.
+- **After epic-PR review, round 1 (2026-09-11)** — all three §5 questions closed as recorded
+  decisions (persona reserved-but-unsurfaced; FIX-1363 consumes FIX-1344's default prompt with a
+  seam; **FIX-1365 required**), and the set-composition challenge answered with seven kept plus a
+  named collapse trigger on FIX-1361, because a pre-emptive fold trades a real contract gate for
+  a guess. Two verified review findings became theme constraints — the built-in kind's admission
+  (theme 5) and skills storage isolation (theme 7) — because each is a place a theme promised
+  something the shipped surface does not yet do.
