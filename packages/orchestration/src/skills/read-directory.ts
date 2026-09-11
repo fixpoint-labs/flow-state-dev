@@ -12,6 +12,13 @@
  * supporting file — is lstat'd first; a symlink is recorded as an error or
  * skipped, never read. The `root` argument itself is the caller's own path
  * and is taken as given.
+ *
+ * Containment stops at the symlink. A hardlink is an ordinary file and is read
+ * as one, and each check is an lstat followed by a read rather than a held
+ * handle, so a path swapped between the two is read as whatever it became.
+ * Both are accepted: this runs at startup over a tree the app author controls,
+ * and closing either means following a path and verifying it, which is the
+ * opposite of the rule above.
  */
 
 import fs from "node:fs/promises";
