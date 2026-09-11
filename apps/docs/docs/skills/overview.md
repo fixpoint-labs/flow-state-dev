@@ -144,7 +144,8 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 `readSkillsDirectory` takes a root, so a skills folder can sit wherever you point it. In an app that
 describes its workers in folders (see [Workers on disk](/docs/orchestration/workers-on-disk)), one
 worker's skills are spread across three folders: the whole app's, its team's, and any sitting beside
-the worker itself.
+the worker itself. The same tree holds a team's shared documents, in
+[`resources/`](/docs/orchestration/documents-on-disk).
 
 ```
 workforce/org/skills/triage/SKILL.md
@@ -194,8 +195,8 @@ for (const entry of errors) {
 
 A contested name is dropped rather than resolved. Every copy stays out of `skills`, whichever level
 it came from: a folder beside the worker does not override its team's, and a team's does not
-override the org's. `path` on that entry is `paths[0]`, the level the name was first seen at. It keys the entry; it
-does not rank the files. Rename one or delete one to get the skill back.
+override the org's. `path` on that entry is `paths[0]`, the level the name was first seen at. Rename
+one or delete one to get the skill back.
 
 `readSeatSkills` returns records and installs nothing. Turning a set into a live catalog is the
 caller's job: pass `skills` as the `initialSkills` of the capability you build for that worker. See

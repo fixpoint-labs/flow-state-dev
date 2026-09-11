@@ -12,6 +12,10 @@
  * files or written by hand. Reading that description off disk is the `./loader`
  * subpath's job, kept out of the root so importing this package does not pull a
  * consumer onto `node:fs`.
+ *
+ * The same split covers file-declared documents: `ResourceDoc` is the record,
+ * `./loader` reads it off disk, and `resourcesFromDocs` here turns records into
+ * the resource map an app spreads into its flow.
  */
 
 export { defineAgent } from "./define-agent";
@@ -22,4 +26,5 @@ export { agentBlock, type AgentBlockOptions } from "./agent-block";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { hireWorkforce, type HireOptions } from "./hire";
-export type { WorkerManifest } from "./manifest";
+export { resourcesFromDocs } from "./resources-from-docs";
+export type { WorkerManifest, ResourceDoc } from "./manifest";

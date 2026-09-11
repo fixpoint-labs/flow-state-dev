@@ -321,7 +321,7 @@ const seats = hireWorkforce(workers, {
 ## What this does not do
 
 - It does not resolve tool or capability names. `tools: [board, search]` is carried as two strings, and whether those tools exist is checked when the worker is put to work.
-- It does not read anything outside `teams/<team>/workers/<worker>/`. Team-level and organization-level folders are part of the layout, and nothing here reads them.
+- It does not read anything outside `teams/<team>/workers/<worker>/`. Team-level and organization-level folders are part of the layout, and nothing here reads them. A team's `resources/` folder is read by [`readResourcesDirectory`](./documents-on-disk.md), and its `skills/` folder by [`readSeatSkills`](../skills/overview.md#where-skills-folders-live).
 - It does not follow symlinks, at any level of the walk.
 - It does not watch the tree. Read it once, at startup.
 - It does not staff a [task board](./task-board.md). A hired seat is an address you open a session against; a board's workers are in-process and claim tasks from a collection. A board calls its registry entries seats too. Same idea, different mechanism.
