@@ -658,6 +658,22 @@ describe("serializeSkillMd — delegation agents round-trip", () => {
     const out = serializeSkillMd(parsed.state, parsed.body);
     const reparsed = parseSkillMd(out);
     expect(reparsed.state.agents).toEqual(parsed.state.agents);
+    expect(out).toContain("prompt-ref: ./reference/market.md");
+    expect(out).not.toMatch(/market:\n(?:    .*\n)*    tools:/);
+  });
+
+  it("refuses to serialize tools/model beside prompt-ref", () => {
+    expect(() =>
+      serializeSkillMd(
+        {
+          description: "x",
+          agents: {
+            analyzer: { promptRef: "./reference/analyze.md", tools: ["search"] },
+          },
+        },
+        "body",
+      ),
+    ).toThrow(/can't be set alongside `prompt-ref`[\s\S]*frontmatter of `\.\.\/reference\/analyze\.md`|prompt file/);
   });
 
   it("round-trips an inline `prompt: |` body", () => {

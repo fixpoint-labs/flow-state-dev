@@ -18,7 +18,11 @@ import type { GeneratorTool, InitialSkill } from "@flow-state-dev/core";
 import { runForTest, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
-import { agentPurpose, collectAgentSources } from "../../src/skills/delegation-surface";
+import {
+  agentPurpose,
+  buildDelegationTools,
+  collectAgentSources,
+} from "../../src/skills/delegation-surface";
 import {
   DELEGATION_BOARD_FIELD,
   taskTools as taskToolsSingleton,
@@ -492,6 +496,49 @@ describe("delegation surface — active ∪ runtime activation input", () => {
     expect(sources).toHaveLength(1);
     const spec = sources[0]!.agents["analyzer"]!;
     expect(agentPurpose(spec, sources[0]!.files)).toBe("Analyzes one competitor.");
+  });
+
+  it("warns and skips a runtime-activated skill whose prompt file is malformed", async () => {
+    // A model-driven load must not crash the turn on a config typo. Static
+    // skills still throw at bind; runtime activations warn+skip.
+    const collection = createMockSkillsCollection();
+    collection._store.set("skills/imported/SKILL.md", {
+      name: "skills/imported/SKILL.md",
+      state: {
+        description: "imported",
+        agents: { analyzer: { promptRef: "./reference/analyze.md" } },
+      },
+      content: null,
+    });
+    collection._store.set("skills/imported/reference/analyze.md", {
+      name: "skills/imported/reference/analyze.md",
+      state: {},
+      content: "---\ncolour: blue\n---\n\nYou analyze.\n",
+    });
+    const { ctx } = buildDelegationCtx({ collection });
+    (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
+      { name: "imported", mode: "inline", activatedAt: 1 },
+    ];
+    const deps = {
+      catalog: {},
+      collectionKey: "skills",
+      location: { kind: "explicit", scope: "session", field: "activeSkills" },
+      staticSources: [],
+      bundledAgentIndex: new Map(),
+      dynamicEligible: true,
+    } as never;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const names = (await buildDelegationTools(ctx, deps))
+        .map(toolName)
+        .filter((n): n is string => n !== undefined);
+      expect(names).not.toContain("analyzer");
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringMatching(/malformed prompt file — skipped[\s\S]*colour/),
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

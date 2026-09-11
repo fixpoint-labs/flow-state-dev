@@ -36,6 +36,7 @@ import {
   AGENT_TUNING_KEYS,
   parseAgentTuning,
   presentTuningKeys,
+  presentTuningOnSpec,
   promptRefDualWriteError,
 } from "./internal/agent-prompt-file";
 
@@ -694,7 +695,13 @@ function serializeAgents(
   lines.push("agents:");
   for (const [key, spec] of Object.entries(agents)) {
     lines.push(`  ${key}:`);
-    if (spec.promptRef !== undefined) lines.push(`    prompt-ref: ${yamlScalar(spec.promptRef)}`);
+    if (spec.promptRef !== undefined) {
+      const leftover = presentTuningOnSpec(spec);
+      if (leftover.length > 0) {
+        throw new Error(promptRefDualWriteError(key, leftover, spec.promptRef));
+      }
+      lines.push(`    prompt-ref: ${yamlScalar(spec.promptRef)}`);
+    }
     if (spec.prompt !== undefined) {
       // Use literal block scalar for prompts so multi-line values survive
       // a round-trip exactly.
@@ -714,16 +721,20 @@ function serializeAgents(
         lines.push(`        history: ${spec.agentOverrides.itemVisibility.history}`);
       }
     }
-    if (spec.tools)
-      lines.push(`    tools: [${spec.tools.map((t) => yamlScalar(t)).join(", ")}]`);
-    if (spec.itemVisibility !== undefined) {
-      lines.push("    visibility:");
-      lines.push(`      client: ${spec.itemVisibility.client}`);
-      lines.push(`      history: ${spec.itemVisibility.history}`);
+    // `prompt-ref` forbids skill-entry tuning — the file owns those fields.
+    // Writing them back would produce a document `parseSkillMd` rejects.
+    if (spec.promptRef === undefined) {
+      if (spec.tools)
+        lines.push(`    tools: [${spec.tools.map((t) => yamlScalar(t)).join(", ")}]`);
+      if (spec.itemVisibility !== undefined) {
+        lines.push("    visibility:");
+        lines.push(`      client: ${spec.itemVisibility.client}`);
+        lines.push(`      history: ${spec.itemVisibility.history}`);
+      }
+      if (spec.model !== undefined) lines.push(`    model: ${yamlScalar(spec.model)}`);
+      if (spec.contextSupply !== undefined)
+        lines.push(`    context-supply: ${spec.contextSupply}`);
     }
-    if (spec.model !== undefined) lines.push(`    model: ${yamlScalar(spec.model)}`);
-    if (spec.contextSupply !== undefined)
-      lines.push(`    context-supply: ${spec.contextSupply}`);
   }
 }
 

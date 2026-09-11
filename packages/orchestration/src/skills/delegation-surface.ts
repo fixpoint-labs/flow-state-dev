@@ -312,14 +312,9 @@ export async function collectAgentSources(
 }
 
 // ---------------------------------------------------------------------------
-// Prompt-ref pre-resolution from bundled files
+// Prompt-ref pre-resolution
 // ---------------------------------------------------------------------------
 
-/**
- * Inline a `prompt-ref` body from the skill's bundled files when present, so a
- * build-time skill never depends on collection seeding order. Falls through
- * unchanged (materializeWorker reads the live collection) when not bundled.
- */
 /**
  * Load `prompt-ref` Markdown from the live collection for an imported skill.
  * Missing files are skipped — `materializeWorker` still fails loud at drain.
@@ -343,6 +338,10 @@ async function loadLivePromptFiles(
   return files;
 }
 
+/**
+ * Inline a `prompt-ref` body from the skill's bundled (or live-attached) files
+ * when present. Falls through unchanged when not attached.
+ */
 function withBundledPrompt(
   spec: AgentSpec,
   files: SkillFile[] | undefined,
@@ -352,6 +351,31 @@ function withBundledPrompt(
   const file = findBundledFile(files, spec.promptRef);
   if (!file) return spec;
   return applyAgentPromptFile(spec, file.content, agentKey);
+}
+
+/**
+ * Hydrate a prompt-ref spec. A static skill's bad file still throws (config
+ * error). A runtime activation warn+skips so a model-driven load cannot
+ * crash the turn — same policy as a divergent-spec collision.
+ */
+function hydratePromptOrSkip(
+  spec: AgentSpec,
+  files: SkillFile[] | undefined,
+  agentKey: string,
+  skillName: string,
+  isStatic: boolean,
+): AgentSpec | null {
+  try {
+    return withBundledPrompt(spec, files, agentKey);
+  } catch (err) {
+    if (isStatic) throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[skills] delegation agent "${agentKey}" (runtime skill "${skillName}") ` +
+        `has a malformed prompt file — skipped: ${message}`,
+    );
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -560,7 +584,8 @@ async function resolveBuild(
     // is the shape that lets the model be told about an agent it is then
     // refused for naming, so the invariant is literal here rather than
     // true-by-inspection in two places.
-    const rosterPurposes = buildRosterPurposes(sources);
+    const staticNames = new Set(deps.staticSources.map((s) => s.skillName));
+    const rosterPurposes = buildRosterPurposes(sources, staticNames);
     // ...and ONE install decision, for the same reason. An empty roster means
     // nothing to delegate to, so the surface contributes nothing — unless the
     // binding opted the floor in (`delegation: true`), where the default worker
@@ -593,12 +618,23 @@ async function resolveBuild(
  * is skipped, and a divergent static spec throws the whole build. So every key
  * reachable here maps to exactly the spec the board dispatches to.
  */
-function buildRosterPurposes(sources: DelegationAgentSource[]): Map<string, string> {
+function buildRosterPurposes(
+  sources: DelegationAgentSource[],
+  staticNames: ReadonlySet<string>,
+): Map<string, string> {
   const purposes = new Map<string, string>();
   for (const source of sources) {
     for (const [key, spec] of Object.entries(source.agents)) {
       if (purposes.has(key)) continue;
-      purposes.set(key, agentPurpose(withBundledPrompt(spec, source.files, key), source.files));
+      const hydrated = hydratePromptOrSkip(
+        spec,
+        source.files,
+        key,
+        source.skillName,
+        staticNames.has(source.skillName),
+      );
+      if (!hydrated) continue;
+      purposes.set(key, agentPurpose(hydrated, source.files));
     }
   }
   return purposes;
@@ -788,7 +824,14 @@ async function buildTools(
       // the identical list.
       // Hydrate before collide: a `prompt-ref` entry is only a path. Identity
       // is the file's body + frontmatter, matching bind-time in `library.ts`.
-      const resolvedSpec = withBundledPrompt(spec, source.files, agentKey);
+      const resolvedSpec = hydratePromptOrSkip(
+        spec,
+        source.files,
+        agentKey,
+        source.skillName,
+        staticNames.has(source.skillName),
+      );
+      if (!resolvedSpec) continue;
       if (seenSpecs.has(agentKey)) {
         // Two skills sharing an agent key: an IDENTICAL spec dedupes into the
         // already-built board worker. A DIFFERENT spec under the same key is a

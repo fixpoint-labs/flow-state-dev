@@ -80,7 +80,7 @@ A `prompt` or `prompt-ref` agent is fully portable: a skill folder carries its o
 
 A statically bound `agent-ref` with no registry fails when the skill is built.
 
-An inline `prompt:` entry may carry `tools`, `model`, `visibility`, and `context-supply` on the skill entry. A `prompt-ref` entry puts those fields in the prompt file's YAML frontmatter.
+An inline `prompt:` entry may carry `tools`, `model`, `visibility`, and `context-supply` on the skill entry, whether the persona is one line or many. A `prompt-ref` entry puts those fields in the prompt file's YAML frontmatter.
 
 `tools` is a list of catalog keys the agent may call itself. `taskTools` is a special key that gives the agent the task tools bound to the coordinator's board, which is how an agent fans out follow-up tasks mid-drain. `visibility` is `primary`, `sub`, `trace`, or a `{ client, history }` mapping.
 
