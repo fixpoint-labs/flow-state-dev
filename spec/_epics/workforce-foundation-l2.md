@@ -191,10 +191,21 @@ eventually carries them, which is no longer a child of this epic (theme 4).*
    factory's config both map to the generator's `prompt` **via `instructions`**. `persona` is
    held back for a *later* Agent opinion — a persona builder that formats structured fields into
    a prompt — and is **not** the hire or `WORKER.md` key. Wherever an earlier revision of this
-   document said persona for a seat's declared text, read `instructions`. **The shipped code
-   still says `persona`** (`hireWorkforce`, [#1687](https://github.com/fixpoint-labs/flow-state-dev/pull/1687))
-   and stays that way until the rename lands; FIX-1344 owns it, and nothing else may rename it
-   in passing.
+   document said persona for a seat's declared text, read `instructions`.
+
+   **The rename has landed — the shipped code says `instructions`.** `c37eb1a54` is on `main`
+   (PR [#1701](https://github.com/fixpoint-labs/flow-state-dev/pull/1701)): `hireWorkforce` hands
+   a worker's body to its flow as one setting, `instructions`, and `persona` is **refused rather
+   than aliased** — the loader rejects a `WORKER.md` declaring it and names the file, the factory
+   rejects a hand-built record and names the worker. Verified at `4541efa75` by the real
+   loader → hire → HTTP run (`goals/workforce-seats/two-seats-run-their-own-configuration/`,
+   PASS — *"the lead's body arrived as its instructions"*). **That is part 1 of FIX-1344, and
+   only part 1.** The issue carries three: the rename (**shipped**); the invent-kill of
+   `materializeAgent` / `defineAgent` / `agentRegistry` / `agent-ref` (**open** — draft PR
+   [#1713](https://github.com/fixpoint-labs/flow-state-dev/pull/1713), not merged); and the
+   default worker system prompt below (**no work found** — no branch, no PR, no symbol on
+   `main`). **FIX-1344 done and the rename done are not the same thing**, and nothing else may
+   rename the key in passing.
 
    **Every worker composes a default system prompt.** Configured **once** — at hire, team or
    workforce level — and composed into each worker's generator `prompt` as an **array slot: the
@@ -317,16 +328,19 @@ eventually carries them, which is no longer a child of this epic (theme 4).*
      teach `agentRegistry` / `createAgentRegistry` / `agent-ref` as a resolve path, or
      `materializeAgent` / `defineAgent` as the Workforce spine. **The work is FIX-1344's**, not
      the four spine children's — the seat body's key rename (`persona` → `instructions`) across
-     hire, docs and manifest consumers; the invent-kill path for `materializeAgent` /
-     `defineAgent` / `agentRegistry`; the default system-prompt composition; and the Atlas and
+     hire, docs and manifest consumers, **which has landed** (`c37eb1a54`,
+     [#1701](https://github.com/fixpoint-labs/flow-state-dev/pull/1701)) and is the only one of
+     the three that has; the invent-kill path for `materializeAgent` / `defineAgent` /
+     `agentRegistry`, **open in draft [#1713](https://github.com/fixpoint-labs/flow-state-dev/pull/1713)**;
+     the default system-prompt composition, **not started**; and the Atlas and
      theme-2 rewrites that follow from all three. Removing the `AgentRegistry` types, cutting
      the skills injection (`materializeWorker`'s `agent-ref` branch and its `agentRegistry` dep)
      and rewiring `examples/guides/research-team` sit there too. **It is an
      `@flow-state-dev/orchestration` change as much as a Workforce cleanup** (theme 2: the
      mechanism is Layer 1), which is what decides what it touches. **Its sequencing condition
      has already fired:** the seat factory ([#1687](https://github.com/fixpoint-labs/flow-state-dev/pull/1687)) and the loader ([#1689](https://github.com/fixpoint-labs/flow-state-dev/pull/1689)) both merged on 2026-09-10,
-     deliberately ahead of it so neither was thrashed mid-stream. Until it lands the symbols
-     still exist and still compile, and **FIX-1337 shipped against `materializeAgent` as it
+     deliberately ahead of it so neither was thrashed mid-stream. Until **the kill** lands the
+     symbols still exist and still compile, and **FIX-1337 shipped against `materializeAgent` as it
      stands** — an interim the fence blesses by name, right up until the delete. What the
      interval forbids is *growth*: no new `agentRegistry` call site, no new `agent-ref`
      consumer, no new path that resolves a name through an Agent catalog, and no delivery shaped
@@ -369,11 +383,11 @@ eventually carries them, which is no longer a child of this epic (theme 4).*
 | Issue | What it owns | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [FIX-1335](https://linear.app/fixpoint-labs/issue/FIX-1335) | Convention loader: scan `teams/<id>/workers/<name>/`, reading each seat's one `WORKER.md` into a **neutral per-worker manifest** — no `Agent`, no flow, no registry construction. **Mints each worker's identity, `team.name`, once** (themes 1–2). Manifest record is `{ id, declared, body }` | spec | [#1665](https://github.com/fixpoint-labs/flow-state-dev/pull/1665) | [#1689](https://github.com/fixpoint-labs/flow-state-dev/pull/1689) (merged) | Done |
-| [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) | The seat factory — a manifest becomes **one flow per seat, full stop**; INST-5 hire/mint as collection kinds, binding one exact flow-instance id + immutable create-time config. Uses `manifest.id` verbatim; remints no identity. **The four thin helpers are not in this issue** (theme 4). Ships the seat body as `config.persona`; the rename to `instructions` is FIX-1344's (theme 2) | spec | [#1676](https://github.com/fixpoint-labs/flow-state-dev/pull/1676) | [#1687](https://github.com/fixpoint-labs/flow-state-dev/pull/1687) (merged) | Done |
+| [FIX-1325](https://linear.app/fixpoint-labs/issue/FIX-1325) | The seat factory — a manifest becomes **one flow per seat, full stop**; INST-5 hire/mint as collection kinds, binding one exact flow-instance id + immutable create-time config. Uses `manifest.id` verbatim; remints no identity. **The four thin helpers are not in this issue** (theme 4). Ships the seat body as `config.instructions` — it merged as `config.persona` and was renamed by FIX-1344 part 1 (`c37eb1a54`, [#1701](https://github.com/fixpoint-labs/flow-state-dev/pull/1701)), which is on `main` (theme 2) | spec | [#1676](https://github.com/fixpoint-labs/flow-state-dev/pull/1676) | [#1687](https://github.com/fixpoint-labs/flow-state-dev/pull/1687) (merged) | Done |
 | [FIX-1327](https://linear.app/fixpoint-labs/issue/FIX-1327) | Materialization honesty, **undocumented half**: the silent capability skip when no catalog is present — **honour or loudly refuse** | **bug** | — | [#1666](https://github.com/fixpoint-labs/flow-state-dev/pull/1666) (merged) | Done |
 | [FIX-1337](https://linear.app/fixpoint-labs/issue/FIX-1337) | Materialization honesty, **documented half** and the other side of FIX-1327: a delegated agent drops a declared `outputSchema` and returns prose. Reverses a published contract, so it takes the spec route and its spec owns the migration path (theme 3). **The owner answered its contract question: both changes flip outright** — a delegated agent honours its declared shape, and a transform-bearing shape is refused uniformly — **with no deprecation cycle**. Shipped against `materializeAgent` as it stands — the interim the fence blesses until the delete (theme 4) | spec | [#1674](https://github.com/fixpoint-labs/flow-state-dev/pull/1674) | [#1688](https://github.com/fixpoint-labs/flow-state-dev/pull/1688) (merged) | Done |
 | [FIX-1342](https://linear.app/fixpoint-labs/issue/FIX-1342) | The `worker.ts` door, which FIX-1335's approved spec carried and which came out before merge rather than shipping half-built (theme 1). Owns the two decisions that removal left open: what a `worker.ts` exports, and how one is imported at hire time without making the isomorphic package root async | spec | — | — | Ready to Spec |
-| [FIX-1344](https://linear.app/fixpoint-labs/issue/FIX-1344) | The round-7 fence as work: rename the seat body key `persona` → `instructions` across hire, docs and manifest consumers; the invent-kill path for `materializeAgent` / `defineAgent` / `agentRegistry`; a configurable default system prompt composed into every worker's generator `prompt`; and the Atlas and theme-2 rewrites that follow (themes 2, 4). Filed after the loader landed, deliberately not blocking it | spec | — | — | Backlog |
+| [FIX-1344](https://linear.app/fixpoint-labs/issue/FIX-1344) | The round-7 fence as work — **three parts, one of them shipped.** (1) Rename the seat body key `persona` → `instructions` across hire, docs and manifest consumers — **merged** (`c37eb1a54`, [#1701](https://github.com/fixpoint-labs/flow-state-dev/pull/1701)), with `persona` refused rather than aliased. (2) The invent-kill path for `materializeAgent` / `defineAgent` / `agentRegistry` / `agent-ref` — **open, draft and unmerged** ([#1713](https://github.com/fixpoint-labs/flow-state-dev/pull/1713)). (3) A configurable default system prompt composed into every worker's generator `prompt` — **no work found**: no branch, no PR, no symbol on `main`. The Atlas and theme-2 rewrites follow from all three (themes 2, 4). Filed after the loader landed, deliberately not blocking it | spec | — | [#1701](https://github.com/fixpoint-labs/flow-state-dev/pull/1701) (merged — part 1) · [#1713](https://github.com/fixpoint-labs/flow-state-dev/pull/1713) (draft — part 2) | Backlog *(mirrors Linear, which has not been touched; the status call is the owner's)* |
 
 *A bug carries no spec PR and no spec-approval gate by design — it routes straight to the fix,
 with its PR as the review surface
@@ -605,3 +619,23 @@ as live holds.*
   **W2 done does not mean WorkerConfig is filled**. Nothing folds FIX-1367 into FIX-1325's goal and
   no W2 spine spec reopens for it. **The objective, the gate and the epic-complete bar are
   untouched** — this records where a finish line already pointed, it does not move one.
+- **Correction, 2026-09-11 — the `persona` → `instructions` rename has landed; this document
+  still described the world before it.** Theme 2 said *"the shipped code still says `persona` …
+  and stays that way until the rename lands"* and §4's FIX-1325 row said it *"ships the seat body
+  as `config.persona`"*. Both were false against `main`: `c37eb1a54` (PR
+  [#1701](https://github.com/fixpoint-labs/flow-state-dev/pull/1701)) is on `main`,
+  `hireWorkforce` imposes `instructions`, and `persona` is **refused rather than aliased** at both
+  the loader and the factory. Re-verified at `4541efa75` — the commit's ancestry on `origin/main`,
+  the `INSTRUCTIONS_KEY` / `REFUSED_PERSONA_KEY` constants in `packages/workforce/src`, and a
+  PASSING run of `goals/workforce-seats/two-seats-run-their-own-configuration/` over the real
+  loader → hire → HTTP path. **The correction is not "FIX-1344 is done."** That issue is three
+  parts and only part 1 shipped: the invent-kill is open in draft
+  [#1713](https://github.com/fixpoint-labs/flow-state-dev/pull/1713), and the default worker
+  system prompt has no branch, no PR and no symbol on `main`. Theme 2, theme 4's FIX-1344 handoff
+  and both §4 rows now say which part is which. **`persona` is left standing wherever it is
+  deliberate** — the word reserved for the later persona-builder opinion, the Atlas's
+  `personality.md` / `createWorkerFlow` quotes, FIX-912's `personas/` sketch, and the dated
+  round-6 and round-7 entries above, which record what was true when they were written.
+  **Nothing else moved:** no decision, no objective, no gate, no epic-complete bar, and no Linear
+  status — FIX-1344's `Backlog` state is wrong for an issue with one part merged, and that is an
+  owner call put to the owner separately, not a thing this correction settles.
