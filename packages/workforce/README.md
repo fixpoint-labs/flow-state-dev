@@ -4,6 +4,36 @@ The seat factory for flow-state-dev.
 
 A **worker** is a flow kind plus its instructions. Describe each one as a `WORKER.md` record, then hire the roster: `hireWorkforce` turns those records into one configured, addressable flow copy per worker, which you register.
 
+## Quick Start
+
+Describe the roster on disk, read it, hire it, register what comes back.
+
+```
+workforce/teams/engineering/workers/lead/WORKER.md
+```
+
+```md
+---
+flow: worker-agent
+description: Holds the board.
+model: openai/gpt-5.4-mini
+---
+You are the engineering lead. You break work into tasks and report what came back.
+```
+
+```ts
+import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
+import { hireWorkforce } from "@flow-state-dev/workforce";
+
+const { workers, errors } = await readWorkforceDirectory("./workforce");
+if (errors.length) throw new Error(`workforce: ${errors.length} worker(s) failed to load`);
+
+const seats = hireWorkforce(workers, { kinds: { "worker-agent": workerAgentFlow } });
+flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
+```
+
+`workerAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package — decides what a worker may declare.
+
 ## Personas
 
 Use `definePersona` to declare resource-backed personas (parallel to Skills):
@@ -110,3 +140,11 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable | `readWorkforceDirectory` throws |
 | Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |
+
+## Scripts
+
+```bash
+pnpm --filter @flow-state-dev/workforce build
+pnpm --filter @flow-state-dev/workforce typecheck
+pnpm --filter @flow-state-dev/workforce test
+```

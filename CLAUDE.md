@@ -142,7 +142,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/cursor`            | Cursor integration — run Cursor's coding agent as a block through the Cursor SDK local runtime, returning core's neutral harness handle |
 | `@flow-state-dev/tools`             | Reusable tool blocks                                                    |
 | `@flow-state-dev/orchestration`     | Task substrate, dispatchers, the task-board primitive, and the skills runtime |
-| `@flow-state-dev/workforce`         | Agent registry, personas, and materialization (Layer 2 on orchestration) |
+| `@flow-state-dev/workforce`         | Seat factory (`hireWorkforce`), the `WORKER.md` loader, and personas (Layer 2 on orchestration) |
 | `@flow-state-dev/patterns`          | Higher-level composition patterns (built on the task board)             |
 | `@flow-state-dev/harness-manager`   | Task-board worker that turns a row into a supervised coding run — own checkout, verdict before settlement, question channel, and the coding harness as a slot |
 | `@flow-state-dev/memory`            | Cross-turn memory system (working / episodic / semantic / digest tiers) |
