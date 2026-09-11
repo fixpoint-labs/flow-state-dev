@@ -1,0 +1,13 @@
+{
+  "mode": "json",
+  "hasUI": false,
+  "toolRegistered": true,
+  "toolCount": 57,
+  "blockingRoundTrip": {
+    "ok": true,
+    "elapsedMs": 2136,
+    "answer": {
+      "answer": "Use the staging database, never prod."
+    }
+  }
+}

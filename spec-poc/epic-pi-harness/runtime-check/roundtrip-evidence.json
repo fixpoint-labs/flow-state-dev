@@ -1,0 +1,110 @@
+{
+  "pi": {
+    "frames": [
+      {
+        "type": "extension_ui_request",
+        "id": "e6564e70-56ca-4202-adf0-95b2d0ca0ccf",
+        "method": "confirm",
+        "title": "FSD bridge probe",
+        "message": "Use staging?",
+        "timeout": 30000
+      },
+      {
+        "type": "extension_ui_request",
+        "id": "8dda8796-324b-41df-bef0-e25b4248fdc6",
+        "method": "notify",
+        "message": "FSD_PROBE_HISTORY:[]",
+        "notifyType": "info"
+      },
+      {
+        "type": "extension_ui_request",
+        "id": "029d6afa-a7a4-4c27-941b-57e43b22c964",
+        "method": "notify",
+        "message": "FSD_PROBE_ANSWER:true",
+        "notifyType": "info"
+      },
+      {
+        "id": "ask",
+        "type": "response",
+        "command": "prompt",
+        "success": true
+      },
+      {
+        "type": "extension_ui_request",
+        "id": "0f48bafa-5148-4048-b9ff-0c357efba807",
+        "method": "notify",
+        "message": "FSD_PROBE_HISTORY:[{\"answer\":true}]",
+        "notifyType": "info"
+      },
+      {
+        "id": "history2",
+        "type": "response",
+        "command": "prompt",
+        "success": true
+      }
+    ],
+    "sessionId": "01a07e9e-7e25-7660-9a8d-de430f59257a",
+    "sessionFilePresent": false,
+    "sessionFileCheck": "Post-stop filesystem stat returned ENOENT",
+    "sessionFile": "/tmp/fsd-runtime-probe/pi-sessions/2026-09-08T01-25-11-333Z_01a07e9e-7e25-7660-9a8d-de430f59257a.jsonl"
+  },
+  "omp": {
+    "frames": [
+      {
+        "type": "extension_ui_request",
+        "id": "1576f51298739bdc",
+        "method": "confirm",
+        "title": "FSD bridge probe",
+        "message": "Use staging?",
+        "timeout": 30000
+      },
+      {
+        "id": "ask",
+        "type": "response",
+        "command": "prompt",
+        "success": true
+      },
+      {
+        "type": "extension_ui_request",
+        "id": "1576f52991b39bdd",
+        "method": "notify",
+        "message": "FSD_PROBE_ANSWER:true",
+        "notifyType": "info"
+      },
+      {
+        "type": "prompt_result",
+        "id": "ask",
+        "agentInvoked": false
+      },
+      {
+        "type": "extension_ui_request",
+        "id": "1576f52991b39bde",
+        "method": "notify",
+        "message": "FSD_PROBE_HISTORY:[{\"answer\":true}]",
+        "notifyType": "info"
+      },
+      {
+        "type": "extension_ui_request",
+        "id": "1576f54838b39bdf",
+        "method": "notify",
+        "message": "FSD_PROBE_HISTORY:[{\"answer\":true}]",
+        "notifyType": "info"
+      },
+      {
+        "id": "history2",
+        "type": "response",
+        "command": "prompt",
+        "success": true
+      },
+      {
+        "type": "prompt_result",
+        "id": "history2",
+        "agentInvoked": false
+      }
+    ],
+    "sessionId": "01a07e9e-7f56-7603-8321-a7804c657984",
+    "sessionFilePresent": false,
+    "sessionFileCheck": "Post-stop filesystem stat returned ENOENT",
+    "sessionFile": "/tmp/fsd-runtime-probe/omp-sessions/2026-09-08T01-25-11-638Z_01a07e9e-7f56-7603-8321-a7804c657984.jsonl"
+  }
+}
