@@ -55,6 +55,44 @@ did; FIX-1337 is the re-route, and FIX-1327 stays narrow.
 | **Gate minimum** | Two seats of **distinct** worker kinds, each with **different create-time config**, hired on the real assembled path — **one hire per kind**, and **at least one of them thin** — a plain `defineFlow` worker that never goes through `defineAgent`. Each resolves by its exact instance id and reads its own frozen `ctx.flow.config`. The opinionated-agent seat resolves to a block that honours its declaration or fails naming what it could not honour; the thin seat never goes through `defineAgent` at all. **Programmatic registration is acceptable at this bar** | This is the claim the objective rests on — a seat is a configured worker and it runs what it says. Distinct kinds because **same-kind multi-hire is not this epic's bar**: the Atlas gives W2 "one hire per kind is enough" and assigns the multi-hire proof to Collab RC. One seat thin because otherwise the epic can pass without ever exercising the thin-seat path (Atlas §04 proof B: one row seats a thin coordinator *and* a thick Agent) — and the **discriminator moved with theme 2**: every seat is a flow instance now, so "no `AgentRegistry` entry" is true of both and proves nothing, which is why the thin row reads *never went through `defineAgent`*. No loader required, so the set does not serialize behind FIX-1335 |
 | **Epic-complete** | The same proof bootstrapped from **conventional files only** — seat folders on the locked tree produce the seats, with no programmatic registration anywhere in the path — **and the opinionated seat's declared `outputSchema` survives delegation or fails by name** (FIX-1337). **That is the whole finish line** | Files-only is what proves the *convention*, which is the objective; a green gate minimum with hand-registration proves the factory and says nothing about the file layer. The `outputSchema` clause is here because honesty that covers capabilities but not output shape leaves the same invisible drift one field over |
 
+**How the files→seat path is proved — ruled, round 8.** Three ways to close folder→records→mint
+were on the table. The answer is the first; the other two are rejected **as sole answers**, not as
+ideas.
+
+- **Taken — the loader feeds the seat factory's own goal.** FIX-1325's goal takes its records from
+  the real FIX-1335 loader over a fixture seat tree, so every change to either side re-runs
+  folder → records → mint → hire. **The trade-off is named and accepted:** this is a soft coupling
+  between FIX-1335 and FIX-1325, which the set had deliberately left un-serialized (theme 4). It is
+  accepted because the alternatives are worse — a convention remembered at wrap by a path nobody
+  re-runs, or a first exercise that exists only in a later stage.
+- **Rejected as the only answer — the convention alone.** It ships the convention unproven, which
+  is the one thing a files-only bar exists to prevent.
+- **Rejected as the only answer — leave it to the lab.** W2 must not wrap with zero files→seat
+  exercise. The lab may still add pressure later, under W3; it is not the first proof.
+
+**And this is satisfied on `main`, not a choice still ahead of us.** The ruling is phrased as a
+condition — take the loader's records *when FIX-1335 has landed* — and that condition has already
+resolved: both spine children merged on 2026-09-10. The goal's roster selector is mechanical, not a
+judgement call (the loader subpath either exports `readWorkforceDirectory` or it does not), and the
+run prints which half it took, so a green run never leaves the bar it cleared to be inferred.
+Verified at `4541efa75` by running
+`goals/workforce-seats/two-seats-run-their-own-configuration/` — it reports
+`roster source: readWorkforceDirectory(fixtures/teams)`, and the real loader reads the fixture tree
+into two records minted `engineering.intake` and `engineering.lead` (theme 2's dot-joined identity),
+which `hireWorkforce` turns into two seats carrying only their own settings. **Recorded as done, so
+that nobody re-opens it as a pending choice.**
+
+**What this finish line does *not* cover: "the seat was called with the correct config."**
+WorkerConfig is not a fourth option above. The three are about *when* the loader and the factory
+couple for the **path**; WorkerConfig is the **definition of a working seat** — that hire invoked
+the flow with the right config. That contract belongs to
+[FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367) under the **W3** epic
+([FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351)), which already carries its floor; it
+is deliberately **not restated here**, because a second copy of a contract rots against the first.
+**W2 being done does not mean WorkerConfig is filled** — that is W3's honesty to prove, by the
+non-agent Proof on FIX-1367, where a kind accepts `skills` and may ignore them. Nothing folds
+FIX-1367 into FIX-1325's goal, and no W2 spine spec reopens for it.
+
 **Gate-minimum-complete is not epic-complete:** without the files-only bootstrap the convention
 itself is unproven. **And epic-complete stops there** — the pentest Lab Proof is the next stage
 after W2, not a criterion of it (theme 4).
@@ -64,8 +102,10 @@ resolve path — theme 2 removes the one that exists rather than adding a second
 addition of flow kinds after boot; a management bus, a delivery bus, or a second dispatcher; a
 second Agent type in the package; member-memory depth; **the Lab Proof itself** (its own stage —
 theme 4); **the four thin L2 helpers** (filed against that stage, which is their first real
-caller — theme 4); the MCP client door (held by #1655 until the package and the lab both exist); ordered
-multi-reply and who-may-reply policy (Collab RC).
+caller — theme 4); **the WorkerConfig contract** — what a *working* seat is called with, which is
+FIX-1367's under W3 and is why W2 done does not mean WorkerConfig is filled; the MCP client door
+(held by #1655 until the package and the lab both exist); ordered multi-reply and who-may-reply
+policy (Collab RC).
 
 ## 2. Themes & long-horizon direction
 
@@ -351,6 +391,7 @@ excludes is FIX-1337's, which is exactly why that row is on the spec route inste
 | [FIX-1311](https://linear.app/fixpoint-labs/issue/FIX-1311) — Message board | Layer 2 assembly over collections, subscriptions and `reactTo`. Board *addressing* is Collab RC's question, not the seat spine's |
 | [FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333) — W1 Workforce MCP | A **sibling epic**, held by #1655 until this package and the Lab Proof both exist. Sequencing note only — its Linear "unblocked now" is stale against that hold |
 | [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320) · [FIX-1331](https://linear.app/fixpoint-labs/issue/FIX-1331) | **Satisfied prerequisites**, not work. The instances floor and the create-time config bag are on `main`; W2 is unblocked because of them |
+| [FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367) — Thin WorkerConfig admission | A **child of the W3 epic** ([FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351)), where the "called with the correct config" finish line lives (§1). Named here only so the pointer resolves; its contract floor stays on that issue |
 
 ## 5. Open cross-cutting questions
 
@@ -359,6 +400,14 @@ round and are recorded below.
 
 **Closed — recorded with where the answer lives, so nobody re-opens them.**
 
+- **How is the files→seat path proved, and does "called with the correct config" belong to W2?**
+  *Ruled, round 8:* the path takes **the loader feeding FIX-1325's own goal**, accepting a soft
+  FIX-1335 ↔ FIX-1325 coupling as better than a wrap-only memory or a lab-only first exercise;
+  convention-alone and lab-alone are both rejected *as sole answers* (§1). **Already satisfied on
+  `main`** — the condition it was phrased under resolved when both spine children merged, and the
+  goal reports its roster source on every run. **"Correct config" is a different question and a
+  different epic:** WorkerConfig defines a *working seat*, not the path, and it is **FIX-1367** under
+  W3, which owns the contract floor. W2 done ≠ WorkerConfig filled. Not open here — open there.
 - **Do the two follow-up children move epic-complete?** *Ruled, round 7: no.* The objective is
   delivered by the four spine issues, all merged. **FIX-1342** and **FIX-1344** are work this epic
   *spawned*, not work it owes — one holds a door cut before merge, the other a design shift that
@@ -541,3 +590,18 @@ as live holds.*
   work this epic spawned, not work it owes — and **the gate bar's thin-seat discriminator goes to
   FIX-1344** as an open question the invent-kill must answer, since it still names `defineAgent`
   and sits inside an approved gate. `agentBlock`'s fate is recorded there too, unasserted here.
+- **Round-8 owner + Architect ruling (#1664, 2026-09-11)** — **the finish-line card is two
+  questions, not one, and they belong to two epics.** For the files→seat **path**, the answer is
+  the loader feeding FIX-1325's own goal: records come from the real FIX-1335 loader over a fixture
+  seat tree, so folder → records → mint → hire re-runs on every change. The **soft FIX-1335 ↔
+  FIX-1325 coupling is accepted by name** — the set had deliberately left it un-serialized — as
+  better than a wrap-only memory or a first exercise deferred to the lab; convention-alone and
+  lab-alone are rejected *as sole answers*. **The ruling arrived phrased as a condition and the
+  condition has already resolved**, both spine children having merged, so §1 records it as
+  satisfied on `main` with the run that shows it, rather than as a choice still ahead. **The second
+  question leaves this epic:** "the seat was called with the correct config" is WorkerConfig — the
+  definition of a *working seat*, not of the path — and it is **FIX-1367 under W3**, which owns the
+  contract floor; §1 points at it in one sentence rather than copying it, and states plainly that
+  **W2 done does not mean WorkerConfig is filled**. Nothing folds FIX-1367 into FIX-1325's goal and
+  no W2 spine spec reopens for it. **The objective, the gate and the epic-complete bar are
+  untouched** — this records where a finish line already pointed, it does not move one.
