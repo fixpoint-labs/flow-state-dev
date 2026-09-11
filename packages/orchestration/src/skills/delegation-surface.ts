@@ -34,7 +34,7 @@
  * then calls `runBoard`.
  */
 
-import { handler, sequencer } from "@flow-state-dev/core";
+import { handler, sequencer, warnOnceDev } from "@flow-state-dev/core";
 import type {
   AgentRegistry,
   AgentSpec,
@@ -370,7 +370,8 @@ function hydratePromptOrSkip(
   } catch (err) {
     if (isStatic) throw err;
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(
+    warnOnceDev(
+      `skills:malformed-prompt:${skillName}:${agentKey}`,
       `[skills] delegation agent "${agentKey}" (runtime skill "${skillName}") ` +
         `has a malformed prompt file — skipped: ${message}`,
     );

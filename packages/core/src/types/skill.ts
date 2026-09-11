@@ -65,9 +65,11 @@ export interface AgentSpec {
   /** Inline agent: skill-folder-relative path to a persona prompt file. */
   promptRef?: string;
   /**
-   * Optional roster blurb. On a `prompt-ref` agent this is read from the
-   * prompt file's frontmatter `description` when present; the coordinator
-   * prefers it over the first body line.
+   * Optional roster blurb. Authorable on the prompt-file frontmatter and on
+   * a programmatic spec. Not a `SKILL.md` `agents:` field — `parseSkillMd`
+   * refuses it there, and `serializeSkillMd` does not emit it (the file is
+   * the source of truth for `prompt-ref`; an inline `prompt:` uses the first
+   * body line). The coordinator prefers this over the first body line.
    */
   description?: string;
   /** Registry agent: agent registry key — resolves through the supplied AgentRegistry. */

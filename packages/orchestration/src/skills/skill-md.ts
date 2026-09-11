@@ -721,20 +721,18 @@ function serializeAgents(
         lines.push(`        history: ${spec.agentOverrides.itemVisibility.history}`);
       }
     }
-    // `prompt-ref` forbids skill-entry tuning — the file owns those fields.
-    // Writing them back would produce a document `parseSkillMd` rejects.
-    if (spec.promptRef === undefined) {
-      if (spec.tools)
-        lines.push(`    tools: [${spec.tools.map((t) => yamlScalar(t)).join(", ")}]`);
-      if (spec.itemVisibility !== undefined) {
-        lines.push("    visibility:");
-        lines.push(`      client: ${spec.itemVisibility.client}`);
-        lines.push(`      history: ${spec.itemVisibility.history}`);
-      }
-      if (spec.model !== undefined) lines.push(`    model: ${yamlScalar(spec.model)}`);
-      if (spec.contextSupply !== undefined)
-        lines.push(`    context-supply: ${spec.contextSupply}`);
+    // A `prompt-ref` spec that passed the leftover check above has no
+    // skill-entry tuning left to write. Inline `prompt:` still does.
+    if (spec.tools)
+      lines.push(`    tools: [${spec.tools.map((t) => yamlScalar(t)).join(", ")}]`);
+    if (spec.itemVisibility !== undefined) {
+      lines.push("    visibility:");
+      lines.push(`      client: ${spec.itemVisibility.client}`);
+      lines.push(`      history: ${spec.itemVisibility.history}`);
     }
+    if (spec.model !== undefined) lines.push(`    model: ${yamlScalar(spec.model)}`);
+    if (spec.contextSupply !== undefined)
+      lines.push(`    context-supply: ${spec.contextSupply}`);
   }
 }
 
