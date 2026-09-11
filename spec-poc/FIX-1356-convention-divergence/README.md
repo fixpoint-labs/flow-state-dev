@@ -21,7 +21,7 @@ extra config. The `_` prefix marks them throwaway.
 
 ```bash
 pnpm install
-pnpm --filter @flow-state-dev/orchestration exec vitest run test/_fix1356   # 7 passed
+pnpm --filter @flow-state-dev/orchestration exec vitest run test/_fix1356   # 8 passed
 pnpm --filter @flow-state-dev/workforce exec vitest run test/_fix1356       # 2 passed
 ```
 

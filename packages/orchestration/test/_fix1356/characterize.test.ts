@@ -161,6 +161,23 @@ describe("R47 - does 'unknown keys verbatim' let a file overwrite a derived fiel
     expect(files.find((f) => f.content === "INJECTED")).toBeUndefined();
   });
 
+  it("does NOT let frontmatter `_seededAt:` survive into the stored state", async () => {
+    // The one derived value that DOES share a destination with the passthrough
+    // bag: skill *state* is flat, and `_seededAt` is framework-written.
+    const skill = {
+      name: "s",
+      skillMd: `---\ndescription: d\n_seededAt: "1999-01-01T00:00:00.000Z"\n---\nbody`,
+    };
+    const c = createMockSkillsCollection();
+    await ensureSeeded(c, [skill]);
+
+    const state = c._store.get("skills/s/SKILL.md")!.state as Record<string, unknown>;
+    log("R47 _seededAt stored:", state["_seededAt"]);
+    // Derivation runs AFTER the passthrough, so the framework's value wins.
+    expect(state["_seededAt"]).not.toBe("1999-01-01T00:00:00.000Z");
+    expect(String(state["_seededAt"])).toMatch(/^20\d\d-/);
+  });
+
   it("refuses a `name:` that disagrees with the folder, so identity cannot be overwritten", async () => {
     await write("agree/SKILL.md", `---\nname: agree\ndescription: d\n---\nbody`);
     await write("disagree/SKILL.md", `---\nname: other\ndescription: d\n---\nbody`);
