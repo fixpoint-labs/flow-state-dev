@@ -6,19 +6,21 @@ Nothing here asks you for anything.*
 
 ---
 
-## 1. Today — half the tree is a convention, half is code
+## 1. Today — three pieces, three different states
 
 ```mermaid
 flowchart LR
   TREE["workforce/ tree"] --> W["workers/ · WORKER.md"]
   TREE --> SK["skills/ · SKILL.md, one level"]
-  CODE["TypeScript code"] --> R["rooms"]
-  CODE --> RES["resources"]
+  CODE["TypeScript code"] --> RES["resources"]
+  R["rooms"]
+  classDef none stroke-dasharray:5 5
+  class R none
 ```
 
-W2 shipped the worker loader. An author adds a worker by adding a folder — and adds a room or
-a document by editing source and redeploying. Nothing proves the halves hold together under
-real multi-seat pressure.
+W2 shipped the worker loader. Workers and skills are already file-declared. A document is
+declared in code, with `defineResource`. **A room has no declaration surface at all** — not
+code, not files. Nothing proves the pieces hold together under real multi-seat pressure.
 
 ---
 
@@ -32,8 +34,10 @@ flowchart LR
   TREE --> RES["resources/ · handbook.md"]
 ```
 
-The TypeScript node is gone, and its absence is the epic. Skills keep the convention they
-already had — ratified, not aligned — and gain levels plus a duplicate-name refusal.
+Every piece of a team becomes describable in files, and that is the epic. Rooms go from
+nothing to a folder; documents gain a file convention beside `defineResource`, which stays and
+is what the new loader calls. Skills keep the convention they already had — ratified, not
+aligned — and gain levels plus a duplicate-name refusal.
 
 ---
 
