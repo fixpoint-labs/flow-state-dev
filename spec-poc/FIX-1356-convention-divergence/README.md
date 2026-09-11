@@ -11,7 +11,7 @@ re-pinned here.
 
 | File | Question it answers |
 |---|---|
-| `packages/orchestration/test/_fix1356/characterize.test.ts` | How does the shipped `readSkillsDirectory` differ from the worker/room shape, and what happens when one skill name is declared twice? |
+| `packages/orchestration/test/_fix1356/characterize.test.ts` | How does the shipped `readSkillsDirectory` differ from the worker/room shape; what happens when one skill name is declared twice; and can frontmatter displace a field the reader derives? |
 | `packages/workforce/test/_fix1356/passthrough.test.ts` | Does a `WORKER.md` that declares `skills:` already reach its hired seat? |
 
 They sit in the packages' own `test/` folders so they run with the ordinary command and no
@@ -21,7 +21,7 @@ extra config. The `_` prefix marks them throwaway.
 
 ```bash
 pnpm install
-pnpm --filter @flow-state-dev/orchestration exec vitest run test/_fix1356   # 6 passed
+pnpm --filter @flow-state-dev/orchestration exec vitest run test/_fix1356   # 7 passed
 pnpm --filter @flow-state-dev/workforce exec vitest run test/_fix1356       # 2 passed
 ```
 

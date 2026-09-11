@@ -138,6 +138,29 @@ describe("C1 - two same-named skills: the second silently overwrites the first",
 });
 
 describe("R47 - does 'unknown keys verbatim' let a file overwrite a derived field?", () => {
+  // The skills convention derives TWO fields, so it is not exempt by inspection:
+  //   `name`  <- the folder
+  //   `files` <- the directory walk
+  // Both are probed below. `description` is declared, not derived.
+
+  it("does NOT let frontmatter `files:` displace the walked file list", async () => {
+    await write(
+      "s/SKILL.md",
+      `---\ndescription: d\nfiles:\n  - path: injected.md\n    content: INJECTED\n---\nbody`,
+    );
+    await write("s/reference/real.md", "REAL");
+
+    const { skills, errors } = await readSkillsDirectory(tmp);
+    const files = skills[0]!.files ?? [];
+    log("R47 files derived:", files.map((f) => f.path));
+    log("R47 errors:", errors.map((e) => e.error.message));
+
+    // The walk wins: the real supporting file is present and the declared one
+    // never becomes a file entry.
+    expect(files.map((f) => f.path).sort()).toEqual(["reference/real.md"]);
+    expect(files.find((f) => f.content === "INJECTED")).toBeUndefined();
+  });
+
   it("refuses a `name:` that disagrees with the folder, so identity cannot be overwritten", async () => {
     await write("agree/SKILL.md", `---\nname: agree\ndescription: d\n---\nbody`);
     await write("disagree/SKILL.md", `---\nname: other\ndescription: d\n---\nbody`);
