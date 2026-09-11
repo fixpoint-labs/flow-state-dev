@@ -7,8 +7,11 @@
  * directories — the format is the same.
  *
  * Symlinks are explicitly NOT followed: a malicious skill bundle could
- * symlink to `/etc` or escape the root via `..`. The walker rejects
- * symlinks with a warning and skips the entry.
+ * symlink to `/etc` or escape the root via `..`. Every entry the walker
+ * touches below the root — the skill folder, its `SKILL.md`, and every
+ * supporting file — is lstat'd first; a symlink is recorded as an error or
+ * skipped, never read. The `root` argument itself is the caller's own path
+ * and is taken as given.
  */
 
 import fs from "node:fs/promises";
@@ -91,14 +94,32 @@ async function readOneSkillFolder(
   ignore: Set<string>,
 ): Promise<InitialSkill> {
   const manifestPath = path.join(folderPath, "SKILL.md");
+
+  // A real folder says nothing about the manifest inside it: a symlinked
+  // SKILL.md reaches outside the root exactly as a symlinked folder would.
+  // lstat before the read so the link is seen rather than followed.
+  let manifestStat;
+  try {
+    manifestStat = await fs.lstat(manifestPath);
+  } catch (err) {
+    // Only a genuinely absent file is "missing". Anything else — a permission
+    // denial, an I/O failure — is a file the author can see, so reporting it
+    // as absent sends them looking for something that is already there.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new Error(`SKILL.md in "${name}/" could not be read: ${(err as Error).message}`);
+    }
+    throw new Error(`Missing SKILL.md in "${name}/"`);
+  }
+  if (manifestStat.isSymbolicLink()) {
+    throw new Error(`Symlinked SKILL.md in "${name}/" — ignored for safety`);
+  }
+
   let skillMd: string;
   try {
     skillMd = await fs.readFile(manifestPath, "utf8");
   } catch (err) {
-    // Only a genuinely absent file is "missing". Anything else — a directory
-    // where the manifest belongs, a permission denial, an I/O failure — is a
-    // file the author can see, so reporting it as absent sends them looking
-    // for something that is already there.
+    // Reachable for a directory named SKILL.md, and for anything that changes
+    // under us between the lstat above and this read.
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       throw new Error(`SKILL.md in "${name}/" could not be read: ${(err as Error).message}`);
     }

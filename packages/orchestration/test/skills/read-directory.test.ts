@@ -72,6 +72,26 @@ describe("readSkillsDirectory", () => {
     expect(errors.find((e) => e.name === "linked")).toBeDefined();
   });
 
+  // The folder being real says nothing about the manifest inside it: a real
+  // directory holding a symlinked SKILL.md reaches outside the root just as
+  // effectively as a symlinked folder does.
+  it("rejects a symlinked SKILL.md inside a real folder", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "skills-outside-"));
+    try {
+      const target = path.join(outside, "escaped.md");
+      await fs.writeFile(target, `---\ndescription: escaped\n---\n\nbody`);
+      await fs.mkdir(path.join(tmp, "sneaky"), { recursive: true });
+      await fs.symlink(target, path.join(tmp, "sneaky", "SKILL.md"));
+
+      const { skills, errors } = await readSkillsDirectory(tmp);
+
+      expect(skills.map((s) => s.name)).not.toContain("sneaky");
+      expect(errors.find((e) => e.name === "sneaky")?.error.message).toMatch(/[Ss]ymlink/);
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
   it("skips ignored filenames", async () => {
     await writeSkill("foo", `---\ndescription: foo\n---\n\nbody`, {
       ".DS_Store": "junk",
