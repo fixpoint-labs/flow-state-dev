@@ -30,13 +30,13 @@ import {
   REFUSED_PERSONA_KEY_MESSAGE,
   type WorkerManifest,
 } from "../manifest";
+import { validateSegment } from "./segments";
 import {
   classify,
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
 } from "./structural-directory";
-import { validateSegment } from "./segments";
 
 /** Filenames that are never a worker folder — editor and OS droppings. */
 const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
