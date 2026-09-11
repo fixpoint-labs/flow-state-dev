@@ -50,9 +50,9 @@ You are the engineering lead. You do not write code yourself. You break the
 request into tasks, assign them, and report what came back.
 ```
 
-`description` is the only key the file itself requires. `flow` names which of your flow kinds this worker runs, and [hiring](#hiring-the-roster) needs it.
+`description` is the only key the file itself requires, and `persona:` the only one it refuses. `flow` names which of your flow kinds this worker runs, and [hiring](#hiring-the-roster) needs it.
 
-Reading the file checks no other key. Whatever else you write lands on the record spelled exactly as you spelled it. That is not a license to declare anything: the flow a worker names has the final say, and [it refuses a setting it never declared](#the-flow-decides-what-a-worker-may-declare) when the worker is hired.
+Reading the file checks no other key. Whatever else you write lands on the record spelled exactly as you spelled it. The flow a worker names has the final say: at hiring it [refuses a setting it never declared](#the-flow-decides-what-a-worker-may-declare).
 
 The frontmatter is the same dialect a [`SKILL.md`](../skills/overview.md) uses. If you have written one of those, you already know the shape.
 
@@ -117,6 +117,7 @@ What lands in `errors`:
 
 - a worker folder with no `WORKER.md`, including one that holds only other files;
 - a `WORKER.md` with no frontmatter, or one whose `description` is missing, empty, or not a string;
+- a `WORKER.md` that declares `persona:`, which is not a setting a worker declares;
 - a team or worker folder name that breaks the naming rules;
 - a symlink where a folder or a worker file belongs, refused rather than read;
 - a directory that exists but cannot be listed, reported under its own path (`teams`, `teams/<team>`, or `teams/<team>/workers`) so the seats beneath it are not lost silently.
@@ -172,7 +173,7 @@ export const workerAgentFlow = defineFlow({
   kind: "worker-agent",
   cardinality: "collection",
   configSchema: z.object({
-    persona: z.string(),
+    instructions: z.string(),
     model: z.string().default("openai/gpt-5.4-mini"),
     tools: z.array(z.string()).default([]),
   }),
@@ -187,13 +188,15 @@ export const intakeFlow = defineFlow({
 });
 ```
 
+`cardinality: "collection"` is what lets one definition have many copies. A roster is exactly that: one copy per worker, each with its own id and its own settings. [Copies that differ by settings](../fundamentals/flows.md#copies-that-differ-by-settings) covers how a copy is configured, and [how an instance is addressed](../fundamentals/flows.md#how-an-instance-is-addressed) covers the URL each one answers on.
+
 `hireWorkforce` reads `flow` to pick the kind, and `description` as a label for the roster. Everything else becomes that copy's settings and is parsed against the flow's `configSchema`, which is closed. So the flow's author, not the framework, decides what a worker of that kind may say about itself.
 
 ```ts
 const lead = seats.find((seat) => seat.id === "engineering.lead")!;
 
 lead.config;
-// { persona: "You are the engineering lead. …",
+// { instructions: "You are the engineering lead. …",
 //   model: "openai/gpt-5.4-mini",
 //   tools: ["board", "search"] }
 ```
@@ -206,7 +209,7 @@ const intake = seats.find((seat) => seat.id === "support.intake")!;
 intake.config; // { desk: "front" }
 ```
 
-Every `config` is frozen, and carries that worker's settings only. A worker asking for something its flow never declared does not quietly run without it:
+Every `config` is frozen. A worker asking for something its flow never declared does not quietly run without it:
 
 ```
 hireWorkforce refused 1 of 3 workers; nothing was hired:
@@ -214,25 +217,27 @@ hireWorkforce refused 1 of 3 workers; nothing was hired:
     has an invalid config bag: "temperature" is not a declared setting.
 ```
 
-Settings are spelled the way the flow declares them. There is no translation between the name in the file and the name in the schema.
+Settings are spelled the way the flow declares them.
 
-Copies, ids, and settings bags are covered in [Flows](../fundamentals/flows.md#copies-that-differ-by-settings); addressing is in [How an instance is addressed](../fundamentals/flows.md#how-an-instance-is-addressed).
+### The body arrives as `instructions`
 
-### Instructions arrive as `persona`
+A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. That is the only setting name the hire imposes.
 
-A record's `body` is the worker's instructions, and it reaches the flow as one setting named `persona`, alongside everything the record declared. That is the only setting name the hire imposes.
-
-A flow that declares `persona` takes instructions. A flow that does not refuses a body by name, the same way it refuses any other undeclared setting, so no worker flow has to check for one:
+A flow kind that takes instructions declares `instructions` in its `configSchema`. A kind that doesn't will refuse a body by name, the same way it refuses any other undeclared setting, so no worker flow has to check for one:
 
 ```
 hireWorkforce refused 1 of 3 workers; nothing was hired:
   - worker "support.intake" — Flow "intake" instance "support.intake"
-    has an invalid config bag: "persona" is not a declared setting.
+    has an invalid config bag: "instructions" is not a declared setting.
 ```
 
-A worker with no body is a **thin seat**: fully addressable, carrying no persona because none was written. A body that is only whitespace counts as none, and contributes no `persona` key.
+Declaring the key is what makes the instructions available, at `config.instructions`. What the flow does with them is the flow's business: a worker flow usually hands them to its generator as the system prompt. A flow that declares `instructions` and never reads it hires cleanly and ignores what the file said.
 
-Declaring `persona:` in the frontmatter *and* writing a body is refused, naming both sources. There is no precedence rule between them.
+A worker with no body is still fully addressable. It just carries no instructions: a body that is empty, or only whitespace, contributes no `instructions` key at all. A body that has content reaches the flow verbatim, leading and trailing whitespace included.
+
+Declaring `instructions:` in the frontmatter *and* writing a body is refused, naming both sources. There is no precedence rule between them. Whitespace is not a body: a `WORKER.md` that sets `instructions:` in its frontmatter and leaves nothing but a blank line below the fences hires fine, on the frontmatter value.
+
+`persona:` names something else here, [an agent's system prompt](./agents.md#personas). A `WORKER.md` has no `persona` setting, so declaring one lands the worker in `errors` when the tree is read, or is refused by `hireWorkforce` for a hand-built record.
 
 ### When a hire is refused
 
@@ -243,8 +248,9 @@ A record is refused when it:
 - declares no `flow`, so there is no kind to hire it into;
 - names a kind that was not passed in `kinds`; the message lists the kinds that were;
 - declares a setting its flow never declared, or omits one its flow requires;
-- carries a body for a flow kind that declares no `persona`;
-- declares `persona:` and carries a body;
+- carries a body for a flow kind that declares no `instructions`;
+- declares `instructions:` and carries a body;
+- declares `persona:`, which is not a setting a worker declares;
 - shares an id with another record in the same call, which is two workers claiming one address.
 
 `kinds` itself is checked too. A flow passed under a key that is not its own `kind` is refused. The copy would otherwise come back carrying the right worker's id, and run the other kind's graph once you registered it.

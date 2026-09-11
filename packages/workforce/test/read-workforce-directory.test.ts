@@ -237,6 +237,56 @@ Body.
       expect(errors[0]!.error.message).toMatch(/non-empty `description`/);
     });
 
+    it("reports a WORKER.md declaring the refused `persona:` key, naming the file and the spelling to use", async () => {
+      const { workers, errors } = await readWorkforceDirectory(
+        tree({
+          ...HEALTHY,
+          "teams/engineering/workers/intake/WORKER.md":
+            "---\ndescription: The front door.\nflow: intake\npersona: You greet people.\n---\nBody.\n",
+        }),
+      );
+
+      // Reported, not loaded. The healthy worker still comes back, and the
+      // refused slot produces no manifest at all — a record carrying a refused
+      // key must not reach a caller who could hire it.
+      expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/engineering/workers/intake");
+
+      const { message } = errors[0]!.error;
+      // The file, the key, and what to write instead — all three, because an
+      // author fixing this has to find the file and know the new spelling.
+      expect(message).toContain("WORKER.md");
+      expect(message).toContain("intake/");
+      expect(message).toContain("persona");
+      expect(message).toContain("not a setting a worker declares");
+      expect(message).toContain("instructions");
+    });
+
+    it("refuses the refused key rather than carrying it verbatim like an unknown one", async () => {
+      // The contrast that gives the spec above its meaning: this loader's rule
+      // is to carry what it does not recognise. A refused key is the one thing
+      // it must NOT carry, so the two behaviours are asserted against the same
+      // parser in the same shape.
+      const carried = await readWorkforceDirectory(
+        tree({
+          "teams/engineering/workers/intake/WORKER.md":
+            "---\ndescription: The front door.\nnot-a-real-key: kept\n---\nBody.\n",
+        }),
+      );
+      expect(carried.errors).toEqual([]);
+      expect(carried.workers[0]!.declared["not-a-real-key"]).toBe("kept");
+
+      const refused = await readWorkforceDirectory(
+        tree({
+          "teams/engineering/workers/intake/WORKER.md":
+            "---\ndescription: The front door.\npersona: kept\n---\nBody.\n",
+        }),
+      );
+      expect(refused.workers).toEqual([]);
+      expect(refused.errors).toHaveLength(1);
+    });
+
     it("reports a worker segment breaking the name rules, with the rule in the message", async () => {
       const { workers, errors } = await readWorkforceDirectory(
         tree({ ...HEALTHY, "teams/engineering/workers/Platform_Eng/WORKER.md": LEAD_MD }),

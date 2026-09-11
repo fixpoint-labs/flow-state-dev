@@ -125,7 +125,7 @@ Each record is plain data:
 | Field | Description |
 |-------|-------------|
 | `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. |
-| `declared` | The frontmatter exactly as written. Keys are not checked against a list. |
+| `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and a refused `persona:`. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
 
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
@@ -140,9 +140,9 @@ The subpath is separate because the reader imports `node:fs`; the package root s
 
 ## Hiring a workforce
 
-`hireWorkforce` turns worker records into one configured, addressable flow copy each — a **seat**. It
-reads no files, builds no flow graph, and registers nothing: you pass the flow kinds your app defined,
-and you register what comes back.
+`hireWorkforce` turns worker records into **seats**: one configured, addressable flow copy per worker.
+It reads no files, builds no flow graph, and registers nothing. You pass the flow kinds your app
+defined, and you register what comes back.
 
 ```ts
 import { hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
@@ -162,13 +162,22 @@ flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 
 The factory reads **`flow`**, which names the kind to instantiate, and **`description`**, the roster
 label. Everything else is that worker's settings, handed to the flow
-verbatim and parsed against its `configSchema` — which is closed, so a setting the flow never declared
-is refused by name at the hire.
+verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
+declared is refused by name at the hire.
 
-A record's **`body` reaches its flow as one setting, `persona`**. A flow kind that declares `persona`
-is an opinionated worker; one that does not refuses a body by name, so no worker flow has to check for
-one. A body that is empty or only whitespace contributes no `persona` key at all, and a record that
-declares `persona:` *and* carries a body is refused naming both sources.
+A record's **`body` reaches its flow as one setting, `instructions`**. A flow kind that takes
+instructions declares `instructions` in its `configSchema`. A kind that doesn't will refuse a body by
+name, so no worker flow has to check for one. Declaring the key makes the instructions available at
+`config.instructions`; what the flow does with them is the flow's business.
+
+A body that is empty or only whitespace contributes no `instructions` key at all; a body with content
+is handed over verbatim, leading and trailing whitespace included. A record that declares
+`instructions:` *and* carries a body is refused naming both sources. Whitespace is not a body, so a
+record that declares `instructions:` and carries an empty or blank one hires on the frontmatter value.
+
+`persona:` on a `defineAgent` is a different thing. A `WORKER.md` has no `persona` setting:
+declaring it lands the worker in `readWorkforceDirectory`'s `errors`, or is refused by
+`hireWorkforce` for a hand-built record. Spell it `instructions`.
 
 Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
 every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.
@@ -199,4 +208,4 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | Persona empty content | Execution time — resource resolved but `readContent()` returned null |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable | `readWorkforceDirectory` throws |
-| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, or `persona` declared twice. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |

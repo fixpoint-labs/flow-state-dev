@@ -2,10 +2,11 @@
  * The convention loader — read a workforce tree into neutral worker manifests.
  *
  * Walks `<root>/teams/<teamId>/workers/<workerName>/`, reads each worker's
- * `WORKER.md`, and returns one plain record per worker. It interprets nothing:
- * frontmatter is carried verbatim, so a key a consumer claims tomorrow arrives
- * unchanged today. It builds no flow, no agent and no registry — turning a
- * record into a running seat is the seat factory's job.
+ * `WORKER.md`, and returns one plain record per worker. Frontmatter is carried
+ * verbatim, so a key a consumer claims tomorrow arrives unchanged today; the
+ * only keys it reads are the dialect's own — a required `description`, and the
+ * one key it refuses by name. It builds no flow, no agent and no
+ * registry — turning a record into a running seat is the seat factory's job.
  *
  * Two rules run through the whole walk. **Symlinks are never followed**, at any
  * level. And **only a worker slot is reported as a near-miss** — a directory
@@ -24,7 +25,11 @@ import {
   parseFrontmatterYaml,
   splitFrontmatter,
 } from "@flow-state-dev/orchestration";
-import type { WorkerManifest } from "../manifest";
+import {
+  REFUSED_PERSONA_KEY,
+  REFUSED_PERSONA_KEY_MESSAGE,
+  type WorkerManifest,
+} from "../manifest";
 
 /** Filenames that are never a worker folder — editor and OS droppings. */
 const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
@@ -233,9 +238,13 @@ async function readWorkerSlot(
  * files an author writes by hand, and a second dialect would mean learning one
  * teaches the wrong thing about the other.
  *
- * `description` is required and everything else is carried verbatim. The
- * requirement is the dialect's, not a consumer's — `SKILL.md` throws on a
- * missing description too — and it keeps a roster legible to whoever reads it.
+ * `description` is required, the one refused key is rejected, and everything
+ * else is carried verbatim. Both rules are the dialect's, not a consumer's —
+ * `SKILL.md` throws on a missing description too — and they are what keeps
+ * "carried verbatim" safe to promise: a key nobody has claimed arrives
+ * unchanged, but a key that has been *unclaimed* is not the same thing as a key
+ * nobody ever read, and reading a file that still uses one as if it simply held
+ * an unknown key is how a worker boots with no instructions and no complaint.
  */
 function parseWorkerMd(
   text: string,
@@ -253,6 +262,12 @@ function parseWorkerMd(
   if (typeof description !== "string" || description.trim().length === 0) {
     throw new Error(
       `${WORKER_MD} in "${workerName}/" must declare a non-empty \`description\``,
+    );
+  }
+
+  if (Object.hasOwn(declared, REFUSED_PERSONA_KEY)) {
+    throw new Error(
+      `${WORKER_MD} in "${workerName}/" ${REFUSED_PERSONA_KEY_MESSAGE}`,
     );
   }
 

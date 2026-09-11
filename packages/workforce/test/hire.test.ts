@@ -23,19 +23,19 @@ const work = handler({
   execute: (input) => input
 });
 
-/** The opinionated kind: it declares that it takes a persona. */
+/** The opinionated kind: it declares that it takes instructions. */
 const workerAgentFlow = defineFlow({
   kind: "worker-agent",
   cardinality: "collection",
   configSchema: z.object({
-    persona: z.string(),
+    instructions: z.string(),
     model: z.string().default("openai/gpt-5.4-mini"),
     tools: z.array(z.string()).default([])
   }),
   actions: { run: { inputSchema, block: work } }
 });
 
-/** The thin kind: it declares settings, and `persona` is not one of them. */
+/** The thin kind: it declares settings, and `instructions` is not one of them. */
 const intakeFlow = defineFlow({
   kind: "intake",
   cardinality: "collection",
@@ -50,10 +50,28 @@ const doorFlow = defineFlow({
   actions: { run: { inputSchema, block: work } }
 });
 
+/**
+ * A kind whose own settings schema still spells the setting the old way. This
+ * is the shape the factory's guard exists for, and the only one that would take
+ * the refused key in silence: a flow's config gate is closed, so an unknown key
+ * is refused by the flow itself — but a key the flow DOES declare is accepted,
+ * and a seat then boots configured the old way with nothing said.
+ */
+const staleDeskFlow = defineFlow({
+  kind: "stale-desk",
+  cardinality: "collection",
+  configSchema: z.object({
+    desk: z.string().default("front"),
+    persona: z.string().optional()
+  }),
+  actions: { run: { inputSchema, block: work } }
+});
+
 const kinds: HireOptions["kinds"] = {
   "worker-agent": workerAgentFlow,
   intake: intakeFlow,
-  door: doorFlow
+  door: doorFlow,
+  "stale-desk": staleDeskFlow
 };
 
 const LEAD_BODY = "You are the engineering lead. You break work into tasks and report back.";
@@ -120,22 +138,48 @@ describe("hireWorkforce", () => {
   });
 
   // 3
-  it("hands a record's body to its flow as `persona`, verbatim, beside its declared settings", () => {
+  it("hands a record's body to its flow as `instructions`, verbatim, beside its declared settings", () => {
     const seat = hireOne(lead);
     expect(seat.config).toEqual({
-      persona: LEAD_BODY,
+      instructions: LEAD_BODY,
       model: "openai/gpt-5.4-mini",
       tools: ["board", "search"]
     });
   });
 
   // 4
-  it("contributes no `persona` key for an empty or whitespace-only body, and still hires", () => {
+  it("contributes no `instructions` key for an empty or whitespace-only body, and still hires", () => {
     for (const body of ["", "   \n\t  \n"]) {
       const seat = hireOne(record({ id: "engineering.intake", declared: { flow: "intake" }, body }));
-      expect(Object.hasOwn(seat.config, "persona")).toBe(false);
+      expect(Object.hasOwn(seat.config, "instructions")).toBe(false);
       expect(seat.id).toBe("engineering.intake");
     }
+  });
+
+  // 4 (the whitespace corner the docs promise). Because the two-sources refusal
+  // sits INSIDE the non-empty-body guard, a record whose body is only
+  // whitespace is a record with no body at all — so a frontmatter
+  // `instructions:` beside it is the only source and hires on that value rather
+  // than being refused. Pinned because the page states it; without this the
+  // prose rests on a guard nothing asserts.
+  it("hires on the frontmatter value when the body is only whitespace, rather than refusing two sources", () => {
+    const seat = hireOne(
+      record({
+        id: "engineering.lead",
+        declared: { flow: "worker-agent", instructions: "From the frontmatter." },
+        body: "   \n\t  \n"
+      })
+    );
+    expect(seat.config).toMatchObject({ instructions: "From the frontmatter." });
+  });
+
+  // 4 (the other half of "verbatim"). The emptiness test is on the TRIMMED
+  // body; the value handed over is not trimmed. A body that has content keeps
+  // its own leading and trailing whitespace, which the page also states.
+  it("hands a non-empty body over untrimmed, whitespace included", () => {
+    const padded = `\n\n  ${LEAD_BODY}  \n\n`;
+    const seat = hireOne(record({ ...lead, body: padded }));
+    expect(seat.config).toMatchObject({ instructions: padded });
   });
 
   // 4 (continued) — a kind that declares no settings at all still hires a thin
@@ -146,10 +190,10 @@ describe("hireWorkforce", () => {
   });
 
   // 5
-  it("refuses a body handed to a flow kind that never declared a persona, naming both", () => {
+  it("refuses a body handed to a flow kind that never declared instructions, naming both", () => {
     const message = refusalOf([record({ ...intake, body: "You greet people." })]);
     expect(message).toContain('worker "engineering.intake"');
-    expect(message).toContain("persona");
+    expect(message).toContain("instructions");
   });
 
   // 6
@@ -206,7 +250,7 @@ describe("hireWorkforce", () => {
   it("lets the flow refuse a record that omits a required setting", () => {
     const message = refusalOf([record({ id: "engineering.lead", declared: { flow: "worker-agent" } })]);
     expect(message).toContain('worker "engineering.lead"');
-    expect(message).toContain("persona");
+    expect(message).toContain("instructions");
   });
 
   // 9
@@ -244,14 +288,67 @@ describe("hireWorkforce", () => {
   });
 
   // 13
-  it("refuses `persona` in frontmatter beside a body, naming both sources, applying no precedence", () => {
+  it("refuses `instructions` in frontmatter beside a body, naming both sources, applying no precedence", () => {
     const message = refusalOf([
-      record({ ...lead, declared: { ...lead.declared, persona: "from the frontmatter" } })
+      record({ ...lead, declared: { ...lead.declared, instructions: "from the frontmatter" } })
     ]);
     expect(message).toContain('worker "engineering.lead"');
     expect(message).toContain("frontmatter");
     expect(message).toContain("body");
     // No winner was picked: the hire refused rather than returning a seat.
+  });
+
+  // 14 — the refused key. `persona` is not a setting the factory imposes and
+  // not one it forwards: it is refused, by name, wherever a record still spells
+  // it that way.
+  it("refuses the refused `persona` key, naming it and the key that replaced it", () => {
+    const message = refusalOf([
+      record({
+        id: "engineering.lead",
+        declared: { description: "Holds the board.", flow: "worker-agent", persona: "the old spelling" }
+      })
+    ]);
+    expect(message).toContain('worker "engineering.lead"');
+    expect(message).toContain("persona");
+    expect(message).toContain("not a setting a worker declares");
+    expect(message).toContain("instructions");
+  });
+
+  // 14 (the silent-accept half, and the reason the guard exists at all).
+  //
+  // A flow's config gate is closed, so for most kinds a stray `persona` is
+  // refused by the flow itself — badly, as `"persona" is not a declared
+  // setting`, which reads as a typo rather than as a key the framework refuses. The
+  // guard's real work is the case below: an app whose own `configSchema` has
+  // not been renamed yet still DECLARES `persona`, so the flow accepts it. The
+  // seat hires, boots configured the old way, and carries no `instructions` —
+  // with nothing said anywhere. That is the failure this refusal exists to stop,
+  // so it is the one asserted here.
+  it("refuses the refused key where the flow's own schema would still have accepted it in silence", () => {
+    // The control, and the thing that makes this test mean something: with the
+    // key spelled anything else, this flow really does take it and hire.
+    const control = hireOne(
+      record({ id: "engineering.desk", declared: { flow: "stale-desk", desk: "mezzanine" } })
+    );
+    expect(control.config).toMatchObject({ desk: "mezzanine" });
+
+    const message = refusalOf([
+      record({ id: "engineering.desk", declared: { flow: "stale-desk", persona: "the old spelling" } })
+    ]);
+    expect(message).toContain('worker "engineering.desk"');
+    expect(message).toContain("not a setting a worker declares");
+    expect(message).toContain("instructions");
+  });
+
+  // 14 (the body half) — a record carrying BOTH the refused key and a body is
+  // refused for the persona key, not for having two sources. The refused key is
+  // the more specific fault and the one the author has to fix first.
+  it("refuses the refused key ahead of the two-sources rule when a record has both", () => {
+    const message = refusalOf([
+      record({ ...lead, declared: { ...lead.declared, persona: "the old spelling" } })
+    ]);
+    expect(message).toContain("not a setting a worker declares");
+    expect(message).not.toContain("two sources");
   });
 
   it("reads `description` for nothing, and keeps it out of the settings bag", () => {
