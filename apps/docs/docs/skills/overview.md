@@ -144,7 +144,8 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 `readSkillsDirectory` takes a root, so a skills folder can sit wherever you point it. In an app that
 describes its workers in folders (see [Workers on disk](/docs/orchestration/workers-on-disk)), one
 worker's skills are spread across three folders: the whole app's, its team's, and any sitting beside
-the worker itself.
+the worker itself. The same tree holds a team's shared documents, in
+[`resources/`](/docs/orchestration/documents-on-disk).
 
 ```
 workforce/org/skills/triage/SKILL.md

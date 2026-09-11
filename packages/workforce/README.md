@@ -357,14 +357,14 @@ const engineering = resourcesFromDocs(
 );
 ```
 
-**Settings the convention owns.** `description` is required; a file without one lands in `errors`.
-It reaches the resource with the rest of the frontmatter, and nothing puts it in front of a model,
-since the resource tools address a document by its uri. Write it for whoever opens the tree.
+**`description` is required.** A file without one lands in `errors`. It reaches the resource with
+the rest of the frontmatter, and nothing puts it in front of a model. Write it for whoever opens the
+tree.
 
-Where a document lives decides its identity, its storage and its content, so a file may not declare
-any of `scope`, `ref`, `stateSchema`, `default`, `content`, `contentFile`, `contentTemplate` or
-`contentTemplateRef`. Each is refused by name rather than quietly ignored, and so is
-`prefetchMode: "lazy"`: a file-declared document is always loaded eagerly. Everything else is
+**The convention owns identity, storage and content.** Where a document lives decides all three, so
+a file may not declare any of `scope`, `ref`, `stateSchema`, `default`, `content`, `contentFile`,
+`contentTemplate` or `contentTemplateRef`. Each is refused by name rather than quietly ignored, and
+so is `prefetchMode: "lazy"`: a file-declared document is always loaded eagerly. Everything else is
 carried through as written, so `llmReadable`, `llmWritable`, `writable`, `allowedExtensions` and
 `metadata` all reach the resource.
 
