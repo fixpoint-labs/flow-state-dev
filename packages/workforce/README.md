@@ -167,7 +167,7 @@ skills.map((s) => s.name).sort(); // ["port-scan", "review", "sweep", "triage"]
 ```
 
 Every skill folder at those three levels is read. Nothing has to be listed anywhere for a skill
-to be included, and a skill beside the worker is no exception.
+to be included.
 
 The set comes back level by level: the org's first, then the team's, then the worker's own. Each
 entry is `{ name, skillMd, files }`, the same record `readSkillsDirectory` returns — `name` is the
@@ -206,15 +206,16 @@ of the set entirely. A worker-level folder does not override its team's, and a t
 override the org's. The fix is a rename or a deletion.
 
 `path` is `paths[0]`, the level the name was first seen at, which is how every entry in `errors` is
-keyed. On a collision it is a key and not a ranking: no copy wins.
+keyed.
 
 A level that isn't in the tree is empty, not an error — an app may keep no org skills, and a
 worker may have none of its own. A level that exists and cannot be listed lands in `errors` under
 its own path, and so does a skill folder that fails to load, under `<level>/<folder>`.
 
-Every entry carries a `kind` alongside its `path` and `error`, naming which of the six conditions
-in the table below it is. Match on that rather than on the message text when you want to tolerate
-one class — a malformed skill folder, say — while still refusing another.
+Every entry carries a `kind` alongside its `path` and `error`, naming the condition it is; the
+conditions are listed under [Error Semantics](#error-semantics). Match on `kind` rather than on the
+message text when you want to tolerate one class (a malformed skill folder, say) and still refuse
+another.
 
 A `root` that cannot be read throws instead:
 `Failed to read workforce directory "./workforce": ENOENT ...`.
@@ -228,9 +229,10 @@ pull skills in from outside the configured root.
 digits and single hyphens, at most 64 characters, and not `_meta`. A name outside those rules
 throws.
 
-A `SKILL.md` read this way may not declare `scope:` — a file that does is refused by name into
-`errors` and left out of `skills`. The same file read directly by `readSkillsDirectory` still
-loads.
+A `SKILL.md` read this way may not declare `scope:`. A file that does lands in `errors` under
+`kind: "refused-scope-key"` and is left out of `skills`: where the folder sits is what decides which
+workers read it. `readSkillsDirectory` applies no such rule, so a folder you read both ways can load
+there and be missing from a seat's set. Drop the key and both readers agree.
 
 The reader registers nothing and starts nothing. Wiring the records into a running seat is the
 caller's job: pass `skills` as the `initialSkills` of the skills capability or library you build
@@ -290,11 +292,9 @@ A team's shared documents — a handbook, a glossary, an escalation procedure �
 instead of `defineResource` stanzas. Frontmatter is settings and the body is the document, the same
 bargain `WORKER.md` makes.
 
-**A resource is a file, not a folder.** Workers and channels are a folder with a fixed file in it;
-a document is `<name>.md` directly in the slot. A resource folder would have nothing to hold —
-anything you would put beside a document is another document, which is another entry in the same
-folder. A *directory* in a `resources/` slot is reported as an error rather than skipped, because
-that is the mistake to expect.
+**A resource is a file, not a folder.** A document is `<name>.md` directly in `resources/`, unlike
+a worker or a skill, which is a folder with a fixed file inside it. A directory in a `resources/`
+slot lands in `errors` rather than being passed over.
 
 Two levels are read:
 
@@ -318,16 +318,19 @@ Escalate anything customer-visible within 15 minutes.
 turns those records into the resource map you already pass to a flow.
 
 ```ts
-import { readResourcesDirectory } from "@flow-state-dev/workforce/loader";
+import { defineFlow } from "@flow-state-dev/core";
 import { resourcesFromDocs } from "@flow-state-dev/workforce";
+import { readResourcesDirectory } from "@flow-state-dev/workforce/loader";
+import { answerQuestion } from "./blocks";
+import { ticketResource } from "./resources";
 
 const { documents, errors } = await readResourcesDirectory("./workforce");
 if (errors.length) throw new Error(`resources: ${errors.length} document(s) failed to load`);
 
 export const supportFlow = defineFlow({
   kind: "support",
-  actions: { /* … */ },
-  resources: { ...appResources, ...resourcesFromDocs(documents) },
+  actions: { answer: { block: answerQuestion } },
+  resources: { ticket: ticketResource, ...resourcesFromDocs(documents) },
 });
 ```
 
@@ -336,13 +339,12 @@ Each record is plain data:
 | Field | Description |
 |-------|-------------|
 | `ref` | The document's identity and storage key — a bare name at the org level, `teams/<teamId>/<name>` for a team's. It is also the accessor key, so a team's handbook is `ctx.resources["teams/engineering/handbook"]`. |
-| `declared` | The frontmatter exactly as written, minus nothing — but see the refused settings below. |
+| `declared` | The frontmatter exactly as written. A file that declares one of the refused settings below produces no record at all, so nothing is stripped here. |
 | `body` | The Markdown below the frontmatter, verbatim. It becomes the resource's content. |
 
-**Merge the map yourself, at your own call site.** A flow instance's `resources` option *replaces*
-the definition's map rather than merging with it, so handing file-declared documents straight to a
-mint would silently drop whatever resources the flow kind declared. Spreading the map explicitly is
-the whole of the install: there is no registry to add to, because the flow's resource map is one.
+**Merge the map yourself.** A flow copy created with `supportFlow({ resources })` *replaces* the
+definition's map rather than merging with it, so passing `resourcesFromDocs(documents)` there on its
+own drops whatever resources the flow kind declared. Spread it into your own map, as above.
 
 **The team folder is a namespace, not a visibility boundary.** Every file-declared document is
 org-scoped, and a flow's resource tools reach every installed document marked `llmReadable` with no
@@ -355,13 +357,16 @@ const engineering = resourcesFromDocs(
 );
 ```
 
-**Settings the convention owns.** `description` is required. Where a document lives decides its
-identity, its storage and its content, so a file may not declare any of `scope`, `ref`,
-`stateSchema`, `default`, `content`, `contentFile`, `contentTemplate` or `contentTemplateRef` — each
-is refused by name rather than quietly ignored. `prefetchMode: "lazy"` is refused too: a
-file-declared document is installed at flow level, where there is no per-block trigger to load it
-on. Everything else is carried through verbatim, so `llmReadable`, `llmWritable`, `writable`,
-`allowedExtensions` and `metadata` work by being written.
+**Settings the convention owns.** `description` is required; a file without one lands in `errors`.
+It reaches the resource with the rest of the frontmatter, and nothing puts it in front of a model,
+since the resource tools address a document by its uri. Write it for whoever opens the tree.
+
+Where a document lives decides its identity, its storage and its content, so a file may not declare
+any of `scope`, `ref`, `stateSchema`, `default`, `content`, `contentFile`, `contentTemplate` or
+`contentTemplateRef`. Each is refused by name rather than quietly ignored, and so is
+`prefetchMode: "lazy"`: a file-declared document is always loaded eagerly. Everything else is
+carried through as written, so `llmReadable`, `llmWritable`, `writable`, `allowedExtensions` and
+`metadata` all reach the resource.
 
 A document that needs a state schema, a render function, reactive bindings or an edge graph stays in
 code — those are functions, and a Markdown file cannot hold one. Session- and user-scoped resources
@@ -369,11 +374,23 @@ are not file-declared.
 
 Document and team folder names follow the same rules as worker folders: lowercase letters, digits and
 single hyphens, at most 64 characters. A non-`.md` file in the slot is passed over in silence. An
-absent `org/` root or `resources/` folder is not an error — a team may have no documents. As with the
-worker reader, `readResourcesDirectory` throws only when `root` itself cannot be read; everything else
-lands in `errors` keyed by its path, each entry tagged with the condition it is (see **Error
-Semantics**). `resourcesFromDocs` throws instead of collecting, because a record that cannot become a
-resource is a startup misconfiguration.
+absent `org/` root or `resources/` folder is not an error — a team may have no documents.
+
+`readResourcesDirectory` throws only when `root` itself cannot be read. Everything else lands in
+`errors`, one entry per thing that should have produced a document and did not. Each entry is
+`{ kind, path, error }`, keyed by a path relative to the root, with `kind` naming the condition (see
+[Error Semantics](#error-semantics)):
+
+```ts
+errors;
+// [{ kind: "folder-where-file-belongs",
+//    path: "teams/marketing/resources/handbook",
+//    error: Error('"handbook" is a directory. A resource is a file, not a folder — write
+//                  the document as "handbook.md" in this resources/ folder instead.') }]
+```
+
+`resourcesFromDocs` throws instead of collecting, because a record that cannot become a resource is a
+startup misconfiguration.
 
 ## Exports
 
