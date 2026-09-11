@@ -1,10 +1,9 @@
-# FIX-1351 — W3: File-convention surface (rooms/channels/resources/skills) + thin pentest lab Proof
+# FIX-1351 — W3: File-convention surface (channels/resources/skills) + thin pentest lab Proof
 
-*Stood up after four sub-specs had already converged. Everything here is transcribed from the
-record — [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351) /
-[#1703](https://github.com/fixpoint-labs/flow-state-dev/issues/1703), its comments, and the four
-spec PRs. Where the record does not settle something, §5 says so and names who decides, rather
-than filling the gap with a plausible answer.*
+*Everything here is transcribed from the record — [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351) /
+[#1703](https://github.com/fixpoint-labs/flow-state-dev/issues/1703), its comments, the sub-spec
+PRs, and the owner's two rewrites of 2026-09-11 on this PR. Where the record does not settle
+something, §5 says so and names who decides, rather than filling the gap with a plausible answer.*
 
 ## 1. Purpose & objective *(the gated sign-off surface)*
 
@@ -27,26 +26,39 @@ The desired outcome that objective was agreed against, also quoted:
 >   `WorkerManifest` / framework runtime-import; seats stay `WORKER.md`; custom kinds = flow
 >   factories in a kinds map
 
+**Two things in that quote were superseded by the owner on 2026-09-11** ([rewrite](https://github.com/fixpoint-labs/flow-state-dev/pull/1718#issuecomment-5638262951)), and the
+quote is left as agreed rather than edited: the product noun is **channel**, not room, and the
+first bullet's "rooms" and "L2 channels" are **one** convention rather than two. Every later
+occurrence of "room" in this document is either inside a quotation or names a thing that predates
+the rename. §3 carries the floor as it now stands.
+
 **The problem it answers**, quoted from the same description: *"W2 landed the worker loader +
 seat factory spine. Apps still lack a file-convention surface for the rest of a Workforce —
 rooms, L2 channels (as sessions/boards), resources, and skills — and have no thin lab Proof that
 the conventions hold under real multi-seat pressure."*
 
-**Invent kill** (quoted): no Channel / MessageBoard L1; no TeamFlow L1; no framework
+**Invent kill**, as the owner restated it on 2026-09-11: no **`MessageBoard` L1 package type**
+(a Flow/Session peer); no **`Channel` L1 substrate type**; no TeamFlow L1; no framework
 runtime-import of seat `worker.ts` as a WorkerManifest path.
 
+**The board *concept* is not killed — only the package type is.** It ships as named L1
+composition, ahead of L2 channels (§3 item 0): *"composition over existing collection / `reactTo`
+/ `dispatcher`."* A slogan reading "no MessageBoard" without **L1 package type** is the old
+wording and is now wrong. The `Channel` L1 substrate kill is unchanged and unqualified.
+
 **Held / out** (quoted): MCP ([FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333)) is
-held and is not this epic's door; Collab RC is later — the rooms lock from
-[FIX-1341](https://linear.app/fixpoint-labs/issue/FIX-1341) feeds W3's rooms convention, not full
-Collab; W3 does **not** nest under [FIX-1332](https://linear.app/fixpoint-labs/issue/FIX-1332)
-(W2 — prior, not parent).
+held and is not this epic's door; Collab RC is later — the channels lock from
+[FIX-1341](https://linear.app/fixpoint-labs/issue/FIX-1341) feeds W3's channels convention, not
+full Collab; W3 does **not** nest under [FIX-1332](https://linear.app/fixpoint-labs/issue/FIX-1332)
+(W2 — prior, not parent). The 2026-09-11 cut re-states the held list and adds to it — §3, "Still
+held".
 
 **Holistic necessity — not re-derived here.** The record contains no holistic-necessity pass at
-epic altitude, and this document is not the place to invent one after four specs have converged
-against the floor as agreed. The one challenge to the set's composition that does exist —
-FIX-1353's fold — is carried in §3 as a pending stamp rather than applied. §5 carries the
-standing question that *is* a necessity question: every W3 convention is built before its only
-consumer. It is unanswered because nobody has answered it.
+epic altitude, and this document is not the place to invent one after the sub-specs converged
+against the floor as agreed. The one challenge to the set's composition that did exist —
+FIX-1353's fold — **has now been answered by the owner**, in a different shape than it was
+proposed (§3). §5 keeps the standing question that *is* a necessity question: every W3 convention
+is still built before its only consumer. It is unanswered because nobody has answered it.
 
 ## 2. Themes & long-horizon direction
 
@@ -81,7 +93,9 @@ not drift.
 
 **Folded verbatim** from the correction recorded on
 [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351#comment-ec11496a) on 2026-09-11, which
-is verified against source. It is reproduced unaltered rather than paraphrased.
+is verified against source. It is reproduced unaltered rather than paraphrased — **including its
+"rooms", which predates the same day's rename and means today's *channel*.** Renaming inside a
+verified quotation would cost more than the inconsistency does.
 
 ---
 
@@ -117,11 +131,11 @@ The check for the next convention: **find each field you derive, and name which 
 
 ---
 
-### Theme 3 — What is rooms-specific and must not be copied
+### Theme 3 — What is channels-specific and must not be copied
 
 From FIX-1352, stated here so the other conventions do not cargo-cult it: the refused `system:`
-key and the **either-source** rule behind it exist because rooms have two declaration sources and
-a later deletion guarantee. A convention with one source needs neither, and adding them for
+key and the **either-source** rule behind it exist because channels have two declaration sources
+and a later deletion guarantee. A convention with one source needs neither, and adding them for
 symmetry is cargo cult. FIX-1354 already declined both on exactly that basis.
 
 ### Theme 4 — No parameterised slot reader
@@ -135,8 +149,61 @@ slot-shaped and would otherwise be built to a generalisation that has already be
 
 ## 3. The epic floor
 
-**Quoted verbatim from FIX-1351's description.** This is the agreed floor. The two items below it
-are *not* applied.
+**Rewritten 2026-09-11 to the owner's cut**, posted here as two comments minutes apart — the
+[owner rewrite](https://github.com/fixpoint-labs/flow-state-dev/pull/1718#issuecomment-5638262951) and the [Cycle PM cut](https://github.com/fixpoint-labs/flow-state-dev/pull/1718#issuecomment-5638301871) that narrows it. Both are quoted below wherever
+they decide something. The floor FIX-1351's description originally agreed is preserved at the end
+of this section, because two of its six items no longer exist in that form.
+
+### The floor as it now stands
+
+| # | Item | Issue | Note |
+|---|---|---|---|
+| 0 | **Message board — the minimal notify door** | [FIX-1311](https://linear.app/fixpoint-labs/issue/FIX-1311) / [#1565](https://github.com/fixpoint-labs/flow-state-dev/issues/1565) | **First, and the only blocking item.** L1 *composition* on today's doors — a topic-scoped resource collection, subscribers in collection state, `reactTo` on a new row, a router over **declared** dispatchers. No `MessageBoard` L1 package type |
+| 1 | **Channels file convention** | [FIX-1352](https://linear.app/fixpoint-labs/issue/FIX-1352) | One L2 file type. Absorbs what were floor items 1 and 2 |
+| 2 | Resources file convention | [FIX-1354](https://linear.app/fixpoint-labs/issue/FIX-1354) | Unchanged |
+| 3 | Skills file convention | [FIX-1356](https://linear.app/fixpoint-labs/issue/FIX-1356) | Unchanged |
+| 4 | Thin pentest lab Proof | [FIX-1355](https://linear.app/fixpoint-labs/issue/FIX-1355) | Last. The first consumer of any of it |
+| 5 | Kinds-map fence — not `worker.ts` hire | [FIX-1342](https://linear.app/fixpoint-labs/issue/FIX-1342) | Unchanged |
+
+**Item 0 is the door, not the board.** The scope is quoted, because the difference is the whole
+point of the second comment:
+
+> W3 floor pre-req is the **minimal notify door** of FIX-1311 / #1565 (collection + subscriptions
+> + `reactTo` + declared dispatchers — #1627 shape), **not** the full board PRD.
+
+[#1627](https://github.com/fixpoint-labs/flow-state-dev/pull/1627) is the throwaway lab that ran
+exactly that path on today's doors and closed. It is what "the #1627 shape" names, and it is why
+this item is a sequencing call rather than a research one.
+
+**Phased behind the door — blocking nothing.** Brief, housekeeper, retirement and CAS: the rest
+of FIX-1311's board PRD. Quoted: *"do not block channel file conventions / resources / skills /
+lab."* They stay in the epic, after the door. **Only the door carries a blocking edge**, and it
+carries it to item 1. Treating the whole of FIX-1311 as the gate would hold three issues the cut
+exists to free — the single most expensive way to read this section wrong.
+
+**Still held — recorded, not scheduled.** Dynamic addresses; cross-flow; Collab RC /
+[FIX-1341](https://linear.app/fixpoint-labs/issue/FIX-1341); MCP
+([FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333)) until the lab.
+
+### Channel replaces room
+
+Quoted from the owner rewrite:
+
+> * Product word = **channel** (DM + group approachability).
+> * One L2 file type (prefer `CHANNEL.md`); fold the old "rooms" + "L2 channels" dual into **one**.
+> * "Room" is at most a channel *kind* / flavor later — not a parallel noun on the epic floor.
+
+This settles the fold that the previous revision of this section carried as *pending the owner's
+stamp*, **and it settles it in a different shape than that edit proposed.** The proposal was
+arithmetic — delete floor item 2, four conventions become three. The answer is a noun: **channel
+absorbs room**, one word and one file type, **and** FIX-1311's door joins the floor ahead of
+everything. W3 does finish as three file conventions plus the lab, but that count is now a
+consequence of the rename, not the decision itself.
+
+**`CHANNEL.md` is preferred, not fixed.** "Prefer" is the owner's word; FIX-1352 owns the
+filename. Everything else in this subsection is settled.
+
+### The floor as originally agreed — superseded, kept for reference
 
 > 1. Rooms file convention (system + dynamic; either-source — [FIX-1341](https://linear.app/fixpoint-labs/issue/FIX-1341) lock)
 > 2. L2 channels as sessions/boards
@@ -145,47 +212,37 @@ are *not* applied.
 > 5. Thin pentest lab Proof
 > 6. [FIX-1342](https://linear.app/fixpoint-labs/issue/FIX-1342) — kinds-map fence (not worker.ts hire)
 
-### Pending the owner's stamp — proposed, not applied
-
-**Neither edit has been made**, which is why the floor above still reads as it was agreed.
-
-**(a) The channels fold collapses floor items 1 and 2 into one.** FIX-1353's Decision 1 concludes
-that rooms and L2 channels are one thing named twice: the FIX-1341 rooms lock defines a room as
-what *"binds existing L1 sessions / boards / dispatch"*, and FIX-1353 defines a channel as what
-*"composes as sessions/boards over existing dispatch"* — one predicate, two spellings, and the
-atlas calls its four channel kinds **rooms**, the direct-message case included. FIX-1353
-therefore ships no `CHANNEL.md`, no reader, no `channels/` folder, and no production code. Its
-Decision 2 keeps the *composition* half on FIX-1311 and FIX-1341 — on a scope call, not a
-capability one: the same-flow group is marked *exists* on the atlas and the session-opening
-helper is buildable today. **Proposed floor edit** (FIX-1353 §8 step 2): item 2 is removed and
-item 1 becomes the rooms/channels convention, so **W3 becomes three file conventions plus the
-lab**, not four. *Awaiting the owner's stamp; not enacted.*
-
-**(b) FIX-1355's scope line needs revision.** FIX-1355 reads *"lab that exercises rooms / L2
-channels / resources / skills conventions + seats."* If (a) is stamped, the third item has no
-referent and the clause drops (FIX-1353 §8 step 3). *Awaiting the owner's stamp; not enacted.*
-
-**One gap the fold exposes that no stamp closes on its own:** the lab needs a static intake DM
-before Collab opens, and **no issue owns it** — FIX-1311 owns the group board, FIX-1341 the
-post-lab roster, and FIX-1353 searched and found nothing covering it. §5 carries it, and FIX-1353
-makes it an **exit condition**: that issue does not close while the pre-lab DM is unowned.
+Its items 1 and 2 are now the one channels convention; item 0 above is new.
 
 ## 4. Running index
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
+| FIX-1311 | **Message board — the minimal notify door**: collection + subscribers in state + `reactTo` + declared dispatchers | spec | — | — | Backlog — **first on the floor, and not started** |
 | FIX-1342 | Kinds-map fence — seats stay `WORKER.md`; custom kinds are flow factories | spec | [#1702](https://github.com/fixpoint-labs/flow-state-dev/pull/1702) *(closed at approval)* | [#1712](https://github.com/fixpoint-labs/flow-state-dev/pull/1712) *(draft)* | Spec Approved |
-| FIX-1352 | Rooms file convention (either-source; declaration-only) | spec | [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711) | — | In Spec Review |
-| FIX-1353 | L2 channels fold — no `CHANNEL.md`, zero production code | spec | [#1714](https://github.com/fixpoint-labs/flow-state-dev/pull/1714) | — | In Spec Review |
+| FIX-1352 | Channels file convention (either-source; declaration-only) | spec | [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711) | — | In Spec Review |
+| FIX-1353 | *L2 channels fold* — being **closed as a duplicate** of the channels convention | — | [#1714](https://github.com/fixpoint-labs/flow-state-dev/pull/1714) | — | Closing |
 | FIX-1354 | Resources file convention | spec | [#1715](https://github.com/fixpoint-labs/flow-state-dev/pull/1715) | — | In Spec Review |
 | FIX-1355 | Thin pentest lab Proof | spec | — | — | Backlog |
 | FIX-1356 | Skills file convention | spec | [#1716](https://github.com/fixpoint-labs/flow-state-dev/pull/1716) | — | In Spec Review |
 | FIX-1357 | Kinds + blocks boot scan (file-convention registration) | spec | — | — | Backlog |
-| FIX-1358 | Atlas: one convention for rooms/L2 channels (fold from FIX-1353) | *unset* | — | — | Backlog |
+| FIX-1358 | Atlas: channel replaces room (one convention + board pre-req) | *unset* | — | — | Backlog |
 
-*Every row carries the `Feature` label except FIX-1358, which is unlabelled — so its route is not
-set, and its blank Spec PR cell records an unanswered question rather than a `direct` route.
-Whoever labels it settles that.*
+Five things this table does not say on its own:
+
+- **FIX-1311 carries the `Feature` label**, so its route is `spec` and its spec is unwritten. The
+  critical-path item is the one with the least done to it.
+- **FIX-1352's Linear title already reads *Channels file convention*; #1711's PR title still reads
+  *Rooms*.** The rewrite is in flight as this is written, by another agent.
+- **FIX-1353 closes as a duplicate, but its one unowned item does not close with it.** The pre-lab
+  intake DM is rehomed onto FIX-1311 and is carried in §5. It is the only genuinely unowned thing
+  this epic found, and a reshuffle is exactly how such a thing disappears.
+- **FIX-1358 is unlabelled**, so its route is unset and its blank Spec PR cell records an
+  unanswered question rather than a `direct` route. Whoever labels it settles that.
+- **Linear nesting and `blockedBy` belong to the Linear Manager**, per the owner's own comment. As
+  of this writing Linear already nests all nine under FIX-1351 and records FIX-1311 `blocks`
+  FIX-1352 / FIX-1353 / FIX-1358 — at whole-issue granularity, where the cut above says only *the
+  door* blocks. Recorded here for the Linear Manager; not changed from this document.
 
 ## 5. Open cross-cutting questions
 
@@ -208,20 +265,26 @@ gate.
   validator refuses the dot-joined form) and which is a much larger issue. **Decides:** the owner.
   **Blocks:** nothing, but FIX-1356's spec approval turns on it.
 
-- **Nobody owns the pre-lab static intake DM the lab needs.** Raised by FIX-1353 §8 step 4, which
-  searched and found no covering issue. FIX-1311 owns the group board; FIX-1341 owns the post-lab
-  roster; neither covers a static intake DM, and the lab needs one before Collab opens. The
-  session route ships and only the helper is unwritten — the atlas's `openDm` is a proposal, not
-  an issue. **The choice is to file it under the epic or fold it into FIX-1355's scope.
-  Decides:** the owner. **Blocks:** FIX-1353 cannot close while it is unowned.
+- **The pre-lab static intake DM now has a home, and needs a side of the phase line.** Raised by
+  FIX-1353 §8 step 4, which searched and found no covering issue at all. With FIX-1353 closing as
+  a duplicate, the item is **rehomed onto FIX-1311** — it is the one genuinely unowned thing this
+  epic found, and it must not disappear in the reshuffle. What the rehoming does *not* settle is
+  which side of the 2026-09-11 cut it falls on: **the minimal notify door**, which is on the
+  critical path and blocks the channels convention, or the **phased-behind** half (brief,
+  housekeeper, retirement, CAS), which blocks nothing. The lab needs the DM before Collab opens,
+  so parking it behind the phase line quietly makes it the lab's problem instead. The session
+  route ships and only the helper is unwritten — the atlas's `openDm` is a proposal, not an issue.
+  **Decides:** the owner, with the Architect — it is a scoping call on their own cut. **Blocks:**
+  nothing today; FIX-1355 if it is still unplaced when the lab starts.
 
-- **Every W3 convention is built before its only consumer.** Raised by FIX-1353 §12; FIX-1352's
-  Decision 1 names the same thing for rooms in particular (*"rooms is also the least useful of the
-  four to ship alone"*). The lab (FIX-1355) is sequenced last and is the first thing that would
-  declare a room, resource, or skill in files. FIX-1353 notes this is the epic's ordering rather
-  than any one issue's problem, and that it is cheaper to change now that one convention has
-  dissolved. **Decides:** the owner — it is a sequencing call on the floor. **Blocks:** nothing
-  today.
+- **Every W3 convention is still built before its only consumer.** Raised by FIX-1353 §12;
+  FIX-1352's Decision 1 names the same thing for the channels convention in particular (*"rooms is
+  also the least useful of the four to ship alone"*). The lab (FIX-1355) is sequenced last and is
+  the first thing that would declare a channel, resource, or skill in files. **The 2026-09-11
+  floor rewrite does not answer this**, and is easy to misread as having done so: it puts the
+  message-board notify door first, which gives the channels convention a *mechanism* to bind, not
+  a *consumer* that declares one in a file. **Decides:** the owner — it is a sequencing call on
+  the floor. **Blocks:** nothing today.
 
 - **Collection-vs-N-singles row compatibility at the resources ref form is unclaimed.** Raised by
   FIX-1354 §12. The atlas's worked shape for team documents is
@@ -231,24 +294,26 @@ gate.
   explicitly unverified**. Whoever moves documents onto a collection settles it first; no issue
   owns that today. **Decides:** unassigned — it needs an owner. **Blocks:** nothing in W3.
 
-- **The four conventions will not be symmetrical, and the epic should say so once.** Raised by
-  FIX-1356. Rooms, channels and resources are new and share a shape; skills are older, external,
-  and do not — FIX-1352 already anticipated it (*"it is evidence the convention shape is real. It
+- **The three conventions will not be symmetrical, and the epic should say so once.** Raised by
+  FIX-1356, before the fold; it named four. Channels and resources are new and share a shape;
+  skills are older, external, and do not — FIX-1352 already anticipated it (*"it is evidence the convention shape is real. It
   is not shared code"*). Recording the intended end state is what stops the next reader filing it
   as drift. FIX-1354 adds a second asymmetry the same sentence has to cover: three conventions are
-  folder-per-thing, resources is file-per-thing. **Decides:** the epic's docs pass owes the
-  sentence; nobody has written it. **Blocks:** nothing.
+  folder-per-thing, resources is file-per-thing — with three conventions rather than four, that is
+  now two against one. **Decides:** the epic's docs pass owes the sentence; nobody has written it.
+  **Blocks:** nothing.
 
 - **The consumer reshape.** Raised by FIX-1353 §3 as the strongest alternative use of its own
-  slot: give the rooms convention its missing consumer — one helper that opens a session for a
-  declared room. Buildable on today's APIs, but it crosses the epic's Collab fence, which the
-  Architect has cleared twice. Raised rather than absorbed. **Decides:** the owner. **Blocks:**
-  nothing.
+  slot: give the channels convention its missing consumer — one helper that opens a session for a
+  declared channel. Buildable on today's APIs, and the 2026-09-11 cut moves it closer by putting
+  the notify door on the floor, but a session-opening helper is still on the Collab side of the
+  fence the Architect has cleared twice. Raised rather than absorbed. **Decides:** the owner.
+  **Blocks:** nothing.
 
-- **~~Rooms and L2 channels may be one convention.~~** *Resolved:* they are one. Raised by
-  FIX-1352 §12 commenting up, and again on this epic's issue on 2026-09-11; answered by FIX-1353's
-  Decision 1, with the Architect's answer posted on #1711. **Its two floor recordings are still
-  pending the owner's stamp** — §3(a) and §3(b).
+- **~~Rooms and L2 channels may be one convention.~~** *Closed 2026-09-11.* They are one, and the
+  one is called a **channel**. Raised by FIX-1352 §12 commenting up; answered by FIX-1353's
+  Decision 1; settled by the owner's rewrite on this PR, which chose the noun as well as the
+  count. Applied to the floor in §3 — no stamp is outstanding.
 
 ---
 
@@ -259,3 +324,11 @@ gate.
   The inherited shape rules got a canonical home (theme 1), the rule-4/7 correction was folded
   verbatim (theme 2), and the channels fold plus FIX-1355's scope line were recorded as pending
   the owner's stamp rather than applied.
+- **Floor rewritten to the owner's 2026-09-11 cut** — two comments on this PR, the second
+  narrowing the first. FIX-1311's **minimal notify door** joins the floor first and is the only
+  blocking item; the rest of its board PRD is phased behind it and blocks nothing. **Channel
+  replaces room** as the product noun, folding the old rooms/L2-channels dual into one file type.
+  The invent-kill slogan is corrected to no MessageBoard **L1 package type** — the concept ships
+  as named L1 composition — while the `Channel` L1 substrate kill stands unchanged. The pending
+  stamp in §3 is gone: it was answered in a different shape than it was written, so the section
+  was rewritten rather than ticked off.

@@ -1,6 +1,6 @@
 # FIX-1351 — explainer
 
-*Four pictures of one epic. The full case is in
+*Three pictures of one epic. The full case is in
 [`file-convention-surface.md`](file-convention-surface.md); the objective gate is on the PR.
 Nothing here asks you for anything.*
 
@@ -13,14 +13,16 @@ flowchart LR
   TREE["workforce/ tree"] --> W["workers/ · WORKER.md"]
   TREE --> SK["skills/ · SKILL.md, one level"]
   CODE["TypeScript code"] --> RES["resources"]
-  R["rooms"]
+  CH["a channel"]
+  CH -.-> BOARD["waking its subscribers"]
   classDef none stroke-dasharray:5 5
-  class R none
+  class CH,BOARD none
 ```
 
-W2 shipped the worker loader. Workers and skills are already file-declared. A document is
-declared in code, with `defineResource`. **A room has no declaration surface at all** — not
-code, not files. Nothing proves the pieces hold together under real multi-seat pressure.
+W2 shipped the worker loader. Workers and skills are already file-declared; a document is
+declared in code, with `defineResource`. **A channel has no declaration surface at all** — not
+code, not files — and nothing named wakes its subscribers. A throwaway lab ran that notify path
+on today's doors and closed; nothing shipped from it.
 
 ---
 
@@ -30,14 +32,16 @@ code, not files. Nothing proves the pieces hold together under real multi-seat p
 flowchart LR
   TREE["workforce/ tree"] --> W["workers/ · WORKER.md"]
   TREE --> SK["skills/ · levels, duplicates refused"]
-  TREE --> R["rooms/ · ROOM.md"]
+  TREE --> CH["channels/ · CHANNEL.md"]
   TREE --> RES["resources/ · handbook.md"]
+  CODE["TypeScript code"] --> RES
+  CH --> BOARD["board notify · L1 composition"]
 ```
 
-This is the objective under approval, and no sub-spec has been approved yet. Every piece of a team becomes describable in files, and that is the epic. Rooms go from
-nothing to a folder; documents gain a file convention beside `defineResource`, which stays and
-is what the new loader calls. Skills keep the convention they already had — ratified, not
-aligned — and gain levels plus a duplicate-name refusal.
+The objective under approval; no sub-spec is approved yet. Every piece of a team becomes
+describable in files. A channel goes from nothing to a folder and gains a board that wakes
+subscribers — built from the collection and `reactTo` that already exist, not a new package type.
+`defineResource` stays and is what the new loader calls.
 
 ---
 
@@ -45,44 +49,37 @@ aligned — and gain levels plus a duplicate-name refusal.
 
 ```mermaid
 flowchart TD
-  C["FIX-1353 channels"] -.->|"folds in · no code"| R["FIX-1352 rooms"]
-  C -.->|"filed"| ATL["FIX-1358 atlas reconcile"]
-  R -->|"walk primitives"| RES["FIX-1354 resources"]
-  R -->|"walk primitives"| SK["FIX-1356 skills"]
-  R --> LAB["FIX-1355 pentest lab Proof"]
+  DOOR["FIX-1311 door · collection, reactTo, declared dispatchers"]
+  REST["FIX-1311 rest · brief, housekeeper, retirement, CAS"]
+  CH["FIX-1352 channels convention"]
+  RES["FIX-1354 resources"]
+  SK["FIX-1356 skills"]
+  K["FIX-1342 kinds-map fence"]
+  BOOT["FIX-1357 boot scan"]
+  LAB["FIX-1355 pentest lab Proof"]
+  ATL["FIX-1358 atlas"]
+  DOOR -->|blocks| CH
+  DOOR -.->|"phased behind, blocks nothing"| REST
+  CH -->|walk primitives| RES
+  CH -->|walk primitives| SK
+  CH --> LAB
   RES --> LAB
   SK --> LAB
-  K["FIX-1342 kinds-map fence"] --> LAB
-  BOOT["FIX-1357 boot scan"] --> LAB
+  K --> LAB
+  BOOT --> LAB
+  CH --> ATL
   classDef inflight fill:#9a6700,color:#fff
   classDef todo stroke-dasharray:5 5
-  class R,RES,SK,K,C inflight
-  class LAB,ATL,BOOT todo
+  class CH,RES,SK,K inflight
+  class DOOR,REST,LAB,ATL,BOOT todo
 ```
 
-As of the objective gate. Amber is in flight, dashed is not started, nothing has shipped;
-the epic doc's index is the live copy. **The lab is the only consumer, and everything points
-at it** — every convention is built before the thing that would prove it, and the lab is
-sequenced last. §5 carries that as the epic's standing question.
+As of the objective gate. Amber is in flight, dashed is not started, nothing has shipped; the
+epic doc's index is the live copy. Two things to read off it. **The one item that blocks anything
+is the one nobody has started** — the notify door, sequenced first while three of its dependents
+sit in spec review. And **the lab is still the only consumer**, last in line, with every
+convention pointing at it. §5 carries both.
 
 ---
 
-## 4. The rule every convention obeys
-
-```mermaid
-flowchart TD
-  F["a field the convention derives"] --> Q{"can a declared key reach it?"}
-  Q -->|"no · sibling slot"| M1["shape · structurally unreachable"]
-  Q -->|"yes, but derived last"| M2["ordering · the framework value wins"]
-  Q -->|"yes, and neither applies"| M3["explicit refusal, by name"]
-```
-
-**A key the convention consumes is stripped. A key it derives is refused.** Reach for the
-three mechanisms in that order, and for each derived field name which one protects it.
-
-This replaces two inherited rules that misdescribed the shipped `WORKER.md` precedent.
-FIX-1354 hit the consequence live: a passthrough merged into the same object as the derived
-fields let a file redirect its own storage row.
-
-*Panel 4 usually walks one request through the new mechanism. Nothing has merged yet, so it
-carries the epic's cross-cutting rule instead — the mechanism every convention shares.*
+_Panel 4 lands once the first implementation merges._
