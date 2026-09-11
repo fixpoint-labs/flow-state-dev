@@ -174,8 +174,20 @@ async function readWorkerSlot(
     throw unreadable(WORKER_MD, `${workerName}/${WORKER_MD}`, md.error);
   }
 
+  // The slot is empty of the one filename this loader knows. Whatever else is
+  // in the folder, the author has a route, and this message is the only place
+  // they are standing when they find out — so it names the route rather than
+  // just the wall. Deliberately the same sentence for every such slot: the
+  // loader does not look at what else the folder holds, because recognizing a
+  // second filename in order to say something kinder about it is how that
+  // filename becomes a thing the framework means to run.
   if (md.kind !== "file") {
-    throw new Error(`Worker folder "${workerName}" has no ${WORKER_MD}`);
+    throw new Error(
+      `Worker folder "${workerName}" has no ${WORKER_MD}. A worker folder describes a ` +
+        `seat, and every seat is a ${WORKER_MD}. A worker whose behavior differs is a ` +
+        `different flow kind: define the flow in your app, pass it to hireWorkforce in ` +
+        `\`kinds\`, and name it in this worker's \`flow:\`.`,
+    );
   }
 
   const text = await fs.readFile(path.join(workerDir, WORKER_MD), "utf8");
