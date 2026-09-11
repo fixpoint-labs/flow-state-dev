@@ -12,30 +12,31 @@ A **worker** is a generator or flow. The **agent kind** is the opinionated defau
 ```mermaid
 flowchart LR
   W["WORKER.md<br/>instructions"] --> H[hire]
+  H -->|"no flow: · refused"| X["no seat"]
   H -->|"flow: names a kind"| K["kinds map"]
   K --> S["seat · flow instance"]
   O["an agent flow you write yourself"] --> K
   L["defineAgent · materializeAgent<br/>AgentRegistry"] -.->|"the other route, being deleted"| S
 ```
 
-Hire already resolves a seat's `flow:` against the kinds map — but every kind is the app's own. A
-working agent means hand-writing the flow, or leaning on a second factory cluster we have already
-decided to delete.
+Hire resolves a seat's `flow:` against the kinds map and refuses a record without one — and every
+kind is the app's own. A working agent means hand-writing the flow, or the second factory cluster
+we have already decided to delete.
 
 ## 2. After (proposed)
 
 ```mermaid
 flowchart LR
   W["WORKER.md<br/>instructions"] --> H[hire]
-  H -->|"flow: names a kind"| K["kinds map"]
+  H -->|"no flow: · the built-in kind"| K["kinds map"]
   K --> S["seat · flow instance<br/>talks · remembers · uses its skills"]
-  G["built-in agent kind<br/>default prompt · model · tools · memory"] --> K
+  G["built-in agent kind<br/>default prompt · model · tools · memory"] -->|"present without the app naming it"| K
   C["flow: myCustomAgent"] -.->|"replaces it in one line"| K
 ```
 
-The kinds map ships with an agent kind. Instructions alone yield a seat that talks, remembers on
-the scopes we already have, and uses the skills registered to it. Naming your own kind still wins.
-This is the shape being gated, not built code.
+A `WORKER.md` with no `flow:` line hires into the built-in kind — zero config lines, the epic's
+headline promise. Naming your own kind still wins; a typo'd name fails loudly rather than hiring
+silently. The shape being gated, not built code.
 
 ## 3. The set (proposed)
 
@@ -47,14 +48,14 @@ flowchart TD
   M["FIX-1364<br/>memory on existing scopes"] -->|"what it remembers, and the gaps"| S
   R["FIX-1360<br/>kitchen-sink drift audit"] -->|"the baseline to port from"| S
   T["FIX-1366<br/>Atlas teach"] -->|"the one documented way in"| S
-  P["FIX-1365<br/>Thin Proof · optional"] -->|"proof a real hire works"| S
+  P["FIX-1365<br/>Thin Proof · required"] -->|"proof a real hire works"| S
   classDef notstarted stroke-dasharray: 4 3
   class N,B,SK,M,R,T,P notstarted
 ```
 
-The four on top are the substance — drop any and the seat is missing something a real app needs on
-day one. All seven are not started as of the FIX-1359 objective gate; the spec's §4 index is the
-live status.
+The four on top are the substance; drop any and the seat is incomplete. FIX-1365 is the epic's
+Goal 1 check — the epic cannot finish without it. All seven not started at the FIX-1359 objective
+gate; §4 carries live status.
 
 ## 4. The path (proposed)
 
@@ -65,14 +66,15 @@ flowchart LR
   B --> SK["FIX-1362<br/>skills"]
   B --> M["FIX-1364<br/>memory"]
   B --> T["FIX-1366<br/>Atlas teach"]
-  SK --> P["FIX-1365<br/>Thin Proof · optional"]
+  SK --> P["FIX-1365<br/>Thin Proof · required"]
   M --> P
   D1["W2 · FIX-1344<br/>default worker system prompt<br/>not shipped"] -.-> B
   D2["W3 · FIX-1356<br/>skills file convention<br/>in review"] -.-> SK
 ```
 
-A chain, not a fan-out: only FIX-1360 and FIX-1361 can start today, and the only real parallelism
-is FIX-1362 beside FIX-1364. The dashed nodes are inputs from adjacent epics, not children.
+A chain, not a fan-out: only FIX-1360 and FIX-1361 can start today; the only real parallelism is
+FIX-1362 beside FIX-1364. Required does not move FIX-1365 earlier. Dashed nodes are inputs from
+adjacent epics, not children.
 
 From that same W2 issue, the `instructions` key in panels 1–2 is already merged; its deletion of
 the `defineAgent` cluster is still an open draft, which is why panel 1 shows that route still live.
