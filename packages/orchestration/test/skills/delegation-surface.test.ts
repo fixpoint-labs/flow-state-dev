@@ -18,7 +18,7 @@ import type { GeneratorTool, InitialSkill } from "@flow-state-dev/core";
 import { runForTest, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
-import { collectAgentSources } from "../../src/skills/delegation-surface";
+import { agentPurpose, collectAgentSources } from "../../src/skills/delegation-surface";
 import {
   DELEGATION_BOARD_FIELD,
   taskTools as taskToolsSingleton,
@@ -450,6 +450,48 @@ describe("delegation surface — active ∪ runtime activation input", () => {
       dynamicEligible: false,
     } as never);
     expect(sources).toHaveLength(0);
+  });
+
+  it("hydrates a live collection prompt-ref onto an imported skill's roster", async () => {
+    // A skill imported after seeding has no bundled files. Roster purpose
+    // still has to read the live prompt file — otherwise the coordinator
+    // sees "a delegation agent" while the worker has the real description.
+    const collection = createMockSkillsCollection();
+    collection._store.set("skills/imported/SKILL.md", {
+      name: "skills/imported/SKILL.md",
+      state: {
+        description: "imported",
+        agents: { analyzer: { promptRef: "./reference/analyze.md" } },
+      },
+      content: null,
+    });
+    collection._store.set("skills/imported/reference/analyze.md", {
+      name: "skills/imported/reference/analyze.md",
+      state: {},
+      content: [
+        "---",
+        "description: Analyzes one competitor.",
+        "tools: [search]",
+        "---",
+        "",
+        "You analyze one competitor at length.",
+      ].join("\n"),
+    });
+    const { ctx } = buildDelegationCtx({ collection });
+    (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
+      { name: "imported", mode: "inline", activatedAt: 1 },
+    ];
+    const sources = await collectAgentSources(ctx, {
+      catalog: {},
+      collectionKey: "skills",
+      location: { kind: "explicit", scope: "session", field: "activeSkills" },
+      staticSources: [],
+      bundledAgentIndex: new Map(),
+      dynamicEligible: true,
+    } as never);
+    expect(sources).toHaveLength(1);
+    const spec = sources[0]!.agents["analyzer"]!;
+    expect(agentPurpose(spec, sources[0]!.files)).toBe("Analyzes one competitor.");
   });
 });
 

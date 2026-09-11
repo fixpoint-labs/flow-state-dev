@@ -62,7 +62,7 @@ import {
 import type { TaskCollectionRef } from "../tasks";
 import { taskBoard } from "../task-board";
 import { readActivations, type ActivationLocation } from "./activation-store";
-import { skillManifestKey } from "./collection";
+import { skillFileKey, skillManifestKey } from "./collection";
 import { applyAgentPromptFile, clipRosterLine } from "./internal/agent-prompt-file";
 import { findBundledFile } from "./internal/bundled-files";
 import { isValidAgentKey } from "./skill-md";
@@ -290,9 +290,14 @@ export async function collectAgentSources(
     if (!collection) continue;
     const agents = liveState?.agents;
     if (agents && Object.keys(agents).length > 0) {
+      // Prompt-ref files live in the collection, not the bundled index.
+      // Attach them so roster purpose and collide see the same hydrated
+      // identity materializeWorker will run.
+      const files = await loadLivePromptFiles(collection, entry.name, agents);
       sources.push({
         skillName: entry.name,
         agents,
+        ...(files.length > 0 ? { files } : {}),
         // The live manifest is the authority for a non-bundled skill's seats
         // too — an admin who edits `allowed-tools` after seeding changes what
         // this board can be assigned, same as it changes the rendered note.
@@ -315,6 +320,29 @@ export async function collectAgentSources(
  * build-time skill never depends on collection seeding order. Falls through
  * unchanged (materializeWorker reads the live collection) when not bundled.
  */
+/**
+ * Load `prompt-ref` Markdown from the live collection for an imported skill.
+ * Missing files are skipped — `materializeWorker` still fails loud at drain.
+ */
+async function loadLivePromptFiles(
+  collection: ResourceCollectionRef,
+  skillName: string,
+  agents: Record<string, AgentSpec>,
+): Promise<SkillFile[]> {
+  const files: SkillFile[] = [];
+  const seen = new Set<string>();
+  for (const spec of Object.values(agents)) {
+    if (spec.promptRef === undefined) continue;
+    const path = spec.promptRef.replace(/^\.\//, "").replace(/^\//, "");
+    if (seen.has(path)) continue;
+    seen.add(path);
+    const ref = await collection.getOptional(skillFileKey(skillName, spec.promptRef));
+    if (!ref) continue;
+    files.push({ path, content: (await ref.readContent()) ?? "" });
+  }
+  return files;
+}
+
 function withBundledPrompt(
   spec: AgentSpec,
   files: SkillFile[] | undefined,
