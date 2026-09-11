@@ -123,17 +123,17 @@ FIX-1365 being required does not widen it: a thin hire of the OOTB agent kind, n
 6. **The two soft deps live in other epics, and one of them is only half shipped.** Neither is a
    parent. This is the sequencing fact most likely to be read wrong, so it is stated in parts:
 
-   | Dep | Epic | State (verified 2026-09-11) | What this epic needs from it |
-   |---|---|---|---|
-   | **FIX-1344** part 1 — `instructions` key | W2 / FIX-1332 | **Merged** (PR #1701). `INSTRUCTIONS_KEY` live at `packages/workforce/src/manifest.ts:38`, handled in `hire.ts` | Nothing further — the body key is settled |
-   | **FIX-1344** part 2 — configurable default worker system prompt | W2 / FIX-1332 | **Not shipped.** No default-prompt config exists in `packages/workforce/src` | The `default` half of theme 2. **FIX-1363 consumes it and does not define one** — `instructions` alone plus an explicit seam if part 2 has not landed |
-   | **FIX-1344** part 3 — invent-kill of the `defineAgent` cluster | W2 / FIX-1332 | **Not merged.** PR #1713 (`fix/remove-define-agent-cluster`) is an open draft; all three symbols still live | Nothing — theme 3 says no child waits on it |
-   | **FIX-1356** — skills file convention | W3 / FIX-1351 | **In Review.** Impl PR #1728 open | The load rules FIX-1362's per-seat register consumes |
+| Dep | Epic | State (verified 2026-09-11) | What this epic needs from it |
+|---|---|---|---|
+| **FIX-1344** part 1 — `instructions` key | W2 / FIX-1332 | **Merged** (PR #1701). `INSTRUCTIONS_KEY` live at `packages/workforce/src/manifest.ts:38`, handled in `hire.ts` | Nothing further — the body key is settled |
+| **FIX-1344** part 2 — configurable default worker system prompt | W2 / FIX-1332 | **Not shipped.** No default-prompt config exists in `packages/workforce/src` | The `default` half of theme 2. **FIX-1363 consumes it and does not define one** — `instructions` alone plus an explicit seam if part 2 has not landed |
+| **FIX-1344** part 3 — invent-kill of the `defineAgent` cluster | W2 / FIX-1332 | **Not merged.** PR #1713 (`fix/remove-define-agent-cluster`) is an open draft; all three symbols still live | Nothing — theme 3 says no child waits on it |
+| **FIX-1356** — skills file convention | W3 / FIX-1351 | **In Review.** Impl PR #1728 open | The load rules FIX-1362's per-seat register consumes |
 
-   **FIX-1344 is not "done".** Its Linear state is `In Development` and only part 1 has landed.
-   Sequencing FIX-1363 as if the default prompt already exists is the specific mistake this row
-   exists to prevent — and theme 2 is why that mistake no longer costs anything: the kind is
-   built against `instructions` with a seam, whenever part 2 arrives.
+**FIX-1344 is not "done".** Its Linear state is `In Development` and only part 1 has landed.
+Sequencing FIX-1363 as if the default prompt already exists is the specific mistake this row
+exists to prevent — and theme 2 is why that mistake no longer costs anything: the kind is
+built against `instructions` with a seam, whenever part 2 arrives.
 
 7. **Skills isolate at per-seat registration, not at the skill name.** The earlier
    "globally unique skill names across teams" direction on FIX-1356 is **withdrawn**. A seat's
@@ -277,3 +277,15 @@ re-parented here — Linear allows one parent, and they already have theirs.
   answer. §1, theme 5, §4 and §5 were all re-derived — theme 5 had been the surface still reading
   "Until one is chosen, §1's headline path does not exist", which is exactly the sentence a child
   worker would have built against. §5 now carries no open questions.
+
+- **Objective gate passed; index unchanged (2026-09-11)** — the epic is signed off on both
+  channels (`epic approved` label plus an approving comment on PR #1730), so the set's issues are
+  released to ramp. The review feedback outstanding after round 2 was an Architect fold-check
+  carrying no ask and the approval itself, so **zero rounds** were spent and nothing above the bar
+  was found. The running index is unchanged and verified against Linear: all seven children sit in
+  Backlog with no spec or impl PR yet, and none carries a category label. One real defect was
+  fixed — theme 6's dependency table was indented inside its list item, which Linear's markdown
+  round-trip mangled by dropping the first three characters of every cell, so the Linear mirror
+  read `| / FIX-1332 | erged** (PR #1701)`. That is the one table whose job is to stop FIX-1344
+  being read as done, and Linear is the copy child issues read. Dedented at source; both copies now
+  carry it intact.
