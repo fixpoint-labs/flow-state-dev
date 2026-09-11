@@ -87,6 +87,13 @@ lab lands, or that is the signal it was built too early. Channels is now the clo
 it and resources is furthest from it. The sequencing call itself is the owner's and stays open
 in §5.
 
+**The first merge sharpens that rule rather than discharging it.**
+[#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728) landed the skills register on
+`main` **with no caller in the tree** — stated in the spec, approved, and repeated on the PR as
+deliberate. So the first convention to ship has shipped *un-consumed*, and item 4 is the only
+thing standing between it and this check's own tripwire. That is an argument for item 4 landing
+before the lab, not an argument against the set.
+
 **FIX-1358 is no longer the weakest member.** It was, while it documented a rename. The recut
 makes it the atlas teach for a **new kind floor**, and the lock names Atlas obligations among
 what this recut folds — a larger and more load-bearing job than a vocabulary sweep. It stays off
@@ -212,10 +219,19 @@ of its six items no longer exist in that form.
 | 0 | **Default ChannelFlow — the channel kind floor** | [FIX-1311](https://linear.app/fixpoint-labs/issue/FIX-1311) / [#1565](https://github.com/fixpoint-labs/flow-state-dev/issues/1565) | **First, and the only blocking item.** Ship the default batteries-included **ChannelFlow** as a replaceable **L2 flow kind** — subscribe, post (a dispatch into the channel session, background, durable log), fan-out policy, and **clean transcript projection from day one**. The conversation door only. The minimal notify door becomes the internal / teaching path underneath it, not the public API. No `MessageBoard` / `Channel` L1 package type |
 | 1 | **Channels file convention** | [FIX-1352](https://linear.app/fixpoint-labs/issue/FIX-1352) | One L2 file type. Absorbs what were floor items 1 and 2. **Declares ChannelFlow instances** — a `CHANNEL.md` may set `flow:` exactly as `WORKER.md` does — not board bindings |
 | 2 | Resources file convention | [FIX-1354](https://linear.app/fixpoint-labs/issue/FIX-1354) | Unchanged |
-| 3 | Skills file convention | [FIX-1356](https://linear.app/fixpoint-labs/issue/FIX-1356) | Unchanged |
-| 4 | **Thin `WorkerConfig` admission** | [FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367) | **Added 2026-09-11.** Hire invokes the flow with the right config: the `skills` bag from item 3's register, plus an always-present extension placeholder for kind-owned schema. Soft-blocked on that register; blocks nothing |
+| 3 | Skills file convention | [FIX-1356](https://linear.app/fixpoint-labs/issue/FIX-1356) | Unchanged by the recut. **Shipped** — [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728) merged 2026-09-11 22:46Z; the read-side seat register is on `main`. The first floor item to land |
+| 4 | **Thin `WorkerConfig` admission** | [FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367) | **Added 2026-09-11.** Hire invokes the flow with the right config: the `skills` bag from item 3's register, plus an always-present extension placeholder for kind-owned schema. **Soft-block cleared** — that register merged with item 3. Ready, not started; blocks nothing, and held only by the objective gate |
 | 5 | Thin pentest lab Proof | [FIX-1355](https://linear.app/fixpoint-labs/issue/FIX-1355) | Last. The first consumer that **declares** a channel, resource or skill in files — item 4 consumes the skills register earlier, by reading records |
-| 6 | Kinds-map fence — not `worker.ts` hire | [FIX-1342](https://linear.app/fixpoint-labs/issue/FIX-1342) | Unchanged |
+| 6 | Kinds-map fence — not `worker.ts` hire | [FIX-1342](https://linear.app/fixpoint-labs/issue/FIX-1342) | Unchanged by the recut. **Shipped** — [#1712](https://github.com/fixpoint-labs/flow-state-dev/pull/1712) merged 2026-09-11 22:47Z, 33 seconds after item 3 |
+
+**Two floor items have shipped, and neither is the one that unblocks anything.** Item 3
+([#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728)) and item 6
+([#1712](https://github.com/fixpoint-labs/flow-state-dev/pull/1712)) merged within 33 seconds of
+each other on 2026-09-11. The floor's one blocking edge — item 0 → item 1 — is untouched:
+FIX-1311 is still not started, and it is still the item with the least done to it. What the
+merges do change is **item 4's soft-block, which is now clear**. The objective gate is
+**unstamped**, so item 4 is ready and *holding*; two items landing does not open it and nothing
+ramps on them.
 
 **In the epic, off the floor:** [FIX-1357](https://linear.app/fixpoint-labs/issue/FIX-1357) (kinds
 + blocks boot scan) and [FIX-1358](https://linear.app/fixpoint-labs/issue/FIX-1358) (atlas
@@ -347,15 +363,15 @@ same evening — from a board composition to the default ChannelFlow kind.
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | FIX-1311 | **Default ChannelFlow / channel kind floor**: subscribe, post by dispatch, fan-out policy, clean transcript projection | spec | — | — | Backlog — **first on the floor, and not started** |
-| FIX-1342 | Kinds-map fence — seats stay `WORKER.md`; custom kinds are flow factories | spec | [#1702](https://github.com/fixpoint-labs/flow-state-dev/pull/1702) *(closed at approval)* | [#1712](https://github.com/fixpoint-labs/flow-state-dev/pull/1712) *(draft)* | In Review |
+| FIX-1342 | Kinds-map fence — seats stay `WORKER.md`; custom kinds are flow factories | spec | [#1702](https://github.com/fixpoint-labs/flow-state-dev/pull/1702) *(closed at approval)* | [#1712](https://github.com/fixpoint-labs/flow-state-dev/pull/1712) *(**merged** 22:47Z)* | Done |
 | FIX-1352 | Declare ChannelFlow instances (either-source; declaration-only) | spec | [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711) | — | In Spec Review |
 | FIX-1353 | *L2 channels fold* — **closed as a duplicate** of the channels convention | — | [#1714](https://github.com/fixpoint-labs/flow-state-dev/pull/1714) | — | Duplicate |
 | FIX-1354 | Resources file convention | spec | [#1715](https://github.com/fixpoint-labs/flow-state-dev/pull/1715) | — | In Spec Review |
 | FIX-1355 | Thin pentest lab Proof | spec | — | — | Backlog |
-| FIX-1356 | Skills file convention | spec | [#1716](https://github.com/fixpoint-labs/flow-state-dev/pull/1716) *(closed at approval)* | [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728) *(draft)* | In Review |
+| FIX-1356 | Skills file convention | spec | [#1716](https://github.com/fixpoint-labs/flow-state-dev/pull/1716) *(closed at approval)* | [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728) *(**merged** 22:46Z)* | Done |
 | FIX-1357 | Kinds + blocks boot scan (file-convention registration) | spec | — | — | Backlog |
 | FIX-1358 | Atlas: ChannelFlow teach (kind floor + declaration) | *unset* | — | — | Backlog |
-| FIX-1367 | Thin `WorkerConfig` admission — hire fills `skills` from FIX-1356's seat register; extension placeholder for kind-owned schema | spec | — | — | Todo — soft-blocked on FIX-1356's register ([#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728)) |
+| FIX-1367 | Thin `WorkerConfig` admission — hire fills `skills` from FIX-1356's seat register; extension placeholder for kind-owned schema | spec | — | — | Todo — **soft-block cleared** by [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728)'s merge. Ready and holding on the objective gate, not started |
 
 Six things this table does not say on its own:
 
@@ -374,9 +390,11 @@ Six things this table does not say on its own:
   part of the required seven. FIX-1358 is also unlabelled, so its route is unset and its blank
   Spec PR cell records an unanswered question rather than a `direct` route; whoever labels it
   settles that.
-- **FIX-1367's dependency is on the register's *read* side**, which is what #1728 ships.
-  Registration — wiring those skills onto a live seat — is an explicit non-goal there and is what
-  item 4 exists to do: a merged #1728 does not make the bag reach a kind.
+- **FIX-1367's dependency was on the register's *read* side, and #1728 has now merged it.** That
+  clears the soft-block and nothing more. Registration — wiring those skills onto a live seat —
+  was an explicit non-goal of #1728 and is what item 4 exists to do: **the merged #1728 does not
+  make the bag reach a kind.** Reading the merge as "skills are wired" is the most expensive way
+  to misread this row. FIX-1367 is ready; the ungated objective is what holds it.
 - **Linear nesting and `blockedBy` belong to the Linear Manager**, per the owner's own comment.
   Nesting is done: all ten are parented under FIX-1351 (verified 2026-09-11). **The blocking edge
   is not in Linear at all** — FIX-1311's links to FIX-1352, FIX-1353 and FIX-1358 are every one of
@@ -431,9 +449,11 @@ gate.
   `CHANNEL.md` something real to be an instance *of*, which is a dependency — it is still not a
   consumer that reads a declaration and opens what it names. **Item 4 narrows the skills half** —
   FIX-1367's non-agent Proof consumes the skills register through hire, so skills gains a caller
-  ahead of the lab, though it reads records rather than declaring a skill in a file. **Resources
-  gains nothing from either**, which makes it the convention most exposed to the tripwire.
-  **Blocks:** nothing today.
+  ahead of the lab, though it reads records rather than declaring a skill in a file. **That
+  narrowing is now owed rather than banked:** #1728 merged the register on 2026-09-11 with no
+  caller in the tree by design, so skills is the first convention actually sitting on `main`
+  un-consumed, and item 4 is what would end that. **Resources gains nothing from either**, which
+  still makes it the convention most exposed to the tripwire. **Blocks:** nothing today.
 
 - **Collection-vs-N-singles row compatibility at the resources ref form is unclaimed.** Raised by
   FIX-1354 §12. The atlas's worked shape for team documents is one parameterised collection —
@@ -524,3 +544,17 @@ gate.
   reads the two stamps together in a table instead of quoting either alone. The four old
   phased items land on the exclusion side; **CAS's later home is the one thing neither stamp
   settles, and §5 carries it as an open question rather than placing it.**
+- **The first two implementations merged, 33 seconds apart (2026-09-11 22:46:31Z and
+  22:47:04Z)** — floor item 3, the skills convention
+  ([#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728), FIX-1356), and floor item
+  6, the kinds-map fence ([#1712](https://github.com/fixpoint-labs/flow-state-dev/pull/1712),
+  FIX-1342). Both issues moved to **Done** in Linear; both had their spec PR closed at approval
+  and no other open PR. **Neither is on the floor's blocking edge**, which is item 0 → item 1 and
+  is untouched: FIX-1311 is still unstarted and still the critical-path item with the least done
+  to it. The one sequencing change is that **item 4's soft-block is cleared** — the seat register
+  it waited on is on `main` — which makes FIX-1367 ready, not started: **the objective gate is
+  still unstamped, so nothing ramps on these merges.** §1's necessity check gains the sharper
+  version of its own tripwire (the first convention shipped un-consumed, by design), and §4's
+  FIX-1367 note now reads the merge as clearing a dependency rather than as wiring skills to
+  seats. The explainer's fourth panel — *the path* — lands with this entry, which is the trigger
+  it was waiting on.
