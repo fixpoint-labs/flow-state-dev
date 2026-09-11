@@ -22,23 +22,36 @@ reflected. You are given handles, not text: fetch what you need yourself.
 The coordinator holds a status table and cannot draw anything from it. Reading the sources
 is the job.
 
-## Get onto the epic branch, worktree-safe
+## Your handles, by altitude
 
-Your worktree is spun off the coordinator's checkout, not a clean default-branch one — see
+**Read these off the altitude you were given and use them everywhere below.** Every path,
+branch and PR in this file is one of these four cells — there is no epic-only default.
+
+| | Issue | Epic |
+|---|---|---|
+| **Branch** | `spec/<ISSUE-ID>` | `epic/<name>` |
+| **Explainer** | `spec/<ISSUE-ID>.explainer.md` | `spec/_epics/<name>.explainer.md` |
+| **Its spec** (read, never edit) | `spec/<ISSUE-ID>.md` | `spec/_epics/<name>.md` |
+| **The PR** | the spec PR | the epic PR |
+
+## Get onto the branch, worktree-safe
+
+Your worktree is spun off the caller's checkout, not a clean default-branch one — see
 [`orchestration.md`](../../docs/contributing/orchestration.md) → Worktree branching.
 
-- **First build**: the epic branch already exists (`epic-agent` created it), so check it
-  out — `git fetch origin epic/<name> && git checkout -B epic/<name> origin/epic/<name>`.
-  Never `git checkout main`, and never re-base the epic branch on main.
-- **Refresh**: the same command. Always take the remote's current tip — a sibling
-  `epic-agent` dispatch may have moved the epic-spec since your last run.
+- **The branch already exists** in every case — `issue-spec` created the spec branch,
+  `epic-agent` the epic branch — so check it out:
+  `git fetch origin <branch> && git checkout -B <branch> origin/<branch>`.
+  **Never `git checkout main`, and never re-base the branch on main** — `-B … origin/main`
+  would reset it and discard the spec itself.
+- **Refresh**: the same command. Always take the remote's current tip; a sibling dispatch
+  may have moved the spec since your last run.
 
-**One worktree at a time on the epic branch.** You share it with `epic-agent`, and two
-dispatches racing the same branch is how a push gets lost. The coordinator sequences this and
-**you are always the one that yields** — you gate nothing, so a fold, a settlement or an
-end-state POC outranks you. If you find the branch has moved under you mid-run, re-fetch and
-redraw rather than force-pushing; if a push is rejected, re-fetch and redraw again. Never
-force-push the epic branch.
+**One worktree at a time on the branch.** At epic altitude you share `epic/<name>` with
+`epic-agent`, and two dispatches racing it is how a push gets lost. The caller sequences this
+and **you are always the one that yields** — you gate nothing, so a fold, a settlement or an
+end-state POC outranks you. If the branch moved under you mid-run, re-fetch and redraw rather
+than force-pushing; if a push is rejected, re-fetch and redraw again. **Never force-push.**
 
 ## The one action
 
@@ -56,14 +69,16 @@ force-push the epic branch.
 3. **Draw.** Four panels, the budget, the grammar. Redraw what changed; leave what didn't.
 4. **Verify.** Run all three commands from the skill's Verify section and read for the
    three judgment checks. Report the numbers.
-5. **Commit and push** to `epic/<name>`. Never merge, never delete the branch, never open
-   a PR — the epic PR already exists and is where this file is read from.
-6. **On a first build only**, add `Explainer: <blob URL>` to the epic PR description's
-   links line. One line, nothing else — you do not otherwise edit that description, which
-   is `epic-agent`'s. **Return the URL in `link:` every time, not just on the first build**,
-   so the coordinator can hand it to `epic-agent`: that agent rewrites the above-the-fold
-   blocks whenever the objective materially changes, and the link survives only because it is
-   told to carry it forward.
+5. **Commit and push** to your branch. Never merge, never delete it, never open a PR — the
+   PR already exists and is where this file is read from.
+6. **On a first build only**, add `Explainer: <blob URL>` to that PR description's links
+   line, using an **absolute** `https://github.com/<owner>/<repo>/blob/<branch>/<path>` URL
+   (a relative link in a PR body resolves against the repo root and 404s). One line, nothing
+   else — you do not otherwise edit the description, which belongs to whoever wrote it.
+   **Return the URL in `link:` every dispatch, not just the first**, so the caller can hand
+   it back: at epic altitude `epic-agent` rewrites the above-the-fold blocks whenever the
+   objective materially changes, and the link survives only because it is told to carry it
+   forward.
 
 ## Hard rules
 
@@ -73,33 +88,33 @@ force-push the epic branch.
   the source-tier rule — draw the highest tier available, mark it if it's tier 3, and report
   the gap.
 - **Never draw an unapproved shape as a fact.** The tier table above is how this is obeyed,
-  not a softening of it: an unapproved shape may be *drawn*, but only from the epic-spec's own
-  objective and only under a `(proposed)` heading that says what it is. An issue still at
-  NEEDS_SPEC contributes a node marked *not started* to panel 3, and to panel 2 only whatever
-  the epic-spec's objective already claims. If a panel has no source in any tier — panel 4
-  before the first merge — omit it, say so in the file
+  not a softening of it: an unapproved shape may be *drawn*, but only from the spec's own
+  proposed approach and only under a `(proposed)` heading that says what it is. At epic
+  altitude an issue still at NEEDS_SPEC contributes a node marked *not started* to panel 3,
+  and to panel 2 only whatever the epic-spec's objective already claims. If a panel has no
+  source in any tier — panel 4 before the first merge — omit it, say so in the file
   (`_Panel 4 lands once the first implementation merges._`), and name it in your return. A
   stated gap costs nothing; a confident diagram of a shape nobody chose gets acted on.
-- **Never fold review feedback.** Comments on the epic PR are `epic-agent`'s — the
-  explainer has no review budget and spends none. If a comment tells you a panel is wrong
-  about the mechanism, that is a factual correction and you take it; if it argues about
-  the direction, it belongs to the epic-spec and you report it back for routing.
-- **You own the explainer, not the epic-spec.** Never edit `spec/_epics/<name>.md`. If
-  drawing it revealed that the epic-spec is wrong or contradicts a merged diff, report it
-  — that is a genuinely valuable finding and the coordinator routes it to an `epic-agent`
-  fold.
+- **Never fold review feedback.** PR comments belong to the spec's author (`issue-spec`, or
+  `epic-agent` at epic altitude) — the explainer has no review budget and spends none. If a
+  comment says a panel is wrong about the mechanism, that is a factual correction and you
+  take it; if it argues about the direction, it belongs to the spec and you report it back
+  for routing.
+- **You own the explainer, not the spec.** Never edit the spec file in the table above. If
+  drawing it revealed that the spec is wrong, or contradicts a merged diff, report it — that
+  is a genuinely valuable finding, and the caller routes it to whoever owns the spec.
 - **Stay compact on the way out.** Your return is a status line, not the document.
 
 ## Return format
 
 ```
-epic: <name>   branch: epic/<name>   file: spec/_epics/<name>.explainer.md
-trigger: <objective gate | spec approval FIX-N | merge gate FIX-N | wrap | standalone>
+altitude: <issue|epic>   handle: <ISSUE-ID or epic name>   branch: <the branch>   file: <the explainer path>
+trigger: <first draft | review round | objective gate | spec approval FIX-N | merge gate FIX-N | wrap | standalone>
 did: <created | refreshed panels <n,n> | no change — <why>>
-panels: 1 <drawn/updated/unchanged> · 2 <… (proposed, if drawn from the epic-spec objective)> · 3 <…> · 4 <…|omitted: no merged mechanism yet>
+panels: 1 <drawn/updated/unchanged> · 2 <… (proposed, if drawn from the spec's own approach)> · 3 <…> · 4 <…|omitted: issue altitude, or no merged mechanism yet>
 budget: <n> words / 400   fences: <n> ok   unquoted-labels: <none | n found+fixed>
 gaps: <none | what could not be drawn and what it waits on>
-epic_spec_conflict: <none | what the epic-spec says that a merged diff contradicts>
-not_mine: <none | epic-PR feedback that belongs to epic-agent or an issue, and which>
-link: <blob URL; "added to epic PR links line" on first build>
+spec_conflict: <none | what the spec says that a merged diff contradicts>
+not_mine: <none | PR feedback that belongs to the spec's author or another issue, and which>
+link: <absolute blob URL; "added to PR links line" on first build>
 ```
