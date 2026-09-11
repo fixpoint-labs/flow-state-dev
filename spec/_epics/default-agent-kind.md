@@ -15,6 +15,12 @@ already decided to delete. When this epic lands, a `WORKER.md` with nothing but 
 produces a seat that talks, remembers within the scopes we already ship, and can use the skills
 registered to it — and a team that wants something different names their own kind on one line.
 
+**"Nothing but instructions" means zero config lines, and that is now decided, not aspirational.**
+An omitted `flow:` selects the built-in agent kind, and the built-in reaches the `kinds` map
+without the app naming it (Architect stamp on [PR #1730](https://github.com/fixpoint-labs/flow-state-dev/pull/1730),
+2026-09-11, explicitly *not* a Jake D-n). `hireWorkforce` refuses an absent `flow:` today — that
+is the work this epic does, not the behaviour it describes. Theme 5 carries the contract.
+
 **Which objective, and how it is proven.** [`docs/objectives.md`](../../docs/objectives.md)
 **Goal 1 — Validate through real usage**; the published objective on FIX-1359 is *"Workforce
 multi-seat real usage (OOTB agent seat)."*
@@ -47,6 +53,8 @@ An OOTB agent seat nobody has hired is a claim, not a capability.
   *before* implementation starts, and that collapsing pre-emptively is the wrong direction.
   **The collapse trigger is named and live**: if FIX-1361's deliverable turns out to *be*
   FIX-1363's gated spec — the same document, carrying no decisions of its own — collapse then.
+  It is further from that than it was: the admission answer (theme 5) hands FIX-1361 a rule of
+  its own to write — absent `flow:` means default, an unregistered name means a loud error.
 - **FIX-1362 and FIX-1364 stay two issues, and neither folds into FIX-1363.** Also challenged at
   the gate. They are different scopes with different decisions to make (theme 7's skills merge
   and isolation rule; theme 4's named-gap honesty), not two halves of one change.
@@ -96,15 +104,21 @@ FIX-1365 being required does not widen it: a thin hire of the OOTB agent kind, n
    flow factories do. No `worker.ts` as a `WorkerManifest` seat door — that fence is W3's
    (FIX-1342) and this epic does not reopen it.
 
-   **The built-in's own admission is part of that contract, not an assumed default.**
-   `hireWorkforce` today refuses a record that declares no `flow:` ("declares no `flow:`, so
-   there is no flow kind to hire it into", `packages/workforce/src/hire.ts`) and resolves only
-   factories explicitly passed in `options.kinds`. So nothing in the current surface makes an
-   instructions-only `WORKER.md` hireable: either an omitted `flow:` selects the built-in kind,
-   or the built-in reaches `kinds` without the app naming it. Until one is chosen, §1's headline
-   path does not exist. **FIX-1361 decides it, FIX-1363 ships it**, and §5 carries the fork
-   because answering it the narrow way changes what §1 promises. Raised by Codex review on
-   PR #1730 and verified against the source.
+   **The built-in's own admission is decided: an omitted `flow:` selects it.** `hireWorkforce`
+   today refuses a record that declares no `flow:` ("declares no `flow:`, so there is no flow
+   kind to hire it into", `packages/workforce/src/hire.ts`) and resolves only factories
+   explicitly passed in `options.kinds` — so nothing in the *current* surface makes an
+   instructions-only `WORKER.md` hireable. **That gap is this epic's work.** The answer
+   (Architect stamp, PR #1730, 2026-09-11): an omitted `flow:` selects the built-in agent kind,
+   and the built-in must therefore reach the `kinds` map **without the app naming it**. The
+   narrow alternative — `flow: agent` plus explicit registration — was **rejected**, because it
+   narrows §1's headline into the same paper cut `defineAgent` already made people pay.
+   **FIX-1361 writes the contract, FIX-1363 ships it**, and neither re-opens the choice.
+
+   **The loud-fail rule rides with it, and it is FIX-1361's too.** Implicit selection must not
+   turn a *typo'd* kind name into a silent hire of the agent: a seat naming a kind that isn't
+   registered fails loudly, exactly as it does today. Absent means default; wrong means error.
+   Raised by Codex review on PR #1730, verified against the source, and settled there.
 
 6. **The two soft deps live in other epics, and one of them is only half shipped.** Neither is a
    parent. This is the sequencing fact most likely to be read wrong, so it is stated in parts:
@@ -183,7 +197,7 @@ is merely serial.
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [FIX-1360](https://linear.app/fixpoint-labs/issue/FIX-1360) | Kitchen-sink drift audit (chat-agent + skill activator) | spec | — | — | Backlog |
-| [FIX-1361](https://linear.app/fixpoint-labs/issue/FIX-1361) | Contract for the default `agent` kind | spec | — | — | Backlog |
+| [FIX-1361](https://linear.app/fixpoint-labs/issue/FIX-1361) | Contract for the default `agent` kind — incl. the **omitted-`flow:` admission** (decided: it selects the built-in) and the **loud-fail rule** for an unregistered kind name | spec | — | — | Backlog |
 | [FIX-1363](https://linear.app/fixpoint-labs/issue/FIX-1363) | Built-in `agent` flow kind | spec | — | — | Backlog |
 | [FIX-1362](https://linear.app/fixpoint-labs/issue/FIX-1362) | Per-seat skill register + activate in the agent kind | spec | — | — | Backlog |
 | [FIX-1364](https://linear.app/fixpoint-labs/issue/FIX-1364) | Memory attach on existing scopes + named gaps | spec | — | — | Backlog |
@@ -201,17 +215,20 @@ re-parented here — Linear allows one parent, and they already have theirs.
 
 ## 5. Open cross-cutting questions
 
-- **Does an instructions-only `WORKER.md` select the built-in kind, or must a seat name it?**
-  Raised by Codex review on this PR and verified against `packages/workforce/src/hire.ts`: a
-  record with no `flow:` is refused today, and only factories passed to `hireWorkforce` resolve.
-  So §1's headline — a `WORKER.md` carrying nothing but instructions produces a working seat —
-  has no path in the current surface. Two answers: **(a)** an omitted `flow:` selects the
-  built-in kind, which therefore has to reach the `kinds` map without the app naming it; or
-  **(b)** the objective narrows to "one line — `flow: agent` — plus registering the built-in".
-  **Blocks nothing today** (FIX-1361 has not started), but it must be answered *inside*
-  FIX-1361's contract, because FIX-1363 builds whatever it says and (b) changes what §1 promises.
-  **Recommendation: (a)** — the objective is about the seat working out of the box, and a
-  required registration line is the same paper cut `defineAgent` made people pay.
+**Nothing is open. Every question this epic raised has an answer below.**
+
+- **~~Does an instructions-only `WORKER.md` select the built-in kind, or must a seat name it?~~**
+  *Resolved (Architect stamp, this PR, 2026-09-11 — explicitly "No D-n", so it is settled and
+  not waiting on the owner):* **(a)** — an omitted `flow:` **selects** the built-in agent kind,
+  and the built-in must reach the `kinds` map **without the app naming it**. A `WORKER.md`
+  carrying only `instructions` is a complete seat at **zero config lines**, which is §1's
+  headline promise. **(b) was rejected**: `flow: agent` plus explicit registration quietly
+  narrows the headline into the same paper cut `defineAgent` already made people pay. The typo
+  risk that was the stated mind-changer is **answered rather than traded away** — FIX-1361 owns
+  both the contract *and* the loud-fail rule: an unregistered or misspelled kind name fails
+  loudly and never silently hires the agent. FIX-1361 writes that contract; it does **not**
+  re-open (a) vs (b). No second prompt system and no Agent L1 invention.
+  Folded into §1, theme 5 and §4.
 
 - **~~Does `persona` survive as a reserved future concept, or is it deleted with the
   `defineAgent` cluster in #1713?~~** *Resolved (Architect, this PR, 2026-09-11):* `persona`
@@ -252,3 +269,11 @@ re-parented here — Linear allows one parent, and they already have theirs.
   a guess. Two verified review findings became theme constraints — the built-in kind's admission
   (theme 5) and skills storage isolation (theme 7) — because each is a place a theme promised
   something the shipped surface does not yet do.
+- **Admission fork answered, round 2 (2026-09-11)** — the one question left open at round 1 is
+  now a recorded decision: an omitted `flow:` **selects** the built-in kind (Architect stamp on
+  PR #1730, "No D-n"), so §1's headline is zero config lines rather than a promise conditional on
+  a later call. The typo risk that was the stated mind-changer became a second obligation on
+  FIX-1361 (loud fail on an unregistered kind name) rather than a reason to take the narrow
+  answer. §1, theme 5, §4 and §5 were all re-derived — theme 5 had been the surface still reading
+  "Until one is chosen, §1's headline path does not exist", which is exactly the sentence a child
+  worker would have built against. §5 now carries no open questions.
