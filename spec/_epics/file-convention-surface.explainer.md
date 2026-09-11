@@ -19,10 +19,9 @@ flowchart LR
   class CH,BOARD none
 ```
 
-W2 shipped the worker loader. Workers and skills are already file-declared; a document is
-declared in code, with `defineResource`. **A channel has no declaration surface at all** — not
-code, not files — and nothing named wakes its subscribers. A throwaway lab ran that notify path
-on today's doors and closed; nothing shipped from it.
+Workers and skills are already file-declared; a document is declared in code, with
+`defineResource`. **A channel has no declaration surface at all** — not code, not files — and
+nothing named wakes its subscribers.
 
 ---
 
@@ -38,10 +37,9 @@ flowchart LR
   CH --> BOARD["board notify · L1 composition"]
 ```
 
-The objective under approval; no sub-spec is approved yet. Every piece of a team becomes
-describable in files. A channel goes from nothing to a folder and gains a board that wakes
-subscribers — built from the collection and `reactTo` that already exist, not a new package type.
-`defineResource` stays and is what the new loader calls.
+A team becomes describable in files. A channel goes from nothing to a folder and gains a board
+that wakes subscribers — reusing today's collection and `reactTo`, not a new package type. Two
+sub-specs are approved; the objective is not.
 
 ---
 
@@ -67,8 +65,8 @@ flowchart TD
   RES --> LAB
   SK --> LAB
   K --> LAB
-  BOOT --> LAB
-  CH --> ATL
+  BOOT -.->|"in the epic, off the floor"| LAB
+  CH -.->|"in the epic, off the floor"| ATL
   SK -->|"seat register, filled by hire"| CFG
   classDef inflight fill:#9a6700,color:#fff
   classDef todo stroke-dasharray:5 5
@@ -76,13 +74,8 @@ flowchart TD
   class DOOR,REST,LAB,ATL,BOOT,CFG todo
 ```
 
-As of the objective gate. Amber is in flight, dashed is not started, nothing has shipped; the
-epic doc's index is the live copy. Two things to read off it. **The one item that blocks anything
-is the one nobody has started** — the notify door, sequenced first while three of its dependents
-sit in spec review. And **the lab is still the only consumer that declares anything in files** —
-last in line, with every convention pointing at it. FIX-1367 is the near miss: hire hands a kind
-the skills register, so skills gains a caller early, but it reads records rather than a file. §5
-carries both.
+The set as of the objective gate: amber is in flight, dashed is not started, nothing has shipped.
+The lab is last, with every convention pointing at it; the epic doc's index is the live copy.
 
 ---
 
