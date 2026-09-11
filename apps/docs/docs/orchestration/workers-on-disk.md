@@ -115,7 +115,7 @@ An `errors[].path` never includes the root and is always slash-separated: it sta
 
 What lands in `errors`:
 
-- a worker folder with no `WORKER.md`, including one that holds only other files;
+- a worker folder with no `WORKER.md`, including one that holds only other files (custom behavior is [a flow kind](#when-a-worker-needs-more-than-settings), not a second file in the folder);
 - a `WORKER.md` with no frontmatter, or one whose `description` is missing, empty, or not a string;
 - a `WORKER.md` that declares `persona:`, which is not a setting a worker declares;
 - a team or worker folder name that breaks the naming rules;
@@ -254,6 +254,69 @@ A record is refused when it:
 - shares an id with another record in the same call, which is two workers claiming one address.
 
 `kinds` itself is checked too. A flow passed under a key that is not its own `kind` is refused. The copy would otherwise come back carrying the right worker's id, and run the other kind's graph once you registered it.
+
+## When a worker needs more than settings
+
+A `WORKER.md` is data: a description, the flow kind the worker runs, and that kind's settings. Behavior lives in the flow it names. So a worker that has to *do* something no kind on your roster does is a flow you define in your app, pass to `hireWorkforce` in `kinds`, and name in that worker's `flow:`.
+
+Say the engineering team wants a worker that routes an incoming request in code, rather than asking a model where it should go. That is a flow kind of its own:
+
+```ts
+import { defineFlow, router } from "@flow-state-dev/core";
+import { z } from "zod";
+import { answer, escalate } from "./triage-blocks";
+
+const requestSchema = z.object({ subject: z.string(), priority: z.number() });
+
+// The decision is the flow's graph: a router block picks the branch from the
+// request itself. `answer` is a generator; `escalate` hands off to a person.
+// `flowConfigSchema` declares the slice of the flow's settings this block
+// reads, and they arrive as `ctx.flow.config`.
+const triage = router({
+  name: "triage",
+  inputSchema: requestSchema,
+  flowConfigSchema: z.object({ escalateAbove: z.number() }),
+  routes: [answer, escalate],
+  execute: (input, ctx) =>
+    input.priority >= ctx.flow.config.escalateAbove ? escalate : answer,
+});
+
+export const requestTriageFlow = defineFlow({
+  kind: "request-triage",
+  cardinality: "collection",
+  configSchema: z.object({
+    instructions: z.string(),
+    model: z.string().default("openai/gpt-5.4-mini"),
+    escalateAbove: z.number().default(3),
+  }),
+  actions: { run: { inputSchema: requestSchema, block: triage } },
+});
+```
+
+A worker that runs it, at `teams/engineering/workers/triage/WORKER.md`:
+
+```md
+---
+description: Sends an incoming request to an answer or to a human.
+flow: request-triage
+escalateAbove: 4
+---
+
+Answer directly when the request is a question about a feature that already
+shipped. Keep it to a paragraph, and name the page you took the answer from.
+```
+
+And at startup, the new kind goes in `kinds` beside the ones the rest of the roster runs:
+
+```ts
+import { hireWorkforce } from "@flow-state-dev/workforce";
+
+const seats = hireWorkforce(workers, {
+  kinds: { "worker-agent": workerAgentFlow, "request-triage": requestTriageFlow },
+});
+```
+
+`WORKER.md` is the only filename a worker slot is read for. A file of code sitting beside it changes nothing about the seat.
 
 ## What this does not do
 

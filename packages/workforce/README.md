@@ -165,6 +165,10 @@ label. Everything else is that worker's settings, handed to the flow
 verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
 declared is refused by name at the hire.
 
+A worker record declares data: a description, the kind it runs, and that kind's settings. Behavior
+lives in the flow the kind names, so a worker that has to do something none of your kinds do is a
+flow you define in your app and pass in `kinds`, named by that worker's `flow:`.
+
 A record's **`body` reaches its flow as one setting, `instructions`**. A flow kind that takes
 instructions declares `instructions` in its `configSchema`. A kind that doesn't will refuse a body by
 name, so no worker flow has to check for one. Declaring the key makes the instructions available at
