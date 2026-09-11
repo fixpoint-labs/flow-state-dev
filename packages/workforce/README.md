@@ -140,8 +140,8 @@ The subpath is separate because the reader imports `node:fs`; the package root s
 
 ## Reading one seat's skills
 
-A skill is a folder with a `SKILL.md` in it. In a workforce tree a worker draws from the org's
-shared skills, its own team's, and any sitting beside the worker itself.
+A skill is a folder with a `SKILL.md` in it. In a workforce tree, one worker's skills are spread
+across three folders: the org's, its team's, and any sitting beside the worker itself.
 
 ```
 workforce/org/skills/triage/SKILL.md
@@ -152,8 +152,7 @@ workforce/teams/pentest/workers/recon/WORKER.md
 workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md
 ```
 
-`readSeatSkills` reads the three levels for one worker and hands back what
-`createSkillsCapability`'s `initialSkills` takes.
+`readSeatSkills` reads all three for one worker and returns the records `initialSkills` takes.
 
 ```ts
 import { readSeatSkills } from "@flow-state-dev/workforce/loader";
@@ -162,17 +161,26 @@ const { skills, errors } = await readSeatSkills("./workforce", {
   team: "pentest",
   worker: "recon",
 });
-if (errors.length) throw new Error(`skills: ${errors.length} level(s) failed to load`);
+if (errors.length) throw new Error(`skills: ${errors.length} entries failed to load`);
 
-skills.map((s) => s.name); // ["triage", "port-scan", "review", "sweep"]
+skills.map((s) => s.name).sort(); // ["port-scan", "review", "sweep", "triage"]
 ```
 
-A skill beside the worker is included without appearing in that worker's `skills:` list. The
-`skills:` list names the shared skills a seat wants; the folder is already the seat's.
+Every skill folder at those three levels is read. Nothing has to be listed anywhere for a skill
+to be included, and a skill beside the worker is no exception.
 
-Two workers on different teams read different folders, so `pentest`'s `review` and `audit`'s
-`review` are two skills, and each seat's set carries only its own. Skill names stay bare — nothing
-is prefixed with a team.
+The set comes back level by level: the org's first, then the team's, then the worker's own. Each
+entry is `{ name, skillMd, files }`, the same record `readSkillsDirectory` returns — `name` is the
+folder name, bare, with no team prefix.
+
+Two calls naming different teams read different folders. Each result holds only what its own
+call read:
+
+```ts
+const recon = await readSeatSkills("./workforce", { team: "pentest", worker: "recon" });
+const clerk = await readSeatSkills("./workforce", { team: "audit", worker: "clerk" });
+// recon.skills has pentest's `review`; clerk.skills has audit's. Neither carries the other.
+```
 
 One name reaching a single worker from two of its levels is refused, naming both paths:
 
@@ -188,12 +196,11 @@ The contested name is left out of `skills` entirely. The fix is a rename or a de
 worker-level folder does not override its team's.
 
 A level that isn't in the tree is empty, not an error — an app may keep no org skills, and a
-worker may have none of its own. A level that exists and cannot be listed lands in `errors`
-under its own path, as does a skill folder that cannot be read.
+worker may have none of its own. A level that exists and cannot be listed lands in `errors` under
+its own path, and so does a skill folder that fails to load, under `<level>/<folder>`.
 
-The root itself is different: a root that cannot be read throws, because every level under it
-is allowed to be absent, so reading a mistyped root as three empty levels would hand back an
-empty set with an empty `errors` and boot the seat with nothing said.
+A `root` that cannot be read throws instead:
+`Failed to read workforce directory "./workforce": ENOENT ...`.
 
 Symlinks are never followed, and that holds for the folders on the way to a level as much as
 for the level itself — `org`, `teams`, a team's folder, its `workers`, and the worker's own.
@@ -201,15 +208,16 @@ A symlinked one is refused into `errors` under its own path, so a link out of th
 pull skills in from outside the configured root.
 
 `team` and `worker` follow the same naming rules as the folders they name: lowercase letters,
-digits and single hyphens, at most 64 characters. A name outside those rules throws, since it
-addresses no seat.
+digits and single hyphens, at most 64 characters, and not `_meta`. A name outside those rules
+throws.
 
-A `SKILL.md` read this way may not declare `scope:`. Where the folder sits is what decides who
-can see a skill, so a file that declares it is refused by name. The same file read directly by
-`readSkillsDirectory` is unaffected.
+A `SKILL.md` read this way may not declare `scope:` — a file that does is refused by name into
+`errors` and left out of `skills`. The same file read directly by `readSkillsDirectory` still
+loads.
 
-The reader registers nothing. It returns records; installing them as a live catalog is the
-caller's job.
+The reader registers nothing and starts nothing. Wiring the records into a running seat is the
+caller's job: pass `skills` as the `initialSkills` of the skills capability or library you build
+for that worker.
 
 ## Hiring a workforce
 
@@ -285,6 +293,7 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | Bad `team` or `worker` name | `readSeatSkills` throws |
 | Skills root unreadable | `readSeatSkills` throws |
 | Skills level unreadable | Collected in `readSeatSkills`'s `errors`, keyed by the level's path — an absent level is empty instead |
+| Skill folder fails to load | Collected in `readSeatSkills`'s `errors`, keyed by `<level>/<folder>` |
 | Symlinked folder on the way to a level | Collected in `readSeatSkills`'s `errors`, keyed by that folder's path — never followed |
 | One skill name at two of a seat's levels | Collected in `readSeatSkills`'s `errors`, naming both paths; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors`, keyed by the skill's path |

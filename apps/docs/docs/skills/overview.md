@@ -142,8 +142,9 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 ## Where skills folders live
 
 `readSkillsDirectory` takes a root, so a skills folder can sit wherever you point it. In an app that
-describes its workers in folders (see [Workers on disk](/orchestration/workers-on-disk)), a worker
-draws from the whole app's skills, its own team's, and any sitting beside the worker itself.
+describes its workers in folders (see [Workers on disk](/orchestration/workers-on-disk)), one
+worker's skills are spread across three folders: the whole app's, its team's, and any sitting beside
+the worker itself.
 
 ```
 workforce/org/skills/triage/SKILL.md
@@ -156,18 +157,26 @@ workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md
 ```ts
 import { readSeatSkills } from "@flow-state-dev/workforce/loader";
 
-const { skills: initialSkills, errors } = await readSeatSkills("./workforce", {
+const { skills, errors } = await readSeatSkills("./workforce", {
   team: "pentest",
   worker: "recon",
 });
 ```
 
-A skill beside the worker is included without being listed in that worker's `skills:`. Two workers on
-different teams read different folders, so each team can keep its own `review` and neither set
-carries the other's. Skill names stay bare — nothing is prefixed with a team.
+Every skill folder at those three levels is read, so nothing has to be listed anywhere for a skill to
+be included. The records come back level by level — org, then team, then the worker's own — and each
+one is the `{ name, skillMd, files }` shape `readSkillsDirectory` returns. Skill names stay bare,
+with no team prefix.
 
-One name reaching a single worker from two of its levels is refused, naming both paths, and left out
-of `skills`. Rename or delete one; a worker-level folder does not override its team's.
+Two calls naming different teams read different folders, so each result holds only what that call
+read. A `review` under `teams/pentest/` and a `review` under `teams/audit/` are two skills, and
+neither result carries the other's.
+
+`errors` is one entry per thing that should have reached the worker and did not — an unreadable
+level, a skill folder that failed to load, or a name reaching the worker from two of its levels
+(refused, naming both paths, and left out of `skills`). Each entry is `{ path, error }`, keyed by a
+path relative to the root. An absent level is empty rather than an error, but a `root` that cannot be
+read throws.
 
 `readSeatSkills` returns records and installs nothing. Turning a set into a live catalog is the
 caller's job: pass `skills` as the `initialSkills` of the capability you build for that worker. See
