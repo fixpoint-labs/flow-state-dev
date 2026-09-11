@@ -64,7 +64,7 @@ is still built before its only consumer. It is unanswered because nobody has ans
 
 ### Theme 1 — The inherited shape rules. This is their canonical home.
 
-Seven rules govern all four conventions. They originated as a seven-point block in FIX-1352's
+Seven rules govern all three conventions — four, before channel absorbed room. They originated as a seven-point block in FIX-1352's
 spec; that block was deliberately removed before review closed and **replaced by a pointer to its
 canonical sources** — the shipped `WORKER.md` pair
 (`packages/workforce/src/loader/read-workforce-directory.ts` and `hire.ts`) plus the atlas §06
