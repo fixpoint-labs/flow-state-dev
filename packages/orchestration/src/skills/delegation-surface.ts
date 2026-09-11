@@ -758,13 +758,16 @@ async function buildTools(
       // Agent keys are already validated by `validateAgentKeys` in
       // `resolveBuild`, so this registry and the guidance roster are built from
       // the identical list.
+      // Hydrate before collide: a `prompt-ref` entry is only a path. Identity
+      // is the file's body + frontmatter, matching bind-time in `library.ts`.
+      const resolvedSpec = withBundledPrompt(spec, source.files, agentKey);
       if (seenSpecs.has(agentKey)) {
         // Two skills sharing an agent key: an IDENTICAL spec dedupes into the
         // already-built board worker. A DIFFERENT spec under the same key is a
         // real collision — fail loud for static skills (build-time validation
         // mirrors this), warn + skip for a runtime activation so a model-driven
         // load can't crash the turn.
-        if (!specsCollide(seenSpecs.get(agentKey)!, spec)) continue;
+        if (!specsCollide(seenSpecs.get(agentKey)!, resolvedSpec)) continue;
         if (!staticNames.has(source.skillName)) {
           console.warn(
             `[skills] delegation agent "${agentKey}" (runtime skill "${source.skillName}") ` +
@@ -777,9 +780,7 @@ async function buildTools(
             `different spec than another active skill's agent under the same key. Rename the agent key.`,
         );
       }
-      seenSpecs.set(agentKey, spec);
-
-      const resolvedSpec = withBundledPrompt(spec, source.files, agentKey);
+      seenSpecs.set(agentKey, resolvedSpec);
       boardWorkers[agentKey] = await materializeWorker(agentKey, resolvedSpec, {
         catalog: deps.catalog,
         ...(deps.agentRegistry ? { agentRegistry: deps.agentRegistry } : {}),

@@ -534,6 +534,71 @@ describe("delegation surface — two active skills sharing an agent", () => {
       }),
     ).toThrow(/different spec/);
   });
+
+  it("collides same-key prompt-ref agents when the prompt files disagree", () => {
+    // After FIX-1370 the skill entry is only the path. Collision must
+    // compare the hydrated file (tools/model/body), or two skills silently
+    // share the first worker.
+    const skill = (
+      name: string,
+      analyzeMd: string,
+    ): InitialSkill => ({
+      name,
+      skillMd: [
+        "---",
+        `description: ${name}`,
+        "agents:",
+        "  analyzer:",
+        "    prompt-ref: ./reference/analyze.md",
+        "---",
+        "",
+        name,
+      ].join("\n"),
+      files: [{ path: "reference/analyze.md", content: analyzeMd }],
+    });
+    const searchOnly = [
+      "---",
+      "tools: [search]",
+      "---",
+      "",
+      "You analyze.",
+    ].join("\n");
+    const searchAndFetch = [
+      "---",
+      "tools: [search, fetch]",
+      "---",
+      "",
+      "You analyze.",
+    ].join("\n");
+
+    const same = createSkillsLibrary({
+      catalog: {},
+      initialSkills: [skill("team-a", searchOnly), skill("team-b", searchOnly)],
+    });
+    expect(() =>
+      generator({
+        name: "g-same",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        inputSchema: z.object({}),
+        uses: [same.with({ active: ["team-a", "team-b"] } as never)],
+      }),
+    ).not.toThrow();
+
+    const divergent = createSkillsLibrary({
+      catalog: {},
+      initialSkills: [skill("team-a", searchOnly), skill("team-b", searchAndFetch)],
+    });
+    expect(() =>
+      generator({
+        name: "g-divergent",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        inputSchema: z.object({}),
+        uses: [divergent.with({ active: ["team-a", "team-b"] } as never)],
+      }),
+    ).toThrow(/different spec/);
+  });
 });
 
 // ---------------------------------------------------------------------------
