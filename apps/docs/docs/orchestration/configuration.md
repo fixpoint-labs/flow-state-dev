@@ -1,18 +1,17 @@
 ---
 title: Configuration
 sidebar_label: Configuration
-description: Field catalog for taskBoard, goalSeekLoop, defineAgent, and skills.with.
+description: Field catalog for taskBoard, goalSeekLoop, createSkillsLibrary, and skills.with.
 ---
 
 # Configuration
 
-The pages for [Task board](./task-board), [Agents](./agents), and [Binding skills](../skills/binding) teach the shape. The tables below list each field: name, type, default, what it does.
+The pages for [Task board](./task-board) and [Binding skills](../skills/binding) teach the shape. The tables below list each field: name, type, default, what it does.
 
 Flow, runtime, and environment knobs that are not orchestration-specific live next to those concepts in Core. The [Configuration map](/docs/configuration/overview) is the index.
 
 ```ts
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { defineAgent } from "@flow-state-dev/workforce";
 
 const board = taskBoard({
   name: "research",
@@ -87,25 +86,6 @@ Narrative for termination, dispatchers, registries, and backing: [Task board](./
 
 Narrative: [GoalSeekLoop](./goal-seek-loop).
 
-## `defineAgent` options
-
-`defineAgent(config)` validates and returns an `Agent`. The definition is inert until a registry materializes it as a worker or a standalone block.
-
-| Field | Type | Default | What it does |
-|-------|------|---------|--------------|
-| `name` | `string` | required | Stable identifier. This is the key `agent-ref` resolves against. |
-| `description` | `string` | required | A label on the definition. Not the system prompt. |
-| `persona` | `string`, `{ template, state? }`, or `{ path }` | required | System-prompt source: a string, an inline template, or a resource path. |
-| `model` | `string` | materializer default, then `intent/chat` | Model id for the materialized generator. |
-| `itemVisibility` | `{ client, history }` | `{ client: true, history: false }` | Which items reach the client and history. |
-| `outputSchema` | Zod schema | free text (`z.string()`) | Structured output, honored both standalone and delegated. The root must be a bare `z.string()` or an object, and no field may parse to a value JSON cannot carry (a transform, `z.date()`, `z.bigint()`). |
-| `allowedTools` | `string[]` | omitted | Tool-catalog keys this agent may reference. |
-| `usesCapabilities` | capability refs or catalog keys | omitted | Capabilities composed via `uses`, including `.presets({ ... })`. A catalog key declared with no catalog supplied fails materialization rather than being dropped. |
-| `usesSkills` | `string[]` | omitted | Reserved. Accepted and ignored. |
-| `contextMode` | `"inline"` \| `"fork"` | omitted | Default activation when dispatched standalone. Only `"inline"` is honored. |
-
-Narrative: [Agents](./agents).
-
 ## `createSkillsLibrary` options
 
 `createSkillsLibrary(options)` builds the shared catalog. Bind it per generator with `skills.with({ ... })`.
@@ -121,8 +101,8 @@ Narrative: [Agents](./agents).
 | `workerModelId` | `string` | neutral default | Model for delegation agents that omit `model`. |
 | `maxTotalTasks` | `number \| null` | `500` | Lifetime task ceiling on the delegation board. `null` is unbounded. |
 | `maxEnqueuedTasks` | `number \| null` | `100` | How many tasks a coordinator may add while others are still `pending`. |
-| `agentRegistry` | `AgentRegistry` | omitted | Resolves `agent-ref` entries. A statically-`active` skill with `agent-ref` and no registry fails at build time. |
-| `materializeAgent` | function | omitted | Turns a resolved agent into a board worker. Pair with `agentRegistry`. |
+| `agentRegistry` | `AgentRegistry` | omitted | Your own agent catalog, resolving `agent-ref` entries by name. A statically-`active` skill with `agent-ref` and no registry fails at build time. |
+| `materializeAgent` | function | omitted | Your own function turning a resolved agent into a board worker. Required alongside `agentRegistry`; neither works without the other. See [Borrowing an agent from a registry](./agents#borrowing-an-agent-from-a-registry). |
 | `capabilityCatalog` | name → capability | omitted | Forwarded to `materializeAgent`. |
 
 ## `skills.with` options

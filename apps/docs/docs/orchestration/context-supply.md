@@ -71,6 +71,6 @@ Reach for `context-supply: conversation` when the agent genuinely needs the prio
 ## See also
 
 - [Flow policy](./flow-policy) — the other input lever: prior tool-call observations, not conversation messages
-- [Agents](./agents) — the full agent authoring surface `context-supply` sits on
+- [Agents](./agents) — the three things that can do a unit of work on a board, and when each fits
 - [Task board](./task-board) — the board that sequences delegated work
 - [Delegation](../skills/delegation) — how a skill drives its board
