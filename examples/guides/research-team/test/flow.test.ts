@@ -86,9 +86,15 @@ describe("research-team flow", () => {
     expect(byName.get("competitor-analysis")?.skillMd).not.toContain("workers:");
     expect(byName.get("competitor-analysis")?.skillMd).toContain("agents:");
     expect(byName.get("competitor-analysis")?.skillMd).toContain("runBoard");
-    // competitor-analysis showcases both assignment forms — inline prompt
-    // agents (discoverer, comparison-writer) plus an `agent-ref` registry agent
-    // (analyzer → competitor-analyst).
-    expect(byName.get("competitor-analysis")?.skillMd).toContain("agent-ref");
+    // Every agent on both teams resolves from a persona file bundled with its
+    // own skill. Nothing here reaches for an agent registry, so neither skill
+    // needs a resolver wired into the library — asserted as the absence of
+    // `agent-ref`, because a skill that declared one would be refused at bind
+    // time with no registry supplied, not silently seated without its agent.
+    expect(byName.get("research-company")?.skillMd).not.toContain("agent-ref");
+    expect(byName.get("competitor-analysis")?.skillMd).not.toContain("agent-ref");
+    expect(byName.get("competitor-analysis")?.skillMd).toContain(
+      "prompt-ref: ./reference/analyze.md",
+    );
   });
 });
