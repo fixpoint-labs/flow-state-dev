@@ -1,41 +1,33 @@
 # FIX-1356 — characterization POC
 
-Throwaway. Lives on the spec branch, never merges. It exists so the spec's factual
-claims can be **run** rather than read, because the recommendation rests on them.
+Throwaway. Lives on the spec branch, never merges, and is **deleted** at the start of
+implementation rather than graduated — it pins behaviour this issue changes, so keeping it
+would pin the bug as the contract (spec §10).
 
-Two suites, both pure characterization: every assertion describes `main` as it is
-today. Neither proposes anything.
+It exists so the spec's load-bearing claims can be **run** rather than read. Scoped to the
+claims the "ratify, don't align" fork actually rests on; behaviour the spec marks as already
+agreeing with the sibling conventions is covered by the packages' own suites and is not
+re-pinned here.
 
 | File | Question it answers |
 |---|---|
-| `packages/orchestration/test/_fix1356/characterize.test.ts` | How does the shipped `readSkillsDirectory` actually differ from the worker/room shape? |
+| `packages/orchestration/test/_fix1356/characterize.test.ts` | How does the shipped `readSkillsDirectory` differ from the worker/room shape, and what happens when one skill name is declared twice? |
 | `packages/workforce/test/_fix1356/passthrough.test.ts` | Does a `WORKER.md` that declares `skills:` already reach its hired seat? |
 
-They sit in the packages' own `test/` folders (rather than under this one) so they run
-with the ordinary command and no extra config. The `_` prefix marks them throwaway.
+They sit in the packages' own `test/` folders so they run with the ordinary command and no
+extra config. The `_` prefix marks them throwaway.
 
 ## Run them
 
 ```bash
 pnpm install
-pnpm --filter @flow-state-dev/orchestration exec vitest run test/_fix1356
-pnpm --filter @flow-state-dev/workforce exec vitest run test/_fix1356
+pnpm --filter @flow-state-dev/orchestration exec vitest run test/_fix1356   # 6 passed
+pnpm --filter @flow-state-dev/workforce exec vitest run test/_fix1356       # 2 passed
 ```
 
-Expected: 7 passing in orchestration, 3 in workforce. Each logs what it observed, so
-the output is the evidence — read the `stdout` blocks, not just the green.
+Add `FIX1356_LOG=1` to print what each case observed — the logs are the evidence, and are
+silent otherwise so the suites stay quiet in an ordinary run.
 
-## What they found
-
-- The skills reader walks a **flat** tree. Pointed at a workforce root it does not find
-  `teams/<id>/skills/<name>/SKILL.md`, and it misreports `teams/` as a broken skill
-  (`Missing SKILL.md in "teams/"`).
-- Its per-entry errors are keyed by bare `name`; there is no `path`.
-- A `SKILL.md` that **exists but cannot be read** is reported as `Missing SKILL.md` —
-  present-but-broken is collapsed into absent. This is the one genuine defect.
-- Skill identity is a bare folder name, and the shipped name validator **refuses** the
-  dot-joined `pentest.recon` form the sibling conventions mint.
-- A `WORKER.md` declaring `skills: [port-scan, triage]` already loads and hires, arriving
-  at the seat as `{"instructions":"Find things.","skills":["port-scan","triage"]}`.
-
-See the spec's §7 and §10 for what follows from that.
+**Findings live in the spec's §10 table**, which is the single evidence surface; they are
+deliberately not restated here. One of them (`C1`) corrected a claim an earlier draft had
+read from the source rather than run.

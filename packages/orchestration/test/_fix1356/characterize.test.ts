@@ -1,15 +1,29 @@
 /**
- * Throwaway characterization of the SHIPPED `readSkillsDirectory`, for FIX-1356.
+ * Throwaway characterization of the SHIPPED skills substrate, for FIX-1356.
  *
- * Pins how the reader behaves TODAY so the spec's divergence claims are
- * executed rather than asserted. Nothing here is a proposal — every assertion
- * describes current `main`.
+ * Pins how things behave TODAY so the spec's load-bearing claims are executed
+ * rather than asserted. Nothing here is a proposal — every assertion describes
+ * current `main`.
+ *
+ * Scoped to the four claims the "ratify, don't align" fork actually rests on
+ * (D1-D3, D7) plus the one premise under Decision 3 (C1). Behaviour the spec
+ * marks as *already agreeing* with the sibling conventions — bare identity,
+ * folder/`name:` agreement, unknown keys surviving — is covered by the
+ * package's own `test/skills/read-directory.test.ts` and is not re-pinned here.
+ *
+ * Set `FIX1356_LOG=1` to print what each case observed.
  */
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { readSkillsDirectory } from "../../src/skills/read-directory";
+import { ensureSeeded } from "../../src/skills/seeding";
+import { createMockSkillsCollection } from "../skills/mocks";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+
+const log = (...args: unknown[]) => {
+  if (process.env["FIX1356_LOG"]) console.log(...args);
+};
 
 let tmp: string;
 beforeEach(async () => {
@@ -33,11 +47,8 @@ describe("D1 - walk shape: a flat readdir, not the teams/<id>/<slot>/ tree", () 
       `---\ndescription: team-scoped one\n---\nbody`,
     );
     const { skills, errors } = await readSkillsDirectory(tmp);
-    console.log("D1 skills:", skills.map((s) => s.name));
-    console.log(
-      "D1 errors:",
-      errors.map((e) => ({ name: e.name, msg: e.error.message })),
-    );
+    log("D1 skills:", skills.map((s) => s.name));
+    log("D1 errors:", errors.map((e) => ({ name: e.name, msg: e.error.message })));
     expect(skills.map((s) => s.name)).toEqual(["recon"]);
     // The team tree is not walked; `teams` is mistaken for a skill folder.
     expect(errors.map((e) => e.name)).toEqual(["teams"]);
@@ -49,7 +60,7 @@ describe("D2 - error key: `name`, never a path", () => {
   it("keys a per-entry error by bare folder name", async () => {
     await write("broken/SKILL.md", `---\nnot-description: x\n---\nbody`);
     const { errors } = await readSkillsDirectory(tmp);
-    console.log("D2 error entry keys:", Object.keys(errors[0]!));
+    log("D2 error entry keys:", Object.keys(errors[0]!));
     expect(Object.keys(errors[0]!).sort()).toEqual(["error", "name"]);
     expect(errors[0]!.name).toBe("broken");
     expect("path" in errors[0]!).toBe(false);
@@ -62,37 +73,11 @@ describe("D3 - present-but-unreadable is reported as absent", () => {
     // over a chmod because this suite may run as root, which ignores mode bits.
     await fs.mkdir(path.join(tmp, "weird", "SKILL.md"), { recursive: true });
     const { skills, errors } = await readSkillsDirectory(tmp);
-    console.log("D3:", errors.map((e) => e.error.message));
+    log("D3:", errors.map((e) => e.error.message));
     expect(skills).toEqual([]);
     expect(errors[0]!.error.message).toContain("Missing SKILL.md");
     // The failure that actually happened (EISDIR) is nowhere in the report.
     expect(errors[0]!.error.message).not.toContain("EISDIR");
-  });
-});
-
-describe("D4 - identity is a bare folder name, not team-qualified", () => {
-  it("mints no team qualifier", async () => {
-    await write("recon/SKILL.md", `---\ndescription: d\n---\nbody`);
-    const { skills } = await readSkillsDirectory(tmp);
-    console.log("D4 identity:", skills[0]!.name);
-    expect(skills[0]!.name).toBe("recon");
-    expect(skills[0]!.name).not.toContain(".");
-  });
-});
-
-describe("D5 - the folder is the identity, enforced by agreement not refusal", () => {
-  it("accepts a `name:` that agrees with the folder, refuses one that disagrees", async () => {
-    await write("agree/SKILL.md", `---\nname: agree\ndescription: d\n---\nbody`);
-    await write("disagree/SKILL.md", `---\nname: other\ndescription: d\n---\nbody`);
-    const { skills, errors } = await readSkillsDirectory(tmp);
-    console.log(
-      "D5 ok:",
-      skills.map((s) => s.name),
-      "err:",
-      errors.map((e) => e.error.message),
-    );
-    expect(skills.map((s) => s.name)).toEqual(["agree"]);
-    expect(errors[0]!.name).toBe("disagree");
   });
 });
 
@@ -106,16 +91,63 @@ describe("D7 - the shipped skill-name rule refuses the dot-joined identity", () 
     } catch (e) {
       msg = (e as Error).message;
     }
-    console.log("D7:", msg);
+    log("D7:", msg);
     expect(msg).toContain("lowercase letters, digits, and single hyphens");
   });
 });
 
-describe("D6 - unknown frontmatter keys survive the read", () => {
-  it("carries an unclaimed key through verbatim", async () => {
-    await write("s/SKILL.md", `---\ndescription: d\nteam: pentest\nmine: [a, b]\n---\nbody`);
-    const { skills } = await readSkillsDirectory(tmp);
-    console.log("D6 carried:", JSON.stringify(skills[0]!.skillMd));
-    expect(skills[0]!.skillMd).toContain("team: pentest");
+describe("C1 - two same-named skills: the second silently overwrites the first", () => {
+  it("stores one row, keeps the LAST body, and reports nothing (premise under Decision 3)", async () => {
+    // What a cross-level collision produces once both levels are concatenated:
+    // two InitialSkills sharing a name, different bodies.
+    const orgTriage = {
+      name: "triage",
+      skillMd: `---\ndescription: org triage\n---\nORG BODY`,
+    };
+    const teamTriage = {
+      name: "triage",
+      skillMd: `---\ndescription: team triage\n---\nTEAM BODY`,
+    };
+
+    const c = createMockSkillsCollection();
+    await ensureSeeded(c, [orgTriage, teamTriage]);
+
+    const stored = c._store.get("skills/triage/SKILL.md");
+    const meta = c._store.get("skills/_meta")!;
+    const names = meta.state.seededNames as string[];
+
+    log("C1 stored body:", stored?.content);
+    log("C1 seededNames:", names);
+
+    // One row, not two: the name is the key.
+    const triageKeys = [...c._store.keys()].filter((k: string) =>
+      k.startsWith("skills/triage/"),
+    );
+    expect(triageKeys).toEqual(["skills/triage/SKILL.md"]);
+
+    // The LAST declaration won outright. The org one is gone, with nothing
+    // anywhere recording that it ever existed. `ensureSeeded` returns void and
+    // has no error channel, so there is no place a report could even appear.
+    expect(stored?.content).toContain("TEAM BODY");
+    expect(stored?.content).not.toContain("ORG BODY");
+
+    // Both were treated as additions — the "already seeded" guard reads meta
+    // once before the loop, so it never sees a name added during the same pass.
+    expect(names.filter((n) => n === "triage")).toHaveLength(2);
+  });
+});
+
+describe("R47 - does 'unknown keys verbatim' let a file overwrite a derived field?", () => {
+  it("refuses a `name:` that disagrees with the folder, so identity cannot be overwritten", async () => {
+    await write("agree/SKILL.md", `---\nname: agree\ndescription: d\n---\nbody`);
+    await write("disagree/SKILL.md", `---\nname: other\ndescription: d\n---\nbody`);
+    const { skills, errors } = await readSkillsDirectory(tmp);
+    log("R47 loaded:", skills.map((s) => s.name));
+    log("R47 refused:", errors.map((e) => e.error.message));
+    // The folder wins by *agreement*, not by the key being ignored or stripped:
+    // a disagreeing file is refused outright rather than silently corrected.
+    expect(skills.map((s) => s.name)).toEqual(["agree"]);
+    expect(errors[0]!.name).toBe("disagree");
+    expect(errors[0]!.error.message).toContain('must match its folder');
   });
 });
