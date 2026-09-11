@@ -182,7 +182,7 @@ Body.
       expect(errors[0]!.error.message).toMatch(/has no WORKER\.md/);
     });
 
-    it("reports a folder holding only a worker.ts, rather than skipping it", async () => {
+    it("reports a folder holding only a worker.ts, naming the document and the kinds route", async () => {
       // A worker folder is a folder with a `WORKER.md` in it. A folder holding
       // only code occupies a worker slot and produces no manifest, so it is
       // named — the framework cannot run it, and pretending it loaded is the
@@ -194,7 +194,16 @@ Body.
       expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
       expect(errors).toHaveLength(1);
       expect(errors[0]!.path).toBe("teams/engineering/workers/router");
-      expect(errors[0]!.error.message).toMatch(/has no WORKER\.md/);
+
+      // An author who put code in a worker slot has a route, and the refusal is
+      // the only place they are standing. It has to carry all three steps —
+      // define the flow, pass it in `kinds`, name it in `flow:` — because each
+      // one alone leaves them guessing at the next.
+      const { message } = errors[0]!.error;
+      expect(message).toMatch(/has no WORKER\.md/);
+      expect(message).toContain("hireWorkforce");
+      expect(message).toContain("kinds");
+      expect(message).toContain("flow:");
     });
 
     it("reports a WORKER.md with no frontmatter", async () => {
@@ -222,6 +231,9 @@ Body.
       expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
       expect(errors).toHaveLength(1);
       expect(errors[0]!.error.message).toMatch(/non-empty `description`/);
+      // An author who wrote a document is not told how to define a flow kind.
+      // That route belongs to the slot holding no document at all.
+      expect(errors[0]!.error.message).not.toContain("hireWorkforce");
     });
 
     it("reports a WORKER.md whose description is not prose", async () => {
