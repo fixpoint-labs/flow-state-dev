@@ -20,6 +20,7 @@ export {
   readSeatSkills,
   type ReadSeatSkillsOptions,
   type ReadSeatSkillsResult,
+  type SeatSkillError,
   type SeatSkillErrorKind,
 } from "./read-seat-skills";
 

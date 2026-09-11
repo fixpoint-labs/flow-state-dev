@@ -61,8 +61,37 @@ export type SeatSkillErrorKind =
   | "skill-load-failed"
   /** A `SKILL.md` declares the refused `scope:` key, so that skill is left out of the set. */
   | "refused-scope-key"
-  /** One name reached the seat from two of its levels, so the name is left out of the set entirely. */
+  /** One name reached the seat from more than one of its levels, so the name is left out of the set entirely. */
   | "duplicate-skill-name";
+
+/**
+ * One thing that should have reached the seat and did not — the entries in
+ * {@link ReadSeatSkillsResult.errors}.
+ *
+ * Five of the six conditions fail at a single path, and `path` is that path.
+ * The sixth does not: a contested name fails at every level it reached the seat
+ * from, and none of those copies loaded. So that variant carries `paths` — all
+ * of them, in read order — and a caller reaching for the files in play no
+ * longer has to parse them back out of the message, which is where they used to
+ * be the only copy.
+ *
+ * `path` on that variant is `paths[0]`, the level the name first reached the
+ * seat from. It is a key, not a winner: reports here are keyed and ordered by
+ * where a condition was first observed, and this one follows that rule like the
+ * rest. Keying it by the innermost level instead names the deepest copy, which
+ * reads as the one that took precedence — and precedence is the thing this
+ * refusal exists to deny.
+ */
+export type SeatSkillError =
+  | PathReport<Exclude<SeatSkillErrorKind, "duplicate-skill-name">>
+  | (PathReport<"duplicate-skill-name"> & {
+      /**
+       * Every path the name reached this seat from, in read order — org, then
+       * team, then the seat's own. Two or more, and every one of them was left
+       * out of the set.
+       */
+      paths: string[];
+    });
 
 /** Which seat to read for. Both segments name folders in the tree. */
 export interface ReadSeatSkillsOptions {
@@ -90,14 +119,16 @@ export interface ReadSeatSkillsResult {
    * its slash-separated path relative to `root` — a level that could not be
    * listed, a skill folder that could not be read, or a name the seat would
    * have seen twice. Which of those it is, is on the entry's `kind`; see
-   * {@link SeatSkillErrorKind}.
+   * {@link SeatSkillErrorKind}. Narrow on it: a `duplicate-skill-name` entry
+   * also carries `paths`, the every-level list a collision needs and the other
+   * five conditions have nothing to put in.
    *
    * Collected rather than thrown, so one bad folder does not cost a seat its
    * other skills. Treating a non-empty `errors` as fatal is the caller's call
    * to make explicitly, and it is usually the right one: every entry is a skill
    * the seat was supposed to have.
    */
-  errors: PathReport<SeatSkillErrorKind>[];
+  errors: SeatSkillError[];
 }
 
 /**
@@ -144,7 +175,7 @@ export async function readSeatSkills(
     );
   }
 
-  const errors: PathReport<SeatSkillErrorKind>[] = [];
+  const errors: SeatSkillError[] = [];
   // Structural folders already refused, so a shared one — `teams`, the team's
   // own folder — is reported once rather than once per level beneath it.
   const refused = new Set<string>();
@@ -217,7 +248,10 @@ export async function readSeatSkills(
     }
     errors.push({
       kind: "duplicate-skill-name",
-      path: paths[paths.length - 1]!,
+      // Keyed by where the name was first seen, like every other report here.
+      // Every copy is in `paths`, and not one of them is the copy that won.
+      path: paths[0]!,
+      paths: [...paths],
       error: new Error(duplicateSkillNameMessage(name, worker, paths)),
     });
   }
@@ -242,7 +276,7 @@ export async function readSeatSkills(
 async function refusedOnTheWay(
   root: string,
   level: string,
-  errors: PathReport<SeatSkillErrorKind>[],
+  errors: SeatSkillError[],
   refused: Set<string>,
 ): Promise<boolean> {
   const components = level.split("/");

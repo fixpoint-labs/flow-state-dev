@@ -188,6 +188,59 @@ describe("readSeatSkills — one name twice in one seat's view", () => {
     expect(skills).toEqual([]);
   });
 
+  it("carries every colliding path on the entry, in read order, across all three levels", async () => {
+    // Three levels, not two. The list is built by appending as each level is
+    // read, so a bug that keeps only the first and last pair — or that stops
+    // appending once a name is already contested — still satisfies a two-level
+    // case. This is the case that can tell them apart.
+    await writeSkill("org/skills", "triage", body("ORG BODY"));
+    await writeSkill("teams/pentest/skills", "triage", body("TEAM BODY"));
+    await writeSkill("teams/pentest/workers/recon/skills", "triage", body("SEAT BODY"));
+
+    const { skills, errors } = await readSeatSkills(root, {
+      team: "pentest",
+      worker: "recon",
+    });
+
+    expect(errors).toHaveLength(1);
+    const entry = errors[0]!;
+    if (entry.kind !== "duplicate-skill-name") {
+      throw new Error(`expected a collision, got ${entry.kind}`);
+    }
+    expect(entry.paths).toEqual([
+      "org/skills/triage",
+      "teams/pentest/skills/triage",
+      "teams/pentest/workers/recon/skills/triage",
+    ]);
+    // Reachable without parsing the message, which is where they used to be
+    // the only copy.
+    for (const where of entry.paths) expect(entry.error.message).toContain(where);
+    // All three dropped. None of them is the one the seat got.
+    expect(names(skills)).toEqual([]);
+  });
+
+  it("keys a collision by where the name was first seen, not by the innermost level", async () => {
+    // `path` names the thing that failed on every other kind, so on this one it
+    // must not read as the copy that won — a seat-level file keyed as *the*
+    // path is exactly the local-wins rule this refusal denies. Keyed by first
+    // sighting instead, the same rule the rest of the array is ordered by.
+    await writeSkill("teams/pentest/skills", "triage", body("TEAM BODY"));
+    await writeSkill("teams/pentest/workers/recon/skills", "triage", body("SEAT BODY"));
+
+    const { errors } = await readSeatSkills(root, { team: "pentest", worker: "recon" });
+
+    const entry = errors[0]!;
+    if (entry.kind !== "duplicate-skill-name") {
+      throw new Error(`expected a collision, got ${entry.kind}`);
+    }
+    expect(entry.path).toBe("teams/pentest/skills/triage");
+    expect(entry.path).toBe(entry.paths[0]);
+    expect(entry.paths).toEqual([
+      "teams/pentest/skills/triage",
+      "teams/pentest/workers/recon/skills/triage",
+    ]);
+  });
+
   it("reports every collision in one run, not just the first", async () => {
     await writeSkill("org/skills", "triage", body("org"));
     await writeSkill("org/skills", "review", body("org"));
@@ -434,10 +487,15 @@ describe("readSeatSkills — which condition each report is", () => {
     });
 
     expect(errors.map((e) => `${e.kind} @ ${e.path}`).sort()).toEqual([
-      "duplicate-skill-name @ teams/pentest/skills/triage",
+      "duplicate-skill-name @ org/skills/triage",
       "refused-scope-key @ org/skills/greedy",
       "skill-load-failed @ org/skills/broken",
       "unlistable-level @ teams/pentest/workers/recon/skills",
+    ]);
+    // The every-level list belongs to the one condition that has more than one
+    // path; the other three each failed at the single path they are keyed by.
+    expect(errors.filter((e) => "paths" in e).map((e) => e.kind)).toEqual([
+      "duplicate-skill-name",
     ]);
     // Nothing uncontested survived this tree, so none is silently dropped.
     expect(names(skills)).toEqual([]);

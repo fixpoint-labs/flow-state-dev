@@ -187,7 +187,8 @@ One name reaching a single worker from two of its levels is refused, naming both
 ```ts
 errors;
 // [{ kind: "duplicate-skill-name",
-//    path: "teams/pentest/skills/triage",
+//    path: "org/skills/triage",
+//    paths: ["org/skills/triage", "teams/pentest/skills/triage"],
 //    error: Error('Skill "triage" reaches seat "recon" from 2 levels — org/skills/triage
 //                  and teams/pentest/skills/triage. Remove one: there is no precedence
 //                  rule.') }]
