@@ -32,6 +32,7 @@ import {
   REFUSED_SKILL_SCOPE_KEY_MESSAGE,
   duplicateSkillNameMessage,
 } from "../manifest";
+import { validateSegment } from "./segments";
 import { type PathReport, openStructuralDirectory } from "./structural-directory";
 
 /** Which seat to read for. Both segments name folders in the tree. */
@@ -89,6 +90,13 @@ export async function readSeatSkills(
   root: string,
   { team, worker }: ReadSeatSkillsOptions,
 ): Promise<ReadSeatSkillsResult> {
+  // Both arguments become path segments, so they are held to the same rules as
+  // the folders they name. Thrown rather than collected: a segment that breaks
+  // them names no seat, so there is no seat to report against — and one
+  // carrying `..` would read a folder the caller never configured.
+  validateSegment(team, "Team");
+  validateSegment(worker, "Worker");
+
   const errors: PathReport[] = [];
   // Where each name came from, in read order, so a contested one can name every
   // file in play rather than just the two the author happened to write first.
@@ -153,6 +161,5 @@ export async function readSeatSkills(
  */
 function declaresScope(skill: InitialSkill): boolean {
   const { yaml } = splitFrontmatter(skill.skillMd);
-  if (yaml.trim().length === 0) return false;
   return Object.hasOwn(parseFrontmatterYaml(yaml), REFUSED_SKILL_SCOPE_KEY);
 }

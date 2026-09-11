@@ -191,6 +191,10 @@ A level that isn't in the tree is empty, not an error — an app may keep no org
 worker may have none of its own. A level that exists and cannot be listed lands in `errors`
 under its own path, as does a skill folder that cannot be read.
 
+`team` and `worker` follow the same naming rules as the folders they name: lowercase letters,
+digits and single hyphens, at most 64 characters. A name outside those rules throws, since it
+addresses no seat.
+
 A `SKILL.md` read this way may not declare `scope:`. Where the folder sits is what decides who
 can see a skill, so a file that declares it is refused by name. The same file read directly by
 `readSkillsDirectory` is unaffected.
@@ -269,6 +273,7 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | Persona empty content | Execution time — resource resolved but `readContent()` returned null |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable | `readWorkforceDirectory` throws |
+| Bad `team` or `worker` name | `readSeatSkills` throws |
 | Skills level unreadable | Collected in `readSeatSkills`'s `errors`, keyed by the level's path — an absent level is empty instead |
 | One skill name at two of a seat's levels | Collected in `readSeatSkills`'s `errors`, naming both paths; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors`, keyed by the skill's path |

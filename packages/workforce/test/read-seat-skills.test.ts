@@ -96,6 +96,44 @@ describe("readSeatSkills — the levels a seat draws from", () => {
   });
 });
 
+describe("readSeatSkills — the seat named in the arguments", () => {
+  // `team` and `worker` are caller-supplied and become path segments, so a
+  // segment carrying `..` would read a folder outside the configured root —
+  // the same escape the walk's symlink refusal exists to stop.
+  it("refuses a team or worker name that would leave the root", async () => {
+    const outside = path.join(root, "..", `outside-${path.basename(root)}`);
+    await fs.mkdir(path.join(outside, "skills", "exfil"), { recursive: true });
+    await fs.writeFile(
+      path.join(outside, "skills", "exfil", "SKILL.md"),
+      body("outside the root"),
+    );
+
+    try {
+      await expect(
+        // `<root>/teams/../../<outside>/skills` — outside the configured root.
+        readSeatSkills(root, {
+          team: `../../${path.basename(outside)}`,
+          worker: "nobody",
+        }),
+      ).rejects.toThrow(/Team folder name/);
+      await expect(
+        readSeatSkills(root, { team: "pentest", worker: "../../elsewhere" }),
+      ).rejects.toThrow(/Worker folder name/);
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an empty team or worker name", async () => {
+    await expect(readSeatSkills(root, { team: "", worker: "recon" })).rejects.toThrow(
+      /Team folder name/,
+    );
+    await expect(readSeatSkills(root, { team: "pentest", worker: "" })).rejects.toThrow(
+      /Worker folder name/,
+    );
+  });
+});
+
 describe("readSeatSkills — a seat's own folder", () => {
   it("includes a worker-local skill without it being listed anywhere", async () => {
     await writeSkill("teams/pentest/workers/recon/skills", "sweep", body("seat sweep"));

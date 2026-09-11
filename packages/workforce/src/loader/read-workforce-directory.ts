@@ -36,32 +36,13 @@ import {
   refusedSymlink,
   unreadable,
 } from "./structural-directory";
+import { validateSegment } from "./segments";
 
 /** Filenames that are never a worker folder — editor and OS droppings. */
 const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
 
 /** The document that describes a worker. */
 const WORKER_MD = "WORKER.md";
-
-/**
- * Pattern a team or worker folder name must match: lowercase `a-z`/`0-9` runs
- * joined by single hyphens. These are the skill-name rules, adopted rather than
- * shared: the minted identity becomes a flow instance id and a board key, while
- * each segment is separately a path segment on disk, and lowercase-hyphen is the
- * one shape safe in all of them.
- *
- * The allowlist excludes `.`, and that exclusion is load-bearing rather than
- * incidental: `.` is the joiner, so a dotted segment would make the minted id
- * impossible to split back into a team and a name — `a.b.lead` could be read
- * two ways. Do not relax this to admit `.`.
- */
-const SEGMENT_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-/** Longest legal team or worker folder name. */
-const MAX_SEGMENT_LENGTH = 64;
-
-/** Folder names the framework reserves. */
-const RESERVED_SEGMENTS = new Set(["_meta"]);
 
 /** What `readWorkforceDirectory` hands back. */
 export interface ReadWorkforceDirectoryResult {
@@ -255,23 +236,4 @@ function mintWorkerId(teamId: string, workerName: string): string {
   validateSegment(teamId, "Team");
   validateSegment(workerName, "Worker");
   return `${teamId}.${workerName}`;
-}
-
-/** Validate one path segment against the naming rules. Throws on a break. */
-function validateSegment(segment: string, label: "Team" | "Worker"): void {
-  if (segment.length > MAX_SEGMENT_LENGTH) {
-    throw new Error(
-      `${label} folder name "${segment}" exceeds ${MAX_SEGMENT_LENGTH} characters`,
-    );
-  }
-  if (RESERVED_SEGMENTS.has(segment)) {
-    throw new Error(`${label} folder name "${segment}" is reserved`);
-  }
-  if (!SEGMENT_PATTERN.test(segment)) {
-    throw new Error(
-      `${label} folder name "${segment}" must be lowercase letters, digits, and single ` +
-        `hyphens (not at the start or end) — it becomes part of the worker's identity, ` +
-        `which is joined with a "."`,
-    );
-  }
 }
