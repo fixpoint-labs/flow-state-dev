@@ -48,7 +48,7 @@ A matched skill is inline instructions. Its substituted body is injected into th
 
 A bound skill can additionally **delegate**: if it declares an `agents:` field, the generator gets a private task board, the `taskTools` to plan on it, and `runBoard` — it assigns the work as tasks (assignees, deps, structured input) and runs the whole graph by draining the board. Each assignee is a prompt-driven agent, or a catalog tool that runs without a model turn. [Authoring a delegating skill](/guides/agents-command-the-board) walks that path end to end; see [Delegation](./delegation) for the frontmatter shape and how the skill drives its board.
 
-Fork mode was removed. A skill no longer runs as an isolated sub-agent. For "run this as a sub-agent and get the result back," declare an agent, assign it a single task, and call `runBoard`. For the fork-like case where the sub-agent should inherit the conversation so far and still return only its result, mark it `context-supply: conversation` — see [Context supply](../orchestration/context-supply).
+A skill does not run as an isolated sub-agent. For "run this as a sub-agent and get the result back," declare an agent, assign it a single task, and call `runBoard`. For the fork-like case where the sub-agent should inherit the conversation so far and still return only its result, mark it `context-supply: conversation` — see [Context supply](../orchestration/context-supply).
 
 ## Binding skills to one generator
 
@@ -172,12 +172,30 @@ Two calls naming different teams read different folders, so each result holds on
 read. A `review` under `teams/pentest/` and a `review` under `teams/audit/` are two skills, and
 neither result carries the other's.
 
-`errors` is one entry per thing that should have reached the worker and did not — an unreadable
-level, a skill folder that failed to load, or a name reaching the worker from two of its levels
-(refused, naming both paths, and left out of `skills`). Each entry is `{ kind, path, error }`, keyed
-by a path relative to the root. `kind` names which of those conditions it is, so a caller can
-tolerate one class and still refuse another. An absent level is empty rather than an error, but a
-`root` that cannot be read throws.
+`errors` is one entry per thing that should have reached the worker and did not: a level that
+exists and cannot be listed, a skill folder that failed to load, a symlink on the way to a level,
+a `SKILL.md` the reader refuses, or one name reaching the worker from more than one level. Each
+entry is `{ kind, path, error }`, keyed by a path relative to the root, and `kind` names which of
+those conditions it is, so a caller can tolerate one class and still refuse another. An absent
+level is empty rather than an error, but a `root` that cannot be read throws.
+
+A collision carries one more field, `paths`. Narrow on `kind` to reach it:
+
+```ts
+for (const entry of errors) {
+  if (entry.kind === "duplicate-skill-name") {
+    // every file competing for the name: two or three, one per level
+    console.error(entry.error.message, entry.paths);
+  } else {
+    console.error(`${entry.kind} at ${entry.path}`, entry.error);
+  }
+}
+```
+
+A contested name is dropped rather than resolved. Every copy stays out of `skills`, whichever level
+it came from: a folder beside the worker does not override its team's, and a team's does not
+override the org's. `path` on that entry is `paths[0]`, the level the name was first seen at. It keys the entry; it
+does not rank the files. Rename one or delete one to get the skill back.
 
 `readSeatSkills` returns records and installs nothing. Turning a set into a live catalog is the
 caller's job: pass `skills` as the `initialSkills` of the capability you build for that worker. See

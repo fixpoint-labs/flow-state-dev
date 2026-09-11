@@ -182,20 +182,31 @@ const clerk = await readSeatSkills("./workforce", { team: "audit", worker: "cler
 // recon.skills has pentest's `review`; clerk.skills has audit's. Neither carries the other.
 ```
 
-One name reaching a single worker from two of its levels is refused, naming both paths:
+One name reaching a single worker from more than one of its levels is refused. All three levels
+count, so a collision can span two of them or all three:
 
 ```ts
 errors;
 // [{ kind: "duplicate-skill-name",
 //    path: "org/skills/triage",
-//    paths: ["org/skills/triage", "teams/pentest/skills/triage"],
-//    error: Error('Skill "triage" reaches seat "recon" from 2 levels — org/skills/triage
-//                  and teams/pentest/skills/triage. Remove one: there is no precedence
-//                  rule.') }]
+//    paths: [
+//      "org/skills/triage",
+//      "teams/pentest/skills/triage",
+//      "teams/pentest/workers/recon/skills/triage",
+//    ],
+//    error: Error('Skill "triage" reaches seat "recon" from 3 levels — org/skills/triage
+//                  and teams/pentest/skills/triage and
+//                  teams/pentest/workers/recon/skills/triage. Remove one: there is no
+//                  precedence rule.') }]
 ```
 
-The contested name is left out of `skills` entirely. The fix is a rename or a deletion; a
-worker-level folder does not override its team's.
+`paths` holds every file competing for the name, in the order the levels are read: the org's, then
+the team's, then the worker's own. None of them reaches `skills` — the contested name is left out
+of the set entirely. A worker-level folder does not override its team's, and a team's does not
+override the org's. The fix is a rename or a deletion.
+
+`path` is `paths[0]`, the level the name was first seen at, which is how every entry in `errors` is
+keyed. On a collision it is a key and not a ranking: no copy wins.
 
 A level that isn't in the tree is empty, not an error — an app may keep no org skills, and a
 worker may have none of its own. A level that exists and cannot be listed lands in `errors` under
@@ -302,6 +313,6 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | Skill folder fails to load | Collected in `readSeatSkills`'s `errors` as `kind: "skill-load-failed"`, keyed by `<level>/<folder>` |
 | Symlinked folder on the way to a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-ancestor"`, keyed by that folder's path — never followed |
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
-| One skill name at two of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, naming both paths; the name is left out of `skills` |
+| One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
 | Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |
