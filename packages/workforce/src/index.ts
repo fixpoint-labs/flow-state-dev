@@ -8,9 +8,11 @@
  * out of the root so importing this package does not pull a consumer onto
  * `node:fs`.
  *
- * A worker is a flow kind plus its instructions. There is no Agent factory
- * here: `defineAgent`, `createAgentRegistry`, `materializeAgent` and
- * `agentBlock` were removed.
+ * A worker is a flow kind plus its instructions; there is no Agent factory
+ * here. Beside the seat factory sit two helpers: `definePersona`, which
+ * declares the persona resources a flow renders as a system prompt, and
+ * `createWorkforceCapability`, which surfaces a roster through the capability
+ * system.
  */
 
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";

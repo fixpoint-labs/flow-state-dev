@@ -19,9 +19,10 @@ export interface WorkforceCapabilityOptions {
 export function createWorkforceCapability(
   options: WorkforceCapabilityOptions,
 ): DefinedCapability {
-  // Eagerly validate: duplicate-name check runs at construction time. Inlined
-  // here because it used to borrow `createAgentRegistry`, which was removed
-  // along with the rest of the Agent factory.
+  // Eagerly validate: the duplicate-name check runs at construction time, so a
+  // roster with two agents under one name is refused where it is declared
+  // rather than at the first ambiguous lookup. Inlined because this is the only
+  // caller — a shared registry helper for one check would be indirection.
   if (Array.isArray(options.agents)) {
     const seen = new Set<string>();
     for (const agent of options.agents) {
