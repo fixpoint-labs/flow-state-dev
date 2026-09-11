@@ -94,7 +94,14 @@ async function readOneSkillFolder(
   let skillMd: string;
   try {
     skillMd = await fs.readFile(manifestPath, "utf8");
-  } catch {
+  } catch (err) {
+    // Only a genuinely absent file is "missing". Anything else — a directory
+    // where the manifest belongs, a permission denial, an I/O failure — is a
+    // file the author can see, so reporting it as absent sends them looking
+    // for something that is already there.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new Error(`SKILL.md in "${name}/" could not be read: ${(err as Error).message}`);
+    }
     throw new Error(`Missing SKILL.md in "${name}/"`);
   }
 

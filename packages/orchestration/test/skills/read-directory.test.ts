@@ -111,4 +111,31 @@ describe("readSkillsDirectory", () => {
     expect(skills).toEqual([]);
     expect(errors.find((e) => e.name === "BadName")).toBeDefined();
   });
+
+  // A SKILL.md that is there and cannot be read is not a SKILL.md that is
+  // absent: reporting the first as the second sends an author to look for a
+  // file that is sitting right where they left it.
+  it("reports a present-but-unreadable SKILL.md as a read failure, not as missing", async () => {
+    // A *directory* named SKILL.md. Chosen over a chmod because it fails the
+    // same way when the suite runs as root.
+    await fs.mkdir(path.join(tmp, "weird", "SKILL.md"), { recursive: true });
+
+    const { skills, errors } = await readSkillsDirectory(tmp);
+
+    expect(skills).toEqual([]);
+    const weird = errors.find((e) => e.name === "weird");
+    expect(weird?.error.message).not.toMatch(/Missing SKILL\.md/);
+    expect(weird?.error.message).toMatch(/could not be read/);
+    expect(weird?.error.message).toMatch(/EISDIR|illegal operation on a directory/i);
+  });
+
+  it("still reports a genuinely absent SKILL.md as missing", async () => {
+    await fs.mkdir(path.join(tmp, "empty"), { recursive: true });
+
+    const { errors } = await readSkillsDirectory(tmp);
+
+    expect(errors.find((e) => e.name === "empty")?.error.message).toMatch(
+      /Missing SKILL\.md in "empty\/"/,
+    );
+  });
 });

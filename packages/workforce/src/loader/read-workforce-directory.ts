@@ -30,6 +30,12 @@ import {
   REFUSED_PERSONA_KEY_MESSAGE,
   type WorkerManifest,
 } from "../manifest";
+import {
+  classify,
+  openStructuralDirectory,
+  refusedSymlink,
+  unreadable,
+} from "./structural-directory";
 
 /** Filenames that are never a worker folder — editor and OS droppings. */
 const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
@@ -158,46 +164,6 @@ export async function readWorkforceDirectory(
 }
 
 /**
- * List one of the walk's structural directories — `teams` or a team's
- * `workers`. Returns its entries, or `undefined` when the walk cannot go that
- * way, having reported the reason unless the folder is simply absent.
- *
- * Absence is the only silent outcome, and separating it from the rest is why
- * this helper exists. A missing folder is a tree that does not go that way; a
- * folder that exists and cannot be read is a set of seats the app has lost, and
- * reading it as empty would drop them from the roster while leaving `errors`
- * empty — which is exactly what a caller told to treat `errors` as fatal cannot
- * see. The symlink check is what stops `readdir` following `teams -> /outside`
- * and loading worker files from outside the configured root.
- */
-async function openStructuralDirectory(
-  target: string,
-  reportAs: string,
-  errors: ReadWorkforceDirectoryResult["errors"],
-): Promise<string[] | undefined> {
-  if ((await classify(target)).kind === "symlink") {
-    errors.push({ path: reportAs, error: refusedSymlink("directory", reportAs) });
-    return undefined;
-  }
-
-  try {
-    return await fs.readdir(target);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    errors.push({
-      path: reportAs,
-      error: new Error(`"${reportAs}" could not be read: ${(err as Error).message}`),
-    });
-    return undefined;
-  }
-}
-
-/** The one wording for a refused symlink, wherever the walk meets one. */
-function refusedSymlink(what: string, name: string): Error {
-  return new Error(`Symlinked ${what} "${name}" — refused for safety`);
-}
-
-/**
  * Read one worker slot into a manifest. Throws when the slot cannot produce
  * one; the caller turns that into an `errors` entry keyed by the slot's path.
  */
@@ -308,48 +274,4 @@ function validateSegment(segment: string, label: "Team" | "Worker"): void {
         `which is joined with a "."`,
     );
   }
-}
-
-/** What a path is, without following symlinks. */
-type EntryKind = "directory" | "file" | "symlink" | "absent" | "unreadable";
-
-/** A path's kind, plus the failure behind an `unreadable` one. */
-interface Entry {
-  kind: EntryKind;
-  /** Set only for `unreadable`, so the report can say what went wrong. */
-  error?: Error;
-}
-
-/**
- * Classify a path without following symlinks. Symlinks are never followed: a
- * workforce tree can come from anywhere, and one could escape the root or point
- * at something sensitive.
- *
- * Only a missing path is `absent`. Every other failure is `unreadable` and
- * stays distinct, for the same reason `openStructuralDirectory` keeps them
- * apart: a directory that is readable but not searchable (`r--` rather than
- * `r-x`) lists its children and then fails to stat any of them, so folding that
- * into `absent` would drop every seat under it while leaving `errors` empty —
- * the one thing a caller told to treat `errors` as fatal cannot see.
- */
-async function classify(target: string): Promise<Entry> {
-  try {
-    const stat = await fs.lstat(target);
-    if (stat.isSymbolicLink()) return { kind: "symlink" };
-    if (stat.isDirectory()) return { kind: "directory" };
-    if (stat.isFile()) return { kind: "file" };
-    // A socket, a FIFO, a device: not a worker slot, and not a mistake either.
-    return { kind: "absent" };
-  } catch (err) {
-    const failure = err as NodeJS.ErrnoException;
-    return failure.code === "ENOENT"
-      ? { kind: "absent" }
-      : { kind: "unreadable", error: failure };
-  }
-}
-
-/** The one wording for a path that is there and could not be read. */
-function unreadable(what: string, name: string, cause: Error | undefined): Error {
-  const detail = cause === undefined ? "" : `: ${cause.message}`;
-  return new Error(`${what} "${name}" could not be read${detail}`);
 }

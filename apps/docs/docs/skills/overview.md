@@ -139,6 +139,40 @@ export const featuresCapability = defineCapability({
 
 See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 
+## Where skills folders live
+
+`readSkillsDirectory` takes a root, so a skills folder can sit wherever you point it. In an app that
+describes its workers in folders (see [Workers on disk](/orchestration/workers-on-disk)), a worker
+draws from the whole app's skills, its own team's, and any sitting beside the worker itself.
+
+```
+workforce/org/skills/triage/SKILL.md
+workforce/teams/pentest/skills/port-scan/SKILL.md
+workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md
+```
+
+`readSeatSkills` from `@flow-state-dev/workforce/loader` reads all three for one worker:
+
+```ts
+import { readSeatSkills } from "@flow-state-dev/workforce/loader";
+
+const { skills: initialSkills, errors } = await readSeatSkills("./workforce", {
+  team: "pentest",
+  worker: "recon",
+});
+```
+
+A skill beside the worker is included without being listed in that worker's `skills:`. Two workers on
+different teams read different folders, so two teams can each keep a `review` and neither worker sees
+the other's. Skill names stay bare.
+
+One name reaching a single worker from two of its levels is refused, naming both paths, and left out
+of `skills`. Rename or delete one; a worker-level folder does not override its team's.
+
+Each worker's skills install into that worker's own collection, at whatever scope you give it. See the
+[`@flow-state-dev/workforce` README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/workforce#reading-one-seats-skills)
+for the full surface.
+
 ## What ships in the package
 
 | Export | Purpose |
@@ -146,6 +180,7 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 | `createSkillsCapability(options)` | The one-line wiring path. Returns a capability with three presets — `tools`, `context`, `runSkill` — all on by default. Drop the tool-call path at the use site with `cap.with({ runSkill: false })`. |
 | `createSkillActivator(options)` | The up-front skill router. Returns a `.tap`-able sequencer. See [Activation paths](./activation). |
 | `readSkillsDirectory(root)` | Walk a filesystem tree and return `InitialSkill[]` for `initialSkills`. Node only. |
+| `readSeatSkills(root, { team, worker })` | One worker's skills across the org, team and worker levels of a workforce tree. Ships from `@flow-state-dev/workforce/loader`. Node only. |
 | `createRunSkillTool(options)` | The `runSkill` router as a standalone tool, for custom wiring outside the capability. |
 | `inlineActivate` | The inline-mode handler, for custom wiring. |
 | `parseSkillMd`, `serializeSkillMd` | Frontmatter + body parsing, for tools that build skills programmatically. |

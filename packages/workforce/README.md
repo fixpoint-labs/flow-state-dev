@@ -138,6 +138,66 @@ to run a short roster.
 
 The subpath is separate because the reader imports `node:fs`; the package root stays isomorphic.
 
+## Reading one seat's skills
+
+A skill is a folder with a `SKILL.md` in it. In a workforce tree a worker draws from the org's
+shared skills, its own team's, and any sitting beside the worker itself.
+
+```
+workforce/org/skills/triage/SKILL.md
+workforce/teams/pentest/skills/port-scan/SKILL.md
+workforce/teams/pentest/skills/review/SKILL.md
+workforce/teams/audit/skills/review/SKILL.md            # a different `review`
+workforce/teams/pentest/workers/recon/WORKER.md
+workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md
+```
+
+`readSeatSkills` reads the three levels for one worker and hands back what
+`createSkillsCapability`'s `initialSkills` takes.
+
+```ts
+import { readSeatSkills } from "@flow-state-dev/workforce/loader";
+
+const { skills, errors } = await readSeatSkills("./workforce", {
+  team: "pentest",
+  worker: "recon",
+});
+if (errors.length) throw new Error(`skills: ${errors.length} level(s) failed to load`);
+
+skills.map((s) => s.name); // ["triage", "port-scan", "review", "sweep"]
+```
+
+A skill beside the worker is included without appearing in that worker's `skills:` list. The
+`skills:` list names the shared skills a seat wants; the folder is already the seat's.
+
+Two workers on different teams read different folders, so `pentest`'s `review` and `audit`'s
+`review` are two skills and neither seat sees the other's. Skill names stay bare — nothing is
+prefixed with a team.
+
+One name reaching a single worker from two of its levels is refused, naming both paths:
+
+```ts
+errors;
+// [{ path: "teams/pentest/skills/triage",
+//    error: Error('Skill "triage" reaches seat "recon" from 2 levels — org/skills/triage
+//                  and teams/pentest/skills/triage. Remove one: there is no precedence
+//                  rule.') }]
+```
+
+The contested name is left out of `skills` entirely. The fix is a rename or a deletion; a
+worker-level folder does not override its team's.
+
+A level that isn't in the tree is empty, not an error — an app may keep no org skills, and a
+worker may have none of its own. A level that exists and cannot be listed lands in `errors`
+under its own path, as does a skill folder that cannot be read.
+
+A `SKILL.md` read this way may not declare `scope:`. Where the folder sits is what decides who
+can see a skill, so a file that declares it is refused by name. The same file read directly by
+`readSkillsDirectory` is unaffected.
+
+The reader registers nothing. It returns records; installing them as a live catalog is the
+caller's job.
+
 ## Hiring a workforce
 
 `hireWorkforce` turns worker records into **seats**: one configured, addressable flow copy per worker.
@@ -193,6 +253,7 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
 | `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker. Ships from the `./loader` subpath (Node only). |
+| `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Ships from the `./loader` subpath (Node only). |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body }`. |
 
@@ -208,4 +269,7 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | Persona empty content | Execution time — resource resolved but `readContent()` returned null |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable | `readWorkforceDirectory` throws |
+| Skills level unreadable | Collected in `readSeatSkills`'s `errors`, keyed by the level's path — an absent level is empty instead |
+| One skill name at two of a seat's levels | Collected in `readSeatSkills`'s `errors`, naming both paths; the name is left out of `skills` |
+| `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors`, keyed by the skill's path |
 | Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |
