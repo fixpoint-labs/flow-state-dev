@@ -20,6 +20,7 @@
  * `./loader` subpath rather than the package root.
  */
 
+import fs from "node:fs/promises";
 import path from "node:path";
 import type { InitialSkill } from "@flow-state-dev/core";
 import {
@@ -33,7 +34,12 @@ import {
   duplicateSkillNameMessage,
 } from "../manifest";
 import { validateSegment } from "./segments";
-import { type PathReport, openStructuralDirectory } from "./structural-directory";
+import {
+  type PathReport,
+  classify,
+  openStructuralDirectory,
+  refusedSymlink,
+} from "./structural-directory";
 
 /** Which seat to read for. Both segments name folders in the tree. */
 export interface ReadSeatSkillsOptions {
@@ -80,6 +86,12 @@ export interface ReadSeatSkillsResult {
  * A level that is absent is not an error: an app may keep no org skills, and a
  * seat may have none of its own. A level that exists and cannot be listed is.
  *
+ * Throws only when `root` itself cannot be read — a configured root that does
+ * not exist is a wiring mistake, not a per-level one, and reading it as three
+ * absent levels would hand back an empty set with an empty `errors`, which is
+ * the shape of a seat that has no skills on purpose. Matches the sibling
+ * reader, which answered this question first.
+ *
  * @example
  * const { skills, errors } = await readSeatSkills("./workforce", {
  *   team: "pentest",
@@ -97,7 +109,21 @@ export async function readSeatSkills(
   validateSegment(team, "Team");
   validateSegment(worker, "Worker");
 
+  // The levels below are each allowed to be absent, so nothing further down
+  // can tell a missing root from a tree that simply keeps no skills. Checked
+  // here, once, in the sibling reader's words.
+  try {
+    await fs.readdir(root);
+  } catch (err) {
+    throw new Error(
+      `Failed to read workforce directory "${root}": ${(err as Error).message}`,
+    );
+  }
+
   const errors: PathReport[] = [];
+  // Structural folders already refused, so a shared one — `teams`, the team's
+  // own folder — is reported once rather than once per level beneath it.
+  const refused = new Set<string>();
   // Where each name came from, in read order, so a contested one can name every
   // file in play rather than just the two the author happened to write first.
   const sources = new Map<string, { paths: string[]; skills: InitialSkill[] }>();
@@ -108,6 +134,12 @@ export async function readSeatSkills(
     `teams/${team}/workers/${worker}/skills`,
   ]) {
     const dir = path.join(root, ...level.split("/"));
+    // The level is jumped to rather than walked down to, so every folder above
+    // it has to be classified here — `lstat` answers for the final component
+    // alone, and the OS quietly resolves the rest. Without this a symlinked
+    // `teams/` is followed and the level loads from outside the root.
+    if (await refusedOnTheWay(root, level, errors, refused)) continue;
+
     // Gate the level through the shared primitive: it is what keeps an absent
     // folder silent, a symlinked one refused, and an unreadable one reported.
     if ((await openStructuralDirectory(dir, level, errors)) === undefined) continue;
@@ -150,6 +182,43 @@ export async function readSeatSkills(
   }
 
   return { skills: assembled, errors };
+}
+
+/**
+ * Whether a symlink stands between `root` and one level, refusing it if so.
+ *
+ * Walks the level's own folders — `org`, `teams`, `teams/<team>`, and the rest
+ * — leaving the `skills/` folder at the end to `openStructuralDirectory`, which
+ * already classifies what it is handed. Only symlinks are refused here: an
+ * absent or unreadable folder above a level already reaches the caller through
+ * that level's own report, and re-deriving it would say the same thing twice.
+ *
+ * Reported rather than thrown, which is the sibling reader's answer for the
+ * same folders: `teams` and a team's folder are structural and shared, so one
+ * that is refused is a level that cannot be read — not a call that names no
+ * seat, which is what the thrown segment rules are for.
+ */
+async function refusedOnTheWay(
+  root: string,
+  level: string,
+  errors: PathReport[],
+  refused: Set<string>,
+): Promise<boolean> {
+  const components = level.split("/");
+
+  for (let depth = 1; depth < components.length; depth++) {
+    const ancestor = components.slice(0, depth);
+    const reportAs = ancestor.join("/");
+    if (refused.has(reportAs)) return true;
+
+    if ((await classify(path.join(root, ...ancestor))).kind === "symlink") {
+      refused.add(reportAs);
+      errors.push({ path: reportAs, error: refusedSymlink("directory", reportAs) });
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**

@@ -191,6 +191,15 @@ A level that isn't in the tree is empty, not an error — an app may keep no org
 worker may have none of its own. A level that exists and cannot be listed lands in `errors`
 under its own path, as does a skill folder that cannot be read.
 
+The root itself is different: a root that cannot be read throws, because every level under it
+is allowed to be absent, so reading a mistyped root as three empty levels would hand back an
+empty set with an empty `errors` and boot the seat with nothing said.
+
+Symlinks are never followed, and that holds for the folders on the way to a level as much as
+for the level itself — `org`, `teams`, a team's folder, its `workers`, and the worker's own.
+A symlinked one is refused into `errors` under its own path, so a link out of the tree cannot
+pull skills in from outside the configured root.
+
 `team` and `worker` follow the same naming rules as the folders they name: lowercase letters,
 digits and single hyphens, at most 64 characters. A name outside those rules throws, since it
 addresses no seat.
@@ -274,7 +283,9 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable | `readWorkforceDirectory` throws |
 | Bad `team` or `worker` name | `readSeatSkills` throws |
+| Skills root unreadable | `readSeatSkills` throws |
 | Skills level unreadable | Collected in `readSeatSkills`'s `errors`, keyed by the level's path — an absent level is empty instead |
+| Symlinked folder on the way to a level | Collected in `readSeatSkills`'s `errors`, keyed by that folder's path — never followed |
 | One skill name at two of a seat's levels | Collected in `readSeatSkills`'s `errors`, naming both paths; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors`, keyed by the skill's path |
 | Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |

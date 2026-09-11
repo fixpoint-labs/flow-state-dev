@@ -249,3 +249,72 @@ describe("readSeatSkills — a SKILL.md that declares its own scope", () => {
     expect(names(direct.skills)).toEqual(["triage"]);
   });
 });
+
+describe("readSeatSkills — a symlink on the way to a level", () => {
+  // `lstat` answers for the final component only; the OS resolves every one
+  // above it. So a symlinked *intermediate* is followed unless the walk
+  // classifies it, and the level beneath it loads from outside the configured
+  // root. Every position is covered rather than one: a probe that stopped at
+  // the first would go green with the rest of the hole still open.
+  const positions = [
+    { link: "org", skillsUnder: "skills" },
+    { link: "teams", skillsUnder: "pentest/skills" },
+    { link: "teams/pentest", skillsUnder: "skills" },
+    { link: "teams/pentest/workers", skillsUnder: "recon/skills" },
+    { link: "teams/pentest/workers/recon", skillsUnder: "skills" },
+  ];
+
+  it.each(positions)(
+    "refuses a symlinked $link and loads nothing through it",
+    async ({ link, skillsUnder }) => {
+      const outside = await fs.mkdtemp(path.join(os.tmpdir(), "seat-skills-outside-"));
+      try {
+        const exfil = path.join(outside, ...skillsUnder.split("/"), "exfil");
+        await fs.mkdir(exfil, { recursive: true });
+        await fs.writeFile(path.join(exfil, "SKILL.md"), body("outside the root"));
+
+        const linkPath = path.join(root, ...link.split("/"));
+        await fs.mkdir(path.dirname(linkPath), { recursive: true });
+        await fs.symlink(outside, linkPath, "dir");
+
+        const { skills, errors } = await readSeatSkills(root, {
+          team: "pentest",
+          worker: "recon",
+        });
+
+        // Nothing from outside the configured root reaches the seat.
+        expect(names(skills)).toEqual([]);
+        // Reported once, under the refused component's own path — not once per
+        // level that would have passed through it.
+        expect(errors).toHaveLength(1);
+        expect(errors[0]!.path).toBe(link);
+        expect(errors[0]!.error.message).toMatch(/refused for safety/);
+      } finally {
+        await fs.rm(outside, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("readSeatSkills — the configured root", () => {
+  it("throws when the root itself cannot be read, rather than reporting an empty set", async () => {
+    const missing = path.join(root, "no-such-workforce-root");
+
+    // A clean `errors` has to mean "read it, found nothing wrong". Without
+    // this, a mistyped root makes every level absent and boots the seat with
+    // no skills and no signal.
+    await expect(
+      readSeatSkills(missing, { team: "pentest", worker: "recon" }),
+    ).rejects.toThrow(/Failed to read workforce directory/);
+  });
+
+  it("stays silent for a root that is there with none of the levels present", async () => {
+    const { skills, errors } = await readSeatSkills(root, {
+      team: "pentest",
+      worker: "recon",
+    });
+
+    expect(skills).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+});
