@@ -535,8 +535,21 @@ gate.
   extends it, so the door is locked open with nothing behind it. Folding it into W2's merged
   reader from here would re-scope a shipped spec; inventing an issue for it would place scope the
   record has not placed. **Decides:** the owner, with the Architect — an existing issue takes it or
-  a new one does. **Blocks:** nothing today; FIX-1355 if the lab wants a shared intake seat before
-  the door has a reader.
+  a new one does; *stamped 2026-09-12 below, and the answer is neither yet.* **Blocks:** nothing
+  today; FIX-1355 if the lab wants a shared intake seat before the door has a reader — which is
+  the tripwire the stamp names.
+
+  **Stamped 2026-09-12 (owner) — locked-but-unowned, with a tripwire.** `org/workers/` stays
+  **locked open and unowned** for this epic. No W3 floor issue is minted for it, and the shipped
+  `read-workforce-directory` reader is **not** widened. The door is also **not taught in
+  user-facing Atlas or docs until a reader exists** — a documented door that reports nothing is
+  the silence failure class FIX-1342 named: it teaches an author a rule we are about to
+  contradict. **Where it lands when it lands:** a hire/loader follow-on the next time that
+  surface opens — **FIX-1335-class**, not a new W3 convention ticket, and a candidate rather than
+  a grant of scope onto an already-merged reader. **The tripwire:** *if FIX-1355's lab Proof
+  needs a shared infrastructure seat — intake or harness-manager — that is the moment to place a
+  reader on the floor, because that is the moment it has a consumer.* Until that fires the
+  question stands, and **§3's tree is not a deliverable grant.**
 
 - **Where does CAS live, now that there is no Board PRD to hold it?** Raised by the two stamps
   of 2026-09-11 naming different subsets of the four phased board-PRD items (§3's table). Brief,
@@ -737,3 +750,13 @@ gate.
   thing the lock does not place is a reader for `org/workers/`** — §5 carries it rather than
   assuming it into W2's merged seat reader. No explainer panel distinguishes org from team scope,
   so none was falsified and none was redrawn.
+
+- **`org/workers/` stamped locked-but-unowned, with a tripwire (owner, 2026-09-12)** — the fifth
+  stamp of the day, and the one that answers §5 rather than §3. The door stays open with no
+  reader: no W3 issue is minted, `read-workforce-directory` is not widened, and the door is not
+  taught in user-facing Atlas or docs until a reader exists (FIX-1342's silence class). Its home
+  when it lands is a **FIX-1335-class** hire/loader follow-on, and the reader earns the floor the
+  moment **FIX-1355's** lab Proof needs a shared infrastructure seat — intake or
+  **harness-manager** — because that is the moment it has a consumer. Until then §5's question
+  stands and §3's tree is unchanged and is **not a deliverable grant**. Nothing on the floor, the
+  index or the explainer is falsified, so nothing was redrawn.
