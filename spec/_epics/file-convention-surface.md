@@ -248,6 +248,31 @@ items landing is not what opened the gate**, and sequencing remains the coordina
 reconciliation). Neither owner comment placed them, so they are members of the set without being
 part of the required seven — which is why the explainer draws them on a dotted edge.
 
+**The scan's folder is `flows/`, locked by the owner on 2026-09-12.** Custom flow kinds get a file
+convention, and it sits in its own tree beside the seat and skill trees rather than under
+`teams/`:
+
+```text
+workforce/
+  teams/…/workers/…/WORKER.md
+  teams/…/channels/…/CHANNEL.md
+  flows/
+    workers/          # custom worker flow factories (collection, etc.)
+      intake-router.ts
+    channels/         # custom channel flow factories (singleton)
+      moderation.ts
+  blocks/             # BlockDefinitions — same FIX-1357 scan
+```
+
+**Channel custom kinds and worker custom kinds share this one door, invented once in FIX-1357.**
+That is the coordination consequence: no sibling issue mints a second registration path for its
+own kind. The rules around the door are explicitly unchanged — one scan produces one `{ kinds }`
+map; documents never define kinds; `flow:` only names an already-registered kind; no kind file
+sits beside `WORKER.md` or `CHANNEL.md`; no separate `flows/channels` *product* tree exists
+beyond this code door; and **a hand-passed `{ kinds }` map stays valid until the scan ships**,
+which is why FIX-1357 sitting in Backlog holds up nothing on the floor. The convention's home is
+FIX-1357's spec; what this document carries is the folder name and the shared-door rule.
+
 **Item 0 is a kind, not a board.** The 17:34 cut that first sized this item is quoted as
 recorded, and is **superseded by the 22:28 lock** — which changed the noun under it, not the size:
 
@@ -386,7 +411,7 @@ same evening — from a board composition to the default ChannelFlow kind.
 | FIX-1354 | Resources file convention | spec | [#1715](https://github.com/fixpoint-labs/flow-state-dev/pull/1715) | — | In Spec Review |
 | FIX-1355 | Thin pentest lab Proof | spec | — | — | Backlog |
 | FIX-1356 | Skills file convention | spec | [#1716](https://github.com/fixpoint-labs/flow-state-dev/pull/1716) *(closed at approval)* | [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728) *(**merged** 22:46Z)* | Done |
-| FIX-1357 | Kinds + blocks boot scan (file-convention registration) | spec | — | — | Backlog |
+| FIX-1357 | Kinds + blocks boot scan — custom kind factories under `workforce/flows/workers/` and `workforce/flows/channels/`, blocks under `workforce/blocks/` | spec | — | — | Backlog |
 | FIX-1358 | Atlas: ChannelFlow teach (kind floor + declaration) | *unset* | — | — | Backlog |
 | FIX-1367 | Thin `WorkerConfig` admission — hire fills `skills` from FIX-1356's seat register; extension placeholder for kind-owned schema | spec | — | — | Todo — **soft-block cleared** by [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728)'s merge. Ready and unblocked, not started |
 
@@ -409,7 +434,9 @@ Six things this table does not say on its own:
 - **FIX-1357 and FIX-1358 are in the epic but off the floor** (§3) — members of the set, not
   part of the required seven. FIX-1358 is also unlabelled, so its route is unset and its blank
   Spec PR cell records an unanswered question rather than a `direct` route; whoever labels it
-  settles that.
+  settles that. **FIX-1357's folder is now locked** (§3 — `flows/`, with `workers/` and
+  `channels/` under it), which narrows what its spec has to decide without moving it onto the
+  floor.
 - **FIX-1367's dependency was on the register's *read* side, and #1728 has now merged it.** That
   clears the soft-block and nothing more. Registration — wiring those skills onto a live seat —
   was an explicit non-goal of #1728 and is what item 4 exists to do: **the merged #1728 does not
@@ -602,3 +629,17 @@ gate.
   mint semantics need the same reading and are deliberately not rewritten here** — the owner's
   instruction is that they reconcile *once FIX-1311 folds*, so its deliverable boundary is
   untouched and §3 and §4 record the reconciliation as pending.
+- **Custom-kind folder locked — it is `flows/`, not a folder named for kinds (owner,
+  2026-09-12)** — custom flow kinds get a file convention, and its home is `workforce/flows/`
+  with `workers/` and `channels/` subfolders, blocks beside it in `workforce/blocks/`. A flat
+  `flows/name.worker.ts` / `flows/name.channel.ts` suffix scheme was **rejected**: equally scannable, but worse to browse
+  and worse to discover, and discoverability is the selling point of a file convention.
+  Subfolders win. Channel custom kinds and worker custom kinds share this one door, invented
+  once in FIX-1357, so no sibling issue mints a second registration path. The surrounding rules
+  are unchanged — one scan, one `{ kinds }` map; documents never define kinds; `flow:` only names
+  an already-registered kind; no kind file beside `WORKER.md` / `CHANNEL.md`; no separate
+  `flows/channels` product tree; a hand-passed `{ kinds }` map stays valid until the scan ships.
+  **The convention's home is FIX-1357, not this document**: §3 and §4 gain the folder name where
+  they describe the code door, and FIX-1357 stays off the floor and in Backlog, unpromoted and
+  unre-scoped. No explainer panel names a folder for custom kinds, so none was falsified and none
+  was redrawn.
