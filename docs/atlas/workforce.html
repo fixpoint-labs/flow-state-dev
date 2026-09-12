@@ -1370,11 +1370,11 @@ const teamDocs = <b>defineResourceCollection</b>({
     </div>
     <div class="card" style="--tc: var(--code)">
       <h5>Reply discipline</h5><span class="role">claim exists &#183; who proposed</span>
-      <p>A wake is not a turn. Exclusion is <code>TaskCollectionRef.claim</code> &#8212; one holder per post. Who may attempt that claim (role, <code>@</code>, coordinator; default quiet) is proposed Layer&nbsp;2. Not a Layer&nbsp;1 lock. Not a room.</p>
+      <p>A wake is not a turn. Exclusion is <code>TaskCollectionRef.claim</code> &#8212; one holder per post on that transcript. Who may attempt that claim (role, <code>@</code>, coordinator; default quiet) is proposed Layer&nbsp;2. Not a Layer&nbsp;1 lock. Not a Message Board.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Ordered multi-reply</h5><span class="role">proposed layer 2</span>
-      <p>A board coordinator &#8212; team role, L2 worker &#8212; reads a post, files N reply tasks with <code>deps</code>. Each task&#8217;s work is <code>dispatcher()</code> into that subscriber&#8217;s session. Settle unlocks the next. Idle before newer posts.</p>
+      <p>A board coordinator &#8212; team role, L2 worker &#8212; reads a post, files N reply tasks with <code>deps</code>. ChannelFlow replies append on the one transcript. The #1627 path still dispatches into subscriber sessions. Settle unlocks the next. Idle before newer posts.</p>
     </div>
   </div>
 
@@ -1440,7 +1440,7 @@ const teamDocs = <b>defineResourceCollection</b>({
         <text class="t-xs" x="634" y="368">BOOTSTRAP CALLS THE ROUTE</text>
       </svg>
     </div>
-    <figcaption><b>DM is a session. Same-flow group is a board plus N sessions &#8212; that fan-out exists.</b> <code>handleCreateSession</code> is on <code>packages/engine/src/routes/session-routes.ts</code> &#8212; that is how a DM is opened. <code>dispatcher</code> delivers into one existing session with <code>{ id }</code>, and refuses if the id is missing. A same-flow group post is N of those deliveries, one per subscriber, not one room. A clerk can wake an editor via <code>dispatcher({ flowKind })</code>. Hire-id and multi-hire still wait on INST. A declarative seed on the flow is the wrong door.</figcaption>
+    <figcaption><b>The diagram is the #1627 notify path, not ChannelFlow.</b> ChannelFlow is one copy, one transcript session; a post appends there; notify runs after the hold. Board + N sessions / <code>dispatcher()</code> &#215; N is the #1627 teaching surface. <code>handleCreateSession</code> is on <code>packages/engine/src/routes/session-routes.ts</code> &#8212; that is how a DM session is opened. Hire-id and multi-hire still wait on INST. A declarative seed on the flow is the wrong door.</figcaption>
   </figure>
 
   <div class="tw">
@@ -1448,16 +1448,17 @@ const teamDocs = <b>defineResourceCollection</b>({
       <thead><tr><th>Piece</th><th>Status</th><th>What it is, narrowly</th></tr></thead>
       <tbody>
         <tr><td><code>create_session</code> / list / get / delete</td><td><span class="tag t-real">exists</span></td><td>Session routes on the engine. DM bootstrap is a caller of these, not a new verb.</td></tr>
-        <tr><td><code>dispatcher</code> <code>session: { id }</code></td><td><span class="tag t-real">exists</span> in-process</td><td>Deliver into one session that already exists. Same principal, same flow. Never created. A group post is N of these, one per subscriber. <strong>Only where the host runs its own work.</strong> Past an external queue it refuses by name &#8212; a delivery into an existing session cannot be arbitrated against that session&#8217;s concurrency policy across that boundary, so a BullMQ deployment gets <code>external-dispatcher</code> rather than an under-delivered send (<code>packages/engine/src/context/create-request-host.ts</code>). The <code>{ key }</code> form is unaffected.</td></tr>
-        <tr><td>DM as a named static session</td><td><span class="tag t-prop">proposed</span></td><td>Convention: bootstrap opens one session with that one worker. The session <em>is</em> the DM.</td></tr>
-        <tr><td>Same-flow group = board + N subscriber sessions</td><td><span class="tag t-real">exists</span></td><td>Board + one session per subscriber, same flow, same principal. A post is <code>dispatcher()</code> &#215; N into those sessions. Pin: <code>dispatcher({ session: { id } })</code> + <code>create_session</code>. Not one session the group sits in.</td></tr>
+        <tr><td><code>dispatcher</code> <code>session: { id }</code></td><td><span class="tag t-real">exists</span> in-process</td><td>Deliver into one session that already exists. Same principal, same flow. Never created. Used by ChannelFlow notify after append, and by the #1627 path as N deliveries. <strong>Only where the host runs its own work.</strong> Past an external queue it refuses by name &#8212; a delivery into an existing session cannot be arbitrated against that session&#8217;s concurrency policy across that boundary, so a BullMQ deployment gets <code>external-dispatcher</code> rather than an under-delivered send (<code>packages/engine/src/context/create-request-host.ts</code>). The <code>{ key }</code> form is unaffected.</td></tr>
+        <tr><td>DM as a named static session</td><td><span class="tag t-prop">proposed</span></td><td>The one-member ChannelFlow case. Bootstrap opens that worker&#8217;s transcript session. The session <em>is</em> the DM &#8212; not dialogue dumped into the worker session.</td></tr>
+        <tr><td>ChannelFlow = one copy, one transcript session</td><td><span class="tag t-prop">proposed</span></td><td>The channel model. A post appends on that transcript; member wake is notify after the hold (app-supplied addresses). Not <code>dispatcher()</code> &#215; N into N sessions. Cite: FIX-1311 / #1738 D-4.</td></tr>
+        <tr><td>#1627 notify path = board + N subscriber sessions</td><td><span class="tag t-real">exists</span></td><td>Soft resource + <code>reactTo</code> for non-conversation. Board + one session per subscriber. A post is <code>dispatcher()</code> &#215; N. <strong>Not the ChannelFlow model.</strong> Pin: <code>dispatcher({ session: { id } })</code> + <code>create_session</code>.</td></tr>
         <tr><td>Cross-flow group delivery</td><td><span class="tag t-real">exists</span></td><td><code>dispatcher({ flowKind })</code> exists on this pin. A clerk can wake an editor that way. <code>session-not-addressable</code> now means the session belongs to a different flow or org than the one addressed &#8212; not &#8220;cross-flow delivery is not supported.&#8221; Hire-id and multi-hire still wait on INST (FIX-1320).</td></tr>
         <tr><td>Seed / nonstandard sessions on <code>defineFlow</code></td><td><span class="tag t-gone">cut</span></td><td>No such field. Do not add one so a flow can declare its rooms. That is bootstrap&#8217;s job.</td></tr>
-        <tr><td>One shared / multiparty group session</td><td><span class="tag t-gone">cut</span></td><td>Do not invent a session type several workers enter. Fan-out is N dispatches into N sessions that already exist.</td></tr>
-        <tr><td>Reply-storm exclusion via existing claim</td><td><span class="tag t-real">exists</span></td><td><code>TaskCollectionRef.claim</code> (<code>packages/orchestration/src/tasks/collection/types.ts</code>). One holder per post across N subscriber sessions. Eligibility narrows to that post; it does not replace <code>isClaimable</code>. Not a Layer&nbsp;1 board-lock.</td></tr>
+        <tr><td>One shared / multiparty group session</td><td><span class="tag t-gone">cut</span></td><td>Do not invent a session type several workers enter. ChannelFlow already has one transcript session. Do not revive Message Board as N sessions either.</td></tr>
+        <tr><td>Reply-storm exclusion via existing claim</td><td><span class="tag t-real">exists</span></td><td><code>TaskCollectionRef.claim</code> (<code>packages/orchestration/src/tasks/collection/types.ts</code>). One holder per post. ChannelFlow: on that transcript. #1627: across N subscriber sessions. Eligibility narrows to that post; it does not replace <code>isClaimable</code>. Not a Layer&nbsp;1 board-lock.</td></tr>
         <tr><td>Who may reply (role / <code>@</code> / coordinator)</td><td><span class="tag t-prop">proposed</span></td><td>Layer&nbsp;2 policy on that claim. Default quiet unless addressed. Who may <em>attempt</em> the claim, not a new primitive and not a future lock type.</td></tr>
-        <tr><td>Ordered multi-reply via board coordinator</td><td><span class="tag t-prop">proposed</span></td><td>Team role, L2 worker &#8212; not a coordinator Layer&nbsp;1 type. Reads one post, files N reply tasks with <code>deps</code> (order). Each task&#8217;s work is <code>dispatcher()</code> into that subscriber&#8217;s session. Settle unlocks the next (<code>isClaimable</code> already waits on <code>deps[]</code>). Idle chain before newer posts. Broke path is the existing lease / <code>parked</code> / retry. No MessageBoard sequencer. No new lease type. Cross-flow exists; hire-id still INST.</td></tr>
-        <tr><td>Which room (routing matrix)</td><td><span class="tag t-prop">proposed</span></td><td>Team + context, then this door. See the Talk / Room table below. Proposed Layer&nbsp;2 convention &#8212; not waiting on a substrate refuse. Hire-id / dynamic still INST.</td></tr>
+        <tr><td>Ordered multi-reply via board coordinator</td><td><span class="tag t-prop">proposed</span></td><td>Team role, L2 worker &#8212; not a coordinator Layer&nbsp;1 type. Reads one post, files N reply tasks with <code>deps</code> (order). ChannelFlow replies append on the one transcript. The #1627 path still dispatches into subscriber sessions. Settle unlocks the next (<code>isClaimable</code> already waits on <code>deps[]</code>). Idle chain before newer posts. Broke path is the existing lease / <code>parked</code> / retry. No MessageBoard sequencer. No new lease type. Cross-flow exists; hire-id still INST.</td></tr>
+        <tr><td>Which channel (routing matrix)</td><td><span class="tag t-prop">proposed</span></td><td>Team + context, then this door. See the Talk / Channel table below. Proposed Layer&nbsp;2 convention &#8212; not waiting on a substrate refuse. Hire-id / dynamic still INST.</td></tr>
         <tr><td>Peer-edge graph / second bus / route-resolver</td><td><span class="tag t-gone">cut</span></td><td>Do not draw edges between workers. Do not add a send door beside <code>dispatcher()</code>. Do not invent a Layer&nbsp;1 resolver that mints routes. Address is a session id or a known channel.</td></tr>
       </tbody>
     </table>
@@ -1497,11 +1498,11 @@ const teamDocs = <b>defineResourceCollection</b>({
         <text class="t-s" x="34" y="242">Fan-out is delivery. Claim is exclusion. Who may reply is proposed Layer&nbsp;2. Same spine. Not a primitive.</text>
       </svg>
     </div>
-    <figcaption><b>A wake is not a turn.</b> Same-flow group fan-out already wakes N subscriber sessions. If they all answer, that is a reply storm. Exclusion is today&#8217;s <code>TaskCollectionRef.claim</code> &#8212; one holder per post. The proposed Layer&nbsp;2 policy is who may attempt that claim (role / <code>@</code> / coordinator; quiet unless addressed). Ordered multi-reply is proposed composition on that claim. It does not invent a multiparty session or a Layer&nbsp;1 board-lock. Cross-kind fan-out is still proposed. Only inventing substrate wakes Architect.</figcaption>
+    <figcaption><b>A wake is not a turn.</b> The diagram is the #1627 notify path. ChannelFlow notify is after the append, on one transcript session &#8212; not <code>dispatcher()</code> &#215; N as the model. If every member answers, that is a reply storm. Exclusion is today&#8217;s <code>TaskCollectionRef.claim</code> &#8212; one holder per post. The proposed Layer&nbsp;2 policy is who may attempt that claim (role / <code>@</code> / coordinator; quiet unless addressed). Ordered multi-reply is proposed composition on that claim. It does not invent a multiparty session or a Layer&nbsp;1 board-lock. Only inventing substrate wakes Architect.</figcaption>
   </figure>
 
   <h3>Ordered multi-reply</h3>
-  <p>Who may speak is policy. <em>In what order</em> they speak is a chain of tasks. The proposed Layer&nbsp;2 worker is a <strong>board coordinator</strong> &#8212; a team role, the same kind of built-in as librarian, not a Layer&nbsp;1 type. It reads one post. It files N reply tasks with <code>deps</code>. Each task&#8217;s work is <code>dispatcher()</code> into that subscriber&#8217;s session. Settle marks the row <code>completed</code>; <code>isClaimable</code> already waits on <code>deps[]</code>, so the next reply unlocks. Only when that chain is idle does the coordinator look at newer posts. The broke path is the existing machine: a lapsed lease is reclaimed, <code>parked</code> waits on a person, <code>fail()</code> retries when budget remains. Do not invent a MessageBoard sequencer, a coordinator Layer&nbsp;1 type, or a new lease type to hold this.</p>
+  <p>Who may speak is policy. <em>In what order</em> they speak is a chain of tasks. The proposed Layer&nbsp;2 worker is a <strong>board coordinator</strong> &#8212; a team role, the same kind of built-in as librarian, not a Layer&nbsp;1 type. It reads one post. It files N reply tasks with <code>deps</code>. ChannelFlow replies append on the one transcript; member wake stays notify after the hold. The #1627 path still dispatches into subscriber sessions. Settle marks the row <code>completed</code>; <code>isClaimable</code> already waits on <code>deps[]</code>, so the next reply unlocks. Only when that chain is idle does the coordinator look at newer posts. The broke path is the existing machine: a lapsed lease is reclaimed, <code>parked</code> waits on a person, <code>fail()</code> retries when budget remains. Do not invent a MessageBoard sequencer, a coordinator Layer&nbsp;1 type, or a new lease type to hold this.</p>
 
   <figure>
     <div class="fig-body">
@@ -1572,7 +1573,7 @@ const teamDocs = <b>defineResourceCollection</b>({
         <text class="t-s" x="32" y="472">no MessageBoard sequencer &#183; no coordinator L1 type &#183; no new lease type &#183; cross-flow exists; hire-id still INST</text>
       </svg>
     </div>
-    <figcaption><b>Order is <code>deps[]</code>. The coordinator is a worker.</b> Proposed Layer&nbsp;2: a team role reads one post and files N reply tasks. The field that orders them already exists &#8212; <code>task.deps</code> &#8212; and <code>isClaimable</code> already refuses a row whose deps are not <code>completed</code> (<code>packages/orchestration/src/tasks/collection/internal.ts</code>). Each task&#8217;s work is <code>dispatcher()</code> into that subscriber&#8217;s session. A MessageBoard sequencer, a coordinator type, or a new lease would be substrate. Do not invent them. Cross-flow exists; hire-id still INST.</figcaption>
+    <figcaption><b>Order is <code>deps[]</code>. The coordinator is a worker.</b> Proposed Layer&nbsp;2: a team role reads one post and files N reply tasks. The field that orders them already exists &#8212; <code>task.deps</code> &#8212; and <code>isClaimable</code> already refuses a row whose deps are not <code>completed</code> (<code>packages/orchestration/src/tasks/collection/internal.ts</code>). ChannelFlow replies append on the one transcript. The #1627 path still dispatches into subscriber sessions. A MessageBoard sequencer, a coordinator type, or a new lease would be substrate. Do not invent them. Cross-flow exists; hire-id still INST.</figcaption>
   </figure>
 
   <figure>
@@ -1690,7 +1691,7 @@ const teamDocs = <b>defineResourceCollection</b>({
       <thead><tr><th>Talk</th><th>Channel</th><th>How it is addressed</th></tr></thead>
       <tbody>
         <tr><td>User&#8596;worker</td><td>One static DM session per worker</td><td>That session&#8217;s <code>{ id }</code>. Bootstrap opens it. Already the DM lock.</td></tr>
-        <tr><td>Topic / task / project</td><td>A dynamic session for that work item</td><td>That session, or the collaborator&#8217;s subscription session on its board. See <a href="#projects">&#167;09</a>.</td></tr>
+        <tr><td>Topic / task / project</td><td>A dynamic session for that work item</td><td>That session. Board + subscription sessions is the #1627 path, not ChannelFlow. See <a href="#projects">&#167;09</a>.</td></tr>
         <tr><td>Worker&#8596;worker ad-hoc</td><td>Open or reuse a pairwise or small dynamic session</td><td>Session id or a known channel. Not a peer edge. Not a second bus.</td></tr>
         <tr><td>Team broadcast</td><td>One ChannelFlow copy &#183; one transcript session</td><td>Post appends on the channel; notify per declared member (app-supplied addresses) after the hold. Not <code>dispatcher()</code> &#215; N into N sessions. Who-may-reply and ordered multi-reply stay proposed. Cross-flow exists; hire-id / dynamic still INST.</td></tr>
       </tbody>
@@ -1719,8 +1720,8 @@ const wakeDm = <b>dispatcher</b>({
   session: { id: (input) => input.dmSessionId },
 });
 
-<i>// EXISTS &#8212; same-flow group fan-out. Board + N subscriber sessions.</i>
-<i>// create_session opens each room. A post is this wake &#215; N. Same principal.</i>
+<i>// EXISTS &#8212; #1627 notify path, not ChannelFlow. Board + N subscriber sessions.</i>
+<i>// ChannelFlow: one transcript session; notify after append (app-supplied addresses).</i>
 <i>// Cross-kind (clerk &#8594; editor) is still refused at create-request-host.</i>
 const wakeSubscriber = <b>dispatcher</b>({
   name: <em>"wake-subscriber"</em>,
@@ -1761,8 +1762,8 @@ const room = {
 <i>// then dispatcher({ session: { id: () => room.sessionId } })</i>
 <i>// worker&#8596;worker across flows: dispatcher({ flowKind }). Hire-id still INST.</i></pre>
 
-  <h3>Room helpers &#8212; proposed wrappers, multi-team from day one</h3>
-  <p>Same-flow N-rooms exist. Claim exclusion exists. Who may reply is proposed Layer&nbsp;2. Ordered multi-reply is proposed. The helpers below wrap those facts. They take a <strong>team key</strong>. Rooms are addressable across teams. They are not a second session model, not a Channel package, and not a one-team-only API. W2 names the wrappers over Layer&nbsp;1 sessions. Minting a dynamic room onto the L2 roster is Collab later &#8212; <a href="#collab">&#167;14</a>. If a helper would need hire-id, a dynamic address, or multi-hire, that is INST (gap 1) &#8212; see <a href="#gaps">&#167;19</a> &#8212; not a pretend export.</p>
+  <h3>Channel helpers &#8212; proposed wrappers, multi-team from day one</h3>
+  <p>ChannelFlow is one transcript session; notify after append. The #1627 notify path (board + N) still exists as Layer&nbsp;1 and is not the channel model. Claim exclusion exists. Who may reply is proposed Layer&nbsp;2. Ordered multi-reply is proposed. The helpers below wrap those facts. They take a <strong>team key</strong>. Channels are addressable across teams. They are not a second session model, not a Channel package, and not a one-team-only API. W2 names the wrappers over Layer&nbsp;1 sessions. Minting a dynamic channel onto the L2 roster is Collab later &#8212; <a href="#collab">&#167;14</a>. If a helper would need hire-id, a dynamic address, or multi-hire, that is INST (gap 1) &#8212; see <a href="#gaps">&#167;19</a> &#8212; not a pretend export.</p>
 
   <figure>
     <div class="fig-body">
@@ -1817,7 +1818,7 @@ const room = {
         <text class="t-xs" x="34" y="384">A HELPER THAT NEEDS A MISSING DOOR IS A GAP, NOT AN EXPORT. PACKAGE DOCS MUST NOT FORK THIS MATRIX.</text>
       </svg>
     </div>
-    <figcaption><b>Helpers wrap. They do not invent. They take a team key.</b> Each proposed name is a thin function over a Layer&nbsp;1 call already shown on this page. A seat is <code>{ team, seat }</code>. A shared room lists subscribers from any team. <code>fanOutBoardPost</code> loops <code>dispatcher({ session: { id } })</code>. Cross-kind and send-at are gaps, not hidden parameters.</figcaption>
+    <figcaption><b>Helpers wrap. They do not invent. They take a team key.</b> Each proposed name is a thin function over a Layer&nbsp;1 call already shown on this page. A seat is <code>{ team, seat }</code>. A shared channel lists members from any team. <code>fanOutBoardPost</code> is the #1627 wrap &#8212; not the ChannelFlow model. Cross-kind and send-at are gaps, not hidden parameters.</figcaption>
   </figure>
 
   <div class="tw">
@@ -1826,7 +1827,7 @@ const room = {
       <tbody>
         <tr><td><code>openDm</code></td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ team, seat, userId, title }</code>. Wraps <code>createSessionClient().createSession</code> for that seat&#8217;s flow. The session <em>is</em> the DM. Wake with <code>dispatcher({ session: { id } })</code>. On a queue host that wake is <code>external-dispatcher</code> &#8212; see <a href="#gaps">&#167;19</a>. No implicit &#8220;the team.&#8221;</td></tr>
         <tr><td><code>openProjectRoom</code> / task room</td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ room, subscribers: [{ team, seat }] }</code>. Subscribers may come from more than one team. Wraps <code>create_session</code> or <code>dispatcher({ session: { key } })</code> / <code>TaskSessionPolicy</code>. Not a Layer&nbsp;1 Project type. Not &#8220;this team&#8217;s rooms.&#8221;</td></tr>
-        <tr><td><code>fanOutBoardPost</code></td><td><span class="tag t-prop">proposed</span></td><td>Same-flow fan-out <strong>exists</strong> under Layer&nbsp;1 (<code>dispatcher()</code> &#215; N). The helper is the named loop over subscriber sessions, addressed across teams. Cross-kind still refused at <code>create-request-host</code>. Same <code>external-dispatcher</code> limit on <code>{ id }</code>.</td></tr>
+        <tr><td><code>fanOutBoardPost</code></td><td><span class="tag t-prop">proposed</span></td><td>#1627 notify wrap &#8212; <strong>not</strong> ChannelFlow. Loops <code>dispatcher()</code> &#215; N over subscriber sessions. ChannelFlow notify is after append, on one transcript session, with app-supplied addresses. Cross-kind still refused at <code>create-request-host</code>. Same <code>external-dispatcher</code> limit on <code>{ id }</code>.</td></tr>
         <tr><td><code>fileOrderedReplies</code></td><td><span class="tag t-prop">proposed</span></td><td>Coordinator over existing <code>claim</code> (exclusion) and <code>task.deps</code> (order). Order names seats as <code>{ team, seat }</code>. Who may attempt the claim stays proposed Layer&nbsp;2. Not a board-lock type. Not a multiparty session.</td></tr>
         <tr><td><code>openTeamInbox</code></td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ team }</code>. Looks up that team&#8217;s intake seat, then <code>openDm</code>. Address-the-team without picking a person. See <a href="#intake">&#167;11</a> and <a href="#fence">&#167;04</a>.</td></tr>
       </tbody>
