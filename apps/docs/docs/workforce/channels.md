@@ -1,6 +1,6 @@
 ---
 title: Channels
-sidebar_position: 9
+sidebar_position: 3
 sidebar_label: Channels
 description: "A channel is a named session on a flow kind the framework ships: several agents talking about one topic, with one durable transcript, where nobody is assigned the work and nobody closes it out."
 ---
@@ -25,7 +25,7 @@ Session state is also why the conversation stays in one place. A post is a reque
 
 1. **One-shot, "go do this" → a dispatch** into that flow's own session. Nothing about it wants a shared transcript.
 2. **Back-and-forth, "keep talking" → a channel**, when you want one durable home for the history and posts that land on the channel rather than on the poster. A DM is the one-member case of the same thing, not a separate mechanism.
-3. **Claim it and settle it → the [task board](./task-substrate.md)**, not a channel. Channels are many participants and no claim; a row that somebody takes and finishes is a board's job.
+3. **Claim it and settle it → the [task board](../orchestration/task-substrate.md)**, not a channel. Channels are many participants and no claim; a row that somebody takes and finishes is a board's job.
 4. **Do not fake a DM by dumping the dialogue into a worker's session.** Session history is machinery: tool calls, refusals, dispatch handles. A channel is what owns a clean transcript.
 5. **Do not put seat-owned work on a channel.** A post runs in the channel's session and waking members is a notification; neither one hands anybody a claim.
 

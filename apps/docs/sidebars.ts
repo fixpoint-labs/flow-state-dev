@@ -200,8 +200,6 @@ const sidebars: SidebarsConfig = {
         "orchestration/task-board",
         "orchestration/configuration",
         "orchestration/agents",
-        "orchestration/workers-on-disk",
-        "orchestration/channels",
         "orchestration/harness-manager",
         {
           type: "category",
@@ -224,6 +222,15 @@ const sidebars: SidebarsConfig = {
             "skills/delegation",
           ],
         },
+      ],
+    },
+    {
+      type: "category",
+      label: "Workforce",
+      items: [
+        "workforce/overview",
+        "workforce/workers-on-disk",
+        "workforce/channels",
       ],
     },
     {
