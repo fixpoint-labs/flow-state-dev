@@ -1310,7 +1310,7 @@ const teamDocs = <b>defineResourceCollection</b>({
 
 <section id="channels">
   <div class="sec-head"><span class="sec-num">08</span><h2>Channels</h2></div>
-  <p class="lede">A <strong>channel</strong> is one copy of a replaceable L2 kind. Default is <strong>ChannelFlow</strong>. A <strong>DM</strong> is the one-member case. A group is the same kind with N members &#8212; not a Message Board noun, not a Channel L1 package. <strong>Same-flow fan-out exists</strong>: a post is a request into that copy, then <code>dispatcher()</code> &#215; N into subscriber sessions. <strong>Reply-storm exclusion exists</strong>: today&#8217;s <code>TaskCollectionRef.claim</code> admits one holder per post. <strong>Who may reply is proposed Layer&nbsp;2 policy</strong>. <strong>Ordered multi-reply is proposed Layer&nbsp;2</strong>: a board coordinator &#8212; a team role, not a primitive &#8212; files N reply tasks with <code>deps</code>; settle unlocks the next; only an idle chain looks at newer posts. <strong>Cross-flow dispatch exists</strong> (<code>dispatcher({ flowKind })</code>). Hire-id, dynamic addresses, and multi-hire still wait on INST. When to pick this door versus dispatch or a task board: <a href="#when">the callout</a>.</p>
+  <p class="lede">A <strong>channel</strong> is one copy of a replaceable L2 kind. Default is <strong>ChannelFlow</strong>. One copy, <strong>one transcript session</strong>. A <strong>DM</strong> is the one-member case. A group is the same kind with N declared members &#8212; not a Message Board noun, not a Channel L1 package. A post appends on that transcript; member wake is <strong>notify after the append</strong> (app-supplied addresses), not <code>dispatcher()</code> &#215; N into N sessions. <strong>Reply-storm exclusion exists</strong>: today&#8217;s <code>TaskCollectionRef.claim</code> admits one holder per post. <strong>Who may reply is proposed Layer&nbsp;2 policy</strong>. <strong>Ordered multi-reply is proposed Layer&nbsp;2</strong>: a board coordinator &#8212; a team role, not a primitive &#8212; files N reply tasks with <code>deps</code>; settle unlocks the next; only an idle chain looks at newer posts. <strong>Cross-flow dispatch exists</strong> (<code>dispatcher({ flowKind })</code>). Hire-id, dynamic addresses, and multi-hire still wait on INST. When to pick this door versus dispatch or a task board: <a href="#when">the callout</a>.</p>
 
   <h3 id="when">When a DM / channel vs dispatch</h3>
   <p>Owner + Architect fold (2026-09-12). Same fold as <a href="https://github.com/Fixpoint-labs/flow-state-dev/pull/1738">#1738</a> / <a href="https://linear.app/fixpoint-labs/issue/FIX-1311">FIX-1311</a> (ChannelFlow D-4). Guidance, not a new Decision. Atlas matches the floor page; it does not invent a third door.</p>
@@ -1366,7 +1366,7 @@ const teamDocs = <b>defineResourceCollection</b>({
     </div>
     <div class="card" style="--tc: var(--code)">
       <h5>Group</h5><span class="role">ChannelFlow &#183; N members</span>
-      <p>One ChannelFlow copy. Members are declared. A post lands on the channel, then wakes subscribers. Not a Message Board noun. Not one room they all enter. Cross-kind still refused.</p>
+      <p>One ChannelFlow copy. One transcript session. Members are declared. A post appends there; notify runs after the append. Not a Message Board noun. Not N subscriber sessions.</p>
     </div>
     <div class="card" style="--tc: var(--code)">
       <h5>Reply discipline</h5><span class="role">claim exists &#183; who proposed</span>
@@ -1682,7 +1682,7 @@ const teamDocs = <b>defineResourceCollection</b>({
         <text class="t-xs" x="34" y="472">EVERY TALK IS dispatcher() INTO A SESSION. ADDRESS THE SESSION. DO NOT DRAW EDGES BETWEEN WORKERS.</text>
       </svg>
     </div>
-    <figcaption><b>Which channel, then the same door.</b> Team plus context pick a session. <code>dispatcher()</code> delivers into it. Default: the project or task channel, not a new pairwise or DM. Worker&#8596;worker is a session you open or reuse, addressed by id &#8212; not an edge on a graph. Same-flow group fan-out exists. Reply-storm exclusion exists. Ordered multi-reply is proposed Layer&nbsp;2 on that claim. Reverse <code>{ from: true }</code> exists. The matrix stays proposed Layer&nbsp;2. Cross-flow dispatch exists. Hire-id and dynamic addresses still INST.</figcaption>
+    <figcaption><b>Which channel, then the same door.</b> Team plus context pick a session. <code>dispatcher()</code> delivers into it. Default: the project or task channel, not a new pairwise or DM. Worker&#8596;worker is a session you open or reuse, addressed by id &#8212; not an edge on a graph. ChannelFlow is one transcript session; notify after append. Reply-storm exclusion exists. Ordered multi-reply is proposed Layer&nbsp;2 on that claim. Reverse <code>{ from: true }</code> exists. The matrix stays proposed Layer&nbsp;2. Cross-flow dispatch exists. Hire-id and dynamic addresses still INST.</figcaption>
   </figure>
 
   <div class="tw">
@@ -1692,14 +1692,14 @@ const teamDocs = <b>defineResourceCollection</b>({
         <tr><td>User&#8596;worker</td><td>One static DM session per worker</td><td>That session&#8217;s <code>{ id }</code>. Bootstrap opens it. Already the DM lock.</td></tr>
         <tr><td>Topic / task / project</td><td>A dynamic session for that work item</td><td>That session, or the collaborator&#8217;s subscription session on its board. See <a href="#projects">&#167;09</a>.</td></tr>
         <tr><td>Worker&#8596;worker ad-hoc</td><td>Open or reuse a pairwise or small dynamic session</td><td>Session id or a known channel. Not a peer edge. Not a second bus.</td></tr>
-        <tr><td>Team broadcast</td><td>Group board &#8594; N subscriber sessions</td><td>Same-flow fan-out exists (<code>dispatcher()</code> &#215; N). Reply-storm exclusion exists (<code>TaskCollectionRef.claim</code>). Who-may-reply and ordered multi-reply stay proposed. Cross-flow exists; hire-id / dynamic still INST.</td></tr>
+        <tr><td>Team broadcast</td><td>One ChannelFlow copy &#183; one transcript session</td><td>Post appends on the channel; notify per declared member (app-supplied addresses) after the hold. Not <code>dispatcher()</code> &#215; N into N sessions. Who-may-reply and ordered multi-reply stay proposed. Cross-flow exists; hire-id / dynamic still INST.</td></tr>
       </tbody>
     </table>
   </div>
 
   <div class="note">
     <span class="lbl">Matrix is proposed Layer 2</span>
-    <p>Same-flow N-session fan-out is the runtime &#8212; one ChannelFlow copy + subscriber wakes, <code>dispatcher()</code> &#215; N. Reverse <code>{ from: true }</code> exists. Cross-flow exists (<code>dispatcher({ flowKind })</code>). Ordered multi-reply is proposed composition on those pins, not a sequencer. The matrix (which channel) is still proposed Layer&nbsp;2. Hire-id and dynamic addresses still wait on INST. Do not invent a peer-edge graph, a route-resolver substrate, or a Layer&nbsp;1 Channel / MessageBoard package. The L2 channel roster &#8212; system channels plus helper-minted channels on that same list &#8212; is Collab later, not this section. See <a href="#collab">&#167;14</a>.</p>
+    <p>ChannelFlow runtime is <strong>one copy, one transcript session</strong>. A post appends there; member wake is the notify policy after the hold &#8212; app-supplied addresses, not <code>dispatcher()</code> &#215; N into N sessions. Reverse <code>{ from: true }</code> exists. Cross-flow exists (<code>dispatcher({ flowKind })</code>). Ordered multi-reply is proposed composition on those pins, not a sequencer. The matrix (which channel) is still proposed Layer&nbsp;2. Hire-id and dynamic addresses still wait on INST. Do not invent a peer-edge graph, a route-resolver substrate, or a Layer&nbsp;1 Channel / MessageBoard package. Board + N subscriber sessions is the #1627 notify path, not the channel model. The L2 channel roster &#8212; system channels plus helper-minted channels on that same list &#8212; is Collab later, not this section. See <a href="#collab">&#167;14</a>.</p>
   </div>
 
   <pre class="code"><i>// EXISTS &#8212; open a DM. createSessionClient, packages/client.</i>
