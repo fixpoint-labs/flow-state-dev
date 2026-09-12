@@ -226,14 +226,14 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 
 ## Channels
 
-A **channel** is a place several agents talk about one topic, with one durable transcript and nobody
-owning a row. This package ships the flow kind that runs one, plus the two calls that bind a roster
-of channels to it.
+A **channel** is a place several agents talk about one topic, with one durable transcript, where
+nobody is assigned the work and nobody closes it out. This package ships the flow kind that runs one,
+plus the two calls that bind a roster of channels to it.
 
 The identity rule is the thing to get straight first, because it is not the one `WORKER.md` teaches:
 **one kind is one instance, and one channel is one named session on that instance.** A hundred
-channel records are a hundred sessions on a single registered flow. What differs per channel — who
-its members are, what its charter says, what has been said in it — lives in that session's state.
+channel records are a hundred sessions on a single registered flow. What differs per channel (who its
+members are, what its charter says, what has been said in it) lives in that session's state.
 
 You register nothing to use channels. The built-in kind is seeded for you.
 
@@ -260,14 +260,12 @@ await openChannels(channels, { client: sessionClient, userId: "u_42" });
 
 The two calls are separate because they happen at two different times: an instance is registered
 when the server is built, and a session can only be opened once it is running. `openChannels` needs
-a `userId` because a session belongs to one user — see *What a transcript proves* below.
+a `userId` because a session belongs to one user, as *What a transcript proves* below explains.
 
 A record declares four keys and no others: `flow` (which kind, optional), `description`, `members`,
 and `instructions` (or a body, which is the same setting). The list is closed and checked at
 `channelInstances`: an undeclared key, an `id:`, a `system:`, or a body alongside `instructions:`
-each refuse by name. That check is this package's job and not the session route's — the route parses
-caller state against the flow's `stateSchema` but falls back to the raw state when the parse fails,
-so it refuses nothing at create.
+each refuse by name.
 
 ### Posting and reading
 
@@ -285,13 +283,12 @@ const postToStandup = dispatcher({
 });
 ```
 
-Address `{ id }`, never `{ key }`: a key-derived child id is hashed together with the parent session,
-so the same key resolves to a different session for every poster and the channel never sees the post.
-Nothing detects that mistake.
+Address `{ id }`, never `{ key }`: a key-derived session resolves to a different session for every
+poster, so the channel never sees the post. Nothing detects that mistake.
 
 A flow-to-flow post needs in-process dispatch. On a deployment whose dispatcher hands work to an
-external queue, a delivery into an existing session refuses `external-dispatcher` by name — the
-public action route still works, the dispatch door does not.
+external queue, a delivery into an existing session refuses `external-dispatcher` by name. The public
+action route still works; the dispatch door does not.
 
 A post into a session nobody opened refuses `channel-not-bound` and writes nothing. The shared
 instance answers for every session id and the action path creates what it does not find, so
@@ -299,7 +296,7 @@ boundness, not existence, is what makes a session a channel.
 
 ### What a transcript proves
 
-A session is bound to one user, so **every line of a given channel carries the same `principal`** —
+A session is bound to one user, so **every line of a given channel carries the same `principal`**,
 the server-derived identity the post ran under. The optional `author` is a label the poster supplied,
 stored beside `authorVerified: false`, and it is the only thing distinguishing participants. The
 members check on `author` is a validity check against the declared roster, not authentication. Build
@@ -308,16 +305,16 @@ an audit or approval flow on this and you get a far weaker guarantee than the fi
 ### Waking members
 
 `createChannelFlow({ notify })` takes a block run once per declared member per post. It runs in its
-own request, outside the post's queue hold, so a slow delivery never delays the next post. A delivery
-that refuses is recorded in the session journal; the post stays written and membership is unchanged.
-Without a slot, posts land and nobody is woken.
+own request, outside the post's turn, so a slow delivery never delays the next post. A delivery that
+fails is recorded; the post stays written and membership is unchanged. Without a slot, posts land and
+nobody is woken.
 
-The framework carries the policy and your app supplies the addresses: a dispatch target chosen from
-stored data is refused by construction, so a notify block declares its own recipients.
+The framework carries the policy and your app supplies the addresses: the framework will not pick a
+dispatch target out of stored data, so a notify block declares its own recipients.
 
 ### Registering your own kind
 
-The escape hatch, not a setup step. Reach for it when the workflow graph genuinely diverges — a
+The escape hatch, not a setup step. Reach for it when the workflow graph genuinely diverges. A
 standup, a DM and an announce channel are all channels on the one built-in kind, differentiated by
 members and charter.
 
@@ -333,13 +330,13 @@ Your factory carries the same contract the built-in does: `cardinality: "singlet
 `flow.id === flow.kind`. A `flow:` naming a kind you did not pass refuses by name and never falls
 back to the built-in. The `kinds` map is the whole registration surface; there is no second API.
 
-### What this floor does not ship
+### What channels do not do yet
 
-No roster, no delete verb, no live join or leave, no brief or housekeeper. Membership is the declared
-list and nothing else writes it, so changing who is in a channel means editing the record and opening
-a fresh channel. `openChannels` swallows the 409 on an already-open channel, which makes re-running it
-a no-op — and means an edited record does not reach a channel that is already open. Re-opening is not
-a migration.
+No join or leave verb, no delete or retirement, and no summary pass over a long transcript.
+Membership is the declared list and nothing else writes it, so changing who is in a channel means
+editing the record and opening a fresh channel. Re-running `openChannels` over an already-open
+channel does nothing, which also means an edited record does not reach it. Re-opening is not a
+migration.
 
 ## Exports
 
