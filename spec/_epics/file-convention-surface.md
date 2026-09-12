@@ -128,7 +128,7 @@ stated reason in its own spec.
 
 | # | Rule | Status |
 | --- | --- | --- |
-| 1 | Path `teams/<id>/<slot>/<name>/THING.md` — folder per thing, fixed uppercase manifest filename | As inherited |
+| 1 | Path `<scope>/<slot>/<name>/THING.md` — folder per thing, fixed uppercase manifest filename | **Extended** — the rule was written as `teams/<id>/…` only; the 2026-09-12 scope lock makes `<scope>` either `org` or `teams/<id>` (theme 5) |
 | 2 | Identity `<teamId>.<name>`, dot-joined, minted in one helper via the shared segment validator | As inherited |
 | 3 | One shared frontmatter dialect from `orchestration`; no second dialect | As inherited |
 | 4 | `description` required; unknown frontmatter keys carried verbatim into the declared bag | **Corrected** — the refusal clause (*"at most one key refused by name"*) is replaced by theme 2 |
@@ -137,9 +137,10 @@ stated reason in its own spec.
 | 7 | Two sources for one thing is a refusal, not a precedence rule | **Corrected** — the second clause (*"framework-granted status is derived from the declaration path, never declared in the file"*) is replaced by theme 2 |
 
 Rules 1 and 2 are **broken by FIX-1354 with stated reasons** — file-per-thing at
-`<slot>/<name>.md` with two roots rather than one, and a path-form ref `teams/<teamId>/<name>`
-that the atlas has already fixed. That is the rule set working as intended: a stated deviation,
-not drift.
+`<slot>/<name>.md`, and a path-form ref `teams/<teamId>/<name>` that the atlas has already fixed.
+That is the rule set working as intended: a stated deviation, not drift. **Its second root is no
+longer one of those deviations:** reading `org/` as well as `teams/<id>/` is what rule 1 now says,
+not a departure from it (theme 5).
 
 ### Theme 2 — The corrected rule, and the three mechanisms that discharge it
 
@@ -204,6 +205,29 @@ argument. Conventions consume the walk primitives FIX-1352 extracts (`classify`,
 validator) rather than a generalised reader. This matters most for skills (FIX-1356), which is
 slot-shaped and would otherwise be built to a generalisation that has already been disproved.
 
+### Theme 5 — Path level is scope, and `org` is a real level
+
+**Locked by the owner on 2026-09-12.** The directory a thing sits in is what says who it belongs
+to: `workforce/org/<slot>/…` is shared across every team, `workforce/teams/<teamId>/<slot>/…`
+belongs to one. This is not a new rule — it is the rule resources and skills already shipped to,
+raised to a theme because the same stamp puts two more slots under it. §3 carries the tree.
+
+**Two slots join the org level, and they are not symmetrical in intent.**
+
+- **Channels — org and team, both first class.** A company-wide conversation home must not have
+  to invent a fake team in order to exist. The identity lock is untouched by this: kind → one
+  instance, channel → a named session on that instance (§1), so an org channel and a team channel
+  are two named sessions on the same ChannelFlow, not two instances. FIX-1352 owns both doors.
+- **Workers — org is real, rare, and thin.** `org/workers/` holds shared *infrastructure* seats
+  only — intake, harness-manager, and their like. It is **not a second roster product**: the team
+  stays the primary roster, and the teaching has to say so out loud, or the door becomes the
+  place anything lands that nobody wanted to put in a team.
+
+**Unchanged by this stamp, and named so a later reader does not read the tree as a grant:**
+resources is org + team, with **worker-level resources still deferred**
+([FIX-1368](https://linear.app/fixpoint-labs/issue/FIX-1368)); skills stays org ∪ team ∪
+worker-local.
+
 ## 3. The epic floor
 
 **Rewritten twice on 2026-09-11.** First to the owner's cut — the
@@ -222,7 +246,7 @@ of its six items no longer exist in that form.
 | # | Item | Issue | Note |
 |---|---|---|---|
 | 0 | **Default ChannelFlow — the channel kind floor** | [FIX-1311](https://linear.app/fixpoint-labs/issue/FIX-1311) / [#1565](https://github.com/fixpoint-labs/flow-state-dev/issues/1565) | **First, and the only blocking item.** Ship the default batteries-included **ChannelFlow** as a replaceable **L2 flow kind** — subscribe, post (a dispatch into the channel session, background, durable log), fan-out policy, and **clean transcript projection from day one**. The conversation door only. The minimal notify door becomes the internal / teaching path underneath it, not the public API. No `MessageBoard` / `Channel` L1 package type |
-| 1 | **Channels file convention** | [FIX-1352](https://linear.app/fixpoint-labs/issue/FIX-1352) | One L2 file type. Absorbs what were floor items 1 and 2. **Declares channels on the ChannelFlow kind** — a `CHANNEL.md` may set `flow:` exactly as `WORKER.md` does, and what it declares is a named session on that kind's instance — not board bindings. Deliverable boundary unchanged; its declaration / mint semantics take the same reading **once FIX-1311 folds**, not here (§4) |
+| 1 | **Channels file convention** | [FIX-1352](https://linear.app/fixpoint-labs/issue/FIX-1352) | One L2 file type, **at org and team scope** (theme 5). Absorbs what were floor items 1 and 2. **Declares channels on the ChannelFlow kind** — a `CHANNEL.md` may set `flow:` exactly as `WORKER.md` does, and what it declares is a named session on that kind's instance — not board bindings. Deliverable boundary unchanged; its declaration / mint semantics take the same reading **once FIX-1311 folds**, not here (§4) |
 | 2 | Resources file convention | [FIX-1354](https://linear.app/fixpoint-labs/issue/FIX-1354) | Unchanged |
 | 3 | Skills file convention | [FIX-1356](https://linear.app/fixpoint-labs/issue/FIX-1356) | Unchanged by the recut. **Shipped** — [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728) merged 2026-09-11 22:46Z; the read-side seat register is on `main`. The first floor item to land |
 | 4 | **Thin `WorkerConfig` admission** | [FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367) | **Added 2026-09-11.** Hire invokes the flow with the right config: the `skills` bag from item 3's register, plus an always-present extension placeholder for kind-owned schema. **Soft-block cleared** — that register merged with item 3. Ready, not started; blocks nothing, and nothing blocks it — the objective gate is passed |
@@ -248,21 +272,54 @@ items landing is not what opened the gate**, and sequencing remains the coordina
 reconciliation). Neither owner comment placed them, so they are members of the set without being
 part of the required seven — which is why the explainer draws them on a dotted edge.
 
-**The scan's folder is `flows/`, locked by the owner on 2026-09-12.** Custom flow kinds get a file
-convention, and it sits in its own tree beside the seat and skill trees rather than under
-`teams/`:
+**The workforce tree, locked by the owner on 2026-09-12.** Two stamps of that day land in it: the
+custom-kind code door is `flows/`, and **org scope gains channels and workers**. Path level is
+scope throughout (theme 5); the code door is the exception that keeps its own tree beside the
+scope trees rather than sitting under `teams/`.
 
 ```text
 workforce/
-  teams/…/workers/…/WORKER.md
-  teams/…/channels/…/CHANNEL.md
+  # —— org scope: shared across teams ——
+  org/
+    resources/                 # FIX-1354
+    skills/                    # FIX-1356 (shipped)
+    channels/…/CHANNEL.md      # NEW — org-level channels (sessions on ChannelFlow)
+    workers/…/WORKER.md        # NEW — rare shared infra seats (intake, harness-manager, …)
+
+  # —— team scope ——
+  teams/<teamId>/
+    resources/
+    skills/
+    channels/…/CHANNEL.md
+    workers/<name>/
+      WORKER.md
+      skills/                  # worker-local
+      # resources/             # still deferred — FIX-1368
+
+  # —— the code door (FIX-1357) ——
   flows/
-    workers/          # custom worker flow factories (collection, etc.)
+    workers/                   # custom worker flow factories (collection, etc.)
       intake-router.ts
-    channels/         # custom channel flow factories (singleton)
+    channels/                  # custom channel flow factories (singleton)
       moderation.ts
-  blocks/             # BlockDefinitions — same FIX-1357 scan
+  blocks/                      # BlockDefinitions — same FIX-1357 scan
 ```
+
+**Org scope is the `org/` directory**, written out above because the lock's own diagram drew the
+org slots at the root as shorthand. The shipped readers walk `<root>/org/<slot>` —
+`packages/workforce/src/loader/read-seat-skills.ts:135,187` on `main` for skills, and FIX-1354's
+resources reader on its open branch — so the segment stays where it shipped and nothing relocates.
+
+**Org-level channels — locked yes.** A company-wide conversation home must not have to invent a
+fake team to exist. Both `org/channels/` and `teams/<id>/channels/` declare channel sessions, and
+the binder / `openChannels` sees both. **FIX-1352 owns both doors**, so the channels convention is
+org + team rather than team-only — the one index row this lock makes wrong (§4).
+
+**Org-level workers — locked yes, and thin.** Shared *infrastructure* seats only, never a second
+roster product (theme 5). **No item on the floor reads that door yet**: the shipped seat reader
+walks `teams/` alone (`packages/workforce/src/loader/read-workforce-directory.ts:109-115`), and
+channels' half of the lock lands inside FIX-1352 while workers' half lands inside nothing. §5
+carries who owns it.
 
 **Channel custom kinds and worker custom kinds share this one door, invented once in FIX-1357.**
 That is the coordination consequence: no sibling issue mints a second registration path for its
@@ -406,7 +463,7 @@ same evening — from a board composition to the default ChannelFlow kind.
 |---|---|---|---|---|---|
 | FIX-1311 | **Default ChannelFlow / channel kind floor**: subscribe, post by dispatch, fan-out policy, clean transcript projection | spec | — | — | Backlog — **first on the floor, and not started** |
 | FIX-1342 | Kinds-map fence — seats stay `WORKER.md`; custom kinds are flow factories | spec | [#1702](https://github.com/fixpoint-labs/flow-state-dev/pull/1702) *(closed at approval)* | [#1712](https://github.com/fixpoint-labs/flow-state-dev/pull/1712) *(**merged** 22:47Z)* | Done |
-| FIX-1352 | Declare channels on the ChannelFlow kind (either-source; declaration-only) | spec | [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711) | — | In Spec Review |
+| FIX-1352 | Declare channels on the ChannelFlow kind at **org and team** scope (either-source; declaration-only) | spec | [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711) | — | In Spec Review |
 | FIX-1353 | *L2 channels fold* — **closed as a duplicate** of the channels convention | — | [#1714](https://github.com/fixpoint-labs/flow-state-dev/pull/1714) | — | Duplicate |
 | FIX-1354 | Resources file convention | spec | [#1715](https://github.com/fixpoint-labs/flow-state-dev/pull/1715) | — | In Spec Review |
 | FIX-1355 | Thin pentest lab Proof | spec | — | — | Backlog |
@@ -415,7 +472,7 @@ same evening — from a board composition to the default ChannelFlow kind.
 | FIX-1358 | Atlas: ChannelFlow teach (kind floor + declaration) | *unset* | — | — | Backlog |
 | FIX-1367 | Thin `WorkerConfig` admission — hire fills `skills` from FIX-1356's seat register; extension placeholder for kind-owned schema | spec | — | — | Todo — **soft-block cleared** by [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728)'s merge. Ready and unblocked, not started |
 
-Six things this table does not say on its own:
+Seven things this table does not say on its own:
 
 - **FIX-1311 carries the `Feature` label**, so its route is `spec` and its spec is unwritten. The
   critical-path item is the one with the least done to it.
@@ -436,7 +493,13 @@ Six things this table does not say on its own:
   Spec PR cell records an unanswered question rather than a `direct` route; whoever labels it
   settles that. **FIX-1357's folder is now locked** (§3 — `flows/`, with `workers/` and
   `channels/` under it), which narrows what its spec has to decide without moving it onto the
-  floor.
+  floor. The 2026-09-12 scope lock fills in the tree around that door but leaves the door itself
+  untouched, so FIX-1357 is neither promoted nor re-scoped by it.
+- **The scope lock opens two doors and only one of them has an owner.** `org/channels/` falls
+  inside FIX-1352's deliverable, which is why that row now reads org + team. `org/workers/` falls
+  inside no row on this table: the shipped seat reader walks `teams/` alone, and no floor item
+  extends it. Reading §3's tree as though some issue already owns that half is the cheap mistake
+  here; §5 carries it as an open question instead.
 - **FIX-1367's dependency was on the register's *read* side, and #1728 has now merged it.** That
   clears the soft-block and nothing more. Registration — wiring those skills onto a live seat —
   was an explicit non-goal of #1728 and is what item 4 exists to do: **the merged #1728 does not
@@ -463,6 +526,17 @@ gate.
   keyed on the **worker**, a name reaching one seat twice, not on the app. Two teams can each
   have a `review` skill. There is no namespace question left for the lab Proof, and nothing
   outstanding at FIX-1356's gate, which passed on that shape.
+
+- **Who owns the org-level worker door?** Raised by the scope lock of 2026-09-12, which makes
+  `org/workers/` a real level for rare shared infrastructure seats — intake, harness-manager and
+  their like. Channels' half of that lock has a home: FIX-1352's convention widens from team-only
+  to org + team. Workers' half has none. The shipped seat reader walks `teams/` alone
+  (`packages/workforce/src/loader/read-workforce-directory.ts:109-115`), and no item on the floor
+  extends it, so the door is locked open with nothing behind it. Folding it into W2's merged
+  reader from here would re-scope a shipped spec; inventing an issue for it would place scope the
+  record has not placed. **Decides:** the owner, with the Architect — an existing issue takes it or
+  a new one does. **Blocks:** nothing today; FIX-1355 if the lab wants a shared intake seat before
+  the door has a reader.
 
 - **Where does CAS live, now that there is no Board PRD to hold it?** Raised by the two stamps
   of 2026-09-11 naming different subsets of the four phased board-PRD items (§3's table). Brief,
@@ -531,7 +605,10 @@ gate.
   with smart resource + `reactTo` kept and **relabelled** as non-conversation shared state and
   teaching rather than deleted; **(d)** §16's `openDm` re-read against post-as-dispatch — it is
   still a proposal, but it now proposes into a different model; **(e)** nothing taught about a
-  task board assigning a channel as worker, which the lock parks with four named walls. This sits
+  task board assigning a channel as worker, which the lock parks with four named walls; and
+  **(f)** *added by the 2026-09-12 scope lock* — the tree taught with `org/` and
+  `teams/<teamId>/` carrying the same four slots, including the teaching the lock asks for by
+  name: org workers are rare shared infrastructure seats and the team is still the roster. This sits
   **on top of** the atlas ambiguity already escalated to the owner in the bullet above; neither
   is settled here. **Decides:** the owner, via FIX-1358 — which is also why that issue is no
   longer the epic's weakest member (§1). **Blocks:** nothing in W3.
@@ -643,3 +720,20 @@ gate.
   they describe the code door, and FIX-1357 stays off the floor and in Backlog, unpromoted and
   unre-scoped. No explainer panel names a folder for custom kinds, so none was falsified and none
   was redrawn.
+- **Org scope gains channels and workers — the full tree locked (owner, 2026-09-12)** — the fourth
+  stamp of the day. `workforce/org/` and `workforce/teams/<teamId>/` now carry the same four slots:
+  resources, skills, **channels** and **workers**, with **path level = scope** raised to theme 5
+  as the rule that governs all of them. §3's tree grows from the `flows/` door to the whole
+  surface. **Org channels are first class** — a company-wide conversation home should not have to
+  invent a fake team — and land inside FIX-1352, whose convention is org + team rather than
+  team-only; §3's floor note and §4's row both say so now. **Org workers are locked yes, rare and
+  thin**: shared infrastructure seats, never a second roster, with the team staying the primary
+  one and the teaching obliged to say it. The identity lock, the `flows/` code door, resources'
+  org + team with worker-level deferred (FIX-1368), and skills' org ∪ team ∪ worker-local are all
+  unchanged — named in theme 5 so the wider tree is not read as a grant. **The owner's diagram
+  wrote the org slots at the root; that is shorthand and nothing moved** — the shipped readers
+  walk `<root>/org/<slot>` (`read-seat-skills.ts:135,187` on `main`; FIX-1354's resources reader
+  on its open branch), so the tree here writes the `org/` segment out and §3 says why. **The one
+  thing the lock does not place is a reader for `org/workers/`** — §5 carries it rather than
+  assuming it into W2's merged seat reader. No explainer panel distinguishes org from team scope,
+  so none was falsified and none was redrawn.
