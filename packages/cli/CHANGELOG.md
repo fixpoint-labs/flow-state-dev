@@ -1,5 +1,17 @@
 # @flow-state-dev/fsdev
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [a8e22c4]
+  - @flow-state-dev/core@0.1.1
+  - @flow-state-dev/devtool@0.1.1
+  - @flow-state-dev/engine@0.1.1
+  - @flow-state-dev/node@0.1.1
+  - @flow-state-dev/store-sqlite@0.1.1
+  - @flow-state-dev/testing@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @flow-state-dev/devtool
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [a8e22c4]
+  - @flow-state-dev/core@0.1.1
+  - @flow-state-dev/client@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

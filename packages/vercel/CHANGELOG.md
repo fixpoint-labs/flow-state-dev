@@ -1,5 +1,13 @@
 # @flow-state-dev/vercel
 
+## 0.1.1
+
+### Patch Changes
+
+- @flow-state-dev/engine@0.1.1
+- @flow-state-dev/scheduled@0.1.1
+- @flow-state-dev/store-postgres@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes
