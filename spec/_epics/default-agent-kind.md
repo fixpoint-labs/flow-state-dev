@@ -158,9 +158,11 @@ built against `instructions` with a seam, whenever part 2 arrives.
    `chat-agent` and the skill activator) is the closest working composition of the agent shape
    we have, and it is the baseline to port from. It is also probably behind the current hire /
    `WORKER.md` surface. So: do not redesign skill activation from zero while a working activator
-   exists, and do not treat anything in kitchen-sink as a shipping contract. FIX-1360 produces
-   the drift note — what KS still proves, what must be re-homed — and every later issue cites it
-   instead of re-reading the app.
+   exists, and do not treat anything in kitchen-sink as a shipping contract. **FIX-1360 has
+   produced the drift note and it has landed** at `docs/internal/design/kitchen-sink-agent-drift.md`
+   (impl PR [#1739](https://github.com/fixpoint-labs/flow-state-dev/pull/1739), merged
+   2026-09-12), warnings first: what must not be copied, the named gaps, what KS still proves,
+   what must be re-homed. Every later issue cites that file instead of re-reading the app.
 
 ## 3. Shape of the whole
 
@@ -185,8 +187,9 @@ flowchart TD
   E --> G
 ```
 
-Only **FIX-1360 and FIX-1361 are startable today**, and FIX-1361 largely wants FIX-1360's drift
-note first. Everything after FIX-1361 sequences behind it; the only genuine parallelism in the
+**FIX-1360 has since landed** (2026-09-12), so **FIX-1361 is now the head of the chain and the
+set's only startable issue** — it has the drift note it wanted, at the path theme 8 names.
+Everything after FIX-1361 sequences behind it; the only genuine parallelism in the
 set is FIX-1362 and FIX-1364 once the kind exists. FIX-1365 being required does not move it
 earlier — it still waits on FIX-1362 and FIX-1364. Seven issues under one epic will therefore
 not run seven-wide, and expecting that throughput is how this epic gets read as stalled when it
@@ -196,7 +199,7 @@ is merely serial.
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [FIX-1360](https://linear.app/fixpoint-labs/issue/FIX-1360) | Kitchen-sink drift audit (chat-agent + skill activator) | spec | — | — | Backlog |
+| [FIX-1360](https://linear.app/fixpoint-labs/issue/FIX-1360) | Kitchen-sink drift audit (chat-agent + skill activator) | spec | [#1736](https://github.com/fixpoint-labs/flow-state-dev/pull/1736) · closed unmerged at approval | [#1739](https://github.com/fixpoint-labs/flow-state-dev/pull/1739) · **merged** | **Done** |
 | [FIX-1361](https://linear.app/fixpoint-labs/issue/FIX-1361) | Contract for the default `agent` kind — incl. the **omitted-`flow:` admission** (decided: it selects the built-in) and the **loud-fail rule** for an unregistered kind name | spec | — | — | Backlog |
 | [FIX-1363](https://linear.app/fixpoint-labs/issue/FIX-1363) | Built-in `agent` flow kind | spec | — | — | Backlog |
 | [FIX-1362](https://linear.app/fixpoint-labs/issue/FIX-1362) | Per-seat skill register + activate in the agent kind | spec | — | — | Backlog |
@@ -204,9 +207,13 @@ is merely serial.
 | [FIX-1366](https://linear.app/fixpoint-labs/issue/FIX-1366) | Atlas teach: OOTB agent kind | spec | — | — | Backlog |
 | [FIX-1365](https://linear.app/fixpoint-labs/issue/FIX-1365) | Thin Proof: hire the OOTB agent kind — **required**, the epic's Goal 1 check | spec | — | — | Backlog |
 
-*No child carries a Linear category label yet, so every route reads **spec** by the fail-closed
-default ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a
-spec"). Labelling one **Bug** re-routes it, and an empty Spec PR cell would then be correct.*
+*Verified against Linear 2026-09-12. **One issue is done**: FIX-1360's note landed and its
+Linear state is mirrored — that mirror is what releases FIX-1361, because the epic wake derives
+blocked-by from Linear state. FIX-1361 and the five issues behind it are all still `Backlog`
+with no PRs yet. No child carries a Linear category label, so every route still reads **spec** by the
+fail-closed default ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which
+issues get a spec"). Labelling one **Bug** re-routes it, and an empty Spec PR cell would then be
+correct.*
 
 **Not children, deliberately:** FIX-1344 (W2 soft dep), FIX-1356 (W3 convention), FIX-1355 (W3
 lab), FIX-1367 (thin `WorkerConfig` — W3 hire admission; the agent kind *consumes* that bag and
@@ -253,6 +260,28 @@ re-parented here — Linear allows one parent, and they already have theirs.
   parallelizable earlier — and it does not expand into Collab or a fat lab. Linear is stamped:
   FIX-1365 retitled "(required)", priority raised P4 → P2. Folded into §1, §3, §4.
 
+- **~~Was FIX-1359's Linear state ever mirrored once the objective gate passed?~~** *Resolved
+  (coordinator action, 2026-09-12):* **yes.** FIX-1359 moved `Todo` → **`Spec Approved`**, the
+  same epic-level convention the W2 epic (FIX-1332) already uses. The write had been refused
+  twice by this session's permission classifier for external writes, which is why it sat
+  outstanding after the gate; it went through on the retry. **FIX-1360's mirror was written in
+  the same pass** (`In Review` → `Done`, after impl PR #1739 merged), and *that* one was
+  load-bearing rather than tidy: the epic wake derives blocked-by from Linear state, so a
+  FIX-1360 that still read as open was holding FIX-1361 behind it. The standing rule for every
+  later child: **the Linear mirror is the wake's input, not decoration** — a child left in a
+  stale state blocks its dependants whatever its PRs say. §4 carries both states.
+
+- **~~Should PR #1730's "What's asked of you" block be rewritten now that the gate has passed?~~**
+  *Resolved (coordinator, 2026-09-12):* **no — leave it standing, unedited.** That block is the
+  **record of what the owner approved on 2026-09-11**, not a superseded request, and a reader
+  arriving at the epic PR is better served seeing what the objective gate actually asked than
+  seeing it scrubbed. Rewriting the description to soften it would put two things at risk for a
+  cosmetic gain: the reviewer contract that is pasted **verbatim** below the fold, and the
+  `Explainer:` entry in the Links line, which `explainer-agent` writes once and never touches
+  again and which must therefore survive every future refresh. If a later fold wants to mark the
+  block, the only sanctioned edit is a one-line note that the gate passed on 2026-09-11 — **not**
+  a rewrite. No future dispatch should re-open this as untidiness.
+
 ---
 
 ## Epic evolution
@@ -289,3 +318,15 @@ re-parented here — Linear allows one parent, and they already have theirs.
   read `| / FIX-1332 | erged** (PR #1701)`. That is the one table whose job is to stop FIX-1344
   being read as done, and Linear is the copy child issues read. Dedented at source; both copies now
   carry it intact.
+
+- **Two coordinator answers recorded; index moved to first-child-done (2026-09-12)** — **zero
+  review rounds** and nothing above the bar: both items were answers to questions this epic
+  asked, which is not another opinion. The Linear mirrors that had been outstanding are now
+  written (FIX-1359 `Spec Approved`, FIX-1360 `Done`), and the second is why the index moved —
+  FIX-1360's impl PR #1739 merged, the drift note is live at
+  `docs/internal/design/kitchen-sink-agent-drift.md`, and FIX-1361, which the wake had been
+  holding behind a FIX-1360 that read as still open, is now the chain's head and the set's only
+  startable issue. §3, theme 8 and §4 were all re-derived for that, because each had been
+  written while FIX-1360 was *the* startable issue and the note was a future artifact. PR
+  #1730's description is deliberately untouched: its "What's asked of you" block is the record
+  of the approved objective, and the second answer above rules a rewrite out.
