@@ -17,7 +17,7 @@ flow-state.dev takes a different approach. The four block kinds (handler, genera
 
 Naming blocks honestly reflects what they actually do. A `generator` generates. A `sequencer` sequences. A `handler` handles. When you see a flow definition, you know what each piece contributes. "Agent" obscures that.
 
-There is one narrow exception, and it proves the rule. When you want a *named, reusable participant* — the same persona, model, and tool set staffing a worker slot across many skills, assignable by name — `@flow-state-dev/workforce` gives you `defineAgent`. It's a thin wrapper that materializes into an ordinary generator, not a monolithic builder that hides the loop. Reach for it when you're assigning work to a roster; reach for the raw blocks for everything else. See [Agents](/docs/orchestration/agents).
+The word "agent" does appear in one place: a skill's `agents:` frontmatter, where each entry is a persona, a model, and a tool list that a task board can assign work to by name. That is data, not a builder — each entry materializes into an ordinary generator, and you can read the persona in the skill folder. Reach for it when you want the model to plan and hand out the work; reach for the raw blocks for everything else. See [Agents](/docs/orchestration/agents).
 
 ## The determinism spectrum
 

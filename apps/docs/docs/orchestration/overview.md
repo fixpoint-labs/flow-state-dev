@@ -14,8 +14,6 @@ Orchestration in flow-state-dev is the machinery for exactly that: many units of
 ## The layers
 
 ```
-Agents            (workforce)     — named participants you assign work to
-  ▲
 Patterns          (patterns)      — supervisor, parallelTasks, planAndExecute, …
   ▲
 Task board        (orchestration) — a concurrent drain over a collection
@@ -31,7 +29,7 @@ Read it bottom-up.
 
 **Patterns.** The common shapes are already built for you, in `@flow-state-dev/patterns`. `parallelTasks` fans out once and collects. `supervisor` adds a review step before each result is written back. `planAndExecute` re-plans across drains. Each is a thin composition over the task board. Start here; drop to the board only when your coordination doesn't match one of them.
 
-**Agents.** A worker can be a plain block, or it can be an agent: a named, reusable participant with a persona, a model, and a set of tools. Register an agent once and assign board tasks to it by name. See [Agents](./agents).
+**Who does the work.** A board worker can be a plain block you wrote, a tool assigned by its catalog key, or an agent: a persona, a model, and a set of tools, declared in a skill's frontmatter and assigned board tasks by name. See [Agents](./agents) for the three and when each fits.
 
 **Workers described in files.** Your app's workers can be described in a folder rather than written out one by one: one `WORKER.md` per worker, saying which of your flows it runs and how that copy is configured. `hireWorkforce` turns those records into one addressable flow copy each, which you register. A hired worker is an address you open a session against, not a participant you assign board tasks to. See [Workers on disk](./workers-on-disk).
 
@@ -58,14 +56,14 @@ A drain normally runs inside the request that mounted it, so every worker's task
 ## Start here
 
 - **[Task board](./task-board)** — the primitive, its termination modes, and when to reach for it.
-- **[Configuration](./configuration)** — field catalog for `taskBoard`, `goalSeekLoop`, `defineAgent`, and `skills.with`.
+- **[Configuration](./configuration)** — field catalog for `taskBoard`, `goalSeekLoop`, `createSkillsLibrary`, and `skills.with`.
 - **[Build a research team](/guides/building-a-research-team)** — a guide that goes from an empty flow to a running multi-agent board, both the code-first and agent-first way.
 - **[Task substrate](./task-substrate)** — the `Task` and `TaskCollection` contracts underneath it all.
 
 ## Related pages
 
 - [Patterns overview](../patterns/overview) — the coordination patterns built on the task board.
-- [Agents](./agents) — named participants you can assign work to.
+- [Agents](./agents) — the three things that can do a unit of work on a board.
 - [Delegation](../skills/delegation) — the agent-first path and the `taskTools` surface.
 - [Workers on disk](./workers-on-disk) — describing each worker in a folder, and hiring the tree as addressable flow copies.
 - [Harness manager](./harness-manager) — a board worker that drives a coding agent to a settled verdict.

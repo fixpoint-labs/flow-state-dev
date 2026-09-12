@@ -14,24 +14,18 @@ router, and `SKILL.md` folders — each wired into a flow you can run with `fsde
 | `src/workers.ts` | The analyst and synthesizer workers. Plain handlers so the example runs without a model — swap a handler for a `generator` to call an LLM. The synthesizer reads its dependencies' outputs off `input.deps`. |
 | `src/board.ts` | A **static** board: two analysts + a synthesizer, with a fixed dependency graph via `initialTasks` + `deps`. |
 | `src/research-router.ts` | **Runtime fan-out**: a router reads a request, computes one analyzer task per competitor plus a synthesizer, and returns a board seeded with exactly those tasks. |
-| `src/skills/` | The same team as two delegation **skills**. Each skill defines its own team in `agents:` frontmatter, and its body plans the board (`addTask` with assignees and deps, then `runBoard`). `research-company` defines its whole team inline — three `prompt-ref` agents whose personas live in the skill folder. `competitor-analysis` adds the registry form for one seat. |
-| `src/agents.ts` | The shared agent `competitor-analysis` borrows: `competitor-analyst`, defined once with `defineAgent` and referenced by `agent-ref`. Also the `agentRegistry` + `materializeAgent` pair that resolves it. |
-| `src/skills.ts` | Loads the `SKILL.md` folders and builds the skills library — the catalog of leaf tools the inline agents call, plus the registry/materializer for the `agent-ref` agent. |
+| `src/skills/` | The same team as two delegation **skills**. Each skill defines its own team in `agents:` frontmatter, and its body plans the board (`addTask` with assignees and deps, then `runBoard`). Every agent on both teams is a `prompt-ref` agent whose persona lives in the skill folder, so each team travels with its skill. |
+| `src/skills.ts` | Loads the `SKILL.md` folders and builds the skills library — including the catalog of leaf tools the agents call. |
 | `src/flow.ts` | The `research-team` flow: one action per path — `research`, `researchCompetitors`, and `chat` (the delegation skills through a coordinator). |
 | `fsdev.config.ts` | Registers the flow so `fsdev` can run it. |
 | `test/` | `board.test.ts` drives the code-first board deterministically (drain → completed tasks + stitched synthesizer output); `flow.test.ts` runs the two no-model actions end-to-end and checks both skills parse and declare their teams. |
 
-## The two ways to staff an agent
+## How a skill staffs its team
 
-`competitor-analysis` shows both side by side:
-
-- **Inline prompt agent** — `discoverer` and `comparison-writer` are defined
-  right in the SKILL.md (`prompt-ref` to files in the skill folder). The team
-  travels with the skill; no app code registers it. `research-company` is
-  entirely this form.
-- **Registry agent** — `analyzer` references `competitor-analyst`, a shared
-  agent defined in app code with `defineAgent` and resolved through the
-  registry. Many skills can borrow the same agent.
+Every agent in both skills is defined right in its `SKILL.md`: a `prompt-ref`
+pointing at a persona file in the skill folder, plus the tools and model that
+seat needs. Nothing in app code registers them, so the team travels with the
+skill — copy the folder and the team comes with it.
 
 ## Run it with fsdev
 

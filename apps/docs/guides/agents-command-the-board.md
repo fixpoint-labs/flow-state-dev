@@ -103,42 +103,29 @@ reaches the persona in `./reference/market.md`.
 
 ## 2. Staff each seat
 
-An agent needs a persona, and there are two ways to give it one.
+An agent needs a persona, and you write it in the skill folder. Point at a
+Markdown file with `prompt-ref`, or put the body directly in the frontmatter
+with `prompt`. That is what all three agents above do, and it is what both of
+the example's skills do throughout.
 
-**Inline.** Write the persona in the skill folder and point at it with
-`prompt-ref`, or put it directly in the frontmatter with `prompt`. That is what
-all three agents above do. The payoff is portability: the skill folder carries
-its own team, and copying the folder into another app carries the team with it.
-No app code registers anything.
+The payoff is portability. The skill folder carries its own team, so copying the
+folder into another app carries the team with it. No app code registers
+anything, and the only wiring `createSkillsLibrary` needs is the tool catalog
+the agents' `tools` keys resolve against.
 
-**From the registry.** Define the agent once in app code with `defineAgent`, then
-borrow it by name with `agent-ref`:
+An entry takes a few more keys beside the persona: `tools` (catalog keys the
+agent may call itself), `model`, `visibility`, and `context-supply`. See
+[Delegation](/docs/skills/delegation#declaring-agents) for the full field list.
 
-```yaml
-agents:
-  analyzer:
-    agent-ref: competitor-analyst
-```
-
-The tradeoff is the mirror image. A registry agent can't travel alone, because
-it resolves against the `agentRegistry` your app hands to `createSkillsLibrary`.
-What you buy is reuse: one definition, borrowed by as many skills as you like.
-`research-company` is entirely inline, so the snippet above comes from the
-example's other skill, `competitor-analysis`. For the registry form end to end,
-including the `defineAgent` call and the library wiring,
-[the research-team tutorial walks it](/guides/building-a-research-team#5-two-ways-to-staff-an-agent).
-
-Inline agents take a few more keys: `tools` (catalog keys the agent may call
-itself), `model`, `visibility`, and `context-supply`. See
-[Delegation](/docs/skills/delegation#declaring-agents) for the full field list
-and [Agents](/docs/orchestration/agents) for the registry side.
+A seat doesn't have to be an agent, either. Every tool the skill allows is
+already assignable by its catalog key, and when your code owns the graph rather
+than a skill, `taskBoard` takes blocks directly. [Agents](/docs/orchestration/agents)
+lays out the three side by side.
 
 One thing that surprises people: the one-line blurb the coordinator sees for each
-agent is not something you write. For an inline agent it's the first non-blank
-line of the persona, truncated. So make that line say what the agent is for. A
-registry agent doesn't get a blurb at all — it's listed as ``agent `competitor-analyst` ``,
-its reference name and nothing else. The `description` you gave `defineAgent`
-isn't used here.
+agent is not something you write. It's the first non-blank line of the persona,
+truncated past 80 characters. So make that line say what the agent is for, not
+what it is about to be told.
 
 ## 3. Plan the work as a graph
 
@@ -216,7 +203,8 @@ agents:
     prompt-ref: ./reference/discover.md
     tools: [search, taskTools]
   analyzer:
-    agent-ref: competitor-analyst
+    prompt-ref: ./reference/analyze.md
+    tools: [search, fetch]
   comparison-writer:
     prompt-ref: ./reference/compare.md
 ```
@@ -377,8 +365,8 @@ The two shapes, side by side:
 ## Related
 
 - [Delegation](/docs/skills/delegation) — the reference: every `agents:` field, the board overrides, the caps, and the default worker.
-- [Building a research team](/guides/building-a-research-team) — the tutorial. Builds the same team several ways from an empty flow, code-first first, and covers the two ways to staff an agent in depth.
+- [Building a research team](/guides/building-a-research-team) — the tutorial. Builds the same team several ways from an empty flow, code-first first, and covers every way to staff a seat in depth.
 - [The board lifecycle](/guides/board-lifecycle) — seed, drain, read, from a code-first angle.
-- [Agents](/docs/orchestration/agents) — the registry side of `agent-ref`.
+- [Agents](/docs/orchestration/agents) — the three things that can fill a seat, and when each fits.
 - [Task board](/docs/orchestration/task-board) — the concurrent-drain primitive underneath, and its config.
 - [Context supply](/docs/orchestration/context-supply) — how to let an agent inherit the conversation so far instead of seeing only its task input.

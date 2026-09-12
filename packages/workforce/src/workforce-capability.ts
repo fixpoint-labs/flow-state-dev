@@ -10,7 +10,6 @@ import {
   type DefinedCapability,
   type ToolCatalog,
 } from "@flow-state-dev/core";
-import { createAgentRegistry } from "./agent-registry";
 
 export interface WorkforceCapabilityOptions {
   agents: Agent[] | AgentRegistry;
@@ -20,9 +19,20 @@ export interface WorkforceCapabilityOptions {
 export function createWorkforceCapability(
   options: WorkforceCapabilityOptions,
 ): DefinedCapability {
-  // Eagerly validate: duplicate-name check runs at construction time.
+  // Eagerly validate: the duplicate-name check runs at construction time, so a
+  // roster with two agents under one name is refused where it is declared
+  // rather than at the first ambiguous lookup. Inlined because this is the only
+  // caller — a shared registry helper for one check would be indirection.
   if (Array.isArray(options.agents)) {
-    createAgentRegistry(options.agents);
+    const seen = new Set<string>();
+    for (const agent of options.agents) {
+      if (seen.has(agent.name)) {
+        throw new Error(
+          `createWorkforceCapability: duplicate agent name "${agent.name}"`,
+        );
+      }
+      seen.add(agent.name);
+    }
   }
 
   // TODO: wire registry into capability presets for DevTool agent listing

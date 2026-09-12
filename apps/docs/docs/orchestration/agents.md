@@ -2,170 +2,172 @@
 title: Agents
 sidebar_position: 7
 sidebar_label: Agents
-description: Named, reusable participants composed of a persona, a model, and tools, registered once and referenced as delegation agents or composed as standalone blocks.
+description: "The three things that can do a unit of work on a task board: an agent declared in a skill, a tool by its catalog key, or any block you register as a worker."
 ---
 
 # Agents
 
-An agent is a named, reusable participant you define once and use many times. It bundles a persona (the system-prompt identity that says who the agent is and how it behaves), a model, and the tools it may call. Once registered, you reference an agent by name from a skill's `agents:` map (as a delegation agent), or drop it into any flow action as a standalone block.
+A task board hands each task to a **worker**. Three different things can be that worker, and which one you reach for depends on where the work is described and whether it needs a model at all.
 
-The point is to stop copy-pasting the same prompt and tool list into every worker. You write the `research-analyst` once, then a supervisor skill, a plan-and-execute skill, and a one-off action can all point at it.
+| The worker is | Where you declare it | Reach for it when |
+|---|---|---|
+| An agent | `agents:` in a skill's frontmatter | The work needs a model with its own persona and tools |
+| A tool | Nothing to declare — every tool the skill allows is already assignable | The work is a function call, not a judgment |
+| Any block | `taskBoard({ workers })`, in TypeScript | The graph is fixed in code rather than planned by a model |
 
-Agents live in `@flow-state-dev/workforce`. The type contracts they satisfy are declared in `@flow-state-dev/core`.
+The first two are how a *skill* staffs its board. The third is how *your code* does.
 
-## defineAgent
+## An agent declared in a skill
 
-`defineAgent` builds a validated agent definition. Four fields carry the agent's identity: `name` is the key `agent-ref` resolves against, `description` labels the definition (nothing reads it at runtime, and it is not the system prompt), `persona` is the system-prompt source, and `model` picks the generator model. The rest — `allowedTools`, `usesCapabilities`, `outputSchema`, `itemVisibility` — shape what the materialized block can do.
-
-Every field, with its type and default, is in [Configuration](./configuration#defineagent-options).
-
-A minimal agent needs a name, a description, a persona, and whatever tools it calls:
-
-```ts
-import { defineAgent, createAgentRegistry } from "@flow-state-dev/workforce";
-
-const techBriefer = defineAgent({
-  name: "tech-briefer",
-  description: "Produces concise technology briefings from web research.",
-  persona:
-    "You are a senior technology analyst at a research firm. " +
-    "Write concise, opinionated briefings. Lead with the takeaway, " +
-    "then supporting evidence, then risks. Cite every claim. " +
-    "If sources conflict, show the conflict rather than picking a side.",
-  model: "openai/gpt-5.4-mini",
-  allowedTools: ["search", "fetch"],
-});
-
-export const agentRegistry = createAgentRegistry([techBriefer]);
-```
-
-## Registry and materialization
-
-An agent definition is inert on its own. `createAgentRegistry` builds a catalog from an array of agents, and errors on a duplicate name. `materializeAgent` turns an agent into a runnable block, either worker-shaped (for a board seat in a delegation skill) or standalone (for a flow action).
-
-You rarely call `materializeAgent` by hand. You hand it to the skills library, which calls it when a skill's `agent-ref` entry resolves:
-
-```ts
-import { createAgentRegistry, materializeAgent } from "@flow-state-dev/workforce";
-import { createSkillsLibrary } from "@flow-state-dev/orchestration";
-
-const skills = createSkillsLibrary({
-  catalog,
-  agentRegistry,
-  materializeAgent,
-  initialSkills,
-});
-```
-
-With that wiring in place, a skill's `SKILL.md` references an agent from its `agents:` map. Declaring `agents:` turns on delegation for a generator that binds the skill; `agent-ref` names the agent, and `agent-overrides` adjusts it for this skill:
+An agent is a prompt-driven teammate that lives in the skill folder. You give it a persona and the tools it may call, and the coordinating generator assigns it tasks by name:
 
 ```yaml
 ---
-description: Multi-angle research on a company. Use when the user asks for a deep dive.
-
+description: Multi-angle company research delivered by a small team of analysts.
 agents:
-  analyst:
-    agent-ref: tech-briefer
-    agent-overrides:
-      model: openai/gpt-5.4-mini
-      tools: [search, fetch, readDocument]
+  market-analyst:
+    prompt-ref: ./reference/market.md
+    tools: [search, fetch]
+  financial-analyst:
+    prompt-ref: ./reference/financials.md
+    tools: [search, fetch]
+  synthesizer:
+    prompt-ref: ./reference/synthesis.md
 ---
-You are the research lead. Plan the work on your board: `addTask` one task per
-angle, each `assignee: "analyst"`. Then call `runBoard` and synthesize the
-settled tasks' output.
+You run the board. Extract the target from the user's message, then:
+
+1. `addTask` a market analysis — `assignee: "market-analyst"`.
+2. `addTask` a financial analysis — `assignee: "financial-analyst"`.
+3. `addTask` the synthesis — `assignee: "synthesizer"`, `deps` set to the two
+   task ids returned above.
+4. Call `runBoard` once. Surface the synthesizer task's report as-is.
 ```
 
-The generator that bound the skill (the coordinator) picks assignees off a roster the skill builds from its `agents:` map: each agent key with a one-line purpose beside it. For an `agent-ref` entry that purpose is the referenced agent's name. For a `prompt` or `prompt-ref` entry it is the first line of the prompt, cut off past 80 characters. So an inline prompt's opening line doubles as routing copy: write it as a summary of what the agent does, not as a preamble. The coordinator's [tools are assignable too](../skills/delegation#assigning-a-task-to-a-tool), by their catalog key, and they don't appear on this roster — it already has their descriptions from the tool surface.
+The persona is either `prompt` (the body inline in the frontmatter) or `prompt-ref` (a path to a Markdown file beside the `SKILL.md`). Beside it you can set `tools` (catalog keys the agent may call itself), `model`, `visibility`, and `context-supply`. Every field is in [Delegation](../skills/delegation#declaring-agents).
 
-Overrides use REPLACE semantics, not merge. If `agent-overrides.tools` is present, it replaces the agent's `allowedTools` entirely; the two lists are not combined. Same for `model` and `visibility` (the frontmatter key for `itemVisibility`). Read the override block and you know exactly what the agent can do.
+Nothing in your app code registers these agents. The skill folder carries its own team, so copying the folder into another app carries the team with it. The only app-side wiring is the tool catalog the agents' `tools` keys resolve against.
 
-There's no prompt or persona override. Changing an agent's persona is a change to the agent definition. If you need an ad-hoc prompt for one agent, use `prompt` or `prompt-ref` on the agent spec instead of `agent-ref`.
+A delegated agent returns free text. An agent entry has no output-schema field, so if you need a task's result as a typed shape, parse it after the board settles, or put a block on the board instead — see [Any block](#any-block-as-a-worker) below.
 
-## Standalone block
+### The roster the coordinator sees
 
-`agentBlock` composes an agent directly into a flow action, no skill involved. It's a shorthand around the standalone materialization:
+The coordinating generator picks assignees off a roster the skill builds from its `agents:` map: each agent key with a one-line purpose beside it. That purpose is the first non-blank line of the agent's prompt, cut off past 80 characters. So an inline persona's opening line doubles as routing copy. Write it as a summary of what the agent does, not as a preamble.
 
-```ts
-import { agentBlock } from "@flow-state-dev/workforce";
+## A tool, by its catalog key
 
-const briefingBlock = agentBlock(techBriefer, { catalog });
-// Input: { goal: string }, Output: string
+Some board nodes don't need a model. Fetching a document, running a calculation, reshaping a payload: routing that through an agent buys a model turn without getting a decision back.
+
+You declare nothing for this. Every tool the skill allows is already assignable, by its catalog key:
+
+```
+addTask({ goal: "fetch page A", assignee: "httpGet", input: { url: "https://a.example" } })
 ```
 
-Mount `briefingBlock` in a sequencer or wire it as an action the same way you would any block.
+The task's `input` becomes the tool's arguments, and no model turn happens. Tool seats don't appear on the coordinator's agent roster — it already has their descriptions from the tool surface. One limit to plan around: a tool seat gets its ordering from `deps` but can't read an upstream task's output. See [Assigning a task to a tool](../skills/delegation#assigning-a-task-to-a-tool).
 
-## Structured output and capabilities
+## Any block as a worker
 
-An agent can return typed data instead of free text. Declare an `outputSchema` and the agent emits that shape both ways you run it: mounted directly, and delegated to a board as a task. A delegated agent's output is read off its completed task on the board, not returned inline to the coordinator.
-
-Two rules bound what you can declare.
-
-The root has to be a bare `z.string()` or an object. Anything else is sent to the provider as a structured-output root, and a structured root has to be an object, so a wrapped string like `z.string().nullable()` will not do.
-
-No field may parse to a value JSON cannot carry, because a task result is stored as JSON. That rules out a transform such as `z.string().transform(v => new Date(v))`, and the types that produce such a value directly: `z.date()`, `z.coerce.date()`, `z.bigint()`, `z.map()`. Validation is fine. A `.refine()` doesn't change the parsed value, so it round-trips like anything else.
-
-A shape that breaks either rule is refused when the agent is materialized, naming the agent and the offending field. The declared shape carries the same OpenAI-strict requirement as any generator output.
-
-`usesCapabilities` accepts two forms in the same array: a string key resolved against the materialize-time capability catalog, or a capability reference used as-is. A reference can be configured with `.with({ ... })`, and the preset typing carries through, the same way `generator({ uses })` consumes capabilities.
-
-A string key needs a catalog to resolve against. If you declare one and supply no catalog at all, materialization fails with an `AgentCapabilityError` naming the agent and the capability, rather than building an agent that quietly lacks it. A key that a supplied catalog doesn't carry is treated the same way as an unknown tool key: it warns and is skipped. Capability references carry themselves and never need a catalog.
+When your code owns the graph, skip skills entirely. `taskBoard` takes a name → block map and routes on `task.assignee`:
 
 ```ts
-import { defineAgent } from "@flow-state-dev/workforce";
-import { tradingDeskCapability } from "./capabilities/trading-desk";
-import { z } from "zod";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 
-const positionSizerSchema = z.object({
-  ticker: z.string(),
-  action: z.enum(["buy", "sell", "hold"]),
-  sizePct: z.number(),
-});
-
-const positionSizer = defineAgent({
-  name: "position-sizer",
-  description: "Sizes a position into a typed decision.",
-  persona: { path: "personas/portfolio-manager" },
-  outputSchema: positionSizerSchema, // typed result, mounted or delegated
-  usesCapabilities: [
-    tradingDeskCapability.with({ valuationSpine: true }), // typed capability ref
-    "marketDataAccess", // string key, resolved from the catalog
+const board = taskBoard({
+  name: "research",
+  workers: { marketAnalyst, financialAnalyst, synthesizer },
+  initialTasks: [
+    { id: "market", goal: "Analyze market positioning", assignee: "marketAnalyst" },
+    { id: "financial", goal: "Analyze financial health", assignee: "financialAnalyst" },
+    { id: "brief", goal: "Write the brief", assignee: "synthesizer", deps: ["market", "financial"] },
   ],
 });
 ```
 
+A worker here is an ordinary block, so it can be a handler with no model in it at all, and it declares its own `outputSchema`. [Task board](./task-board) is the reference for the registry, the dispatchers, and the termination modes.
+
+## Borrowing an agent from a registry
+
+A skill agent entry has a third resolution field, `agent-ref`, which names an agent resolved at run time instead of one written in the skill folder. It is an extension point rather than a ready-made feature. The framework routes the name; you supply what it resolves against.
+
+To make `agent-ref` resolve, pass `createSkillsLibrary` both halves of a pair you write yourself:
+
+- `agentRegistry` — an object with `get(name)` and `list()`, returning objects matching the `Agent` interface from `@flow-state-dev/core`.
+- `materializeAgent` — a function turning one of those objects into the board worker the drain dispatches.
+
+Without both, an `agent-ref` entry refuses when the skill's tool surface resolves, which for a statically bound skill is at build time:
+
+```
+Agent 'analyzer' uses agent-ref 'competitor-analyst' but no agentRegistry was
+supplied to materializeWorker. The delegation surface does not resolve agent-ref
+agents — use prompt/prompt-ref, or supply an agentRegistry to whatever wires
+this board's workers.
+```
+
+An entry naming an agent the registry doesn't have refuses the same way, listing the names it does have.
+
+`agent-overrides` adjusts a resolved agent for one skill, with REPLACE semantics rather than merge. If `agent-overrides.tools` is present it replaces the agent's tool list entirely; the two are not combined. Same for `model` and `visibility`. There's no prompt override: for an ad-hoc persona, use `prompt` or `prompt-ref` instead of `agent-ref`.
+
+On the coordinator's roster an `agent-ref` entry is listed as `` agent `competitor-analyst` `` — its reference name and nothing else, with no one-line purpose beside it.
+
 ## Personas
 
-A persona is the agent's identity, the system prompt.
-
-| Form | Description |
-|------|-------------|
-| `string` | Bare system prompt, used verbatim. The simplest form. |
-| `{ template, state? }` | Inline LiquidJS template rendered against optional state. |
-| `{ path }` | A declared resource or collection instance, rendered live via `readContent()`. |
-
-For resource-backed personas, `definePersona` declares them the same way skills are declared, as a collection over a path pattern with a content template:
+A persona is a system prompt: who a participant is and how it behaves. In a skill, the persona is the `prompt` body or the `prompt-ref` file. When you'd rather hold it as editable state than as a file, `definePersona` declares it as a resource whose body renders from that state:
 
 ```ts
 import { definePersona } from "@flow-state-dev/workforce";
+import { z } from "zod";
 
-const personas = definePersona({
-  pattern: "personas/*",
-  contentTemplate: "You are a {{ state.role }}. {{ state.instructions }}",
+export const analystPersona = definePersona({
+  ref: "persona-analyst",
+  contentTemplate: "You are a {{ state.role }}. Your beat is {{ state.beat }}.",
+  stateSchema: z.object({ role: z.string(), beat: z.string() }),
+  initialState: { role: "equity analyst", beat: "semiconductors" },
 });
 ```
 
-An agent then sources its persona by path (`persona: { path: "personas/portfolio-manager" }`), and the content resolves live at execution time. A missing path or empty content surfaces as an execution-time error, not a definition-time one.
+Read the rendered body with `readContent()` and hand it to a generator as its prompt:
 
-## Current limits
+```ts
+import { generator } from "@flow-state-dev/core";
 
-- `usesSkills` is on the type, but nothing resolves it.
-- `contextMode` on an agent definition is not honored. A `"fork"` value is accepted and treated as inline. To have a delegated agent inherit the parent conversation, set `context-supply: conversation` on the skill's agent entry instead. That field works on `prompt` / `prompt-ref` entries; on an `agent-ref` entry it throws. See [Context supply](./context-supply.md).
-- Agents are registered statically at build time through `createAgentRegistry`. There's no runtime registration.
-- An agent is referenced within a flow, by a skill or a standalone block. There's no cross-flow assignment.
+const analyst = generator({
+  name: "analyst",
+  resources: { persona: analystPersona },
+  inputSchema: z.object({ question: z.string() }),
+  model: "openai/gpt-5.4-mini",
+  prompt: async (_input, ctx) => (await ctx.resources.persona.readContent()) ?? "",
+  user: (input) => input.question,
+});
+```
+
+Patch the resource's state and the next read renders the new body.
+
+Pass `pattern` instead of `ref` for a collection, when one declaration should cover many personas:
+
+```ts
+const personas = definePersona({
+  pattern: "personas/*",
+  contentTemplate: "You are a {{ state.role }}. {{ state.instructions }}",
+  stateSchema: z.object({ role: z.string(), instructions: z.string() }),
+});
+```
+
+Both forms default to `scope: "org"`, so a persona is shared across users unless you say otherwise. The collection form takes no `initialState`: you create each instance, and `get` on one that doesn't exist throws. Everything on [Resources](../resources/overview) applies — `definePersona` is `defineResource` / `defineResourceCollection` with the content template already wired.
+
+## `createWorkforceCapability`
+
+`createWorkforceCapability({ agents })` takes an agent list or an `AgentRegistry` and returns a capability named `workforce`. Given a list, it throws at construction when two agents share a name. It contributes no tools, context, or resources to a block that puts it in `uses`.
+
+## Hired workers are something else
+
+`hireWorkforce` also produces things called workers, and those are not board participants. A hired worker is a configured copy of one of your flows, with its own id, its own settings, and its own URL, which you open a session against. A board's workers are in-process blocks that claim tasks from a collection.
+
+The two compose — a hired worker's flow can mount a board, and that board's workers are any of the three above — but a task's `assignee` never names a hired worker. See [Workers on disk](./workers-on-disk).
 
 ## Related pages
 
-- [Configuration](./configuration) — every `defineAgent` field, including defaults.
-- [Delegation](../skills/delegation.md) — referencing agents from an `agents:` map via `agent-ref`.
-- [Task board](./task-board.md) — the concurrent drain you can call as a tool.
-- [Orchestration overview](./overview.md) — how agents, the substrate, and the board fit together.
+- [Delegation](../skills/delegation) — every field on an `agents:` entry, and the board a skill installs.
+- [Authoring a delegating skill](/guides/agents-command-the-board) — one skill, start to finish.
+- [Context supply](./context-supply) — how much prior conversation a delegated agent reads.
+- [Task board](./task-board) — the concurrent drain underneath all of this.
+- [Workers on disk](./workers-on-disk) — describing each of your app's workers in a folder.
