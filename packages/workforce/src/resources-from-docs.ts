@@ -31,10 +31,39 @@ import {
 const DOCUMENT_STATE_SCHEMA = z.object({}).passthrough();
 
 /**
+ * The derived set as a lookup. Same list as {@link DERIVED_RESOURCE_KEYS},
+ * which stays an ordered array because the refusal message reads it in order.
+ */
+const DERIVED_KEYS = new Set<string>(DERIVED_RESOURCE_KEYS);
+
+/**
+ * An empty map with no prototype, for the two places a key here is a name
+ * somebody else chose — a document's ref, and a frontmatter key.
+ *
+ * On an ordinary object, `map["__proto__"] = value` reaches the legacy
+ * prototype setter instead of creating a property: with an object value it
+ * REPLACES the map's prototype, so the entry never appears in `Object.keys`,
+ * never survives a spread, and the document disappears without a word. The
+ * engine's own resource registries are null-prototype for exactly this reason
+ * (`createExecutionContext`), and nothing built here needs `Object.prototype`.
+ */
+function emptyMap<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
+
+/**
  * Build the resource map from document records, keyed by each document's ref.
  *
  * The accessor key is the ref, so a team's handbook reaches a block as
  * `ctx.resources["teams/engineering/handbook"]`.
+ *
+ * **The installing flow has to require an org.** Every document here is
+ * org-scoped, and `defineFlow` collects `requiresOrg` from its blocks, not from
+ * its resource map — so a flow that installs documents and declares nothing
+ * accepts a user-only request, builds no org resource registry, and every
+ * document resolves as unregistered. Declare `requireOrg: true` on the blocks
+ * that read one. Nothing here can enforce that: this function is pure and runs
+ * at definition time, long before a principal exists.
  *
  * Throws, rather than collecting, when a record cannot become a resource — a
  * declaration the convention derives, or frontmatter `defineResource` itself
@@ -43,7 +72,7 @@ const DOCUMENT_STATE_SCHEMA = z.object({}).passthrough();
  * `hireWorkforce` throws where `readWorkforceDirectory` collects.
  */
 export function resourcesFromDocs(documents: ResourceDoc[]): DeclaredResources {
-  const resources: DeclaredResources = {};
+  const resources: DeclaredResources = emptyMap();
 
   for (const doc of documents) {
     const refused = refusedDeclarationMessage(doc.declared);
@@ -86,9 +115,9 @@ export function resourcesFromDocs(documents: ResourceDoc[]): DeclaredResources {
 export function passthroughFrom(
   declared: Record<string, unknown>,
 ): Record<string, unknown> {
-  const passthrough: Record<string, unknown> = {};
+  const passthrough = emptyMap<unknown>();
   for (const [key, value] of Object.entries(declared)) {
-    if ((DERIVED_RESOURCE_KEYS as readonly string[]).includes(key)) continue;
+    if (DERIVED_KEYS.has(key)) continue;
     passthrough[key] = value;
   }
   return passthrough;

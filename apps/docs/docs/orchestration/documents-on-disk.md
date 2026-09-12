@@ -138,7 +138,7 @@ errors;
 | `refused-declaration` | The file declares a setting the convention derives, or `prefetchMode: "lazy"`. |
 | `unreadable-slot` | A structural folder is a symlink or exists and cannot be listed: `org`, `org/resources`, `teams`, a team folder, or a team's `resources`. The documents beneath it cannot be enumerated, so the folder is reported under its own path. |
 
-`readResourcesDirectory` throws in exactly one case: the root you passed cannot be read at all. A root with neither `org/` nor `teams/` comes back as `{ documents: [], errors: [] }`, and a team with no `resources/` folder is not an error either.
+`readResourcesDirectory` throws only about the root you passed: when it cannot be read at all, and when it is a symlink. Links are never followed at any level of the walk, and the root is no exception, so a linked root is refused rather than read from wherever it points. A root with neither `org/` nor `teams/` comes back as `{ documents: [], errors: [] }`, and a team with no `resources/` folder is not an error either.
 
 A file in a `resources/` folder that is not a `.md` is passed over in silence, as are OS and editor droppings such as `.DS_Store`.
 
@@ -183,6 +183,19 @@ Spread the map rather than passing it on its own. A flow copy created with `supp
 
 `resourcesFromDocs` throws rather than collecting. A record it cannot turn into a resource stops startup, naming the ref, the same way a refused hire does.
 
+### The request needs an org
+
+A document is stored at org scope, so a request has to be bound to an org before a block can read one. The flow does not work that out from its resource map. It takes the requirement from its blocks, through [`requireOrg`](/docs/configuration/blocks).
+
+Install documents and declare nothing, and the flow accepts a request carrying only a `userId`. No org resource registry gets built, so the documents are simply not there:
+
+```ts
+await ctx.resources.get("teams/engineering/handbook").readContent();
+// Error: Resource "teams/engineering/handbook" is not registered
+```
+
+Put `requireOrg: true` on the blocks that read a document, as the example in the next section does. The flow then turns away a request with no org up front, instead of running it and coming up empty. How a request carries its org is covered in [the client reference](/docs/configuration/client).
+
 ### The team folder is a namespace, not a visibility boundary
 
 Every file-declared document is org-scoped, and a generator's resource tools reach every installed document marked `llmReadable`, with no per-team filter. Install a whole tree on one flow and every team's documents are reachable from it.
@@ -205,10 +218,13 @@ import { generator, readResourceContentTool } from "@flow-state-dev/core";
 export const answerQuestion = generator({
   name: "answer-question",
   model: "openai/gpt-5.4-mini",
+  requireOrg: true,
   prompt: "Answer support questions. Check the team handbook before you answer.",
   tools: [readResourceContentTool()],
 });
 ```
+
+`requireOrg: true` is what binds the request to an org, which org-scoped documents need to load at all.
 
 The documents are already declared on the flow, so the generator does not declare them again. The tool addresses a document by its scope-qualified uri, the same handle the [search tools](/docs/resources/searching) return. See [LLM access patterns](/docs/resources/overview#llm-access-patterns).
 

@@ -14,6 +14,7 @@ import { join } from "node:path";
 import fsp from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readResourcesDirectory } from "../src/loader";
+import { DERIVED_KEY_CASES } from "./derived-key-cases";
 
 const roots: string[] = [];
 
@@ -102,6 +103,22 @@ describe("readResourcesDirectory", () => {
     await expect(
       readResourcesDirectory(join(tmpdir(), "fsd-resources-absent-root")),
     ).rejects.toThrow(/Failed to read/);
+  });
+
+  it("refuses a symlinked root without following it", async () => {
+    // The root is the one level a bare `readdir` would follow. Every nested
+    // structural folder is classified first, so `org -> /outside` is refused;
+    // a root that is itself a link has to be refused the same way, or the whole
+    // tree comes from somewhere the caller never configured.
+    const root = tree({ "real/teams/engineering/resources/handbook.md": HANDBOOK });
+    symlinkSync(join(root, "real"), join(root, "linked"));
+
+    // Control: the tree behind the link is a perfectly loadable one, so the
+    // refusal below is the symlink and not a broken fixture.
+    const direct = await readResourcesDirectory(join(root, "real"));
+    expect(direct.documents.map((d) => d.ref)).toEqual(["teams/engineering/handbook"]);
+
+    await expect(readResourcesDirectory(join(root, "linked"))).rejects.toThrow(/Symlinked/);
   });
 
   // R1 — the worker reader's error contract, on both resource roots. Each case
@@ -274,33 +291,27 @@ describe("readResourcesDirectory", () => {
   // These are the regressions for F1a-F1c: each of these keys, carried
   // verbatim, could redirect a storage row or replace the document body.
   describe("refuses every field the convention derives", () => {
-    const derived: Array<[string, string]> = [
-      ["scope", "scope: user"],
-      ["ref", "ref: somewhere-else"],
-      ["stateSchema", "stateSchema: not-a-schema"],
-      ["default", "default: {}"],
-      ["content", "content: hijacked"],
-      ["contentFile", "contentFile: ./other.md"],
-      ["contentTemplate", "contentTemplate: ./other.liquid"],
-      ["contentTemplateRef", "contentTemplateRef: other"],
-    ];
+    // Shared with the install door's spec: the claim is that both doors refuse
+    // the SAME set, which two separately-spelled tables cannot encode.
+    it.each(DERIVED_KEY_CASES)(
+      "reports a file declaring `$key` under its own path",
+      async ({ key, yaml }) => {
+        const root = tree({
+          ...HEALTHY,
+          "org/resources/overreach.md":
+            `---\ndescription: Tries to declare what the convention derives.\n${yaml}\n---\n\nbody\n`,
+        });
 
-    it.each(derived)("reports a file declaring `%s` under its own path", async (key, line) => {
-      const root = tree({
-        ...HEALTHY,
-        "org/resources/overreach.md":
-          `---\ndescription: Tries to declare what the convention derives.\n${line}\n---\n\nbody\n`,
-      });
+        const { documents, errors } = await readResourcesDirectory(root);
 
-      const { documents, errors } = await readResourcesDirectory(root);
-
-      expect(documents.map((d) => d.ref)).toEqual(["teams/engineering/handbook"]);
-      expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("org/resources/overreach.md");
-      expect(errors[0]!.kind).toBe("refused-declaration");
-      expect(errors[0]!.error.message).toContain("overreach.md");
-      expect(errors[0]!.error.message).toContain(`\`${key}:\``);
-    });
+        expect(documents.map((d) => d.ref)).toEqual(["teams/engineering/handbook"]);
+        expect(errors).toHaveLength(1);
+        expect(errors[0]!.path).toBe("org/resources/overreach.md");
+        expect(errors[0]!.kind).toBe("refused-declaration");
+        expect(errors[0]!.error.message).toContain("overreach.md");
+        expect(errors[0]!.error.message).toContain(`\`${key}:\``);
+      },
+    );
 
     it("refuses a lazy prefetchMode with the reason, because defineFlow would reject the flow", async () => {
       const root = tree({

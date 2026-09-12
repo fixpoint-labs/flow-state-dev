@@ -11,4 +11,5 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-09-12 | fix/FIX-1354-resources-file-convention | none | PASS | Re-run after the review fixes (symlinked root refused, null-prototype resource map, refusal moved to a branch). Same three documents, same reported slot, same bodies — the fixes changed no outcome this goal grades. |
 | 2026-09-11 | fix/FIX-1354-resources-file-convention | none | PASS | `code-of-conduct, teams/engineering/handbook, teams/marketing/handbook` read from files alone; `teams/marketing/resources/glossary` reported; `notes.txt` silent; a flow accepted the map with each body intact. Controlled three ways first, each FAILing as predicted: team refs minted by bare name (both handbooks collapsed to one key and neither reached the flow with its own body), the folder-shaped slot skipped in silence (nothing reported), and the body dropped at install (every document reached the flow without its own content). |

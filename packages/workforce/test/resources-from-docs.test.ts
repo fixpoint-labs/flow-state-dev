@@ -7,11 +7,13 @@
  * refused where the resource is built too — the same two-door reason `hire.ts`
  * already has.
  */
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { testFlow } from "@flow-state-dev/testing";
 import { describe, expect, it } from "vitest";
 import { resourcesFromDocs } from "../src/resources-from-docs";
 import { passthroughFrom } from "../src/resources-from-docs";
-import type { ResourceDoc } from "../src/manifest";
+import { DERIVED_RESOURCE_KEYS, type ResourceDoc } from "../src/manifest";
+import { DERIVED_KEY_CASES } from "./derived-key-cases";
 
 /** One document record, as the reader would have handed it back. */
 function doc(ref: string, declared: Record<string, unknown> = {}, body = "the body"): ResourceDoc {
@@ -77,22 +79,26 @@ describe("resourcesFromDocs", () => {
 
   // R4, install door.
   describe("refuses every field the convention derives", () => {
-    const derived: Array<[string, unknown]> = [
-      ["scope", "user"],
-      ["ref", "somewhere-else"],
-      ["stateSchema", "not-a-schema"],
-      ["default", {}],
-      ["content", "hijacked"],
-      ["contentFile", "./other.md"],
-      ["contentTemplate", "./other.liquid"],
-      ["contentTemplateRef", "other"],
-    ];
-
-    it.each(derived)("throws on a hand-built doc declaring `%s`, naming the ref", (key, value) => {
-      expect(() =>
-        resourcesFromDocs([doc("teams/engineering/handbook", { [key as string]: value })]),
-      ).toThrow(new RegExp(`teams/engineering/handbook[\\s\\S]*\`${key}:\``));
+    /**
+     * The table is shared with the reader door's spec, because what is under
+     * test is that BOTH doors refuse the SAME set. This spec holds it to the
+     * convention's own list, so a derived key added later fails here until the
+     * two doors are graded on it.
+     */
+    it("grades every key the convention derives, and no others", () => {
+      expect(DERIVED_KEY_CASES.map((c) => c.key).sort()).toEqual(
+        [...DERIVED_RESOURCE_KEYS].sort(),
+      );
     });
+
+    it.each(DERIVED_KEY_CASES)(
+      "throws on a hand-built doc declaring `$key`, naming the ref",
+      ({ key, value }) => {
+        expect(() =>
+          resourcesFromDocs([doc("teams/engineering/handbook", { [key]: value })]),
+        ).toThrow(new RegExp(`teams/engineering/handbook[\\s\\S]*\`${key}:\``));
+      },
+    );
 
     it("throws on a hand-built doc asking for a lazy prefetchMode", () => {
       expect(() =>
@@ -124,6 +130,120 @@ describe("resourcesFromDocs", () => {
       });
 
       expect(bag).toEqual({ description: "A document.", llmReadable: true });
+    });
+  });
+
+  /**
+   * The hand-built door's own hazard. `__proto__` is not a key the reader can
+   * mint — the segment rules admit only lowercase letters, digits and single
+   * hyphens — but a `ResourceDoc[]` built by hand never passes the reader, and
+   * that second door is the one this module exists to hold.
+   *
+   * Written on an ordinary object, `map["__proto__"] = definition` reaches the
+   * legacy prototype setter: the entry never becomes an own property, so
+   * `Object.keys` misses it and the spread the README tells an app to write
+   * drops the document without a word. The engine's own resource registries
+   * take null prototypes for exactly this reason.
+   */
+  describe("keys that collide with an inherited member", () => {
+    it("keeps a document whose ref is `__proto__` as an own key that survives the spread", () => {
+      const resources = resourcesFromDocs([doc("__proto__", {}, "Be kind.")]);
+
+      expect(Object.keys(resources)).toEqual(["__proto__"]);
+
+      // The install step the README documents: spread into the app's own map.
+      const spread = { ...resources };
+      expect(Object.keys(spread)).toEqual(["__proto__"]);
+      expect((spread["__proto__"] as { content?: string }).content).toBe("Be kind.");
+    });
+
+    it("carries a frontmatter key named `__proto__` through to the bag verbatim", () => {
+      // The shape `parseFrontmatterYaml` really returns: a null-prototype
+      // record, on which `__proto__:` in a file IS an own key. A plain `{}`
+      // passthrough loses it silently, against the module's promise that
+      // everything outside the derived set is carried as written.
+      const declared: Record<string, unknown> = Object.create(null);
+      declared["description"] = "A document.";
+      declared["__proto__"] = { owner: "platform" };
+
+      const bag = passthroughFrom(declared);
+
+      expect(Object.keys(bag).sort()).toEqual(["__proto__", "description"]);
+      expect(Object.getOwnPropertyDescriptor(bag, "__proto__")?.value).toEqual({
+        owner: "platform",
+      });
+    });
+  });
+
+  /**
+   * Every file-declared document is org-scoped, and a flow does not derive its
+   * org requirement from a flow-level resource — `requiresOrg` is collected off
+   * the blocks. So a flow that installs documents and never declares
+   * `requireOrg` accepts a user-only request and then has no documents on it:
+   * the org registry is never built, and every ref resolves as unregistered.
+   *
+   * The convention cannot close that from here (it is pure, and runs long
+   * before a principal exists), so it is documented instead — in the README, on
+   * the docs page, and on `resourcesFromDocs` itself. These specs are what make
+   * that instruction falsifiable: they run the real execution path and show
+   * both halves.
+   */
+  describe("a file-declared document needs an org identity to reach a block", () => {
+    const documents = [doc("teams/engineering/handbook", {}, "QUARRY-3157")];
+
+    /** A flow whose block reads the handbook, with and without the documented flag. */
+    function buildFlow(declareRequireOrg: boolean) {
+      const seen: string[] = [];
+      const read = handler({
+        name: "read-handbook",
+        ...(declareRequireOrg ? { requireOrg: true } : {}),
+        execute: async (_input: unknown, ctx) => {
+          try {
+            seen.push(
+              String(await ctx.resources.get("teams/engineering/handbook").readContent()),
+            );
+          } catch (err) {
+            seen.push(`refused: ${(err as Error).message}`);
+          }
+          return {};
+        },
+      });
+
+      return {
+        seen,
+        flow: defineFlow({
+          kind: `support-${declareRequireOrg ? "org" : "bare"}`,
+          actions: { answer: { block: read } },
+          resources: { ...resourcesFromDocs(documents) },
+        }),
+      };
+    }
+
+    it("is not registered on a request that carries no org", async () => {
+      const { flow, seen } = buildFlow(false);
+
+      await testFlow({ flow, action: "answer", input: {}, userId: "u1" });
+
+      expect(seen).toEqual([
+        'refused: Resource "teams/engineering/handbook" is not registered',
+      ]);
+    });
+
+    it("arrives with its own body once the request carries one", async () => {
+      const { flow, seen } = buildFlow(false);
+
+      await testFlow({ flow, action: "answer", input: {}, userId: "u1", seed: { org: {} } });
+
+      expect(seen).toEqual(["QUARRY-3157"]);
+    });
+
+    it("only demands an org when a block says so — installing documents does not", () => {
+      // The documented fix, and the reason it is needed: the flow-level
+      // resource map contributes nothing to `requiresOrg`, so the transport
+      // door has nothing to refuse an org-less request with until a block
+      // declares `requireOrg`.
+      expect(buildFlow(false).flow.requiresOrg).toBe(false);
+      expect(buildFlow(true).flow.requiresOrg).toBe(true);
     });
   });
 

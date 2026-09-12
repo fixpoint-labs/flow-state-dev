@@ -106,18 +106,29 @@ export interface ReadResourcesDirectoryResult {
  * `<root>/teams/<teamId>/resources/<name>.md`, and return one neutral record
  * per document.
  *
- * Throws only when `root` itself cannot be read — a configured root that does
- * not exist is a wiring mistake, not a per-document one. A root with neither
- * `org/` nor `teams/` is an empty result: an app may declare no documents in
- * files, and a team may have no `resources/` folder. Everything else that goes
- * wrong lands in `errors`, so one bad file never costs an app its other
- * documents.
+ * Throws only when `root` itself is refused — a symlink, or a path that cannot
+ * be read at all. A configured root that does not exist, or that would take the
+ * walk somewhere else entirely, is a wiring mistake, not a per-document one.
+ *
+ * A root with neither `org/` nor `teams/` is an empty result: an app may
+ * declare no documents in files, and a team may have no `resources/` folder.
+ * Everything else that goes wrong lands in `errors`, so one bad file never
+ * costs an app its other documents.
  */
 export async function readResourcesDirectory(
   root: string,
 ): Promise<ReadResourcesDirectoryResult> {
   const documents: ResourceDoc[] = [];
   const errors: ResourceDocError[] = [];
+
+  // The root is classified before it is listed, for the reason every nested
+  // structural folder is: a bare `readdir` follows a symlink, and a symlinked
+  // root would load the whole tree from somewhere the caller never configured.
+  // It throws rather than landing in `errors` because the root is the one level
+  // whose failure is a wiring mistake, not a document-shaped one.
+  if ((await classify(root)).kind === "symlink") {
+    throw refusedSymlink("workforce directory", root);
+  }
 
   try {
     await fs.readdir(root);
@@ -246,6 +257,7 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
     // a directory, it carries no sign that someone meant it to be one.
     if (!entryName.endsWith(DOCUMENT_EXTENSION)) continue;
 
+    let loaded: { ref: string; declared: Record<string, unknown>; body: string };
     try {
       const name = entryName.slice(0, -DOCUMENT_EXTENSION.length);
       // Identity first: a document whose segments break the rules has no ref to
@@ -253,27 +265,29 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
       const ref = ctx.mintRef(name);
       const text = await fs.readFile(path.join(slotDir, entryName), "utf8");
       const { declared, body } = parseResourceMd(text, entryName);
-      ctx.documents.push({ ref, declared, body });
+      loaded = { ref, declared, body };
     } catch (err) {
+      ctx.errors.push({ path: entryPath, error: err as Error, kind: "document-load-failed" });
+      continue;
+    }
+
+    // A separate condition for a caller, so it is a separate branch: a file
+    // that could not be read is an author's typo, and a file declaring what the
+    // convention derives is an author's misunderstanding. Checked here rather
+    // than inside the parse so the two stay tellable apart by control flow.
+    const refused = refusedDeclarationMessage(loaded.declared);
+    if (refused !== undefined) {
       ctx.errors.push({
         path: entryPath,
-        error: err as Error,
-        kind:
-          err instanceof RefusedDeclaration ? "refused-declaration" : "document-load-failed",
+        error: new Error(`"${entryName}" ${refused}`),
+        kind: "refused-declaration",
       });
+      continue;
     }
+
+    ctx.documents.push(loaded);
   }
 }
-
-/**
- * A file declaring something the convention owns, as distinct from a file that
- * could not be read or parsed.
- *
- * A subclass only so the walk can tag the report without re-deriving the reason
- * from the message: the two are different conditions for a caller, because one
- * is an author's typo and the other an author's misunderstanding.
- */
-class RefusedDeclaration extends Error {}
 
 /**
  * Parse a document file into its declared settings and its body. Shares the
@@ -281,8 +295,9 @@ class RefusedDeclaration extends Error {}
  * convention files an author writes by hand, and a second dialect would mean
  * learning one teaches the wrong thing about the others.
  *
- * `description` is required, every setting the convention derives is refused,
- * and everything else is carried verbatim.
+ * `description` is required and everything else is carried verbatim. The
+ * settings the convention derives are refused by the caller, which reports them
+ * as their own condition.
  */
 function parseResourceMd(
   text: string,
@@ -300,9 +315,6 @@ function parseResourceMd(
   if (typeof description !== "string" || description.trim().length === 0) {
     throw new Error(`"${fileName}" must declare a non-empty \`description\``);
   }
-
-  const refused = refusedDeclarationMessage(declared);
-  if (refused !== undefined) throw new RefusedDeclaration(`"${fileName}" ${refused}`);
 
   return { declared, body };
 }

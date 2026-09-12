@@ -334,6 +334,27 @@ export const supportFlow = defineFlow({
 });
 ```
 
+**The flow needs an org identity, and it will not ask for one on its own.** Every file-declared
+document is org-scoped, and a flow collects `requiresOrg` from its blocks, not from its resource
+map. So the flow above accepts a request carrying only a `userId`, builds no org resource registry,
+and every document is then missing: `ctx.resources.get("teams/engineering/handbook")` throws
+`is not registered`, and `readResourceContentTool` says the same. Declare `requireOrg: true` on the
+blocks that read a document, and a request without an org is refused at the door instead of arriving
+empty:
+
+```ts
+// ./blocks.ts
+import { generator, readResourceContentTool } from "@flow-state-dev/core";
+
+export const answerQuestion = generator({
+  name: "answer-question",
+  model: "openai/gpt-5.4-mini",
+  requireOrg: true,
+  prompt: "Answer support questions. Check the team handbook before you answer.",
+  tools: [readResourceContentTool()],
+});
+```
+
 Each record is plain data:
 
 | Field | Description |
@@ -435,5 +456,5 @@ startup misconfiguration.
 | A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
 | Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |
 | A setting the convention derives, or `prefetchMode: "lazy"`, in a document file | Collected in `readResourcesDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the file's path |
-| Workforce root unreadable, read for documents | `readResourcesDirectory` throws |
+| Workforce root unreadable or symlinked, read for documents | `readResourcesDirectory` throws — the root is never followed through a link |
 | Document cannot become a resource | `resourcesFromDocs` throws naming the ref — a setting the convention derives, a lazy `prefetchMode`, or frontmatter `defineResource` itself rejects |
