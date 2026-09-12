@@ -31,7 +31,7 @@ Read it bottom-up.
 
 **Who does the work.** A board worker can be a plain block you wrote, a tool assigned by its catalog key, or an agent: a persona, a model, and a set of tools, declared in a skill's frontmatter and assigned board tasks by name. See [Agents](./agents) for the three and when each fits.
 
-**Workers described in files.** Your app's workers can be described in a folder rather than written out one by one: one `WORKER.md` per worker, saying which of your flows it runs and how that copy is configured. `hireWorkforce` turns those records into one addressable flow copy each, which you register. A hired worker is an address you open a session against, not a participant you assign board tasks to. See [Workers on disk](./workers-on-disk).
+Hired workers are [Workforce](../workforce/overview): describe a roster, hire it, and register the copies. Those seats are addresses you open a session against, not board assignees.
 
 **A worker built for coding agents.** Beside the patterns sits `@flow-state-dev/harness-manager`: a board worker that turns a task into a supervised coding run — its own checkout, a verdict read before the task settles, a question it can ask a person, and the coding agent itself as a slot you fill. See [Harness manager](./harness-manager) for the worker, and [Coding agents](../tools/coding-agents) for the agents it can drive and the handle they hand back.
 
@@ -65,6 +65,6 @@ A drain normally runs inside the request that mounted it, so every worker's task
 - [Patterns overview](../patterns/overview) — the coordination patterns built on the task board.
 - [Agents](./agents) — the three things that can do a unit of work on a board.
 - [Delegation](../skills/delegation) — the agent-first path and the `taskTools` surface.
-- [Workers on disk](./workers-on-disk) — describing each worker in a folder, and hiring the tree as addressable flow copies.
+- [Workforce](../workforce/overview) — describing workers in folders and hiring them as addressable flow copies. A hired worker is an address you open a session against, not a board assignee.
 - [Harness manager](./harness-manager) — a board worker that drives a coding agent to a settled verdict.
 - [Coding agents](../tools/coding-agents) — the coding agents that worker drives, and the run handle they return.

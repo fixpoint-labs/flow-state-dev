@@ -64,9 +64,11 @@ const config: Config = {
       },
     ],
     [
+      // Keep old URLs alive so existing links don't 404.
       // Task Board and Flow Policy moved from /docs/patterns/* to
       // /docs/orchestration/* when the orchestration package was carved out.
-      // Keep the old URLs alive so existing links don't 404.
+      // Workers on disk moved from /docs/orchestration/* to /docs/workforce/*
+      // when Workforce became its own top-level section.
       "@docusaurus/plugin-client-redirects",
       {
         redirects: [
@@ -77,6 +79,10 @@ const config: Config = {
           {
             from: "/docs/patterns/flow-policy",
             to: "/docs/orchestration/flow-policy",
+          },
+          {
+            from: "/docs/orchestration/workers-on-disk",
+            to: "/docs/workforce/workers-on-disk",
           },
           {
             from: "/docs/skills/pattern-skills",

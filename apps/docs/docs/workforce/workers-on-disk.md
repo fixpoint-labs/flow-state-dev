@@ -1,15 +1,15 @@
 ---
 title: Workers on disk
-sidebar_position: 8
+sidebar_position: 2
 sidebar_label: Workers on disk
-description: "Describe each of your app's AI workers in a folder, read the tree at startup, and hire what it describes as running, addressable flow copies."
+description: "Workforce convention: describe each worker in a folder, read the tree at startup, and hire what it describes as addressable flow copies."
 ---
 
 # Workers on disk
 
-An app with several AI workers has to say somewhere who each one is: which model it runs on, which tools it may call, what it has been told to do. You can write that in TypeScript, one worker at a time. You can also put each worker in a folder and read the folder at startup.
+Workforce is how you describe a roster of workers and hire it as addressable flow copies. You can write each worker in TypeScript, or put each one in a folder and read the folder at startup.
 
-`readWorkforceDirectory` turns a folder tree into plain records. `hireWorkforce` turns those records into running flow copies you register.
+`readWorkforceDirectory` turns a folder tree into plain records. `hireWorkforce` turns those records into flow copies you register.
 
 ## The tree
 
@@ -237,7 +237,7 @@ A worker with no body is still fully addressable. It just carries no instruction
 
 Declaring `instructions:` in the frontmatter *and* writing a body is refused, naming both sources. There is no precedence rule between them. Whitespace is not a body: a `WORKER.md` that sets `instructions:` in its frontmatter and leaves nothing but a blank line below the fences hires fine, on the frontmatter value.
 
-`persona:` names something else here, [an agent's system prompt](./agents.md#personas). A `WORKER.md` has no `persona` setting, so declaring one lands the worker in `errors` when the tree is read, or is refused by `hireWorkforce` for a hand-built record.
+`persona:` names something else here, [an agent's system prompt](../orchestration/agents.md#personas). A `WORKER.md` has no `persona` setting, so declaring one lands the worker in `errors` when the tree is read, or is refused by `hireWorkforce` for a hand-built record.
 
 ### When a hire is refused
 
@@ -324,4 +324,10 @@ const seats = hireWorkforce(workers, {
 - It does not read anything outside `teams/<team>/workers/<worker>/`. Team-level and organization-level folders are part of the layout, and nothing here reads them.
 - It does not follow symlinks, at any level of the walk.
 - It does not watch the tree. Read it once, at startup.
-- It does not staff a [task board](./task-board.md). A hired seat is an address you open a session against; a board's workers are in-process and claim tasks from a collection. A board calls its registry entries seats too. Same idea, different mechanism.
+- It does not staff a [task board](../orchestration/task-board.md). A hired seat is an address you open a session against; a board's workers are in-process and claim tasks from a collection. A board calls its registry entries seats too. Same idea, different mechanism.
+
+## Related pages
+
+- [Workforce](./overview) — what a hired roster is, and when to reach for it instead of a task board.
+- [Orchestration](../orchestration/overview) — coordinating units of work on a board.
+- [Agents](../orchestration/agents) — board workers, personas, and `createWorkforceCapability`.

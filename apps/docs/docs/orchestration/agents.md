@@ -158,11 +158,11 @@ Both forms default to `scope: "org"`, so a persona is shared across users unless
 
 `createWorkforceCapability({ agents })` takes an agent list or an `AgentRegistry` and returns a capability named `workforce`. Given a list, it throws at construction when two agents share a name. It contributes no tools, context, or resources to a block that puts it in `uses`.
 
-## Hired workers are something else
+## Hired workers
 
-`hireWorkforce` also produces things called workers, and those are not board participants. A hired worker is a configured copy of one of your flows, with its own id, its own settings, and its own URL, which you open a session against. A board's workers are in-process blocks that claim tasks from a collection.
+Workforce is a separate product. `hireWorkforce` turns a roster into configured flow copies you register and open a session against. A board's workers are blocks that claim tasks from a collection.
 
-The two compose — a hired worker's flow can mount a board, and that board's workers are any of the three above — but a task's `assignee` never names a hired worker. See [Workers on disk](./workers-on-disk).
+A hired worker's flow can mount a board, and that board's workers are any of the three above. A task's `assignee` never names a hired worker. See [Workforce](../workforce/overview).
 
 ## Related pages
 
@@ -170,4 +170,4 @@ The two compose — a hired worker's flow can mount a board, and that board's wo
 - [Authoring a delegating skill](/guides/agents-command-the-board) — one skill, start to finish.
 - [Context supply](./context-supply) — how much prior conversation a delegated agent reads.
 - [Task board](./task-board) — the concurrent drain underneath all of this.
-- [Workers on disk](./workers-on-disk) — describing each of your app's workers in a folder.
+- [Workforce](../workforce/overview) — describe a roster, hire it, and register the copies. A hired worker is an address, not a board assignee.
