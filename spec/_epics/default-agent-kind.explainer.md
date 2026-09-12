@@ -29,14 +29,15 @@ we have already decided to delete.
 flowchart LR
   W["WORKER.md<br/>instructions"] --> H[hire]
   H -->|"no flow: · the built-in kind"| K["kinds map"]
-  K --> S["seat · flow instance<br/>talks · remembers · uses its skills"]
-  G["built-in agent kind<br/>default prompt · model · tools · memory"] -->|"present without the app naming it"| K
+  K --> S["seat · flow instance<br/>talks · uses its skills"]
+  G["built-in agent kind<br/>default prompt · model · tools · skills"] -->|"present without the app naming it"| K
   C["flow: myCustomAgent"] -.->|"replaces it in one line"| K
 ```
 
 A `WORKER.md` with no `flow:` line hires into the built-in kind — zero config lines, the epic's
 headline promise. Naming your own kind still wins; a typo'd name fails loudly rather than hiring
-silently. The shape being gated, not built code.
+silently. **Memory is not in the box**: it attaches when a team configures it, on the scopes we
+already ship. The shape being gated, not built code.
 
 ## 3. The set (proposed)
 

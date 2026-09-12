@@ -12,14 +12,25 @@ something, §5 says so and names who decides.*
 working agent. Every app that wants one either writes its own agent flow from scratch or leans
 on a second agent factory (`defineAgent` / `AgentRegistry` / `materializeAgent`) that we have
 already decided to delete. When this epic lands, a `WORKER.md` with nothing but instructions
-produces a seat that talks, remembers within the scopes we already ship, and can use the skills
-registered to it — and a team that wants something different names their own kind on one line.
+produces a seat that talks and can use the skills registered to it, and a team that wants
+something different names their own kind on one line. **Memory is not in that box**: it attaches
+when a team configures it, within the scopes we already ship.
 
 **"Nothing but instructions" means zero config lines, and that is now decided, not aspirational.**
 An omitted `flow:` selects the built-in agent kind, and the built-in reaches the `kinds` map
 without the app naming it (Architect stamp on [PR #1730](https://github.com/fixpoint-labs/flow-state-dev/pull/1730),
 2026-09-11, explicitly *not* a Jake D-n). `hireWorkforce` refuses an absent `flow:` today — that
 is the work this epic does, not the behaviour it describes. Theme 5 carries the contract.
+
+**"Remembers" is the kind's reach, not zero-config behaviour.** Talks and skills are out of the
+box; memory is attach-when-configured. The default kind and the hire package carry **no memory
+import** — `packages/workforce` depends on `core`, `orchestration` and `zod`, and FIX-1361's
+decision 2 fences that from changing ("the default never forces memory machinery on a team that
+doesn't want any"). So the day FIX-1363 ships talks+skills with no `workforce → memory` edge, this
+headline is still true. Ruled by the Architect on
+[PR #1750](https://github.com/fixpoint-labs/flow-state-dev/pull/1750), 2026-09-12, and mirrored on
+[PR #1730](https://github.com/fixpoint-labs/flow-state-dev/pull/1730); theme 4 carries the scopes
+and the named per-member gap (FIX-1364's), theme 9 the composition.
 
 **Which objective, and how it is proven.** [`docs/objectives.md`](../../docs/objectives.md)
 **Goal 1 — Validate through real usage**; the published objective on FIX-1359 is *"Workforce
@@ -71,9 +82,10 @@ FIX-1365 being required does not widen it: a thin hire of the OOTB agent kind, n
    **flow instance**, declared as `WORKER.md`. A **kind** is a flow factory on hire's `kinds`
    map; a seat's `flow:` only *names* a registered kind. A **worker** is a generator or flow
    with whatever that kind needs. The **agent kind** is the opinionated default: instructions
-   plus shared default prompt, model, tools, memory, skill register/activate. A sequencer or
-   intake seat is not a degraded agent — it is a different kind. No child spec revives "thin" or
-   "fat", and no child introduces a fifth term for any of these four.
+   plus shared default prompt, model, tools, skill register/activate — and memory when a team
+   attaches it (theme 9). A sequencer or intake seat is not a degraded agent — it is a different
+   kind. No child spec revives "thin" or "fat", and no child introduces a fifth term for any of
+   these four.
 
 2. **The agent kind consumes prompt composition; it never invents one.** Generator slots stay
    `prompt` / `context` / `history` / `user`. The hire and `WORKER.md` body key is
@@ -164,6 +176,23 @@ built against `instructions` with a seam, whenever part 2 arrives.
    2026-09-12), warnings first: what must not be copied, the named gaps, what KS still proves,
    what must be re-homed. Every later issue cites that file instead of re-reading the app.
 
+9. **Out of the box is the cheap path — and that default now has a maintained home.** It was
+   settled at FIX-1360's spec review on [PR #1736](https://github.com/fixpoint-labs/flow-state-dev/pull/1736),
+   which then **closed unmerged**, so FIX-1361's C5 and the merged drift note both cite a closed
+   thread and four parallel authors were re-deriving it. Recorded here on the Architect's
+   instruction (PR #1750 / PR #1730, 2026-09-12); the drift note is a dated characterization and
+   stays unmaintained.
+
+   - **Skills — `createSkillsLibrary` plus per-generator binding is the canonical OOTB path**, not
+     `createSkillsCapability`: the library activates per binding, the capability keeps a
+     session-global bag. Theme 7's isolation rule rides on top of that choice.
+   - **Memory — nothing by default.** **When memory is attached**, the light path is *read-side*;
+     the model-classifier tier and the background capture pipeline are **opt-in, one setting
+     each**. This is not a required default import, and no child may turn it into one — the fence
+     in §1 and theme 4 stands.
+
+   A child re-deriving either default from a closed PR thread should cite this theme instead.
+
 ## 3. Shape of the whole
 
 **No end-state POC was built for this epic, and the gate did not change that.** The trigger this
@@ -187,8 +216,9 @@ flowchart TD
   E --> G
 ```
 
-**FIX-1360 has since landed** (2026-09-12), so **FIX-1361 is now the head of the chain and the
-set's only startable issue** — it has the drift note it wanted, at the path theme 8 names.
+**FIX-1360 has since landed** (2026-09-12), so **FIX-1361 is the head of the chain and is now in
+flight** (spec PR #1750, Architect-stamped) — it had the drift note it wanted, at the path theme 8
+names.
 Everything after FIX-1361 sequences behind it; the only genuine parallelism in the
 set is FIX-1362 and FIX-1364 once the kind exists. FIX-1365 being required does not move it
 earlier — it still waits on FIX-1362 and FIX-1364. Seven issues under one epic will therefore
@@ -200,7 +230,7 @@ is merely serial.
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [FIX-1360](https://linear.app/fixpoint-labs/issue/FIX-1360) | Kitchen-sink drift audit (chat-agent + skill activator) | spec | [#1736](https://github.com/fixpoint-labs/flow-state-dev/pull/1736) · closed unmerged at approval | [#1739](https://github.com/fixpoint-labs/flow-state-dev/pull/1739) · **merged** | **Done** |
-| [FIX-1361](https://linear.app/fixpoint-labs/issue/FIX-1361) | Contract for the default `agent` kind — incl. the **omitted-`flow:` admission** (decided: it selects the built-in) and the **loud-fail rule** for an unregistered kind name | spec | — | — | Backlog |
+| [FIX-1361](https://linear.app/fixpoint-labs/issue/FIX-1361) | Contract for the default `agent` kind — incl. the **omitted-`flow:` admission** (decided: it selects the built-in) and the **loud-fail rule** for an unregistered kind name | spec | [#1750](https://github.com/fixpoint-labs/flow-state-dev/pull/1750) · open | — | **Spec Approved** |
 | [FIX-1363](https://linear.app/fixpoint-labs/issue/FIX-1363) | Built-in `agent` flow kind | spec | — | — | Backlog |
 | [FIX-1362](https://linear.app/fixpoint-labs/issue/FIX-1362) | Per-seat skill register + activate in the agent kind | spec | — | — | Backlog |
 | [FIX-1364](https://linear.app/fixpoint-labs/issue/FIX-1364) | Memory attach on existing scopes + named gaps | spec | — | — | Backlog |
@@ -209,9 +239,11 @@ is merely serial.
 
 *Verified against Linear 2026-09-12. **One issue is done**: FIX-1360's note landed and its
 Linear state is mirrored — that mirror is what releases FIX-1361, because the epic wake derives
-blocked-by from Linear state. FIX-1361 and the five issues behind it are all still `Backlog`
-with no PRs yet. No child carries a Linear category label, so every route still reads **spec** by the
-fail-closed default ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which
+blocked-by from Linear state. **FIX-1361 has since started**: spec PR #1750 is open and
+Architect-stamped, Linear reads `Spec Approved`, and one amendment is in flight on it — C5's
+memory clause, which theme 9 above records the settled form of and which is FIX-1361's to fold,
+not this doc's. The five issues behind it are still `Backlog` with no PRs yet. No child carries
+a Linear category label, so every route still reads **spec** by the fail-closed default ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which
 issues get a spec"). Labelling one **Bug** re-routes it, and an empty Spec PR cell would then be
 correct.*
 
@@ -330,3 +362,17 @@ re-parented here — Linear allows one parent, and they already have theirs.
   written while FIX-1360 was *the* startable issue and the note was a future artifact. PR
   #1730's description is deliberately untouched: its "What's asked of you" block is the record
   of the approved objective, and the second answer above rules a rewrite out.
+
+- **Headline honesty + light-vs-heavy provenance folded (2026-09-12)** — **one round**, above the
+  bar: an Architect ruling (PR #1750, mirrored on #1730) out of the FIX-1360 × FIX-1361 cross-spec
+  call. Two things changed. (1) §1 promised a bare `WORKER.md` seat that *"remembers"*, and that
+  word was always **kind reach**, not zero-config behaviour — `packages/workforce` has no
+  `@flow-state-dev/memory` dependency and FIX-1361's stamped decision 2 forbids adding one, so the
+  headline would have gone false the day FIX-1363 shipped talks+skills. It now reads talks + skills
+  out of the box, memory attach-when-configured. (2) A default two artifacts already treat as
+  settled — skills library + per-generator binding; read-side vs classifier/capture once memory is
+  on — lived only in **closed** PR #1736's thread, with zero hits in this doc. It is now theme 9.
+  Theme 1's composition list, the explainer's *after* panel, and PR #1730's "What this does"
+  headline all restated the old promise and were re-derived; theme 4, the admission rule, theme 1's
+  vocabulary, decision 2 itself and the seven-issue set are untouched. The index moved in the same
+  pass: FIX-1361 now carries spec PR #1750 and `Spec Approved`.
