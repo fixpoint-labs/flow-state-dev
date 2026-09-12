@@ -20,7 +20,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import type { FlowDispatcher, StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { channelFlow, CHANNEL_KIND } from "../src/index";
+import { channelFlow, CHANNEL_KIND, openChannels, type ChannelManifest } from "../src/index";
 
 const USER_ID = "u_fences";
 const POSTER = "poster";
@@ -84,6 +84,54 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[])
   );
 }
 
+/**
+ * `openChannels`'s session API over this test's own stores.
+ *
+ * Create refuses a taken id with a 409, which is the whole of what the real
+ * `POST /sessions` contributes here, and nothing else writes session state.
+ */
+function sessionApi(stores: StoreRegistry) {
+  return {
+    createSession: async (options: {
+      flowKind: string;
+      userId: string;
+      sessionId?: string;
+      description?: string;
+      state?: Record<string, unknown>;
+    }): Promise<unknown> => {
+      const id = String(options.sessionId);
+      if ((await stores.session.get(id)) !== undefined) {
+        throw Object.assign(new Error(`Session "${id}" already exists`), { status: 409 });
+      }
+      const now = Date.now();
+      await stores.session.set(
+        id,
+        {
+          id,
+          flowKind: options.flowKind,
+          flowId: options.flowKind,
+          userId: options.userId,
+          description: options.description,
+          state: options.state ?? {},
+          lineageId: `lin_${id}`,
+          version: 0,
+          createdAt: now,
+          updatedAt: now,
+          journal: []
+        } as never,
+        "absent"
+      );
+      return { id };
+    },
+    getSession: async (sessionId: string): Promise<{ state?: Record<string, unknown> }> => ({
+      state: (await stores.session.get(sessionId))?.state as Record<string, unknown> | undefined
+    }),
+    deleteSession: async (sessionId: string): Promise<void> => {
+      await stores.session.delete(sessionId);
+    }
+  };
+}
+
 async function transcriptOf(stores: StoreRegistry, sessionId: string): Promise<unknown[] | undefined> {
   const record = await stores.session.get(sessionId);
   return (record?.state as { transcript?: unknown[] } | undefined)?.transcript;
@@ -121,6 +169,59 @@ describe("the post path's fences", () => {
       const record = await runtime.stores.session.get("not-a-channel");
       expect(record).toBeDefined();
       expect(record?.state).toEqual({});
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  /**
+   * The two fences above are each sound alone. This is them in the order that
+   * breaks the pair: a post lands FIRST, taking the id, and only then does the
+   * roster open. Proving each half separately in one run is what missed it.
+   */
+  it("repairs a channel a premature post poisoned, in the order that breaks it", async () => {
+    const { channel, state } = host();
+    try {
+      const runtime = await state.getRuntime();
+      const roster: ChannelManifest[] = [
+        {
+          id: "engineering.standup",
+          declared: { members: ["engineering.lead"] },
+          body: "Post what you finished."
+        }
+      ];
+
+      // 1. The premature post. Refused, as it should be — but the action path
+      //    is create-or-get, so the channel's id is now taken by an empty
+      //    session that no `CHANNEL.md` ever asked for.
+      const premature = await runAction({
+        flow: channel,
+        actionName: "post",
+        input: { body: "anyone home?" },
+        userId: USER_ID,
+        sessionId: "engineering.standup",
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig }
+      });
+      expect(String(premature.error)).toContain("channel-not-bound");
+
+      // 2. The roster opens, meets a 409, and must look before it skips.
+      await openChannels(roster, { client: sessionApi(runtime.stores), userId: USER_ID });
+
+      // 3. The same post, now landing. Swallow the 409 instead and this stays
+      //    `channel-not-bound` forever: every later run 409s too, so there is
+      //    no way back through the public API.
+      const after = await runAction({
+        flow: channel,
+        actionName: "post",
+        input: { body: "anyone home?", author: "engineering.lead" },
+        userId: USER_ID,
+        sessionId: "engineering.standup",
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig }
+      });
+      expect(after.error).toBeUndefined();
+      expect(await transcriptOf(runtime.stores, "engineering.standup")).toHaveLength(1);
     } finally {
       await state.dispose();
     }

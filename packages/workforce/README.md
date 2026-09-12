@@ -334,9 +334,10 @@ back to the built-in. The `kinds` map is the whole registration surface; there i
 
 No join or leave verb, no delete or retirement, and no summary pass over a long transcript.
 Membership is the declared list and nothing else writes it, so changing who is in a channel means
-editing the record and opening a fresh channel. Re-running `openChannels` over an already-open
-channel does nothing, which also means an edited record does not reach it. Re-opening is not a
-migration.
+editing the record and opening a fresh channel. Re-running `openChannels` over an open channel
+does nothing, which also means an edited record does not reach it. Re-opening is not a migration.
+It does repair a channel whose id was claimed before it was opened — a post that arrives first
+leaves an empty session there, and re-running binds it.
 
 ## Exports
 
@@ -374,7 +375,7 @@ migration.
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
 | Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |
 | Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, or `instructions:` given both in the frontmatter and as a body. Collected: one error names every bad channel, and nothing is registered |
-| Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the channel is already open and is swallowed |
+| Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone; an empty session is bound |
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |
 | `external-dispatcher` | A flow-to-flow post on a host whose dispatcher hands work to an external queue. The public action route is unaffected |

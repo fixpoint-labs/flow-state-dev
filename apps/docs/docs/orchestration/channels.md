@@ -64,7 +64,7 @@ flowRegistry.registerMany(channelInstances(channels));
 await openChannels(channels, { client: sessionClient, userId: "u_42" });
 ```
 
-`openChannels` is idempotent: a channel that is already open is left alone, so re-running it over an unchanged roster does nothing. The flip side is that re-opening is not a migration. Add a member or rewrite a charter in the record, and a channel that is already open does not see it.
+`openChannels` is idempotent: a channel that is already open is left alone, so re-running it over an unchanged roster does nothing. The flip side is that re-opening is not a migration. Add a member or rewrite a charter in the record, and a channel that is already open does not see it. Re-running does repair one thing: a channel whose id was claimed by a post before it was opened. That leaves an empty session, and re-running binds it.
 
 The one registered instance answers for every session id, and naming a session that does not exist creates an empty one rather than refusing. So a channel is not "a session id somebody used". It is a session that was opened as a channel, carrying members and a charter. Post to an id nobody opened and you get `channel-not-bound`, nothing is written, and the empty session stays inert.
 

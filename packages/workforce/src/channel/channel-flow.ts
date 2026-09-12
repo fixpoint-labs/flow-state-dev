@@ -122,8 +122,15 @@ export class ChannelPostRefusedError extends Error {
  * the channel instance rather than a refusal. Boundness — not existence — is
  * therefore the test: `openChannels` writes `members` and `instructions`
  * together, and nothing else does.
+ *
+ * Exported for the binder, which answers a 409 on this same question — is a
+ * channel open here, or merely a session? One definition, because a binder
+ * that adopted on a different test than the fence refuses on would bind
+ * sessions the fence still rejects. Not re-exported from the package root.
  */
-function boundChannel(state: Readonly<Record<string, unknown>>): ChannelSessionState | undefined {
+export function boundChannel(
+  state: Readonly<Record<string, unknown>>
+): ChannelSessionState | undefined {
   if (!Array.isArray(state.members) || typeof state.instructions !== "string") return undefined;
   return {
     members: state.members as string[],

@@ -26,7 +26,7 @@ import {
   REFUSED_SYSTEM_KEY_MESSAGE,
   type ChannelManifest
 } from "../manifest";
-import { CHANNEL_KIND, channelFlow, type ChannelSessionState } from "./channel-flow";
+import { CHANNEL_KIND, boundChannel, channelFlow, type ChannelSessionState } from "./channel-flow";
 
 /**
  * Every key a `CHANNEL.md` may declare. Closed, and checked by name.
@@ -67,8 +67,9 @@ export interface ChannelInstancesOptions {
 
 export interface OpenChannelsOptions {
   /**
-   * The session API. `createSession` is the only method used, and the only
-   * route that accepts caller-supplied `state` at create.
+   * The session API. `createSession` carries the whole of a channel's state,
+   * because it is the only route that accepts caller-supplied `state` at
+   * create; the other two exist only to answer a 409.
    *
    * Structurally typed rather than imported so this package does not take a
    * dependency on `@flow-state-dev/client`; a real `SessionClient` satisfies it.
@@ -81,6 +82,17 @@ export interface OpenChannelsOptions {
       description?: string;
       state?: Record<string, unknown>;
     }) => Promise<unknown>;
+    /**
+     * Reads the session sitting behind a taken id, so a 409 can be answered on
+     * whether a CHANNEL is open there rather than on whether a session exists.
+     * `state` is the session's raw state — the same thing the post fence reads.
+     */
+    getSession: (sessionId: string) => Promise<{ state?: Record<string, unknown> }>;
+    /**
+     * Releases an id held by an unbound session, because create is the only
+     * route that writes session state. Never called on a bound channel.
+     */
+    deleteSession: (sessionId: string) => Promise<void>;
   };
   /**
    * The user every channel session is bound to.
@@ -314,6 +326,21 @@ function stateFor(manifest: ChannelManifest): ChannelSessionState {
 }
 
 /**
+ * Is a channel OPEN at this id, or does the id merely hold a session?
+ *
+ * Asked of the session's raw state and answered by the fence's own
+ * `boundChannel`, so the binder adopts on exactly the test the post path
+ * refuses on.
+ */
+async function isChannelOpen(
+  client: OpenChannelsOptions["client"],
+  sessionId: string
+): Promise<boolean> {
+  const session = await client.getSession(sessionId);
+  return session.state !== undefined && boundChannel(session.state) !== undefined;
+}
+
+/**
  * Open one named session per record, on that record's kind, carrying the
  * channel's members, charter and description.
  *
@@ -322,10 +349,20 @@ function stateFor(manifest: ChannelManifest): ChannelSessionState {
  * create-or-get and creates with EMPTY state — an unbound channel, which the
  * post block refuses.
  *
- * **Idempotent: a 409 means the channel is already open and is swallowed.** So
- * re-running over an unchanged roster is a no-op — and, for the same reason, an
- * edited `CHANNEL.md` does not reach a channel that is already open. Re-opening
- * is not a migration.
+ * **A 409 says the id is taken, not that a channel is open there**, so it is
+ * answered by reading the session and branching on boundness:
+ *
+ * - **A bound channel** is left exactly as it is. That is what keeps re-running
+ *   over an unchanged roster a no-op — and, for the same reason, an edited
+ *   `CHANNEL.md` does not reach a channel that is already open. Re-opening is
+ *   not a migration.
+ * - **An unbound session** — one the action path minted when something posted
+ *   to or read the id before this ran — is adopted: the id is released and
+ *   re-created carrying the channel's state. Such a session holds no channel
+ *   data, and writing that state is precisely what opening a channel means.
+ *   Without this, one premature post leaves the channel unbound permanently:
+ *   every later run 409s too, and no public route writes state into a session
+ *   that already exists.
  *
  * @param manifests The roster — the same records `channelInstances` registered.
  * @param options   `client`: the session API. `userId`: who every channel session belongs to.
@@ -342,7 +379,7 @@ export async function openChannels(
     }
 
     const declaredDescription = manifest.declared.description;
-    try {
+    const open = async (): Promise<void> => {
       await options.client.createSession({
         flowKind: selected.kind,
         userId: options.userId,
@@ -350,11 +387,29 @@ export async function openChannels(
         ...(typeof declaredDescription === "string" ? { description: declaredDescription } : {}),
         state: stateFor(manifest)
       });
-    } catch (error) {
-      if (isAlreadyOpen(error)) continue;
-      throw new Error(`channel "${manifest.id}" could not be opened — ${messageOf(error)}`, {
+    };
+
+    const failed = (error: unknown): Error =>
+      new Error(`channel "${manifest.id}" could not be opened — ${messageOf(error)}`, {
         cause: error
       });
+
+    try {
+      await open();
+    } catch (error) {
+      if (!isAlreadyOpen(error)) throw failed(error);
+
+      try {
+        if (await isChannelOpen(options.client, manifest.id)) continue;
+        await options.client.deleteSession(manifest.id);
+        await open();
+      } catch (adoptError) {
+        // A second 409: something opened the channel between the read and the
+        // create. Theirs is the open channel and ours would be a duplicate, so
+        // this lands where a bound channel lands — left alone.
+        if (isAlreadyOpen(adoptError)) continue;
+        throw failed(adoptError);
+      }
     }
   }
 }

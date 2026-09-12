@@ -173,19 +173,51 @@ describe("what a channel record may declare (the closed key list)", () => {
 });
 
 describe("openChannels", () => {
+  /**
+   * The session substrate as `openChannels` meets it: create refuses a taken id
+   * with a 409, and `mintEmpty` is what the action path's create-or-get leaves
+   * behind — a session that exists carrying no channel data at all.
+   */
   function sessionClient() {
     const created: Array<Record<string, unknown>> = [];
-    const existing = new Set<string>();
+    const deleted: string[] = [];
+    const sessions = new Map<string, Record<string, unknown>>();
+
     const createSession = vi.fn(async (options: Record<string, unknown>) => {
       const id = String(options.sessionId);
-      if (existing.has(id)) {
+      if (sessions.has(id)) {
         throw Object.assign(new Error(`Request failed (409)`), { status: 409 });
       }
-      existing.add(id);
+      sessions.set(id, (options.state ?? {}) as Record<string, unknown>);
       created.push(options);
       return { id };
     });
-    return { client: { createSession }, created, existing };
+
+    const getSession = vi.fn(async (sessionId: string) => {
+      const state = sessions.get(sessionId);
+      if (state === undefined) {
+        throw Object.assign(new Error(`Request failed (404)`), { status: 404 });
+      }
+      return { id: sessionId, state };
+    });
+
+    const deleteSession = vi.fn(async (sessionId: string) => {
+      deleted.push(sessionId);
+      sessions.delete(sessionId);
+    });
+
+    /** What a post or read on an id nobody opened leaves behind. */
+    const mintEmpty = (id: string): void => {
+      sessions.set(id, {});
+    };
+
+    return {
+      client: { createSession, getSession, deleteSession },
+      created,
+      deleted,
+      sessions,
+      mintEmpty
+    };
   }
 
   it("opens one named session per record, carrying that channel's members and charter", async () => {
@@ -222,8 +254,8 @@ describe("openChannels", () => {
     expect(created[0]).toMatchObject({ flowKind: "my-channel", sessionId: "eng.a" });
   });
 
-  it("treats a 409 as already open, so re-running over an unchanged roster changes nothing", async () => {
-    const { client, created } = sessionClient();
+  it("leaves a genuinely bound channel alone, so re-running over an unchanged roster changes nothing", async () => {
+    const { client, created, deleted } = sessionClient();
     const roster = [record("engineering.standup", { members: ["a"] })];
 
     await openChannels(roster, { client, userId: "u_42" });
@@ -231,13 +263,57 @@ describe("openChannels", () => {
 
     expect(client.createSession).toHaveBeenCalledTimes(2);
     expect(created).toHaveLength(1);
+    // The second run reads the session, finds a bound channel, and stops. An
+    // open channel is never torn down, which is what keeps re-opening from
+    // becoming a migration.
+    expect(deleted).toEqual([]);
+  });
+
+  it("adopts a session the action path minted first, so one premature post cannot poison a channel", async () => {
+    const { client, sessions, mintEmpty } = sessionClient();
+    const roster = [
+      record("engineering.standup", { members: ["engineering.lead"] }, "Post what you finished.")
+    ];
+
+    // The order that breaks it, and the only order that does: something posts
+    // or reads the id BEFORE the roster is opened. The action path is
+    // create-or-get, so that mints an empty session — and the id is now taken.
+    mintEmpty("engineering.standup");
+
+    await openChannels(roster, { client, userId: "u_42" });
+
+    // Bound, not skipped. Without adoption the 409 is swallowed, `members` and
+    // `instructions` are never written, and every later post is refused
+    // `channel-not-bound` with no way back through the public API.
+    expect(sessions.get("engineering.standup")).toMatchObject({
+      members: ["engineering.lead"],
+      instructions: "Post what you finished.",
+      transcript: []
+    });
+  });
+
+  it("stays idempotent from a poisoned start: adopting once, then leaving the channel alone", async () => {
+    const { client, deleted, sessions, mintEmpty } = sessionClient();
+    const roster = [record("engineering.standup", { members: ["engineering.lead"] })];
+
+    mintEmpty("engineering.standup");
+    await openChannels(roster, { client, userId: "u_42" });
+    await openChannels(roster, { client, userId: "u_42" });
+
+    // One adoption, and the second run recognises the channel it just bound.
+    expect(deleted).toEqual(["engineering.standup"]);
+    expect(sessions.get("engineering.standup")).toMatchObject({
+      members: ["engineering.lead"]
+    });
   });
 
   it("does not swallow a failure that is not a 409", async () => {
     const client = {
       createSession: vi.fn(async () => {
         throw Object.assign(new Error("Request failed (500)"), { status: 500 });
-      })
+      }),
+      getSession: vi.fn(async () => ({ state: {} })),
+      deleteSession: vi.fn(async () => {})
     };
     await expect(
       openChannels([record("engineering.standup")], { client, userId: "u_42" })
