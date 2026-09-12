@@ -47,6 +47,11 @@ the conventions hold under real multi-seat pressure."*
 (a Flow/Session peer); no **`Channel` L1 substrate type**; no TeamFlow L1; no framework
 runtime-import of seat `worker.ts` as a WorkerManifest path.
 
+**The 2026-09-12 `TEAM.md` lock does not touch that kill.** `TEAM.md` is one optional file of
+team instructions at the team scope root — not a TeamFlow, not an L1 type, and not a second seat
+list (§3). It is named here because it is the one file in the tree a reader could mistake for the
+Team L1 coming back.
+
 **Message Board also retires as the author-facing noun** — the
 [lock of 2026-09-11 22:28](https://github.com/fixpoint-labs/flow-state-dev/pull/1718#issuecomment-5641352275).
 The **package-type** kill above is unchanged and strengthened by it. What additionally goes is
@@ -272,9 +277,10 @@ items landing is not what opened the gate**, and sequencing remains the coordina
 reconciliation). Neither owner comment placed them, so they are members of the set without being
 part of the required seven — which is why the explainer draws them on a dotted edge.
 
-**The workforce tree, locked by the owner on 2026-09-12.** Two stamps of that day land in it: the
-custom-kind code door is `flows/`, and **org scope gains channels and workers**. Path level is
-scope throughout (theme 5); the code door is the exception that keeps its own tree beside the
+**The workforce tree, locked by the owner on 2026-09-12.** Three stamps of that day land in it:
+the custom-kind code door is `flows/`, **org scope gains channels and workers**, and team scope
+gains an optional **`TEAM.md`** of team instructions (below). Path level is scope throughout
+(theme 5); the code door is the exception that keeps its own tree beside the
 scope trees rather than sitting under `teams/`.
 
 ```text
@@ -288,6 +294,7 @@ workforce/
 
   # —— team scope ——
   teams/<teamId>/
+    TEAM.md                    # NEW — optional team instructions (no slot, no walk)
     resources/
     skills/
     channels/…/CHANNEL.md
@@ -320,6 +327,60 @@ roster product (theme 5). **No item on the floor reads that door yet**: the ship
 walks `teams/` alone (`packages/workforce/src/loader/read-workforce-directory.ts:109-115`), and
 channels' half of the lock lands inside FIX-1352 while workers' half lands inside nothing. §5
 carries who owns it.
+
+**Team instructions — `TEAM.md`, locked by the owner on 2026-09-12.** One **optional** file at the
+team scope root, `workforce/teams/<teamId>/TEAM.md`: `description` in frontmatter (roster and docs
+facing), **team instructions** in the body. Absent means there is no team layer in the prompt
+stack, which is the ordinary case rather than a degraded one.
+
+**Three things it is not.** Not a **TeamFlow** and not an L1 type — §1's Team L1 invent-kill is
+untouched, and this is the file a reader could otherwise mistake for it coming back. Not a
+**second seat list**: hire still walks `workers/*/WORKER.md` and nothing else, so a team gains
+instructions, not members. And not a slot convention — theme 1's rules govern conventions that
+walk `<slot>/<name>/THING.md` and mint an identity; this is one file at a fixed path, with no
+walk, no index and no identity of its own.
+
+**The prompt stack is an array, and the order is locked:**
+
+```text
+[frameworkDefault?, teamInstructions, workerInstructions]
+```
+
+Framework default (if any) → team → worker. This is the **same array slot** as the proposed
+default worker system prompt, not a second mechanism. Team gives shared context; the seat charter
+comes last among team and worker so role-specific instructions win an ordinary conflict. **The
+reopen condition, recorded the way this document records the others:** if product later wants team
+*policy* to dominate seat prose, that is an explicit reopen of this order — not something anyone
+reads into it from here.
+
+**`ORG.md` and org-wide instruction inheritance are out for now.** Org already has resources,
+skills and channels; an instruction layer beside `workforce/org/` is easy to add later and is
+deliberately not in this lock. It is the one thing the day's tree locks put at team scope only.
+
+**Where it lands, per the owner:** the tree teach on the Atlas §06 / **FIX-1358** surface, across
+the full workforce tree (§5 carries the atlas's list); the composition in **hire / loader —
+FIX-1325 / FIX-1335** — explicitly **not** the ChannelFlow floor; user-facing docs in the
+**Workforce** section rather than Orchestration, after the
+[#1743](https://github.com/fixpoint-labs/flow-state-dev/pull/1743) IA change.
+
+**The W3 floor placement was the Lifecycle Manager's to pick, and is decided: fold into hire — no
+new floor issue is minted.** The owner's words were *"new thin child or fold into hire — LM pick"*.
+The reasoning is recorded so the call is auditable rather than merely taken:
+
+- The three conventions that earned their own issues — channels, resources, skills — each needed a
+  **new reader walking a new slot**. `TEAM.md` is **one optional file at a level hire already
+  walks** (`read-workforce-directory.ts:109-115` opens `teams/<teamId>` and descends only into
+  `workers/`), in the same frontmatter dialect hire already parses for `WORKER.md`. A separate
+  issue for that is ceremony, not tracking.
+- The composition half is not a file-convention problem at all: an array-composed prompt stack is
+  the **same mechanism** as the proposed default worker system prompt, so it belongs with whatever
+  owns the prompt stack rather than with a reader.
+- Minimum surface, nothing speculative.
+
+**Reversible, and cheaply — named so it can be revisited without re-deriving it.** If the reader
+half turns out to need its own error contract and slot semantics the way the other three did,
+splitting it out later costs one issue and no rework. **The floor table above is unchanged by this
+lock:** still seven items, no new row, and no existing row gains a dependency.
 
 **Channel custom kinds and worker custom kinds share this one door, invented once in FIX-1357.**
 That is the coordination consequence: no sibling issue mints a second registration path for its
@@ -472,7 +533,7 @@ same evening — from a board composition to the default ChannelFlow kind.
 | FIX-1358 | Atlas: ChannelFlow teach (kind floor + declaration) | *unset* | — | — | Backlog |
 | FIX-1367 | Thin `WorkerConfig` admission — hire fills `skills` from FIX-1356's seat register; extension placeholder for kind-owned schema | spec | — | — | Todo — **soft-block cleared** by [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728)'s merge. Ready and unblocked, not started |
 
-Seven things this table does not say on its own:
+Eight things this table does not say on its own:
 
 - **FIX-1311 carries the `Feature` label**, so its route is `spec` and its spec is unwritten. The
   critical-path item is the one with the least done to it.
@@ -500,6 +561,13 @@ Seven things this table does not say on its own:
   inside no row on this table: the shipped seat reader walks `teams/` alone, and no floor item
   extends it. Reading §3's tree as though some issue already owns that half is the cheap mistake
   here; §5 carries it as an open question instead.
+- **The `TEAM.md` lock places work and still adds no row.** Its two halves land outside this
+  table: the tree teach on FIX-1358 (already a row, off the floor) and the prompt composition in
+  hire / loader — **FIX-1325 / FIX-1335**, W2 issues with no row in this epic at all. The reader
+  half folds into hire rather than minting a W3 issue (§3). So a lock that decides something
+  leaves the index untouched — the mirror image of `org/workers/` above, where the door opened
+  with no owner; here the owner exists and sits outside the epic.
+
 - **FIX-1367's dependency was on the register's *read* side, and #1728 has now merged it.** That
   clears the soft-block and nothing more. Registration — wiring those skills onto a live seat —
   was an explicit non-goal of #1728 and is what item 4 exists to do: **the merged #1728 does not
@@ -621,9 +689,22 @@ gate.
   task board assigning a channel as worker, which the lock parks with four named walls; and
   **(f)** *added by the 2026-09-12 scope lock* — the tree taught with `org/` and
   `teams/<teamId>/` carrying the same four slots, including the teaching the lock asks for by
-  name: org workers are rare shared infrastructure seats and the team is still the roster. This sits
-  **on top of** the atlas ambiguity already escalated to the owner in the bullet above; neither
-  is settled here. **Decides:** the owner, via FIX-1358 — which is also why that issue is no
+  name: org workers are rare shared infrastructure seats and the team is still the roster; and
+  **(g)** *added by the 2026-09-12 `TEAM.md` lock* — `TEAM.md` taught at the team scope root as
+  optional team instructions, with the locked prompt order (framework default → team → worker)
+  and the three denials that keep it from reading as a Team L1 returning: not a TeamFlow, not an
+  L1 type, not a second seat list. `ORG.md` is out, and is not taught as coming.
+
+  **One ordering note (g) carries.** That door's reader folds into hire (§3), so until the fold
+  lands the teach would describe a file nothing reads — the silence class the `org/workers/`
+  stamp names above. The owner placed the teach on FIX-1358; whoever writes it should land it
+  behind or alongside the hire fold, not ahead of it. The lock's other docs half — user-facing
+  prose in the **Workforce** section rather than Orchestration, after
+  [#1743](https://github.com/fixpoint-labs/flow-state-dev/pull/1743) — is the epic's docs pass,
+  not this atlas surface.
+
+  This sits **on top of** the atlas ambiguity already escalated to the owner in the bullet above;
+  neither is settled here. **Decides:** the owner, via FIX-1358 — which is also why that issue is no
   longer the epic's weakest member (§1). **Blocks:** nothing in W3.
 
 - **The consumer reshape.** Raised by FIX-1353 §3 as the strongest alternative use of its own
@@ -760,3 +841,27 @@ gate.
   **harness-manager** — because that is the moment it has a consumer. Until then §5's question
   stands and §3's tree is unchanged and is **not a deliverable grant**. Nothing on the floor, the
   index or the explainer is falsified, so nothing was redrawn.
+
+- **`TEAM.md` + prompt compose locked (owner, 2026-09-12)** — the sixth stamp of the day, and the
+  first that adds a file rather than a scope. `workforce/teams/<teamId>/TEAM.md` is **optional**:
+  `description` in frontmatter, team instructions in the body, absent meaning no team layer in the
+  prompt stack. That stack is an array and **its order is locked** —
+  `[frameworkDefault?, teamInstructions, workerInstructions]`, framework default → team → worker —
+  the same array slot as the proposed default worker system prompt, with the seat charter last so
+  role-specific instructions win an ordinary conflict. **If product later wants team *policy* to
+  dominate seat prose, that is an explicit reopen**, recorded as a condition rather than left to be
+  inferred. The **Team L1 invent-kill holds**: not a TeamFlow, not an L1 type, and **not a second
+  seat list** — hire still walks `workers/*/WORKER.md` only. **`ORG.md` and org-wide instruction
+  inheritance are out for now**, easy to add later beside `workforce/org/`. It lands as tree teach
+  on Atlas §06 / FIX-1358, composition in hire / loader (FIX-1325 / FIX-1335) and explicitly not
+  the ChannelFlow floor, and user-facing docs in the **Workforce** section after
+  [#1743](https://github.com/fixpoint-labs/flow-state-dev/pull/1743). **The W3 floor placement was
+  the Lifecycle Manager's pick and is folded into hire — no new floor issue is minted**; §3 carries
+  the reasoning (one optional file at a level hire already walks, in a dialect it already parses;
+  and a prompt stack that is not a file-convention problem at all) and names the reversal cost as
+  one issue and no rework. §1 gains the guard against reading the file as the Team L1 returning, §3
+  the tree line and the lock, §4 a note that this lock places work outside the epic's own table,
+  §5 the atlas's clause **(g)** plus the one ordering note it owes — the teach describes a file
+  nothing reads until the hire fold lands. The floor table, every index row, and the four earlier
+  locks of the day are untouched. **No explainer panel names team instructions or the prompt stack,
+  so none was falsified and none was redrawn.**
