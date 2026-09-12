@@ -14,14 +14,14 @@ flowchart LR
   TREE --> SK["skills/ · SKILL.md, one level"]
   CODE["TypeScript code"] --> RES["resources"]
   CH["a channel"]
-  CH -.-> KIND["no kind to be an instance of"]
+  CH -.-> KIND["no kind to run on"]
   classDef none stroke-dasharray:5 5
   class CH,KIND none
 ```
 
 Workers and skills are already file-declared; a document is declared in code, with
 `defineResource`. **A channel has no declaration surface at all** — not code, not files — and no
-kind to be an instance of.
+kind to run on.
 
 ---
 
@@ -31,15 +31,18 @@ kind to be an instance of.
 flowchart LR
   TREE["workforce/ tree"] --> W["workers/ · WORKER.md"]
   TREE --> SK["skills/ · levels, duplicates refused"]
-  TREE --> CH["channels/ · CHANNEL.md"]
+  TREE --> CH["channels/ · CHANNEL.md ×N"]
   TREE --> RES["resources/ · handbook.md"]
   CODE["TypeScript code"] --> RES
-  CH --> CF["ChannelFlow · default L2 kind"]
+  CH -->|"flow: names the kind"| CF["ChannelFlow · default L2 kind"]
+  CF --> INST["one instance"]
+  INST --> S1["named session · #general"]
+  INST --> S2["named session · #incidents"]
 ```
 
-A team becomes describable in files. A channel goes from nothing to a folder naming a flow kind —
-the default ChannelFlow, posted into and read back as one clean transcript. The objective was
-approved on 2026-09-11.
+A team becomes describable in files. N channel files do not mint N flows: the kind has **one**
+instance, and each channel is a named session on it, holding its own members and transcript.
+Objective approved 2026-09-11.
 
 ---
 
@@ -57,7 +60,7 @@ flowchart TD
   LAB["FIX-1355 pentest lab Proof"]
   ATL["FIX-1358 atlas"]
   CFG["FIX-1367 WorkerConfig admission"]
-  DOOR -->|"kind before instances"| CH
+  DOOR -->|"kind before channels"| CH
   DOOR -.->|"out of admission, blocks nothing"| REST
   CH -->|walk primitives| RES
   CH -->|walk primitives| SK
@@ -94,7 +97,7 @@ flowchart LR
   A -->|"register landed"| B
   G -.->|"passed"| B
   G -.->|"passed"| C
-  C -->|"kind before instance"| D
+  C -->|"kind before channels"| D
   D --> E
   classDef shipped fill:#1a7f37,color:#fff
   classDef gate fill:#8250df,color:#fff

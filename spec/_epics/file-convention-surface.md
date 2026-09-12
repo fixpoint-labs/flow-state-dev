@@ -51,9 +51,13 @@ runtime-import of seat `worker.ts` as a WorkerManifest path.
 [lock of 2026-09-11 22:28](https://github.com/fixpoint-labs/flow-state-dev/pull/1718#issuecomment-5641352275).
 The **package-type** kill above is unchanged and strengthened by it. What additionally goes is
 *board* as a word an author says: a channel is a **replaceable L2 flow kind**, shipped as a
-default batteries-included **ChannelFlow** in Workforce, and one channel is one flow **instance**
-with a coherent transcript. A post is a **dispatch into that channel's session** — background,
-with a durable log on the channel — not `reactTo` on the poster's turn.
+default batteries-included **ChannelFlow** in Workforce. **Identity, locked by the owner on
+2026-09-12: kind → one instance; channel → a named session on that instance** — not one instance
+per `CHANNEL.md`. One built-in kind means one ChannelFlow instance; each channel is a named
+session on it, with its per-channel config (members, charter) carried in that session's state,
+and a custom kind adds an instance per *kind*. FIX-1311 owns the detail. A post is a **dispatch
+into that channel's session** — background, with a durable log on the channel — not `reactTo` on
+the poster's turn.
 
 **What survives the retirement is the mechanism, not the noun.** Smart resource + `reactTo`
 remains valid for *non-conversation* shared state, activity and topic logs, and framework
@@ -73,7 +77,8 @@ avoids.
 
 **The 2026-09-11 recut narrows that question for channels without closing it.** Item 0 is no
 longer a composition an author assembles; it ships a **default ChannelFlow kind**, and the
-channels convention declares *instances* of it (`flow:`, exactly as `WORKER.md` sets it). So
+channels convention declares *channels on* it — a `CHANNEL.md` names the kind with `flow:`,
+exactly as `WORKER.md` does, and what it declares is a named session on that kind's instance. So
 FIX-1352 no longer declares into a void — the `flow:` it names resolves to something landing in
 the same epic, and a wrong declaration shape now fails against a real kind. That is a
 **dependency**, not yet a consumer: nothing on the floor *reads* a `CHANNEL.md` and opens the
@@ -217,7 +222,7 @@ of its six items no longer exist in that form.
 | # | Item | Issue | Note |
 |---|---|---|---|
 | 0 | **Default ChannelFlow — the channel kind floor** | [FIX-1311](https://linear.app/fixpoint-labs/issue/FIX-1311) / [#1565](https://github.com/fixpoint-labs/flow-state-dev/issues/1565) | **First, and the only blocking item.** Ship the default batteries-included **ChannelFlow** as a replaceable **L2 flow kind** — subscribe, post (a dispatch into the channel session, background, durable log), fan-out policy, and **clean transcript projection from day one**. The conversation door only. The minimal notify door becomes the internal / teaching path underneath it, not the public API. No `MessageBoard` / `Channel` L1 package type |
-| 1 | **Channels file convention** | [FIX-1352](https://linear.app/fixpoint-labs/issue/FIX-1352) | One L2 file type. Absorbs what were floor items 1 and 2. **Declares ChannelFlow instances** — a `CHANNEL.md` may set `flow:` exactly as `WORKER.md` does — not board bindings |
+| 1 | **Channels file convention** | [FIX-1352](https://linear.app/fixpoint-labs/issue/FIX-1352) | One L2 file type. Absorbs what were floor items 1 and 2. **Declares channels on the ChannelFlow kind** — a `CHANNEL.md` may set `flow:` exactly as `WORKER.md` does, and what it declares is a named session on that kind's instance — not board bindings. Deliverable boundary unchanged; its declaration / mint semantics take the same reading **once FIX-1311 folds**, not here (§4) |
 | 2 | Resources file convention | [FIX-1354](https://linear.app/fixpoint-labs/issue/FIX-1354) | Unchanged |
 | 3 | Skills file convention | [FIX-1356](https://linear.app/fixpoint-labs/issue/FIX-1356) | Unchanged by the recut. **Shipped** — [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728) merged 2026-09-11 22:46Z; the read-side seat register is on `main`. The first floor item to land |
 | 4 | **Thin `WorkerConfig` admission** | [FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367) | **Added 2026-09-11.** Hire invokes the flow with the right config: the `skills` bag from item 3's register, plus an always-present extension placeholder for kind-owned schema. **Soft-block cleared** — that register merged with item 3. Ready, not started; blocks nothing, and nothing blocks it — the objective gate is passed |
@@ -258,9 +263,15 @@ that path on today's doors and closed — stays the characterization of the **sm
 notify** path and is explicitly not the Workforce channel API.
 
 **The blocking edge to item 1 survives, and changes character.** It was door-before-binding: the
-convention needed a mechanism to bind to. It is now **kind-before-instance** — a `CHANNEL.md`
-setting `flow:` declares an instance of a kind, and the default ChannelFlow is what an undeclared
-one resolves to. The owner's sequencing stamp (FIX-1311 first, blocking the channel children) is
+convention needed a mechanism to bind to. It is now **kind-before-channel** — a `CHANNEL.md`
+setting `flow:` names a kind, the default ChannelFlow is what an undeclared one resolves to, and
+the channel itself is a named session on that kind's single instance. Neither half is invented
+here: a singleton flow is refused unless `flow.id === flow.kind`
+(`packages/engine/src/registry/flow-registry.ts:583-589`, with `cardinality` declared at
+`packages/core/src/types/flow.ts:414-428`), and a channel can bind to a stable named session
+because session ids are caller-supplied on a create-or-get path
+(`packages/engine/src/context/ensure-session-record.ts:41-42`, `:144-168`). How FIX-1311 uses
+them is its own. The owner's sequencing stamp (FIX-1311 first, blocking the channel children) is
 untouched by the recut.
 
 **Out of admission — blocking nothing.** The D-4 cut landed a minute after the lock and is
@@ -346,7 +357,8 @@ conventions plus the lab, but that count is a consequence of the rename, not the
 
 **The evening lock went one noun further**, in the other direction: *board* also stops being a
 word an author says (§1). The morning rewrite settled what a channel is **called**; the lock
-settled what a channel **is** — an instance of an L2 flow kind.
+settled what a channel **is** — a named session on an L2 flow kind's instance, one instance per
+*kind* rather than one per channel file (§1).
 
 **`CHANNEL.md` is preferred, not fixed.** "Prefer" is the owner's word; FIX-1352 owns the
 filename. Everything else in this subsection is settled.
@@ -369,7 +381,7 @@ same evening — from a board composition to the default ChannelFlow kind.
 |---|---|---|---|---|---|
 | FIX-1311 | **Default ChannelFlow / channel kind floor**: subscribe, post by dispatch, fan-out policy, clean transcript projection | spec | — | — | Backlog — **first on the floor, and not started** |
 | FIX-1342 | Kinds-map fence — seats stay `WORKER.md`; custom kinds are flow factories | spec | [#1702](https://github.com/fixpoint-labs/flow-state-dev/pull/1702) *(closed at approval)* | [#1712](https://github.com/fixpoint-labs/flow-state-dev/pull/1712) *(**merged** 22:47Z)* | Done |
-| FIX-1352 | Declare ChannelFlow instances (either-source; declaration-only) | spec | [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711) | — | In Spec Review |
+| FIX-1352 | Declare channels on the ChannelFlow kind (either-source; declaration-only) | spec | [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711) | — | In Spec Review |
 | FIX-1353 | *L2 channels fold* — **closed as a duplicate** of the channels convention | — | [#1714](https://github.com/fixpoint-labs/flow-state-dev/pull/1714) | — | Duplicate |
 | FIX-1354 | Resources file convention | spec | [#1715](https://github.com/fixpoint-labs/flow-state-dev/pull/1715) | — | In Spec Review |
 | FIX-1355 | Thin pentest lab Proof | spec | — | — | Backlog |
@@ -386,8 +398,11 @@ Six things this table does not say on its own:
   landed in [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711)'s title, and Linear
   has since moved further, to *Declare ChannelFlow instances*. The PR **body** still describes its
   new dependency as *"the message board's minimal notify door"* and still says *"the board itself
-  ships as named L1 composition on FIX-1311"* — the superseded model. That is FIX-1352's fold to
-  make, not this document's.
+  ships as named L1 composition on FIX-1311"* — the superseded model. **Its Linear title, *Declare ChannelFlow instances*, now reads against the identity lock
+  too** (§1: one instance per kind, not one per channel file). The deliverable is unchanged; the
+  phrasing and the declaration / mint semantics under it reconcile **once FIX-1311 folds**, per
+  the owner — so they are not rewritten from here. That is FIX-1352's fold to make, not this
+  document's.
 - **FIX-1353 closes as a duplicate, but its one unowned item does not close with it.** The pre-lab
   intake DM is rehomed onto FIX-1311 and carried in §5 — a reshuffle is exactly how such a thing
   disappears.
@@ -435,8 +450,8 @@ gate.
 - **The pre-lab static intake DM now has a home, and the recut moved what is left open.** Raised
   by FIX-1353 §8 step 4, which found no covering issue at all; with FIX-1353 closing as a
   duplicate it is **rehomed onto FIX-1311**. The old fork — notify door or phased-behind half —
-  is largely answered: under the lock a DM is a one-participant **channel instance**, so
-  declaring one is a `CHANNEL.md` (item 1) and posting into one is the default kind's own verb
+  is largely answered: under the lock a DM is a one-participant **channel** — a named session on
+  the ChannelFlow instance, not an instance of its own — so declaring one is a `CHANNEL.md` (item 1) and posting into one is the default kind's own verb
   (item 0). Both are in admission. **What is still open is the opener**: the helper that opens and
   names one durable DM session before any roster exists is still unwritten, and it is the same
   helper the consumer-reshape question below keeps on the Collab side of the fence. The session
@@ -497,8 +512,8 @@ gate.
 - **The consumer reshape.** Raised by FIX-1353 §3 as the strongest alternative use of its own
   slot: give the channels convention its missing consumer — one helper that opens a session for a
   declared channel. The recut sharpens it rather than settling it. A channel is now *defined* as a
-  flow instance, so "open a session for a declared channel" is no longer an extra concept bolted
-  on; it is the one verb the floor stops short of. It is also still on the Collab side of the
+  named session on the kind's instance, so "open a session for a declared channel" is not an
+  extra concept bolted on — it *is* the channel, and the one verb the floor stops short of. It is also still on the Collab side of the
   fence the Architect has cleared twice, and the D-4 cut re-drew that fence the same evening.
   **Decides:** the owner. **Blocks:** nothing.
 
@@ -534,7 +549,9 @@ gate.
   two teams can each have a `review` skill.
 - **Item 0 recut from a board to a kind (owner lock, 2026-09-11 22:28)** — **Message Board retires
   as the author-facing / L1 concept.** A channel is a replaceable **L2 flow kind** with a default
-  batteries-included **ChannelFlow**; one channel is one flow instance with a coherent transcript;
+  batteries-included **ChannelFlow**; each channel carries a coherent transcript — *this document
+  then read that as one flow instance per channel, which the 2026-09-12 identity lock supersedes
+  (last entry)*;
   a post is a dispatch into that session, not `reactTo` on the poster's turn; clean transcript
   projection ships in the default kind from day one. The **package-type** invent-kill is unchanged
   and strengthened. Smart resource + `reactTo` survives for non-conversation shared state,
@@ -569,3 +586,19 @@ gate.
   the epic PR and the `epic approved` label. §1's gate is passed. The epic-spec remains the live
   coordination surface; what changes is that the objective is no longer an open question, and the
   compression pass the owner deferred at 21:53 is the standing debt against this document.
+- **Channel identity locked — kind → one instance, channel → a session on it (owner, 2026-09-12)**
+  — carried from the owner's
+  [comment](https://github.com/fixpoint-labs/flow-state-dev/pull/1718) on this PR. A **channel
+  kind** is a flow kind; one built-in kind means **one** ChannelFlow instance; a **channel** is a
+  **named session on that instance**, with its per-channel config (members, charter) in that
+  session's state. Custom kinds add one instance per *kind*. This kills the worker-like reading
+  this document had been carrying — one `CHANNEL.md` → one flow instance → one transcript — which
+  §1 and the 22:28 entry above stated as fact and which is now marked superseded there rather than
+  deleted. Both halves rest on mechanisms already shipped: the singleton refusal in
+  `flow-registry.ts` and caller-supplied session ids on a create-or-get path (§3). §1, §3, §4 and
+  §5 are rewritten to the lock and the explainer's second panel redrawn. **The rewrite is in
+  flight on FIX-1311 / [#1738](https://github.com/fixpoint-labs/flow-state-dev/pull/1738)**, which
+  owns the detail; this document carries the one-line reading only. **FIX-1352's declaration /
+  mint semantics need the same reading and are deliberately not rewritten here** — the owner's
+  instruction is that they reconcile *once FIX-1311 folds*, so its deliverable boundary is
+  untouched and §3 and §4 record the reconciliation as pending.
