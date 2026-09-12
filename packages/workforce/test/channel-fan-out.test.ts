@@ -70,10 +70,32 @@ async function transcriptLength(stores: StoreRegistry, sessionId: string): Promi
   return ((record?.state as { transcript?: unknown[] } | undefined)?.transcript ?? []).length;
 }
 
-async function journalText(stores: StoreRegistry, sessionId: string): Promise<string> {
+async function journalLength(stores: StoreRegistry, sessionId: string): Promise<number> {
   const record = await stores.session.get(sessionId);
-  const journal = (record?.journal ?? []) as Array<{ text?: string }>;
-  return journal.map((entry) => entry.text ?? "").join("\n");
+  return ((record?.journal ?? []) as unknown[]).length;
+}
+
+async function bodiesOf(stores: StoreRegistry, sessionId: string): Promise<string[]> {
+  const record = await stores.session.get(sessionId);
+  const transcript = ((record?.state as { transcript?: Array<{ body: string }> } | undefined)
+    ?.transcript ?? []);
+  return transcript.map((line) => line.body);
+}
+
+/** A promise a test can resolve by hand, so an interleaving is forced rather than raced. */
+function gate(): { wait: Promise<void>; open: () => void } {
+  let open = (): void => {};
+  const wait = new Promise<void>((resolve) => {
+    open = () => resolve();
+  });
+  return { wait, open };
+}
+
+/** Has the channel's fan-out request reached a terminal status? */
+async function fanOutFinished(stores: StoreRegistry, sessionId: string): Promise<boolean> {
+  const requests = await stores.request.list({ sessionId });
+  const fanOuts = requests.filter((request) => request.actionName === "onPosted");
+  return fanOuts.length > 0 && fanOuts.every((request) => request.status !== "in_progress");
 }
 
 async function until(predicate: () => boolean | Promise<boolean>, label: string): Promise<void> {
@@ -163,7 +185,7 @@ describe("the fan-out slot", () => {
     }
   });
 
-  it("records a delivery refusal, keeps the post, and changes nothing about membership", async () => {
+  it("absorbs a delivery refusal, keeps the post, and changes nothing about membership", async () => {
     const attempted: string[] = [];
     const notify = handler({
       name: "refusing-notify",
@@ -193,21 +215,98 @@ describe("the fan-out slot", () => {
         runtimeConfig: { ...runtime.runtimeConfig }
       });
 
-      await until(
-        async () => (await journalText(runtime.stores, "engineering.standup")).includes(
-          "no address for engineering.analyst"
-        ),
-        "the refusal to be recorded"
-      );
-
       // The remaining member is still attempted, and neither the transcript nor
       // the roster is touched by a failed delivery.
       await until(() => attempted.includes("engineering.lead"), "the other member to be attempted");
+      await until(
+        () => fanOutFinished(runtime.stores, "engineering.standup"),
+        "the fan-out request to finish"
+      );
       expect(await transcriptLength(runtime.stores, "engineering.standup")).toBe(1);
+      // The rule the next test proves the cost of: a channel writes nothing to
+      // its session record that is not a state delta. The journal is the record,
+      // not the state, and it is written whole and without a compare-and-swap.
+      expect(await journalLength(runtime.stores, "engineering.standup")).toBe(0);
       expect(await membersOf(runtime.stores, "engineering.standup")).toEqual([
         "engineering.analyst",
         "engineering.lead"
       ]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  /**
+   * The interleaving, forced rather than raced.
+   *
+   * The fan-out runs in its OWN request and holds the session snapshot that
+   * request loaded. Writing anything back wholesale — which is what
+   * `appendJournal` does, whole record, `"any"`, no compare-and-swap — writes
+   * that snapshot's state back too, and with it every post that landed since.
+   * The ordering below is the one that exposes it: the delivery is held open on
+   * a gate, a second post lands through its own request while it waits, and
+   * only then is the delivery allowed to fail into its rescue.
+   */
+  it("cannot erase a post that landed while a delivery was failing", async () => {
+    const started = gate();
+    const release = gate();
+    // Only the FIRST delivery is held. Every post hands off its own fan-out
+    // request, and a later one writing the session back correctly would mask
+    // exactly the loss under test — so the second post's delivery succeeds,
+    // writes nothing, and leaves the held request as the only writer left.
+    let deliveries = 0;
+    const notify = handler({
+      name: "held-notify",
+      inputSchema: channelNotifyInputSchema,
+      outputSchema: z.object({}),
+      execute: async () => {
+        deliveries += 1;
+        if (deliveries > 1) return {};
+        started.open();
+        await release.wait;
+        throw new Error("no address for a");
+      }
+    });
+
+    const { instance, state } = hostWith(notify);
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, "engineering.standup", ["a"]);
+
+      const post = (body: string) =>
+        runAction({
+          flow: instance,
+          actionName: "post",
+          input: { body },
+          userId: USER_ID,
+          sessionId: "engineering.standup",
+          stores: runtime.stores,
+          runtimeConfig: { ...runtime.runtimeConfig }
+        });
+
+      // 1. The first post lands and hands off. Waiting on `started` is what
+      //    makes the ordering explicit: the fan-out request now exists and its
+      //    snapshot's transcript is exactly ["first"].
+      await post("first");
+      await started.wait;
+
+      // 2. A second post lands, in its own request, while the delivery waits.
+      //    Its own delivery succeeds and is let finish first, so nothing it
+      //    does can put the transcript back together afterwards.
+      await post("second");
+      expect(await bodiesOf(runtime.stores, "engineering.standup")).toEqual(["first", "second"]);
+      await until(() => deliveries === 2, "the second post's delivery to run");
+
+      // 3. Only now does the delivery fail, sending the fan-out into its rescue
+      //    while it still holds the one-line snapshot.
+      release.open();
+      await until(
+        () => fanOutFinished(runtime.stores, "engineering.standup"),
+        "the fan-out request to finish"
+      );
+
+      // Recording the failure must not be able to cost a post.
+      expect(await bodiesOf(runtime.stores, "engineering.standup")).toEqual(["first", "second"]);
     } finally {
       await state.dispose();
     }

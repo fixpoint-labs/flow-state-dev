@@ -44,7 +44,7 @@ import { CHANNEL_KIND, boundChannel, channelFlow, type ChannelSessionState } fro
  * state. The other three are the channel's own facts. Anything else refuses,
  * including `id`, which is the record's identity rather than a setting.
  */
-const DECLARABLE_KEYS = ["flow", "description", "members", "instructions"] as const;
+const DECLARABLE_KEYS = ["flow", "description", "members", INSTRUCTIONS_KEY] as const;
 
 /**
  * A channel kind: a flow factory carrying the same identity contract the
@@ -90,13 +90,27 @@ export interface OpenChannelsOptions {
     }) => Promise<unknown>;
     /**
      * Reads the session sitting behind a taken id, so a 409 can be answered on
-     * whether a CHANNEL is open there rather than on whether a session exists.
+     * WHO holds the id and whether a channel is open there, rather than on
+     * whether a session exists.
+     *
      * `state` is the session's raw state — the same thing the post fence reads.
+     * `flowKind`, `flowId` and `userId` are the occupant's identity, and they
+     * are read before anything is deleted: a session id is unique per
+     * principal, not per flow, so an id collision here is somebody else's
+     * ordinary session and deleting it takes their content with it.
      */
-    getSession: (sessionId: string) => Promise<{ state?: Record<string, unknown> }>;
+    getSession: (sessionId: string) => Promise<{
+      flowKind: string;
+      /** Absent on a session written before instance ownership existed (BP-030). */
+      flowId?: string;
+      userId: string;
+      state?: Record<string, unknown>;
+    }>;
     /**
-     * Releases an id held by an unbound session, because create is the only
-     * route that writes session state. Never called on a bound channel.
+     * Releases an id held by this kind's own EMPTY session, because create is
+     * the only route that writes session state. Never called on a bound
+     * channel, on another flow's session, on another principal's, or on one
+     * carrying state this binder cannot read.
      */
     deleteSession: (sessionId: string) => Promise<void>;
   };
@@ -332,19 +346,84 @@ function stateFor(manifest: ChannelManifest): ChannelSessionState {
 }
 
 /**
- * Is a channel OPEN at this id, or does the id merely hold a session?
+ * Who holds this id, and is a channel open in it?
  *
- * Asked of the session's raw state and answered by the fence's own
- * `boundChannel`, so the binder adopts on exactly the test the post path
- * refuses on.
+ * Boundness is still the fence's own `boundChannel`, so the binder reads "is a
+ * channel open here" exactly as the post path does. But boundness alone cannot
+ * answer what to DO, and answering on it alone is how a session gets deleted:
+ * a session id is unique per principal, not per flow, so an id that fails the
+ * boundness test may be an ordinary session belonging to another flow entirely —
+ * and the delete route takes that session's content and resource state with it.
+ *
+ * Three answers, because only one of the three is safe to tear down:
+ *
+ * - `"open"` — this kind's own bound channel, for this principal. Left exactly
+ *   as it is.
+ * - `"empty"` — this kind's own session for this principal carrying no state at
+ *   all, which is precisely what the action path's create-or-get leaves behind.
+ *   The only case the id is released in.
+ * - a `problem` — anything else: another flow's session, another principal's,
+ *   or one carrying state this binder cannot read as a channel. A collision is
+ *   an operator error worth failing loudly on, and state that will not parse is
+ *   data rather than an empty slot. Neither is repaired by deleting it.
  */
-async function isChannelOpen(
+type ChannelOccupant = { status: "open" | "empty" } | { problem: string };
+
+async function occupantOf(
   client: OpenChannelsOptions["client"],
-  sessionId: string
-): Promise<boolean> {
+  sessionId: string,
+  kind: string,
+  userId: string
+): Promise<ChannelOccupant> {
   const session = await client.getSession(sessionId);
-  return session.state !== undefined && boundChannel(session.state) !== undefined;
+
+  if (session.flowKind !== kind) {
+    return {
+      problem:
+        `the id is held by a "${session.flowKind}" session, not a "${kind}" one. A session id is ` +
+        `unique per principal rather than per flow, so this is an id collision with somebody ` +
+        `else's session — rename the channel rather than have its binder delete that session.`
+    };
+  }
+
+  // `== null` per BP-030: absent on a session written before instance
+  // ownership existed, and an absent owner is not a mismatched one.
+  if (session.flowId != null && session.flowId !== kind) {
+    return {
+      problem:
+        `the id is held by a session owned by flow instance "${session.flowId}" rather than by ` +
+        `"${kind}". A channel kind is a singleton, so its instance address is its kind.`
+    };
+  }
+
+  if (session.userId !== userId) {
+    return {
+      problem:
+        `the id is held by a session belonging to "${session.userId}", not to "${userId}". ` +
+        `A channel belongs to one user, and this one would be opened over somebody else's.`
+    };
+  }
+
+  const state = session.state;
+  if (state !== undefined && boundChannel(state) !== undefined) return { status: "open" };
+  if (state === undefined || Object.keys(state).length === 0) return { status: "empty" };
+
+  return {
+    problem:
+      `the id is held by a "${kind}" session carrying state that is not a readable channel ` +
+      `(keys: ${Object.keys(state).map((key) => `\`${key}\``).join(", ")}). It is not the empty ` +
+      `session a premature post leaves, so it is not this binder's to delete.`
+  };
 }
+
+/**
+ * How many times a 409 is answered before the channel is refused.
+ *
+ * Bounded rather than a retry loop: each round costs a read, and a repair that
+ * has lost the id three times is a channel something else keeps taking, which
+ * is worth a startup failure rather than a fourth attempt.
+ */
+const REPAIR_ATTEMPTS = 3;
 
 /**
  * Open one named session per record, on that record's kind, carrying the
@@ -362,17 +441,24 @@ async function isChannelOpen(
  *   over an unchanged roster a no-op — and, for the same reason, an edited
  *   `CHANNEL.md` does not reach a channel that is already open. Re-opening is
  *   not a migration.
- * - **An unbound session** — one the action path minted when something posted
- *   to or read the id before this ran — is adopted: the id is released and
- *   re-created carrying the channel's state. Such a session holds no channel
- *   data, and writing that state is precisely what opening a channel means.
- *   Without this, one premature post leaves the channel unbound permanently:
- *   every later run 409s too, and no public route writes state into a session
- *   that already exists.
+ * - **This kind's own empty session** — one the action path minted when
+ *   something posted to or read the id before this ran — is adopted: the id is
+ *   released and re-created carrying the channel's state. Such a session holds
+ *   no channel data, and writing that state is precisely what opening a channel
+ *   means. Without this, one premature post leaves the channel unbound
+ *   permanently: every later run 409s too, and no public route writes state
+ *   into a session that already exists.
+ * - **Anything else holding the id** is refused by name rather than repaired —
+ *   see {@link occupantOf}.
+ *
+ * A repair that 409s again is answered the same way, not assumed to be another
+ * binder's open channel: the racer may be the action path, which would leave
+ * this resolving over a channel that is still unbound. So it re-reads and goes
+ * round, up to {@link REPAIR_ATTEMPTS} times, then refuses.
  *
  * @param manifests The roster — the same records `channelInstances` registered.
  * @param options   `client`: the session API. `userId`: who every channel session belongs to.
- * @throws On any failure that is not a 409, with the channel named.
+ * @throws On any failure that is not a 409, and on a 409 this cannot answer, with the channel named.
  */
 export async function openChannels(
   manifests: readonly ChannelManifest[],
@@ -405,16 +491,48 @@ export async function openChannels(
     } catch (error) {
       if (!isAlreadyOpen(error)) throw failed(error);
 
-      try {
-        if (await isChannelOpen(options.client, manifest.id)) continue;
-        await options.client.deleteSession(manifest.id);
-        await open();
-      } catch (adoptError) {
-        // A second 409: something opened the channel between the read and the
-        // create. Theirs is the open channel and ours would be a duplicate, so
-        // this lands where a bound channel lands — left alone.
-        if (isAlreadyOpen(adoptError)) continue;
-        throw failed(adoptError);
+      let settled = false;
+      for (let attempt = 0; attempt < REPAIR_ATTEMPTS && !settled; attempt += 1) {
+        let occupant: ChannelOccupant;
+        try {
+          occupant = await occupantOf(
+            options.client,
+            manifest.id,
+            selected.kind,
+            options.userId
+          );
+        } catch (readError) {
+          throw failed(readError);
+        }
+
+        if ("problem" in occupant) throw failed(new Error(occupant.problem));
+        if (occupant.status === "open") {
+          // A bound channel — theirs or a previous run's — is left exactly as
+          // it is, which is where an unraced 409 lands too.
+          settled = true;
+          break;
+        }
+
+        try {
+          await options.client.deleteSession(manifest.id);
+          await open();
+          settled = true;
+        } catch (repairError) {
+          // A second 409: the id was retaken between the read and the create.
+          // The retaker may be the action path rather than another binder, so
+          // the next round asks who holds it now — swallowing this is how a
+          // channel is left unbound with `openChannels` reporting success.
+          if (!isAlreadyOpen(repairError)) throw failed(repairError);
+        }
+      }
+
+      if (!settled) {
+        throw failed(
+          new Error(
+            `the id was taken again by an unbound session on each of ${REPAIR_ATTEMPTS} attempts ` +
+              `to open it. Something is racing this binder for the channel's session id.`
+          )
+        );
       }
     }
   }

@@ -66,6 +66,8 @@ await openChannels(channels, { client: sessionClient, userId: "u_42" });
 
 `openChannels` is idempotent: a channel that is already open is left alone, so re-running it over an unchanged roster does nothing. The flip side is that re-opening is not a migration. Add a member or rewrite a charter in the record, and a channel that is already open does not see it. Re-running does repair one thing: a channel whose id was claimed by a post before it was opened. That leaves an empty session, and re-running binds it.
 
+An empty session is the only thing it will clear out of the way. If the id is held by something else — a session belonging to another flow, or to another user, or one carrying state that is not a readable channel — `openChannels` names it and stops. A channel id that collides with a real session is a configuration problem, and the fix is to rename the channel, not to have startup delete somebody's data.
+
 The one registered instance answers for every session id, and naming a session that does not exist creates an empty one rather than refusing. So a channel is not "a session id somebody used". It is a session that was opened as a channel, carrying members and a charter. Post to an id nobody opened and you get `channel-not-bound`, nothing is written, and the empty session stays inert.
 
 ## Posting and reading

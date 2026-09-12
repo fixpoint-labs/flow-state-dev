@@ -23,6 +23,17 @@ import {
   type ChannelManifest
 } from "../src/index";
 
+/** The principal every channel in these tests is opened for. */
+const OWNER = "u_42";
+
+/** What the fake session store holds: a session's identity as well as its state. */
+type Occupant = {
+  flowKind: string;
+  flowId?: string;
+  userId: string;
+  state: Record<string, unknown>;
+};
+
 function record(
   id: string,
   declared: Record<string, unknown> = {},
@@ -175,47 +186,75 @@ describe("what a channel record may declare (the closed key list)", () => {
 describe("openChannels", () => {
   /**
    * The session substrate as `openChannels` meets it: create refuses a taken id
-   * with a 409, and `mintEmpty` is what the action path's create-or-get leaves
-   * behind — a session that exists carrying no channel data at all.
+   * with a 409, and a read carries the occupant's identity as well as its
+   * state, because a session id is unique per principal and not per flow.
+   * `mintEmpty` is what the action path's create-or-get leaves behind — a
+   * session that exists carrying no channel data at all.
+   *
+   * @param config  `retakeOnDelete`: how many times something takes the id back
+   *                the moment the binder releases it, which is the race a
+   *                second 409 reports.
    */
-  function sessionClient() {
+  function sessionClient(config: { retakeOnDelete?: number } = {}) {
     const created: Array<Record<string, unknown>> = [];
     const deleted: string[] = [];
-    const sessions = new Map<string, Record<string, unknown>>();
+    const sessions = new Map<string, Occupant>();
+    let retakes = config.retakeOnDelete ?? 0;
 
     const createSession = vi.fn(async (options: Record<string, unknown>) => {
       const id = String(options.sessionId);
       if (sessions.has(id)) {
         throw Object.assign(new Error(`Request failed (409)`), { status: 409 });
       }
-      sessions.set(id, (options.state ?? {}) as Record<string, unknown>);
+      sessions.set(id, {
+        flowKind: String(options.flowKind),
+        flowId: String(options.flowKind),
+        userId: String(options.userId),
+        state: (options.state ?? {}) as Record<string, unknown>
+      });
       created.push(options);
       return { id };
     });
 
     const getSession = vi.fn(async (sessionId: string) => {
-      const state = sessions.get(sessionId);
-      if (state === undefined) {
+      const session = sessions.get(sessionId);
+      if (session === undefined) {
         throw Object.assign(new Error(`Request failed (404)`), { status: 404 });
       }
-      return { id: sessionId, state };
+      return { id: sessionId, ...session };
     });
+
+    /** What a post or read on an id nobody opened leaves behind. */
+    const mintEmpty = (id: string, occupant: Partial<Occupant> = {}): void => {
+      sessions.set(id, {
+        flowKind: CHANNEL_KIND,
+        flowId: CHANNEL_KIND,
+        userId: OWNER,
+        state: {},
+        ...occupant
+      });
+    };
 
     const deleteSession = vi.fn(async (sessionId: string) => {
       deleted.push(sessionId);
       sessions.delete(sessionId);
+      // The race a second 409 reports: something takes the id back between the
+      // release and the create. An EMPTY session, because the retaker that
+      // matters is the action path — the one that leaves the channel unbound.
+      if (retakes > 0) {
+        retakes -= 1;
+        mintEmpty(sessionId);
+      }
     });
 
-    /** What a post or read on an id nobody opened leaves behind. */
-    const mintEmpty = (id: string): void => {
-      sessions.set(id, {});
-    };
+    const stateOf = (id: string): Record<string, unknown> | undefined => sessions.get(id)?.state;
 
     return {
       client: { createSession, getSession, deleteSession },
       created,
       deleted,
       sessions,
+      stateOf,
       mintEmpty
     };
   }
@@ -231,14 +270,14 @@ describe("openChannels", () => {
           "Post what you finished."
         )
       ],
-      { client, userId: "u_42" }
+      { client, userId: OWNER }
     );
 
     expect(created).toHaveLength(1);
     expect(created[0]).toMatchObject({
       flowKind: CHANNEL_KIND,
       sessionId: "engineering.standup",
-      userId: "u_42",
+      userId: OWNER,
       description: "Daily status.",
       state: {
         members: ["engineering.lead", "engineering.analyst"],
@@ -250,7 +289,7 @@ describe("openChannels", () => {
 
   it("opens a custom kind's channel on that kind's own instance", async () => {
     const { client, created } = sessionClient();
-    await openChannels([record("eng.a", { flow: "my-channel" })], { client, userId: "u_42" });
+    await openChannels([record("eng.a", { flow: "my-channel" })], { client, userId: OWNER });
     expect(created[0]).toMatchObject({ flowKind: "my-channel", sessionId: "eng.a" });
   });
 
@@ -258,8 +297,8 @@ describe("openChannels", () => {
     const { client, created, deleted } = sessionClient();
     const roster = [record("engineering.standup", { members: ["a"] })];
 
-    await openChannels(roster, { client, userId: "u_42" });
-    await expect(openChannels(roster, { client, userId: "u_42" })).resolves.toBeUndefined();
+    await openChannels(roster, { client, userId: OWNER });
+    await expect(openChannels(roster, { client, userId: OWNER })).resolves.toBeUndefined();
 
     expect(client.createSession).toHaveBeenCalledTimes(2);
     expect(created).toHaveLength(1);
@@ -270,7 +309,7 @@ describe("openChannels", () => {
   });
 
   it("adopts a session the action path minted first, so one premature post cannot poison a channel", async () => {
-    const { client, sessions, mintEmpty } = sessionClient();
+    const { client, stateOf, mintEmpty } = sessionClient();
     const roster = [
       record("engineering.standup", { members: ["engineering.lead"] }, "Post what you finished.")
     ];
@@ -280,12 +319,12 @@ describe("openChannels", () => {
     // create-or-get, so that mints an empty session — and the id is now taken.
     mintEmpty("engineering.standup");
 
-    await openChannels(roster, { client, userId: "u_42" });
+    await openChannels(roster, { client, userId: OWNER });
 
     // Bound, not skipped. Without adoption the 409 is swallowed, `members` and
     // `instructions` are never written, and every later post is refused
     // `channel-not-bound` with no way back through the public API.
-    expect(sessions.get("engineering.standup")).toMatchObject({
+    expect(stateOf("engineering.standup")).toEqual({
       members: ["engineering.lead"],
       instructions: "Post what you finished.",
       transcript: []
@@ -293,18 +332,104 @@ describe("openChannels", () => {
   });
 
   it("stays idempotent from a poisoned start: adopting once, then leaving the channel alone", async () => {
-    const { client, deleted, sessions, mintEmpty } = sessionClient();
+    const { client, deleted, stateOf, mintEmpty } = sessionClient();
     const roster = [record("engineering.standup", { members: ["engineering.lead"] })];
 
     mintEmpty("engineering.standup");
-    await openChannels(roster, { client, userId: "u_42" });
-    await openChannels(roster, { client, userId: "u_42" });
+    await openChannels(roster, { client, userId: OWNER });
+    await openChannels(roster, { client, userId: OWNER });
 
     // One adoption, and the second run recognises the channel it just bound.
     expect(deleted).toEqual(["engineering.standup"]);
-    expect(sessions.get("engineering.standup")).toMatchObject({
+    expect(stateOf("engineering.standup")).toMatchObject({
       members: ["engineering.lead"]
     });
+  });
+
+  /**
+   * The failure mode that makes this a refusal rather than a repair: a session
+   * id is unique per PRINCIPAL, not per flow. A channel whose id collides with
+   * an ordinary session of another flow under the same user fails the boundness
+   * test for the obvious reason — it is not a channel — and answering that with
+   * a delete takes that session's content and resource state with it, at
+   * startup, silently.
+   */
+  it("refuses an id held by another flow's session instead of deleting it", async () => {
+    const { client, deleted, stateOf, mintEmpty } = sessionClient();
+    mintEmpty("engineering.standup", {
+      flowKind: "support-inbox",
+      flowId: "support-inbox",
+      state: { thread: ["a customer's message"] }
+    });
+
+    await expect(
+      openChannels([record("engineering.standup")], { client, userId: OWNER })
+    ).rejects.toThrow(/"support-inbox" session, not a "channel" one/);
+
+    // The whole point: the other flow's session is still there.
+    expect(deleted).toEqual([]);
+    expect(stateOf("engineering.standup")).toEqual({ thread: ["a customer's message"] });
+  });
+
+  it("refuses an id held by another principal's session instead of deleting it", async () => {
+    const { client, deleted, mintEmpty } = sessionClient();
+    mintEmpty("engineering.standup", { userId: "u_somebody_else" });
+
+    await expect(
+      openChannels([record("engineering.standup")], { client, userId: OWNER })
+    ).rejects.toThrow(/belonging to "u_somebody_else"/);
+    expect(deleted).toEqual([]);
+  });
+
+  /**
+   * The adopt path's licence is that the occupant "holds no channel data". A
+   * session of this kind carrying state the schema cannot read is not that: it
+   * is data this binder cannot read, and deleting it is the same loss under a
+   * different name.
+   */
+  it("refuses this kind's own session carrying state it cannot read as a channel", async () => {
+    const { client, deleted, stateOf, mintEmpty } = sessionClient();
+    mintEmpty("engineering.standup", { state: { members: [42], instructions: "x" } });
+
+    await expect(
+      openChannels([record("engineering.standup")], { client, userId: OWNER })
+    ).rejects.toThrow(/not a readable channel/);
+
+    expect(deleted).toEqual([]);
+    expect(stateOf("engineering.standup")).toEqual({ members: [42], instructions: "x" });
+  });
+
+  /**
+   * A second 409 says the id was retaken between the read and the create — it
+   * does NOT say a channel is open there. The retaker may be the action path
+   * again, so treating it as "someone else opened it" is how `openChannels`
+   * resolves over a channel that is still unbound.
+   */
+  it("answers a retaken id on boundness again rather than assuming someone opened it", async () => {
+    const { client, deleted, stateOf, mintEmpty } = sessionClient({ retakeOnDelete: 1 });
+    mintEmpty("engineering.standup");
+
+    await openChannels([record("engineering.standup", { members: ["engineering.lead"] })], {
+      client,
+      userId: OWNER
+    });
+
+    // Two rounds: the first lost the id, the second won it. And the channel is
+    // BOUND at the end, which is the only thing that makes resolving honest.
+    expect(deleted).toEqual(["engineering.standup", "engineering.standup"]);
+    expect(stateOf("engineering.standup")).toMatchObject({ members: ["engineering.lead"] });
+  });
+
+  it("refuses a channel whose id keeps being retaken rather than resolving over an unbound one", async () => {
+    const { client, deleted, mintEmpty } = sessionClient({ retakeOnDelete: 10 });
+    mintEmpty("engineering.standup");
+
+    await expect(
+      openChannels([record("engineering.standup")], { client, userId: OWNER })
+    ).rejects.toThrow(/taken again by an unbound session on each of 3 attempts/);
+
+    // Bounded: three rounds, not a loop.
+    expect(deleted).toHaveLength(3);
   });
 
   it("does not swallow a failure that is not a 409", async () => {
@@ -312,11 +437,11 @@ describe("openChannels", () => {
       createSession: vi.fn(async () => {
         throw Object.assign(new Error("Request failed (500)"), { status: 500 });
       }),
-      getSession: vi.fn(async () => ({ state: {} })),
+      getSession: vi.fn(async () => ({ flowKind: CHANNEL_KIND, userId: OWNER, state: {} })),
       deleteSession: vi.fn(async () => {})
     };
     await expect(
-      openChannels([record("engineering.standup")], { client, userId: "u_42" })
+      openChannels([record("engineering.standup")], { client, userId: OWNER })
     ).rejects.toThrow(/500/);
   });
 });

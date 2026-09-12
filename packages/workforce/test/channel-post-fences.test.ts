@@ -123,9 +123,22 @@ function sessionApi(stores: StoreRegistry) {
       );
       return { id };
     },
-    getSession: async (sessionId: string): Promise<{ state?: Record<string, unknown> }> => ({
-      state: (await stores.session.get(sessionId))?.state as Record<string, unknown> | undefined
-    }),
+    getSession: async (
+      sessionId: string
+    ): Promise<{
+      flowKind: string;
+      flowId?: string;
+      userId: string;
+      state?: Record<string, unknown>;
+    }> => {
+      const record = await stores.session.get(sessionId);
+      return {
+        flowKind: String(record?.flowKind),
+        flowId: record?.flowId,
+        userId: String(record?.userId),
+        state: record?.state as Record<string, unknown> | undefined
+      };
+    },
     deleteSession: async (sessionId: string): Promise<void> => {
       await stores.session.delete(sessionId);
     }
@@ -222,6 +235,53 @@ describe("the post path's fences", () => {
       });
       expect(after.error).toBeUndefined();
       expect(await transcriptOf(runtime.stores, "engineering.standup")).toHaveLength(1);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  /**
+   * Boundness is answered against the whole declared schema, not by checking
+   * that two keys are present. `{ members: [42], instructions: "x" }` passes a
+   * presence check — and would then be admitted by the post path, skipped by
+   * `openChannels` as already open, and fail its declared schemas on every
+   * later read. A state the schema cannot parse is not a channel.
+   */
+  it("refuses a post into a session whose state is shaped like a channel but does not parse", async () => {
+    const { channel, state } = host();
+    try {
+      const runtime = await state.getRuntime();
+      const now = Date.now();
+      await runtime.stores.session.set(
+        "engineering.standup",
+        {
+          id: "engineering.standup",
+          flowKind: CHANNEL_KIND,
+          flowId: CHANNEL_KIND,
+          userId: USER_ID,
+          state: { members: [42], instructions: "x" },
+          lineageId: "lin_engineering.standup",
+          version: 0,
+          createdAt: now,
+          updatedAt: now,
+          journal: []
+        } as never,
+        "any"
+      );
+
+      const result = await runAction({
+        flow: channel,
+        actionName: "post",
+        input: { body: "into a channel that is not one" },
+        userId: USER_ID,
+        sessionId: "engineering.standup",
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig }
+      });
+
+      expect(result.error).toBeDefined();
+      expect(String(result.error)).toContain("channel-not-bound");
+      expect(await transcriptOf(runtime.stores, "engineering.standup")).toBeUndefined();
     } finally {
       await state.dispose();
     }

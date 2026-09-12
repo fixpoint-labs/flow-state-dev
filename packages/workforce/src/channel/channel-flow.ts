@@ -123,20 +123,25 @@ export class ChannelPostRefusedError extends Error {
  * therefore the test: `openChannels` writes `members` and `instructions`
  * together, and nothing else does.
  *
- * Exported for the binder, which answers a 409 on this same question — is a
+ * Answered against the WHOLE declared schema rather than by checking that the
+ * two keys are present. A presence check calls `{ members: [42], instructions:
+ * "x" }` a channel: the post path would admit it, `openChannels` would skip it
+ * as already open, and it would fail its declared schemas on every later
+ * read — bound to nothing, and repairable by nothing. A state the schema
+ * cannot parse is not a channel.
+ *
+ * Exported for the binder, which asks this same question of a 409 — is a
  * channel open here, or merely a session? One definition, because a binder
- * that adopted on a different test than the fence refuses on would bind
- * sessions the fence still rejects. Not re-exported from the package root.
+ * reading boundness differently from the fence would leave sessions the fence
+ * still rejects. What the binder then DOES with the answer is its own and
+ * narrower: it releases an id only when this kind's own empty session holds it.
+ * Not re-exported from the package root.
  */
 export function boundChannel(
   state: Readonly<Record<string, unknown>>
 ): ChannelSessionState | undefined {
-  if (!Array.isArray(state.members) || typeof state.instructions !== "string") return undefined;
-  return {
-    members: state.members as string[],
-    instructions: state.instructions,
-    transcript: Array.isArray(state.transcript) ? (state.transcript as ChannelTranscriptLine[]) : []
-  };
+  const parsed = channelSessionStateSchema.safeParse(state);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** The append: the whole of what the post entry's queue hold covers. */
@@ -231,47 +236,63 @@ export const channelNotifyInputSchema = z.object({
 
 export type ChannelNotifyInput = z.infer<typeof channelNotifyInputSchema>;
 
-/**
- * Record one member's delivery refusal without touching the transcript or the
- * roster.
- *
- * The journal and not session state: a delivery outcome is not a channel fact,
- * and widening the declared state shape to hold one would put it in every
- * channel's schema forever. Pruning a member whose deliveries fail is roster
- * behaviour and is out of this floor.
- */
-const recordDeliveryRefusal = handler({
-  name: "channel-record-delivery-refusal",
-  inputSchema: z.unknown(),
-  outputSchema: z.object({ recorded: z.literal(true) }),
-  execute: async (error: unknown, ctx) => {
-    await ctx.session.appendJournal({
-      text: `channel delivery refused: ${error instanceof Error ? error.message : String(error)}`,
-      source: "channel-fan-out"
-    });
-    return { recorded: true as const };
-  }
+/** What a rescued delivery failure carries out: the reason, and nothing durable. */
+const channelRefusalNoteSchema = z.object({
+  delivered: z.literal(false),
+  reason: z.string()
 });
 
 /**
- * Record a refused hand-off — the fan-out request could not be started at all.
+ * Absorb one member's delivery refusal so the remaining members are still
+ * attempted, carrying the reason out as this block's own output.
+ *
+ * **Nothing about a channel's session is written here, deliberately.** The
+ * obvious home for a delivery outcome — `ctx.session.appendJournal` — writes
+ * the WHOLE session record back with `"any"` and no compare-and-swap, and this
+ * rescue runs in the separate `onPosted` request, holding the session snapshot
+ * that request loaded. A post that landed in between is inside the state being
+ * written back, so recording the failure would silently erase it — the one
+ * thing a channel promises never happens. `setMetadata` has the same shape.
+ *
+ * The only concurrency-safe write a block has is a state verb (`pushState` and
+ * friends, which the store applies as a delta), and a delivery outcome is not a
+ * channel fact to widen every channel's declared state with. So the reason
+ * travels in this request's own item log, alongside the rest of the fan-out's
+ * trace, and nowhere else. An unrecorded delivery failure is a far smaller loss
+ * than a vanished post.
+ */
+const noteDeliveryRefusal = handler({
+  name: "channel-delivery-refused",
+  inputSchema: z.unknown(),
+  outputSchema: channelRefusalNoteSchema,
+  execute: async (error: unknown) => ({
+    delivered: false as const,
+    reason: `channel delivery refused: ${error instanceof Error ? error.message : String(error)}`
+  })
+});
+
+/**
+ * Absorb a refused hand-off — the fan-out request could not be started at all.
  *
  * Reached on a host whose dispatcher hands work to an external queue, where a
  * delivery into an existing session refuses `external-dispatcher` by name. The
  * post is already appended and stays appended: a client post on such a host
  * still works, and only the waking does not.
+ *
+ * Writes nothing to the session for the reason {@link noteDeliveryRefusal}
+ * gives. This one runs inside the post's own request, where the queue hold
+ * makes a journal write look safe — but "safe because nothing else is writing
+ * right now" is not a property this flow can keep true, so the rule here is the
+ * flat one: a channel makes no session write that is not a state delta.
  */
-const recordHandOffRefusal = handler({
-  name: "channel-record-hand-off-refusal",
+const noteHandOffRefusal = handler({
+  name: "channel-hand-off-refused",
   inputSchema: z.unknown(),
-  outputSchema: z.object({ recorded: z.literal(true) }),
-  execute: async (error: unknown, ctx) => {
-    await ctx.session.appendJournal({
-      text: `channel fan-out not started: ${error instanceof Error ? error.message : String(error)}`,
-      source: "channel-post"
-    });
-    return { recorded: true as const };
-  }
+  outputSchema: channelRefusalNoteSchema,
+  execute: async (error: unknown) => ({
+    delivered: false as const,
+    reason: `channel fan-out not started: ${error instanceof Error ? error.message : String(error)}`
+  })
 });
 
 export interface CreateChannelFlowOptions {
@@ -332,9 +353,9 @@ export function createChannelFlow(options: CreateChannelFlowOptions = {}) {
                 ...(post.author === undefined ? {} : { author: post.author })
               }));
             },
-            // One member's failure is recorded and the rest are still
+            // One member's failure is absorbed and the rest are still
             // attempted; membership is never changed by a delivery.
-            notify.rescue([{ block: recordDeliveryRefusal }])
+            notify.rescue([{ block: noteDeliveryRefusal }])
           );
 
   // Hands the append off to a SEPARATE request so the queue hold covers the
@@ -351,7 +372,7 @@ export function createChannelFlow(options: CreateChannelFlowOptions = {}) {
           // child id is hashed with the parent session and lineage, so it
           // cannot name a shared channel.
           session: { id: (_input, ctx) => ctx.session.identity.id }
-        }).rescue([{ block: recordHandOffRefusal }]);
+        }).rescue([{ block: noteHandOffRefusal }]);
 
   const post =
     handOff === undefined
