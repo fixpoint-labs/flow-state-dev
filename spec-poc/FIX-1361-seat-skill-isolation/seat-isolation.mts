@@ -10,6 +10,10 @@
  * The counter-claim (epic theme 7, drift note 3a): today's skills library leaves
  * `flowIsolation` unset, so both seats land in one org-wide bucket.
  *
+ * SCOPE — this file answers the STORAGE KEY question only. Whether each seat's
+ * drawer is then filled with that seat's OWN skills is a separate question, and
+ * the answer is no: see `seat-population.test.ts` beside this file.
+ *
  * Run:  node --experimental-strip-types spec-poc/FIX-1361-seat-skill-isolation/seat-isolation.mts
  * (No install needed — `scope-keys.ts` has a single type-only import.)
  */
@@ -76,5 +80,7 @@ check(
 console.log(
   process.exitCode
     ? "\nVERDICT: premise does NOT hold as stated — decision 3 needs rework."
-    : "\nVERDICT: premise holds. Per-seat skill storage needs one existing flag, not a new primitive.",
+    : "\nVERDICT: premise holds for KEYS. Separate per-seat buckets need one existing flag, not a\n" +
+      "new primitive. Filling each bucket with that seat's own skills is NOT covered here —\n" +
+      "run seat-population.test.ts for that half.",
 );
