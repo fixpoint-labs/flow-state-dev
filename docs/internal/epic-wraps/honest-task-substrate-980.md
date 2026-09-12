@@ -260,6 +260,12 @@ Filed as **FIX-1032** (High, *Ready to Spec*); the fix is open and unmerged at
 `packages/orchestration/test/types.type-test.ts`, states that vitest typecheck covers it; nothing
 does (**FIX-1239**, High, Backlog).
 
+**Suggestion recorded for whoever finishes FIX-1032, not acted on here.** A review pass on the
+wrap proposed a permanent `scripts/fixtures/typecheck-probe` so a later cycle does not re-run this
+by hand. It belongs on FIX-1032's own PR rather than a ledger entry, and a fixture pinning the
+current fallback behaviour is work #1677's merge would make obsolete — so it is filed here as a
+note, deliberately not built.
+
 **Why this is one step past BP-003.** Its third bullet warns about *"a green result from a command
 aimed at a **neighbour** of the claim."* Here the command was aimed at exactly the right claim and
 reported success **without performing the check at all.** Same false green, different mechanism,
