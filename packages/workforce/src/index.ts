@@ -19,3 +19,4 @@ export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { hireWorkforce, type HireOptions } from "./hire";
 export type { WorkerManifest } from "./manifest";
+export * from "./channel";
