@@ -1310,14 +1310,14 @@ const teamDocs = <b>defineResourceCollection</b>({
 
 <section id="channels">
   <div class="sec-head"><span class="sec-num">08</span><h2>Channels</h2></div>
-  <p class="lede">A <strong>channel</strong> is one copy of a replaceable L2 kind. Default is <strong>ChannelFlow</strong>. One copy, <strong>one transcript session</strong>. A <strong>DM</strong> is the one-member case. A group is the same kind with N declared members &#8212; not a Message Board noun, not a Channel L1 package. A post appends on that transcript; member wake is <strong>notify after the append</strong> (app-supplied addresses), not <code>dispatcher()</code> &#215; N into N sessions. <strong>Reply-storm exclusion exists</strong>: today&#8217;s <code>TaskCollectionRef.claim</code> admits one holder per post. <strong>Who may reply is proposed Layer&nbsp;2 policy</strong>. <strong>Ordered multi-reply is proposed Layer&nbsp;2</strong>: a board coordinator &#8212; a team role, not a primitive &#8212; files N reply tasks with <code>deps</code>; settle unlocks the next; only an idle chain looks at newer posts. <strong>Cross-flow dispatch exists</strong> (<code>dispatcher({ flowKind })</code>). Hire-id, dynamic addresses, and multi-hire still wait on INST. When to pick this door versus dispatch or a task board: <a href="#when">the callout</a>.</p>
+  <p class="lede">A <strong>channel</strong> is a <strong>named session</strong> on one ChannelFlow <strong>instance</strong> (one instance per kind; custom kinds &#8658; one instance each). Not one copy per channel. A <strong>DM</strong> is the one-member channel &#8212; one session, not a fake worker-session transcript. A group is the same: one session, N declared members &#8212; not a Message Board noun, not a Channel L1 package. A post appends on that session; member wake is <strong>notify after the append</strong> (app-supplied addresses), not <code>dispatcher()</code> &#215; N into N sessions. <strong>Reply-storm exclusion exists</strong>: today&#8217;s <code>TaskCollectionRef.claim</code> admits one holder per post. <strong>Who may reply is proposed Layer&nbsp;2 policy</strong>. <strong>Ordered multi-reply is proposed Layer&nbsp;2</strong>: a board coordinator &#8212; a team role, not a primitive &#8212; files N reply tasks with <code>deps</code>; settle unlocks the next; only an idle chain looks at newer posts. <strong>Cross-flow dispatch exists</strong> (<code>dispatcher({ flowKind })</code>). Hire-id, dynamic addresses, and multi-hire still wait on INST. When to pick this door versus dispatch or a task board: <a href="#when">the callout</a>. Full §08 encyclopedia alignment waits on the <a href="https://github.com/Fixpoint-labs/flow-state-dev/pull/1738">#1738</a> rewrite.</p>
 
   <h3 id="when">When a DM / channel vs dispatch</h3>
-  <p>Owner + Architect fold (2026-09-12). Same fold as <a href="https://github.com/Fixpoint-labs/flow-state-dev/pull/1738">#1738</a> / <a href="https://linear.app/fixpoint-labs/issue/FIX-1311">FIX-1311</a> (ChannelFlow D-4). Guidance, not a new Decision. Atlas matches the floor page; it does not invent a third door.</p>
+  <p>Owner + Architect fold (2026-09-12). Same fold as <a href="https://github.com/Fixpoint-labs/flow-state-dev/pull/1738">#1738</a> / <a href="https://linear.app/fixpoint-labs/issue/FIX-1311">FIX-1311</a>. Guidance, not a new Decision. Identity lock (<a href="https://github.com/Fixpoint-labs/flow-state-dev/pull/1738#issuecomment-5646818215">#1738</a>): <strong>kind &#8594; one instance</strong>; <strong>channel &#8594; named session on that instance</strong>. Not instance-per-<code>CHANNEL.md</code>. Not one ChannelFlow copy per channel. Atlas does not invent a third door. Ready-for-review waits on the #1738 rewrite landing, then this page matching it.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 280" role="img" aria-label="Three doors. Left: one-shot or do this is a dispatch into that flow's own session. Centre: back-and-forth or keep talking is a channel — ChannelFlow, and a DM is the one-member case. Right: claim plus settle is a task board, not a channel. Bottom cut: do not dump dialogue into the worker session, do not put seat-owned work on a channel, and do not invent a Message Board or Channel Layer 1 package. Soft resource plus reactTo stays for non-conversation.">
+      <svg viewBox="0 0 940 280" role="img" aria-label="Three doors. Left: one-shot or do this is a dispatch into that flow's own session. Centre: back-and-forth or keep talking is a channel — a named session on the ChannelFlow instance; a DM is the one-member channel. Right: claim plus settle is a task board, not a channel. Bottom cut: do not dump dialogue into the worker session, do not put seat-owned work on a channel, and do not invent a Message Board or Channel Layer 1 package. Soft resource plus reactTo stays for non-conversation.">
         <rect class="n-code" x="16" y="16" width="292" height="168" rx="5"/>
         <text class="t-lbl f-code" x="34" y="38">DISPATCH &#183; ONE-SHOT</text>
         <text class="t-b" x="34" y="64">do this</text>
@@ -1329,8 +1329,8 @@ const teamDocs = <b>defineResourceCollection</b>({
         <rect class="n-prop" x="324" y="16" width="292" height="168" rx="5"/>
         <text class="t-lbl" x="342" y="38">CHANNEL &#183; KEEP TALKING</text>
         <text class="t-b f-accent" x="342" y="64">back-and-forth</text>
-        <text class="t-s" x="342" y="92">ChannelFlow copy</text>
-        <text class="t-xs" x="342" y="116">DM = ONE-MEMBER CASE</text>
+        <text class="t-s" x="342" y="92">named session</text>
+        <text class="t-xs" x="342" y="116">DM = ONE-MEMBER CHANNEL</text>
         <text class="t-xs" x="342" y="134">POST LANDS ON THE CHANNEL</text>
         <text class="t-xs" x="342" y="160">CLEAN TRANSCRIPT. NOT MACHINERY</text>
 
@@ -1347,26 +1347,26 @@ const teamDocs = <b>defineResourceCollection</b>({
         <text class="t-s" x="34" y="246">no fake DM in the worker session &#183; no seat-owned work on a channel &#183; no MessageBoard / Channel L1</text>
       </svg>
     </div>
-    <figcaption><b>Three doors. Pick by what the talk is for.</b> One-shot work dispatches into that flow&#8217;s session. A conversation lives on a channel (DM = one-member ChannelFlow). Claim-and-settle work is a task board. ChannelFlow owns the clean transcript; the worker session is machinery. Soft resource + <code>reactTo</code> stays for non-conversation (#1627).</figcaption>
+    <figcaption><b>Three doors. Pick by what the talk is for.</b> One-shot work dispatches into that flow&#8217;s session. A conversation lives on a channel &#8212; a named session on the ChannelFlow instance (DM = one-member channel). Claim-and-settle work is a task board. The channel session owns the clean transcript; the worker session is machinery. Soft resource + <code>reactTo</code> stays for non-conversation (#1627).</figcaption>
   </figure>
 
   <div class="note">
     <span class="lbl">Five rules &#183; owner-settled 2026-09-12</span>
     <p>One-shot / do this &#8594; <strong>dispatch</strong> into that flow&#8217;s own session.</p>
-    <p>Back-and-forth / keep talking &#8594; <strong>channel</strong>. A DM is one-member ChannelFlow.</p>
+    <p>Back-and-forth / keep talking &#8594; <strong>channel</strong>. A DM is a one-member channel (one session on the ChannelFlow instance).</p>
     <p>Claim + settle &#8594; <strong>task board</strong>, not a channel.</p>
-    <p>Do not fake a DM by dumping dialogue into the worker session &#8212; that history is machinery. ChannelFlow owns the clean transcript projection.</p>
-    <p>Do not put seat-owned work on a channel &#8212; posts run on the channel copy; fan-out &#8800; claim.</p>
+    <p>Do not fake a DM by dumping dialogue into the worker session &#8212; that history is machinery. The channel session owns the clean transcript projection.</p>
+    <p>Do not put seat-owned work on a channel &#8212; posts run on that channel session; fan-out &#8800; claim.</p>
   </div>
 
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
-      <h5>DM</h5><span class="role">one-member ChannelFlow</span>
-      <p>One session with that one worker. The one-member case of ChannelFlow &#8212; not a fake transcript dumped into the worker session. Bootstrap opens it through today&#8217;s session API. Addressed by <code>id</code> after.</p>
+      <h5>DM</h5><span class="role">one-member channel</span>
+      <p>One named session with that one worker, on the ChannelFlow instance. Not a fake transcript dumped into the worker session. Bootstrap opens it through today&#8217;s session API. Addressed by <code>id</code> after.</p>
     </div>
     <div class="card" style="--tc: var(--code)">
-      <h5>Group</h5><span class="role">ChannelFlow &#183; N members</span>
-      <p>One ChannelFlow copy. One transcript session. Members are declared. A post appends there; notify runs after the append. Not a Message Board noun. Not N subscriber sessions.</p>
+      <h5>Group</h5><span class="role">named session &#183; N members</span>
+      <p>One named session on the ChannelFlow instance. Members are declared. A post appends there; notify runs after the append. Not a Message Board noun. Not one copy per channel. Not N subscriber sessions.</p>
     </div>
     <div class="card" style="--tc: var(--code)">
       <h5>Reply discipline</h5><span class="role">claim exists &#183; who proposed</span>
@@ -2291,7 +2291,7 @@ const team = <b>defineResourceCollection</b>({
 
   <div class="note">
     <span class="lbl">Product noun is channel</span>
-    <p>A <strong>channel</strong> is a ChannelFlow copy (replaceable L2 kind). The roster below was filed as rooms &#8212; same list, two lanes. Message Board is out as a teach noun. Soft resource + <code>reactTo</code> stays for non-conversation (#1627). Invent-kill Channel / MessageBoard L1 holds. Sequence unchanged: W2 &#8594; W3 &#8594; lab &#8594; MCP held &#8594; Collab. When to pick this door: <a href="#when">&#167;08</a>.</p>
+    <p>A <strong>channel</strong> is a named session on the ChannelFlow instance (one instance per kind). The roster below was filed as rooms &#8212; same list, two lanes. Message Board is out as a teach noun. Soft resource + <code>reactTo</code> stays for non-conversation (#1627). Invent-kill Channel / MessageBoard L1 holds. Sequence unchanged: W2 &#8594; W3 &#8594; lab &#8594; MCP held &#8594; Collab. When to pick this door: <a href="#when">&#167;08</a>.</p>
   </div>
 
   <h3>Channel roster &#8212; one list, two lanes</h3>
