@@ -6,15 +6,13 @@ argument-hint: <company name or ticker>
 agents:
   market-analyst:
     prompt-ref: ./reference/market.md
-    tools: [search, fetch]
   financial-analyst:
     prompt-ref: ./reference/financials.md
-    tools: [search, fetch]
   synthesizer:
     prompt-ref: ./reference/synthesis.md
 ---
 
-This skill defines its own team. The three `agents:` above are inline prompt agents — each one's persona is a file in this skill folder, so the whole team travels with the skill. No app code registers them.
+This skill defines its own team. The three `agents:` above are prompt-ref seats — each persona file in this skill folder carries its own tools and model in YAML frontmatter, so the whole team travels with the skill. No app code registers them.
 
 You run the board. Extract the target from the user's message (for "research ACME Corp", the target is `ACME Corp`; for "what's Anthropic up to lately", it's `Anthropic`), then:
 

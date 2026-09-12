@@ -34,7 +34,7 @@
  * then calls `runBoard`.
  */
 
-import { handler, sequencer } from "@flow-state-dev/core";
+import { handler, sequencer, warnOnceDev } from "@flow-state-dev/core";
 import type {
   AgentRegistry,
   AgentSpec,
@@ -62,9 +62,9 @@ import {
 import type { TaskCollectionRef } from "../tasks";
 import { taskBoard } from "../task-board";
 import { readActivations, type ActivationLocation } from "./activation-store";
-import { skillManifestKey } from "./collection";
+import { skillFileKey, skillManifestKey } from "./collection";
+import { applyAgentPromptFile, clipRosterLine } from "./internal/agent-prompt-file";
 import { findBundledFile } from "./internal/bundled-files";
-import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { isValidAgentKey } from "./skill-md";
 import { materializeToolSeat, materializeWorker } from "./worker-materializer";
 import { specsCollide } from "./internal/agent-key-reconcile";
@@ -290,9 +290,14 @@ export async function collectAgentSources(
     if (!collection) continue;
     const agents = liveState?.agents;
     if (agents && Object.keys(agents).length > 0) {
+      // Prompt-ref files live in the collection, not the bundled index.
+      // Attach them so roster purpose and collide see the same hydrated
+      // identity materializeWorker will run.
+      const files = await loadLivePromptFiles(collection, entry.name, agents);
       sources.push({
         skillName: entry.name,
         agents,
+        ...(files.length > 0 ? { files } : {}),
         // The live manifest is the authority for a non-bundled skill's seats
         // too — an admin who edits `allowed-tools` after seeding changes what
         // this board can be assigned, same as it changes the rendered note.
@@ -307,20 +312,71 @@ export async function collectAgentSources(
 }
 
 // ---------------------------------------------------------------------------
-// Prompt-ref pre-resolution from bundled files
+// Prompt-ref pre-resolution
 // ---------------------------------------------------------------------------
 
 /**
- * Inline a `prompt-ref` body from the skill's bundled files when present, so a
- * build-time skill never depends on collection seeding order. Falls through
- * unchanged (materializeWorker reads the live collection) when not bundled.
+ * Load `prompt-ref` Markdown from the live collection for an imported skill.
+ * Missing files are skipped — `materializeWorker` still fails loud at drain.
  */
-function withBundledPrompt(spec: AgentSpec, files: SkillFile[] | undefined): AgentSpec {
+async function loadLivePromptFiles(
+  collection: ResourceCollectionRef,
+  skillName: string,
+  agents: Record<string, AgentSpec>,
+): Promise<SkillFile[]> {
+  const files: SkillFile[] = [];
+  const seen = new Set<string>();
+  for (const spec of Object.values(agents)) {
+    if (spec.promptRef === undefined) continue;
+    const path = spec.promptRef.replace(/^\.\//, "").replace(/^\//, "");
+    if (seen.has(path)) continue;
+    seen.add(path);
+    const ref = await collection.getOptional(skillFileKey(skillName, spec.promptRef));
+    if (!ref) continue;
+    files.push({ path, content: (await ref.readContent()) ?? "" });
+  }
+  return files;
+}
+
+/**
+ * Inline a `prompt-ref` body from the skill's bundled (or live-attached) files
+ * when present. Falls through unchanged when not attached.
+ */
+function withBundledPrompt(
+  spec: AgentSpec,
+  files: SkillFile[] | undefined,
+  agentKey = "agent",
+): AgentSpec {
   if (spec.promptRef === undefined) return spec;
   const file = findBundledFile(files, spec.promptRef);
   if (!file) return spec;
-  const { promptRef: _promptRef, ...rest } = spec;
-  return { ...rest, prompt: stripFrontmatter(file.content) };
+  return applyAgentPromptFile(spec, file.content, agentKey);
+}
+
+/**
+ * Hydrate a prompt-ref spec. A static skill's bad file still throws (config
+ * error). A runtime activation warn+skips so a model-driven load cannot
+ * crash the turn — same policy as a divergent-spec collision.
+ */
+function hydratePromptOrSkip(
+  spec: AgentSpec,
+  files: SkillFile[] | undefined,
+  agentKey: string,
+  skillName: string,
+  isStatic: boolean,
+): AgentSpec | null {
+  try {
+    return withBundledPrompt(spec, files, agentKey);
+  } catch (err) {
+    if (isStatic) throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    warnOnceDev(
+      `skills:malformed-prompt:${skillName}:${agentKey}`,
+      `[skills] delegation agent "${agentKey}" (runtime skill "${skillName}") ` +
+        `has a malformed prompt file — skipped: ${message}`,
+    );
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -529,7 +585,8 @@ async function resolveBuild(
     // is the shape that lets the model be told about an agent it is then
     // refused for naming, so the invariant is literal here rather than
     // true-by-inspection in two places.
-    const rosterPurposes = buildRosterPurposes(sources);
+    const staticNames = new Set(deps.staticSources.map((s) => s.skillName));
+    const rosterPurposes = buildRosterPurposes(sources, staticNames);
     // ...and ONE install decision, for the same reason. An empty roster means
     // nothing to delegate to, so the surface contributes nothing — unless the
     // binding opted the floor in (`delegation: true`), where the default worker
@@ -562,12 +619,23 @@ async function resolveBuild(
  * is skipped, and a divergent static spec throws the whole build. So every key
  * reachable here maps to exactly the spec the board dispatches to.
  */
-function buildRosterPurposes(sources: DelegationAgentSource[]): Map<string, string> {
+function buildRosterPurposes(
+  sources: DelegationAgentSource[],
+  staticNames: ReadonlySet<string>,
+): Map<string, string> {
   const purposes = new Map<string, string>();
   for (const source of sources) {
     for (const [key, spec] of Object.entries(source.agents)) {
       if (purposes.has(key)) continue;
-      purposes.set(key, agentPurpose(withBundledPrompt(spec, source.files), source.files));
+      const hydrated = hydratePromptOrSkip(
+        spec,
+        source.files,
+        key,
+        source.skillName,
+        staticNames.has(source.skillName),
+      );
+      if (!hydrated) continue;
+      purposes.set(key, agentPurpose(hydrated, source.files));
     }
   }
   return purposes;
@@ -755,13 +823,23 @@ async function buildTools(
       // Agent keys are already validated by `validateAgentKeys` in
       // `resolveBuild`, so this registry and the guidance roster are built from
       // the identical list.
+      // Hydrate before collide: a `prompt-ref` entry is only a path. Identity
+      // is the file's body + frontmatter, matching bind-time in `library.ts`.
+      const resolvedSpec = hydratePromptOrSkip(
+        spec,
+        source.files,
+        agentKey,
+        source.skillName,
+        staticNames.has(source.skillName),
+      );
+      if (!resolvedSpec) continue;
       if (seenSpecs.has(agentKey)) {
         // Two skills sharing an agent key: an IDENTICAL spec dedupes into the
         // already-built board worker. A DIFFERENT spec under the same key is a
         // real collision — fail loud for static skills (build-time validation
         // mirrors this), warn + skip for a runtime activation so a model-driven
         // load can't crash the turn.
-        if (!specsCollide(seenSpecs.get(agentKey)!, spec)) continue;
+        if (!specsCollide(seenSpecs.get(agentKey)!, resolvedSpec)) continue;
         if (!staticNames.has(source.skillName)) {
           console.warn(
             `[skills] delegation agent "${agentKey}" (runtime skill "${source.skillName}") ` +
@@ -774,9 +852,7 @@ async function buildTools(
             `different spec than another active skill's agent under the same key. Rename the agent key.`,
         );
       }
-      seenSpecs.set(agentKey, spec);
-
-      const resolvedSpec = withBundledPrompt(spec, source.files);
+      seenSpecs.set(agentKey, resolvedSpec);
       boardWorkers[agentKey] = await materializeWorker(agentKey, resolvedSpec, {
         catalog: deps.catalog,
         ...(deps.agentRegistry ? { agentRegistry: deps.agentRegistry } : {}),
@@ -838,14 +914,9 @@ async function buildTools(
  */
 export function agentPurpose(spec: AgentSpec, files?: SkillFile[]): string {
   if (spec.agentRef) return `agent \`${spec.agentRef}\``;
-  const body = withBundledPrompt(spec, files).prompt;
-  if (body) {
-    const firstLine = body
-      .split("\n")
-      .map((l: string) => l.trim())
-      .find(Boolean);
-    if (firstLine) return firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
-  }
+  const resolved = withBundledPrompt(spec, files);
+  if (resolved.description) return clipRosterLine(resolved.description);
+  if (resolved.prompt) return clipRosterLine(resolved.prompt);
   return "a delegation agent";
 }
 

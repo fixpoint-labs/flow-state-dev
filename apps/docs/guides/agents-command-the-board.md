@@ -76,10 +76,8 @@ description: Multi-angle company research delivered by a small team of analysts.
 agents:
   market-analyst:
     prompt-ref: ./reference/market.md
-    tools: [search, fetch]
   financial-analyst:
     prompt-ref: ./reference/financials.md
-    tools: [search, fetch]
   synthesizer:
     prompt-ref: ./reference/synthesis.md
 ---
@@ -113,19 +111,28 @@ folder into another app carries the team with it. No app code registers
 anything, and the only wiring `createSkillsLibrary` needs is the tool catalog
 the agents' `tools` keys resolve against.
 
-An entry takes a few more keys beside the persona: `tools` (catalog keys the
-agent may call itself), `model`, `visibility`, and `context-supply`. See
+On a `prompt:` entry, `tools`, `model`, `visibility`, and `context-supply` sit
+beside the persona. On a `prompt-ref` entry the skill lists only the name and
+the path; those fields go in the prompt file's YAML frontmatter. See
 [Delegation](/docs/skills/delegation#declaring-agents) for the full field list.
+
+```md title="src/skills/research-company/reference/market.md (frontmatter)"
+---
+description: Describes the target company's market positioning.
+tools: [search, fetch]
+---
+```
 
 A seat doesn't have to be an agent, either. Every tool the skill allows is
 already assignable by its catalog key, and when your code owns the graph rather
 than a skill, `taskBoard` takes blocks directly. [Agents](/docs/orchestration/agents)
 lays out the three side by side.
 
-One thing that surprises people: the one-line blurb the coordinator sees for each
-agent is not something you write. It's the first non-blank line of the persona,
-truncated past 80 characters. So make that line say what the agent is for, not
-what it is about to be told.
+The one-line blurb the coordinator sees is optional frontmatter `description` on
+the prompt file. Without it, the roster uses the first non-blank line of the
+persona, truncated past 80 characters. An inline `prompt:` has no file, so it
+uses that first body line. Write `description`, or the opening line, as a
+summary of what the agent is for.
 
 ## 3. Plan the work as a graph
 
@@ -194,19 +201,26 @@ each one takes and how a refused call comes back.
 
 ## 5. An agent that plans more work
 
-An agent can put work on the board too. Give one `taskTools` in its `tools:` list
-and it can call `addTask` mid-drain, onto the same board:
+An agent can put work on the board too. Put `taskTools` in the agent's `tools`
+list (on the skill entry for an inline `prompt:`, or in the prompt file's
+frontmatter for `prompt-ref`) and it can call `addTask` mid-drain, onto the
+same board:
 
 ```yaml title="src/skills/competitor-analysis/SKILL.md (frontmatter, trimmed)"
 agents:
   discoverer:
     prompt-ref: ./reference/discover.md
-    tools: [search, taskTools]
   analyzer:
     prompt-ref: ./reference/analyze.md
-    tools: [search, fetch]
   comparison-writer:
     prompt-ref: ./reference/compare.md
+```
+
+```md title="src/skills/competitor-analysis/reference/discover.md (frontmatter)"
+---
+description: Identifies competitors and queues the analysis board.
+tools: [search, taskTools]
+---
 ```
 
 Now the coordinator's plan can be one task:
@@ -226,8 +240,9 @@ analyzers in parallel, and runs the writer once they're all done. The number fou
 is nowhere in your code.
 
 Reach for `taskTools` on an agent when the shape of the work depends on what an
-earlier step found. Grant it through the agent's `tools:` list, which is the path
-that reaches the coordinator's board.
+earlier step found. Grant it through the agent's `tools:` list (the prompt file,
+when the agent is a `prompt-ref`), which is the path that reaches the
+coordinator's board.
 
 ## 6. Without a roster
 

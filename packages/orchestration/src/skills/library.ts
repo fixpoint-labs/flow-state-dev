@@ -33,6 +33,7 @@
 import { z } from "zod";
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import { findBundledFile } from "./internal/bundled-files";
+import { applyAgentPromptFile } from "./internal/agent-prompt-file";
 import { specsCollide } from "./internal/agent-key-reconcile";
 import type {
   DeclaredResourceEntry,
@@ -471,18 +472,32 @@ export function createSkillsLibrary(
     const seenAgentSpecs = new Map<string, AgentSpec>();
     for (const { name: skillName, entry } of staticAgentSkills) {
       for (const [agentKey, spec] of Object.entries(entry.agents!)) {
+        // `prompt-ref` identity is the hydrated file (body + frontmatter),
+        // not the path string. Comparing the raw entry would treat two
+        // skills with the same path as identical even when the files disagree.
+        let identity = spec;
+        if (spec.promptRef !== undefined) {
+          const file = findBundledFile(entry.files, spec.promptRef);
+          if (file === undefined) {
+            throw new Error(
+              `skills: delegation agent "${agentKey}" (skill "${skillName}") declares ` +
+                `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
+            );
+          }
+          identity = applyAgentPromptFile(spec, file.content, agentKey);
+        }
         const prior = seenAgentSpecs.get(agentKey);
         if (prior) {
           // Two active skills may share an agent (e.g. a common synthesizer).
           // An IDENTICAL spec dedupes into one board worker; a different spec
           // under the same key is a real collision.
-          if (!specsCollide(prior, spec)) continue;
+          if (!specsCollide(prior, identity)) continue;
           throw new Error(
             `skills: delegation agent "${agentKey}" (skill "${skillName}") declares a ` +
               `different spec than another active skill's agent under the same key. Rename the agent key.`,
           );
         }
-        seenAgentSpecs.set(agentKey, spec);
+        seenAgentSpecs.set(agentKey, identity);
         if (
           spec.agentRef !== undefined &&
           (!options.agentRegistry || !options.materializeAgent)
@@ -491,15 +506,6 @@ export function createSkillsLibrary(
             `skills: delegation agent "${agentKey}" (skill "${skillName}") uses ` +
               `agent-ref "${spec.agentRef}", but createSkillsLibrary() was given no ` +
               `\`agentRegistry\`/\`materializeAgent\` to resolve it with.`,
-          );
-        }
-        if (
-          spec.promptRef !== undefined &&
-          findBundledFile(entry.files, spec.promptRef) === undefined
-        ) {
-          throw new Error(
-            `skills: delegation agent "${agentKey}" (skill "${skillName}") declares ` +
-              `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
           );
         }
       }

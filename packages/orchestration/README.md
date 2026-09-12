@@ -606,8 +606,9 @@ conversation up to the point it is dispatched (fork-like), bounded to the last 8
 whole turns (a turn count, not a token budget), while its own steps
 stay out of the host's history (output keeps `history: false`). Omitting the
 field is the default: the agent is isolated and sees only its task input — there
-is no `isolated` value to set. It applies to `prompt` / `prompt-ref` agents;
-setting it on an `agent-ref` agent fails loud. See
+is no `isolated` value to set. Write it on the skill entry for an inline
+`prompt:`, or in the prompt file's YAML frontmatter for `prompt-ref`. Setting it
+on an `agent-ref` agent, or on a `prompt-ref` skill entry, fails loud. See
 [Context supply](https://flow-state.dev/docs/orchestration/context-supply).
 
 For a graph fixed in code (seeded `initialTasks`, custom collection, tuned

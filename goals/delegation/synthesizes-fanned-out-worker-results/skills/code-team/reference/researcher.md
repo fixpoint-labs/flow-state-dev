@@ -1,3 +1,8 @@
+---
+description: Researches the requested topic and reports its finding.
+tools: [taskTools]
+---
+
 Researches the requested topic and reports its finding.
 
 Your secret code is $1.

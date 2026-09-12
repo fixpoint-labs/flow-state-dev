@@ -44,13 +44,49 @@ Each entry resolves one of three ways:
 
 Set exactly one. An entry carrying two resolution fields is rejected when the skill is parsed.
 
-Tools are not declared here. They're already assignable — see [Assigning a task to a tool](#assigning-a-task-to-a-tool).
+A `prompt-ref` team is a map of seat names to files. The skill entry is the name and the path. Generator fields live on the persona file:
 
-An inline agent (`prompt` or `prompt-ref`) is fully portable: a skill folder carries its own team with no app wiring beyond the tool catalog. Reach for `agent-ref` when you already maintain your own catalog of participants and want several skills to share one definition; [Borrowing an agent from a registry](../orchestration/agents#borrowing-an-agent-from-a-registry) covers what the two halves have to do.
+```yaml
+---
+description: Research a topic using a lead plus two specialists.
+agents:
+  analyzer:
+    prompt-ref: ./reference/analyze.md
+  writer:
+    prompt-ref: ./reference/write.md
+---
+```
 
-Agents materialize when the generator's tool surface resolves, once per execution, so a resolution step that has to await (a registry lookup, a prompt file read) is fine. Missing wiring on a statically-bound skill, such as an `agent-ref` with no registry, fails loud at build time.
+```md
+---
+description: Analyzes one competitor.
+tools: [search, fetch]
+model: openai/gpt-5.4-mini
+---
+You analyze one competitor…
+```
 
-Per-agent tuning on an inline agent: `tools` (catalog keys the agent may call itself; `taskTools` is a special key that gives the agent the task tools bound to the coordinator's board, which is how an agent fans out follow-up tasks mid-drain), `visibility` (`sub`, `primary`, or a `{ client, history }` mapping), and `model`. An `agent-ref` agent tunes through `agent-overrides` instead (replace-semantics for `tools` / `model` / `visibility`).
+Putting `tools`, `model`, `visibility`, or `context-supply` on the skill entry beside `prompt-ref` is rejected when the skill is parsed. The error names the leftover fields and points at the file:
+
+```
+SKILL.md agent `analyzer`: `tools` can't be set alongside `prompt-ref` — the prompt file is the source of truth. Move them into the YAML frontmatter of `./reference/analyze.md`.
+```
+
+A prompt file with no frontmatter is valid. The body is the persona. The frontmatter, when present, accepts `description`, `tools`, `model`, `visibility`, and `context-supply`. Any other key is rejected.
+
+Catalog tools you assign *tasks* to are not declared in `agents:`. They're already assignable — see [Assigning a task to a tool](#assigning-a-task-to-a-tool).
+
+A `prompt` or `prompt-ref` agent is fully portable: a skill folder carries its own team with no app wiring beyond the tool catalog. Reach for `agent-ref` when you already maintain your own catalog of participants and want several skills to share one definition; [Borrowing an agent from a registry](../orchestration/agents#borrowing-an-agent-from-a-registry) covers what the two halves have to do.
+
+A statically bound `agent-ref` with no registry fails when the skill is built.
+
+An inline `prompt:` entry may carry `tools`, `model`, `visibility`, and `context-supply` on the skill entry, whether the persona is one line or many. A `prompt-ref` entry puts those fields in the prompt file's YAML frontmatter.
+
+`tools` is a list of catalog keys the agent may call itself. `taskTools` is a special key that gives the agent the task tools bound to the coordinator's board, which is how an agent fans out follow-up tasks mid-drain. `visibility` is `primary`, `sub`, `trace`, or a `{ client, history }` mapping.
+
+An optional `description` on the prompt file is the one-line roster blurb the coordinator sees. Without it, the roster uses the first non-blank body line, cut off past 80 characters. An inline `prompt:` has no file, so it uses the first line of the persona.
+
+An `agent-ref` agent tunes through `agent-overrides` (replace-semantics for `tools` / `model` / `visibility`). `context-supply` is refused on `agent-ref`.
 
 ### Assigning a task to a tool
 
@@ -282,7 +318,7 @@ A coordinator is not holding a task, so nothing scopes its calls: it plans, drai
 
 Only a refused transition or a refused write comes back as a result. Storage failures, concurrent-write conflicts, and ordinary bugs throw. Driving a `TaskCollection` directly from your own code gets those two differently: a refused transition throws an `IllegalTaskTransitionError`, and a refused write resolves to a `declined` verdict. See [the status state machine](../orchestration/task-substrate.md#the-status-state-machine) and [what a write reports](../orchestration/task-substrate.md#what-a-write-reports).
 
-**`runBoard` — the execution path.** One call drains the board: every runnable task is dispatched to its assigned agent (independent tasks in parallel, dependency-gated tasks once their deps complete), and the settled board comes back with each task's output. The drain claims `pending` tasks only, so planning more work and calling `runBoard` again on the same board runs just the new tasks. An agent that declares `tools: [taskTools]` can enqueue more tasks mid-drain (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.
+**`runBoard` — the execution path.** One call drains the board: every runnable task is dispatched to its assigned agent (independent tasks in parallel, dependency-gated tasks once their deps complete), and the settled board comes back with each task's output. The drain claims `pending` tasks only, so planning more work and calling `runBoard` again on the same board runs just the new tasks. An agent that lists `taskTools` in its `tools` (on the skill entry for `prompt:`, in the prompt file's frontmatter for `prompt-ref`) can enqueue more tasks mid-drain (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.
 
 `addTask` writes a task; it does not execute anything by itself. Execution happens when the generator calls `runBoard`, which drains the runnable graph.
 
@@ -356,7 +392,7 @@ The `context: pattern` mode, the `pattern:` / `pattern-config:` / `initial-tasks
 
 ## Where fork went
 
-Fork mode (`context: fork`, a skill that ran as an isolated sub-agent) is also removed. The everyday case it served, running something as a sub-agent and getting the result back, is one task and a drain: declare an agent, `addTask` a single task assigned to it, call `runBoard`, then read the task's output. The variant where a sub-agent inherits the conversation so far is a property of the agent. Set `context-supply: conversation` on an inline agent and it inherits the parent conversation up to the point it was dispatched, while its own steps stay out of the host's history. See [Context supply](../orchestration/context-supply).
+Fork mode (`context: fork`, a skill that ran as an isolated sub-agent) is also removed. The everyday case it served, running something as a sub-agent and getting the result back, is one task and a drain: declare an agent, `addTask` a single task assigned to it, call `runBoard`, then read the task's output. The variant where a sub-agent inherits the conversation so far is a property of the agent. Set `context-supply: conversation` on a `prompt:` entry, or in the prompt file's frontmatter for `prompt-ref`, and the agent inherits the parent conversation up to the point it was dispatched, while its own steps stay out of the host's history. See [Context supply](../orchestration/context-supply).
 
 ## Related
 
