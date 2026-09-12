@@ -284,6 +284,11 @@ export interface CreateChannelFlowOptions {
    * Naming a recipient from stored data is refused by the dispatch substrate,
    * so a notify block declares its own targets; it never reads one out of the
    * members list and dispatches to it.
+   *
+   * Typed `BlockDefinition<any, any>` as every other factory in the repo types
+   * a block slot (`goalSeekLoop`'s `seed`/`replanner`, `supervisor`'s
+   * `worker`/`planner`): the two schema params stay open because a slot's block
+   * brings its own. Core exports no block-slot type to use instead.
    */
   notify?: BlockDefinition<any, any>;
 }
@@ -394,6 +399,12 @@ export function createChannelFlow(options: CreateChannelFlowOptions = {}) {
       actions: {
         // The same blocks a client reaches, so another flow's dispatch lands on
         // one implementation rather than a second spelling of it.
+        //
+        // Both registrations are required, and so is repeating `concurrency`:
+        // `resolveEntry` reads one map per dispatch type and never falls
+        // through to another, so a name in `actions` is unreachable by an
+        // internal dispatch, and the arbiter reads `concurrency` off whichever
+        // entry it resolved. Sharing the block ref is the whole dedupe there is.
         post: { block: post, concurrency: "queue" },
         read: { block: readChannel },
         ...(fanOut === undefined

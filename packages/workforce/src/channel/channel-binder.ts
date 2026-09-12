@@ -10,6 +10,14 @@
  * Nothing is minted per record. A hundred channel files are a hundred sessions
  * on one instance, and the word `mint` is avoided here for that reason.
  *
+ * **The two are paired: every roster `openChannels` opens must be one
+ * `channelInstances` already validated.** `validate` is reached only from
+ * `channelInstances`, so a caller that runs `openChannels` alone over a
+ * hand-built roster gets no refusal at all — most visibly, a record carrying
+ * BOTH a body and a frontmatter `instructions:` silently takes the body
+ * (`stateFor`'s precedence) where `validate` would have refused it as two
+ * sources for one setting.
+ *
  * **Why the whole closed key list lives here.** Under an instance-per-channel
  * shape the flow's own `configSchema` refused an undeclared `CHANNEL.md` key
  * for free. It cannot now: per-channel facts are session state, and the session
@@ -22,6 +30,7 @@
 
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
+  INSTRUCTIONS_KEY,
   REFUSED_SYSTEM_KEY,
   REFUSED_SYSTEM_KEY_MESSAGE,
   type ChannelManifest
@@ -36,9 +45,6 @@ import { CHANNEL_KIND, boundChannel, channelFlow, type ChannelSessionState } fro
  * including `id`, which is the record's identity rather than a setting.
  */
 const DECLARABLE_KEYS = ["flow", "description", "members", "instructions"] as const;
-
-/** The one setting name a channel's charter arrives under. */
-const INSTRUCTIONS_KEY = "instructions";
 
 /**
  * A channel kind: a flow factory carrying the same identity contract the
