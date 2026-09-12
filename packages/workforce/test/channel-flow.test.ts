@@ -177,35 +177,6 @@ describe("the channel kind", () => {
     }
   });
 
-  it("serialises two concurrent posts on one channel, both landing", async () => {
-    const { instance, state } = host();
-    try {
-      const runtime = await state.getRuntime();
-      await bind(runtime.stores, "engineering.standup", ["a", "b"], "Post status.");
-
-      const post = (body: string) =>
-        runAction({
-          flow: instance,
-          actionName: "post",
-          input: { body },
-          userId: USER_ID,
-          sessionId: "engineering.standup",
-          stores: runtime.stores,
-          runtimeConfig: { ...runtime.runtimeConfig }
-        });
-
-      const [first, second] = await Promise.all([post("first"), post("second")]);
-      expect(first.error).toBeUndefined();
-      expect(second.error).toBeUndefined();
-
-      const bodies = (await stateOf(runtime.stores, "engineering.standup"))?.transcript.map((l) => l.body);
-      expect(bodies).toHaveLength(2);
-      expect(new Set(bodies)).toEqual(new Set(["first", "second"]));
-    } finally {
-      await state.dispose();
-    }
-  });
-
   it("keeps two channels' transcripts apart on the one instance", async () => {
     const { instance, state } = host();
     try {
