@@ -65,6 +65,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.3",

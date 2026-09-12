@@ -30,6 +30,46 @@ export interface WorkerManifest {
 }
 
 /**
+ * One channel, as declared on disk or hand-built.
+ *
+ * The same three-field record a worker is made of, and deliberately so: the
+ * loader that reads a `CHANNEL.md` returns this type rather than declaring a
+ * second one. Declared here, beside {@link WorkerManifest}, for the reason that
+ * one is — node-free, so the binder (which reads nothing) and the reader (which
+ * reads folders) never hold two spellings of one record.
+ */
+export interface ChannelManifest {
+  /**
+   * Team-qualified identity, "<teamId>.<name>" — e.g. "engineering.standup".
+   * The channel's whole identity, and literally its session id. A frontmatter
+   * `id:` cannot reach it: the record's shape is what carries identity.
+   */
+  id: string;
+  /** Frontmatter exactly as written — keys as the file spelled them, values uninterpreted. */
+  declared: Record<string, unknown>;
+  /** The channel's charter: Markdown body verbatim, frontmatter removed. */
+  body: string;
+}
+
+/**
+ * A key a `CHANNEL.md` may not declare, refused by name wherever a record is
+ * read.
+ *
+ * `system` is set from the declaration path, never from a file. Refused at this
+ * package's binder as well as at the reader, because a hand-built record never
+ * passes the reader.
+ */
+export const REFUSED_SYSTEM_KEY = "system";
+
+/**
+ * The one wording for {@link REFUSED_SYSTEM_KEY}. Names no subject — the caller
+ * supplies what it can name.
+ */
+export const REFUSED_SYSTEM_KEY_MESSAGE =
+  `declares \`${REFUSED_SYSTEM_KEY}:\`, which is not a setting a channel declares. ` +
+  `Where a channel is declared is what decides it.`;
+
+/**
  * The single setting name the seat factory imposes: where a worker's body
  * arrives in its flow's settings bag.
  *
