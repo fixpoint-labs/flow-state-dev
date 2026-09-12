@@ -201,6 +201,7 @@ const sidebars: SidebarsConfig = {
         "orchestration/configuration",
         "orchestration/agents",
         "orchestration/workers-on-disk",
+        "orchestration/channels",
         "orchestration/harness-manager",
         {
           type: "category",

@@ -224,6 +224,123 @@ Spell it `instructions`.
 Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
 every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.
 
+## Channels
+
+A **channel** is a place several agents talk about one topic, with one durable transcript and nobody
+owning a row. This package ships the flow kind that runs one, plus the two calls that bind a roster
+of channels to it.
+
+The identity rule is the thing to get straight first, because it is not the one `WORKER.md` teaches:
+**one kind is one instance, and one channel is one named session on that instance.** A hundred
+channel records are a hundred sessions on a single registered flow. What differs per channel — who
+its members are, what its charter says, what has been said in it — lives in that session's state.
+
+You register nothing to use channels. The built-in kind is seeded for you.
+
+```ts
+import { channelInstances, openChannels, type ChannelManifest } from "@flow-state-dev/workforce";
+
+const channels: ChannelManifest[] = [
+  {
+    id: "engineering.standup",
+    declared: {
+      members: ["engineering.lead", "engineering.analyst"],
+      description: "Where the engineering team posts daily status.",
+    },
+    body: "Post what you finished, what you're on, and what's blocking you.",
+  },
+];
+
+// Build time. One instance per distinct kind, not per record.
+flowRegistry.registerMany(channelInstances(channels)); // one instance, id "channel"
+
+// Runtime, once the host is up. One named session per record.
+await openChannels(channels, { client: sessionClient, userId: "u_42" });
+```
+
+The two calls are separate because they happen at two different times: an instance is registered
+when the server is built, and a session can only be opened once it is running. `openChannels` needs
+a `userId` because a session belongs to one user — see *What a transcript proves* below.
+
+A record declares four keys and no others: `flow` (which kind, optional), `description`, `members`,
+and `instructions` (or a body, which is the same setting). The list is closed and checked at
+`channelInstances`: an undeclared key, an `id:`, a `system:`, or a body alongside `instructions:`
+each refuse by name. That check is this package's job and not the session route's — the route parses
+caller state against the flow's `stateSchema` but falls back to the raw state when the parse fails,
+so it refuses nothing at create.
+
+### Posting and reading
+
+`post` and `read` are declared both as public actions and as internal entries, so a client and
+another flow reach the same blocks. A post addresses the channel's **session id**:
+
+```ts
+const postToStandup = dispatcher({
+  name: "post-to-standup",
+  flowKind: "channel",                          // the shared instance
+  action: "post",
+  inputSchema: z.object({ body: z.string() }),
+  session: { id: () => "engineering.standup" }, // the channel
+  payload: (input) => ({ body: input.body, author: "engineering.lead" }),
+});
+```
+
+Address `{ id }`, never `{ key }`: a key-derived child id is hashed together with the parent session,
+so the same key resolves to a different session for every poster and the channel never sees the post.
+Nothing detects that mistake.
+
+A flow-to-flow post needs in-process dispatch. On a deployment whose dispatcher hands work to an
+external queue, a delivery into an existing session refuses `external-dispatcher` by name — the
+public action route still works, the dispatch door does not.
+
+A post into a session nobody opened refuses `channel-not-bound` and writes nothing. The shared
+instance answers for every session id and the action path creates what it does not find, so
+boundness, not existence, is what makes a session a channel.
+
+### What a transcript proves
+
+A session is bound to one user, so **every line of a given channel carries the same `principal`** —
+the server-derived identity the post ran under. The optional `author` is a label the poster supplied,
+stored beside `authorVerified: false`, and it is the only thing distinguishing participants. The
+members check on `author` is a validity check against the declared roster, not authentication. Build
+an audit or approval flow on this and you get a far weaker guarantee than the field names suggest.
+
+### Waking members
+
+`createChannelFlow({ notify })` takes a block run once per declared member per post. It runs in its
+own request, outside the post's queue hold, so a slow delivery never delays the next post. A delivery
+that refuses is recorded in the session journal; the post stays written and membership is unchanged.
+Without a slot, posts land and nobody is woken.
+
+The framework carries the policy and your app supplies the addresses: a dispatch target chosen from
+stored data is refused by construction, so a notify block declares its own recipients.
+
+### Registering your own kind
+
+The escape hatch, not a setup step. Reach for it when the workflow graph genuinely diverges — a
+standup, a DM and an announce channel are all channels on the one built-in kind, differentiated by
+members and charter.
+
+```ts
+// A kind of your own, alongside the built-in.
+channelInstances(channels, { kinds: { "my-channel": createMyChannelFlow() } });
+
+// Or replace the built-in wholesale, keeping the standard behaviour with your own notify block.
+channelInstances(channels, { kinds: { channel: createChannelFlow({ notify }) } });
+```
+
+Your factory carries the same contract the built-in does: `cardinality: "singleton"`, so
+`flow.id === flow.kind`. A `flow:` naming a kind you did not pass refuses by name and never falls
+back to the built-in. The `kinds` map is the whole registration surface; there is no second API.
+
+### What this floor does not ship
+
+No roster, no delete verb, no live join or leave, no brief or housekeeper. Membership is the declared
+list and nothing else writes it, so changing who is in a channel means editing the record and opening
+a fresh channel. `openChannels` swallows the 409 on an already-open channel, which makes re-running it
+a no-op — and means an edited record does not reach a channel that is already open. Re-opening is not
+a migration.
+
 ## Exports
 
 | Export | Description |
@@ -234,6 +351,14 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Ships from the `./loader` subpath (Node only). |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body }`. |
+| `createChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
+| `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
+| `channelInstances(manifests, { kinds? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Register these. |
+| `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. Idempotent. |
+| `ChannelManifest` | One channel record: `{ id, declared, body }`. |
+| `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
+| `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |
+| `channelSessionStateSchema` / `channelTranscriptLineSchema` | A channel session's state, and one transcript line. |
 
 ## Error Semantics
 
@@ -251,6 +376,11 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
 | Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |
+| Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, or `instructions:` given both in the frontmatter and as a body. Collected: one error names every bad channel, and nothing is registered |
+| Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the channel is already open and is swallowed |
+| `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
+| `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |
+| `external-dispatcher` | A flow-to-flow post on a host whose dispatcher hands work to an external queue. The public action route is unaffected |
 
 ## Scripts
 

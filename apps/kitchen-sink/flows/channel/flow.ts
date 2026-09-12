@@ -33,6 +33,10 @@ const notifyMember = handler({
   },
 });
 
-const channelFlow = createChannelFlow({ notify: notifyMember });
+const channelKind = createChannelFlow({ notify: notifyMember });
 
-export default channelFlow;
+// The one instance. `cardinality: "singleton"` means its id is its kind, so the
+// address is `channel` and every channel here is a session on it.
+const flow = channelKind();
+
+export default flow;

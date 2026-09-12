@@ -325,3 +325,4 @@ const seats = hireWorkforce(workers, {
 - It does not follow symlinks, at any level of the walk.
 - It does not watch the tree. Read it once, at startup.
 - It does not staff a [task board](./task-board.md). A hired seat is an address you open a session against; a board's workers are in-process and claim tasks from a collection. A board calls its registry entries seats too. Same idea, different mechanism.
+- It does not describe a channel. A `WORKER.md` mints one flow copy per record; a channel is a session on a shared kind, which is a different binding with a different reason. See [Channels](./channels.md).
