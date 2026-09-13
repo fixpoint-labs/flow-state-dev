@@ -63,6 +63,10 @@ name (`REFUSED_PERSONA_KEY`, same file).
 Generator slots stay `prompt` / `context` / `history` / `user`. Instructions compose as
 `prompt: [default, instructions]`.
 
+`tools` is a hard runtime fence, not a hint: a seat may call exactly the catalog keys it names,
+and an empty list means none, regardless of anything else the app's catalog or the skills
+library contributes (see C5).
+
 The shared `default` prompt is owned and shipped elsewhere (FIX-1344 part 2, not yet landed).
 Until it does, the kind ships against `instructions` alone with an explicit seam for `default`
 to drop into, and **defines no second default-prompt configuration anywhere in this epic.**
@@ -242,6 +246,10 @@ The library wins on the same argument as C3, one level down: its activation is p
 a skill given to one generator never appears in another's context, where the capability keeps a
 session-global `activeSkills` bag. The published guide currently teaches the capability;
 correcting that is FIX-1366's, not a reason to pick it.
+
+"Whole catalog" here means the load tool's reach over the *skill* catalog (`allowed` omitted), not
+licence for the skills library to re-widen a seat's tool reach past its own `tools:` (C1) — the
+default kind builds the library with no app tool catalog of its own for exactly that reason.
 
 ## C6 — What must not be invented
 

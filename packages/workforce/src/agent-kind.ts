@@ -15,6 +15,18 @@
  * catalog, the skills to seed, and a default model. Every knob that is not one
  * of those belongs to a replacement kind, registered under `agent` by the
  * caller, which wins for every seat.
+ *
+ * **A worker's `tools:` is a hard runtime fence**, not a hint: a seat may call
+ * exactly the catalog keys it names, and an empty list means none, regardless
+ * of what else the app's catalog carries. The skills library is built with no
+ * catalog of its own for exactly this reason — handing it the app's catalog
+ * would let its own whole-catalog registration put every app tool on the
+ * generator no matter what a seat's `tools:` says. A stock-kind worker's
+ * `allowed-tools` in a skill body is therefore decorative unless the same
+ * tools also appear in that worker's `tools:` list; an app that needs a
+ * skill's `allowed-tools` to actually widen a seat's tool reach registers its
+ * own `agent` kind instead (the C1 replacement door above), passing `catalog`
+ * into its own `createSkillsLibrary` call there.
  */
 
 import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
@@ -165,8 +177,14 @@ export function defineAgentKind(options: AgentKindOptions = {}) {
   const settings = settingsSchema(options);
   const inputSchema = z.object({ message: z.string() });
 
+  // Deliberately NOT `catalog`: the library's own whole-catalog registration
+  // (see `skillsBinding` below) is a safe superset ONLY of what the library
+  // itself owns. Handing it the app's tool catalog would let it register
+  // every app tool on the generator regardless of a seat's own `tools:`
+  // setting, re-widening past the mint-time fence the `tools` schema below
+  // enforces. `catalog` stays in use for that fence and for the generator's
+  // own `tools:` slot — never for the skills library.
   const skills = createSkillsLibrary({
-    catalog,
     ...(options.skills ? { initialSkills: options.skills } : {})
   });
 

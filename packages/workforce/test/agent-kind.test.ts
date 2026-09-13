@@ -128,6 +128,113 @@ describe("the built-in agent kind's tools", () => {
   });
 });
 
+// The mint-time refusal above proves a bad `tools:` name is rejected before a
+// seat exists. It does not prove the accepted names are the ONLY ones a live
+// seat can call — the skills library also installs tools on this generator
+// (contract C5), and until FIX-1363's runtime fence a seat's own `tools:`
+// could be silently widened by whatever the app's catalog carried. These run
+// the real `run` sequencer end to end (see the longer note on the skills
+// switch describe block below for why `createTestContext`/`executeBlock` are
+// needed directly) and check the CATALOG TOOL ITSELF: the model "calling" a
+// tool the seat's `tools:` omitted must not reach that tool's own `execute`.
+describe("the built-in agent kind's tools — the runtime fence, not just the mint refusal", () => {
+  async function contextFor(
+    seat: FlowInstance,
+    generators: Record<string, ReturnType<typeof mockGenerator>>
+  ) {
+    return createTestContext({
+      flow: { ...seat, cardinality: "singleton" },
+      orgId: "test-org",
+      org: { state: {} },
+      sessionId: "test-session",
+      sequencerName: seat.actions.run!.block.name,
+      declaredResources: seat.actions.run!.block.declaredResources,
+      generators
+    });
+  }
+
+  // A model script that "calls" a named tool. Whether that call ever reaches
+  // the tool's own `execute` depends entirely on whether the generator
+  // actually registered it — an unregistered name just resolves to a
+  // synthesized `{ ok: true }` inside the mock's tool loop (see
+  // `MockGeneratorInstance`/`runScript`), so `secretCalls` only moves when
+  // the fence has failed.
+  const callTool = (toolName: string) => ({
+    toolCalls: [{ toolCallId: "call-1", toolName, args: {} }]
+  });
+
+  it("does not run a catalog tool the seat's own `tools:` omits", async () => {
+    let secretCalls = 0;
+    const secret = handler({
+      name: "secret",
+      description: "A tool this worker did not ask for.",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => {
+        secretCalls += 1;
+        return { ok: true };
+      }
+    });
+
+    const kind = defineAgentKind({ catalog: { board, secret } });
+    const [seat] = hire(
+      [record({ id: "engineering.lead", declared: { tools: ["board"] }, body: "Lead." })],
+      { [AGENT_KIND]: kind }
+    );
+
+    const runtime = await contextFor(seat!, {
+      "agent-answer": mockGenerator({
+        name: "agent-answer",
+        script: [callTool("secret"), { text: "done" }]
+      })
+    });
+
+    const result = await executeBlock({
+      block: seat!.actions.run.block,
+      input: { message: "use every tool you have" },
+      ctx: runtime.ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(secretCalls).toBe(0);
+  });
+
+  it("does not run any catalog tool for a seat whose `tools:` is empty", async () => {
+    let secretCalls = 0;
+    const secret = handler({
+      name: "secret",
+      description: "A tool this worker did not ask for.",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => {
+        secretCalls += 1;
+        return { ok: true };
+      }
+    });
+
+    const kind = defineAgentKind({ catalog: { board, secret } });
+    const [seat] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
+      [AGENT_KIND]: kind
+    });
+
+    const runtime = await contextFor(seat!, {
+      "agent-answer": mockGenerator({
+        name: "agent-answer",
+        script: [callTool("secret"), { text: "done" }]
+      })
+    });
+
+    const result = await executeBlock({
+      block: seat!.actions.run.block,
+      input: { message: "use every tool you have" },
+      ctx: runtime.ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(secretCalls).toBe(0);
+  });
+});
+
 describe("replacing the built-in agent kind", () => {
   const replacement = defineFlow({
     kind: AGENT_KIND,
