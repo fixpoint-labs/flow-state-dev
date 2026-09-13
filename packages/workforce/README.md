@@ -34,6 +34,8 @@ flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 
 `workerAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package — decides what a worker may declare.
 
+This example names a custom kind because that is what it is demonstrating. A record that leaves `flow:` out is hired into the built-in `agent` kind instead, and needs no `kinds` argument at all — see **Hiring** below.
+
 ## Personas
 
 Use `definePersona` to declare resource-backed personas (parallel to Skills):
