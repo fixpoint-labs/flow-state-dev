@@ -36,8 +36,9 @@ flowchart LR
 
 A `WORKER.md` with no `flow:` line hires into the built-in kind — zero config lines, the epic's
 headline promise. Naming your own kind still wins; a typo'd name fails loudly rather than hiring
-silently. **Memory is not in the box**: it attaches when a team configures it, on the scopes we
-already ship. The shape being gated, not built code.
+silently. **Memory is not in the box**: an app composes it into a kind of its own, out of the
+memory pieces we already ship, on the scopes we already ship. Composition, not a setting. The
+shape being gated, not built code.
 
 ## 3. The set (proposed)
 
@@ -46,7 +47,7 @@ flowchart TD
   N["FIX-1361<br/>contract"] -->|"what the kind must satisfy"| S["the OOTB agent seat"]
   B["FIX-1363<br/>the kind itself"] -->|"the flow that gets hired"| S
   SK["FIX-1362<br/>per-seat skills"] -->|"the skills it may use"| S
-  M["FIX-1364<br/>memory on existing scopes"] -->|"what it remembers, and the gaps"| S
+  M["FIX-1364<br/>memory seam on existing scopes"] -->|"how you attach memory, and the gaps"| S
   R["FIX-1360<br/>kitchen-sink drift audit"] -->|"the baseline to port from"| S
   T["FIX-1366<br/>Atlas teach"] -->|"the one documented way in"| S
   P["FIX-1365<br/>Thin Proof · required"] -->|"proof a real hire works"| S
@@ -65,7 +66,7 @@ flowchart LR
   R["FIX-1360<br/>drift audit"] --> N["FIX-1361<br/>contract"]
   N --> B["FIX-1363<br/>the kind"]
   B --> SK["FIX-1362<br/>skills"]
-  B --> M["FIX-1364<br/>memory"]
+  B --> M["FIX-1364<br/>memory seam"]
   B --> T["FIX-1366<br/>Atlas teach"]
   SK --> P["FIX-1365<br/>Thin Proof · required"]
   M --> P

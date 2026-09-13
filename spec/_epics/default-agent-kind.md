@@ -13,8 +13,8 @@ working agent. Every app that wants one either writes its own agent flow from sc
 on a second agent factory (`defineAgent` / `AgentRegistry` / `materializeAgent`) that we have
 already decided to delete. When this epic lands, a `WORKER.md` with nothing but instructions
 produces a seat that talks and can use the skills registered to it, and a team that wants
-something different names their own kind on one line. **Memory is not in that box**: it attaches
-when a team configures it, within the scopes we already ship.
+something different names their own kind on one line. **Memory is not in that box**: an app
+composes it in, assembling the memory pieces we already ship into a kind of its own.
 
 **"Nothing but instructions" means zero config lines, and that is now decided, not aspirational.**
 An omitted `flow:` selects the built-in agent kind, and the built-in reaches the `kinds` map
@@ -23,14 +23,26 @@ without the app naming it (Architect stamp on [PR #1730](https://github.com/fixp
 is the work this epic does, not the behaviour it describes. Theme 5 carries the contract.
 
 **"Remembers" is the kind's reach, not zero-config behaviour.** Talks and skills are out of the
-box; memory is attach-when-configured. The default kind and the hire package carry **no memory
-import** — `packages/workforce` depends on `core`, `orchestration` and `zod`, and FIX-1361's
-decision 2 fences that from changing ("the default never forces memory machinery on a team that
-doesn't want any"). So the day FIX-1363 ships talks+skills with no `workforce → memory` edge, this
-headline is still true. Ruled by the Architect on
-[PR #1750](https://github.com/fixpoint-labs/flow-state-dev/pull/1750), 2026-09-12, and mirrored on
-[PR #1730](https://github.com/fixpoint-labs/flow-state-dev/pull/1730); theme 4 carries the scopes
-and the named per-member gap (FIX-1364's), theme 9 the composition.
+box. The default kind and the hire package carry **no memory import** — `packages/workforce`
+depends on `core`, `orchestration` and `zod`, and FIX-1361's decision 2 fences that from changing
+("the default never forces memory machinery on a team that doesn't want any"). So the day FIX-1363
+ships talks+skills with no `workforce → memory` edge, this headline is still true.
+
+**Attaching memory is composition, not configuration.** It attaches through a **named build-time
+composition seam**: an app assembles the memory resources and capability we already ship into
+**its own kind**, where it defines its flows. There is no "turn memory on" setting on the stock
+built-in and there cannot be one — memory's substrate resources have to be declared statically
+when a flow is built, so nothing at hire time and no config flag can conjure them. Declaring them
+on the default kind and leaving them switched off was rejected for the same reason the fence
+exists: it puts memory back in the graph every team is forced to carry. **What that costs the
+team adopting this**: turning memory on is an assembly step their app performs once, not a flag
+they flip. Ruled by the Architect on
+[PR #1751](https://github.com/fixpoint-labs/flow-state-dev/pull/1751), 2026-09-13, and mirrored on
+[PR #1730](https://github.com/fixpoint-labs/flow-state-dev/pull/1730) — it corrects the attach
+mechanism named in the 2026-09-12 honesty fold
+([PR #1750](https://github.com/fixpoint-labs/flow-state-dev/pull/1750)), not the honesty itself.
+Theme 4 carries the scopes, the named per-member gap and **FIX-1364's ownership of the seam**;
+theme 9 the light-vs-heavy asymmetry, which applies only once memory is composed in.
 
 **Which objective, and how it is proven.** [`docs/objectives.md`](../../docs/objectives.md)
 **Goal 1 — Validate through real usage**; the published objective on FIX-1359 is *"Workforce
@@ -82,9 +94,9 @@ FIX-1365 being required does not widen it: a thin hire of the OOTB agent kind, n
    **flow instance**, declared as `WORKER.md`. A **kind** is a flow factory on hire's `kinds`
    map; a seat's `flow:` only *names* a registered kind. A **worker** is a generator or flow
    with whatever that kind needs. The **agent kind** is the opinionated default: instructions
-   plus shared default prompt, model, tools, skill register/activate — and memory when a team
-   attaches it (theme 9). A sequencer or intake seat is not a degraded agent — it is a different
-   kind. No child spec revives "thin" or "fat", and no child introduces a fifth term for any of
+   plus shared default prompt, model, tools, skill register/activate — and memory when an app
+   composes it into a kind of its own (§1's seam; theme 9). A sequencer or intake seat is not a
+   degraded agent — it is a different kind. No child spec revives "thin" or "fat", and no child introduces a fifth term for any of
    these four.
 
 2. **The agent kind consumes prompt composition; it never invents one.** Generator slots stay
@@ -109,6 +121,16 @@ FIX-1365 being required does not widen it: a thin hire of the OOTB agent kind, n
    belong on agent/member scope, never on the seat object. If durable per-member isolation is
    still an L1 gap when FIX-1364 gets there, the deliverable is a named gap on Atlas and a
    ticket — **not** seat-local memory that looks durable and isn't.
+
+   **It attaches by composition, on the seam §1 names** — an app assembles the shipped memory
+   resources and capability into its own kind at definition time. No config flag on the stock
+   built-in, and no memory resources declared on the default kind and then gated off: that shape
+   was ruled out on [PR #1751](https://github.com/fixpoint-labs/flow-state-dev/pull/1751) because
+   it puts memory in the required graph regardless of whether anything runs. **FIX-1364 owns the
+   seam's design, the gap honesty, and the teaching surface for *how you attach*.** **FIX-1366
+   teaches that honestly** — not "remembers with zero configuration", and not "one setting on the
+   stock kind". **FIX-1363 is not blocked by any of it**: it ships talks + skills with no memory
+   wired.
 
 5. **Replaceability is one line in `WORKER.md`.** The built-in kind carries an id (`agent` or
    near it — the exact string is an engineering call in FIX-1361). `flow: myCustomAgent` wins
@@ -186,9 +208,11 @@ built against `instructions` with a seam, whenever part 2 arrives.
    - **Skills — `createSkillsLibrary` plus per-generator binding is the canonical OOTB path**, not
      `createSkillsCapability`: the library activates per binding, the capability keeps a
      session-global bag. Theme 7's isolation rule rides on top of that choice.
-   - **Memory — nothing by default.** **When memory is attached**, the light path is *read-side*;
-     the model-classifier tier and the background capture pipeline are **opt-in, one setting
-     each**. This is not a required default import, and no child may turn it into one — the fence
+   - **Memory — nothing by default.** **Once an app has composed memory into its own kind** (§1's
+     seam, and never before that), the light path is *read-side*; the model-classifier tier and
+     the background capture pipeline are **opt-in, one setting each**. Those two settings live
+     inside the kind that app assembled — they are not a way to switch memory on in the stock
+     built-in. This is not a required default import, and no child may turn it into one: the fence
      in §1 and theme 4 stands.
 
    A child re-deriving either default from a closed PR thread should cite this theme instead.
@@ -210,7 +234,7 @@ flowchart TD
   A[FIX-1360<br/>KS drift audit] -->|drift note| B[FIX-1361<br/>agent kind contract]
   B -->|contract| C[FIX-1363<br/>impl: agent kind]
   C -->|kind to bind into| D[FIX-1362<br/>per-seat skills]
-  C -->|kind to attach to| E[FIX-1364<br/>memory + gap honesty]
+  C -->|kind to compose against| E[FIX-1364<br/>memory seam + gap honesty]
   C --> F[FIX-1366<br/>Atlas teach]
   D --> G[FIX-1365<br/>Thin Proof · required]
   E --> G
@@ -233,7 +257,7 @@ is merely serial.
 | [FIX-1361](https://linear.app/fixpoint-labs/issue/FIX-1361) | Contract for the default `agent` kind — incl. the **omitted-`flow:` admission** (decided: it selects the built-in) and the **loud-fail rule** for an unregistered kind name | spec | [#1750](https://github.com/fixpoint-labs/flow-state-dev/pull/1750) · open | — | **Spec Approved** |
 | [FIX-1363](https://linear.app/fixpoint-labs/issue/FIX-1363) | Built-in `agent` flow kind | spec | — | — | Backlog |
 | [FIX-1362](https://linear.app/fixpoint-labs/issue/FIX-1362) | Per-seat skill register + activate in the agent kind | spec | — | — | Backlog |
-| [FIX-1364](https://linear.app/fixpoint-labs/issue/FIX-1364) | Memory attach on existing scopes + named gaps | spec | — | — | Backlog |
+| [FIX-1364](https://linear.app/fixpoint-labs/issue/FIX-1364) | Memory composition seam on existing scopes + named gaps | spec | — | — | Backlog |
 | [FIX-1366](https://linear.app/fixpoint-labs/issue/FIX-1366) | Atlas teach: OOTB agent kind | spec | — | — | Backlog |
 | [FIX-1365](https://linear.app/fixpoint-labs/issue/FIX-1365) | Thin Proof: hire the OOTB agent kind — **required**, the epic's Goal 1 check | spec | — | — | Backlog |
 
@@ -241,8 +265,10 @@ is merely serial.
 Linear state is mirrored — that mirror is what releases FIX-1361, because the epic wake derives
 blocked-by from Linear state. **FIX-1361 has since started**: spec PR #1750 is open and
 Architect-stamped, Linear reads `Spec Approved`, and one amendment is in flight on it — C5's
-memory clause, which theme 9 above records the settled form of and which is FIX-1361's to fold,
-not this doc's. The five issues behind it are still `Backlog` with no PRs yet. No child carries
+memory clause, now ruled a build-time composition seam
+([PR #1751](https://github.com/fixpoint-labs/flow-state-dev/pull/1751), 2026-09-13), which §1 and
+themes 4 and 9 above record the settled form of and which is **FIX-1361's to fold, not this
+doc's** (criterion 6's seeder narrowing rides along on that same branch). The five issues behind it are still `Backlog` with no PRs yet. No child carries
 a Linear category label, so every route still reads **spec** by the fail-closed default ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which
 issues get a spec"). Labelling one **Bug** re-routes it, and an empty Spec PR cell would then be
 correct.*
@@ -314,6 +340,17 @@ re-parented here — Linear allows one parent, and they already have theirs.
   block, the only sanctioned edit is a one-line note that the gate passed on 2026-09-11 — **not**
   a rewrite. No future dispatch should re-open this as untidiness.
 
+- **~~Does memory attach by a setting on the stock kind, or by a named build-time composition
+  seam?~~** *Resolved (Architect on
+  [PR #1751](https://github.com/fixpoint-labs/flow-state-dev/pull/1751), 2026-09-13 — explicitly
+  "No D-n"):* **the seam.** The question was forced by the substrate: memory's resources have to
+  be declared statically at build time, so "attach when configured" had no legal implementation
+  under decision 2's fence. Declaring memory's resources on the default kind and gating them off
+  was rejected — a fence that permits the forbidden thing as long as it is switched off is not a
+  fence. An app assembles the shipped memory pieces into **its own kind** instead. Decision 2 is
+  **not** reopened; it is FIX-1361's, and the C5 rewrite lands on that branch. Folded into §1,
+  themes 1 / 4 / 9 and §4.
+
 ---
 
 ## Epic evolution
@@ -369,10 +406,31 @@ re-parented here — Linear allows one parent, and they already have theirs.
   word was always **kind reach**, not zero-config behaviour — `packages/workforce` has no
   `@flow-state-dev/memory` dependency and FIX-1361's stamped decision 2 forbids adding one, so the
   headline would have gone false the day FIX-1363 shipped talks+skills. It now reads talks + skills
-  out of the box, memory attach-when-configured. (2) A default two artifacts already treat as
+  out of the box, memory attach-when-configured — **that attach mechanism was itself corrected the
+  next day; see the entry below.** (2) A default two artifacts already treat as
   settled — skills library + per-generator binding; read-side vs classifier/capture once memory is
   on — lived only in **closed** PR #1736's thread, with zero hits in this doc. It is now theme 9.
   Theme 1's composition list, the explainer's *after* panel, and PR #1730's "What this does"
   headline all restated the old promise and were re-derived; theme 4, the admission rule, theme 1's
   vocabulary, decision 2 itself and the seven-issue set are untouched. The index moved in the same
   pass: FIX-1361 now carries spec PR #1750 and `Spec Approved`.
+
+- **Attach mechanism corrected: composition seam, not a setting (2026-09-13)** — **one round**,
+  above the bar: an Architect ruling (PR #1751, mirrored on #1730) on the FIX-1364 hold that
+  decision 2 had pre-declared. Yesterday's fold correctly dropped unqualified "remembers", but its
+  replacement — *attach-when-configured … remembers once memory is turned on* — named a mechanism
+  that does not exist. Memory's substrate resources must be declared statically, and a dynamic
+  `uses` entry contributes context and tools, never a resource graph; there is no build-time
+  conditional that declares resources from a config flag. Declare-and-gate on the default kind was
+  rejected as well, because it puts memory in the required graph the fence exists to keep empty.
+  §1 now says memory attaches through a **named build-time composition seam** — an app assembles
+  the shipped memory resources and capability into its own kind — and says plainly what that costs
+  a team: composition, not configuration. Every surface that restated the old mechanism was
+  re-derived in the same pass: theme 1's composition list, theme 4 (which also now carries the
+  FIX-1364 / FIX-1366 / FIX-1363 ownership lines), theme 9's light-vs-heavy bullet (scoped to
+  *once composed in*, with its "one setting each" explicitly living inside the app's own kind),
+  §3's DAG edge label and §4's FIX-1364 row and note, §5's new recorded decision, the explainer's
+  *after* and *set* panels, and PR #1730's "What this does" and themes-in-brief. Untouched, as the
+  ruling directs: decision 2's fence itself (FIX-1361's, being folded on its own branch, with
+  criterion 6's seeder narrowing), theme 4's existing-scopes rule and named per-member gap, theme
+  1's vocabulary, the admission rule, and the seven-issue set and its DAG.
