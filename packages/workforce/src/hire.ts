@@ -25,17 +25,31 @@ import {
   REFUSED_PERSONA_KEY_MESSAGE,
   type WorkerManifest
 } from "./manifest";
+import { AGENT_KIND, defineAgentKind } from "./agent-kind";
 
 /** The two keys the factory itself reads. Everything else is the worker's settings. */
 const RESERVED_KEYS = ["flow", "description"] as const;
+
+/**
+ * The stock `agent` kind, built once for the life of the module.
+ *
+ * Held here rather than exported: an app that wants a different one registers
+ * its own under `agent` (`kinds: { agent: defineAgentKind({ ... }) }`), which
+ * merges over this one. Define once, hire many — never per hire or per request.
+ */
+const builtInAgentKind = defineAgentKind() as unknown as AnyFlowType;
 
 export interface HireOptions {
   /**
    * The flows the app defined, by kind — `defineFlow(...)` results, passed
    * directly. A record's `flow` names one, and it is called once per worker to
    * mint that worker's copy.
+   *
+   * Optional: the built-in `agent` kind is always available underneath, so a
+   * roster of records that name no kind needs none of these. Passing a flow
+   * under `agent` replaces the built-in for every seat.
    */
-  kinds: Record<string, AnyFlowType>;
+  kinds?: Record<string, AnyFlowType>;
 }
 
 /** A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere. */
@@ -99,15 +113,25 @@ function messageOf(error: unknown): string {
  * hire would not be a refusal.
  *
  * @param manifests The roster — from the loader, or hand-built.
- * @param options   `kinds`: the flow factories the app defined.
+ * @param options   `kinds`: the flow factories the app defined. Optional — the
+ *                  built-in `agent` kind is always available underneath, and a
+ *                  flow passed under `agent` replaces it for every seat.
  * @returns One `FlowInstance` per record, ordered by id. Register these.
  * @throws If any record cannot be hired; the message names every bad worker.
  */
 export function hireWorkforce(
   manifests: WorkerManifest[],
-  options: HireOptions
+  options: HireOptions = {}
 ): FlowInstance[] {
-  const kindNames = Object.keys(options.kinds);
+  // The built-in sits UNDERNEATH the caller's, so a caller who registers their
+  // own `agent` wins — for every seat, not just the ones that name it. This is
+  // precedence, not extension: configuring the built-in's tools or skills means
+  // replacing the kind (`defineAgentKind({ ... })` registered here), never a
+  // second option on this function. A roster hired with `kinds: {}` therefore
+  // carries an empty tool catalog, because nothing ever merges into ours.
+  const kinds: Record<string, AnyFlowType> = { [AGENT_KIND]: builtInAgentKind, ...options.kinds };
+
+  const kindNames = Object.keys(kinds);
   const available = kindNames.length > 0 ? kindNames.map((k) => `"${k}"`).join(", ") : "(none)";
 
   const ordered = [...manifests].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -162,16 +186,29 @@ export function hireWorkforce(
       settings[INSTRUCTIONS_KEY] = manifest.body;
     }
 
-    const kind = manifest.declared.flow;
-    if (typeof kind !== "string" || kind.trim().length === 0) {
-      refuse("declares no `flow:`, so there is no flow kind to hire it into");
+    // The refusal that stood here SPLITS; it does not disappear. One condition
+    // used to refuse an absent `flow:` and a whitespace-only one alike. Only
+    // the first half now resolves to the built-in.
+    //
+    // A whitespace-only value keeps refusing, because whitespace is a typo or a
+    // YAML artefact rather than an expression of intent, and reading it as "use
+    // the default" would paper over a mistake in the one step whose whole story
+    // is loud failure. C2 is explicit that adding an implicit default must not
+    // weaken an existing refusal, and this is the one place it could.
+    const declaredKind = manifest.declared.flow;
+    if (typeof declaredKind === "string" && declaredKind.trim().length === 0) {
+      refuse("declares an empty `flow:`, which names no flow kind. Remove the key to hire the built-in `agent` kind, or name a kind you passed");
       continue;
     }
+
+    // Absent means the built-in. By the time a record is read, a `flow:` key
+    // carrying no value is indistinguishable from no key at all.
+    const kind = typeof declaredKind === "string" ? declaredKind : AGENT_KIND;
 
     // `hasOwn` rather than a bare lookup: a record's `flow` is author-supplied,
     // and `kinds["constructor"]` would otherwise resolve off the prototype and
     // hand us something that is not a flow factory at all.
-    const factory = Object.hasOwn(options.kinds, kind) ? options.kinds[kind] : undefined;
+    const factory = Object.hasOwn(kinds, kind) ? kinds[kind] : undefined;
     if (factory === undefined) {
       refuse(`names flow kind "${kind}", which was not passed to hireWorkforce. Kinds passed: ${available}`);
       continue;

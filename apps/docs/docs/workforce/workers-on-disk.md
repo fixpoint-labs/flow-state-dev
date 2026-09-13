@@ -245,8 +245,8 @@ Every problem here is a startup misconfiguration, so every problem throws. They 
 
 A record is refused when it:
 
-- declares no `flow`, so there is no kind to hire it into;
-- names a kind that was not passed in `kinds`; the message lists the kinds that were;
+- declares a `flow` that is present but empty, or only whitespace — that names no kind. Leave the key out entirely to get the built-in `agent` kind;
+- names a kind that was not passed in `kinds`; the message lists the kinds that were, including `agent`;
 - declares a setting its flow never declared, or omits one its flow requires;
 - carries a body for a flow kind that declares no `instructions`;
 - declares `instructions:` and carries a body;
@@ -254,6 +254,34 @@ A record is refused when it:
 - shares an id with another record in the same call, which is two workers claiming one address.
 
 `kinds` itself is checked too. A flow passed under a key that is not its own `kind` is refused. The copy would otherwise come back carrying the right worker's id, and run the other kind's graph once you registered it.
+
+## The worker you get without writing one
+
+A record that leaves `flow:` out entirely is hired into the built-in `agent` kind. Its body becomes that worker's instructions, and it talks — that is the whole out-of-the-box promise. A name, a description, some instructions, and you have a working worker.
+
+```md
+---
+description: Holds the engineering board.
+---
+
+You are the engineering lead. You break work into tasks and report back.
+```
+
+The built-in reads whatever skills your app handed over, and it has no memory. Its settings are `instructions`, `model`, and `tools` — plus a switch for up-front skill matching, which is off by default so a stock worker never spends an extra model call per turn deciding whether a skill applies. Naming a tool in `tools:` requires your app to have supplied a catalog carrying that key; a name with nothing behind it is refused at the hire rather than quietly dropped.
+
+Out of the box, every worker of this kind reads the same set of skills. Giving each worker its own is coming; until it does, treat the skills a worker can reach as shared across the roster.
+
+To use your own worker everywhere instead, register a flow under `agent` and it wins for every seat:
+
+```ts
+import { defineAgentKind, hireWorkforce } from "@flow-state-dev/workforce";
+
+hireWorkforce(manifests, {
+  kinds: { agent: defineAgentKind({ catalog: myTools, skills: mySkills }) }
+});
+```
+
+`defineAgentKind()` with no arguments *is* the built-in, so configuring it means replacing it — there is no second set of options on `hireWorkforce`. That also means a roster hired with no `kinds` at all carries an empty tool catalog.
 
 ## When a worker needs more than settings
 

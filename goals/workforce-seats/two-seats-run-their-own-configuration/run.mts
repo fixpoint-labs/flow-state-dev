@@ -21,7 +21,7 @@ import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { hireWorkforce, type HireOptions, type WorkerManifest } from "@flow-state-dev/workforce";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { fixtureDir, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { INTAKE_KIND, WORKER_AGENT_KIND, intakeFlow, workerAgentFlow } from "./fixtures/flows";
+import { INTAKE_KIND, CUSTOM_AGENT_KIND, intakeFlow, customAgentFlow } from "./fixtures/flows";
 
 type LeadFixture = {
   id: string;
@@ -58,7 +58,7 @@ const fixture = loadFixture<Fixture>(import.meta.url);
 const { lead, intake } = fixture.roster;
 
 const kinds: HireOptions["kinds"] = {
-  [WORKER_AGENT_KIND]: workerAgentFlow,
+  [CUSTOM_AGENT_KIND]: customAgentFlow,
   [INTAKE_KIND]: intakeFlow
 };
 
@@ -334,7 +334,7 @@ await runGoal(async () => {
     if (ids.join(",") !== [intake.id, lead.id].join(",")) {
       failures.push(`hired ${JSON.stringify(ids)}, wanted the two record ids in id order`);
     }
-    if (seats.some((s) => s.id === WORKER_AGENT_KIND || s.id === INTAKE_KIND)) {
+    if (seats.some((s) => s.id === CUSTOM_AGENT_KIND || s.id === INTAKE_KIND)) {
       failures.push("a seat is addressed by its flow kind rather than by its own id");
     }
     evidence.push("one call turned the two records into two flow copies, each carrying its record's id");
@@ -396,7 +396,7 @@ await runGoal(async () => {
     );
 
     // ---- (c) the bare flow kind is not an address -------------------------
-    for (const kind of [WORKER_AGENT_KIND, INTAKE_KIND]) {
+    for (const kind of [CUSTOM_AGENT_KIND, INTAKE_KIND]) {
       const res = await act(router, kind, `s_bare_${kind}`);
       if (res.status !== 404) {
         failures.push(`the bare kind "${kind}" answered with ${res.status}, wanted 404`);
