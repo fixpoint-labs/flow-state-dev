@@ -1,0 +1,32 @@
+<svg viewBox="0 0 640 190" role="img" aria-label="Probe: a labelled box in light and dark, using an inline style block and a prefers-color-scheme media query."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --ink:#191C21; --ink-3:#7A828B; --surface:#FCFCFA; --rule:#D5D4CB; --code:#2C7C69; --code-soft:#DCEDE7; }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink:#E6E8E5; --ink-3:#737B81; --surface:#181C1F; --rule:#2B3135; --code:#5DBBA1; --code-soft:#14302A; }
+    }
+    .box  { fill: var(--surface); stroke: var(--rule); stroke-width: 1.2; }
+    .code { fill: var(--code-soft); stroke: var(--code); stroke-width: 1.3; }
+    .lbl  { fill: var(--ink-3); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 9.5px; letter-spacing: .1em; }
+    .txt  { fill: var(--ink); font-family: system-ui, -apple-system, sans-serif;
+            font-weight: 600; font-size: 13px; }
+  </style>
+
+  <g id="declared">
+    <rect class="box" x="16" y="16" width="280" height="158" rx="5"/>
+    <text class="lbl" x="34" y="40">DECLARED IN FILES</text>
+    <text class="txt" x="34" y="66">workers/ · WORKER.md</text>
+    <text class="txt" x="34" y="90">skills/ · SKILL.md</text>
+    <text class="lbl" x="34" y="126">POSITION CARRIES MEANING:</text>
+    <text class="lbl" x="34" y="142">CONTAINMENT, NOT AN EDGE</text>
+  </g>
+
+  <g id="code">
+    <rect class="code" x="344" y="16" width="280" height="158" rx="5"/>
+    <text class="lbl" x="362" y="40">DECLARED IN CODE</text>
+    <text class="txt" x="362" y="66">resources</text>
+    <text class="lbl" x="362" y="126">A ROOM APPEARS IN NEITHER</text>
+    <text class="lbl" x="362" y="142">BOX — THAT IS THE POINT</text>
+  </g>
+</svg>
