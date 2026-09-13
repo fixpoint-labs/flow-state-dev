@@ -6,7 +6,7 @@ four separate checkouts: the agent itself, its skills, its memory, and the teach
 
 This document is what they all read, so they do not each invent a different answer. It fixes
 what the pieces owe each other. **It is a contract, not a design** — it does not build the
-agent kind, wire its skills, attach its memory, or write the guides. Those are
+agent kind, wire its skills, compose in its memory, or write the guides. Those are
 FIX-1363, FIX-1362, FIX-1364 and FIX-1366, and each cites this file rather than re-deriving it.
 
 Two things are false today, and both are load-bearing:
@@ -30,6 +30,13 @@ Related, and deliberately not restated here:
 - [`docs/contributing/architecture-reference.md`](../contributing/architecture-reference.md)
   — carries the two rows a reader needs without opening this file.
 
+**Today → after this contract.** The two facts above are the *today* column; the diagram below is
+the **after** state, not what ships now:
+
+- **Today** — an absent `flow:` is refused, and every seat's skills share one org-wide bucket.
+- **After** — an absent `flow:` hires the built-in `agent` kind, and a seat's skills are stored
+  under that seat's own instance id.
+
 ```mermaid
 flowchart TD
   W["WORKER.md<br/>instructions, no flow:"] --> H[hireWorkforce<br/>the one admission gate]
@@ -38,7 +45,7 @@ flowchart TD
   H -->|unregistered name| X[refuse, by name]
   A --> P["prompt: [default, instructions]"]
   A --> S["skills: org ∪ team ∪ seat<br/>stored per seat"]
-  A --> M["memory: seam — existing scopes<br/>once attached"]
+  A --> M["memory: existing scopes<br/>composed in by the app"]
   A --> T[model + tools from configSchema]
 ```
 
@@ -47,7 +54,8 @@ flowchart TD
 ## C1 — Composition, not a type
 
 The agent kind is a flow like any other. Its settings bag (`configSchema`) declares
-`instructions`, `model`, `tools`, and the skills/memory switches. `instructions` is the worker
+`instructions`, `model`, `tools`, and the skills switches. It declares **no memory switch** — per
+C5 memory is composed into a kind at definition time, not turned on here. `instructions` is the worker
 file's body arriving as one setting — the hire step already imposes that key
 (`packages/workforce/src/manifest.ts`, `INSTRUCTIONS_KEY`) and already refuses `persona` by
 name (`REFUSED_PERSONA_KEY`, same file).
@@ -159,12 +167,21 @@ no `initialSkills` shows every matcher tier an empty catalog on turn 1.)
 ### Copy-in is the honest lock-in, and it is named
 
 Seeding writes a *copy* into the seat's drawer and records the name in `_meta.seededNames`
-(`seeding.ts:58,84`), so a later edit to the company copy does not reach a seat that already
-holds one, and a deletion is not undone.
+(`seeding.ts:58,84`), so a later edit to the company copy's **body** does not reach a seat that
+already holds one. A deliberate deletion is not undone either, and that half is stronger than a
+convention: `needsResed` returns `false` when the manifest is gone, preserving the decision on
+purpose (`packages/orchestration/src/skills/seeding.ts:116-117`).
 
-Refreshing a running seat is a deliberate act **with no mechanism yet**; FIX-1362 owns building
-one. Saying so is this contract's job — the alternative is a privacy promise that reads as live
-sharing and is not.
+**One exception, and it is not a body edit.** `ensureSeeded` re-seeds an already-seeded name when
+`needsResed` finds the persisted record stale against the FIX-918 migration shape — it still
+carries a legacy non-inline `contextMode` the source dropped, the source declares `agents:` the
+record lacks, or the source's `contextMode` changed (`seeding.ts:69-74,128-135`). Those replace a
+seat's copy without anyone refreshing it. Whether that reseeding should be narrowed for seat
+copies is **FIX-1362's call**; this contract's job is to state the behaviour, not design it away.
+
+Refreshing a running seat *otherwise* is a deliberate act **with no mechanism yet**; FIX-1362 owns
+building one. Saying so is this contract's job — the alternative is a privacy promise that reads
+as live sharing and is not.
 
 ### This clause supersedes drift note §3a
 
@@ -192,21 +209,28 @@ surface and files a ticket. **Nothing here invents a new isolation primitive.**
 Three things, and they are separate:
 
 1. **Skills** — the library plus per-generator binding (entry point pinned below).
-2. **Memory is a seam, attached when configured.** An instructions-only seat does **not**
-   remember out of the box. The default kind carries no static memory import, and neither does
-   the hire package's required graph. Memory arrives because someone turned it on.
-3. **Once memory is on, light is the default there too** — read-side. The model-classifier tier
-   for skill matching and the background capture pipeline for memory stay **opt-in, one setting
-   each**, on the asymmetry signed off on PR #1736: light → heavy is additive, heavy → light is
-   a breaking change for rosters already hired.
+2. **Memory is a build-time composition seam, not a setting.** An instructions-only seat does
+   **not** remember out of the box. The default kind and the hire package's required graph stay
+   free of memory resources and static memory imports. **"Attached" means an app composed memory
+   into its own kind at definition time** — spreading the capability's resource maps plus `uses`,
+   or an equivalent helper that is still ordinary flow composition (the seam FIX-1364 designs).
+   It does **not** mean flipping a config flag on the stock built-in.
+3. **Light-vs-heavy still holds once memory is composed in** — read-side by default. The
+   model-classifier tier for skill matching and the background capture pipeline for memory stay
+   **opt-in, one setting each**, on the asymmetry signed off on PR #1736: light → heavy is
+   additive, heavy → light is a breaking change for rosters already hired.
 
-That asymmetry governs *which* memory a roster gets once memory is attached. **It never
-authorized attaching memory by default.** Splitting 2 from 3 is what makes this checkable
-rather than decorative: a default mint with no memory in it is a claim a test can falsify.
+That asymmetry governs *which* memory a roster gets once memory is composed in. **It never
+authorized putting memory in the default required graph, and still does not.** Declaring memory's
+resources on the default kind and gating them off is the same violation wearing a switch — a fence
+that permits the forbidden thing as long as it is switched off is not a fence. Splitting 2 from 3
+is what makes this checkable rather than decorative: a default mint with no memory in it is a
+claim a test can falsify.
 
-**Owners:** FIX-1363 may ship the default composition as talking plus skills with no memory
-wired — it is not blocked on the memory work. FIX-1364 owns the attach-via-setting shape.
-FIX-1366 teaches that honestly, not as "remembers with zero configuration".
+**Owners:** FIX-1363 may ship the default composition as talking plus skills with no memory wired
+— it is not blocked on the memory work either way. FIX-1364 owns the composition-seam design, the
+gap honesty, and the teaching surface for *how* an app composes memory in. FIX-1366 teaches that
+honestly — not "remembers with zero configuration", and not "one setting on the stock kind".
 
 ### The skills entry point is pinned: `createSkillsLibrary` + per-generator binding
 
@@ -234,20 +258,16 @@ The tree still teaches the placeholder kind `worker-agent`. **The built-in kind 
 `agent`.** Until the migration lands, an implementer reading an existing example must not carry
 `worker-agent` out of it.
 
-**The migration splits by artifact type.** Teaching surface is prose a reader learns from;
-executable surface is a check that goes stale the moment the behaviour changes, and it belongs
-with the change that makes it stale, not with a later teaching pass.
+**The migration splits by artifact type.** Teaching surface — prose and rendered pages — is
+**FIX-1366's**. Executable surface — fixtures, goal files and tests — is **FIX-1363's**, because a
+check goes stale the moment the behaviour changes and belongs with the change that makes it stale,
+not with a later teaching pass.
 
-| Surface | Owner |
-|---|---|
-| **Teach** — prose and rendered pages: `packages/workforce/README.md` · `apps/docs/docs/workforce/overview.md` · `apps/docs/docs/workforce/workers-on-disk.md` · `docs/atlas/workforce.html` | **FIX-1366** |
-| **Executable** — fixtures, goal files and tests: `goals/workforce-conventions/files-alone-produce-the-roster/` · `goals/workforce-seats/two-seats-run-their-own-configuration/` (incl. `fixtures/flows.ts`, `run.mts`, `goal.md`) · `packages/workforce/test/hire.test.ts` (incl. `workerAgentFlow`) · `packages/workforce/test/read-workforce-directory.test.ts` | **FIX-1363** |
-
-Each owner re-derives its own list with
-`grep -rn "worker-agent\|workerAgentFlow"`, excluding `node_modules`, `spec/`, and
-`docs/internal/design/kitchen-sink-agent-drift.md` — a dated record, not teach surface. Note
-what a markdown-only grep misses: `docs/atlas/workforce.html` is a rendered page (drift note
-§2f).
+Each owner derives its own list with `grep -rn "worker-agent\|workerAgentFlow"`, excluding
+`node_modules`, `spec/`, and `docs/internal/design/kitchen-sink-agent-drift.md` — a dated record,
+not teach surface. No list is enumerated here on purpose: the grep is the source of truth, and a
+snapshot would go stale before either issue lands. Note what a markdown-only grep misses:
+`docs/atlas/workforce.html` is a rendered page (drift note §2f).
 
 **One published line is FIX-1363's, not FIX-1366's**, because it is a behaviour statement, not
 teaching prose: `apps/docs/docs/workforce/workers-on-disk.md:248` teaches, as current
@@ -277,23 +297,21 @@ The contract's falsifiable half, written as assertions a caller can watch happen
    necessary and not sufficient: a run in which the two seats resolve to distinct keys and
    **identical** catalogs *fails* this criterion. (See C3 — this is the criterion the
    instance-specific seeding path exists to satisfy.)
-6. Editing an org-level skill after a seat has been seeded does not change what that seat holds
-   until that seat is deliberately refreshed.
+6. Editing an org-level skill's **content** after a seat has been seeded does not change what
+   that seat holds until that seat is deliberately refreshed — except on the FIX-918 migration
+   paths, which replace the copy by design (see C3). A seat's deleted copy stays deleted.
 7. Nothing in the shipped kind imports `defineAgent`, `materializeAgent` or `AgentRegistry`.
 
-| Criterion | Proved by |
-|---|---|
-| 1 · 2 · 3 — a body-only worker hires, answers a turn from its body, and a typo refuses by name | **FIX-1365** — the epic's thin proof |
-| 4 — a caller's own `agent`, declared `cardinality: "collection"`, wins for every seat and those seats register | **FIX-1363** — it builds the built-in and the merge-underneath |
-| 5 · 6 — two seats read their own skills and not each other's; an org-level edit does not reach a seeded seat | **FIX-1362** — it builds the instance-specific seeding path C3 requires |
-| 7 — nothing in the shipped kind imports the killed agent cluster | a grep; rides with either building issue |
+Each criterion belongs to the issue whose own build makes it true: **1–3 to FIX-1365**, the epic's
+thin proof; **4 to FIX-1363**, which builds the built-in and the merge-underneath; **5 and 6 to
+FIX-1362**, which builds the instance-specific seeding path C3 requires; and **7 to a grep**, riding
+with either building issue. FIX-1365 stays thin by the epic's fence — *a thin hire of the OOTB
+agent kind, nothing more* — so 4–6 land on their builders as one tracer-bullet behaviour each,
+rather than deferring to a single downstream check. Every assignment is also recorded on its own
+Linear issue, which is where an owner picks it up.
 
-FIX-1365 stays thin by the epic's fence — *a thin hire of the OOTB agent kind, nothing more* —
-so criteria 4–6 land on the issues whose own build makes them true, each as one tracer-bullet
-behaviour rather than deferring to a single downstream check.
-
-**None of these requires memory to be attached.** Per C5 the default mint has none, so an
-attach proof is FIX-1364's and is not stated here.
+**None of these requires memory.** Per C5 the default mint has none, so proving that an app can
+compose memory into its own kind is FIX-1364's and is not stated here.
 
 ## Edge cases
 
@@ -301,7 +319,7 @@ attach proof is FIX-1364's and is not stated here.
 |---|---|
 | Worker file names a kind that isn't registered | Refuse by name, list the kinds passed. Never fall back to the default — that is the typo risk the epic traded for this rule |
 | App registers a flow under `agent` whose own kind is something else | Refuse, via the existing mismatched-kind check (`hire.ts:184`). The built-in's presence must not create an exemption |
-| App registers `agent` without `cardinality: "collection"` | The seats mint, then registration refuses each by name (`singleton-id-mismatch`). Loud and at boot — a violation of C2, not a refusal anyone has to build |
+| App registers `agent` without `cardinality: "collection"` | Seats mint, then registration refuses each by name — see C2, which carries the rule and the error |
 | App registers `agent` *and* a worker says `flow: agent` | The app's flow. One resolution path, whether the name was implicit or written |
 | Worker file carries a body **and** an `instructions:` key | Already refused today (two sources, no precedence rule). Unchanged |
 | Worker file declares `persona:` | Already refused by name today. Unchanged; `persona` is a reserved later opinion, not a hire key |
@@ -316,20 +334,13 @@ this contract does not soften it.
 
 ## Evidence
 
-The three empirical claims this contract rests on were **run, not read**. Both POCs are
-throwaway and live on the spec branch `spec/FIX-1361` under
-`spec-poc/FIX-1361-seat-skill-isolation/`; nothing under `spec-poc/` is collected by
-`pnpm test`.
-
-- **Isolated storage keys per seat** — two seats resolve to `["acme:engineering.lead"]` vs
-  `["acme:engineering.qa"]`, against `["acme"]` for both under today's unset default. Refines
-  the epic's assumption that a distinct collection key, prefix or scope would be required.
-- **Isolation separates drawers but does not fill them** — two seats given different skill sets
-  both read `["break-down-work","write-regression"]`; seeded from their own arrays they read
-  `["break-down-work"]` and `["write-regression"]`. This is C3's second half.
-- **A plain `defineFlow({ kind: "agent", … })` is a singleton, refused at registration, not at
-  the mint** — `hireWorkforce` returns both seats; `register` throws `singleton-id-mismatch`.
-  This is why C2 requires `cardinality: "collection"`.
+The empirical claims above were **run, not read**: a throwaway POC on the never-merged spec branch
+`spec/FIX-1361` (under `spec-poc/FIX-1361-seat-skill-isolation/`, beside that branch's spec
+document) showed that per-seat isolation separates the drawers but does not fill them —
+isolation is not population, C3's second half — and that a plain
+`defineFlow({ kind: "agent", … })` is a singleton refused at registration rather than at the mint,
+which is why C2 requires `cardinality: "collection"`. Those paths live on that branch only; by
+BP-037 neither the spec nor its POC lands on `main`.
 
 ## Known gaps, flagged not built
 
@@ -337,9 +348,8 @@ throwaway and live on the spec branch `spec/FIX-1361` under
   `createSkillsCapability` — overlap heavily and cross-reference each other, and the published
   guide teaches the one not picked. C5 pins which one the built-in uses; *reconciling* the two
   surfaces is FIX-1362's (drift note §2a), correcting the guide is FIX-1366's.
-- **Two threads for FIX-1362, not one** — `defineSkillsCollection` does not forward
-  `flowIsolation` (a one-field options passthrough), *and* `initialSkills` is captured once per
-  kind so a per-seat handoff has to exist as well. C3 requires both; neither is designed here.
+- **Two threads for FIX-1362, not one** — the `flowIsolation` passthrough *and* a per-seat handoff
+  for `initialSkills`. C3 carries the diagnosis; both are required, neither is designed here.
 - **Per-seat cost, unmeasured** — isolated storage plus a per-seat `ensureSeeded` means one
   bucket and one cold-start seed pass per seat. At a large roster times a large catalog that is
   a real multiplier and nobody has measured it. Flagged for FIX-1362; not a reason to change
