@@ -206,6 +206,19 @@ describe("the agent kind grows no agent registry", () => {
 // something this test is about); `seat` itself, and the config/resources
 // actually under test, are untouched.
 describe("the built-in agent kind's skills switch — gates only the model classifier (tier 3)", () => {
+  // The skill both cases below match against, supplied the way an app
+  // supplies one — `defineAgentKind({ skills })`, the stock path — rather than
+  // written into the collection by hand. Seeding it by hand would aim these
+  // checks at a neighbour of what they claim: the claim is that the tiers run
+  // for a seat of this kind, and a seat of this kind gets its catalog from
+  // `initialSkills`.
+  const knownSkill = [
+    {
+      name: "known",
+      skillMd: "---\ndescription: A known skill.\n---\n\nDo the known thing."
+    }
+  ];
+
   async function contextFor(
     seat: FlowInstance,
     generators: Record<string, ReturnType<typeof mockGenerator>>
@@ -222,13 +235,12 @@ describe("the built-in agent kind's skills switch — gates only the model class
   }
 
   it("runs slash activation on every turn even with the classifier switch OFF (default)", async () => {
-    const kind = defineAgentKind({});
+    const kind = defineAgentKind({ skills: knownSkill });
     const [seat] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_KIND]: kind });
 
     const runtime = await contextFor(seat!, {
       "agent-answer": mockGenerator({ name: "agent-answer", script: [{ text: "ok" }] })
     });
-    await runtime.ctx.resources.skills.create("known/SKILL.md", { description: "A known skill." });
 
     // No mock is registered for "skill-classifier": if the switch being OFF
     // ever let tier 3 run anyway, this throws "No mock for generator" and
@@ -246,7 +258,7 @@ describe("the built-in agent kind's skills switch — gates only the model class
   });
 
   it("additionally reaches the model classifier (tier 3) when the switch is ON", async () => {
-    const kind = defineAgentKind({});
+    const kind = defineAgentKind({ skills: knownSkill });
     const [seat] = hire(
       [record({ id: "engineering.lead", declared: { skills: { enableLlmClassifier: true } }, body: "Hello." })],
       { [AGENT_KIND]: kind }
@@ -267,10 +279,9 @@ describe("the built-in agent kind's skills switch — gates only the model class
       "agent-answer": mockGenerator({ name: "agent-answer", script: [{ text: "ok" }] }),
       "skill-classifier": classifier
     });
-    await runtime.ctx.resources.skills.create("known/SKILL.md", { description: "A known skill." });
 
     // Neither the slash nor the keyword tier matches this message (the
-    // seeded skill declares no `keywords`), so both fall through and — with
+    // bundled skill declares no `keywords`), so both fall through and — with
     // the switch ON — tier 3 runs.
     const result = await executeBlock({
       block: seat!.actions.run.block,
