@@ -2,7 +2,7 @@
 "@flow-state-dev/workforce": minor
 ---
 
-Ship a built-in `agent` flow kind, so a worker file that names no `flow:` hires instead of being refused.
+Ship a built-in `agent` flow kind, so a worker file that names no `flow:` hires instead of being refused (FIX-1363).
 
 `defineAgentKind()` called with no arguments is that built-in; the same call with a tool catalog, skills or a default model builds the flow you register under `agent` to replace it for every seat. Its settings are `instructions`, `model`, `tools` and a switch for up-front skill matching (off by default). Tool names are resolved against the catalog your app supplies and refused at the hire, by name, when it carries no such key.
 
