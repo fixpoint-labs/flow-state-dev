@@ -13,6 +13,8 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
+import { executeBlock } from "@flow-state-dev/engine";
 import { hireWorkforce, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { AGENT_KIND, defineAgentKind } from "../src/agent-kind";
@@ -184,5 +186,101 @@ describe("the agent kind grows no agent registry", () => {
     for (const symbol of ["defineAgent", "materializeAgent", "AgentRegistry"]) {
       expect(importLines.join("\n")).not.toContain(symbol);
     }
+  });
+});
+
+// The regression this covers: the whole up-front matcher (all three tiers)
+// used to sit behind one `.tapIf(enableLlmClassifier === true)`, so with the
+// switch OFF (the default) slash and keyword matching never ran either.
+// Only tier 3 — the model classifier — is meant to be conditional.
+//
+// This exercises the real `run` sequencer end to end (matcher + generator),
+// so it needs `@flow-state-dev/engine`'s `createTestContext` + `executeBlock`
+// directly rather than the package's usual `testBlock` helper: the "skills"
+// resource this kind installs is org-scoped, and `testBlock`'s public options
+// have no way to give a test an org identity (only the lower-level
+// `createTestContext` accepts `orgId`). The seat is also patched to
+// `cardinality: "singleton"` for the harness call only — `testBlock`/
+// `createTestContext` seed a session record with no `flowId`, which a real
+// `collection`-cardinality instance then refuses to own (a harness gap, not
+// something this test is about); `seat` itself, and the config/resources
+// actually under test, are untouched.
+describe("the built-in agent kind's skills switch — gates only the model classifier (tier 3)", () => {
+  async function contextFor(
+    seat: FlowInstance,
+    generators: Record<string, ReturnType<typeof mockGenerator>>
+  ) {
+    return createTestContext({
+      flow: { ...seat, cardinality: "singleton" },
+      orgId: "test-org",
+      org: { state: {} },
+      sessionId: "test-session",
+      sequencerName: seat.actions.run!.block.name,
+      declaredResources: seat.actions.run!.block.declaredResources,
+      generators
+    });
+  }
+
+  it("runs slash activation on every turn even with the classifier switch OFF (default)", async () => {
+    const kind = defineAgentKind({});
+    const [seat] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_KIND]: kind });
+
+    const runtime = await contextFor(seat!, {
+      "agent-answer": mockGenerator({ name: "agent-answer", script: [{ text: "ok" }] })
+    });
+    await runtime.ctx.resources.skills.create("known/SKILL.md", { description: "A known skill." });
+
+    // No mock is registered for "skill-classifier": if the switch being OFF
+    // ever let tier 3 run anyway, this throws "No mock for generator" and
+    // `result.error` below catches it.
+    const result = await executeBlock({
+      block: seat!.actions.run.block,
+      input: { message: "/known" },
+      ctx: runtime.ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    const activeSkills = runtime.ctx.session.state.activeSkills as Array<{ name: string; source: string }>;
+    expect(activeSkills.map((s) => s.name)).toContain("known");
+    expect(activeSkills[0]?.source).toBe("slash");
+  });
+
+  it("additionally reaches the model classifier (tier 3) when the switch is ON", async () => {
+    const kind = defineAgentKind({});
+    const [seat] = hire(
+      [record({ id: "engineering.lead", declared: { skills: { enableLlmClassifier: true } }, body: "Hello." })],
+      { [AGENT_KIND]: kind }
+    );
+
+    const classifier = mockGenerator({
+      name: "skill-classifier",
+      script: [
+        {
+          structuredOutput: {
+            reasoning: "the message asks for help, which the known skill covers",
+            activeSkills: [{ name: "known", input: "", confidence: 0.9 }]
+          }
+        }
+      ]
+    });
+    const runtime = await contextFor(seat!, {
+      "agent-answer": mockGenerator({ name: "agent-answer", script: [{ text: "ok" }] }),
+      "skill-classifier": classifier
+    });
+    await runtime.ctx.resources.skills.create("known/SKILL.md", { description: "A known skill." });
+
+    // Neither the slash nor the keyword tier matches this message (the
+    // seeded skill declares no `keywords`), so both fall through and — with
+    // the switch ON — tier 3 runs.
+    const result = await executeBlock({
+      block: seat!.actions.run.block,
+      input: { message: "please help me with something" },
+      ctx: runtime.ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(classifier.calls).toHaveLength(1);
+    const activeSkills = runtime.ctx.session.state.activeSkills as Array<{ name: string; source: string }>;
+    expect(activeSkills.map((s) => s.name)).toContain("known");
   });
 });

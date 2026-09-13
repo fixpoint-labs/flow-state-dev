@@ -129,13 +129,16 @@ function settingsSchema(options: AgentKindOptions) {
     skills: z
       .object({
         /**
-         * Turn on up-front skill matching, whose third tier is a model call.
+         * Turn on the up-front matcher's third tier — a model call that
+         * classifies the message against the skill catalog. Slash matching
+         * and keyword matching (tiers 1-2) always run, every turn, regardless
+         * of this switch.
          *
          * **Default off**, which inverts `createSkillActivator`'s own default:
          * a zero-configuration worker must not spend an extra model call per
          * turn deciding whether a skill applies. Left off, skills are still
-         * reachable — the generator carries the load tool and pulls them on
-         * demand.
+         * reachable — a slash or keyword hit still activates them, and the
+         * generator carries the load tool for the rest.
          */
         enableLlmClassifier: z.boolean().default(false)
       })
@@ -204,9 +207,21 @@ export function defineAgentKind(options: AgentKindOptions = {}) {
     user: (input) => input.message
   });
 
-  // Built once, not per seat — `createSkillActivator` takes its classifier
-  // settings at construction. The per-seat switch selects whether it runs.
-  const matcher = createSkillActivator({
+  // `createSkillActivator` takes `enableLlmClassifier` at construction, so
+  // one instance can't honour a per-seat switch on tier 3 alone. Two full
+  // activators are built instead — both carry tiers 1-2 (slash, keyword);
+  // only the second also carries tier 3 (the model classifier). The seat's
+  // switch picks between them below with two mutually exclusive `.tapIf`
+  // steps, so tiers 1-2 run on every turn regardless of the switch, and only
+  // tier 3 is conditional.
+  //
+  // Built once per kind, not per seat — same as before.
+  const matcherWithoutClassifier = createSkillActivator({
+    enableLlmClassifier: false,
+    activeState: ACTIVE_SKILLS_STATE,
+    ...(options.skills ? { initialSkills: options.skills } : {})
+  });
+  const matcherWithClassifier = createSkillActivator({
     enableLlmClassifier: true,
     activeState: ACTIVE_SKILLS_STATE,
     ...(options.classifierModel ? { classifierModel: options.classifierModel } : {}),
@@ -215,7 +230,8 @@ export function defineAgentKind(options: AgentKindOptions = {}) {
   });
 
   const run = sequencer({ name: "agent-run", inputSchema, flowConfigSchema: settings })
-    .tapIf((_input, ctx) => ctx.flow.config.skills.enableLlmClassifier === true, matcher)
+    .tapIf((_input, ctx) => ctx.flow.config.skills.enableLlmClassifier !== true, matcherWithoutClassifier)
+    .tapIf((_input, ctx) => ctx.flow.config.skills.enableLlmClassifier === true, matcherWithClassifier)
     .step(answer);
 
   return defineFlow({

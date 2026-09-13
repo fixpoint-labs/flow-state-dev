@@ -240,6 +240,30 @@ describe("hireWorkforce", () => {
     expect(message).toContain("flow");
   });
 
+  // 7 (the YAML-valueless case) — a `flow:` key parsed from a file with no
+  // value arrives as an own property holding `null`, the same shape a
+  // hand-built `flow: null`/`flow: undefined` manifest carries. That is a
+  // PRESENT key and must refuse, exactly like the whitespace case above —
+  // only an ABSENT key resolves to the built-in.
+  it("refuses a record whose `flow` is present but valueless (null), naming the worker", () => {
+    const message = refusalOf([
+      record({ id: "engineering.ghost", declared: { description: "no kind", flow: null } })
+    ]);
+    expect(message).toContain('worker "engineering.ghost"');
+    expect(message).toContain("flow");
+    expect(message).toContain("null");
+  });
+
+  // 7 (the non-string case) — a `flow:` that IS present but names no string
+  // at all (a hand-built roster, or a stray YAML number) must refuse with
+  // what was actually declared, not silently hire the built-in.
+  it("refuses a record whose `flow` is present but not a string, naming what was declared", () => {
+    const message = refusalOf([record({ id: "engineering.ghost", declared: { flow: 42 } })]);
+    expect(message).toContain('worker "engineering.ghost"');
+    expect(message).toContain("flow");
+    expect(message).toContain("42");
+  });
+
   // 8
   it("lets the flow's own refusal through for an undeclared setting, prefixed with the worker", () => {
     const message = refusalOf([
