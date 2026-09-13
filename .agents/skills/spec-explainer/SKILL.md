@@ -191,6 +191,116 @@ apply. Four additions are specific to rendering in a GitHub blob:
   and it is invisible to anyone reading in the other GitHub theme.
 - **`<br/>` only inside a quoted label.** Outside one it breaks the parse.
 
+## When mermaid isn't enough — a hand-authored SVG
+
+Mermaid is a **graph** language: you give it nodes and edges and it decides the layout. That
+is exactly right for a dependency shape or a before/after of a pipeline, and it is why it is
+the default here.
+
+It is wrong when **the layout is the content** — when where a thing sits is part of what you
+are saying. Containment and nesting, a grid or matrix, a timeline, a spatial arrangement, two
+states overlaid. Mermaid will accept those and quietly arrange them its own way, and the
+meaning is gone. That is the bar: reach for SVG when you can name what the *position* of an
+element means. If the thing is a graph, mermaid wins on every other axis.
+
+Our own [`docs/atlas/`](../../../docs/atlas/) is the reference for what this buys — labelled
+boxes in a deliberate arrangement, almost entirely `<rect>` and `<text>`.
+
+### It renders — here is the proof, and the constraints that come with it
+
+GitHub's markdown renderer keeps `<picture>`, `<source media="(prefers-color-scheme: …)">` and
+`<img src="….svg">`; `README.md` uses exactly that for the sponsor logo today. Repo SVGs are
+served as `image/svg+xml` under this CSP:
+
+```
+content-security-policy: default-src 'none'; style-src 'unsafe-inline'; sandbox
+```
+
+Read it literally, because it decides the whole design:
+
+| The header says | So |
+|---|---|
+| `style-src 'unsafe-inline'` | **An inline `<style>` block works** — including `@media (prefers-color-scheme: dark)` |
+| `default-src 'none'` | **No web fonts, no `<image>`, no external anything.** System font stacks only, or convert text to paths |
+| `sandbox` | No script. Nothing interactive |
+
+**The SVG must be self-contained, and this is the trap the atlas sets.** Atlas figures carry
+`class="n-box t-lbl"` and nothing else — their CSS lives in the wrapping HTML page. Lift one
+into a standalone `.svg` and it renders as unstyled black text on nothing. Copy the classes
+*and* the custom properties they resolve to into the file itself.
+
+### Where it goes, and how to reference it
+
+Beside the explainer, in a folder named for it — `spec/<ISSUE-ID>.explainer/panel-2.svg`, or
+`spec/_epics/<name>.explainer/panel-2.svg`. Same never-merged branch, same CI exemption.
+
+```markdown
+![What the panel shows, in a sentence](FIX-1353.explainer/panel-2.svg)
+```
+
+Relative from the explainer works in blob view. **In the PR body use an absolute
+`https://github.com/<owner>/<repo>/blob/<branch>/<path>` URL**, and prefer `?raw=1`, since a
+PR body resolves relative paths against the repo root.
+
+### The rules that keep it cheap
+
+- **One per explainer, at most.** A second needs a reason you can say out loud.
+- **Never for the panel that changes most** — epic panel 3 restates its states at every gate,
+  and an SVG you must hand-edit each time is one you will stop editing. Mermaid there, always.
+  SVG suits the panels that are stable: *today*, and a mechanism that has settled.
+- **Hand-written and grouped**, never a design-tool export. Wrap each logical element in
+  `<g id="…">`, indent it, keep it under ~150 lines. A Figma export is one line of minified
+  path data: undiffable, so nobody can review a change to it, and this document's failure mode
+  is a diagram that is confidently wrong.
+- **`role="img"` plus an `aria-label` that says what the picture says.** The atlas does this and
+  it doubles as the caption a reader gets when the image fails to load.
+
+### Starter — self-contained, both themes, house palette
+
+```svg
+<svg viewBox="0 0 640 200" role="img" aria-label="One sentence saying what this shows."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --ink:#191C21; --ink-3:#7A828B; --surface:#FCFCFA; --rule:#D5D4CB; --code:#2C7C69; }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink:#E6E8E5; --ink-3:#737B81; --surface:#181C1F; --rule:#2B3135; --code:#5DBBA1; }
+    }
+    .box { fill: var(--surface); stroke: var(--rule); stroke-width: 1.2; }
+    .lbl { fill: var(--ink-3); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+           font-size: 9.5px; letter-spacing: .1em; }
+    .txt { fill: var(--ink); font-family: system-ui, -apple-system, sans-serif;
+           font-weight: 600; font-size: 13px; }
+  </style>
+  <g id="example">
+    <rect class="box" x="16" y="16" width="240" height="80" rx="5"/>
+    <text class="lbl" x="32" y="38">LABEL</text>
+    <text class="txt" x="32" y="60">what it is</text>
+  </g>
+</svg>
+```
+
+The palette is `docs/atlas/`'s, light and dark. The font stacks are the atlas's *fallbacks* —
+its `"IBM Plex Mono"` and `"Archivo"` are web fonts and `default-src 'none'` will not load
+them, so name the system stack first and don't be surprised by the metrics.
+
+### Verify an SVG panel
+
+```bash
+F=spec/<ISSUE-ID>.explainer/panel-2.svg
+
+# 1. Self-contained — every one of these must print nothing
+grep -nE '<(script|image|foreignObject)|href=|url\(|@import' "$F"
+
+# 2. Both themes declared
+grep -c 'prefers-color-scheme' "$F"        # 1 or more
+
+# 3. Accessible, and small enough to review
+grep -c 'aria-label' "$F"                  # 1
+wc -l < "$F"                               # under ~150
+```
+
+Then open it. A diagram nobody looked at is how a wrong one ships.
+
 ## Refreshing it
 
 One bounded action per dispatch, and **you never start over**: read the current explainer
