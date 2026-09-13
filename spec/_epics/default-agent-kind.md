@@ -48,7 +48,7 @@ theme 9 the light-vs-heavy asymmetry, which applies only once memory is composed
 **Goal 1 — Validate through real usage**; the published objective on FIX-1359 is *"Workforce
 multi-seat real usage (OOTB agent seat)."*
 
-Six of the seven issues add **surface** — a kind, a skill bind, a memory attach, docs. The
+Six of the seven issues add **surface** — a kind, a skill bind, a memory seam, docs. The
 seventh, **FIX-1365 (Thin Proof: hire the OOTB agent kind), is required**, and it is the only
 child shaped to produce a goal check. The epic cannot finish without it. That decision (D-4,
 Architect + Cycle PM on [PR #1730](https://github.com/fixpoint-labs/flow-state-dev/pull/1730),
