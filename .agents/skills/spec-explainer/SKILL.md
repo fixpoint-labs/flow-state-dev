@@ -234,12 +234,13 @@ into a standalone `.svg` and it renders as unstyled black text on nothing. Copy 
 
 ### Where it goes, and how to reference it
 
-Beside the explainer, in a folder named for it — `spec/<ISSUE-ID>.explainer/panel-1.svg`, or
-`spec/_epics/<name>.explainer/panel-1.svg`. Same never-merged branch, same CI exemption.
-**Panel 1 in the examples is deliberate**: *today* is the panel that doesn't move.
+Beside the explainer, in a folder named for it — `spec/<ISSUE-ID>.explainer/panel-3.svg`, or
+`spec/_epics/<name>.explainer/panel-4.svg`. Same never-merged branch, same CI exemption.
+**Panel 3 / 4 in the examples is deliberate**: both are unpaired and both have settled by the
+time you would draw one.
 
 ```markdown
-![What the panel shows, in a sentence](FIX-1353.explainer/panel-1.svg)
+![What the panel shows, in a sentence](FIX-1353.explainer/panel-3.svg)
 ```
 
 Relative from the explainer works in blob view. **In the PR body use an absolute
@@ -248,10 +249,16 @@ PR body resolves relative paths against the repo root.
 
 ### The rules that keep it cheap
 
-- **One per explainer, at most.** A second needs a reason you can say out loud.
+- **Prefer an unpaired panel** — *where the decision fell* at issue altitude, *the path* at
+  epic altitude. Panels 1 and 2 are **one comparison**, so a single SVG cannot go on one of
+  them: mermaid beside SVG is the differently-shaped pair this document exists to avoid. If
+  the before/after is genuinely the thing that needs spatial layout, draw **both** as SVGs
+  sharing one node vocabulary — the pair is one comparison, so it spends the one allowance.
+- **One allowance per explainer** — one unpaired panel, or the 1–2 pair. A second needs a
+  reason you can say out loud.
 - **Never for the panel that changes most** — epic panel 3 restates its states at every gate,
   and an SVG you must hand-edit each time is one you will stop editing. Mermaid there, always.
-  SVG suits the panels that are stable: *today*, and a mechanism that has settled.
+  SVG suits what has settled: an unpaired panel whose shape is decided.
 - **Hand-written and grouped**, never a design-tool export. Wrap each logical element in
   `<g id="…">`, indent it, keep it under ~150 lines. A Figma export is one line of minified
   path data: undiffable, so nobody can review a change to it, and this document's failure mode
@@ -339,7 +346,7 @@ line; read those by eye.
 **4. Every external `.svg` panel**, if the explainer has one — all four must hold:
 
 ```bash
-S=spec/<ISSUE-ID>.explainer/panel-1.svg
+S=spec/<ISSUE-ID>.explainer/panel-3.svg
 
 grep -nE '<(script|image|foreignObject)|href=|url\(|@import' "$S"   # self-contained: nothing
 grep -c 'prefers-color-scheme' "$S"                                 # both themes: 1 or more
