@@ -107,7 +107,7 @@ skills.map((s) => s.name).sort(); // ["port-scan", "review", "sweep", "triage"]
 ```
 
 Every skill folder at those three levels is read. Nothing has to be listed anywhere for a skill
-to be included, and a skill beside the worker is no exception.
+to be included.
 
 The set comes back level by level: the org's first, then the team's, then the worker's own. Each
 entry is `{ name, skillMd, files }`, the same record `readSkillsDirectory` returns — `name` is the
@@ -146,15 +146,16 @@ of the set entirely. A worker-level folder does not override its team's, and a t
 override the org's. The fix is a rename or a deletion.
 
 `path` is `paths[0]`, the level the name was first seen at, which is how every entry in `errors` is
-keyed. On a collision it is a key and not a ranking: no copy wins.
+keyed.
 
 A level that isn't in the tree is empty, not an error — an app may keep no org skills, and a
 worker may have none of its own. A level that exists and cannot be listed lands in `errors` under
 its own path, and so does a skill folder that fails to load, under `<level>/<folder>`.
 
-Every entry carries a `kind` alongside its `path` and `error`, naming which of the six conditions
-in the table below it is. Match on that rather than on the message text when you want to tolerate
-one class — a malformed skill folder, say — while still refusing another.
+Every entry carries a `kind` alongside its `path` and `error`, naming the condition it is; the
+conditions are listed under [Error Semantics](#error-semantics). Match on `kind` rather than on the
+message text when you want to tolerate one class (a malformed skill folder, say) and still refuse
+another.
 
 A `root` that cannot be read throws instead:
 `Failed to read workforce directory "./workforce": ENOENT ...`.
@@ -168,9 +169,10 @@ pull skills in from outside the configured root.
 digits and single hyphens, at most 64 characters, and not `_meta`. A name outside those rules
 throws.
 
-A `SKILL.md` read this way may not declare `scope:` — a file that does is refused by name into
-`errors` and left out of `skills`. The same file read directly by `readSkillsDirectory` still
-loads.
+A `SKILL.md` read this way may not declare `scope:`. A file that does lands in `errors` under
+`kind: "refused-scope-key"` and is left out of `skills`: where the folder sits is what decides which
+workers read it. `readSkillsDirectory` applies no such rule, so a folder you read both ways can load
+there and be missing from a seat's set. Drop the key and both readers agree.
 
 The reader registers nothing and starts nothing. Wiring the records into a running seat is the
 caller's job: pass `skills` as the `initialSkills` of the skills capability or library you build
@@ -223,6 +225,133 @@ Spell it `instructions`.
 
 Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
 every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.
+
+## Reading documents from files
+
+A team's shared documents — a handbook, a glossary, an escalation procedure — can be Markdown files
+instead of `defineResource` stanzas. Frontmatter is settings and the body is the document, the same
+bargain `WORKER.md` makes.
+
+**A resource is a file, not a folder.** A document is `<name>.md` directly in `resources/`, unlike
+a worker or a skill, which is a folder with a fixed file inside it. A directory in a `resources/`
+slot lands in `errors` rather than being passed over.
+
+Two levels are read:
+
+| Path | Ref |
+|------|-----|
+| `<root>/org/resources/<name>.md` | `<name>` |
+| `<root>/teams/<teamId>/resources/<name>.md` | `teams/<teamId>/<name>` |
+
+```md
+---
+description: How the engineering team works — on-call, review, escalation.
+llmReadable: true
+---
+
+# Engineering handbook
+
+Escalate anything customer-visible within 15 minutes.
+```
+
+`readResourcesDirectory` walks both roots and returns one record per document; `resourcesFromDocs`
+turns those records into the resource map you already pass to a flow.
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { resourcesFromDocs } from "@flow-state-dev/workforce";
+import { readResourcesDirectory } from "@flow-state-dev/workforce/loader";
+import { answerQuestion } from "./blocks";
+import { ticketResource } from "./resources";
+
+const { documents, errors } = await readResourcesDirectory("./workforce");
+if (errors.length) throw new Error(`resources: ${errors.length} document(s) failed to load`);
+
+export const supportFlow = defineFlow({
+  kind: "support",
+  actions: { answer: { block: answerQuestion } },
+  resources: { ticket: ticketResource, ...resourcesFromDocs(documents) },
+});
+```
+
+**The flow needs an org identity, and it will not ask for one on its own.** Every file-declared
+document is org-scoped, and a flow collects `requiresOrg` from its blocks, not from its resource
+map. So the flow above accepts a request carrying only a `userId`, builds no org resource registry,
+and every document is then missing: `ctx.resources.get("teams/engineering/handbook")` throws
+`is not registered`, and `readResourceContentTool` says the same. Declare `requireOrg: true` on the
+blocks that read a document, and a request without an org is refused at the door instead of arriving
+empty:
+
+```ts
+// ./blocks.ts
+import { generator, readResourceContentTool } from "@flow-state-dev/core";
+
+export const answerQuestion = generator({
+  name: "answer-question",
+  model: "openai/gpt-5.4-mini",
+  requireOrg: true,
+  prompt: "Answer support questions. Check the team handbook before you answer.",
+  tools: [readResourceContentTool()],
+});
+```
+
+Each record is plain data:
+
+| Field | Description |
+|-------|-------------|
+| `ref` | The document's identity and storage key — a bare name at the org level, `teams/<teamId>/<name>` for a team's. It is also the accessor key, so a team's handbook is `ctx.resources["teams/engineering/handbook"]`. |
+| `declared` | The frontmatter exactly as written. A file that declares one of the refused settings below produces no record at all, so nothing is stripped here. |
+| `body` | The Markdown below the frontmatter, verbatim. It becomes the resource's content. |
+
+**Merge the map yourself.** A flow copy created with `supportFlow({ resources })` *replaces* the
+definition's map rather than merging with it, so passing `resourcesFromDocs(documents)` there on its
+own drops whatever resources the flow kind declared. Spread it into your own map, as above.
+
+**The team folder is a namespace, not a visibility boundary.** Every file-declared document is
+org-scoped, and a flow's resource tools reach every installed document marked `llmReadable` with no
+per-team filter. Installing a whole tree on one flow makes every team's documents reachable from it.
+To give a team's seats only its own, filter the records before installing:
+
+```ts
+const engineering = resourcesFromDocs(
+  documents.filter((d) => d.ref.startsWith("teams/engineering/")),
+);
+```
+
+**`description` is required.** A file without one lands in `errors`. It reaches the resource with
+the rest of the frontmatter, and nothing puts it in front of a model. Write it for whoever opens the
+tree.
+
+**The convention owns identity, storage and content.** Where a document lives decides all three, so
+a file may not declare any of `scope`, `ref`, `stateSchema`, `default`, `content`, `contentFile`,
+`contentTemplate` or `contentTemplateRef`. Each is refused by name rather than quietly ignored, and
+so is `prefetchMode: "lazy"`: a file-declared document is always loaded eagerly. Everything else is
+carried through as written, so `llmReadable`, `llmWritable`, `writable`, `allowedExtensions` and
+`metadata` all reach the resource.
+
+A document that needs a state schema, a render function, reactive bindings or an edge graph stays in
+code — those are functions, and a Markdown file cannot hold one. Session- and user-scoped resources
+are not file-declared.
+
+Document and team folder names follow the same rules as worker folders: lowercase letters, digits and
+single hyphens, at most 64 characters. A non-`.md` file in the slot is passed over in silence. An
+absent `org/` root or `resources/` folder is not an error — a team may have no documents.
+
+`readResourcesDirectory` throws only when `root` itself cannot be read. Everything else lands in
+`errors`, one entry per thing that should have produced a document and did not. Each entry is
+`{ kind, path, error }`, keyed by a path relative to the root, with `kind` naming the condition (see
+[Error Semantics](#error-semantics)):
+
+```ts
+errors;
+// [{ kind: "folder-where-file-belongs",
+//    path: "teams/marketing/resources/handbook",
+//    error: Error('"handbook" is a directory. A resource is a file, not a folder — write
+//                  the document as "handbook.md" in this resources/ folder instead.') }]
+```
+
+`resourcesFromDocs` throws instead of collecting, because a record that cannot become a resource is a
+startup misconfiguration.
 
 ## Channels
 
@@ -348,7 +477,10 @@ leaves an empty session there, and re-running binds it.
 | `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker. Ships from the `./loader` subpath (Node only). |
 | `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Ships from the `./loader` subpath (Node only). |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
+| `readResourcesDirectory(root)` | Read `org/resources/` and `teams/<id>/resources/` into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
+| `resourcesFromDocs(documents)` | Turn document records into the flow resource map, keyed by each document's ref. Spread it into your own `resources`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body }`. |
+| `ResourceDoc` | One document record: `{ ref, declared, body }`. |
 | `createChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Register these. |
@@ -374,6 +506,12 @@ leaves an empty session there, and re-running binds it.
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
 | Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |
+| A `resources/` slot, `org/`, `teams/` or a team folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
+| A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
+| Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |
+| A setting the convention derives, or `prefetchMode: "lazy"`, in a document file | Collected in `readResourcesDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the file's path |
+| Workforce root unreadable or symlinked, read for documents | `readResourcesDirectory` throws — the root is never followed through a link |
+| Document cannot become a resource | `resourcesFromDocs` throws naming the ref — a setting the convention derives, a lazy `prefetchMode`, or frontmatter `defineResource` itself rejects |
 | Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, or `instructions:` given both in the frontmatter and as a body. Collected: one error names every bad channel, and nothing is registered |
 | Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |

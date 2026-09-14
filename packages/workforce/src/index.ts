@@ -8,6 +8,10 @@
  * out of the root so importing this package does not pull a consumer onto
  * `node:fs`.
  *
+ * The same split covers file-declared documents: `ResourceDoc` is the record,
+ * `./loader` reads it off disk, and `resourcesFromDocs` here turns records into
+ * the resource map an app spreads into its flow.
+ *
  * A worker is a flow kind plus its instructions; there is no Agent factory
  * here. Beside the seat factory sit two helpers: `definePersona`, which
  * declares the persona resources a flow renders as a system prompt, and
@@ -26,5 +30,6 @@
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { hireWorkforce, type HireOptions } from "./hire";
-export type { WorkerManifest } from "./manifest";
+export { resourcesFromDocs } from "./resources-from-docs";
+export type { WorkerManifest, ResourceDoc } from "./manifest";
 export * from "./channel";
