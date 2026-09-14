@@ -17,7 +17,7 @@ import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
 import { hireWorkforce, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
-import { AGENT_KIND, defineAgentKind } from "../src/agent-kind";
+import { AGENT_KIND, defineWorkerKind } from "../src/worker-kind";
 
 function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest {
   return { declared: {}, body: "", ...over };
@@ -89,7 +89,7 @@ describe("the built-in agent kind", () => {
   // Without the pinned binding a seat would hold skills it could never pull,
   // so the library being installed at all is the thing worth asserting here.
   it("installs the skills library on the built-in", () => {
-    const flow = defineAgentKind() as unknown as { resources?: Record<string, unknown> };
+    const flow = defineWorkerKind() as unknown as { resources?: Record<string, unknown> };
     expect(Object.keys(flow.resources ?? {})).toContain("skills");
   });
 
@@ -110,18 +110,18 @@ describe("the built-in agent kind's tools", () => {
 
     expect(message).toContain('worker "engineering.lead"');
     expect(message).toContain('"board"');
-    expect(message).toContain("defineAgentKind");
+    expect(message).toContain("defineWorkerKind");
   });
 
   // The empty catalog is not a special case — it takes the same refusal.
   it("refuses the same way when the app supplied no catalog at all", () => {
     const message = refusalOf([record({ id: "engineering.lead", declared: { tools: ["board"] } })]);
-    expect(message).toContain("no catalog was passed to defineAgentKind");
+    expect(message).toContain("no catalog was passed to defineWorkerKind");
   });
 
   it("accepts a tool the app's catalog carries", () => {
     const [seat] = hire([record({ id: "engineering.lead", declared: { tools: ["board"] }, body: "Lead." })], {
-      [AGENT_KIND]: defineAgentKind({ catalog: { board } })
+      [AGENT_KIND]: defineWorkerKind({ catalog: { board } })
     });
 
     expect(seat!.config).toMatchObject({ tools: ["board"] });
@@ -176,7 +176,7 @@ describe("the built-in agent kind's tools — the runtime fence, not just the mi
       }
     });
 
-    const kind = defineAgentKind({ catalog: { board, secret } });
+    const kind = defineWorkerKind({ catalog: { board, secret } });
     const [seat] = hire(
       [record({ id: "engineering.lead", declared: { tools: ["board"] }, body: "Lead." })],
       { [AGENT_KIND]: kind }
@@ -212,7 +212,7 @@ describe("the built-in agent kind's tools — the runtime fence, not just the mi
       }
     });
 
-    const kind = defineAgentKind({ catalog: { board, secret } });
+    const kind = defineWorkerKind({ catalog: { board, secret } });
     const [seat] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
       [AGENT_KIND]: kind
     });
@@ -237,7 +237,7 @@ describe("the built-in agent kind's tools — the runtime fence, not just the mi
 
 // The Architect's ruling on FIX-1363's PR review: the runtime fence above must
 // stand WITHOUT refusing a stock-kind skill that declares `allowed-tools`
-// naming a real app catalog tool. Before this ruling, `defineAgentKind` handed
+// naming a real app catalog tool. Before this ruling, `defineWorkerKind` handed
 // the skills library no catalog at all (see the runtime-fence describe block
 // above), so validating a bound skill's `allowed-tools` had nothing to
 // validate against and this exact build threw. The library now takes
@@ -253,7 +253,7 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
   ];
 
   it("builds a kind whose catalog carries a skill's declared `allowed-tools` tool", () => {
-    expect(() => defineAgentKind({ catalog: { board }, skills: usesBoard })).not.toThrow();
+    expect(() => defineWorkerKind({ catalog: { board }, skills: usesBoard })).not.toThrow();
   });
 
   async function contextFor(
@@ -297,7 +297,7 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
 
   it("lets a seat naming `tools: [\"board\"]` actually reach the catalog tool's `execute`", async () => {
     const { tool: board, calls } = countedBoard();
-    const kind = defineAgentKind({ catalog: { board }, skills: usesBoard });
+    const kind = defineWorkerKind({ catalog: { board }, skills: usesBoard });
     const [seat] = hire(
       [record({ id: "engineering.lead", declared: { tools: ["board"] }, body: "Lead." })],
       { [AGENT_KIND]: kind }
@@ -322,7 +322,7 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
 
   it("still keeps a seat that omits `tools:` from reaching the tool, even though the skill declares `allowed-tools: [board]`", async () => {
     const { tool: board, calls } = countedBoard();
-    const kind = defineAgentKind({ catalog: { board }, skills: usesBoard });
+    const kind = defineWorkerKind({ catalog: { board }, skills: usesBoard });
     const [seat] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
       [AGENT_KIND]: kind
     });
@@ -397,7 +397,7 @@ describe("replacing the built-in agent kind", () => {
 // symbols, so a grep on the new module is the whole check.
 describe("the agent kind grows no agent registry", () => {
   it("imports none of `defineAgent`, `materializeAgent` or `AgentRegistry`", () => {
-    const source = readFileSync(fileURLToPath(new URL("../src/agent-kind.ts", import.meta.url)), "utf8");
+    const source = readFileSync(fileURLToPath(new URL("../src/worker-kind.ts", import.meta.url)), "utf8");
     const importLines = source.split("\n").filter((line) => line.trimStart().startsWith("import"));
 
     for (const symbol of ["defineAgent", "materializeAgent", "AgentRegistry"]) {
@@ -424,7 +424,7 @@ describe("the agent kind grows no agent registry", () => {
 // actually under test, are untouched.
 describe("the built-in agent kind's skills switch — gates only the model classifier (tier 3)", () => {
   // The skill both cases below match against, supplied the way an app
-  // supplies one — `defineAgentKind({ skills })`, the stock path — rather than
+  // supplies one — `defineWorkerKind({ skills })`, the stock path — rather than
   // written into the collection by hand. Seeding it by hand would aim these
   // checks at a neighbour of what they claim: the claim is that the tiers run
   // for a seat of this kind, and a seat of this kind gets its catalog from
@@ -452,7 +452,7 @@ describe("the built-in agent kind's skills switch — gates only the model class
   }
 
   it("runs slash activation on every turn even with the classifier switch OFF (default)", async () => {
-    const kind = defineAgentKind({ skills: knownSkill });
+    const kind = defineWorkerKind({ skills: knownSkill });
     const [seat] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_KIND]: kind });
 
     const runtime = await contextFor(seat!, {
@@ -475,7 +475,7 @@ describe("the built-in agent kind's skills switch — gates only the model class
   });
 
   it("additionally reaches the model classifier (tier 3) when the switch is ON", async () => {
-    const kind = defineAgentKind({ skills: knownSkill });
+    const kind = defineWorkerKind({ skills: knownSkill });
     const [seat] = hire(
       [record({ id: "engineering.lead", declared: { skills: { enableLlmClassifier: true } }, body: "Hello." })],
       { [AGENT_KIND]: kind }
@@ -514,7 +514,7 @@ describe("the built-in agent kind's skills switch — gates only the model class
 
   // Stock activation for the built-in `agent` kind is locked to slash +
   // an optional classifier tier — keyword/trigger-phrase matching is out of
-  // `defineAgentKind` entirely, not merely out of the default branch. This
+  // `defineWorkerKind` entirely, not merely out of the default branch. This
   // pins that a message that would match a skill's `keywords` frontmatter,
   // but carries no `/skill-name` prefix, does NOT activate it — on either
   // setting of the classifier switch.
@@ -525,7 +525,7 @@ describe("the built-in agent kind's skills switch — gates only the model class
         skillMd: "---\ndescription: A known skill.\nkeywords:\n  - known\n---\n\nDo the known thing."
       }
     ];
-    const kind = defineAgentKind({ skills: keywordOnlySkill });
+    const kind = defineWorkerKind({ skills: keywordOnlySkill });
     const [seat] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_KIND]: kind });
 
     const runtime = await contextFor(seat!, {

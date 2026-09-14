@@ -1,11 +1,11 @@
 /**
- * The built-in `agent` flow kind — the worker a team gets without writing one.
+ * The built-in worker kind — the worker a team gets without writing one.
  *
  * A worker file that names no `flow:` is hired into this kind, and its body
  * arrives as `instructions`. That is the whole out-of-the-box promise: it
  * talks, and it can reach whatever skills the app handed over.
  *
- * **It is a factory, not a flow constant.** `defineAgentKind()` called with no
+ * **It is a factory, not a flow constant.** `defineWorkerKind()` called with no
  * arguments *is* the built-in; the same call with arguments is how an app
  * replaces it. A finished flow value could not carry the app's tool catalog or
  * its skills, which would force a second configuration door onto the hire step
@@ -72,7 +72,7 @@ function composeWorkerPrompt(config: { instructions?: string }): string {
 }
 
 /** What the app supplies. Everything else is a worker's own setting. */
-export interface AgentKindOptions {
+export interface WorkerKindOptions {
   /**
    * The tools workers may name in their `tools:` setting, by key. A worker
    * naming a key this catalog does not carry is refused at the mint.
@@ -100,7 +100,7 @@ export interface AgentKindOptions {
 }
 
 /** What one worker of this kind configures, in its file. */
-function settingsSchema(options: AgentKindOptions) {
+function settingsSchema(options: WorkerKindOptions) {
   const catalog = options.catalog ?? {};
 
   return z.object({
@@ -131,8 +131,8 @@ function settingsSchema(options: AgentKindOptions) {
             code: z.ZodIssueCode.custom,
             message:
               `names tool "${name}", which the app's tool catalog does not carry. ` +
-              `Known tools: ${known.length > 0 ? known.map((k) => `"${k}"`).join(", ") : "(none — no catalog was passed to defineAgentKind)"}. ` +
-              `Pass it as \`defineAgentKind({ catalog: { "${name}": <tool> } })\`, or drop it from this worker.`
+              `Known tools: ${known.length > 0 ? known.map((k) => `"${k}"`).join(", ") : "(none — no catalog was passed to defineWorkerKind)"}. ` +
+              `Pass it as \`defineWorkerKind({ catalog: { "${name}": <tool> } })\`, or drop it from this worker.`
           });
         }
       }),
@@ -162,11 +162,11 @@ function settingsSchema(options: AgentKindOptions) {
 }
 
 /**
- * Build an `agent` flow kind.
+ * Build a worker kind.
  *
  * Called with no arguments this returns the built-in — the kind a worker file
  * that names no `flow:` is hired into. Called with arguments it returns a
- * configured one; register it as `kinds: { agent: defineAgentKind({ ... }) }`
+ * configured one; register it as `kinds: { agent: defineWorkerKind({ ... }) }`
  * and it wins for every seat on the roster.
  *
  * Define once, hire many: call this at module scope or app bootstrap, never
@@ -175,7 +175,7 @@ function settingsSchema(options: AgentKindOptions) {
  * @param options The tool catalog, skills and default model only the app can supply.
  * @returns A `defineFlow` result of kind `agent`, cardinality `collection`.
  */
-export function defineAgentKind(options: AgentKindOptions = {}) {
+export function defineWorkerKind(options: WorkerKindOptions = {}) {
   const catalog = options.catalog ?? {};
   const settings = settingsSchema(options);
   const inputSchema = z.object({ message: z.string() });

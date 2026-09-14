@@ -10,14 +10,14 @@
  *
  * A worker is a flow kind plus its instructions; there is no Agent factory
  * here. A record that names no kind is hired into the built-in `agent` kind,
- * which `defineAgentKind` builds — called with no arguments it *is* the
+ * which `defineWorkerKind` builds — called with no arguments it *is* the
  * built-in, and called with arguments it is how an app replaces it. Beside the
  * seat factory sit two helpers: `definePersona`, which declares the persona
  * resources a flow renders as a system prompt, and `createWorkforceCapability`,
  * which surfaces a roster through the capability system.
  */
 
-export { AGENT_KIND, defineAgentKind, type AgentKindOptions } from "./agent-kind";
+export { AGENT_KIND, defineWorkerKind, type WorkerKindOptions } from "./worker-kind";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { hireWorkforce, type HireOptions } from "./hire";

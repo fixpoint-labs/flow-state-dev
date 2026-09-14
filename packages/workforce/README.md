@@ -205,11 +205,11 @@ label. Everything else is that worker's settings, handed to the flow
 verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
 declared is refused by name at the hire.
 
-**A record that leaves `flow:` out is hired into the built-in `agent` kind** — it talks, its body
+**A record that leaves `flow:` out is hired into the built-in worker kind** — it talks, its body
 arrives as its instructions, and it reads whatever skills the app supplied. `kinds` is therefore
 optional. A `flow:` that is present but empty or whitespace-only still refuses: it names no kind,
 and only an absent key means the built-in. To replace the built-in, pass your own flow under `agent`
-(`kinds: { agent: defineAgentKind({ catalog, skills }) }`) and it wins for every seat — configuring
+(`kinds: { agent: defineWorkerKind({ catalog, skills }) }`) and it wins for every seat — configuring
 it is kind replacement, not an option on `hireWorkforce`.
 
 A worker record declares data: a description, the kind it runs, and that kind's settings. Behavior
@@ -237,7 +237,7 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 
 | Export | Description |
 |--------|-------------|
-| `defineAgentKind(options?)` | Build an `agent` flow kind. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with a tool catalog, skills or a default model it is the replacement you register under `agent`. |
+| `defineWorkerKind(options?)` | Build the built-in worker kind. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with a tool catalog, skills or a default model it is the replacement you register under `agent`. |
 | `AGENT_KIND` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |

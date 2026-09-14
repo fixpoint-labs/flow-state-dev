@@ -257,7 +257,7 @@ A record is refused when it:
 
 ## The worker you get without writing one
 
-A record that leaves `flow:` out entirely is hired into the built-in `agent` kind. Its body becomes that worker's instructions, and it talks — that is the whole out-of-the-box promise. A name, a description, some instructions, and you have a working worker.
+A record that leaves `flow:` out entirely is hired into the built-in worker kind. Its body becomes that worker's instructions, and it talks — that is the whole out-of-the-box promise. A name, a description, some instructions, and you have a working worker.
 
 ```md
 ---
@@ -274,14 +274,14 @@ Out of the box, every worker of this kind reads the same set of skills. Giving e
 To use your own worker everywhere instead, register a flow under `agent` and it wins for every seat:
 
 ```ts
-import { defineAgentKind, hireWorkforce } from "@flow-state-dev/workforce";
+import { defineWorkerKind, hireWorkforce } from "@flow-state-dev/workforce";
 
 hireWorkforce(manifests, {
-  kinds: { agent: defineAgentKind({ catalog: myTools, skills: mySkills }) }
+  kinds: { agent: defineWorkerKind({ catalog: myTools, skills: mySkills }) }
 });
 ```
 
-`defineAgentKind()` with no arguments *is* the built-in, so configuring it means replacing it — there is no second set of options on `hireWorkforce`. That also means a roster hired with no `kinds` at all carries an empty tool catalog.
+`defineWorkerKind()` with no arguments *is* the built-in, so configuring it means replacing it — there is no second set of options on `hireWorkforce`. That also means a roster hired with no `kinds` at all carries an empty tool catalog.
 
 ## When a worker needs more than settings
 
