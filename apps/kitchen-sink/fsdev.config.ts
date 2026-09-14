@@ -25,6 +25,7 @@ import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
 import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
+import channelFlow from "@/flows/channel/flow";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
@@ -58,6 +59,7 @@ setScheduleIndexImpl(pgStores.scheduleIndex);
 
 const flowstate = createFlowState({
   flows: {
+    channel: channelFlow,
     chatAgent: chatAgentFlow,
     richTextComponent: richTextComponentFlow,
     weeklyDigest: weeklyDigestFlow,

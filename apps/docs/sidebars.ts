@@ -230,6 +230,7 @@ const sidebars: SidebarsConfig = {
       items: [
         "workforce/overview",
         "workforce/workers-on-disk",
+        "workforce/channels",
       ],
     },
     {
