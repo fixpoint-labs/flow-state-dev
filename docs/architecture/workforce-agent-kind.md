@@ -249,7 +249,11 @@ correcting that is FIX-1366's, not a reason to pick it.
 
 "Whole catalog" here means the load tool's reach over the *skill* catalog (`allowed` omitted), not
 licence for the skills library to re-widen a seat's tool reach past its own `tools:` (C1) — the
-default kind builds the library with no app tool catalog of its own for exactly that reason.
+default kind hands the library the app's tool catalog with registration turned off
+(`createSkillsLibrary({ catalog, registerCatalogTools: false })`), so a bound skill's
+`allowed-tools` are still validated against it but never registered by the library itself. A
+stock-kind skill may declare `allowed-tools` naming a tool in the app catalog; registration stays
+solely the generator's own `tools:` mapping (C1).
 
 ## C6 — What must not be invented
 

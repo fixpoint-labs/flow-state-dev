@@ -18,15 +18,15 @@
  *
  * **A worker's `tools:` is a hard runtime fence**, not a hint: a seat may call
  * exactly the catalog keys it names, and an empty list means none, regardless
- * of what else the app's catalog carries. The skills library is built with no
- * catalog of its own for exactly this reason — handing it the app's catalog
- * would let its own whole-catalog registration put every app tool on the
- * generator no matter what a seat's `tools:` says. A stock-kind worker's
- * `allowed-tools` in a skill body is therefore decorative unless the same
- * tools also appear in that worker's `tools:` list; an app that needs a
- * skill's `allowed-tools` to actually widen a seat's tool reach registers its
- * own `agent` kind instead (the C1 replacement door above), passing `catalog`
- * into its own `createSkillsLibrary` call there.
+ * of what else the app's catalog carries. The skills library is handed the
+ * app's catalog with registration turned off (`registerCatalogTools: false`),
+ * so a bound skill's `allowed-tools` are still validated against it — a typo
+ * or a tool the app never registered still fails loud at build time — but the
+ * library never puts a catalog tool on the generator itself. The generator's
+ * own `tools: names → catalog[name]` mapping below stays the only stock
+ * tool-registration path, so a seat's `tools:` list is the one thing that
+ * decides what it can call, no matter what `allowed-tools` a bound skill
+ * declares.
  */
 
 import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
@@ -177,14 +177,17 @@ export function defineAgentKind(options: AgentKindOptions = {}) {
   const settings = settingsSchema(options);
   const inputSchema = z.object({ message: z.string() });
 
-  // Deliberately NOT `catalog`: the library's own whole-catalog registration
-  // (see `skillsBinding` below) is a safe superset ONLY of what the library
-  // itself owns. Handing it the app's tool catalog would let it register
-  // every app tool on the generator regardless of a seat's own `tools:`
-  // setting, re-widening past the mint-time fence the `tools` schema below
-  // enforces. `catalog` stays in use for that fence and for the generator's
-  // own `tools:` slot — never for the skills library.
+  // `catalog` is passed so a bound skill's declared `allowed-tools` are
+  // validated against it (author feedback: a typo or an uncataloged tool
+  // fails loud at build time) — but `registerCatalogTools: false` keeps the
+  // library's own whole-catalog registration (see `skillsBinding` below) from
+  // putting every app tool on the generator regardless of a seat's own
+  // `tools:` setting. That registration path stays off; the generator's own
+  // `tools:` slot below, fenced at the mint by the `tools` schema, is the
+  // only stock tool-registration path.
   const skills = createSkillsLibrary({
+    catalog,
+    registerCatalogTools: false,
     ...(options.skills ? { initialSkills: options.skills } : {})
   });
 

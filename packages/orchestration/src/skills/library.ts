@@ -78,6 +78,17 @@ export interface SkillsLibraryOptions {
   collection?: string;
   /** Tool catalog. Skills reference these by string key via `allowed-tools`. */
   catalog?: ToolCatalog;
+  /**
+   * Whether a bound skill's whole `catalog` registers on the generator
+   * (`fullCatalog()`, the safe-superset path below `validateDeclaredTools`).
+   * Default `true`, preserving today's behaviour: a bound skill's declared
+   * `allowed-tools` are still validated against `catalog` either way — this
+   * only gates the second, separable job, registration. Set `false` when a
+   * caller already owns tool registration through its own means (e.g. a
+   * worker's own `tools:` fence) and wants `catalog` validated but not
+   * granted.
+   */
+  registerCatalogTools?: boolean;
   /** Bundled defaults — seeded on a binding's first render. */
   initialSkills?: InitialSkill[];
   /**
@@ -260,6 +271,7 @@ export function createSkillsLibrary(
 ): DefinedCapability {
   const collectionKey = options.collection ?? "skills";
   const catalog: ToolCatalog = options.catalog ?? {};
+  const registerCatalogTools = options.registerCatalogTools ?? true;
   const scope: ResourceScope = options.scope ?? "org";
   const initialSkills = options.initialSkills;
   const index = indexInitialSkills(initialSkills);
@@ -385,7 +397,14 @@ export function createSkillsLibrary(
     // the model softly via the rendered restriction note; registering the
     // superset keeps a live post-seeding edit to that list from pointing the
     // model at an unregistered tool.
-    if (active.length > 0 || contributesRuntimeTools) tools.push(...fullCatalog());
+    //
+    // `registerCatalogTools: false` opts out of this registration only —
+    // `validateDeclaredTools` above still runs unconditionally, so a caller
+    // on this path gets author-feedback validation with no tool grant, and
+    // owns registration itself (e.g. a worker's own `tools:` fence).
+    if (registerCatalogTools && (active.length > 0 || contributesRuntimeTools)) {
+      tools.push(...fullCatalog());
+    }
 
     // `dynamicActivation` preset → install the load tool + catalog listing.
     if (dynamic) {

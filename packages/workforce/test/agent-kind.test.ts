@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowInstance, InitialSkill } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
 import { hireWorkforce, type HireOptions } from "../src/hire";
@@ -232,6 +232,116 @@ describe("the built-in agent kind's tools — the runtime fence, not just the mi
 
     expect(result.error).toBeUndefined();
     expect(secretCalls).toBe(0);
+  });
+});
+
+// The Architect's ruling on FIX-1363's PR review: the runtime fence above must
+// stand WITHOUT refusing a stock-kind skill that declares `allowed-tools`
+// naming a real app catalog tool. Before this ruling, `defineAgentKind` handed
+// the skills library no catalog at all (see the runtime-fence describe block
+// above), so validating a bound skill's `allowed-tools` had nothing to
+// validate against and this exact build threw. The library now takes
+// `registerCatalogTools: false` (FIX-1363's follow-up), so validation runs
+// against the real catalog but registration still only happens through a
+// seat's own `tools:` — the fence tests above are untouched by this.
+describe("the built-in agent kind's tools — a skill's `allowed-tools` validates but does not register", () => {
+  const usesBoard: InitialSkill[] = [
+    {
+      name: "uses-board",
+      skillMd: "---\ndescription: Reads the board.\nallowed-tools: [board]\n---\n\nUse the board tool when asked."
+    }
+  ];
+
+  it("builds a kind whose catalog carries a skill's declared `allowed-tools` tool", () => {
+    expect(() => defineAgentKind({ catalog: { board }, skills: usesBoard })).not.toThrow();
+  });
+
+  async function contextFor(
+    seat: FlowInstance,
+    generators: Record<string, ReturnType<typeof mockGenerator>>
+  ) {
+    return createTestContext({
+      flow: { ...seat, cardinality: "singleton" },
+      orgId: "test-org",
+      org: { state: {} },
+      sessionId: "test-session",
+      sequencerName: seat.actions.run!.block.name,
+      declaredResources: seat.actions.run!.block.declaredResources,
+      generators
+    });
+  }
+
+  const callTool = (toolName: string) => ({
+    toolCalls: [{ toolCallId: "call-1", toolName, args: {} }]
+  });
+
+  // A countable stand-in for `board`, named the same so it still matches
+  // `usesBoard`'s `allowed-tools: [board]` and a seat's `tools: ["board"]`.
+  // Whether "calling" it reaches this `execute` is exactly what the runtime
+  // fence (not build-time validation) decides — the same shape as the
+  // fence tests above, applied to a tool a bound skill also names.
+  function countedBoard() {
+    let calls = 0;
+    const tool = handler({
+      name: "board",
+      description: "Reads the board.",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ rows: z.number() }),
+      execute: () => {
+        calls += 1;
+        return { rows: 0 };
+      }
+    });
+    return { tool, calls: () => calls };
+  }
+
+  it("lets a seat naming `tools: [\"board\"]` actually reach the catalog tool's `execute`", async () => {
+    const { tool: board, calls } = countedBoard();
+    const kind = defineAgentKind({ catalog: { board }, skills: usesBoard });
+    const [seat] = hire(
+      [record({ id: "engineering.lead", declared: { tools: ["board"] }, body: "Lead." })],
+      { [AGENT_KIND]: kind }
+    );
+
+    const runtime = await contextFor(seat!, {
+      "agent-answer": mockGenerator({
+        name: "agent-answer",
+        script: [callTool("board"), { text: "done" }]
+      })
+    });
+
+    const result = await executeBlock({
+      block: seat!.actions.run.block,
+      input: { message: "check the board" },
+      ctx: runtime.ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(calls()).toBe(1);
+  });
+
+  it("still keeps a seat that omits `tools:` from reaching the tool, even though the skill declares `allowed-tools: [board]`", async () => {
+    const { tool: board, calls } = countedBoard();
+    const kind = defineAgentKind({ catalog: { board }, skills: usesBoard });
+    const [seat] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
+      [AGENT_KIND]: kind
+    });
+
+    const runtime = await contextFor(seat!, {
+      "agent-answer": mockGenerator({
+        name: "agent-answer",
+        script: [callTool("board"), { text: "done" }]
+      })
+    });
+
+    const result = await executeBlock({
+      block: seat!.actions.run.block,
+      input: { message: "check the board" },
+      ctx: runtime.ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(calls()).toBe(0);
   });
 });
 
