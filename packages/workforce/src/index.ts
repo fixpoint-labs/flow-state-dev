@@ -10,7 +10,7 @@
  *
  * A worker is a flow kind plus its instructions; there is no Agent class here,
  * only the flow a kind resolves to. A record that names no kind is hired into
- * the built-in `agent` kind, whose flow `createAgentWorkerFlow` builds — called
+ * the built-in `agent` kind, whose flow `defineAgentWorkerFlow` builds — called
  * with no arguments it *is* the built-in, and called with arguments it is how
  * an app replaces it. Beside the
  * seat factory sit two helpers: `definePersona`, which declares the persona
@@ -26,7 +26,7 @@
  * channel opens a SESSION per record on a shared one.
  */
 
-export { AGENT_KIND, createAgentWorkerFlow, type CreateAgentWorkerFlowOptions } from "./agent-worker-flow";
+export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { hireWorkforce, type HireOptions } from "./hire";

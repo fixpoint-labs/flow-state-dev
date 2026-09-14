@@ -8,10 +8,11 @@
  * talks, and it can reach whatever skills the app handed over.
  *
  * **It is a factory, not a flow constant** — unlike `channelFlow` next door.
- * `createAgentWorkerFlow()` called with no arguments *is* the built-in; the same call with arguments is how an app
- * replaces it. A finished flow value could not carry the app's tool catalog or
- * its skills, which would force a second configuration door onto the hire step
- * — see the contract's C1 in `docs/architecture/workforce-agent-kind.md`.
+ * `defineAgentWorkerFlow()` called with no arguments *is* the built-in; the
+ * same call with arguments is how an app replaces it. A finished flow value
+ * could not carry the app's tool catalog or its skills, which would force a
+ * second configuration door onto the hire step — see the contract's C1 in
+ * `docs/architecture/workforce-agent-kind.md`.
  *
  * The three options are the three things only the app can supply: the tool
  * catalog, the skills to seed, and a default model. Every knob that is not one
@@ -74,7 +75,7 @@ function composeWorkerPrompt(config: { instructions?: string }): string {
 }
 
 /** What the app supplies. Everything else is a worker's own setting. */
-export interface CreateAgentWorkerFlowOptions {
+export interface AgentWorkerFlowOptions {
   /**
    * The tools workers may name in their `tools:` setting, by key. A worker
    * naming a key this catalog does not carry is refused at the mint.
@@ -102,7 +103,7 @@ export interface CreateAgentWorkerFlowOptions {
 }
 
 /** What one worker of this kind configures, in its file. */
-function settingsSchema(options: CreateAgentWorkerFlowOptions) {
+function settingsSchema(options: AgentWorkerFlowOptions) {
   const catalog = options.catalog ?? {};
 
   return z.object({
@@ -133,8 +134,8 @@ function settingsSchema(options: CreateAgentWorkerFlowOptions) {
             code: z.ZodIssueCode.custom,
             message:
               `names tool "${name}", which the app's tool catalog does not carry. ` +
-              `Known tools: ${known.length > 0 ? known.map((k) => `"${k}"`).join(", ") : "(none — no catalog was passed to createAgentWorkerFlow)"}. ` +
-              `Pass it as \`createAgentWorkerFlow({ catalog: { "${name}": <tool> } })\`, or drop it from this worker.`
+              `Known tools: ${known.length > 0 ? known.map((k) => `"${k}"`).join(", ") : "(none — no catalog was passed to defineAgentWorkerFlow)"}. ` +
+              `Pass it as \`defineAgentWorkerFlow({ catalog: { "${name}": <tool> } })\`, or drop it from this worker.`
           });
         }
       }),
@@ -168,7 +169,7 @@ function settingsSchema(options: CreateAgentWorkerFlowOptions) {
  *
  * Called with no arguments this returns the built-in — the kind a worker file
  * that names no `flow:` is hired into. Called with arguments it returns a
- * configured one; register it as `kinds: { agent: createAgentWorkerFlow({ ... }) }`
+ * configured one; register it as `kinds: { agent: defineAgentWorkerFlow({ ... }) }`
  * and it wins for every seat on the roster.
  *
  * Define once, hire many: call this at module scope or app bootstrap, never
@@ -177,7 +178,7 @@ function settingsSchema(options: CreateAgentWorkerFlowOptions) {
  * @param options The tool catalog, skills and default model only the app can supply.
  * @returns A `defineFlow` result of kind `agent`, cardinality `collection`.
  */
-export function createAgentWorkerFlow(options: CreateAgentWorkerFlowOptions = {}) {
+export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   const catalog = options.catalog ?? {};
   const settings = settingsSchema(options);
   const inputSchema = z.object({ message: z.string() });
