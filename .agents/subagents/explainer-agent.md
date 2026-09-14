@@ -69,13 +69,11 @@ than force-pushing; if a push is rejected, re-fetch and redraw again. **Never fo
 3. **Draw.** The panels for your altitude, the budget, the grammar. Redraw what changed;
    leave what didn't.
 
-   **Mermaid unless the layout is the content.** When where a thing sits carries the meaning —
-   containment, a grid, a timeline, a spatial arrangement — mermaid will rearrange it and the
-   point is lost. That is the one case for a hand-authored SVG beside the explainer, under the
-   rules in [`spec-explainer`](../skills/spec-explainer/SKILL.md) → "When mermaid isn't
-   enough": self-contained, one per explainer, never for the panel that changes most, and
-   hand-written rather than exported so a reviewer can read the diff.
-4. **Verify.** Run all three commands from the skill's Verify section and read for the
+   **Mermaid unless the layout is the content** — see
+   [`spec-explainer`](../skills/spec-explainer/SKILL.md) → "When mermaid isn't enough" for the
+   bar and the rules. Apply them; they do not get a second home here.
+4. **Verify.** Run every command in the skill's Verify section — block 4 applies only when a
+   panel is an external `.svg` — and read for the
    three judgment checks. Report the numbers.
 5. **Commit and push** to your branch. Never merge, never delete it, never open a PR — the
    PR already exists and is where this file is read from.

@@ -1,6 +1,6 @@
 ---
 name: spec-explainer
-description: Build or refresh a spec's EXPLAINER — one diagram-first document that shows what the work does, for someone who won't read the spec. Three or four mermaid panels and a hard prose budget, committed beside the spec so GitHub renders it in one click. Every spec gets one, issue and epic alike; written by issue-spec and epic-agent, refreshed when the direction changes, and runnable standalone. Use when the user asks to "explain this spec", "show me what this does", wants a visual walkthrough of a change or a body of work, or asks for the explainer.
+description: Build or refresh a spec's EXPLAINER — one diagram-first document that shows what the work does, for someone who won't read the spec. Three or four panels under a hard prose budget — mermaid by default, with one hand-authored SVG when the layout itself is the content, committed beside the spec so GitHub renders it in one click. Every spec gets one, issue and epic alike; written by issue-spec and epic-agent, refreshed when the direction changes, and runnable standalone. Use when the user asks to "explain this spec", "show me what this does", wants a visual walkthrough of a change or a body of work, or asks for the explainer.
 argument-hint: "<ISSUE-ID or epic name> — optionally, the panel to rework"
 ---
 
@@ -208,8 +208,11 @@ boxes in a deliberate arrangement, almost entirely `<rect>` and `<text>`.
 
 ### It renders — here is the proof, and the constraints that come with it
 
-GitHub's markdown renderer keeps `<picture>`, `<source media="(prefers-color-scheme: …)">` and
-`<img src="….svg">`; `README.md` uses exactly that for the sponsor logo today. Repo SVGs are
+GitHub's markdown renderer keeps `<img src="….svg">` — and `<picture>` with a
+`prefers-color-scheme` `<source>`, which `README.md` uses for the sponsor logo today. That is
+the **evidence** the path works, not the pattern to copy: **use a plain `![…](….svg)` and put
+the media query inside the one file.** `<picture>` means two files to keep in sync, and a
+panel whose themes drift apart is worse than one that has no dark variant. Repo SVGs are
 served as `image/svg+xml` under this CSP:
 
 ```
@@ -231,11 +234,12 @@ into a standalone `.svg` and it renders as unstyled black text on nothing. Copy 
 
 ### Where it goes, and how to reference it
 
-Beside the explainer, in a folder named for it — `spec/<ISSUE-ID>.explainer/panel-2.svg`, or
-`spec/_epics/<name>.explainer/panel-2.svg`. Same never-merged branch, same CI exemption.
+Beside the explainer, in a folder named for it — `spec/<ISSUE-ID>.explainer/panel-1.svg`, or
+`spec/_epics/<name>.explainer/panel-1.svg`. Same never-merged branch, same CI exemption.
+**Panel 1 in the examples is deliberate**: *today* is the panel that doesn't move.
 
 ```markdown
-![What the panel shows, in a sentence](FIX-1353.explainer/panel-2.svg)
+![What the panel shows, in a sentence](FIX-1353.explainer/panel-1.svg)
 ```
 
 Relative from the explainer works in blob view. **In the PR body use an absolute
@@ -261,45 +265,29 @@ PR body resolves relative paths against the repo root.
 <svg viewBox="0 0 640 200" role="img" aria-label="One sentence saying what this shows."
      xmlns="http://www.w3.org/2000/svg">
   <style>
-    :root { --ink:#191C21; --ink-3:#7A828B; --surface:#FCFCFA; --rule:#D5D4CB; --code:#2C7C69; }
+    :root { --ink:#191C21; --ink-3:#7A828B; --surface:#FCFCFA; --rule:#D5D4CB; }
     @media (prefers-color-scheme: dark) {
-      :root { --ink:#E6E8E5; --ink-3:#737B81; --surface:#181C1F; --rule:#2B3135; --code:#5DBBA1; }
+      :root { --ink:#E6E8E5; --ink-3:#737B81; --surface:#181C1F; --rule:#2B3135; }
     }
-    .box { fill: var(--surface); stroke: var(--rule); stroke-width: 1.2; }
-    .lbl { fill: var(--ink-3); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-           font-size: 9.5px; letter-spacing: .1em; }
-    .txt { fill: var(--ink); font-family: system-ui, -apple-system, sans-serif;
-           font-weight: 600; font-size: 13px; }
+    .n-box { fill: var(--surface); stroke: var(--rule); stroke-width: 1.2; }
+    .t-lbl { fill: var(--ink-3); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+             font-size: 9.5px; letter-spacing: .1em; }
+    .t-b   { fill: var(--ink); font-family: system-ui, -apple-system, sans-serif;
+             font-weight: 600; font-size: 13px; }
   </style>
   <g id="example">
-    <rect class="box" x="16" y="16" width="240" height="80" rx="5"/>
-    <text class="lbl" x="32" y="38">LABEL</text>
-    <text class="txt" x="32" y="60">what it is</text>
+    <rect class="n-box" x="16" y="16" width="240" height="80" rx="5"/>
+    <text class="t-lbl" x="32" y="38">LABEL</text>
+    <text class="t-b" x="32" y="60">what it is</text>
   </g>
 </svg>
 ```
 
-The palette is `docs/atlas/`'s, light and dark. The font stacks are the atlas's *fallbacks* —
+**The class names are the atlas's too** (`n-box`, `t-lbl`, `t-b`), so a figure lifted from
+`docs/atlas/` drops in without renaming — add the variables it needs (`--accent`, `--code`,
+`--prose`) from the atlas's `:root` as you use them. The palette is `docs/atlas/`'s, light and dark. The font stacks are the atlas's *fallbacks* —
 its `"IBM Plex Mono"` and `"Archivo"` are web fonts and `default-src 'none'` will not load
 them, so name the system stack first and don't be surprised by the metrics.
-
-### Verify an SVG panel
-
-```bash
-F=spec/<ISSUE-ID>.explainer/panel-2.svg
-
-# 1. Self-contained — every one of these must print nothing
-grep -nE '<(script|image|foreignObject)|href=|url\(|@import' "$F"
-
-# 2. Both themes declared
-grep -c 'prefers-color-scheme' "$F"        # 1 or more
-
-# 3. Accessible, and small enough to review
-grep -c 'aria-label' "$F"                  # 1
-wc -l < "$F"                               # under ~150
-```
-
-Then open it. A diagram nobody looked at is how a wrong one ships.
 
 ## Refreshing it
 
@@ -348,8 +336,20 @@ markdown table's pipes from reading as a diagram edge. It does **not** cover
 `sequenceDiagram` message text, where a `:` is structural and a check would fire on every
 line; read those by eye.
 
+**4. Every external `.svg` panel**, if the explainer has one — all four must hold:
+
+```bash
+S=spec/<ISSUE-ID>.explainer/panel-1.svg
+
+grep -nE '<(script|image|foreignObject)|href=|url\(|@import' "$S"   # self-contained: nothing
+grep -c 'prefers-color-scheme' "$S"                                 # both themes: 1 or more
+grep -c 'aria-label' "$S"                                           # accessible: 1
+wc -l < "$S"                                                        # reviewable: under ~150
+```
+
 Then read it: **each diagram ≤ 10 nodes**, panels 1 and 2 sharing a node vocabulary, and
-no sentence anywhere that asks the reader for something. Those three are judgment, so
+no sentence anywhere that asks the reader for something. **Open any SVG panel** — a diagram
+nobody looked at is how a wrong one ships. Those three are judgment, so
 they're checked by eye — but they're the ones that matter, so check them.
 
 ## Standalone use
