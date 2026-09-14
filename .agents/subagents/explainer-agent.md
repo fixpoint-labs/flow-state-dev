@@ -66,8 +66,14 @@ than force-pushing; if a push is rejected, re-fetch and redraw again. **Never fo
    lower tier only when the ones above it are empty *for that panel*, mark tier 3 as
    `(proposed)`, re-draw without the marker once the spec is approved or the code merges, and
    never mix tiers inside one panel without saying so.
-3. **Draw.** Four panels, the budget, the grammar. Redraw what changed; leave what didn't.
-4. **Verify.** Run all three commands from the skill's Verify section and read for the
+3. **Draw.** The panels for your altitude, the budget, the grammar. Redraw what changed;
+   leave what didn't.
+
+   **Mermaid unless the layout is the content** — see
+   [`spec-explainer`](../skills/spec-explainer/SKILL.md) → "When mermaid isn't enough" for the
+   bar and the rules. Apply them; they do not get a second home here.
+4. **Verify.** Run every command in the skill's Verify section — block 4 applies only when a
+   panel is an external `.svg` — and read for the
    three judgment checks. Report the numbers.
 5. **Commit and push** to your branch. Never merge, never delete it, never open a PR — the
    PR already exists and is where this file is read from.

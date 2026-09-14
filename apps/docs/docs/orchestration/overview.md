@@ -33,6 +33,8 @@ Read it bottom-up.
 
 Hired workers are [Workforce](../workforce/overview): describe a roster, hire it, and register the copies. Those seats are addresses you open a session against, not board assignees.
 
+**Channels.** When several agents work one topic and each reads what the others said, that conversation needs a durable home. A channel is a named session on a flow kind the framework ships, carrying its own members, charter and transcript. Reach for one when the exchange is back-and-forth; a one-shot instruction is a dispatch, and work that needs a claim and a settlement is a task board row. See [Channels](../workforce/channels).
+
 **A worker built for coding agents.** Beside the patterns sits `@flow-state-dev/harness-manager`: a board worker that turns a task into a supervised coding run — its own checkout, a verdict read before the task settles, a question it can ask a person, and the coding agent itself as a slot you fill. See [Harness manager](./harness-manager) for the worker, and [Coding agents](../tools/coding-agents) for the agents it can drive and the handle they hand back.
 
 ## Two ways to drive a board
@@ -66,5 +68,6 @@ A drain normally runs inside the request that mounted it, so every worker's task
 - [Agents](./agents) — the three things that can do a unit of work on a board.
 - [Delegation](../skills/delegation) — the agent-first path and the `taskTools` surface.
 - [Workforce](../workforce/overview) — describing workers in folders and hiring them as addressable flow copies. A hired worker is an address you open a session against, not a board assignee.
+- [Channels](../workforce/channels) — several agents on one topic, with one durable transcript and nobody owning a row.
 - [Harness manager](./harness-manager) — a board worker that drives a coding agent to a settled verdict.
 - [Coding agents](../tools/coding-agents) — the coding agents that worker drives, and the run handle they return.
