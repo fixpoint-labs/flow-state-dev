@@ -1,54 +1,13 @@
 /**
- * FIX-1364 spec POC — characterization: does per-seat durable memory already
- * fall out of composition, or is it the L1 gap C4 says it is?
+ * FIX-1364 POC — does per-seat durable memory already fall out of composition,
+ * or is it the L1 gap the agent-kind contract's C4 says it is?
  *
- * THE CLAIM UNDER TEST
- * --------------------
- * `docs/architecture/workforce-agent-kind.md` C4 names this gap:
+ * Two seats of one collection flow, one end user, one shared store. The
+ * control case (isolation off) is what makes the result meaningful.
  *
- *   "user-scoped memory is durable per *end user*, with no member or seat
- *    identity in it, so a multi-seat roster serving one person shares one
- *    memory"
+ * Full write-up, result and the incidental testFlow finding: ./README.md
  *
- * If that is unconditionally true, FIX-1364's honesty half is "name it and
- * file a ticket". But `defineFlow({ isolateUserState: true })` claims to
- * supply the default `flowIsolation` for user-scoped resources that declare
- * none (`packages/core/src/types/flow.ts:582`), keyed on the **instance** id
- * (FIX-1323) — and every one of memory's user-scoped resource factories
- * declares no `flowIsolation` of its own:
- *
- *   createEpisodicMemoryResource  packages/memory/src/episodic-memory.ts:78
- *   createSemanticMemoryResource  packages/memory/src/semantic-memory.ts:64
- *   createDigestMemoryResource    packages/memory/src/digest-memory.ts:57
- *
- * A seat IS a flow instance (`hire.ts:255` mints with `{ id: manifest.id }`).
- * So the composition may already separate seats — which would make the gap
- * narrower than C4 states.
- *
- * WHY THIS ISN'T ANSWERABLE BY READING
- * ------------------------------------
- * `packages/engine/test/flow-isolation.test.ts:147` already proves two copies
- * of a collection kind derive *separate storage keys*. That is the neighbour
- * of the claim, not the claim (tenet 7). C3 of the same contract is the
- * cautionary precedent one level over: separate keys did NOT mean separate
- * contents for skills ("isolation is not population"). So this runs the real
- * read/write path through a real store instead of asserting on a key helper.
- *
- * WHAT IT DOES
- * ------------
- * Two seats of ONE collection flow, ONE end user, ONE shared store registry.
- * Writes a semantic fact through seat A, reads through seat B.
- *
- *   Case 1  isolateUserState: true   — expect B does NOT see A's fact
- *   Case 2  isolateUserState: false  — expect B DOES see A's fact  (control)
- *
- * Case 2 is not decoration: it is what makes case 1 falsifiable. If both
- * cases came back isolated, the harness would be proving nothing (a fresh
- * store per run would do that), and the verdict would be worthless.
- *
- * RUN
- * ---
- *   pnpm tsx spec-poc/FIX-1364-seat-memory-isolation/run.ts
+ * Run:  pnpm tsx spec-poc/FIX-1364-seat-memory-isolation/run.ts
  *
  * Throwaway. Never merges; closes with the spec PR.
  */
@@ -153,18 +112,8 @@ async function runCase(isolateUserState: boolean) {
   const seatA = (kind as any)({ id: "engineering.lead" });
   const seatB = (kind as any)({ id: "engineering.designer" });
 
-  // Each seat gets its own session, pre-seeded with the OWNING instance id.
-  //
-  // This pre-seed is itself a finding, not boilerplate: `testFlow` writes a
-  // session record carrying `flowKind` but no `flowId`
-  // (packages/testing/src/test-utilities/testFlow.ts:110-121), and for a
-  // COLLECTION flow `ownsRecord` (packages/engine/src/context/record-owner.ts:139)
-  // then reads it as a pre-ownership legacy row and refuses the whole run:
-  //   FlowInstanceBindingMismatchError ... reason: "migration-required"
-  // So `testFlow` cannot currently drive a collection flow without this
-  // work-around. Every seat-level test of the agent kind will hit it.
-  // Carried into the spec as a follow-up (§12) — it belongs to the testing
-  // harness, not to this issue.
+  // Sessions are pre-seeded naming their owning instance: testFlow omits
+  // flowId, which makes a collection flow's run refuse. See README.
   await seedOwnedSession(stores, "sess-a", seatA, kind.kind);
   await seedOwnedSession(stores, "sess-b", seatB, kind.kind);
 
