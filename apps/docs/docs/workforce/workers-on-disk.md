@@ -274,14 +274,14 @@ Out of the box, every worker of this kind reads the same set of skills. Giving e
 To use your own worker everywhere instead, register a flow under `agent` and it wins for every seat:
 
 ```ts
-import { defineWorkerKind, hireWorkforce } from "@flow-state-dev/workforce";
+import { createAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
 
 hireWorkforce(manifests, {
-  kinds: { agent: defineWorkerKind({ catalog: myTools, skills: mySkills }) }
+  kinds: { agent: createAgentWorkerFlow({ catalog: myTools, skills: mySkills }) }
 });
 ```
 
-`defineWorkerKind()` with no arguments *is* the built-in, so configuring it means replacing it — there is no second set of options on `hireWorkforce`. That also means a roster hired with no `kinds` at all carries an empty tool catalog.
+`createAgentWorkerFlow()` with no arguments *is* the built-in, so configuring it means replacing it — there is no second set of options on `hireWorkforce`. That also means a roster hired with no `kinds` at all carries an empty tool catalog.
 
 ## When a worker needs more than settings
 

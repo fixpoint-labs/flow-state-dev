@@ -230,7 +230,7 @@ describe("hireWorkforce", () => {
   });
 
   // 7 — a record with no `flow:` no longer refuses; it hires the built-in
-  // `agent` kind (see `worker-kind.test.ts`). What still refuses is a `flow:`
+  // `agent` kind (see `agent-worker-flow.test.ts`). What still refuses is a `flow:`
   // that is present and names nothing.
   it("refuses a record whose `flow` is whitespace-only, naming the worker", () => {
     const message = refusalOf([

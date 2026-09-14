@@ -25,7 +25,7 @@ import {
   REFUSED_PERSONA_KEY_MESSAGE,
   type WorkerManifest
 } from "./manifest";
-import { AGENT_KIND, defineWorkerKind } from "./worker-kind";
+import { AGENT_KIND, createAgentWorkerFlow } from "./agent-worker-flow";
 
 /** The two keys the factory itself reads. Everything else is the worker's settings. */
 const RESERVED_KEYS = ["flow", "description"] as const;
@@ -34,10 +34,10 @@ const RESERVED_KEYS = ["flow", "description"] as const;
  * The stock `agent` kind, built once for the life of the module.
  *
  * Held here rather than exported: an app that wants a different one registers
- * its own under `agent` (`kinds: { agent: defineWorkerKind({ ... }) }`), which
+ * its own under `agent` (`kinds: { agent: createAgentWorkerFlow({ ... }) }`), which
  * merges over this one. Define once, hire many — never per hire or per request.
  */
-const builtInWorkerKind = defineWorkerKind() as unknown as AnyFlowType;
+const builtInAgentWorkerFlow = createAgentWorkerFlow() as unknown as AnyFlowType;
 
 export interface HireOptions {
   /**
@@ -126,10 +126,10 @@ export function hireWorkforce(
   // The built-in sits UNDERNEATH the caller's, so a caller who registers their
   // own `agent` wins — for every seat, not just the ones that name it. This is
   // precedence, not extension: configuring the built-in's tools or skills means
-  // replacing the kind (`defineWorkerKind({ ... })` registered here), never a
+  // replacing the kind (`createAgentWorkerFlow({ ... })` registered here), never a
   // second option on this function. A roster hired with `kinds: {}` therefore
   // carries an empty tool catalog, because nothing ever merges into ours.
-  const kinds: Record<string, AnyFlowType> = { [AGENT_KIND]: builtInWorkerKind, ...options.kinds };
+  const kinds: Record<string, AnyFlowType> = { [AGENT_KIND]: builtInAgentWorkerFlow, ...options.kinds };
 
   const kindNames = Object.keys(kinds);
   const available = kindNames.length > 0 ? kindNames.map((k) => `"${k}"`).join(", ") : "(none)";
