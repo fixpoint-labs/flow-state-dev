@@ -497,9 +497,9 @@ describe("the built-in agent kind's skills switch — gates only the model class
       "skill-classifier": classifier
     });
 
-    // Neither the slash nor the keyword tier matches this message (the
-    // bundled skill declares no `keywords`), so both fall through and — with
-    // the switch ON — tier 3 runs.
+    // The slash tier doesn't match this message, and keyword matching is not
+    // part of this kind's activator pipeline at all — so this falls straight
+    // through to tier 3, which is ON here.
     const result = await executeBlock({
       block: seat!.actions.run.block,
       input: { message: "please help me with something" },
@@ -510,5 +510,43 @@ describe("the built-in agent kind's skills switch — gates only the model class
     expect(classifier.calls).toHaveLength(1);
     const activeSkills = runtime.ctx.session.state.activeSkills as Array<{ name: string; source: string }>;
     expect(activeSkills.map((s) => s.name)).toContain("known");
+  });
+
+  // Stock activation for the built-in `agent` kind is locked to slash +
+  // an optional classifier tier — keyword/trigger-phrase matching is out of
+  // `defineAgentKind` entirely, not merely out of the default branch. This
+  // pins that a message that would match a skill's `keywords` frontmatter,
+  // but carries no `/skill-name` prefix, does NOT activate it — on either
+  // setting of the classifier switch.
+  it("does not activate a skill by keyword match — keyword matching is not part of this kind's contract", async () => {
+    const keywordOnlySkill = [
+      {
+        name: "known",
+        skillMd: "---\ndescription: A known skill.\nkeywords:\n  - known\n---\n\nDo the known thing."
+      }
+    ];
+    const kind = defineAgentKind({ skills: keywordOnlySkill });
+    const [seat] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_KIND]: kind });
+
+    const runtime = await contextFor(seat!, {
+      "agent-answer": mockGenerator({ name: "agent-answer", script: [{ text: "ok" }] })
+    });
+
+    // The message matches the skill's `keywords` ("known") but carries no
+    // `/known` slash prefix. The classifier switch is OFF (default) and no
+    // mock is registered for "skill-classifier", so if tier 3 ever ran this
+    // would throw — it must not, and neither may a keyword tier.
+    const result = await executeBlock({
+      block: seat!.actions.run.block,
+      input: { message: "please do the known thing" },
+      ctx: runtime.ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    const activeSkills = (runtime.ctx.session.state.activeSkills ?? []) as Array<{
+      name: string;
+      source: string;
+    }>;
+    expect(activeSkills.map((s) => s.name)).not.toContain("known");
   });
 });

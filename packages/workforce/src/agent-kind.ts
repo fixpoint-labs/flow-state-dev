@@ -143,14 +143,17 @@ function settingsSchema(options: AgentKindOptions) {
         /**
          * Turn on the up-front matcher's third tier — a model call that
          * classifies the message against the skill catalog. Slash matching
-         * and keyword matching (tiers 1-2) always run, every turn, regardless
-         * of this switch.
+         * (tier 1) always runs, every turn, regardless of this switch. Keyword
+         * matching (`createSkillActivator`'s tier 2) is not part of this
+         * kind's contract at all — zero-LLM matching earns a second always-on
+         * path only once we know we need one — so this kind's activator
+         * pipeline never carries it, on either branch of this switch.
          *
          * **Default off**, which inverts `createSkillActivator`'s own default:
          * a zero-configuration worker must not spend an extra model call per
          * turn deciding whether a skill applies. Left off, skills are still
-         * reachable — a slash or keyword hit still activates them, and the
-         * generator carries the load tool for the rest.
+         * reachable — a slash hit still activates them, and the generator
+         * carries the load tool for the rest.
          */
         enableLlmClassifier: z.boolean().default(false)
       })
@@ -230,20 +233,24 @@ export function defineAgentKind(options: AgentKindOptions = {}) {
 
   // `createSkillActivator` takes `enableLlmClassifier` at construction, so
   // one instance can't honour a per-seat switch on tier 3 alone. Two full
-  // activators are built instead — both carry tiers 1-2 (slash, keyword);
-  // only the second also carries tier 3 (the model classifier). The seat's
-  // switch picks between them below with two mutually exclusive `.tapIf`
-  // steps, so tiers 1-2 run on every turn regardless of the switch, and only
-  // tier 3 is conditional.
+  // activators are built instead — both carry tier 1 (slash) only, both with
+  // tier 2 (keyword) turned off via `enableKeywordMatch: false`, since
+  // keyword matching is not part of this kind's contract; only the second
+  // also carries tier 3 (the model classifier). The seat's switch picks
+  // between them below with two mutually exclusive `.tapIf` steps, so tier 1
+  // runs on every turn regardless of the switch, tier 2 never runs on either
+  // branch, and only tier 3 is conditional.
   //
   // Built once per kind, not per seat — same as before.
   const matcherWithoutClassifier = createSkillActivator({
     enableLlmClassifier: false,
+    enableKeywordMatch: false,
     activeState: ACTIVE_SKILLS_STATE,
     ...(options.skills ? { initialSkills: options.skills } : {})
   });
   const matcherWithClassifier = createSkillActivator({
     enableLlmClassifier: true,
+    enableKeywordMatch: false,
     activeState: ACTIVE_SKILLS_STATE,
     ...(options.classifierModel ? { classifierModel: options.classifierModel } : {}),
     ...(options.confidenceThreshold !== undefined ? { confidenceThreshold: options.confidenceThreshold } : {}),
