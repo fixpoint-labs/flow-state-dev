@@ -15,7 +15,7 @@
 import { handler } from "@flow-state-dev/core";
 import {
   channelNotifyInputSchema,
-  createChannelFlow,
+  defineChannelFlow,
   type ChannelNotifyInput,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
@@ -33,7 +33,7 @@ const notifyMember = handler({
   },
 });
 
-const channelKind = createChannelFlow({ notify: notifyMember });
+const channelKind = defineChannelFlow({ notify: notifyMember });
 
 // The one instance. `cardinality: "singleton"` means its id is its kind, so the
 // address is `channel` and every channel here is a session on it.

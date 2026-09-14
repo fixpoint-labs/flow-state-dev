@@ -24,14 +24,14 @@ import {
   CHANNEL_KIND,
   channelFlow,
   channelNotifyInputSchema,
-  createChannelFlow,
+  defineChannelFlow,
   type ChannelNotifyInput
 } from "../src/index";
 
 const USER_ID = "u_fanout";
 
 function hostWith(notify?: ReturnType<typeof handler>) {
-  const instance = (notify === undefined ? channelFlow : createChannelFlow({ notify }))();
+  const instance = (notify === undefined ? channelFlow : defineChannelFlow({ notify }))();
   const state = createFlowState({
     flows: { [CHANNEL_KIND]: instance },
     stores: { default: { primary: inMemoryStores() } },
