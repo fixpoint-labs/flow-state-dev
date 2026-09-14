@@ -6,7 +6,7 @@ four separate checkouts: the agent itself, its skills, its memory, and the teach
 
 This document is what they all read, so they do not each invent a different answer. It fixes
 what the pieces owe each other. **It is a contract, not a design** — it does not build the
-agent kind, wire its skills, compose in its memory, or write the guides. Those are
+worker kind, wire its skills, compose in its memory, or write the guides. Those are
 FIX-1363, FIX-1362, FIX-1364 and FIX-1366, and each cites this file rather than re-deriving it.
 
 Two things are false today, and both are load-bearing:
@@ -34,14 +34,14 @@ Related, and deliberately not restated here:
 the **after** state, not what ships now:
 
 - **Today** — an absent `flow:` is refused, and every seat's skills share one org-wide bucket.
-- **After** — an absent `flow:` hires the built-in `agent` kind, and a seat's skills are stored
+- **After** — an absent `flow:` hires the built-in worker kind, and a seat's skills are stored
   under that seat's own instance id.
 
 ```mermaid
 flowchart TD
   W["WORKER.md<br/>instructions, no flow:"] --> H[hireWorkforce<br/>the one admission gate]
   K["kinds map<br/>built-in merged underneath"] --> H
-  H -->|absent flow:| A[built-in agent kind]
+  H -->|absent flow:| A[built-in worker kind]
   H -->|unregistered name| X[refuse, by name]
   A --> P["prompt: [default, instructions]"]
   A --> S["skills: org ∪ team ∪ seat<br/>stored per seat"]
@@ -53,7 +53,7 @@ flowchart TD
 
 ## C1 — Composition, not a type
 
-The agent kind is a flow like any other. Its settings bag (`configSchema`) declares
+The worker kind is a flow like any other. Its settings bag (`configSchema`) declares
 `instructions`, `model`, `tools`, and the skills switches. It declares **no memory switch** — per
 C5 memory is composed into a kind at definition time, not turned on here. `instructions` is the worker
 file's body arriving as one setting — the hire step already imposes that key
@@ -62,6 +62,10 @@ name (`REFUSED_PERSONA_KEY`, same file).
 
 Generator slots stay `prompt` / `context` / `history` / `user`. Instructions compose as
 `prompt: [default, instructions]`.
+
+`tools` is a hard runtime fence, not a hint: a seat may call exactly the catalog keys it names,
+and an empty list means none, regardless of anything else the app's catalog or the skills
+library contributes (see C5).
 
 The shared `default` prompt is owned and shipped elsewhere (FIX-1344 part 2, not yet landed).
 Until it does, the kind ships against `instructions` alone with an explicit seam for `default`
@@ -84,8 +88,8 @@ how "absent means default" and "wrong means error" drift apart. The complete rul
 
 | Worker file says | Result |
 |---|---|
-| no `flow:` | the built-in agent kind |
-| `flow: agent` | the built-in agent kind — same kind, named explicitly |
+| no `flow:` | the built-in worker kind |
+| `flow: agent` | the built-in worker kind — same kind, named explicitly |
 | `flow: <registered>` | that kind, exactly as today |
 | `flow: <not registered>` | **refused by name**, listing the kinds that were passed — today's wording, unchanged |
 | roster passes `kinds: { agent: … }` | the app's flow wins; the built-in is merged *underneath* whatever the caller supplied |
@@ -243,6 +247,14 @@ a skill given to one generator never appears in another's context, where the cap
 session-global `activeSkills` bag. The published guide currently teaches the capability;
 correcting that is FIX-1366's, not a reason to pick it.
 
+"Whole catalog" here means the load tool's reach over the *skill* catalog (`allowed` omitted), not
+licence for the skills library to re-widen a seat's tool reach past its own `tools:` (C1) — the
+default kind hands the library the app's tool catalog with registration turned off
+(`createSkillsLibrary({ catalog, registerCatalogTools: false })`), so a bound skill's
+`allowed-tools` are still validated against it but never registered by the library itself. A
+stock-kind skill may declare `allowed-tools` naming a tool in the app catalog; registration stays
+solely the generator's own `tools:` mapping (C1).
+
 ## C6 — What must not be invented
 
 - No second Agent type at framework level. Do not grow `AgentRegistry` into a product Agent.
@@ -306,7 +318,7 @@ Each criterion belongs to the issue whose own build makes it true: **1–3 to FI
 thin proof; **4 to FIX-1363**, which builds the built-in and the merge-underneath; **5 and 6 to
 FIX-1362**, which builds the instance-specific seeding path C3 requires; and **7 to a grep**, riding
 with either building issue. FIX-1365 stays thin by the epic's fence — *a thin hire of the OOTB
-agent kind, nothing more* — so 4–6 land on their builders as one tracer-bullet behaviour each,
+worker kind, nothing more* — so 4–6 land on their builders as one tracer-bullet behaviour each,
 rather than deferring to a single downstream check. Every assignment is also recorded on its own
 Linear issue, which is where an owner picks it up.
 

@@ -8,11 +8,14 @@
  * out of the root so importing this package does not pull a consumer onto
  * `node:fs`.
  *
- * A worker is a flow kind plus its instructions; there is no Agent factory
- * here. Beside the seat factory sit two helpers: `definePersona`, which
- * declares the persona resources a flow renders as a system prompt, and
- * `createWorkforceCapability`, which surfaces a roster through the capability
- * system.
+ * A worker is a flow kind plus its instructions; there is no Agent class here,
+ * only the flow a kind resolves to. A record that names no kind is hired into
+ * the built-in `agent` kind, whose flow `defineAgentWorkerFlow` builds — called
+ * with no arguments it *is* the built-in, and called with arguments it is how
+ * an app replaces it. Beside the
+ * seat factory sit two helpers: `definePersona`, which declares the persona
+ * resources a flow renders as a system prompt, and `createWorkforceCapability`,
+ * which surfaces a roster through the capability system.
  *
  * The package also ships the **channel** floor: `channelFlow`, the one built-in
  * channel kind, and the two-phase binder (`channelInstances` at build time,
@@ -23,6 +26,7 @@
  * channel opens a SESSION per record on a shared one.
  */
 
+export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { hireWorkforce, type HireOptions } from "./hire";

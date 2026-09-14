@@ -1,6 +1,6 @@
 ---
 description: Holds the engineering board and breaks work into tasks.
-flow: worker-agent
+flow: custom-agent
 model: openai/gpt-5.4-mini
 tools: [board, search]
 ---

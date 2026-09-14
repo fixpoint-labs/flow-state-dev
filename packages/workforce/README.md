@@ -34,6 +34,8 @@ flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 
 `workerAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package — decides what a worker may declare.
 
+This example names a custom kind because that is what it is demonstrating. A record that leaves `flow:` out is hired into the built-in `agent` kind instead, and needs no `kinds` argument at all — see **Hiring** below.
+
 ## Personas
 
 Use `definePersona` to declare resource-backed personas (parallel to Skills):
@@ -203,6 +205,13 @@ label. Everything else is that worker's settings, handed to the flow
 verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
 declared is refused by name at the hire.
 
+**A record that leaves `flow:` out is hired into the built-in worker kind** — it talks, its body
+arrives as its instructions, and it reads whatever skills the app supplied. `kinds` is therefore
+optional. A `flow:` that is present but empty or whitespace-only still refuses: it names no kind,
+and only an absent key means the built-in. To replace the built-in, pass your own flow under `agent`
+(`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`) and it wins for every seat — configuring
+it is kind replacement, not an option on `hireWorkforce`.
+
 A worker record declares data: a description, the kind it runs, and that kind's settings. Behavior
 lives in the flow the kind names, so a worker that has to do something none of your kinds do is a
 flow you define in your app and pass in `kinds`, named by that worker's `flow:`.
@@ -343,6 +352,8 @@ leaves an empty session there, and re-running binds it.
 
 | Export | Description |
 |--------|-------------|
+| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with a tool catalog, skills or a default model it is the replacement you register under `agent`. |
+| `AGENT_KIND` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
 | `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker. Ships from the `./loader` subpath (Node only). |
@@ -373,7 +384,7 @@ leaves an empty session there, and re-running binds it.
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
-| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name the built-in's catalog does not carry, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |
 | Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, or `instructions:` given both in the frontmatter and as a body. Collected: one error names every bad channel, and nothing is registered |
 | Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |

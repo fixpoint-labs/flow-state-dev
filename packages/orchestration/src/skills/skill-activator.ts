@@ -22,8 +22,9 @@
  * kitchen-sink thinking-style auto-router) live in their own pipelines and
  * compose alongside this one if a flow wants both.
  *
- * Tier-3 LLM classification is opt-out via `enableLlmClassifier: false` —
- * useful in tests and in deployments that only want deterministic tiers.
+ * Tier-3 LLM classification is opt-out via `enableLlmClassifier: false`, and
+ * tier-2 keyword matching is opt-out via `enableKeywordMatch: false` — useful
+ * in tests and in deployments that only want a subset of the tiers.
  */
 
 import { z } from "zod";
@@ -63,6 +64,15 @@ export interface SkillActivatorOptions {
    */
   enableLlmClassifier?: boolean;
   /**
+   * When `false`, skillActivator skips tier 2 (keyword scan) entirely. The
+   * apply handler runs against whatever the slash tier — and, if enabled,
+   * the classifier — produced. Default `true`, preserving today's pipeline
+   * for orchestration's own callers. The built-in `agent` kind
+   * (`@flow-state-dev/workforce`) is the one caller that sets this `false`:
+   * keyword matching is not part of that kind's contract.
+   */
+  enableKeywordMatch?: boolean;
+  /**
    * Where the matcher writes its resolved activations. Default
    * `{ scope: "session", field: "activeSkills" }`. To feed a Skills v2
    * per-generator binding, point this at that binding's explicit
@@ -98,13 +108,10 @@ export function createSkillActivator(
 ): BlockDefinition<typeof activatorInputSchema, typeof activatorInputSchema> {
   const collectionKey = options.collectionKey ?? "skills";
   const enableLlm = options.enableLlmClassifier ?? true;
+  const enableKeyword = options.enableKeywordMatch ?? true;
 
   const allowed = options.allowed;
   const slashTier = createSkillSlashMatch({
-    collectionKey,
-    ...(allowed ? { allowed } : {}),
-  });
-  const keywordTier = createSkillKeywordMatch({
     collectionKey,
     ...(allowed ? { allowed } : {}),
   });
@@ -133,9 +140,18 @@ export function createSkillActivator(
     pipeline = pipeline.tap(seedStep);
   }
 
-  pipeline = pipeline
-    .tap(slashTier)
-    .tapIf((_input, ctx) => !ctx.sequencer?.state.resolved, keywordTier);
+  pipeline = pipeline.tap(slashTier);
+
+  if (enableKeyword) {
+    const keywordTier = createSkillKeywordMatch({
+      collectionKey,
+      ...(allowed ? { allowed } : {}),
+    });
+    pipeline = pipeline.tapIf(
+      (_input, ctx) => !ctx.sequencer?.state.resolved,
+      keywordTier,
+    );
+  }
 
   if (enableLlm) {
     const classifier = createSkillClassifierSequencer({
