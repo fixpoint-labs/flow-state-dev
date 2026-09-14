@@ -210,7 +210,8 @@ arrives as its instructions, and it reads whatever skills the app supplied. `kin
 optional. A `flow:` that is present but empty or whitespace-only still refuses: it names no kind,
 and only an absent key means the built-in. To replace the built-in, pass your own flow under `agent`
 (`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`) and it wins for every seat — configuring
-it is kind replacement, not an option on `hireWorkforce`.
+it is kind replacement, not an option on `hireWorkforce`. The factory takes five options in all:
+`catalog`, `skills`, `model`, and the matcher tuning pair `classifierModel` / `confidenceThreshold`.
 
 A worker record declares data: a description, the kind it runs, and that kind's settings. Behavior
 lives in the flow the kind names, so a worker that has to do something none of your kinds do is a
@@ -352,7 +353,7 @@ leaves an empty session there, and re-running binds it.
 
 | Export | Description |
 |--------|-------------|
-| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with a tool catalog, skills or a default model it is the replacement you register under `agent`. |
+| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with any of its five options — `catalog`, `skills`, `model`, `classifierModel`, `confidenceThreshold` — it is the replacement you register under `agent`. |
 | `AGENT_KIND` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
