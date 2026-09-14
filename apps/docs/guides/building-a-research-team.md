@@ -1,7 +1,7 @@
 ---
 sidebar_position: 9
 title: Building a research team
-description: Build a multi-agent task board — a static board, runtime fan-out with a router, a skill that defines its own agent team, the two ways to staff an agent, and letting the model decide the tasks.
+description: Build a multi-agent task board — a static board, runtime fan-out with a router, a skill that defines its own agent team, the three ways to staff a seat, and letting the model decide the tasks.
 ---
 
 # Building a research team
@@ -10,7 +10,7 @@ This guide builds a small team of workers that research a subject together: anal
 
 **What we're building:** a task board where analysts run at the same time and a `synthesizer` starts only after they finish and combines their findings — first with a fixed set of tasks, then with a set decided at runtime.
 
-**Concepts we'll cover:** worker blocks and `taskWorkerInputSchema`, the `taskBoard` factory, dependency gating with `deps`, reading upstream results off `input.deps`, runtime fan-out with a router, a skill that defines its own team of prompt agents and runs its own board, the two ways to staff an agent (inline prompt, registered agent), and letting the model plan the tasks at runtime.
+**Concepts we'll cover:** worker blocks and `taskWorkerInputSchema`, the `taskBoard` factory, dependency gating with `deps`, reading upstream results off `input.deps`, runtime fan-out with a router, a skill that defines its own team of prompt agents and runs its own board, the three ways to staff a seat (an inline prompt agent, a tool, a block you wrote), and letting the model plan the tasks at runtime.
 
 :::tip Full, runnable code
 Every worker, board, router, `SKILL.md`, and a passing test suite for this
@@ -255,9 +255,9 @@ import { search, fetch } from "@flow-state-dev/tools";
 export const skills = createSkillsLibrary({
   catalog: { search: search(), fetch: fetch() },
   initialSkills,
-  // Inline `prompt`/`prompt-ref` agents need no registry — they materialize
-  // straight from the SKILL.md. Reach for `agent-ref` (section 5) when you want
-  // a named agent defined once and reused across skills.
+  // Inline `prompt`/`prompt-ref` agents materialize straight from the
+  // SKILL.md — there is nothing else to pass. Section 5 covers the other
+  // ways to fill a seat.
 });
 ```
 
@@ -280,75 +280,44 @@ agent's history. When the graph *should* stay fixed in code, register a
 `taskBoard(...).drain` block in the skills `catalog` and list it under
 `allowed-tools` — [any block can be a tool](/docs/fundamentals/blocks#any-block-can-be-a-tool).
 
-## 5. Two ways to staff an agent
+## 5. Three ways to staff a seat
 
 Section 4's team is defined entirely inline — every agent is a `prompt-ref`
-persona in the skill folder. That's one of two ways to fill a seat on the
-board. The example's `competitor-analysis` skill shows both side by side.
+persona in the skill folder. That's one of three ways to fill a seat on the
+board.
 
-**Inline prompt agent.** A `prompt` or `prompt-ref` right in the SKILL.md. The
-persona travels with the skill; no app code registers it. This is section 4's
-whole team, and the `discoverer` here:
+**An inline prompt agent.** A `prompt` or `prompt-ref` right in the SKILL.md. The
+persona travels with the skill; no app code registers it. That's section 4's
+whole team, and every seat in the example's other skill, `competitor-analysis` —
+a `discoverer` that picks the competitors, an `analyzer` queued once per
+competitor, and a `comparison-writer` gated on all of them:
 
-```yaml
+```yaml title="src/skills/competitor-analysis/SKILL.md (frontmatter, trimmed)"
 agents:
   discoverer:
     prompt-ref: ./reference/discover.md
     tools: [search, taskTools]
-```
-
-**A registered agent, by name.** Define an agent once with `defineAgent` — a
-persona, a model, tools — and reference it from any skill with `agent-ref`. Reach
-for this when several skills share the same participant, or when the agent is app
-code you maintain outside the skill folder.
-
-```ts title="agents.ts"
-import { defineAgent, createAgentRegistry, materializeAgent } from "@flow-state-dev/workforce";
-
-export const competitorAnalyst = defineAgent({
-  name: "competitor-analyst",
-  description: "Analyzes one competitor across positioning, pricing, and distribution.",
-  persona:
-    "You analyze ONE competitor and surface the facts a comparison writer will " +
-    "use. Cover positioning, pricing, distribution, and differentiators. Cite sources.",
-  model: "openai/gpt-5.4-mini",
-  allowedTools: ["search", "fetch"],
-});
-
-export const agentRegistry = createAgentRegistry([competitorAnalyst]);
-export { materializeAgent };
-```
-
-```yaml
-agents:
   analyzer:
-    agent-ref: competitor-analyst
+    prompt-ref: ./reference/analyze.md
+    tools: [search, fetch]
+    model: openai/gpt-5.4-mini
+  comparison-writer:
+    prompt-ref: ./reference/compare.md
 ```
 
-Only registry agents need `agentRegistry` + `materializeAgent` on the library;
-inline agents need neither:
+`taskTools` on the `discoverer` is what lets it fan out mid-drain: it enqueues
+the analyzer tasks and the gated writer task onto the same board the coordinator
+is already running.
 
-```ts title="skills.ts"
-import { agentRegistry, materializeAgent } from "./agents";
+Inline agents need no library wiring beyond the tool catalog the `tools:` keys
+resolve against. That's the whole of
+[`src/skills.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/skills.ts)
+in the example: a `catalog`, the bundled skills, and no agent registry anywhere.
 
-export const skills = createSkillsLibrary({
-  catalog: { search: search(), fetch: fetch() },
-  initialSkills,
-  agentRegistry,      // resolves `agent-ref` names to registered agents
-  materializeAgent,   // turns a resolved agent into the board worker the drain dispatches
-});
-```
-
-`agent-overrides` on an `agent-ref` entry lets one skill swap a registered agent's
-model or tools without touching its definition. See [Agents](/docs/orchestration/agents)
-and [Delegation](/docs/skills/delegation) for personas, structured output, and the
-agent resolution table. The example wires both forms in
-[`src/agents.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/agents.ts).
-
-A seat doesn't have to be a persona, and it doesn't have to be declared. The task
-board dispatches any block as a worker (that's
-[section 2](#2-the-code-first-board)), and a tool is a block — so every tool the
-skill allows is already assignable, by its catalog key:
+**A tool, by its catalog key.** A seat doesn't have to be a persona, and it
+doesn't have to be declared at all. The task board dispatches any block as a
+worker (that's [section 2](#2-the-code-first-board)), and a tool is a block — so
+every tool the skill allows is already assignable, by its catalog key:
 
 ```yaml
 allowed-tools: [httpGet]
@@ -369,6 +338,19 @@ the output recorded on a task. One limit worth knowing before you plan around it
 tool seat gets ordering from `deps` but can't read an upstream task's output. See
 [Assigning a task to a tool](/docs/skills/delegation#assigning-a-task-to-a-tool)
 for the full shape.
+
+**A block you wrote.** When your code owns the graph rather than a skill, pass
+blocks straight to `taskBoard({ workers })` and assign tasks to their registry
+keys. That's sections 2 and 3 of this guide. Those workers declare their own
+`outputSchema`, so a downstream worker reads typed data off `input.deps` instead
+of parsing prose — which a skill's prompt agents can't do, since a delegated
+agent always returns free text.
+
+An agent entry has one more resolution field, `agent-ref`, which looks a name up
+in an agent registry. Nothing ships that registry: you write both it and the
+`materializeAgent` function that turns its results into board workers, and pass
+them to `createSkillsLibrary`. See
+[Borrowing an agent from a registry](/docs/orchestration/agents#borrowing-an-agent-from-a-registry).
 
 ## 6. Let an agent decide the tasks
 

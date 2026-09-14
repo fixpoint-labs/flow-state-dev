@@ -1,15 +1,9 @@
 // Skills wiring for the research-team example.
 //
 // The two SKILL.md folders under `./skills` each define their own team in
-// `agents:` frontmatter, and they show the different ways to staff an agent:
-//
-//   - research-company defines its whole team inline — three `prompt-ref`
-//     agents whose personas live in the skill folder. Nothing in app code
-//     registers them; the team travels with the skill. This is the flagship
-//     "a skill defines its own team" case.
-//   - competitor-analysis adds the registry form: inline agents (`discoverer`,
-//     `comparison-writer`) plus an `analyzer` that references a shared registry
-//     agent (`agent-ref` → an app `defineAgent`). See ./agents.ts.
+// `agents:` frontmatter. Every agent on both teams is a `prompt-ref` agent
+// whose persona lives in the skill folder — nothing in app code registers
+// them, so each team travels with its skill.
 //
 // Binding an agent-declaring skill to a generator installs the board-commanded
 // delegation surface: a private task board, the task tools (`addTask`/
@@ -18,9 +12,8 @@
 // executes the graph with concurrency and dependency gating. The board runs the
 // agents — there are no per-agent tools.
 //
-// `agentRegistry` + `materializeAgent` resolve the two `agent-ref` agents that
-// competitor-analysis borrows; the `catalog` carries the leaf tools the inline
-// agents reference via `tools:` (search, fetch). Because the agents are LLMs
+// The `catalog` carries the leaf tools the agents reference via `tools:`
+// (search, fetch). Because the agents are LLMs
 // that call `search`, the skill path (the flow's `chat` action) needs two keys:
 // a model key, and one search-provider key — `search` throws when no provider is
 // configured, while `fetch` falls through to a builtin and needs none. The
@@ -31,7 +24,6 @@ import { fileURLToPath } from "node:url";
 import { createSkillsLibrary, readSkillsDirectory } from "@flow-state-dev/orchestration";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
-import { agentRegistry, materializeAgent } from "./agents";
 
 /** Absolute path to the bundled `SKILL.md` folders. */
 export const skillsDir = path.resolve(
@@ -51,15 +43,11 @@ export { bundledSkills };
  * A shared skills library preloaded with the bundled research skills. Bind it
  * per generator via `uses: [skillsLibrary.with({ ... })]`; a bound skill that
  * declares `agents:` gives that generator its board, the task tools, and
- * `runBoard`. The `catalog` holds the leaf tools inline agents reference by key;
- * `agentRegistry`/`materializeAgent` resolve competitor-analysis's `agent-ref`
- * agents.
+ * `runBoard`. The `catalog` holds the leaf tools the agents reference by key.
  */
 export const skillsLibrary = createSkillsLibrary({
   catalog: { search: search(), fetch: fetch() },
   initialSkills: bundledSkills,
-  agentRegistry,
-  materializeAgent,
   // Session scope keeps the example self-contained — a per-session skill
   // library, no user/org persistence wiring needed.
   scope: "session",

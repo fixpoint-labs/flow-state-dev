@@ -1,7 +1,7 @@
 {
   "name": "@flow-state-dev/workforce",
   "version": "0.1.0",
-  "description": "Agent registry and materialization for flow-state-dev.",
+  "description": "The seat factory for flow-state-dev: worker records become configured flow instances.",
   "keywords": [
     "ai",
     "agents",
@@ -65,6 +65,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.3",

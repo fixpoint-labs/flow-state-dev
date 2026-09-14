@@ -3,25 +3,23 @@ description: Produce a competitor analysis as a comparison matrix plus a synthes
 keywords: [competitor, competitors, competition, compare, versus, landscape, market]
 argument-hint: <product, company, or market>
 
-# This skill shows the two ways to staff an agent:
-#   - discoverer, comparison-writer: inline prompt agents, defined right here in
-#                                    the skill (prompt-ref to the skill folder).
-#   - analyzer:                      agent-ref to `competitor-analyst`, a shared
-#                                    agent defined in app code (src/agents.ts)
-#                                    via defineAgent() and borrowed by name.
+# Every agent on this team is defined right here in the skill: a prompt-ref to
+# a persona file in the skill folder, plus the tools and model it needs.
 agents:
   discoverer:
     prompt-ref: ./reference/discover.md
     tools: [search, taskTools]
   analyzer:
-    agent-ref: competitor-analyst
+    prompt-ref: ./reference/analyze.md
+    tools: [search, fetch]
+    model: openai/gpt-5.4-mini
   comparison-writer:
     prompt-ref: ./reference/compare.md
 ---
 
 This skill runs a competitor-analysis team on your task board. A discoverer picks 3-5 competitors and queues one analyzer per competitor plus a comparison-writer gated on all of them. The analyzers run in parallel; the comparison-writer waits on all of them and formats the matrix.
 
-The team is staffed two ways. The discoverer and comparison-writer are inline prompt agents defined in this skill — their personas live in the skill folder. The analyzer is a shared agent registered in app code and referenced by name (`agent-ref`), so other skills can borrow the same participant. From the board's point of view they're all just agents you assign tasks to.
+All three are inline prompt agents defined in this skill — their personas live in the skill folder, and the team travels with the skill. From the board's point of view they're all just agents you assign tasks to.
 
 You seed the board and run it. Extract the target from the user's message (for "who competes with Linear?", the target is `Linear`; if the user named several targets, pick the one they led with), then:
 

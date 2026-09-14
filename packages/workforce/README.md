@@ -1,100 +1,40 @@
 # @flow-state-dev/workforce
 
-Agent registry and materialization for flow-state-dev.
+The seat factory for flow-state-dev.
 
-An **Agent** is a named, reusable participant composed of a Persona (its system-prompt identity), a model, and tools. Register agents once, reference them as delegation workers via `agent-ref`, or compose them into any flow as standalone blocks.
+A **worker** is a flow kind plus its instructions. Describe each one as a `WORKER.md` record, then hire the roster: `hireWorkforce` turns those records into one configured, addressable flow copy per worker, which you register.
 
 ## Quick Start
 
-```ts
-import { defineAgent, createAgentRegistry, materializeAgent } from "@flow-state-dev/workforce";
-import { createSkillsLibrary } from "@flow-state-dev/orchestration";
+Describe the roster on disk, read it, hire it, register what comes back.
 
-const analyst = defineAgent({
-  name: "research-analyst",
-  description: "Investigates data sources and produces findings.",
-  persona: "You are a senior research analyst. Be thorough and cite sources.",
-  model: "openai/gpt-5.4-mini",
-  allowedTools: ["webSearch", "readDocument"],
-});
-
-const registry = createAgentRegistry([analyst]);
-
-const skills = createSkillsLibrary({
-  catalog,
-  agentRegistry: registry,
-  materializeAgent,
-  initialSkills,
-});
+```
+workforce/teams/engineering/workers/lead/WORKER.md
 ```
 
-Then a skill declares the agent as part of its team in `SKILL.md` — the
-`agents:` field turns on delegation, and `agent-ref` staffs the seat from the
-registry:
-
-```yaml
+```md
 ---
-description: Research a subject with a named analyst.
-agents:
-  analyst:
-    agent-ref: research-analyst
-    agent-overrides:
-      model: openai/gpt-5.4-mini
+flow: worker-agent
+description: Holds the board.
+model: openai/gpt-5.4-mini
 ---
-Plan the work on your board — `addTask` a research task with `assignee: analyst`,
-then call `runBoard` — and return the analyst's findings.
+You are the engineering lead. You break work into tasks and report what came back.
 ```
-
-## Standalone Block
-
-Use `agentBlock` to compose an agent directly into a flow action:
 
 ```ts
-import { agentBlock } from "@flow-state-dev/workforce";
+import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
+import { hireWorkforce } from "@flow-state-dev/workforce";
 
-const block = agentBlock(analyst, { catalog });
-// Input: { goal: string }, Output: string
+const { workers, errors } = await readWorkforceDirectory("./workforce");
+if (errors.length) throw new Error(`workforce: ${errors.length} worker(s) failed to load`);
+
+const seats = hireWorkforce(workers, { kinds: { "worker-agent": workerAgentFlow } });
+flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
-## Structured Output & Capabilities
+`workerAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package — decides what a worker may declare.
 
-By default an agent emits free text (`z.string()`). Declare a structured `outputSchema` and the agent emits that typed shape on **both** shapes — mounted standalone, and delegated to a board as a worker — so one declaration answers what the agent emits however it is run. A delegated result lands on the completed task, where the coordinator reads it.
-
-Two rules bound what may be declared, and both are checked at materialization, which throws a `StrictSchemaError` naming the agent and the offending field path:
-
-- The root must be a bare `z.string()` or an object. Every other root — a wrapped string like `z.string().nullable()` included — is sent to the provider as a structured-output root, which must be an object.
-- No field may parse to a value JSON cannot carry. A durable board round-trips the task record through `JSON.stringify`, so a transform (`z.string().transform(...)`), a `z.date()` / `z.coerce.date()`, a `z.bigint()` or a `z.map()` would read back as something else after a resume. `.refine()` and `z.preprocess()` are fine: neither changes the parsed value's type.
-
-The declared shape is also subject to the same OpenAI-strict requirement as any generator output.
-
-`usesCapabilities` accepts either a **string key** (resolved against the materialize-time `capabilityCatalog`) or a **capability reference** used as-is — including a `.with({ ... })`-configured capability, which keeps full preset typing (the same way `generator({ uses })` consumes capabilities).
-
-Declaring a string key with **no `capabilityCatalog` supplied** refuses the materialization: nothing can resolve it, and dropping it would run the agent without a capability it declared. The throw is an `AgentCapabilityError` — a `FlowError` with code `agent_capability_unresolved` — naming the agent and the capability. A key the catalog simply doesn't carry is a different case, and follows the same additive-not-restrictive policy as an unknown tool key: it warns and is skipped. Capability references need no catalog and are never refused.
-
-```ts
-const pm = defineAgent({
-  name: "portfolio-manager",
-  description: "Sizes the position into a typed decision.",
-  persona: { path: "personas/pm" },
-  outputSchema: portfolioDecisionSchema, // typed result, standalone or delegated
-  usesCapabilities: [
-    tradingDesk.with({ valuationSpine: true }),    // typed capability ref
-    "someSharedSkill",                             // string key (catalog)
-  ],
-});
-```
-
-## Persona Sourcing
-
-An agent's persona can be sourced three ways:
-
-| Form | Description |
-|------|-------------|
-| `string` | Bare system prompt, used verbatim. Simplest form for one-off agents. |
-| `{ template, state? }` | Inline LiquidJS template rendered against state. |
-| `{ path }` | Reference to a declared resource or collection instance, rendered live via `readContent()`. |
-
-### Persona Collections
+## Personas
 
 Use `definePersona` to declare resource-backed personas (parallel to Skills):
 
@@ -279,9 +219,9 @@ is handed over verbatim, leading and trailing whitespace included. A record that
 `instructions:` *and* carries a body is refused naming both sources. Whitespace is not a body, so a
 record that declares `instructions:` and carries an empty or blank one hires on the frontmatter value.
 
-`persona:` on a `defineAgent` is a different thing. A `WORKER.md` has no `persona` setting:
-declaring it lands the worker in `readWorkforceDirectory`'s `errors`, or is refused by
-`hireWorkforce` for a hand-built record. Spell it `instructions`.
+A `WORKER.md` has no `persona` setting: declaring it lands the worker in
+`readWorkforceDirectory`'s `errors`, or is refused by `hireWorkforce` for a hand-built record.
+Spell it `instructions`.
 
 Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
 every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.
@@ -413,14 +353,125 @@ errors;
 `resourcesFromDocs` throws instead of collecting, because a record that cannot become a resource is a
 startup misconfiguration.
 
+## Channels
+
+A **channel** is a place several agents talk about one topic, with one durable transcript, where
+nobody is assigned the work and nobody closes it out. This package ships the flow kind that runs one,
+plus the two calls that bind a roster of channels to it.
+
+The identity rule is the thing to get straight first, because it is not the one `WORKER.md` teaches:
+**one kind is one instance, and one channel is one named session on that instance.** A hundred
+channel records are a hundred sessions on a single registered flow. What differs per channel (who its
+members are, what its charter says, what has been said in it) lives in that session's state.
+
+You register nothing to use channels. The built-in kind is seeded for you.
+
+```ts
+import { channelInstances, openChannels, type ChannelManifest } from "@flow-state-dev/workforce";
+
+const channels: ChannelManifest[] = [
+  {
+    id: "engineering.standup",
+    declared: {
+      members: ["engineering.lead", "engineering.analyst"],
+      description: "Where the engineering team posts daily status.",
+    },
+    body: "Post what you finished, what you're on, and what's blocking you.",
+  },
+];
+
+// Build time. One instance per distinct kind, not per record.
+flowRegistry.registerMany(channelInstances(channels)); // one instance, id "channel"
+
+// Runtime, once the host is up. One named session per record.
+await openChannels(channels, { client: sessionClient, userId: "u_42" });
+```
+
+The two calls are separate because they happen at two different times: an instance is registered
+when the server is built, and a session can only be opened once it is running. `openChannels` needs
+a `userId` because a session belongs to one user, as *What a transcript proves* below explains.
+
+A record declares four keys and no others: `flow` (which kind, optional), `description`, `members`,
+and `instructions` (or a body, which is the same setting). The list is closed and checked at
+`channelInstances`: an undeclared key, an `id:`, a `system:`, or a body alongside `instructions:`
+each refuse by name.
+
+### Posting and reading
+
+`post` and `read` are declared both as public actions and as internal entries, so a client and
+another flow reach the same blocks. A post addresses the channel's **session id**:
+
+```ts
+const postToStandup = dispatcher({
+  name: "post-to-standup",
+  flowKind: "channel",                          // the shared instance
+  action: "post",
+  inputSchema: z.object({ body: z.string() }),
+  session: { id: () => "engineering.standup" }, // the channel
+  payload: (input) => ({ body: input.body, author: "engineering.lead" }),
+});
+```
+
+Address `{ id }`, never `{ key }`: a key-derived session resolves to a different session for every
+poster, so the channel never sees the post. Nothing detects that mistake.
+
+A flow-to-flow post needs in-process dispatch. On a deployment whose dispatcher hands work to an
+external queue, a delivery into an existing session refuses `external-dispatcher` by name. The public
+action route still works; the dispatch door does not.
+
+A post into a session nobody opened refuses `channel-not-bound` and writes nothing. The shared
+instance answers for every session id and the action path creates what it does not find, so
+boundness, not existence, is what makes a session a channel.
+
+### What a transcript proves
+
+A session is bound to one user, so **every line of a given channel carries the same `principal`**,
+the server-derived identity the post ran under. The optional `author` is a label the poster supplied,
+stored beside `authorVerified: false`, and it is the only thing distinguishing participants. The
+members check on `author` is a validity check against the declared roster, not authentication. Build
+an audit or approval flow on this and you get a far weaker guarantee than the field names suggest.
+
+### Waking members
+
+`createChannelFlow({ notify })` takes a block run once per declared member per post. It runs in its
+own request, outside the post's turn, so a slow delivery never delays the next post. A delivery that
+fails is recorded; the post stays written and membership is unchanged. Without a slot, posts land and
+nobody is woken.
+
+The framework carries the policy and your app supplies the addresses: the framework will not pick a
+dispatch target out of stored data, so a notify block declares its own recipients.
+
+### Registering your own kind
+
+The escape hatch, not a setup step. Reach for it when the workflow graph genuinely diverges. A
+standup, a DM and an announce channel are all channels on the one built-in kind, differentiated by
+members and charter.
+
+```ts
+// A kind of your own, alongside the built-in.
+channelInstances(channels, { kinds: { "my-channel": createMyChannelFlow() } });
+
+// Or replace the built-in wholesale, keeping the standard behaviour with your own notify block.
+channelInstances(channels, { kinds: { channel: createChannelFlow({ notify }) } });
+```
+
+Your factory carries the same contract the built-in does: `cardinality: "singleton"`, so
+`flow.id === flow.kind`. A `flow:` naming a kind you did not pass refuses by name and never falls
+back to the built-in. The `kinds` map is the whole registration surface; there is no second API.
+
+### What channels do not do yet
+
+No join or leave verb, no delete or retirement, and no summary pass over a long transcript.
+Membership is the declared list and nothing else writes it, so changing who is in a channel means
+editing the record and opening a fresh channel. Re-running `openChannels` over an open channel
+does nothing, which also means an edited record does not reach it. Re-opening is not a migration.
+It does repair a channel whose id was claimed before it was opened — a post that arrives first
+leaves an empty session there, and re-running binds it.
+
 ## Exports
 
 | Export | Description |
 |--------|-------------|
-| `defineAgent(config)` | Create a validated Agent definition. |
-| `createAgentRegistry(agents)` | Build an AgentRegistry (errors on duplicate name). |
-| `materializeAgent(agent, opts)` | Turn an Agent into a worker-shaped or standalone BlockDefinition. |
-| `agentBlock(agent, opts?)` | Shorthand for standalone agent block. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
 | `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker. Ships from the `./loader` subpath (Node only). |
@@ -430,17 +481,20 @@ startup misconfiguration.
 | `resourcesFromDocs(documents)` | Turn document records into the flow resource map, keyed by each document's ref. Spread it into your own `resources`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body }`. |
 | `ResourceDoc` | One document record: `{ ref, declared, body }`. |
+| `createChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
+| `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
+| `channelInstances(manifests, { kinds? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Register these. |
+| `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. Idempotent. |
+| `ChannelManifest` | One channel record: `{ id, declared, body }`. |
+| `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
+| `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |
+| `channelSessionStateSchema` / `channelTranscriptLineSchema` | A channel session's state, and one transcript line. |
 
 ## Error Semantics
 
 | Error | When |
 |-------|------|
-| Duplicate agent name | `createAgentRegistry` construction |
-| Agent not found | `materializeWorker` with unknown `agent-ref` |
-| No registry configured | `agent-ref` used without `agentRegistry` on capability |
-| No materializeAgent | Registry wired but materializer missing |
-| Persona path not found | Execution time — resource must be declared |
-| Persona empty content | Execution time — resource resolved but `readContent()` returned null |
+| Duplicate agent name | `createWorkforceCapability` construction |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable | `readWorkforceDirectory` throws |
 | Bad `team` or `worker` name | `readSeatSkills` throws |
@@ -458,3 +512,16 @@ startup misconfiguration.
 | A setting the convention derives, or `prefetchMode: "lazy"`, in a document file | Collected in `readResourcesDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the file's path |
 | Workforce root unreadable or symlinked, read for documents | `readResourcesDirectory` throws — the root is never followed through a link |
 | Document cannot become a resource | `resourcesFromDocs` throws naming the ref — a setting the convention derives, a lazy `prefetchMode`, or frontmatter `defineResource` itself rejects |
+| Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, or `instructions:` given both in the frontmatter and as a body. Collected: one error names every bad channel, and nothing is registered |
+| Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
+| `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
+| `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |
+| `external-dispatcher` | A flow-to-flow post on a host whose dispatcher hands work to an external queue. The public action route is unaffected |
+
+## Scripts
+
+```bash
+pnpm --filter @flow-state-dev/workforce build
+pnpm --filter @flow-state-dev/workforce typecheck
+pnpm --filter @flow-state-dev/workforce test
+```

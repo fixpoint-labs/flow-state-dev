@@ -7,7 +7,7 @@ sidebar_label: Delegation
 
 A skill is usually just instructions: matched text spliced into the generator's system prompt. Sometimes one skill needs to hand pieces of its work to a small team, like a research lead that farms out subtopics or an analyst that fans out per-item lookups. That's delegation.
 
-A skill turns on delegation by declaring an `agents:` field in its frontmatter. An agent is a prompt-driven teammate: a persona defined right inside the skill, or one borrowed from a shared registry. When a bound skill declares agents, the skills library gives that generator a private task board, the `taskTools` for planning on it, and `runBoard`, which drains that board. The generator plans the work as tasks (this depends on that, these two can run at once) and runs the whole graph with one `runBoard` call. The board is how the work runs.
+A skill turns on delegation by declaring an `agents:` field in its frontmatter. An agent is a prompt-driven teammate: a persona defined right inside the skill, or one your app resolves by name. When a bound skill declares agents, the skills library gives that generator a private task board, the `taskTools` for planning on it, and `runBoard`, which drains that board. The generator plans the work as tasks (this depends on that, these two can run at once) and runs the whole graph with one `runBoard` call. The board is how the work runs.
 
 There are no per-agent tools the generator calls directly. All delegated work goes on the board and runs when the board drains.
 
@@ -34,19 +34,19 @@ You are the research lead. Plan the work on your board, then run it:
 3. Call runBoard once. Surface the writer task's output.
 ```
 
-Each entry resolves one of three ways: defined inline in the skill, or referencing an agent in the registry.
+Each entry resolves one of three ways:
 
-| Field | Behavior | Portable? |
-|-------|----------|-----------|
-| `prompt` | Inline persona body. `$ARGUMENTS` is substituted at activation. | Yes — ships inside the skill folder. |
-| `prompt-ref` | Path to a Markdown persona file inside the skill folder. Loaded at activation. | Yes — ships inside the skill folder. |
-| `agent-ref` | Name of a registered agent, resolved through the `agentRegistry` / `materializeAgent` pair passed to the library. | No — needs the app's agent registry. |
+| Field | Behavior | Needs app wiring? |
+|-------|----------|-------------------|
+| `prompt` | Inline persona body. `$ARGUMENTS` is substituted at activation. | No — ships inside the skill folder. |
+| `prompt-ref` | Path to a Markdown persona file inside the skill folder. Loaded at activation. | No — ships inside the skill folder. |
+| `agent-ref` | Name looked up in an agent registry you write and pass to `createSkillsLibrary`, alongside a `materializeAgent` function that turns the result into a board worker. Nothing ships either half, so an `agent-ref` entry refuses until you supply both. | Yes — both halves, or the entry won't resolve. |
 
 Set exactly one. An entry carrying two resolution fields is rejected when the skill is parsed.
 
 Tools are not declared here. They're already assignable — see [Assigning a task to a tool](#assigning-a-task-to-a-tool).
 
-An inline agent (`prompt` or `prompt-ref`) is fully portable: a skill folder carries its own team with no app wiring beyond the tool catalog. An `agent-ref` agent resolves against the registry the app supplies, so it can't travel alone. What you get in exchange is reuse: one agent definition serving many skills.
+An inline agent (`prompt` or `prompt-ref`) is fully portable: a skill folder carries its own team with no app wiring beyond the tool catalog. Reach for `agent-ref` when you already maintain your own catalog of participants and want several skills to share one definition; [Borrowing an agent from a registry](../orchestration/agents#borrowing-an-agent-from-a-registry) covers what the two halves have to do.
 
 Agents materialize when the generator's tool surface resolves, once per execution, so a resolution step that has to await (a registry lookup, a prompt file read) is fine. Missing wiring on a statically-bound skill, such as an `agent-ref` with no registry, fails loud at build time.
 
@@ -361,8 +361,8 @@ Fork mode (`context: fork`, a skill that ran as an isolated sub-agent) is also r
 ## Related
 
 - [Authoring a delegating skill](/guides/agents-command-the-board) — the guide: declaring the team, staffing each seat, planning the graph, draining it, and what the failures look like.
-- [Building a research team](/guides/building-a-research-team) — the tutorial, code-first, with the two ways to staff an agent side by side.
+- [Building a research team](/guides/building-a-research-team) — the tutorial, code-first, with every way to staff a seat side by side.
 - [Task board](../orchestration/task-board) — the concurrent-drain primitive the board is built on, and every config option.
-- [Agents](../orchestration/agents) — the registry `agent-ref` resolves against.
+- [Agents](../orchestration/agents) — the three things that can do a unit of work on a board, and when each fits.
 - [Context supply](../orchestration/context-supply) — what prior conversation a delegated agent inherits.
 - [Per-generator binding](./binding) — the `active` / `allowed` / `delegation` binding surface.

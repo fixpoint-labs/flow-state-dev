@@ -446,8 +446,9 @@ Publish the **full spec (Part I + Part II)** in two places that must hold identi
 2. **Write `spec/<ISSUE-ID>.explainer.md`** — the visual explainer, beside the spec.
    **Every spec gets one.** Three panels and almost no prose: *today*, *after*, and *where
    the decision fell*. [`spec-explainer`](../spec-explainer/SKILL.md) is canonical for the
-   panel set, the source tiers, the prose budget, the mermaid grammar and the three
-   verification commands — read it and apply it; don't re-derive it here.
+   panel set, the source tiers, the prose budget, the diagram grammar — mermaid by default,
+   with one hand-authored SVG when the layout itself is the content — and the verification
+   commands. Read it and apply it; don't re-derive it here.
 
    It exists because the spec is written to be argued with, which is not the same as
    readable. The person at the approval gate is the least likely of anyone to read all of
