@@ -304,7 +304,7 @@ an audit or approval flow on this and you get a far weaker guarantee than the fi
 
 ### Waking members
 
-`createChannelFlow({ notify })` takes a block run once per declared member per post. It runs in its
+`defineChannelFlow({ notify })` takes a block run once per declared member per post. It runs in its
 own request, outside the post's turn, so a slow delivery never delays the next post. A delivery that
 fails is recorded; the post stays written and membership is unchanged. Without a slot, posts land and
 nobody is woken.
@@ -320,10 +320,10 @@ members and charter.
 
 ```ts
 // A kind of your own, alongside the built-in.
-channelInstances(channels, { kinds: { "my-channel": createMyChannelFlow() } });
+channelInstances(channels, { kinds: { "my-channel": defineMyChannelFlow() } });
 
 // Or replace the built-in wholesale, keeping the standard behaviour with your own notify block.
-channelInstances(channels, { kinds: { channel: createChannelFlow({ notify }) } });
+channelInstances(channels, { kinds: { channel: defineChannelFlow({ notify }) } });
 ```
 
 Your factory carries the same contract the built-in does: `cardinality: "singleton"`, so
@@ -349,7 +349,7 @@ leaves an empty session there, and re-running binds it.
 | `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Ships from the `./loader` subpath (Node only). |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body }`. |
-| `createChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
+| `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Register these. |
 | `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. Idempotent. |

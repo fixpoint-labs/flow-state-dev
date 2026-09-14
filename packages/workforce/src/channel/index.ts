@@ -16,14 +16,14 @@ export {
   channelReadOutputSchema,
   channelSessionStateSchema,
   channelTranscriptLineSchema,
-  createChannelFlow,
+  defineChannelFlow,
   type ChannelNotifyInput,
   type ChannelPostInput,
   type ChannelReadOutput,
   type ChannelRefusalReason,
   type ChannelSessionState,
   type ChannelTranscriptLine,
-  type CreateChannelFlowOptions
+  type DefineChannelFlowOptions
 } from "./channel-flow";
 
 export {

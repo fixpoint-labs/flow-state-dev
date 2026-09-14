@@ -295,7 +295,7 @@ const noteHandOffRefusal = handler({
   })
 });
 
-export interface CreateChannelFlowOptions {
+export interface DefineChannelFlowOptions {
   /**
    * The fan-out slot: a block run once per declared member per post, outside
    * the post's queue hold. Absent by default — a channel with no slot lands
@@ -324,7 +324,7 @@ export interface CreateChannelFlowOptions {
  * @param options `notify`: the per-member fan-out block, absent by default.
  * @returns The flow factory. Call it (no arguments) to mint the one instance.
  */
-export function createChannelFlow(options: CreateChannelFlowOptions = {}) {
+export function defineChannelFlow(options: DefineChannelFlowOptions = {}) {
   const notify = options.notify;
 
   // Declared ONLY when a slot was supplied. With no slot there is nothing to
@@ -446,4 +446,4 @@ export function createChannelFlow(options: CreateChannelFlowOptions = {}) {
  * An app registers nothing to use channels. A custom kind is the rare escape
  * hatch, passed through the `kinds` map at boot.
  */
-export const channelFlow = createChannelFlow();
+export const channelFlow = defineChannelFlow();
