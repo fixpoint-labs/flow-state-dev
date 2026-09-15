@@ -288,7 +288,7 @@ hireWorkforce(manifests, {
 
 `defineAgentWorkerFlow()` with no arguments *is* the built-in, so configuring it means replacing it — there is no second set of options on `hireWorkforce`. That also means a roster hired with no `kinds` at all carries an empty tool catalog.
 
-What it takes are the things a worker file cannot carry. A tool is running code, and a file on disk can only carry its name.
+`defineAgentWorkerFlow` takes the things a worker file cannot carry. A tool is running code, and a file on disk can only carry its name.
 
 | Option | What it does |
 | --- | --- |
@@ -298,7 +298,7 @@ What it takes are the things a worker file cannot carry. A tool is running code,
 | `classifierModel` | The model the skill classifier uses, for workers that switch it on. |
 | `confidenceThreshold` | How sure that classifier must be before it counts a skill as matching. |
 
-The last two belong to the kind rather than to a worker because the matcher is built once, when the kind is. A worker that set its own would be setting something nothing could read, and this kind refuses settings it cannot honour rather than dropping them quietly.
+The last two sit on the kind rather than on a worker because the matcher is built once, when the kind is. A worker that set its own would be setting something nothing reads.
 
 ## Skills
 
