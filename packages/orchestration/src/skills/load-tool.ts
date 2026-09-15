@@ -18,7 +18,7 @@
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import type { InitialSkill, SkillState } from "@flow-state-dev/core";
+import type { SkillState } from "@flow-state-dev/core";
 import { activeSkillsArraySchema } from "./active-skill-state";
 import {
   appendActivation,
@@ -28,6 +28,10 @@ import {
 import { skillManifestKey } from "./collection";
 import { resolveResourceCollection } from "../tasks";
 import { listEnabledSkills } from "./internal/list-enabled-skills";
+import {
+  resolveInitialSkills,
+  type InitialSkillsSource,
+} from "./initial-skills";
 import { ensureSeeded } from "./seeding";
 import { validateSkillName } from "./skill-md";
 
@@ -61,8 +65,12 @@ export interface LoadSkillToolOptions {
    * catalog. Names outside this set are rejected at call time.
    */
   allowed?: readonly string[];
-  /** Bundled defaults, lazily seeded on first call. */
-  initialSkills?: InitialSkill[];
+  /**
+   * Bundled defaults, lazily seeded on first call. A resolver is resolved
+   * against this call's own context — the tool runs as a child block of the
+   * generator, so it sees the same flow config the binding reader does.
+   */
+  initialSkills?: InitialSkillsSource;
 }
 
 /**
@@ -92,7 +100,7 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
           `Skills collection "${collectionKey}" is not registered on ctx.resources`,
         );
       }
-      await ensureSeeded(collection, initialSkills);
+      await ensureSeeded(collection, resolveInitialSkills(initialSkills, ctx));
 
       if (allowedSet && !allowedSet.has(input.name)) {
         throw new Error(
@@ -143,7 +151,7 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
 export interface LoadCatalogContextOptions {
   collectionKey: string;
   allowed?: readonly string[];
-  initialSkills?: InitialSkill[];
+  initialSkills?: InitialSkillsSource;
 }
 
 /**
@@ -160,7 +168,7 @@ export function buildLoadCatalogContext(
     const collection = resolveResourceCollection(ctx, opts.collectionKey);
     if (!collection) return null;
     try {
-      await ensureSeeded(collection, opts.initialSkills);
+      await ensureSeeded(collection, resolveInitialSkills(opts.initialSkills, ctx));
     } catch {
       // Seeding failure already logged.
     }

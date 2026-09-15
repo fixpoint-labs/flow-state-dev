@@ -4,12 +4,15 @@ sidebar_position: 2
 
 # Activation paths
 
-A skill can become active in two ways:
+A skill can become active in three ways:
 
 - **Up-front**, before the main generator runs, via `createSkillActivator`. A small router classifies the user message and writes the matched skills into session state. The generator runs once with the skill body already in its system prompt.
 - **Mid-flow**, while the generator is running, via the `runSkill` tool. The model sees a catalog of skills in its system prompt, decides one applies, and emits a tool call to activate it. The generator re-enters with the skill body in context.
+- **Always on**, listed by name so the skill is in context every turn with no matching at all. There is no decision to get wrong and nothing to classify, so it costs one array merge — but you pay for the skill's body on every turn whether it applies or not.
 
 Most apps want the up-front path as the default and `runSkill` as an escape hatch the agent can use when it changes its mind mid-turn. This page covers both.
+
+The built-in worker kind picks a deliberate subset of these. A worker gets slash matching plus whatever it lists as always-on; the classifier tier is opt-in per worker, and so is the mid-turn tool. See [workers on disk](../workforce/workers-on-disk.md#skills).
 
 ## Why two paths
 
