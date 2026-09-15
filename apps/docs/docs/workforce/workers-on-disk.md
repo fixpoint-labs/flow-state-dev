@@ -143,7 +143,7 @@ Logging a warning and carrying on is the tempting alternative, and it fails quie
 
 ### What is passed over in silence
 
-A team's `resources/`, `skills/` or `tools/` folder, a `workers/` folder at the top of the tree, a `README.md` sitting inside `teams/<team>/workers/`, an OS or editor file such as `.DS_Store`: none of these are read, and none are reported. The rule is that the path occupies a worker slot, `teams/<team>/workers/<worker>/`, not that the path looks like a worker.
+A team's `resources/`, `skills/` or `tools/` folder, a `workers/` folder at the top of the tree, a `README.md` sitting inside `teams/<team>/workers/`, an OS or editor file such as `.DS_Store`: none of these produces a worker, and none is reported. The rule is that the path occupies a worker slot, `teams/<team>/workers/<worker>/`, not that the path looks like a worker. A team's `skills/` folder is still read, by the separate walk described under [Skills](#skills).
 
 Inside a worker slot the opposite holds. A folder there that produces no worker is always named in `errors`.
 
@@ -278,19 +278,27 @@ That extra tool is the skill loader: it lets the model pull a skill the worker h
 
 Skills do not widen the list any other way. A skill a worker holds can declare `allowed-tools`, and naming a tool there does not grant it. A skill that delegates work to other workers is fenced the same way: those workers are seated from the holding worker's `tools:`, so a worker with `tools: []` reaches no catalog tool through a delegate either.
 
-That contract is the built-in kind's, not hiring's. A kind you write yourself declares its own settings, so whether a `tools:` name is checked against a catalog at all is that kind's business, and a capability mounted on its generator can put a tool in front of a worker that never named one.
+That fence is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so whether a `tools:` name is checked against a catalog at all is that kind's business, and a capability mounted on its generator can put a tool in front of a worker that never named one.
 
-To use your own worker everywhere instead, register a flow under `agent` and it wins for every seat:
+To give the built-in a tool catalog, build the kind yourself with `defineAgentWorkerFlow` and pass it under `agent`:
 
 ```ts
 import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { boardTool, searchTool } from "./tools";
 
-hireWorkforce(manifests, {
-  kinds: { agent: defineAgentWorkerFlow({ catalog: myTools, skills: mySkills }) }
+const { workers } = await readWorkforce("./workforce");
+
+const seats = hireWorkforce(workers, {
+  kinds: {
+    agent: defineAgentWorkerFlow({
+      catalog: { board: boardTool, search: searchTool },
+    }),
+  },
 });
 ```
 
-`defineAgentWorkerFlow()` with no arguments *is* the built-in, so configuring it means replacing it — there is no second set of options on `hireWorkforce`. That also means a roster hired with no `kinds` at all carries an empty tool catalog.
+`defineAgentWorkerFlow()` with no arguments *is* the built-in, so the copy you pass replaces it rather than adding to it. It takes over for the seats that run on the `agent` kind: the records that leave `flow:` out, and any that name `agent` outright. A worker naming any other kind is unaffected. A roster hired with no `kinds` at all therefore carries an empty tool catalog.
 
 `defineAgentWorkerFlow` takes:
 
@@ -299,10 +307,10 @@ hireWorkforce(manifests, {
 | `catalog` | The tools workers may name in `tools:`, by key. Left out, the built-in has no tools at all. |
 | `skills` | Skills every worker of this kind holds, on top of the ones its own folders hold. A name that collides with a skill a worker already holds is refused at the hire. |
 | `model` | The model a worker uses when its own file names none. |
-| `classifierModel` | The model the skill classifier uses. |
-| `confidenceThreshold` | How sure that classifier must be before it counts a skill as matching. Defaults to `0.65`. |
+| `classifierModel` | The model behind `skills.enableLlmClassifier`, an optional per-turn check that decides whether a skill applies. [Using them](#using-them) covers what it costs. |
+| `confidenceThreshold` | How sure that check must be before it counts a skill as matching. Defaults to `0.65`. |
 
-The last two belong to the kind. Nothing reads either until a worker switches the classifier on, and a `WORKER.md` that names one is refused at the hire, by name, along with any other setting the kind does not declare.
+The last two belong to the kind. Nothing reads either until a worker turns `skills.enableLlmClassifier` on, and a `WORKER.md` that names one is refused at the hire, by name, along with any other setting the kind does not declare.
 
 ## Skills
 
@@ -433,7 +441,7 @@ const seats = hireWorkforce(workers, {
 ## What this does not do
 
 - Reading the tree does not resolve tool or capability names. `tools: [board, search]` comes off the file as two strings; whether the app's catalog carries them is the hire's check, not the loader's.
-- It does not read anything outside `teams/<team>/workers/<worker>/`. Team-level and organization-level folders are part of the layout, and nothing here reads them.
+- It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the three skills folders each worker draws from ([Skills](#skills)). A team's `resources/` or `tools/` folder is layout, not input.
 - It does not follow symlinks, at any level of the walk.
 - It does not watch the tree. Read it once, at startup.
 - It does not staff a [task board](../orchestration/task-board.md). A hired seat is an address you open a session against; a board's workers are in-process and claim tasks from a collection. A board calls its registry entries seats too. Same idea, different mechanism.

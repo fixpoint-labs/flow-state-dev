@@ -72,7 +72,9 @@ const seats = hireWorkforce(workers, {
 });
 ```
 
-`requestTriageFlow` is your own `defineFlow(...)` and `"request-triage"` is its `kind`. A flow passed under a key that is not its own `kind` is refused. A record that names no `flow:` is hired into the built-in, so one roster can run both. What comes back is one `FlowInstance` per worker, ordered by id. [Workers on disk](./workers-on-disk#when-a-worker-needs-more-than-settings) walks through writing one.
+`requestTriageFlow` is your own `defineFlow(...)`, and `"request-triage"` is its `kind`. A record that names no `flow:` is hired into the built-in, so one roster can run both. You get back one seat per worker, ordered by id.
+
+Pass a flow under a key that is not its own `kind` and the hire is refused. [Workers on disk](./workers-on-disk#when-a-worker-needs-more-than-settings) walks through writing a flow kind of your own.
 
 `hireWorkforce` reads no files and registers nothing. A refused hire throws and returns nothing.
 

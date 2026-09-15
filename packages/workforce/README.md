@@ -238,8 +238,10 @@ through `defineAgentWorkerFlow({ skills })`. It has no memory: nothing it is tol
 turn. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only still
 refuses: it names no kind, and only an absent key means the built-in. To replace the built-in,
 pass your own flow under `agent`
-(`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`) and it wins for every seat — configuring
-it is kind replacement, not an option on `hireWorkforce`.
+(`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`). It takes over for the seats that run
+on the `agent` kind (the records that leave `flow:` out, and any that name `agent`) and leaves a
+worker on any other kind alone. Configuring the built-in is kind replacement, not an option on
+`hireWorkforce`.
 
 A worker record declares data: a description, the kind it runs, and that kind's settings. Behavior
 lives in the flow the kind names, so a worker that has to do something none of your kinds do is a
