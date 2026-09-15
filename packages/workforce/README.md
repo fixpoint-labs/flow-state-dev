@@ -200,6 +200,13 @@ the hire step the way a body is imposed as `instructions`. A `WORKER.md` declari
 itself is refused by name at both the loader and the hire step — where a skill folder sits is
 what decides who can see it.
 
+**A custom kind only receives it if its own `configSchema` declares `seatSkills`.** This is the
+one imposed setting that works that way, and deliberately: a body is written by the worker's
+author, but a worker's skills come from folders somebody else added, and one `org/skills/` folder
+makes every worker's set non-empty. Imposing it unconditionally would make adding a shared skill
+break every custom kind on the roster at once, for a setting their authors never saw. Declare the
+key to opt in.
+
 ## Hiring a workforce
 
 `hireWorkforce` turns worker records into **seats**: one configured, addressable flow copy per worker.

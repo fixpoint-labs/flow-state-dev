@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { handler } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, InitialSkill } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
@@ -154,6 +154,51 @@ describe("a seat's skills at the mint", () => {
   it("imposes nothing for a loaded record whose set is empty", () => {
     const [seat] = hire([record({ id: "qa.tester", body: "You test.", skills: [] })]);
     expect(seat!.config).toMatchObject({ seatSkills: [] });
+  });
+
+  // A custom kind never declared `seatSkills` and its config schema is closed,
+  // so imposing the key on one would refuse the hire. The breaking case is not
+  // the roster with NO skills — it is the roster with a shared `org/skills/`
+  // folder, which makes every worker's set non-empty, custom-kind ones included.
+  it("hires a custom kind that does not declare the key, on a roster that has skills", () => {
+    const triage = defineFlow({
+      kind: "request-triage",
+      cardinality: "collection",
+      configSchema: z.object({ desk: z.string().default("front") }),
+      actions: {
+        run: {
+          inputSchema: z.object({ message: z.string() }),
+          block: handler({
+            name: "triage",
+            inputSchema: z.object({ message: z.string() }),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: () => ({ ok: true }),
+          }),
+        },
+      },
+    });
+
+    const seats = hire(
+      [
+        // Both read the same org-level folder, so both records carry it.
+        record({ id: "qa.tester", body: "You test.", skills: [houseStyle] }),
+        record({
+          id: "ops.router",
+          declared: { flow: "request-triage" },
+          body: "",
+          skills: [houseStyle],
+        }),
+      ],
+      { "request-triage": triage as never },
+    );
+
+    const router = seats.find((s) => s.id === "ops.router")!;
+    const tester = seats.find((s) => s.id === "qa.tester")!;
+
+    // The custom kind hires and is handed nothing it never asked for...
+    expect(Object.hasOwn(router.config, "seatSkills")).toBe(false);
+    // ...while the built-in, which declares the key, still gets its skills.
+    expect(tester.config).toMatchObject({ seatSkills: [{ name: "house-style" }] });
   });
 
   it("refuses a worker that declares `seatSkills:` itself, by name", () => {

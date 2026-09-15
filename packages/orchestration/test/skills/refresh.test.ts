@@ -105,6 +105,45 @@ describe("refreshSeededSkills", () => {
     expect(c._store.has("skills/_meta")).toBe(true);
   });
 
+  // The failure Greptile and Codex both named: a refresh that touched storage
+  // and then threw must not read back as a refresh that did nothing.
+  it("names a skill whose write failed, instead of reporting silence", async () => {
+    const c = createMockSkillsCollection();
+    await ensureSeeded(c, [houseStyle("Write plainly.")]);
+    const boom = new Error("storage unavailable");
+    c.getOrCreate = (async () => {
+      throw boom;
+    }) as never;
+
+    const result = await refreshSeededSkills(c, [
+      houseStyle("Write very plainly.", [{ path: "reference/tone.md", content: "# Tone" }]),
+    ]);
+
+    expect(result.refreshed).toEqual([]);
+    expect(result.failed).toEqual([{ name: "house-style", error: boom }]);
+  });
+
+  // Write-then-prune. On a mid-refresh failure the folder must be left complete
+  // plus possibly stale, never half-deleted — the manifest a reader depends on
+  // is already replaced before anything is removed.
+  it("leaves the live manifest intact when a later write fails", async () => {
+    const c = createMockSkillsCollection();
+    await ensureSeeded(c, [withTwoFiles]);
+    c.getOrCreate = (async () => {
+      throw new Error("storage unavailable");
+    }) as never;
+
+    const result = await refreshSeededSkills(c, [
+      houseStyle("Rewritten.", [{ path: "reference/tone.md", content: "# Tone" }]),
+    ]);
+
+    expect(result.failed).toHaveLength(1);
+    // The manifest landed before the failure, and nothing was pruned.
+    expect(c._store.has("skills/house-style/SKILL.md")).toBe(true);
+    expect(c._store.get("skills/house-style/SKILL.md")!.content).toContain("Rewritten.");
+    expect(c._store.has("skills/house-style/reference/legacy.md")).toBe(true);
+  });
+
   it("skips a name the catalog never held, without seeding it", async () => {
     const c = createMockSkillsCollection();
     await ensureSeeded(c, [houseStyle("Write plainly.")]);

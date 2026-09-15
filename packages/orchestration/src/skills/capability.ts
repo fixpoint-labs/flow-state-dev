@@ -1,6 +1,16 @@
 /**
- * `createSkillsCapability()` — the public API surface for wiring a skills
+ * `createSkillsCapability()` — the LEGACY entry point for wiring a skills
  * system into a generator.
+ *
+ * **Prefer `createSkillsLibrary` + a per-generator binding for new code.** Two
+ * overlapping entry points exist, and the library is the one that is being
+ * built on: it activates per binding rather than through a session-global
+ * `activeSkills` bag, and it is the only one that carries the per-execution
+ * `initialSkills` resolver, the `flowIsolation` passthrough, and
+ * `refreshSeededSkills`. A caller reaching for the capability today gets a
+ * quietly smaller object with no signal, which is what this note exists to
+ * give. Reconciling the two — including whatever deprecation path this
+ * surface gets — is FIX-1390's; nothing here is removed yet.
  *
  * Returns a `DefinedCapability` exposing:
  *   - **Resources**: the skills collection, registered at the chosen scope

@@ -341,7 +341,11 @@ There is a fourth path, off by default: `skills.enableLlmClassifier` adds a smal
 
 A worker keeps a copy from the moment it first reads a skill. Fixing a typo in the company's copy does not reach a worker already running with it, and deleting a skill a worker has does not take it away either. Both are deliberate: a worker's drawer is its own.
 
-Pulling an edit through is a separate, explicit act — `refreshSeededSkills` from `@flow-state-dev/orchestration`, given the skills you want refreshed. A refresh replaces the whole folder for each skill it touches, so a supporting file the source has dropped is gone afterwards, and so is anything that worker added inside that folder. A skill the worker deleted stays deleted.
+Pulling an edit through is a separate, explicit act — `refreshSeededSkills` from `@flow-state-dev/orchestration`, given the skills you want refreshed. A refresh replaces the whole folder for each skill it touches, so a supporting file the source has dropped is gone afterwards, and so is anything that worker added inside that folder. A skill the worker deleted stays deleted. Check the returned `failed` list: a refresh that could not finish a skill names it there rather than reporting silence.
+
+### Custom worker kinds
+
+Skills are handed to a worker only when its flow kind declares a `seatSkills` setting. The built-in does. A [kind you define yourself](#when-a-worker-needs-more-than-settings) does not until you add the key, so adding an org-wide skills folder never breaks workers running on your own kinds.
 
 ## When a worker needs more than settings
 

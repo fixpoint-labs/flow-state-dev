@@ -13,13 +13,12 @@
  * 1. It touches only names whose manifest is still there. A skill the holder
  *    deleted stays deleted; restoring it is a separate, explicit act. (Same
  *    decision `needsResed`'s missing-manifest early return already preserves.)
- * 2. For a name it does touch, it replaces that skill's folder **whole**: list
- *    the folder, delete every key the new source does not carry, then write the
- *    source. An overwrite-only refresh writes the source's files over the old
- *    ones and leaves everything else — so a supporting file WITHDRAWN upstream
- *    survives the refresh and stays reachable through `prompt-ref`. Withdrawn
- *    instructions that outlive the withdrawal are the defect this exists to
- *    close.
+ * 2. For a name it does touch, it replaces that skill's folder **whole** —
+ *    write the source, then delete every key the source does not carry. An
+ *    overwrite-only refresh writes the source's files over the old ones and
+ *    leaves everything else, so a supporting file WITHDRAWN upstream survives
+ *    and stays reachable through `prompt-ref`. Withdrawn instructions that
+ *    outlive the withdrawal are the defect this exists to close.
  *
  * Whole-folder replacement is this path's rule and **not** `ensureSeeded`'s. A
  * file inside a folder that the source never had is the holder's own edit;
@@ -27,12 +26,16 @@
  * copy-in decision forbids. Refresh is where that loss is the point — and it is
  * all-or-nothing per skill, so a local addition inside a refreshed skill's
  * folder does not survive.
+ *
+ * The write order (write, then prune) and the one folder-writing primitive both
+ * live in `internal/write-skill-folder.ts`, which `seeding.ts` shares.
  */
 
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { InitialSkill } from "@flow-state-dev/core";
-import { skillFileKey, skillManifestKey } from "./collection";
-import { parseSkillMd, validateSkillName } from "./skill-md";
+import { skillManifestKey } from "./collection";
+import { writeSkillFolder } from "./internal/write-skill-folder";
+import { validateSkillName } from "./skill-md";
 
 /** What {@link refreshSeededSkills} did, per source skill. */
 export interface RefreshSeededSkillsResult {
@@ -49,6 +52,17 @@ export interface RefreshSeededSkillsResult {
    * updated bodies.
    */
   removed: string[];
+  /**
+   * Skills whose refresh threw, with the error.
+   *
+   * **A refresh that touched storage must never report as a refresh that did
+   * nothing.** One bad folder does not cost the rest of the run — the loop
+   * continues, as seeding's does — but a caller reading `refreshed: []` and an
+   * empty `removed` would otherwise conclude the catalog is untouched when it
+   * may not be. A non-empty `failed` is the signal to look. Keys removed before
+   * a failure are still in `removed`, so what did happen is nameable.
+   */
+  failed: Array<{ name: string; error: Error }>;
 }
 
 /**
@@ -59,12 +73,13 @@ export interface RefreshSeededSkillsResult {
  * @param sources - The current source skills. A name absent from the
  *   collection is skipped; a name absent from `sources` is untouched, so a
  *   caller can refresh one skill by passing one.
- * @returns Which names were refreshed, which were skipped, and which keys the
- *   replacement removed.
+ * @returns Which names were refreshed, which were skipped, which keys the
+ *   replacement removed, and which skills failed.
  *
  * @example
  *   // Pull the company's current copy of one skill onto a catalog holding it.
- *   await refreshSeededSkills(collection, [houseStyle]);
+ *   const { refreshed, failed } = await refreshSeededSkills(collection, [houseStyle]);
+ *   if (failed.length > 0) throw new Error(`refresh incomplete: ${failed[0]!.name}`);
  */
 export async function refreshSeededSkills(
   collection: ResourceCollectionRef,
@@ -73,6 +88,7 @@ export async function refreshSeededSkills(
   const refreshed: string[] = [];
   const skipped: string[] = [];
   const removed: string[] = [];
+  const failed: RefreshSeededSkillsResult["failed"] = [];
 
   for (const skill of sources) {
     try {
@@ -85,84 +101,27 @@ export async function refreshSeededSkills(
 
     // Rule 1. A missing manifest is a deliberate deletion (or a name that was
     // never seeded here), and either way refresh is not the act that revives it.
-    const manifestKey = skillManifestKey(skill.name);
-    if (!(await collection.getOptional(manifestKey))) {
+    if (!(await collection.getOptional(skillManifestKey(skill.name)))) {
       skipped.push(skill.name);
       continue;
     }
 
     try {
-      removed.push(...(await replaceFolder(collection, skill)));
+      const result = await writeSkillFolder(collection, skill, { prune: true });
+      removed.push(...result.removed);
       refreshed.push(skill.name);
     } catch (err) {
-      // Per skill, like seeding: one unwritable folder must not cost the rest
-      // of the refresh. The folder is left mid-replacement and the next refresh
-      // redoes it from the source.
+      // Collected, not swallowed. Because the primitive writes before it
+      // prunes, a failure here leaves the folder complete-plus-stale rather
+      // than half-destroyed — but "probably fine" is not a thing to report as
+      // silence, so the skill is named and the caller decides.
+      failed.push({ name: skill.name, error: err as Error });
       console.warn(
-        `[skills] failed to refresh "${skill.name}": ${(err as Error).message}; the folder may be partial until the next refresh`,
+        `[skills] failed to refresh "${skill.name}": ${(err as Error).message}; ` +
+          `the folder may still hold files the source has dropped until the next refresh`,
       );
     }
   }
 
-  return { refreshed, skipped, removed };
-}
-
-/**
- * Replace one skill's folder with the source's, deleting first.
- *
- * Deletes before writing so a key the source both drops AND re-adds under a
- * different normalization cannot be removed after it was written. Returns the
- * keys it deleted.
- */
-async function replaceFolder(
-  collection: ResourceCollectionRef,
-  skill: InitialSkill,
-): Promise<string[]> {
-  // Validate up front so a broken source never half-replaces a working folder.
-  const parsed = parseSkillMd(skill.skillMd, { expectedName: skill.name });
-  parsed.state._seededAt = new Date().toISOString();
-
-  const manifestKey = skillManifestKey(skill.name);
-  const sourceKeys = new Set<string>([manifestKey]);
-  for (const file of skill.files ?? []) {
-    sourceKeys.add(skillFileKey(skill.name, file.path));
-  }
-
-  const removed: string[] = [];
-  for (const ref of await collection.list(`${skill.name}/`)) {
-    const key = bareKey(collection, ref.path);
-    if (sourceKeys.has(key)) continue;
-    await collection.delete(key);
-    removed.push(key);
-  }
-
-  const manifest = await collection.create(
-    manifestKey,
-    parsed.state as unknown as Record<string, never>,
-    { replace: true },
-  );
-  await manifest.writeContent(skill.skillMd);
-
-  for (const file of skill.files ?? []) {
-    const ref = await collection.getOrCreate(skillFileKey(skill.name, file.path));
-    await ref.writeContent(file.content);
-  }
-
-  return removed;
-}
-
-/**
- * A listed ref's `path` is the FULL storage key (`"skills/house-style/SKILL.md"`),
- * while `list(prefix)` and `delete(key)` take keys relative to the collection's
- * own prefix. This is the one conversion between them.
- *
- * The prefix is read off the collection's pattern rather than passed in, so a
- * caller cannot hand a prefix that disagrees with the collection it is
- * refreshing. `defineSkillsCollection` always builds `"<prefix>/**"`.
- */
-function bareKey(collection: ResourceCollectionRef, storagePath: string): string {
-  const prefix = collection.pattern.replace(/\/\*\*$/, "");
-  return prefix.length > 0 && storagePath.startsWith(`${prefix}/`)
-    ? storagePath.slice(prefix.length + 1)
-    : storagePath;
+  return { refreshed, skipped, removed, failed };
 }

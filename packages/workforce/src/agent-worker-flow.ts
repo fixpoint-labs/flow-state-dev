@@ -404,6 +404,28 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   // listing. `allowed` is omitted on both, so when a seat does turn the tool
   // on it reaches everything it holds.
   //
+  // ---------------------------------------------------------------------
+  // BEFORE YOU SIMPLIFY THIS: the 2x2 is FORCED, and not from here.
+  //
+  // Two bindings x two activators x two generators is the widest thing in
+  // this file, and it looks like over-engineering until you try to collapse
+  // it. Both switches — `skills.activateTool` and
+  // `skills.enableLlmClassifier` — are per SEAT, while both mechanisms that
+  // implement them are fixed at CONSTRUCTION: `dynamicActivation` is a
+  // preset resolved when `skills.with()` is bound, and
+  // `enableLlmClassifier` is read by `createSkillActivator` when it builds
+  // its pipeline. A kind is built once and hired many times, so neither can
+  // see the seat, and building one of each and choosing at run time is the
+  // only shape that honours a per-seat switch at all.
+  //
+  // The real fix is a RUNTIME toggle in `@flow-state-dev/orchestration` —
+  // a binding whose load tool installs per execution, and an activator
+  // whose classifier tier is conditional — at which point this collapses
+  // to one binding, one activator and one generator. It is not a fix that
+  // can be made in this file, and flattening the branching here without
+  // that change means dropping one of the two switches.
+  // ---------------------------------------------------------------------
+  //
   // The cast is contained here on purpose: `createSkillsLibrary` declares its
   // return as a bare `DefinedCapability`, which erases the binding-config type,
   // so `.with()`'s typed surface admits only preset flags. Both keys below are
@@ -503,17 +525,28 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       assertHeldSkills(names, seatSkillsOf(ctx), appSkills);
       if (names.length === 0) return { added: 0 };
       const activatedAt = Date.now();
+      // The REAL delta, not `names.length`. `pushActiveSkill` dedupes by
+      // name+mode, so a default the matcher already activated this turn is not
+      // an addition — and a count that reports the list's length instead would
+      // be wrong exactly when a slash hit and an always-on name coincide, which
+      // is the case most likely to be asserted on.
+      let added = 0;
       await ctx.session.atomicState((current) => {
         const held = (current as Record<string, unknown> | undefined)?.[
           ACTIVE_SKILLS_STATE.field
         ];
         let entries = Array.isArray(held) ? held : [];
+        const before = entries.length;
         for (const name of names) {
           entries = pushActiveSkill(entries, { name, mode: "inline", activatedAt });
         }
+        // Reassigned rather than accumulated: `atomicState` may re-run its
+        // mutator against fresher state, and a `+=` would then count the
+        // discarded attempt too.
+        added = entries.length - before;
         return { [ACTIVE_SKILLS_STATE.field]: entries };
       });
-      return { added: names.length };
+      return { added };
     }
   });
 

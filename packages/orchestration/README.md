@@ -501,6 +501,15 @@ so a supporting file the source has dropped is deleted rather than left reachabl
 it skips a name whose manifest is gone, so a deletion stands; and ordinary seeding
 stays additive.
 
+**`importSkillsDirectory({ overwrite: true })` is not the same thing, and picking
+the wrong one is how stale instructions survive.** Both write a source skill over
+one that is already there, but `overwrite` enumerates nothing — it writes the
+files the source *has* and leaves everything else, so a supporting file the source
+has since **dropped** stays in the folder and stays resolvable through
+`prompt-ref`. `refreshSeededSkills` prunes it. Reach for `overwrite` when you mean
+"write these on top" (a migration, a test fixture); reach for refresh when you mean
+"make this match the source".
+
 A skill that declares an `agents:` field turns on **delegation** (or force it on
 with `delegation: true` even with no `agents:`). An agent is a prompt-driven
 teammate — defined inline (`prompt` / `prompt-ref`) inside the skill, or referenced
