@@ -1,5 +1,14 @@
 # @flow-state-dev/store-postgres
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [a8e22c4]
+  - @flow-state-dev/core@0.1.1
+  - @flow-state-dev/engine@0.1.1
+  - @flow-state-dev/scheduled@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes
