@@ -126,10 +126,10 @@ export interface AgentWorkerFlowOptions {
    * **Tool-carrying presets are not fenced here.** The framework's resolver
    * unions a capability's tools onto the generator's own list rather than
    * intersecting it, so a preset that ships a tool reaches a worker whose
-   * `tools:` is empty. Until that intersection lands in
-   * `@flow-state-dev/core`, an app passing a capability with default-on tools
-   * turns them off at the preset — see the README's memory recipe, which
-   * turns off `recall` and `connect` for exactly this reason.
+   * `tools:` is empty. FIX-1393 lands that intersection in
+   * `@flow-state-dev/core`; until it does, an app passing a capability with
+   * default-on tools turns them off at the preset, as the README's memory
+   * recipe does with `recall` and `connect`.
    */
   uses?: UsesSlot;
   /**
@@ -138,10 +138,12 @@ export interface AgentWorkerFlowOptions {
    * matching the framework (BP-027).
    *
    * Forwarded to the flow untouched. The key is the worker's id, so renaming
-   * a worker leaves its isolated data behind under the old name.
+   * a worker leaves its isolated data behind under the old name — and so does
+   * flipping this flag on a roster already in use.
    *
    * All-or-nothing for the kind: a roster is either all-isolated or
-   * all-shared, never a mix.
+   * all-shared, never a mix. Mixing would need each resource to carry its own
+   * `flowIsolation`, which is FIX-1396's.
    */
   isolateUserState?: boolean;
   /**

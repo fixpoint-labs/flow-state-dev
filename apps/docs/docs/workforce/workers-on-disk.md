@@ -285,9 +285,11 @@ hireWorkforce(manifests, {
 
 ## Giving workers memory
 
-The built-in forgets everything between turns. That is deliberate: memory costs tokens on every turn and latency on most of them, and a stock worker should not charge you for something you did not ask for.
+The built-in forgets everything between turns. Memory costs tokens on every turn and latency on most of them, so it is something you switch on rather than something you inherit.
 
-You turn it on by composing it into your own copy of the kind. A *capability* is a bundle you attach to a block — the context it injects, the tools it adds, the storage it needs — and memory ships as one. `defineAgentWorkerFlow` takes three app-level options that are not about memory at all, and memory is one thing you can pass through them:
+You turn it on by composing it into your own copy of the kind. A *capability* is a bundle you attach to a block — the context it injects, the tools it adds, the storage it needs — and memory ships as one. [Memory](../memory/overview.md) covers the system itself: its tiers, what each one stores, and every knob `system()` takes. What follows is how a roster of workers picks it up.
+
+Three of `defineAgentWorkerFlow`'s options carry it:
 
 - `uses` — capabilities every worker of this kind carries.
 - `afterAnswer` — a block that runs after the worker answers.
@@ -310,12 +312,13 @@ const remembers = defineAgentWorkerFlow({
   catalog: myTools,
   uses: [
     mem.capability.presets({
-      // Memory's two tool-shaped presets, turned off. See below.
+      // Memory's two tools, turned off. `recall` searches stored memory on
+      // demand; `connect` traverses relations between entities. See below.
       recall: false,
       connect: false,
-      // What the worker reads back. Both are off by default.
-      semantic: true,
-      episodic: true,
+      // What the worker reads back each turn. Both are off by default.
+      semantic: true,   // facts it has learned
+      episodic: true,   // things that happened
     }),
   ],
   // Each worker remembers separately.
@@ -337,7 +340,7 @@ Tell a worker something in one conversation and it knows it in the next.
 
 **Turn `semantic` and `episodic` on.** They are off by default. Skip them and the durable stores fill up and are never read back, which is the failure that looks fine until someone starts a second conversation.
 
-**Turn `recall` and `connect` off.** They arrive as tools, and a worker may call exactly the tools its `tools:` setting names. Leaving them on puts a tool on a worker that asked for none. With them off, the worker reads what it knows as injected context every turn instead of searching on request — no round trip, no chance the model forgets to look. If you want on-demand search back, put the recall tool in your app's own catalog, where a worker opts in by naming it like any other tool.
+**Turn `recall` and `connect` off.** They arrive as tools (`recall` searches stored memory on demand, `connect` walks the relations between entities), and a worker may call exactly the tools its `tools:` setting names. Leaving them on puts a tool on a worker that asked for none. With them off, the worker reads what it knows as injected context every turn instead of searching on request. If you want on-demand search back, put the [recall tool](../memory/recall-tool.md) in your app's own catalog, where a worker opts in by naming it like any other tool.
 
 ### What isolation does and does not give you
 
@@ -345,7 +348,7 @@ Tell a worker something in one conversation and it knows it in the next.
 
 It is a decision for the whole kind. A roster is all-separate or all-shared; you cannot keep one shared store across the team while giving each worker its own of something else.
 
-The flag decides *where* a worker's memory is stored, so anything that moves the key leaves the old memory behind. Renaming a worker does it, because the key is the worker's id. So does turning the flag on for a roster that has already been talking to people — shared and separate are different places. Neither has a migration. Decide it before the roster has anything worth keeping, or accept that workers start fresh.
+The flag decides *where* a worker's memory is stored, so anything that moves the key leaves the old memory behind. Renaming a worker does it, because the key is the worker's id. So does turning the flag on for a roster that has already been talking to people, because shared and separate are different places. Neither has a migration. Decide it before the roster has anything worth keeping, or accept that workers start fresh.
 
 ## When a worker needs more than settings
 
