@@ -115,22 +115,10 @@ export {
 
 export {
   ensureSeeded,
-} from "./seeding";
-
-// Seeding writes a copy, so pulling a source edit onto a catalog that already
-// holds the skill is its own deliberate call.
-export {
   refreshSeededSkills,
   type RefreshSeededSkillsResult,
-} from "./refresh";
-
-// What a library is seeded FROM. Public because the resolver form is how a
-// consumer whose catalog is per-instance (a hired seat) says where its own set
-// lives without this layer learning what an instance is.
-export {
-  resolveInitialSkills,
   type InitialSkillsSource,
-} from "./initial-skills";
+} from "./seeding";
 
 export {
   inlineActivate,

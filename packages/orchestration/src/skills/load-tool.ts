@@ -28,11 +28,7 @@ import {
 import { skillManifestKey } from "./collection";
 import { resolveResourceCollection } from "../tasks";
 import { listEnabledSkills } from "./internal/list-enabled-skills";
-import {
-  resolveInitialSkills,
-  type InitialSkillsSource,
-} from "./initial-skills";
-import { ensureSeeded } from "./seeding";
+import { ensureSeeded, type InitialSkillsSource } from "./seeding";
 import { validateSkillName } from "./skill-md";
 
 const inputSchema = z.object({
@@ -100,7 +96,7 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
           `Skills collection "${collectionKey}" is not registered on ctx.resources`,
         );
       }
-      await ensureSeeded(collection, resolveInitialSkills(initialSkills, ctx));
+      await ensureSeeded(collection, initialSkills, ctx);
 
       if (allowedSet && !allowedSet.has(input.name)) {
         throw new Error(
@@ -168,7 +164,7 @@ export function buildLoadCatalogContext(
     const collection = resolveResourceCollection(ctx, opts.collectionKey);
     if (!collection) return null;
     try {
-      await ensureSeeded(collection, resolveInitialSkills(opts.initialSkills, ctx));
+      await ensureSeeded(collection, opts.initialSkills, ctx);
     } catch {
       // Seeding failure already logged.
     }

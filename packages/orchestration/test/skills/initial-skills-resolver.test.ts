@@ -13,11 +13,9 @@
 import { describe, expect, it } from "vitest";
 import { generator } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
 import type { InitialSkill } from "@flow-state-dev/core";
 import { createSkillsLibrary } from "../../src/skills/library";
 import { defineSkillsCollection } from "../../src/skills/collection";
-import { resolveInitialSkills } from "../../src/skills/initial-skills";
 
 /**
  * Build a generator around one binding. A binding's config resolves when the
@@ -37,27 +35,7 @@ const skillNamed = (name: string): InitialSkill => ({
   skillMd: `---\ndescription: The ${name} skill\n---\n\nBody of ${name}.`,
 });
 
-/** A context stub carrying just the flow config a resolver reads. */
-const ctxWithConfig = (config: Record<string, unknown>): BlockContext =>
-  ({ flow: { config } }) as unknown as BlockContext;
-
 describe("initialSkills as a resolver", () => {
-  it("resolves a different set per execution", () => {
-    const resolver = (ctx: BlockContext): InitialSkill[] =>
-      (ctx.flow.config as { own: InitialSkill[] }).own;
-
-    const first = resolveInitialSkills(resolver, ctxWithConfig({ own: [skillNamed("alpha")] }));
-    const second = resolveInitialSkills(resolver, ctxWithConfig({ own: [skillNamed("beta")] }));
-
-    expect(first!.map((s) => s.name)).toEqual(["alpha"]);
-    expect(second!.map((s) => s.name)).toEqual(["beta"]);
-  });
-
-  it("passes a plain array through untouched", () => {
-    const skills = [skillNamed("alpha")];
-    expect(resolveInitialSkills(skills, ctxWithConfig({}))).toBe(skills);
-  });
-
   it("builds a library that binds no names", () => {
     expect(() =>
       createSkillsLibrary({ initialSkills: (ctx) => (ctx.flow.config as { own: InitialSkill[] }).own }),

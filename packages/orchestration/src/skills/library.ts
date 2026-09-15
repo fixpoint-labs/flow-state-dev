@@ -57,10 +57,7 @@ import {
   defineSkillsCollection,
   type DefineSkillsCollectionOptions,
 } from "./collection";
-import {
-  isInitialSkillsResolver,
-  type InitialSkillsSource,
-} from "./initial-skills";
+import { type InitialSkillsSource } from "./seeding";
 import { buildLoadCatalogContext, createLoadSkillTool } from "./load-tool";
 import { parseSkillMd, validateSkillName } from "./skill-md";
 import {
@@ -316,7 +313,7 @@ export function createSkillsLibrary(
   // A resolver has no build-time catalog, so there is nothing to index. The
   // empty index is NOT treated as "no bundled skills" — `assertKnownSkill`
   // below refuses first, naming the resolver, so the two cases never blur.
-  const perExecutionCatalog = isInitialSkillsResolver(initialSkills);
+  const perExecutionCatalog = typeof initialSkills === "function";
   const index = indexInitialSkills(perExecutionCatalog ? undefined : initialSkills);
 
   const collectionPrefix = options.collectionConfig?.prefix ?? collectionKey;

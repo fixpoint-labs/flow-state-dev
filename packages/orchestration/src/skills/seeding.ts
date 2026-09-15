@@ -15,10 +15,22 @@
  * (delete + re-create the manifest first).
  */
 
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { InitialSkill, SkillsCollectionMeta } from "@flow-state-dev/core";
 import { META_KEY, skillFileKey, skillManifestKey } from "./collection";
 import { parseSkillMd, validateSkillName } from "./skill-md";
+
+/**
+ * Bundled defaults, as a fixed array or as a per-execution resolver.
+ *
+ * A resolver returning `undefined` (or an empty array) means this execution
+ * seeds nothing — `ensureSeeded` returns before any storage read. Keep a
+ * resolver to an O(1) read of something already resolved: it runs on every
+ * render of every binding.
+ */
+export type InitialSkillsSource =
+  | InitialSkill[]
+  | ((ctx: BlockContext) => InitialSkill[] | undefined);
 
 /** Per-(collection-ref, processInstance) sentinel — seed at most once. */
 const sentinel = new WeakMap<object, Promise<void>>();
@@ -28,18 +40,30 @@ const sentinel = new WeakMap<object, Promise<void>>();
  * have been written to the collection. Safe to call repeatedly — the work
  * is memoized per `collection` ref via a WeakMap.
  *
+ * A function source is resolved against `ctx` here. The memo is keyed on the
+ * collection ref, so every site in one request shares one write; they also
+ * share the library's source, so the first caller's context is the execution's.
+ *
  * @param collection - The skills collection (any scope).
- * @param initialSkills - The bundled defaults.
+ * @param initialSkills - The bundled defaults, or a per-execution resolver.
+ * @param ctx - Required when `initialSkills` is a function.
  */
 export async function ensureSeeded(
   collection: ResourceCollectionRef,
-  initialSkills: InitialSkill[] | undefined,
+  initialSkills: InitialSkillsSource | undefined,
+  ctx?: BlockContext,
 ): Promise<void> {
-  if (!initialSkills || initialSkills.length === 0) return;
+  const resolved =
+    typeof initialSkills === "function"
+      ? ctx
+        ? initialSkills(ctx)
+        : undefined
+      : initialSkills;
+  if (!resolved || resolved.length === 0) return;
   // Memoize per collection ref so concurrent calls share one seed pass.
   const cached = sentinel.get(collection);
   if (cached) return cached;
-  const promise = doSeed(collection, initialSkills);
+  const promise = doSeed(collection, resolved);
   sentinel.set(collection, promise);
   try {
     await promise;
@@ -189,6 +213,108 @@ async function writeMeta(
     { seededNames: meta.seededNames },
     { replace: true },
   );
+}
+
+/** What {@link refreshSeededSkills} did, per source skill. */
+export interface RefreshSeededSkillsResult {
+  /** Names whose folder was replaced from the source. */
+  refreshed: string[];
+  /**
+   * Names the collection does not hold — deleted deliberately, or never seeded.
+   * Left alone either way.
+   */
+  skipped: string[];
+  /**
+   * Keys deleted because the new source no longer carries them, as bare
+   * collection keys (`"<name>/reference/old.md"`). Empty on a refresh that only
+   * updated bodies.
+   */
+  removed: string[];
+}
+
+/**
+ * Rewrite each source skill's folder in `collection`, for the names it already
+ * holds. Additive `ensureSeeded` never deletes; this call is the one that does.
+ *
+ * Touches only names whose manifest is still there. For a name it does touch,
+ * it deletes every key the new source does not carry, then writes through
+ * the same path seeding uses so a withdrawn supporting file cannot stay reachable.
+ */
+export async function refreshSeededSkills(
+  collection: ResourceCollectionRef,
+  sources: InitialSkill[],
+): Promise<RefreshSeededSkillsResult> {
+  const refreshed: string[] = [];
+  const skipped: string[] = [];
+  const removed: string[] = [];
+
+  for (const skill of sources) {
+    try {
+      validateSkillName(skill.name);
+    } catch (err) {
+      console.warn(`[skills] refresh skipped "${skill.name}": ${(err as Error).message}`);
+      skipped.push(skill.name);
+      continue;
+    }
+
+    const manifestKey = skillManifestKey(skill.name);
+    if (!(await collection.getOptional(manifestKey))) {
+      skipped.push(skill.name);
+      continue;
+    }
+
+    try {
+      removed.push(...(await replaceFolder(collection, skill)));
+      refreshed.push(skill.name);
+    } catch (err) {
+      console.warn(
+        `[skills] failed to refresh "${skill.name}": ${(err as Error).message}; the folder may be partial until the next refresh`,
+      );
+    }
+  }
+
+  return { refreshed, skipped, removed };
+}
+
+/**
+ * Replace one skill's folder with the source's. Parse first so a broken
+ * source never half-replaces a working folder; delete extras; then write
+ * through the same path seeding uses.
+ */
+async function replaceFolder(
+  collection: ResourceCollectionRef,
+  skill: InitialSkill,
+): Promise<string[]> {
+  parseSkillMd(skill.skillMd, { expectedName: skill.name });
+
+  const manifestKey = skillManifestKey(skill.name);
+  const sourceKeys = new Set<string>([manifestKey]);
+  for (const file of skill.files ?? []) {
+    sourceKeys.add(skillFileKey(skill.name, file.path));
+  }
+
+  const removed: string[] = [];
+  for (const ref of await collection.list(`${skill.name}/`)) {
+    const key = bareKey(collection, ref.path);
+    if (sourceKeys.has(key)) continue;
+    await collection.delete(key);
+    removed.push(key);
+  }
+
+  await seedOne(collection, skill);
+  return removed;
+}
+
+/**
+ * A listed ref's `path` is the full storage key; `list` / `delete` take keys
+ * relative to the collection prefix. `defineSkillsCollection` always builds
+ * `"<prefix>/**"`.
+ */
+function bareKey(collection: ResourceCollectionRef, storagePath: string): string {
+  const prefix = collection.pattern.replace(/\/\*\*$/, "");
+  return prefix.length > 0 && storagePath.startsWith(`${prefix}/`)
+    ? storagePath.slice(prefix.length + 1)
+    : storagePath;
 }
 
 /** Test-only: clear the seeding sentinel cache. Not exported from the

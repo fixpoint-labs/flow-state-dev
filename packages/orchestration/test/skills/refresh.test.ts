@@ -9,8 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { InitialSkill } from "@flow-state-dev/core";
-import { refreshSeededSkills } from "../../src/skills/refresh";
-import { ensureSeeded } from "../../src/skills/seeding";
+import { ensureSeeded, refreshSeededSkills } from "../../src/skills/seeding";
 import { createMockSkillsCollection } from "./mocks";
 
 const houseStyle = (body: string, files?: InitialSkill["files"]): InitialSkill => ({

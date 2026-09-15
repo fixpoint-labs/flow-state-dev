@@ -11,11 +11,7 @@
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import { resolveResourceCollection } from "../tasks";
-import {
-  resolveInitialSkills,
-  type InitialSkillsSource,
-} from "./initial-skills";
-import { ensureSeeded } from "./seeding";
+import { ensureSeeded, type InitialSkillsSource } from "./seeding";
 
 const inputSchema = z.object({ message: z.string() }).passthrough();
 
@@ -35,7 +31,7 @@ export function createCatalogSeedStep(opts: CatalogSeedStepOptions) {
       const collection = resolveResourceCollection(ctx, opts.collectionKey);
       if (collection) {
         try {
-          await ensureSeeded(collection, resolveInitialSkills(opts.initialSkills, ctx));
+          await ensureSeeded(collection, opts.initialSkills, ctx);
         } catch {
           // Seeding failure is already logged inside ensureSeeded; the tiers
           // fall through against whatever the collection contains.

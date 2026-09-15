@@ -31,10 +31,7 @@ import { z } from "zod";
 import { sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import type { ExplicitActivationScope } from "./activation-store";
-import {
-  isInitialSkillsResolver,
-  type InitialSkillsSource,
-} from "./initial-skills";
+import { type InitialSkillsSource } from "./seeding";
 import { createApplySkillActivation } from "./apply-skill-activation";
 import { createCatalogSeedStep } from "./seed-step";
 import {
@@ -140,11 +137,10 @@ export function createSkillActivator(
     stateSchema: skillActivatorStateSchema,
   });
 
-  // Only prepend the seed step when there are bundled defaults to seed. Under a
-  // RESOLVER there is no build-time answer to that question, so the step is
-  // always prepended and decides per turn — it returns before any storage read
-  // when the resolver hands back nothing.
-  if (isInitialSkillsResolver(initialSkills) || (initialSkills && initialSkills.length > 0)) {
+  // Only prepend the seed step when there are bundled defaults to seed. A
+  // function has no build-time length, so it is always prepended and
+  // `ensureSeeded` returns before any storage read when it hands back nothing.
+  if (typeof initialSkills === "function" || (initialSkills && initialSkills.length > 0)) {
     pipeline = pipeline.tap(seedStep);
   }
 
