@@ -18,6 +18,8 @@
 
 Read each folder in the order a reader meets them: `PR.md` → `SPEC.md` → `PLAN.md`.
 
+**A fifth folder, [`FIX-1362/e-svg-poc/`](FIX-1362/e-svg-poc/), is not a shape.** It's a POC of hand-authored SVG for the five concepts in FIX-1362 that every mermaid rewrite flattened: containment, a boundary, a grid over time, height as cost, and layering. Each figure sits beside its mermaid attempt so the loss is visible.
+
 ## Measured
 
 Prose words, fenced blocks excluded. B's diagrams and D's diff blocks are **not** counted, so both read longer than the number.

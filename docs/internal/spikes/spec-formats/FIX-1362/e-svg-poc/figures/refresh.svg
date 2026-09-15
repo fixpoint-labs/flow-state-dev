@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 320" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A grid. Rows are the four files in a seat's copy of the house-style skill: SKILL.md, checklist.md, legacy.md which the company later withdraws, and my-notes.md which the seat adds itself. Columns are five moments: seeded, company edits, seat adds a file, an ordinary seeding pass, a refresh. The seat's copy goes stale after the company edit and stays stale through ordinary seeding; the withdrawn file stays present until refresh deletes it; the seat's own file survives ordinary seeding and is lost on refresh.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B; --rule:#D5D4CB;
+            --accent:#3E4E8C; --code:#2C7C69; --code-soft:#DCEDE7; --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F3DEDC; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81; --rule:#2B3135;
+              --accent:#8B9BD8; --code:#5DBBA1; --code-soft:#14302A; --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1F1E; } }
+    .t-b  { fill:var(--ink);   font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-weight:600; font-size:13px; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-xs { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.05em; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .f-accent{ fill:var(--accent); } .f-code{ fill:var(--code); } .f-gone{ fill:var(--gone); } .f-prose{ fill:var(--prose); }
+    .c-ok  { fill:var(--surface);    stroke:var(--rule);  stroke-width:1.2; }
+    .c-old { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .c-new { fill:var(--code-soft);  stroke:var(--code);  stroke-width:1.2; }
+    .c-gone{ fill:var(--gone-soft);  stroke:var(--gone);  stroke-width:1.2; stroke-dasharray:4 3; }
+    .c-none{ fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:3 3; }
+    .col   { stroke:var(--rule); stroke-width:1; }
+    .col-hi{ stroke:var(--accent); stroke-width:1.6; stroke-dasharray:6 4; }
+  </style>
+
+  <g id="columns">
+    <text class="t-lbl" x="40" y="28">A SEAT'S COPY OF house-style, OVER TIME · one row per file</text>
+    <text class="t-xs" x="300" y="58">t0</text>
+    <text class="t-s"  x="300" y="72">seeded</text>
+    <text class="t-xs" x="420" y="58">t1 · company</text>
+    <text class="t-s"  x="420" y="72">edits SKILL.md</text>
+    <text class="t-s"  x="420" y="84">withdraws legacy.md</text>
+    <text class="t-xs" x="540" y="58">t2 · seat</text>
+    <text class="t-s"  x="540" y="72">adds my-notes.md</text>
+    <text class="t-xs" x="660" y="58">t3 · ordinary</text>
+    <text class="t-s"  x="660" y="72">seeding pass</text>
+    <text class="t-xs f-accent" x="780" y="58">t4 · refresh</text>
+    <text class="t-s"  x="780" y="72">deliberate act</text>
+    <path class="col" d="M410,92 L410,272 M530,92 L530,272 M650,92 L650,272"/>
+    <path class="col-hi" d="M770,92 L770,272"/>
+  </g>
+
+  <g id="row-skill">
+    <text class="t-s" x="40" y="118">SKILL.md</text>
+    <text class="t-xs" x="40" y="130">from the source</text>
+    <rect class="c-ok"  x="296" y="102" width="104" height="30" rx="4"/><text class="t-s" x="304" y="121">v1</text>
+    <rect class="c-old" x="416" y="102" width="104" height="30" rx="4"/><text class="t-s" x="424" y="121">v1 · stale</text>
+    <rect class="c-old" x="536" y="102" width="104" height="30" rx="4"/><text class="t-s" x="544" y="121">v1 · stale</text>
+    <rect class="c-old" x="656" y="102" width="104" height="30" rx="4"/><text class="t-s" x="664" y="121">v1 · untouched</text>
+    <rect class="c-new" x="776" y="102" width="104" height="30" rx="4"/><text class="t-s" x="784" y="121">v2</text>
+  </g>
+
+  <g id="row-checklist">
+    <text class="t-s" x="40" y="158">checklist.md</text>
+    <text class="t-xs" x="40" y="170">from the source</text>
+    <rect class="c-ok" x="296" y="142" width="104" height="30" rx="4"/><text class="t-s" x="304" y="161">present</text>
+    <rect class="c-ok" x="416" y="142" width="104" height="30" rx="4"/><text class="t-s" x="424" y="161">present</text>
+    <rect class="c-ok" x="536" y="142" width="104" height="30" rx="4"/><text class="t-s" x="544" y="161">present</text>
+    <rect class="c-ok" x="656" y="142" width="104" height="30" rx="4"/><text class="t-s" x="664" y="161">present</text>
+    <rect class="c-new" x="776" y="142" width="104" height="30" rx="4"/><text class="t-s" x="784" y="161">rewritten</text>
+  </g>
+
+  <g id="row-legacy">
+    <text class="t-s" x="40" y="198">legacy.md</text>
+    <text class="t-xs" x="40" y="210">withdrawn upstream at t1</text>
+    <rect class="c-ok"  x="296" y="182" width="104" height="30" rx="4"/><text class="t-s" x="304" y="201">present</text>
+    <rect class="c-old" x="416" y="182" width="104" height="30" rx="4"/><text class="t-s" x="424" y="201">still live</text>
+    <rect class="c-old" x="536" y="182" width="104" height="30" rx="4"/><text class="t-s" x="544" y="201">still live</text>
+    <rect class="c-old" x="656" y="182" width="104" height="30" rx="4"/><text class="t-s" x="664" y="201">still live</text>
+    <rect class="c-gone" x="776" y="182" width="104" height="30" rx="4"/><text class="t-s f-gone" x="784" y="201">deleted</text>
+  </g>
+
+  <g id="row-notes">
+    <text class="t-s" x="40" y="238">my-notes.md</text>
+    <text class="t-xs" x="40" y="250">the seat's own addition</text>
+    <rect class="c-none" x="296" y="222" width="104" height="30" rx="4"/>
+    <rect class="c-none" x="416" y="222" width="104" height="30" rx="4"/>
+    <rect class="c-new" x="536" y="222" width="104" height="30" rx="4"/><text class="t-s" x="544" y="241">added</text>
+    <rect class="c-new" x="656" y="222" width="104" height="30" rx="4"/><text class="t-s" x="664" y="241">kept · additive</text>
+    <rect class="c-gone" x="776" y="222" width="104" height="30" rx="4"/><text class="t-s f-gone" x="784" y="241">lost</text>
+  </g>
+
+  <g id="legend">
+    <rect class="c-old" x="40" y="282" width="14" height="14" rx="3"/><text class="t-xs" x="60" y="293">stale · the company's edit never arrives on its own</text>
+    <rect class="c-new" x="420" y="282" width="14" height="14" rx="3"/><text class="t-xs" x="440" y="293">fresh, or the seat's own</text>
+    <rect class="c-gone" x="40" y="302" width="14" height="14" rx="3"/><text class="t-xs" x="60" y="313">gone · refresh replaces the folder whole</text>
+    <text class="t-xs f-accent" x="420" y="313">ordinary seeding never deletes anything</text>
+  </g>
+</svg>
