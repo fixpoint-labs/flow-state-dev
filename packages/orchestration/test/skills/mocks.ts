@@ -103,8 +103,17 @@ export function createMockSkillsCollection(
       store.set(full, entry);
       return makeRef(entry);
     }) as never,
-    list() {
-      return Array.from(store.values()).map(makeRef);
+    // `prefix` is relative to the collection's own prefix and filters, as the
+    // real registry's does. Honoured here rather than ignored because a caller
+    // that lists ONE skill's folder in order to delete what is no longer in it
+    // would otherwise be handed the whole collection — `_meta` and every other
+    // skill included — and a mock that hands back too much turns a destructive
+    // bug into a passing test.
+    list(prefix?: string) {
+      const full = prefix === undefined ? undefined : prefixed(pattern, prefix);
+      return Array.from(store.values())
+        .filter((entry) => full === undefined || entry.name.startsWith(full))
+        .map(makeRef);
     },
     delete: vi.fn(async (key) => {
       const k = typeof key === "string" ? key : "";

@@ -65,6 +65,23 @@ export interface DefineSkillsCollectionOptions {
    * is mainly for tests.
    */
   scope?: ResourceScope;
+  /**
+   * Give every registered copy of the declaring flow its OWN catalog. Default
+   * `false` — one bucket shared by every copy, which is what a single-instance
+   * app wants.
+   *
+   * Set `true` where the copies are separate parties rather than replicas: the
+   * storage layer keys an isolated resource on the flow **instance** id, so two
+   * copies read and write two different sets of skills without a second
+   * collection key, prefix or scope. Forwarded verbatim to
+   * `defineResourceCollection`, which rejects it at `scope: "session"` —
+   * sessions are already flow-bound.
+   *
+   * Isolation moves the read to a new key, so a collection seeded before this
+   * was switched on re-seeds from the new bucket and the old rows are orphaned,
+   * not lost (BP-030).
+   */
+  flowIsolation?: boolean;
 }
 
 /**
@@ -85,6 +102,12 @@ export function defineSkillsCollection(
     scope: options.scope ?? "org",
     stateSchema: skillStateSchema,
     maxInstances: options.maxInstances,
+    // Omitted rather than defaulted: `defineResourceCollection` reads an absent
+    // `flowIsolation` as "take the flow's own default", and stamping `false`
+    // here would override a flow that isolates its org state wholesale.
+    ...(options.flowIsolation !== undefined
+      ? { flowIsolation: options.flowIsolation }
+      : {}),
     client: {
       // Skills are user-modifiable by design — expose CRUD to the client.
       content: {

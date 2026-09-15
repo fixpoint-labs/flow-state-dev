@@ -23,6 +23,8 @@ import {
   INSTRUCTIONS_KEY,
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
+  REFUSED_SEAT_SKILLS_KEY_MESSAGE,
+  SEAT_SKILLS_KEY,
   type WorkerManifest
 } from "./manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
@@ -170,6 +172,15 @@ export function hireWorkforce(
       continue;
     }
 
+    // The other imposed key, refused here for the same reason: a hand-built
+    // roster never passes the loader, and a flow whose `configSchema` declares
+    // `seatSkills` would accept an authored one and run with a skill set no
+    // folder backs.
+    if (Object.hasOwn(settings, SEAT_SKILLS_KEY)) {
+      refuse(REFUSED_SEAT_SKILLS_KEY_MESSAGE);
+      continue;
+    }
+
     // A body is instructions; whitespace is not. An empty string handed to a
     // flow that declares `instructions` would be a worse lie than omitting it —
     // and it would turn every thin seat into a failed hire.
@@ -243,6 +254,30 @@ export function hireWorkforce(
           `this seat would run a different worker's graph. Pass each flow under its own kind.`
       );
       continue;
+    }
+
+    // The seat's own skills — imposed **only on a kind that declares the key**,
+    // which is why this sits here, after the kind is resolved, rather than up
+    // with the body.
+    //
+    // A worker's body is imposed unconditionally because a worker AUTHOR writes
+    // the body: a custom kind that does not declare `instructions` is a file its
+    // author can fix. A seat's skills are not like that. They come from folders
+    // somebody else added — one `org/skills/` folder makes `manifest.skills`
+    // non-empty for EVERY worker on the roster — so imposing them
+    // unconditionally would make a shared skills folder break every custom kind
+    // on that roster at once, for a setting those kinds never asked for and
+    // their authors never saw.
+    //
+    // "Declares the key" is read off the kind's own probed default config, which
+    // is the same schema that would refuse the bag a moment later. A kind that
+    // declares it opts in by declaring it; every kind written before this
+    // existed is left exactly as it was.
+    if (manifest.skills !== undefined && manifest.skills.length > 0) {
+      const declared = (factory as { config?: Record<string, unknown> }).config;
+      if (declared !== undefined && Object.hasOwn(declared, SEAT_SKILLS_KEY)) {
+        settings[SEAT_SKILLS_KEY] = manifest.skills;
+      }
     }
 
     try {

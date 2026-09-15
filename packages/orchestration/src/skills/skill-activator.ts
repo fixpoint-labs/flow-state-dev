@@ -30,8 +30,11 @@
 import { z } from "zod";
 import { sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import type { InitialSkill } from "@flow-state-dev/core";
 import type { ExplicitActivationScope } from "./activation-store";
+import {
+  isInitialSkillsResolver,
+  type InitialSkillsSource,
+} from "./initial-skills";
 import { createApplySkillActivation } from "./apply-skill-activation";
 import { createCatalogSeedStep } from "./seed-step";
 import {
@@ -92,9 +95,11 @@ export interface SkillActivatorOptions {
    * The matcher runs upstream of the generator, so it can't rely on the binding
    * reader's lazy seeding — on a fresh collection the slash/keyword/classifier
    * tiers would otherwise see an empty catalog on turn 1 and match nothing.
-   * Pass the same `initialSkills` given to `createSkillsLibrary`.
+   * Pass the same `initialSkills` given to `createSkillsLibrary` — including a
+   * per-execution resolver, which is resolved at the seed step against that
+   * turn's own context.
    */
-  initialSkills?: InitialSkill[];
+  initialSkills?: InitialSkillsSource;
 }
 
 /**
@@ -135,8 +140,11 @@ export function createSkillActivator(
     stateSchema: skillActivatorStateSchema,
   });
 
-  // Only prepend the seed step when there are bundled defaults to seed.
-  if (initialSkills && initialSkills.length > 0) {
+  // Only prepend the seed step when there are bundled defaults to seed. Under a
+  // RESOLVER there is no build-time answer to that question, so the step is
+  // always prepended and decides per turn — it returns before any storage read
+  // when the resolver hands back nothing.
+  if (isInitialSkillsResolver(initialSkills) || (initialSkills && initialSkills.length > 0)) {
     pipeline = pipeline.tap(seedStep);
   }
 

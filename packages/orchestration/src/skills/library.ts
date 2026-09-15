@@ -35,6 +35,7 @@ import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import { findBundledFile } from "./internal/bundled-files";
 import { specsCollide } from "./internal/agent-key-reconcile";
 import type {
+  BlockContext,
   DeclaredResourceEntry,
   ResourceScope,
 } from "@flow-state-dev/core/types";
@@ -56,6 +57,10 @@ import {
   defineSkillsCollection,
   type DefineSkillsCollectionOptions,
 } from "./collection";
+import {
+  isInitialSkillsResolver,
+  type InitialSkillsSource,
+} from "./initial-skills";
 import { buildLoadCatalogContext, createLoadSkillTool } from "./load-tool";
 import { parseSkillMd, validateSkillName } from "./skill-md";
 import {
@@ -89,15 +94,30 @@ export interface SkillsLibraryOptions {
    * granted.
    */
   registerCatalogTools?: boolean;
-  /** Bundled defaults — seeded on a binding's first render. */
-  initialSkills?: InitialSkill[];
+  /**
+   * Bundled defaults — seeded on a binding's first render.
+   *
+   * A **function** makes the catalog per-execution instead of per-library (see
+   * {@link InitialSkillsSource}). Everything that seeds resolves it against its
+   * own context; what changes for the caller is that binding a skill BY NAME
+   * (`with({ active })` / `with({ allowed })`) then throws, because there is no
+   * build-time catalog to validate the name against.
+   */
+  initialSkills?: InitialSkillsSource;
   /**
    * Scope the skills collection lives at. Default `"org"` so seeded skills are
    * shared across users. `"user"` for personal libraries; `"session"` for tests.
    */
   scope?: ResourceScope;
-  /** Optional collection sizing / mount-prefix overrides. */
-  collectionConfig?: Pick<DefineSkillsCollectionOptions, "maxInstances" | "prefix">;
+  /**
+   * Optional collection sizing / mount-prefix overrides, plus `flowIsolation`
+   * — set it when every registered copy of the declaring flow should hold its
+   * own catalog rather than share one bucket.
+   */
+  collectionConfig?: Pick<
+    DefineSkillsCollectionOptions,
+    "maxInstances" | "prefix" | "flowIsolation"
+  >;
   /**
    * Restrict this library's bindings to blocks with a matching
    * `itemVisibility`. See `createSkillsCapability` for the multi-agent rationale.
@@ -138,6 +158,25 @@ export interface SkillsLibraryOptions {
   materializeAgent?: import("@flow-state-dev/core").MaterializeAgentFn;
   /** Optional capability catalog forwarded to `materializeAgent`. */
   capabilityCatalog?: Record<string, DefinedCapability>;
+  /**
+   * Ceiling on which `catalog` keys this library may seat a DELEGATED BOARD
+   * WORKER with, resolved once per execution. Return the allowed keys; return
+   * `undefined` (the default) for no ceiling.
+   *
+   * It exists because a bound skill's `agents:` reaches the catalog through a
+   * path the host generator's own tool list does not run through: board workers
+   * are separate generators, seated from the skill's `allowed-tools` (or, when
+   * it declares none, from the whole catalog). A caller that already fences
+   * what its host may call — `registerCatalogTools: false` plus its own tool
+   * mapping — would otherwise find that fence walked around by a skill it
+   * merely *holds*, which is a wider surface than the one it granted.
+   *
+   * The ceiling only ever narrows: a key not in the catalog is still not
+   * seated, and an empty array means no catalog seats at all. It is read once
+   * per execution and is expected to be constant for that execution (a flow's
+   * config is), so the delegation build's per-execution memo stays sound.
+   */
+  toolSeatFence?: (ctx: BlockContext) => readonly string[] | undefined;
 }
 
 /** The per-generator binding configuration (`skills.with({ ... })`). */
@@ -274,7 +313,11 @@ export function createSkillsLibrary(
   const registerCatalogTools = options.registerCatalogTools ?? true;
   const scope: ResourceScope = options.scope ?? "org";
   const initialSkills = options.initialSkills;
-  const index = indexInitialSkills(initialSkills);
+  // A resolver has no build-time catalog, so there is nothing to index. The
+  // empty index is NOT treated as "no bundled skills" — `assertKnownSkill`
+  // below refuses first, naming the resolver, so the two cases never blur.
+  const perExecutionCatalog = isInitialSkillsResolver(initialSkills);
+  const index = indexInitialSkills(perExecutionCatalog ? undefined : initialSkills);
 
   const collectionPrefix = options.collectionConfig?.prefix ?? collectionKey;
   const mountPath = collectionPrefix;
@@ -283,6 +326,9 @@ export function createSkillsLibrary(
     prefix: collectionPrefix,
     maxInstances: options.collectionConfig?.maxInstances,
     scope,
+    ...(options.collectionConfig?.flowIsolation !== undefined
+      ? { flowIsolation: options.collectionConfig.flowIsolation }
+      : {}),
   });
 
   const resources: Record<string, DeclaredResourceEntry> = {
@@ -296,6 +342,21 @@ export function createSkillsLibrary(
   // After FIX-918 every skill is inline, so there is no non-inline mode to
   // reject here — the surface is inline-by-construction.
   const assertKnownSkill = (name: string, where: "active" | "allowed"): void => {
+    // Refused LOUDLY rather than skipped. Validation is what keeps a binding
+    // from widening the tool surface with a name nothing answers to, and under
+    // a resolver there is no catalog here to check the name against — the sets
+    // differ per execution, which is the whole point of a resolver. Falling
+    // through to "unvalidated" would make the guard silently absent exactly
+    // where the catalog is least predictable.
+    if (perExecutionCatalog) {
+      throw new Error(
+        `skills.with({ ${where}: [...] }) binds "${name}" by name, but ` +
+          `createSkillsLibrary() was given \`initialSkills\` as a per-execution resolver, ` +
+          `so there is no build-time catalog to validate the name against. Bindings under a ` +
+          `resolver cannot name skills statically — activate them at runtime instead ` +
+          `(an upstream matcher, the load tool, or code writing the binding's \`activeState\`).`,
+      );
+    }
     if (index.size === 0) {
       throw new Error(
         `skills.with({ ${where}: [...] }) binds "${name}" by name, but no bundled ` +
@@ -593,6 +654,7 @@ export function createSkillsLibrary(
           }),
         ),
         bundledAgentIndex: buildBundledAgentIndex(index),
+        ...(options.toolSeatFence ? { toolSeatFence: options.toolSeatFence } : {}),
         ...(cfg.allowed ? { allowedNames: cfg.allowed } : {}),
         dynamicEligible: dynamicAgentEligible,
         allowEmptyRoster,
