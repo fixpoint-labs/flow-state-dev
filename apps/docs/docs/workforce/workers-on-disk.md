@@ -270,7 +270,7 @@ description: Holds the engineering board.
 You are the engineering lead. You break work into tasks and report back.
 ```
 
-The built-in has no memory. Its settings are `instructions`, `model`, `tools`, and the `skills` switches below. Naming a tool in `tools:` requires your app to have supplied a catalog carrying that key; a name with nothing behind it is refused at the hire rather than quietly dropped.
+The built-in has no memory — see [Giving workers memory](#giving-workers-memory) for how to change that. Its settings are `instructions`, `model`, `tools`, and the `skills` switches below. Naming a tool in `tools:` requires your app to have supplied a catalog carrying that key; a name with nothing behind it is refused at the hire rather than quietly dropped.
 
 To use your own worker everywhere instead, register a flow under `agent` and it wins for every seat:
 
@@ -346,6 +346,74 @@ Pulling an edit through is a separate, explicit act — `refreshSeededSkills` fr
 ### Custom worker kinds
 
 Skills are handed to a worker only when its flow kind declares a `seatSkills` setting. The built-in does. A [kind you define yourself](#when-a-worker-needs-more-than-settings) does not until you add the key, so adding an org-wide skills folder never breaks workers running on your own kinds.
+
+## Giving workers memory
+
+The built-in forgets everything between turns. Memory costs tokens on every turn and latency on most of them, so it is something you switch on rather than something you inherit.
+
+You turn it on by composing it into your own copy of the kind. A *capability* is a bundle you attach to a block — the context it injects, the tools it adds, the storage it needs — and memory ships as one. [Memory](../memory/overview.md) covers the system itself: its tiers, what each one stores, and every knob `system()` takes. What follows is how a roster of workers picks it up.
+
+Three of `defineAgentWorkerFlow`'s options carry it:
+
+- `uses` — capabilities every worker of this kind carries.
+- `afterAnswer` — a block that runs after the worker answers.
+- `isolateUserState` — give each worker its own storage instead of one shared cell.
+
+Here is the whole recipe:
+
+```ts
+import { AGENT_KIND, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { system } from "@flow-state-dev/memory";
+
+const mem = system({
+  model: "openai/gpt-5.4-mini",
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+});
+
+const remembers = defineAgentWorkerFlow({
+  catalog: myTools,
+  uses: [
+    mem.capability.presets({
+      // Memory's two tools, turned off. `recall` searches stored memory on
+      // demand; `connect` traverses relations between entities. See below.
+      recall: false,
+      connect: false,
+      // What the worker reads back each turn. Both are off by default.
+      semantic: true,   // facts it has learned
+      episodic: true,   // things that happened
+    }),
+  ],
+  // Each worker remembers separately.
+  isolateUserState: true,
+  // The write side. Without this, nothing is ever recorded.
+  afterAnswer: mem.captureFromItems,
+});
+
+const seats = hireWorkforce(workers, { kinds: { [AGENT_KIND]: remembers } });
+```
+
+Tell a worker something in one conversation and it knows it in the next.
+
+### The parts that are easy to get wrong
+
+**Reach for `system()`, not `createMemoryCapability`.** The latter builds the read side only. Attach it and you get a worker that recites facts someone else stored and records nothing from its own conversations — a worker that looks like it remembers.
+
+**`afterAnswer` is the write side.** Leave it out and the durable stores stay empty. It runs beside the answer rather than in front of it, so it cannot change what the worker said, and a capture that fails is not a failed conversation.
+
+**Turn `semantic` and `episodic` on.** They are off by default. Skip them and the durable stores fill up and are never read back, which is the failure that looks fine until someone starts a second conversation.
+
+**Turn `recall` and `connect` off.** They arrive as tools (`recall` searches stored memory on demand, `connect` walks the relations between entities), and a worker may call exactly the tools its `tools:` setting names. Leaving them on puts a tool on a worker that asked for none. With them off, the worker reads what it knows as injected context every turn instead of searching on request. If you want on-demand search back, put the [recall tool](../memory/recall-tool.md) in your app's own catalog, where a worker opts in by naming it like any other tool.
+
+### What isolation does and does not give you
+
+`isolateUserState: true` keys each worker's storage on that worker's id, so two workers serving the same person do not read each other's memory. Leave it off and they share one.
+
+It is a decision for the whole kind. A roster is all-separate or all-shared; you cannot keep one shared store across the team while giving each worker its own of something else.
+
+The flag decides *where* a worker's memory is stored, so anything that moves the key leaves the old memory behind. Renaming a worker does it, because the key is the worker's id. So does turning the flag on for a roster that has already been talking to people, because shared and separate are different places. Neither has a migration. Decide it before the roster has anything worth keeping, or accept that workers start fresh.
+
 
 ## When a worker needs more than settings
 
