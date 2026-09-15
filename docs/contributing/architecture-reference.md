@@ -39,7 +39,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
   → [Concurrency Policies](../../apps/docs/docs/advanced/concurrency-policies.md)
 - Default workforce agent kind: the built-in kind id is `agent`. It is on the roster without anyone registering it; a caller that passes `kinds: { agent: … }` replaces it outright, and that replacement must declare `kind: "agent"` **and** `cardinality: "collection"` (a plain `defineFlow` is a singleton, whose seats mint and are then refused at registration as `singleton-id-mismatch`).
 - Workforce admission rule — one gate, `hireWorkforce`: **absent `flow:` means the default; a `flow:` naming an unregistered kind is refused by name, listing the kinds that were passed.** Never a silent substitution, and adding the implicit default weakens no existing refusal (the mismatched-kind check still applies to `agent`). A seat's skills are stored per seat via `flowIsolation` on the seat's instance id — isolation separates the drawers, and an instance-specific seeding path is required to fill them.
-  → [Default Workforce Agent Kind](../architecture/workforce-agent-kind.md)
+  → [Default Workforce Worker Kind](../architecture/workforce-default-worker-kind.md)
 
 ## Sequencer Surface (21 methods)
 

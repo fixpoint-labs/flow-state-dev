@@ -23,7 +23,6 @@ Each worker lives at `teams/<team>/workers/<name>/WORKER.md`. `teams/engineering
 
 ```md
 ---
-flow: worker-agent
 description: Holds the board.
 model: openai/gpt-5.4-mini
 ---
@@ -33,21 +32,30 @@ You are the engineering lead. You break work into tasks and report what came bac
 ```ts
 import { hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
-import { workerAgentFlow } from "./flows";
 
 const { workers, errors } = await readWorkforceDirectory("./workforce");
 if (errors.length) {
   throw new Error(`workforce: ${errors.length} worker(s) failed to load`);
 }
 
-const seats = hireWorkforce(workers, {
-  kinds: { "worker-agent": workerAgentFlow },
-});
+const seats = hireWorkforce(workers);
 
 flowRegistry.registerMany(seats);
 ```
 
-`workerAgentFlow` is your own `defineFlow(...)`. Pass each flow under its own `kind`. What comes back is one `FlowInstance` per worker, ordered by id.
+That worker file names no `flow:`, so it runs on the built-in worker kind. It talks, its body becomes its instructions, and it reaches whatever skills its folders hold. It has no memory — nothing it is told survives the turn. [The worker you get without writing one](./workers-on-disk#the-worker-you-get-without-writing-one) covers its settings, what your app can configure, and the rest of what it does not do.
+
+To run a worker on a flow you wrote yourself, pass that flow in `kinds` and name it in the worker's `flow:`:
+
+```ts
+import { customAgentFlow } from "./flows";
+
+const seats = hireWorkforce(workers, {
+  kinds: { "custom-agent": customAgentFlow },
+});
+```
+
+`customAgentFlow` is your own `defineFlow(...)`. Pass each flow under its own `kind`. What comes back is one `FlowInstance` per worker, ordered by id. [Workers on disk](./workers-on-disk#when-a-worker-needs-more-than-settings) walks through writing one.
 
 `hireWorkforce` reads no files and registers nothing. A refused hire throws and returns nothing.
 

@@ -41,7 +41,7 @@ Settings between the `---` fences, instructions below them:
 ```md
 ---
 description: Holds the engineering board and breaks work into tasks.
-flow: worker-agent
+flow: custom-agent
 model: openai/gpt-5.4-mini
 tools: [board, search]
 ---
@@ -94,7 +94,7 @@ const lead = workers.find((worker) => worker.id === "engineering.lead")!;
 
 lead.declared;
 // { description: "Holds the engineering board and breaks work into tasks.",
-//   flow: "worker-agent",
+//   flow: "custom-agent",
 //   model: "openai/gpt-5.4-mini",
 //   tools: ["board", "search"] }
 lead.body;     // "You are the engineering lead. …"
@@ -153,10 +153,10 @@ Inside a worker slot the opposite holds. A folder there that produces no worker 
 
 ```ts
 import { hireWorkforce } from "@flow-state-dev/workforce";
-import { workerAgentFlow, intakeFlow } from "./flows";
+import { customAgentFlow, intakeFlow } from "./flows";
 
 const seats = hireWorkforce(workers, {
-  kinds: { "worker-agent": workerAgentFlow, intake: intakeFlow },
+  kinds: { "custom-agent": customAgentFlow, intake: intakeFlow },
 });
 
 flowRegistry.registerMany(seats);
@@ -172,8 +172,8 @@ Pass `defineFlow(...)` results directly as `kinds`. The call reads no files and 
 A flow kind declares its settings with `configSchema`:
 
 ```ts
-export const workerAgentFlow = defineFlow({
-  kind: "worker-agent",
+export const customAgentFlow = defineFlow({
+  kind: "custom-agent",
   cardinality: "collection",
   configSchema: z.object({
     instructions: z.string(),
@@ -216,7 +216,7 @@ Every `config` is frozen. A worker asking for something its flow never declared 
 
 ```
 hireWorkforce refused 1 of 3 workers; nothing was hired:
-  - worker "engineering.lead" — Flow "worker-agent" instance "engineering.lead"
+  - worker "engineering.lead" — Flow "custom-agent" instance "engineering.lead"
     has an invalid config bag: "temperature" is not a declared setting.
 ```
 
@@ -272,6 +272,10 @@ You are the engineering lead. You break work into tasks and report back.
 
 The built-in has no memory. Its settings are `instructions`, `model`, `tools`, and the `skills` switches below. Naming a tool in `tools:` requires your app to have supplied a catalog carrying that key; a name with nothing behind it is refused at the hire rather than quietly dropped.
 
+A worker's `tools:` is a fence, not a hint. It may call exactly the catalog keys it names, and an empty list means none, whatever else the catalog carries. Skills do not widen it: a skill's `allowed-tools` is checked against the catalog, so a typo or a tool nobody registered fails at build time, but what the worker itself may call is still only what its own `tools:` lists.
+
+One limit is worth knowing. A capability mounted on a worker's generator can put a tool in front of that worker which it never named — capability tools are added to the declared list rather than checked against it. The built-in mounts no such capability, so a worker hired onto it stays inside its list; a kind of your own that mounts one is where the difference shows up.
+
 To use your own worker everywhere instead, register a flow under `agent` and it wins for every seat:
 
 ```ts
@@ -283,6 +287,18 @@ hireWorkforce(manifests, {
 ```
 
 `defineAgentWorkerFlow()` with no arguments *is* the built-in, so configuring it means replacing it — there is no second set of options on `hireWorkforce`. That also means a roster hired with no `kinds` at all carries an empty tool catalog.
+
+What it takes are the things a worker file cannot carry. A tool is running code, and a file on disk can only carry its name.
+
+| Option | What it does |
+| --- | --- |
+| `catalog` | The tools workers may name in `tools:`, by key. Left out, the built-in carries none. |
+| `skills` | Skills seeded into every worker of this kind, alongside the ones its folders hold. |
+| `model` | The model a worker uses when its own file names none. |
+| `classifierModel` | The model the skill classifier uses, for workers that switch it on. |
+| `confidenceThreshold` | How sure that classifier must be before it counts a skill as matching. |
+
+The last two belong to the kind rather than to a worker because the matcher is built once, when the kind is. A worker that set its own would be setting something nothing could read, and this kind refuses settings it cannot honour rather than dropping them quietly.
 
 ## Skills
 
@@ -404,7 +420,7 @@ And at startup, the new kind goes in `kinds` beside the ones the rest of the ros
 import { hireWorkforce } from "@flow-state-dev/workforce";
 
 const seats = hireWorkforce(workers, {
-  kinds: { "worker-agent": workerAgentFlow, "request-triage": requestTriageFlow },
+  kinds: { "custom-agent": customAgentFlow, "request-triage": requestTriageFlow },
 });
 ```
 

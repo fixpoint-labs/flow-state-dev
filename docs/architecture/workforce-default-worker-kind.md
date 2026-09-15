@@ -1,4 +1,4 @@
-# The Default Workforce Agent Kind — Locked Contract
+# The Default Workforce Worker Kind — Locked Contract
 
 A team describes a worker in a file — a name, a description, some instructions — and gets a
 working agent. Four separate pieces of work build toward that promise at the same time, in

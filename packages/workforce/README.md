@@ -14,7 +14,7 @@ workforce/teams/engineering/workers/lead/WORKER.md
 
 ```md
 ---
-flow: worker-agent
+flow: custom-agent
 description: Holds the board.
 model: openai/gpt-5.4-mini
 ---
@@ -28,11 +28,11 @@ import { hireWorkforce } from "@flow-state-dev/workforce";
 const { workers, errors } = await readWorkforce("./workforce");
 if (errors.length) throw new Error(`workforce: ${errors.length} worker(s) failed to load`);
 
-const seats = hireWorkforce(workers, { kinds: { "worker-agent": workerAgentFlow } });
+const seats = hireWorkforce(workers, { kinds: { "custom-agent": customAgentFlow } });
 flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
-`workerAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package — decides what a worker may declare.
+`customAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package — decides what a worker may declare.
 
 This example names a custom kind because that is what it is demonstrating. A record that leaves `flow:` out is hired into the built-in `agent` kind instead, and needs no `kinds` argument at all — see **Hiring** below.
 
@@ -219,13 +219,13 @@ import { hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
 const workers: WorkerManifest[] = [
   {
     id: "engineering.lead",
-    declared: { flow: "worker-agent", description: "Holds the board.", model: "openai/gpt-5.4-mini" },
+    declared: { flow: "custom-agent", description: "Holds the board.", model: "openai/gpt-5.4-mini" },
     body: "You are the engineering lead. You break work into tasks and report what came back.",
   },
   { id: "engineering.intake", declared: { flow: "intake", description: "The front door." }, body: "" },
 ];
 
-const seats = hireWorkforce(workers, { kinds: { "worker-agent": workerAgentFlow, intake: intakeFlow } });
+const seats = hireWorkforce(workers, { kinds: { "custom-agent": customAgentFlow, intake: intakeFlow } });
 flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
