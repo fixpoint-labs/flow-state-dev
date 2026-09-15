@@ -9,7 +9,7 @@ description: "Workforce convention: describe each worker in a folder, read the t
 
 Workforce is how you describe a roster of workers and hire it as addressable flow copies. You can write each worker in TypeScript, or put each one in a folder and read the folder at startup.
 
-`readWorkforceDirectory` turns a folder tree into plain records. `hireWorkforce` turns those records into flow copies you register.
+`readWorkforce` turns a folder tree into plain records. `hireWorkforce` turns those records into flow copies you register.
 
 ## The tree
 

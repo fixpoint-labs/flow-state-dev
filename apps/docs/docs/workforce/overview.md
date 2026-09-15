@@ -74,7 +74,7 @@ Workforce does not staff a task board. It does not replace flows, sessions, or r
 
 ## Related pages
 
-- [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforceDirectory`, and `hireWorkforce`.
+- [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, and `hireWorkforce`.
 - [Channels](./channels) — several agents on one topic, with one durable transcript and nobody owning a row.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.

@@ -235,8 +235,9 @@ declared is refused by name at the hire.
 **A record that leaves `flow:` out is hired into the built-in worker kind** — it talks, its body
 arrives as its instructions, and it reads the skills its own folders hold plus any the app seeded
 through `defineAgentWorkerFlow({ skills })`. It has no memory: nothing it is told survives the
-turn. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only still refuses: it names no kind,
-and only an absent key means the built-in. To replace the built-in, pass your own flow under `agent`
+turn. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only still
+refuses: it names no kind, and only an absent key means the built-in. To replace the built-in,
+pass your own flow under `agent`
 (`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`) and it wins for every seat — configuring
 it is kind replacement, not an option on `hireWorkforce`.
 
