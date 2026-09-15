@@ -295,8 +295,13 @@ Four things this recipe gets right, each of which fails quietly if you skip it:
 
 Isolation is a decision for the whole kind: a roster is all-isolated or all-shared, because the
 flag lives on the flow definition and memory's resource factories declare no per-tier
-`flowIsolation` (FIX-1396). And because the key is the worker's id, **renaming a worker orphans its
-isolated memory** — there is no migration.
+`flowIsolation` (FIX-1396).
+
+`isolateUserState` decides **where** a worker's user-scoped data is keyed, so anything that
+changes the key leaves the old data behind. Two ways that happens, both with no migration:
+**renaming a worker** (the key is its id), and **flipping the flag on a roster already in use**
+(shared and isolated are different cells). Decide it before the roster carries anything worth
+keeping.
 
 Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
 every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.

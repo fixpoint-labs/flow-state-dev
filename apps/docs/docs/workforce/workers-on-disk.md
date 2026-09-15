@@ -345,7 +345,7 @@ Tell a worker something in one conversation and it knows it in the next.
 
 It is a decision for the whole kind. A roster is all-separate or all-shared; you cannot keep one shared store across the team while giving each worker its own of something else.
 
-And because the key is the worker's id, renaming a worker leaves its memory behind under the old name. There is no migration for this. Rename deliberately, or accept that the worker starts fresh.
+The flag decides *where* a worker's memory is stored, so anything that moves the key leaves the old memory behind. Renaming a worker does it, because the key is the worker's id. So does turning the flag on for a roster that has already been talking to people — shared and separate are different places. Neither has a migration. Decide it before the roster has anything worth keeping, or accept that workers start fresh.
 
 ## When a worker needs more than settings
 
