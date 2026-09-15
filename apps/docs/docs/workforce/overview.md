@@ -52,17 +52,27 @@ That worker file names no `flow:`, so it runs on the built-in worker kind. Its b
 
 It has no memory — nothing it is told survives the turn. A **skill** is a folder of instructions a worker can pull into a turn; `readWorkforce` collects the ones sitting beside each worker in the tree, and the built-in reads them. [The worker you get without writing one](./workers-on-disk#the-worker-you-get-without-writing-one) covers its settings, what your app can configure, and the rest of what it does not do.
 
-To run a worker on a flow you wrote yourself, pass that flow in `kinds` and name it in the worker's `flow:`:
+To run a worker on a flow you wrote yourself, name that flow's kind in the worker's `flow:`. Here is `teams/engineering/workers/triage/WORKER.md`:
+
+```md
+---
+description: Sends an incoming request to an answer or to a person.
+flow: request-triage
+---
+Answer directly when the request is a question about a feature that already shipped.
+```
+
+Then pass the flow under that same kind when you hire:
 
 ```ts
-import { customAgentFlow } from "./flows";
+import { requestTriageFlow } from "./flows";
 
 const seats = hireWorkforce(workers, {
-  kinds: { "custom-agent": customAgentFlow },
+  kinds: { "request-triage": requestTriageFlow },
 });
 ```
 
-`customAgentFlow` is your own `defineFlow(...)`. Pass each flow under its own `kind`. What comes back is one `FlowInstance` per worker, ordered by id. [Workers on disk](./workers-on-disk#when-a-worker-needs-more-than-settings) walks through writing one.
+`requestTriageFlow` is your own `defineFlow(...)` and `"request-triage"` is its `kind`. A flow passed under a key that is not its own `kind` is refused. A record that names no `flow:` is hired into the built-in, so one roster can run both. What comes back is one `FlowInstance` per worker, ordered by id. [Workers on disk](./workers-on-disk#when-a-worker-needs-more-than-settings) walks through writing one.
 
 `hireWorkforce` reads no files and registers nothing. A refused hire throws and returns nothing.
 

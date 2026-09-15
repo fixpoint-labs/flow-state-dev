@@ -270,13 +270,15 @@ description: Holds the engineering board.
 You are the engineering lead. You break work into tasks and report back.
 ```
 
-The built-in has no memory. Its settings are `instructions`, `model`, `tools`, and the `skills` switches below. Naming a tool in `tools:` requires your app to have supplied a catalog carrying that key; a name with nothing behind it is refused at the hire rather than quietly dropped.
+The built-in has no memory. Its settings are `instructions`, `model`, `tools`, and the `skills` switches below.
 
-On the built-in, `tools:` is a fence over the catalog, not a hint: a worker may call exactly the catalog keys it names, and an empty list means none, whatever else the catalog carries. Skills do not widen it. A skill's `allowed-tools` is checked against the catalog, so a typo or a tool nobody registered fails at build time, but what the worker itself may call out of the catalog is still only what its own `tools:` lists.
+A worker names its tools by key in `tools:`, and the keys come from the kind's **catalog**: a map from key to tool that your app passes when it builds the kind, since a file on disk can only carry a name. A built-in worker may call the keys its own `tools:` lists, plus one tool that arrives only when the worker turns on [`skills.activateTool`](#using-them). Nothing else reaches it. Naming a key the catalog does not carry is refused at the hire, by name. An empty `tools:`, or none at all, means no catalog tools, whatever else the catalog holds.
 
-The kind adds one tool of its own, and only when a worker asks for it: switching on [`skills.activateTool`](#skills) hands the model a tool for pulling a skill in mid-turn. It comes from the kind rather than from the catalog, so `tools:` neither lists it nor holds it back. That is the whole of what a built-in worker sees beyond its own list.
+That extra tool is the skill loader: it lets the model pull a skill the worker holds into the turn as it runs. It is not a catalog tool, so `tools:` neither lists it nor holds it back.
 
-A kind of your own can differ further. A capability mounted on its generator can put a tool in front of a worker which the worker never named, because capability tools are added to the declared list rather than checked against it.
+Skills do not widen the list any other way. A skill a worker holds can declare `allowed-tools`, and naming a tool there does not grant it. A skill that delegates work to other workers is fenced the same way: those workers are seated from the holding worker's `tools:`, so a worker with `tools: []` reaches no catalog tool through a delegate either.
+
+That contract is the built-in kind's, not hiring's. A kind you write yourself declares its own settings, so whether a `tools:` name is checked against a catalog at all is that kind's business, and a capability mounted on its generator can put a tool in front of a worker that never named one.
 
 To use your own worker everywhere instead, register a flow under `agent` and it wins for every seat:
 
@@ -294,13 +296,13 @@ hireWorkforce(manifests, {
 
 | Option | What it does |
 | --- | --- |
-| `catalog` | The tools workers may name in `tools:`, by key. This is the one most rosters need: a tool is running code, and a worker file can only carry its name, so nothing a worker lists works until the catalog carries it. Left out, the built-in has no tools at all. |
-| `skills` | Skills every worker of this kind gets, on top of the ones its own folders hold. |
+| `catalog` | The tools workers may name in `tools:`, by key. Left out, the built-in has no tools at all. |
+| `skills` | Skills every worker of this kind holds, on top of the ones its own folders hold. A name that collides with a skill a worker already holds is refused at the hire. |
 | `model` | The model a worker uses when its own file names none. |
-| `classifierModel` | The model the skill classifier uses, for the workers that switch it on. |
-| `confidenceThreshold` | How sure that classifier must be before it counts a skill as matching. It has a sensible default, and nothing reads it until a worker switches the classifier on. |
+| `classifierModel` | The model the skill classifier uses. |
+| `confidenceThreshold` | How sure that classifier must be before it counts a skill as matching. Defaults to `0.65`. |
 
-The last two sit on the kind rather than on a worker because the matcher is built once, when the kind is — a worker that set its own would be setting something nothing reads.
+The last two belong to the kind. Nothing reads either until a worker switches the classifier on, and a `WORKER.md` that names one is refused at the hire, by name, along with any other setting the kind does not declare.
 
 ## Skills
 
