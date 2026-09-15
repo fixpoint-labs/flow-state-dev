@@ -50,7 +50,7 @@ You are the engineering lead. You do not write code yourself. You break the
 request into tasks, assign them, and report what came back.
 ```
 
-`description` is the only key the file itself requires, and `persona:` the only one it refuses. `flow` names which of your flow kinds this worker runs, and [hiring](#hiring-the-roster) needs it.
+`description` is the only key the file itself requires, and `persona:` the only one it refuses. `flow` names which of your flow kinds this worker runs. Leave it out and [hiring](#hiring-the-roster) gives you [the built-in worker](#the-worker-you-get-without-writing-one).
 
 Reading the file checks no other key. Whatever else you write lands on the record spelled exactly as you spelled it. The flow a worker names has the final say: at hiring it [refuses a setting it never declared](#the-flow-decides-what-a-worker-may-declare).
 
