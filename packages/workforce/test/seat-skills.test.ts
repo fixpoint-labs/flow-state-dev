@@ -279,6 +279,27 @@ describe("what reaches a seat's prompt", () => {
     expect(prompt).toContain("MARKER-HOUSE-STYLE");
   });
 
+  // The always-on append dedupes, so a default the matcher already activated
+  // this turn is not a second activation. Asserted on the rendered set rather
+  // than on the step's own count, because the set is what the model sees.
+  it("does not double-activate a skill that is both always-on and slashed", async () => {
+    const [seat] = hire([
+      record({
+        id: "qa.tester",
+        declared: { skills: { active: ["write-regression"] } },
+        body: "You test.",
+        skills: [writeRegression],
+      }),
+    ]);
+
+    const { generators, runtime } = await runTurn(seat!, "/write-regression fix the flake");
+
+    const session = (runtime.ctx as { session?: { state?: Record<string, unknown> } }).session;
+    const entries = session?.state?.activeSkills as Array<{ name: string }> | undefined;
+    expect((entries ?? []).filter((e) => e.name === "write-regression")).toHaveLength(1);
+    expect(shown(answered(generators))).toContain("MARKER-WRITE-REGRESSION");
+  });
+
   it("activates a held skill on a slash with no always-on list at all", async () => {
     const [seat] = hire([record({ id: "qa.tester", body: "You test.", skills: [writeRegression] })]);
     const { generators } = await runTurn(seat!, "/write-regression fix the flake");
@@ -463,6 +484,59 @@ describe("the tools fence, against a seat's own delegating skill", () => {
     // drain found no worker for it, the fence held.
     expect(calls()).toBe(0);
     expect(answered(generators).calls.length).toBeGreaterThan(0);
+  });
+
+  // The same fence, one layer in. A tool seat is not the only way a skill's
+  // `agents:` reaches the catalog: a DECLARED agent is a generator of its own,
+  // and its `tools:` list resolves against whatever catalog the library was
+  // built with. If the seat's fence is not applied there too, a `tools: []`
+  // worker delegates to an agent that calls what the worker itself cannot.
+  //
+  // Asserted on the tool's own `execute`, never on a registration list: a name
+  // the generator never registered resolves to a synthesized result inside the
+  // mock's tool loop instead of throwing, so a weaker assertion passes whether
+  // or not the fence holds.
+  it("does not let a declared agent call a tool the seat never named", async () => {
+    const { tool: secret, calls } = countedSecret();
+    const delegatingWithTooledAgent = skill(
+      "delegate",
+      "MARKER-DELEGATE: addTask then runBoard.",
+      ["agents:", "  analyst:", "    prompt: You analyse.", "    tools: [secret]"],
+    );
+
+    const kind = defineAgentWorkerFlow({ catalog: { secret } });
+    const [seat] = hire(
+      [record({ id: "qa.tester", body: "You test.", skills: [delegatingWithTooledAgent] })],
+      { [AGENT_KIND]: kind },
+    );
+
+    const { result } = await runTurn(seat!, "/delegate do it", {
+      ...answerMocks([
+        {
+          toolCalls: [
+            {
+              toolCallId: "call-1",
+              toolName: "addTask",
+              args: { goal: "use the secret tool", assignee: "analyst" },
+            },
+          ],
+        },
+        { toolCalls: [{ toolCallId: "call-2", toolName: "runBoard", args: {} }] },
+        { text: "done" },
+      ]),
+      // The declared agent's own generator. Scripted to reach for the tool it
+      // was handed — which is the whole question.
+      skillWorker_delegate_analyst: mockGenerator({
+        name: "skillWorker_delegate_analyst",
+        script: [
+          { toolCalls: [{ toolCallId: "call-3", toolName: "secret", args: {} }] },
+          { text: "analysed" },
+        ] as never,
+      }),
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(calls()).toBe(0);
   });
 
   // ...and the fence narrows rather than closes: a tool the seat DID name stays
