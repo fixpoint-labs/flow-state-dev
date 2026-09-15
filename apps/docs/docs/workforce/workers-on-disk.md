@@ -440,7 +440,7 @@ const seats = hireWorkforce(workers, {
 
 ## What this does not do
 
-- Reading the tree does not resolve tool or capability names. `tools: [board, search]` comes off the file as two strings; whether the app's catalog carries them is the hire's check, not the loader's.
+- Reading the tree does not resolve tool or capability names. `tools: [board, search]` comes off the file as two strings; whether anything backs those names is checked at the hire, by the kind the worker runs on. The built-in checks them against its catalog. A kind you write decides for itself.
 - It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the three skills folders each worker draws from ([Skills](#skills)). A team's `resources/` or `tools/` folder is layout, not input.
 - It does not follow symlinks, at any level of the walk.
 - It does not watch the tree. Read it once, at startup.
