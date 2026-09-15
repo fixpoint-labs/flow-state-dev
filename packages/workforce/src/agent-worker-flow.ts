@@ -14,10 +14,14 @@
  * second configuration door onto the hire step — see the contract's C1 in
  * `docs/architecture/workforce-agent-kind.md`.
  *
- * The three options are the three things only the app can supply: the tool
- * catalog, the skills to seed, and a default model. Every knob that is not one
- * of those belongs to a replacement kind, registered under `agent` by the
- * caller, which wins for every seat.
+ * {@link AgentWorkerFlowOptions} is the single enumeration of what only the
+ * app can supply — its tool catalog, its skills, and its model choices. The
+ * fields are documented there and are deliberately not restated here.
+ *
+ * The rule that puts a knob on the app rather than on a worker: one that
+ * cannot be honoured per worker must not be declared per worker. A knob that
+ * is neither app-level nor a worker setting belongs to a replacement kind,
+ * registered under `agent` by the caller, which wins for every seat.
  *
  * **A worker's `tools:` is a hard runtime fence**, not a hint: a seat may call
  * exactly the catalog keys it names, and an empty list means none, regardless
@@ -175,7 +179,7 @@ function settingsSchema(options: AgentWorkerFlowOptions) {
  * Define once, hire many: call this at module scope or app bootstrap, never
  * per hire or per request.
  *
- * @param options The tool catalog, skills and default model only the app can supply.
+ * @param options What only the app can supply — see {@link AgentWorkerFlowOptions}.
  * @returns A `defineFlow` result of kind `agent`, cardinality `collection`.
  */
 export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
