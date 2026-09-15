@@ -230,6 +230,74 @@ A `WORKER.md` has no `persona` setting: declaring it lands the worker in
 `readWorkforceDirectory`'s `errors`, or is refused by `hireWorkforce` for a hand-built record.
 Spell it `instructions`.
 
+### Composing capabilities into the built-in kind
+
+`defineAgentWorkerFlow` takes three app-level options beyond its catalog, skills and model choices.
+All three are generic — none of them mentions any particular capability — and all three default to
+the empty case, so `defineAgentWorkerFlow()` with no arguments builds exactly what it always built.
+
+| Option | What it does |
+| --- | --- |
+| `uses` | Capabilities attached to every worker's answer generator. The skills binding stays first and is never displaced; a capability's declared resources reach the flow through it, so nothing else needs declaring. |
+| `afterAnswer` | A block run after the answer as a side-chain. It cannot change the answer, and a failure in it does not fail the turn. Absent, the sequence is unchanged. |
+| `isolateUserState` | Forwarded to `defineFlow`. Gives each worker its own user-scoped storage, keyed on the worker's id, instead of one cell shared across the roster. Default `false` (BP-027). |
+
+**The tools fence and `uses`.** A worker may call exactly the catalog keys its `tools:` names, and
+the generator's own `tools:` mapping is the only stock registration path. `uses` is the one place
+that is upheld by convention rather than by the framework: the tools resolver *unions* a
+capability's tools onto the block's own list instead of intersecting it with what the worker
+declared, so a capability with default-on tools reaches a worker whose `tools:` is empty. Until
+FIX-1393 lands that intersection in `@flow-state-dev/core`, turn tool-bearing presets off at the
+capability.
+
+#### The memory recipe
+
+This package takes no dependency on `@flow-state-dev/memory` and knows nothing about it. Memory is
+one thing an app can pass through the three doors:
+
+```ts
+import { AGENT_KIND, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { system } from "@flow-state-dev/memory";
+
+const mem = system({
+  model: "openai/gpt-5.4-mini",
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+});
+
+const remembers = defineAgentWorkerFlow({
+  catalog: appTools,
+  uses: [
+    mem.capability.presets({
+      recall: false,    // tool-shaped — off, per the fence above
+      connect: false,   // tool-shaped — off
+      semantic: true,   // context injection; OFF by default
+      episodic: true,   // context injection; OFF by default
+    }),
+  ],
+  isolateUserState: true,
+  afterAnswer: mem.captureFromItems,
+});
+
+const seats = hireWorkforce(workers, { kinds: { [AGENT_KIND]: remembers } });
+```
+
+Four things this recipe gets right, each of which fails quietly if you skip it:
+
+- **`system()`, not `createMemoryCapability`.** The latter builds the read side only, producing a
+  worker that recalls what something else stored and records nothing of its own.
+- **`afterAnswer` is the write side.** Without it the durable stores are never written.
+- **`semantic` and `episodic` on.** They are off by default, and with `recall` off as well the
+  durable stores would be written and never read back.
+- **`recall` and `connect` off.** They are the only tool-bearing presets. A worker that wants
+  on-demand search gets the recall tool through the app's own catalog, where it opts in by name.
+
+Isolation is a decision for the whole kind: a roster is all-isolated or all-shared, because the
+flag lives on the flow definition and memory's resource factories declare no per-tier
+`flowIsolation` (FIX-1396). And because the key is the worker's id, **renaming a worker orphans its
+isolated memory** — there is no migration.
+
 Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
 every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.
 

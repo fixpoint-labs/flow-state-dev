@@ -34,10 +34,18 @@
  * tool-registration path, so a seat's `tools:` list is the one thing that
  * decides what it can call, no matter what `allowed-tools` a bound skill
  * declares.
+ *
+ * The one place that fence is upheld by convention rather than by the
+ * framework is {@link AgentWorkerFlowOptions.uses}: the resolver unions a
+ * capability's tools onto the generator's list instead of intersecting it
+ * with the seat's, so an app passing a capability with default-on tools must
+ * turn them off at the preset. FIX-1393 moves the intersection into
+ * `@flow-state-dev/core`, at which point the convention stops mattering. The
+ * rule itself does not change either way.
  */
 
 import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
-import type { GeneratorTool, InitialSkill, ToolCatalog } from "@flow-state-dev/core";
+import type { BlockDefinition, GeneratorTool, InitialSkill, ToolCatalog, UsesSlot } from "@flow-state-dev/core";
 import { createSkillActivator, createSkillsLibrary } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
@@ -104,6 +112,49 @@ export interface AgentWorkerFlowOptions {
   classifierModel?: string;
   /** Confidence the matcher's third tier must reach. Mirrors `createSkillActivator`. */
   confidenceThreshold?: number;
+  /**
+   * Capabilities every worker of this kind carries, composed onto the answer
+   * generator beside the skills library — which stays first and is never
+   * displaced.
+   *
+   * Deliberately generic. This is the door an app composes memory through
+   * (`uses: [mem.capability.presets({ ... })]`); it is not a memory option,
+   * and this package knows nothing about memory. A capability's declared
+   * resources reach the flow through the generator, so nothing else needs
+   * declaring alongside it.
+   *
+   * **Tool-carrying presets are not fenced here.** The framework's resolver
+   * unions a capability's tools onto the generator's own list rather than
+   * intersecting it, so a preset that ships a tool reaches a worker whose
+   * `tools:` is empty. Until that intersection lands in
+   * `@flow-state-dev/core`, an app passing a capability with default-on tools
+   * turns them off at the preset — see the README's memory recipe, which
+   * turns off `recall` and `connect` for exactly this reason.
+   */
+  uses?: UsesSlot;
+  /**
+   * Give each worker of this kind its own user-scoped storage, instead of one
+   * cell shared by every worker serving the same person. Default: false,
+   * matching the framework (BP-027).
+   *
+   * Forwarded to the flow untouched. The key is the worker's id, so renaming
+   * a worker leaves its isolated data behind under the old name.
+   *
+   * All-or-nothing for the kind: a roster is either all-isolated or
+   * all-shared, never a mix.
+   */
+  isolateUserState?: boolean;
+  /**
+   * A block run after the worker answers, as a side-chain — it cannot change
+   * the answer, and a failure in it does not fail the turn.
+   *
+   * The write-side door. Memory's capture pipeline goes here
+   * (`afterAnswer: mem.captureFromItems`); without it a worker carrying
+   * memory reads what something else stored and records nothing of its own.
+   *
+   * Omitted, the kind's sequence is exactly what it is today.
+   */
+  afterAnswer?: BlockDefinition<any, any>;
 }
 
 /** What one worker of this kind configures, in its file. */
@@ -221,7 +272,9 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     inputSchema,
     flowConfigSchema: settings,
     itemVisibility: { client: true, history: true },
-    uses: [skillsBinding],
+    // The skills binding stays FIRST and is never displaced: an app's own
+    // capabilities compose beside it. That is what the `uses` option is for.
+    uses: [skillsBinding, ...(options.uses ?? [])],
     // The prompt seam — a MARKED INSERTION POINT, NOT AN ABSTRACTION.
     //
     // The shared default worker system prompt (FIX-1344 part 2) is not shipped.
@@ -264,10 +317,17 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     ...(options.skills ? { initialSkills: options.skills } : {})
   });
 
-  const run = sequencer({ name: "agent-run", inputSchema, flowConfigSchema: settings })
+  const answered = sequencer({ name: "agent-run", inputSchema, flowConfigSchema: settings })
     .tapIf((_input, ctx) => ctx.flow.config.skills.enableLlmClassifier !== true, matcherWithoutClassifier)
     .tapIf((_input, ctx) => ctx.flow.config.skills.enableLlmClassifier === true, matcherWithClassifier)
     .step(answer);
+
+  // Appended only when the app passed one, so a no-argument call still builds
+  // the sequence it built before this option existed rather than one carrying
+  // an inert extra step. `.sideChain` rather than `.step`: a post-answer block
+  // must not be able to change the answer, and a failure inside it — a capture
+  // call that times out, say — is not a conversation failure.
+  const run = options.afterAnswer ? answered.sideChain(options.afterAnswer) : answered;
 
   return defineFlow({
     kind: AGENT_KIND,
@@ -275,6 +335,9 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     // refused at REGISTRATION, one by one — which is why the goal check for
     // this kind reaches the registry rather than stopping at the mint.
     cardinality: "collection",
+    // Each worker gets its own user-scoped cell when the app asks for one;
+    // shared across the roster otherwise, which is the framework's default.
+    isolateUserState: options.isolateUserState ?? false,
     configSchema: settings,
     actions: { run: { inputSchema, block: run } }
   });
