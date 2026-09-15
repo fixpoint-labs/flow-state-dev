@@ -179,6 +179,13 @@ export interface DelegationSurfaceDeps {
   >;
   /** Restrict runtime lookups to these names (the binding's `allowed` list). */
   allowedNames?: string[];
+  /**
+   * Per-execution ceiling on which catalog keys a board worker may be seated
+   * with, forwarded from `SkillsLibraryOptions.toolSeatFence`. It narrows
+   * {@link resolveToolSeats} and nothing else — it cannot grant a key the
+   * catalog lacks. Read once per execution in `resolveBuild`, before the memo.
+   */
+  toolSeatFence?: (ctx: BlockContext) => readonly string[] | undefined;
   /** Whether this binding has a runtime activation path at all. */
   dynamicEligible: boolean;
   /**
@@ -519,6 +526,11 @@ async function resolveBuild(
   // Validate BEFORE the memo so the snapshot keys on the roster that is actually
   // built, and both builders below see the identical list.
   const { sources, rejected } = validateAgentKeys(collected);
+  // Read outside the memo closure, with the execution's own context. It is
+  // constant for this execution (a flow's config is), so it cannot go stale
+  // against a cached build — and reading it here keeps the closure free of
+  // anything that needs a different schedule than the snapshot's.
+  const fence = deps.toolSeatFence?.(ctx);
   // Reported on its own memo, outside the build closure: the build may legitimately
   // be cached when only the rejected set changed, and the report must still land.
   reportRejectedAgentKeys(ctx, rejected);
@@ -545,7 +557,7 @@ async function resolveBuild(
     if (!installs) return { tools: [], guidance: null };
     // Declared agents win their key, so seats are resolved against the roster
     // that already exists (FIX-925).
-    const toolSeats = resolveToolSeats(sources, deps.catalog, rosterPurposes);
+    const toolSeats = resolveToolSeats(sources, deps.catalog, rosterPurposes, fence);
     return {
       tools: await buildTools(ctx, deps, sources, rosterPurposes, toolSeats),
       guidance: buildGuidance(rosterPurposes, toolSeats.size > 0),
@@ -610,10 +622,19 @@ function resolveToolSeats(
   sources: DelegationAgentSource[],
   catalog: ToolCatalog,
   rosterPurposes: Map<string, string>,
+  fence: readonly string[] | undefined,
 ): Map<string, GeneratorTool> {
   const seats = new Map<string, GeneratorTool>();
+  // The caller's ceiling (`SkillsLibraryOptions.toolSeatFence`). Applied here
+  // rather than at either source of keys because BOTH of them reach the catalog:
+  // a skill's own `allowed-tools`, and the whole-catalog fallback a skill that
+  // declares none takes. A skill the host merely HOLDS must not seat a board
+  // worker with a tool the host itself was never granted — the fence belongs to
+  // whoever installed the library, not to whoever wrote the skill.
+  const fenced = fence === undefined ? undefined : new Set(fence);
   const add = (key: string): void => {
     if (seats.has(key) || rosterPurposes.has(key)) return;
+    if (fenced && !fenced.has(key)) return;
     if (!Object.hasOwn(catalog, key)) return;
     if (!isValidAgentKey(key)) return;
     seats.set(key, catalog[key]!);

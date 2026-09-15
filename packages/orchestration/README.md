@@ -486,6 +486,21 @@ generator({
 });
 ```
 
+`initialSkills` also takes a **function of the execution**, for a catalog that
+belongs to the flow copy rather than to the definition — two registered copies
+then seed two different sets. Pair it with `collectionConfig: { flowIsolation: true }`
+so each copy reads its own storage. The resolver runs before every step of every
+turn, so keep it to an O(1) read of something already resolved; and because there
+is no build-time catalog under one, binding a skill by name (`active` / `allowed`)
+is refused rather than left unvalidated.
+
+Seeding writes a **copy**, so a later edit to the source does not reach a catalog
+that already holds the skill. `refreshSeededSkills(collection, sources)` is the
+deliberate act that pulls one through. It replaces a touched skill's folder whole,
+so a supporting file the source has dropped is deleted rather than left reachable;
+it skips a name whose manifest is gone, so a deletion stands; and ordinary seeding
+stays additive.
+
 A skill that declares an `agents:` field turns on **delegation** (or force it on
 with `delegation: true` even with no `agents:`). An agent is a prompt-driven
 teammate — defined inline (`prompt` / `prompt-ref`) inside the skill, or referenced
@@ -497,6 +512,12 @@ assignable by that key. The board calls the tool directly with the task's `input
 as its arguments — no model turn — and records what it returns. A tool task gets
 dependency ordering from `deps` but not an upstream task's output; a step that must
 read one is an agent.
+
+Those seats come from the **skill**, which is the wrong owner when the host did not
+choose the skills it holds. `toolSeatFence` is the host's ceiling: return the keys a
+board worker may be seated with for this execution, and the seats are narrowed to
+them — an empty array means none. It only narrows, and it leaves the declared agent
+roster alone.
 
 Every delegation board also gets an on-demand **default worker**: it materializes on
 demand and runs any task whose assignee is unset, so a task with no named agent still

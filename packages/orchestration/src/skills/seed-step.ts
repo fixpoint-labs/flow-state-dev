@@ -10,15 +10,19 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type { InitialSkill } from "@flow-state-dev/core";
 import { resolveResourceCollection } from "../tasks";
+import {
+  resolveInitialSkills,
+  type InitialSkillsSource,
+} from "./initial-skills";
 import { ensureSeeded } from "./seeding";
 
 const inputSchema = z.object({ message: z.string() }).passthrough();
 
 export interface CatalogSeedStepOptions {
   collectionKey: string;
-  initialSkills?: InitialSkill[];
+  /** Bundled defaults, or a resolver read against this turn's own context. */
+  initialSkills?: InitialSkillsSource;
 }
 
 /** Build the catalog-seed handler for a collection + bundled defaults. */
@@ -31,7 +35,7 @@ export function createCatalogSeedStep(opts: CatalogSeedStepOptions) {
       const collection = resolveResourceCollection(ctx, opts.collectionKey);
       if (collection) {
         try {
-          await ensureSeeded(collection, opts.initialSkills);
+          await ensureSeeded(collection, resolveInitialSkills(opts.initialSkills, ctx));
         } catch {
           // Seeding failure is already logged inside ensureSeeded; the tiers
           // fall through against whatever the collection contains.
