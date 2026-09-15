@@ -200,12 +200,10 @@ the hire step the way a body is imposed as `instructions`. A `WORKER.md` declari
 itself is refused by name at both the loader and the hire step — where a skill folder sits is
 what decides who can see it.
 
-**A custom kind only receives it if its own `configSchema` declares `seatSkills`.** This is the
-one imposed setting that works that way, and deliberately: a body is written by the worker's
-author, but a worker's skills come from folders somebody else added, and one `org/skills/` folder
-makes every worker's set non-empty. Imposing it unconditionally would make adding a shared skill
-break every custom kind on the roster at once, for a setting their authors never saw. Declare the
-key to opt in.
+**A custom kind only receives it if its own `configSchema` declares `seatSkills`.** It is the one
+imposed setting that works that way: a body is written by the worker's author, but a worker's
+skills come from folders somebody else added, and one `org/skills/` folder makes every worker's
+set non-empty. Declare the key to opt in.
 
 ## Hiring a workforce
 
@@ -235,8 +233,9 @@ verbatim and parsed against its `configSchema`. That schema is closed, so a sett
 declared is refused by name at the hire.
 
 **A record that leaves `flow:` out is hired into the built-in worker kind** — it talks, its body
-arrives as its instructions, and it reads whatever skills the app supplied. `kinds` is therefore
-optional. A `flow:` that is present but empty or whitespace-only still refuses: it names no kind,
+arrives as its instructions, and it reads the skills its own folders hold plus any the app seeded
+through `defineAgentWorkerFlow({ skills })`. It has no memory: nothing it is told survives the
+turn. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only still refuses: it names no kind,
 and only an absent key means the built-in. To replace the built-in, pass your own flow under `agent`
 (`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`) and it wins for every seat — configuring
 it is kind replacement, not an option on `hireWorkforce`.

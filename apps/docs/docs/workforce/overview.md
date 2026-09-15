@@ -31,11 +31,16 @@ You are the engineering lead. You break work into tasks and report what came bac
 
 ```ts
 import { hireWorkforce } from "@flow-state-dev/workforce";
-import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
-const { workers, errors } = await readWorkforceDirectory("./workforce");
-if (errors.length) {
-  throw new Error(`workforce: ${errors.length} worker(s) failed to load`);
+// `errors` is a worker that failed to load; `skillErrors` is one that loaded
+// without a skill it should have had. Both are collected, never thrown.
+const { workers, errors, skillErrors } = await readWorkforce("./workforce");
+if (errors.length || skillErrors.length) {
+  throw new Error(
+    `workforce: ${errors.length} worker(s) failed to load, ` +
+      `${skillErrors.length} loaded short`,
+  );
 }
 
 const seats = hireWorkforce(workers);
@@ -43,7 +48,9 @@ const seats = hireWorkforce(workers);
 flowRegistry.registerMany(seats);
 ```
 
-That worker file names no `flow:`, so it runs on the built-in worker kind. It talks, its body becomes its instructions, and it reaches whatever skills its folders hold. It has no memory — nothing it is told survives the turn. [The worker you get without writing one](./workers-on-disk#the-worker-you-get-without-writing-one) covers its settings, what your app can configure, and the rest of what it does not do.
+That worker file names no `flow:`, so it runs on the built-in worker kind. Its body becomes its instructions, and it talks.
+
+It has no memory — nothing it is told survives the turn. A **skill** is a folder of instructions a worker can pull into a turn; `readWorkforce` collects the ones sitting beside each worker in the tree, and the built-in reads them. [The worker you get without writing one](./workers-on-disk#the-worker-you-get-without-writing-one) covers its settings, what your app can configure, and the rest of what it does not do.
 
 To run a worker on a flow you wrote yourself, pass that flow in `kinds` and name it in the worker's `flow:`:
 
@@ -59,7 +66,7 @@ const seats = hireWorkforce(workers, {
 
 `hireWorkforce` reads no files and registers nothing. A refused hire throws and returns nothing.
 
-`readWorkforceDirectory` is Node-only (`@flow-state-dev/workforce/loader`). Import `hireWorkforce` from `@flow-state-dev/workforce`.
+`readWorkforce` is Node-only (`@flow-state-dev/workforce/loader`). Import `hireWorkforce` from `@flow-state-dev/workforce`.
 
 ## What it will not do
 

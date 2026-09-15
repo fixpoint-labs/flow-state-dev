@@ -260,7 +260,7 @@ A record is refused when it:
 
 ## The worker you get without writing one
 
-A record that leaves `flow:` out entirely is hired into the built-in worker kind. Its body becomes that worker's instructions, and it talks — that is the whole out-of-the-box promise. A name, a description, some instructions, and you have a working worker.
+A record that leaves `flow:` out entirely is hired into the built-in worker kind. Its body becomes that worker's instructions, and it talks.
 
 ```md
 ---
@@ -272,9 +272,9 @@ You are the engineering lead. You break work into tasks and report back.
 
 The built-in has no memory. Its settings are `instructions`, `model`, `tools`, and the `skills` switches below. Naming a tool in `tools:` requires your app to have supplied a catalog carrying that key; a name with nothing behind it is refused at the hire rather than quietly dropped.
 
-A worker's `tools:` is a fence, not a hint. It may call exactly the catalog keys it names, and an empty list means none, whatever else the catalog carries. Skills do not widen it: a skill's `allowed-tools` is checked against the catalog, so a typo or a tool nobody registered fails at build time, but what the worker itself may call is still only what its own `tools:` lists.
+On the built-in, `tools:` is a fence, not a hint: a worker may call exactly the catalog keys it names, and an empty list means none, whatever else the catalog carries. Skills do not widen it. A skill's `allowed-tools` is checked against the catalog, so a typo or a tool nobody registered fails at build time, but what the worker itself may call is still only what its own `tools:` lists.
 
-One limit is worth knowing. A capability mounted on a worker's generator can put a tool in front of that worker which it never named — capability tools are added to the declared list rather than checked against it. The built-in mounts no such capability, so a worker hired onto it stays inside its list; a kind of your own that mounts one is where the difference shows up.
+A kind of your own is where that can differ. A capability mounted on its generator can put a tool in front of a worker which the worker never named, because capability tools are added to the declared list rather than checked against it. The built-in mounts no such capability.
 
 To use your own worker everywhere instead, register a flow under `agent` and it wins for every seat:
 
@@ -288,17 +288,17 @@ hireWorkforce(manifests, {
 
 `defineAgentWorkerFlow()` with no arguments *is* the built-in, so configuring it means replacing it — there is no second set of options on `hireWorkforce`. That also means a roster hired with no `kinds` at all carries an empty tool catalog.
 
-`defineAgentWorkerFlow` takes the things a worker file cannot carry. A tool is running code, and a file on disk can only carry its name.
+`defineAgentWorkerFlow` takes:
 
 | Option | What it does |
 | --- | --- |
-| `catalog` | The tools workers may name in `tools:`, by key. Left out, the built-in carries none. |
-| `skills` | Skills seeded into every worker of this kind, alongside the ones its folders hold. |
+| `catalog` | The tools workers may name in `tools:`, by key. This is the one most rosters need: a tool is running code, and a worker file can only carry its name, so nothing a worker lists works until the catalog carries it. Left out, the built-in has no tools at all. |
+| `skills` | Skills every worker of this kind gets, on top of the ones its own folders hold. |
 | `model` | The model a worker uses when its own file names none. |
-| `classifierModel` | The model the skill classifier uses, for workers that switch it on. |
-| `confidenceThreshold` | How sure that classifier must be before it counts a skill as matching. |
+| `classifierModel` | The model the skill classifier uses, for the workers that switch it on. |
+| `confidenceThreshold` | How sure that classifier must be before it counts a skill as matching. Off by default, with the classifier. |
 
-The last two sit on the kind rather than on a worker because the matcher is built once, when the kind is. A worker that set its own would be setting something nothing reads.
+The last two sit on the kind rather than on a worker because the matcher is built once, when the kind is — a worker that set its own would be setting something nothing reads.
 
 ## Skills
 
@@ -333,7 +333,7 @@ A skill sitting beside a worker needs no list — the folder already says whose 
 
 Holding a skill is not the same as running with it. A skill a worker merely holds costs nothing until something activates it, and a worker that uses no skill on a turn pays for none of them.
 
-There are three ways in:
+Three things activate one:
 
 ```md
 ---
@@ -351,11 +351,11 @@ You write regression tests for reported bugs.
 - **A slash message.** Someone typing `/write-regression fix the flake` activates that skill for the turn. This always works, needs no setting, and only responds to what a person typed — a model emitting the same text does not trigger it.
 - **`activateTool`** lets the model pull a skill in partway through a turn, once it knows what it is dealing with. Off by default, because turning it on puts a listing of everything the worker holds into every prompt.
 
-There is a fourth path, off by default: `skills.enableLlmClassifier` adds a small model call at the front of each turn that decides whether a skill applies. It catches cases a slash and an always-on list miss, and it costs a provider round trip on every message.
+A fourth path is off by default. `skills.enableLlmClassifier` adds a small model call at the front of each turn that decides whether a skill applies. It catches cases a slash and an always-on list miss, and it costs a provider round trip on every message.
 
 ### Editing a skill later
 
-A worker keeps a copy from the moment it first reads a skill. Fixing a typo in the company's copy does not reach a worker already running with it, and deleting a skill a worker has does not take it away either. Both are deliberate: a worker's drawer is its own.
+A worker keeps a copy from the moment it first reads a skill. Fixing a typo in the company's copy does not reach a worker already running with it, and deleting a skill a worker has does not take it away either. A worker's drawer is its own.
 
 Pulling an edit through is a separate, explicit act — `refreshSeededSkills` from `@flow-state-dev/orchestration`, given the skills you want refreshed. A refresh replaces the whole folder for each skill it touches, so a supporting file the source has dropped is gone afterwards, and so is anything that worker added inside that folder. A skill the worker deleted stays deleted. Check the returned `failed` list: a refresh that could not finish a skill names it there rather than reporting silence.
 
@@ -428,7 +428,7 @@ const seats = hireWorkforce(workers, {
 
 ## What this does not do
 
-- It does not resolve tool or capability names. `tools: [board, search]` is carried as two strings, and whether those tools exist is checked when the worker is put to work.
+- Reading the tree does not resolve tool or capability names. `tools: [board, search]` comes off the file as two strings; whether the app's catalog carries them is the hire's check, not the loader's.
 - It does not read anything outside `teams/<team>/workers/<worker>/`. Team-level and organization-level folders are part of the layout, and nothing here reads them.
 - It does not follow symlinks, at any level of the walk.
 - It does not watch the tree. Read it once, at startup.
