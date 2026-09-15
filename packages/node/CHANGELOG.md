@@ -1,5 +1,11 @@
 # @flow-state-dev/node
 
+## 0.1.1
+
+### Patch Changes
+
+- @flow-state-dev/engine@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/workforce",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The seat factory for flow-state-dev: worker records become configured flow instances.",
   "keywords": [
     "ai",

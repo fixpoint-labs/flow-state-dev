@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Goal-check library \u2014 real-model, out-of-CI runners that prove framework outcomes. Not a published package and not a vitest root; see README.md.",
+  "description": "Goal-check library — real-model, out-of-CI runners that prove framework outcomes. Not a published package and not a vitest root; see README.md.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "goal:all": "tsx scripts/run-all.mts"
