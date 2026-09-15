@@ -119,9 +119,17 @@ export interface AgentWorkerFlowOptions {
    *
    * Deliberately generic. This is the door an app composes memory through
    * (`uses: [mem.capability.presets({ ... })]`); it is not a memory option,
-   * and this package knows nothing about memory. A capability's declared
-   * resources reach the flow through the generator, so nothing else needs
-   * declaring alongside it.
+   * and this package knows nothing about memory.
+   *
+   * **A STATIC entry's resources reach the flow on their own**, through the
+   * generator's `declaredResources` and `defineFlow`'s merge — so a capability
+   * passed as a plain ref needs nothing declared alongside it.
+   *
+   * **A DYNAMIC entry (`(ctx) => refs`) does not.** `UsesSlot` accepts both,
+   * and a resolver function contributes context and tools only: resources have
+   * to exist before the block runs, so they must be declared statically
+   * somewhere (see `UsesEntry` in `@flow-state-dev/core`). Pass a capability
+   * dynamically and its stores are *not* installed by that entry alone.
    *
    * **Tool-carrying presets are not fenced here.** The framework's resolver
    * unions a capability's tools onto the generator's own list rather than
@@ -149,6 +157,16 @@ export interface AgentWorkerFlowOptions {
   /**
    * A block run after the worker answers, as a side-chain — it cannot change
    * the answer, and a failure in it does not fail the turn.
+   *
+   * **It receives the answer generator's output: the assistant's reply text,
+   * as a string.** `.sideChain` with no connector passes the preceding step's
+   * output straight through, and `agent-answer` declares no `outputSchema`.
+   * The type here is deliberately wide (core's own `.sideChain` takes
+   * `BlockDefinition<any, any>`), so a block expecting some other shape
+   * compiles and fails at run time — check yours against a string, or give it
+   * a `connectInput` connector that reads what it actually needs.
+   * `mem.captureFromItems` is the latter: its connector ignores this input
+   * and reads the session's items.
    *
    * The write-side door. Memory's capture pipeline goes here
    * (`afterAnswer: mem.captureFromItems`); without it a worker carrying
