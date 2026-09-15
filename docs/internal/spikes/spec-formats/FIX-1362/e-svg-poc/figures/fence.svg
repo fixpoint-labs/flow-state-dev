@@ -1,0 +1,85 @@
+<svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A vertical dashed fence separates the seat on the left from the app's tool catalog on the right. Three paths approach the fence. The generator's own tools mapping passes through the one gate, carrying only runTests. The skills library's catalog registration stops at the fence, switched off. The delegation surface used to cross the fence carrying catalog seats to board workers; this change closes it at the fence, capped to the seat's tools list.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B; --rule:#D5D4CB;
+            --accent:#3E4E8C; --code:#2C7C69; --code-soft:#DCEDE7; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81; --rule:#2B3135;
+              --accent:#8B9BD8; --code:#5DBBA1; --code-soft:#14302A; --gone:#DE8A84; } }
+    .t-b  { fill:var(--ink);   font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-weight:600; font-size:13px; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-xs { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.05em; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .f-accent{ fill:var(--accent); } .f-code{ fill:var(--code); } .f-gone{ fill:var(--gone); }
+    .n-box { fill:var(--surface);   stroke:var(--rule); stroke-width:1.2; }
+    .n-box2{ fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-code{ fill:var(--code-soft); stroke:var(--code); stroke-width:1.3; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .ln-code{ stroke:var(--code); stroke-width:1.6; fill:none; }
+    .ln-gone{ stroke:var(--gone); stroke-width:1.4; fill:none; stroke-dasharray:5 4; }
+    .fence { stroke:var(--accent); stroke-width:2.2; fill:none; stroke-dasharray:7 5; }
+    .stop  { stroke:var(--gone); stroke-width:3; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--ink-3)"/>
+    </marker>
+    <marker id="ah-code" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--code)"/>
+    </marker>
+  </defs>
+
+  <g id="seat">
+    <text class="t-lbl" x="40" y="28">THE SEAT</text>
+    <rect class="n-box" x="40" y="44" width="240" height="52" rx="6"/>
+    <text class="t-b" x="52" y="66">seat qa.tester</text>
+    <text class="t-s" x="52" y="84">tools: [runTests]</text>
+    <rect class="n-code" x="40" y="150" width="240" height="52" rx="6"/>
+    <text class="t-b" x="52" y="172">generator</text>
+    <text class="t-s" x="52" y="190">tools: names → catalog[name]</text>
+    <path class="ln" d="M160,96 L160,148" marker-end="url(#ah)"/>
+    <rect class="n-box" x="40" y="224" width="240" height="30" rx="5"/>
+    <text class="t-s" x="52" y="243">loadSkill tool · adds only itself</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M480,40 L480,158 M480,192 L480,312"/>
+    <rect class="n-code" x="470" y="158" width="20" height="34" rx="3"/>
+    <text class="t-lbl f-accent" x="330" y="28">THE FENCE · exactly what tools: names</text>
+    <text class="t-xs f-code" x="440" y="210">the one gate</text>
+  </g>
+
+  <g id="catalog">
+    <text class="t-lbl" x="700" y="28">THE APP'S CATALOG</text>
+    <rect class="n-box2" x="700" y="44" width="200" height="210" rx="6"/>
+    <rect class="n-code" x="712" y="160" width="176" height="28" rx="4"/>
+    <text class="t-s" x="722" y="178">runTests</text>
+    <rect class="n-box" x="712" y="60" width="176" height="28" rx="4"/>
+    <text class="t-s" x="722" y="78">deploy</text>
+    <rect class="n-box" x="712" y="98" width="176" height="28" rx="4"/>
+    <text class="t-s" x="722" y="116">deleteRepo</text>
+    <rect class="n-box" x="712" y="210" width="176" height="28" rx="4"/>
+    <text class="t-s" x="722" y="228">rotateSecrets</text>
+  </g>
+
+  <g id="path-library">
+    <path class="ln" d="M700,74 L492,74"/>
+    <path class="stop" d="M490,64 L490,84"/>
+    <text class="t-xs" x="500" y="60">library fullCatalog() · stopped</text>
+    <text class="t-xs" x="500" y="98">registerCatalogTools: false</text>
+  </g>
+
+  <g id="path-generator">
+    <path class="ln-code" d="M712,175 L282,175" marker-end="url(#ah-code)"/>
+    <text class="t-xs f-code" x="500" y="150">the only registration path · runTests, nothing else</text>
+  </g>
+
+  <g id="path-delegation">
+    <path class="ln" d="M800,254 L800,290 L492,290"/>
+    <path class="stop" d="M490,280 L490,300"/>
+    <path class="ln-gone" d="M478,290 L282,290"/>
+    <text class="t-xs" x="500" y="274">delegation surface · a seat's own skill declares agents:</text>
+    <text class="t-xs f-gone" x="500" y="310">used to cross, carrying catalog seats · now capped to tools:</text>
+    <text class="t-xs f-gone" x="300" y="308">was open before this change</text>
+  </g>
+</svg>

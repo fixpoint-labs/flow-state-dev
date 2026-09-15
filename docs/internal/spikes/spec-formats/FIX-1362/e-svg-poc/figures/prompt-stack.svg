@@ -1,0 +1,77 @@
+<svg viewBox="0 0 940 320" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Four stacks on one baseline, height meaning tokens in the prompt. A turn that uses no skill: instructions plus the always-on band, one model call. A turn with a typed slash command: the same plus one band for that skill, this turn only, one model call. A worker that turned the activate tool on: the same plus a catalog listing band every turn and a tool slot, one model call. The rejected every-turn classifier: one extra model call before the answer, drawn as a red band.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B; --rule:#D5D4CB;
+            --accent:#3E4E8C; --code:#2C7C69; --code-soft:#DCEDE7; --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F3DEDC; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81; --rule:#2B3135;
+              --accent:#8B9BD8; --code:#5DBBA1; --code-soft:#14302A; --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1F1E; } }
+    .t-b  { fill:var(--ink);   font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-weight:600; font-size:13px; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-xs { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.05em; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .f-code{ fill:var(--code); } .f-gone{ fill:var(--gone); } .f-prose{ fill:var(--prose); }
+    .b-base{ fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .b-on  { fill:var(--code-soft);  stroke:var(--code);  stroke-width:1.2; }
+    .b-turn{ fill:var(--surface);    stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .b-opt { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .b-gone{ fill:var(--gone-soft);  stroke:var(--gone);  stroke-width:1.2; stroke-dasharray:4 3; }
+    .base  { stroke:var(--ink-3); stroke-width:1.4; }
+  </style>
+
+  <text class="t-lbl" x="40" y="28">WHAT ONE TURN COSTS · height = tokens in the prompt · same baseline</text>
+  <path class="base" d="M40,250 L900,250"/>
+
+  <g id="stack-none">
+    <text class="t-b" x="40" y="60">no skill used</text>
+    <text class="t-xs" x="40" y="74">the common case</text>
+    <rect class="b-base" x="40" y="200" width="190" height="50" rx="3"/>
+    <text class="t-s" x="50" y="230">instructions · the body</text>
+    <rect class="b-on" x="40" y="172" width="190" height="28" rx="3"/>
+    <text class="t-s" x="50" y="190">always-on: house-style</text>
+    <text class="t-xs f-code" x="40" y="272">model calls: 1</text>
+    <text class="t-xs" x="40" y="286">no listing · no lookup · no tool</text>
+  </g>
+
+  <g id="stack-slash">
+    <text class="t-b" x="260" y="60">/write-regression typed</text>
+    <text class="t-xs" x="260" y="74">a person, not the model</text>
+    <rect class="b-base" x="260" y="200" width="190" height="50" rx="3"/>
+    <text class="t-s" x="270" y="230">instructions · the body</text>
+    <rect class="b-on" x="260" y="172" width="190" height="28" rx="3"/>
+    <text class="t-s" x="270" y="190">always-on: house-style</text>
+    <rect class="b-turn" x="260" y="140" width="190" height="32" rx="3"/>
+    <text class="t-s" x="270" y="160">write-regression · this turn</text>
+    <text class="t-xs f-code" x="260" y="272">model calls: 1</text>
+    <text class="t-xs" x="260" y="286">always-on survives the match</text>
+  </g>
+
+  <g id="stack-tool">
+    <text class="t-b" x="480" y="60">skills.activateTool: true</text>
+    <text class="t-xs" x="480" y="74">opt-in · off by default</text>
+    <rect class="b-base" x="480" y="200" width="190" height="50" rx="3"/>
+    <text class="t-s" x="490" y="230">instructions · the body</text>
+    <rect class="b-on" x="480" y="172" width="190" height="28" rx="3"/>
+    <text class="t-s" x="490" y="190">always-on: house-style</text>
+    <rect class="b-opt" x="480" y="126" width="190" height="46" rx="3"/>
+    <text class="t-s" x="490" y="144">catalog listing · every turn</text>
+    <text class="t-xs" x="490" y="160">size ∝ catalog · + a tool slot</text>
+    <text class="t-xs f-code" x="480" y="272">model calls: 1</text>
+    <text class="t-xs f-prose" x="480" y="286">the worker chose to pay this</text>
+  </g>
+
+  <g id="stack-classifier">
+    <text class="t-b f-gone" x="700" y="60">every-turn classifier</text>
+    <text class="t-xs" x="700" y="74">rejected · stays opt-in elsewhere</text>
+    <rect class="b-base" x="700" y="200" width="190" height="50" rx="3"/>
+    <text class="t-s" x="710" y="230">instructions · the body</text>
+    <rect class="b-on" x="700" y="172" width="190" height="28" rx="3"/>
+    <text class="t-s" x="710" y="190">always-on: house-style</text>
+    <rect class="b-gone" x="700" y="110" width="190" height="62" rx="3"/>
+    <text class="t-s f-gone" x="710" y="130">+1 model call, every turn</text>
+    <text class="t-xs" x="710" y="146">"does a skill apply?" first</text>
+    <text class="t-xs" x="710" y="160">paid even when the answer's no</text>
+    <text class="t-xs f-gone" x="700" y="272">model calls: 2</text>
+    <text class="t-xs" x="700" y="286">the tax D2 refuses to charge</text>
+  </g>
+</svg>

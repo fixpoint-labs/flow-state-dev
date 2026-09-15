@@ -1,0 +1,54 @@
+# FIX-1362 · explainer
+
+> **Control.** The explainer as it exists today on PR #1766, unchanged. Approach C keeps it beside the spec so "does a separate comprehension artifact still earn its place?" is answered by comparison. A, B and D fold it in.
+
+## 1. Today
+
+```mermaid
+flowchart LR
+  K["agent kind<br/>one baked array"] --> S1["seat: qa.tester"]
+  K --> S2["seat: eng.lead"]
+  S1 --> D["one shared drawer"]
+  S2 --> D
+  D --> C["one catalog<br/>both seats see everything"]
+```
+
+Every seat of the kind reads the same bucket. A skills folder beside one worker reaches all
+of them — or, since nothing fills a seat today, reaches none.
+
+## 2. After (proposed)
+
+```mermaid
+flowchart LR
+  K["agent kind<br/>resolver, not an array"] --> S1["seat: qa.tester"]
+  K --> S2["seat: eng.lead"]
+  S1 --> D1["qa.tester drawer"]
+  S2 --> D2["eng.lead drawer"]
+  D1 --> C1["write-regression<br/>plus org skills"]
+  D2 --> C2["break-down-work<br/>plus org skills"]
+```
+
+Each seat gets its own drawer, filled from its own folders. This is the shape being gated:
+storage keys on the seat, and a seat's skill set rides in on its worker record.
+
+## 3. Where the decision fell
+
+```mermaid
+flowchart TD
+  Q["how a turn picks a skill"] --> A["the worker's always-on list"]
+  Q --> B["a typed slash command"]
+  Q --> T["a tool the model calls<br/>off unless the worker turns it on"]
+  Q -.->|rejected| X["every-turn classifier<br/>stays opt-in elsewhere"]
+  Q -.->|rejected| Y["keyword scan<br/>gone, not renamed"]
+  I["also signed off"] --> R["skills ride on the worker record"]
+  I --> W["a seat holds a copy<br/>a refresh replaces its folder whole"]
+  I -.->|"handed to FIX-1390"| F["deprecate one of the two<br/>skills entry points"]
+```
+
+Three stock paths, none of them a model call on a turn that uses no skill. The dashed edges
+are what the change refuses, and the one piece of its brief it hands to a follow-up.
+
+---
+
+*Left alone on purpose: memory (FIX-1364), the teaching surface (FIX-1366), and every
+refusal `hireWorkforce` already makes.*

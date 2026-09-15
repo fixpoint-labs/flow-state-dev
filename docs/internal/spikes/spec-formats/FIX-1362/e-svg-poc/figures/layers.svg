@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two horizontal bands. The upper band is the workforce package, which knows what a seat is. The lower band is the orchestration package, which knows skills, seeding and collections but nothing about seats. On the line between them sits one socket, initialSkills as a function of context. Workforce plugs in a resolver that reads the seat's setting; orchestration calls the socket and never sees the key. A crossed-out arrow shows the rejected shape: orchestration reaching up to read a worker-shaped config key directly.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B; --rule:#D5D4CB;
+            --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81; --rule:#2B3135;
+              --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; --gone:#DE8A84; } }
+    .t-b  { fill:var(--ink);   font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-weight:600; font-size:13px; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-xs { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.05em; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .f-accent{ fill:var(--accent); } .f-code{ fill:var(--code); } .f-gone{ fill:var(--gone); }
+    .band-up  { fill:var(--surface);   stroke:var(--rule); stroke-width:1.2; }
+    .band-down{ fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-code{ fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-acc { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .ln-gone{ stroke:var(--gone); stroke-width:1.5; fill:none; stroke-dasharray:5 4; }
+    .seam  { stroke:var(--accent); stroke-width:2; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--ink-3)"/>
+    </marker>
+    <marker id="ah-gone" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--gone)"/>
+    </marker>
+  </defs>
+
+  <g id="workforce">
+    <rect class="band-up" x="40" y="40" width="860" height="100" rx="6"/>
+    <text class="t-lbl" x="52" y="60">@flow-state-dev/workforce · knows what a seat is</text>
+    <rect class="n-box" x="52" y="72" width="150" height="52" rx="5"/>
+    <text class="t-s" x="62" y="92">loader</text>
+    <text class="t-xs" x="62" y="108">WorkerManifest.skills</text>
+    <rect class="n-box" x="222" y="72" width="150" height="52" rx="5"/>
+    <text class="t-s" x="232" y="92">hire</text>
+    <text class="t-xs" x="232" y="108">imposes seatSkills</text>
+    <rect class="n-acc" x="392" y="72" width="220" height="52" rx="5"/>
+    <text class="t-s" x="402" y="92">the agent kind</text>
+    <text class="t-xs" x="402" y="108">passes a resolver, plugs the socket</text>
+    <path class="ln" d="M202,98 L220,98" marker-end="url(#ah)"/>
+    <path class="ln" d="M372,98 L390,98" marker-end="url(#ah)"/>
+    <rect class="n-box" x="700" y="72" width="188" height="52" rx="5"/>
+    <text class="t-s" x="710" y="92">seat config</text>
+    <text class="t-xs" x="710" y="106">seatSkills: [...]</text>
+    <text class="t-xs" x="710" y="118">a worker-shaped key</text>
+  </g>
+
+  <g id="seam">
+    <path class="seam" d="M40,150 L430,150 M660,150 L900,150"/>
+    <rect class="n-code" x="430" y="136" width="230" height="28" rx="4"/>
+    <text class="t-s f-code" x="444" y="154">initialSkills: (ctx) => string[]</text>
+    <text class="t-xs f-accent" x="52" y="166">the package boundary · one socket on it</text>
+    <path class="ln" d="M502,124 L520,134" marker-end="url(#ah)"/>
+  </g>
+
+  <g id="orchestration">
+    <rect class="band-down" x="40" y="172" width="860" height="100" rx="6"/>
+    <text class="t-lbl" x="52" y="268">@flow-state-dev/orchestration · skills, seeding, collections · no word for seat</text>
+    <rect class="n-box" x="52" y="204" width="210" height="52" rx="5"/>
+    <text class="t-s" x="62" y="224">skills library</text>
+    <text class="t-xs" x="62" y="240">calls the socket, never the key</text>
+    <rect class="n-box" x="282" y="204" width="150" height="52" rx="5"/>
+    <text class="t-s" x="292" y="224">ensureSeeded</text>
+    <text class="t-xs" x="292" y="240">gets an array, as today</text>
+    <path class="ln" d="M262,230 L280,230" marker-end="url(#ah)"/>
+    <path class="ln" d="M160,204 L470,166" marker-end="url(#ah)"/>
+  </g>
+
+  <g id="rejected">
+    <path class="ln-gone" d="M760,204 L780,126" marker-end="url(#ah-gone)"/>
+    <rect class="n-box" x="560" y="204" width="328" height="52" rx="5"/>
+    <text class="t-s f-gone" x="570" y="224">rejected: read ctx.flow.config.seatSkills here</text>
+    <text class="t-xs" x="570" y="240">orchestration learns a worker's word · layers invert</text>
+  </g>
+</svg>

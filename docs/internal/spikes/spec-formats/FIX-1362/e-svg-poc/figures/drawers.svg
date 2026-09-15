@@ -1,0 +1,94 @@
+<svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Today, two seats point at one shared drawer with no levels, and the folders beside workers fill nothing. After, each seat has its own drawer with three nested bands, org, team, own. house-style appears in both drawers as separate copies. write-regression sits only in qa.tester's own band; break-down-work only in eng.lead's.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B; --rule:#D5D4CB;
+            --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81; --rule:#2B3135;
+              --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; --gone:#DE8A84; } }
+    .t-b  { fill:var(--ink);   font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-weight:600; font-size:13px; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-xs { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.05em; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .f-accent{ fill:var(--accent); } .f-code{ fill:var(--code); } .f-gone{ fill:var(--gone); }
+    .n-box { fill:var(--surface);   stroke:var(--rule); stroke-width:1.2; }
+    .n-box2{ fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-grp { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:3 3; }
+    .n-code{ fill:var(--code-soft); stroke:var(--code); stroke-width:1.3; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .ln-gone{ stroke:var(--gone); stroke-width:1.4; fill:none; stroke-dasharray:5 4; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--ink-3)"/>
+    </marker>
+  </defs>
+
+  <g id="today">
+    <text class="t-lbl" x="40" y="28">TODAY</text>
+    <rect class="n-box" x="40" y="44" width="160" height="34" rx="5"/>
+    <text class="t-b" x="54" y="66">seat qa.tester</text>
+    <rect class="n-box" x="240" y="44" width="160" height="34" rx="5"/>
+    <text class="t-b" x="254" y="66">seat eng.lead</text>
+    <path class="ln" d="M120,78 L120,126" marker-end="url(#ah)"/>
+    <path class="ln" d="M320,78 L320,126" marker-end="url(#ah)"/>
+
+    <rect class="n-box2" x="40" y="130" width="360" height="150" rx="6"/>
+    <text class="t-lbl" x="52" y="150">ONE SHARED DRAWER · NO LEVELS</text>
+    <rect class="n-box" x="52" y="164" width="96" height="24" rx="4"/>
+    <text class="t-s" x="60" y="180">house-style</text>
+    <rect class="n-box" x="158" y="164" width="88" height="24" rx="4"/>
+    <text class="t-s" x="166" y="180">regression</text>
+    <rect class="n-box" x="256" y="164" width="128" height="24" rx="4"/>
+    <text class="t-s" x="264" y="180">break-down-work</text>
+    <rect class="n-box" x="52" y="200" width="128" height="24" rx="4"/>
+    <text class="t-s" x="60" y="216">write-regression</text>
+    <text class="t-xs" x="52" y="252">both seats read all of it · filled only by the app's skills option</text>
+
+    <rect class="n-grp" x="40" y="300" width="200" height="28" rx="5"/>
+    <text class="t-s" x="50" y="318">tester/skills/ on disk</text>
+    <path class="ln-gone" d="M240,314 L330,314"/>
+    <text class="t-xs f-gone" x="338" y="318">reaches no drawer</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="480" y="28">AFTER</text>
+
+    <g id="drawer-tester">
+      <rect class="n-box" x="480" y="44" width="210" height="290" rx="6"/>
+      <text class="t-b" x="492" y="66">seat qa.tester</text>
+      <rect class="n-grp" x="492" y="80" width="186" height="64" rx="4"/>
+      <text class="t-lbl" x="500" y="94">ORG</text>
+      <rect class="n-box" x="500" y="104" width="96" height="24" rx="4"/>
+      <text class="t-s" x="508" y="120">house-style</text>
+      <text class="t-xs f-accent" x="604" y="120">own copy</text>
+      <rect class="n-grp" x="492" y="152" width="186" height="64" rx="4"/>
+      <text class="t-lbl" x="500" y="166">TEAM qa</text>
+      <rect class="n-box" x="500" y="176" width="88" height="24" rx="4"/>
+      <text class="t-s" x="508" y="192">regression</text>
+      <rect class="n-grp" x="492" y="224" width="186" height="64" rx="4"/>
+      <text class="t-lbl" x="500" y="238">OWN</text>
+      <rect class="n-code" x="500" y="248" width="128" height="24" rx="4"/>
+      <text class="t-s" x="508" y="264">write-regression</text>
+      <text class="t-xs" x="492" y="316">holds 3 · none of eng.lead's</text>
+    </g>
+
+    <g id="drawer-lead">
+      <rect class="n-box" x="710" y="44" width="210" height="290" rx="6"/>
+      <text class="t-b" x="722" y="66">seat eng.lead</text>
+      <rect class="n-grp" x="722" y="80" width="186" height="64" rx="4"/>
+      <text class="t-lbl" x="730" y="94">ORG</text>
+      <rect class="n-box" x="730" y="104" width="96" height="24" rx="4"/>
+      <text class="t-s" x="738" y="120">house-style</text>
+      <text class="t-xs f-accent" x="834" y="120">own copy</text>
+      <rect class="n-grp" x="722" y="152" width="186" height="64" rx="4"/>
+      <text class="t-lbl" x="730" y="166">TEAM eng</text>
+      <text class="t-xs" x="730" y="192">— no team skills</text>
+      <rect class="n-grp" x="722" y="224" width="186" height="64" rx="4"/>
+      <text class="t-lbl" x="730" y="238">OWN</text>
+      <rect class="n-code" x="730" y="248" width="128" height="24" rx="4"/>
+      <text class="t-s" x="738" y="264">break-down-work</text>
+      <text class="t-xs" x="722" y="316">holds 2 · none of qa.tester's</text>
+    </g>
+  </g>
+</svg>
