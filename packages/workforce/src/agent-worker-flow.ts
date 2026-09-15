@@ -45,6 +45,7 @@
  */
 
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { GeneratorTool, InitialSkill, ToolCatalog } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
@@ -530,23 +531,31 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       // an addition — and a count that reports the list's length instead would
       // be wrong exactly when a slash hit and an always-on name coincide, which
       // is the case most likely to be asserted on.
-      let added = 0;
-      await ctx.session.atomicState((current) => {
-        const held = (current as Record<string, unknown> | undefined)?.[
-          ACTIVE_SKILLS_STATE.field
-        ];
-        let entries = Array.isArray(held) ? held : [];
-        const before = entries.length;
-        for (const name of names) {
-          entries = pushActiveSkill(entries, { name, mode: "inline", activatedAt });
+      // Reported through the mutator's return rather than written outward:
+      // `atomicState` may run its mutator more than once, and `withOutcome`
+      // clears the outcome per invocation — so neither a re-run against fresher
+      // state nor an attempt that threw and was absorbed can leave a count
+      // behind for a write that never committed. `undefined` means the mutator
+      // never completed, which is the same answer as nothing added.
+      const added = await withOutcome(
+        (mutator: (state: unknown) => Record<string, unknown>) =>
+          ctx.session.atomicState(mutator),
+        (current: unknown) => {
+          const held = (current as Record<string, unknown> | undefined)?.[
+            ACTIVE_SKILLS_STATE.field
+          ];
+          let entries = Array.isArray(held) ? held : [];
+          const before = entries.length;
+          for (const name of names) {
+            entries = pushActiveSkill(entries, { name, mode: "inline", activatedAt });
+          }
+          return {
+            state: { [ACTIVE_SKILLS_STATE.field]: entries },
+            result: entries.length - before
+          };
         }
-        // Reassigned rather than accumulated: `atomicState` may re-run its
-        // mutator against fresher state, and a `+=` would then count the
-        // discarded attempt too.
-        added = entries.length - before;
-        return { [ACTIVE_SKILLS_STATE.field]: entries };
-      });
-      return { added };
+      );
+      return { added: added ?? 0 };
     }
   });
 
