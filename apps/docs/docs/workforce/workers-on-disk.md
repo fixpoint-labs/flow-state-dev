@@ -272,9 +272,11 @@ You are the engineering lead. You break work into tasks and report back.
 
 The built-in has no memory. Its settings are `instructions`, `model`, `tools`, and the `skills` switches below. Naming a tool in `tools:` requires your app to have supplied a catalog carrying that key; a name with nothing behind it is refused at the hire rather than quietly dropped.
 
-On the built-in, `tools:` is a fence, not a hint: a worker may call exactly the catalog keys it names, and an empty list means none, whatever else the catalog carries. Skills do not widen it. A skill's `allowed-tools` is checked against the catalog, so a typo or a tool nobody registered fails at build time, but what the worker itself may call is still only what its own `tools:` lists.
+On the built-in, `tools:` is a fence over the catalog, not a hint: a worker may call exactly the catalog keys it names, and an empty list means none, whatever else the catalog carries. Skills do not widen it. A skill's `allowed-tools` is checked against the catalog, so a typo or a tool nobody registered fails at build time, but what the worker itself may call out of the catalog is still only what its own `tools:` lists.
 
-A kind of your own is where that can differ. A capability mounted on its generator can put a tool in front of a worker which the worker never named, because capability tools are added to the declared list rather than checked against it. The built-in mounts no such capability.
+The kind adds one tool of its own, and only when a worker asks for it: switching on [`skills.activateTool`](#skills) hands the model a tool for pulling a skill in mid-turn. It comes from the kind rather than from the catalog, so `tools:` neither lists it nor holds it back. That is the whole of what a built-in worker sees beyond its own list.
+
+A kind of your own can differ further. A capability mounted on its generator can put a tool in front of a worker which the worker never named, because capability tools are added to the declared list rather than checked against it.
 
 To use your own worker everywhere instead, register a flow under `agent` and it wins for every seat:
 
@@ -296,7 +298,7 @@ hireWorkforce(manifests, {
 | `skills` | Skills every worker of this kind gets, on top of the ones its own folders hold. |
 | `model` | The model a worker uses when its own file names none. |
 | `classifierModel` | The model the skill classifier uses, for the workers that switch it on. |
-| `confidenceThreshold` | How sure that classifier must be before it counts a skill as matching. Off by default, with the classifier. |
+| `confidenceThreshold` | How sure that classifier must be before it counts a skill as matching. It has a sensible default, and nothing reads it until a worker switches the classifier on. |
 
 The last two sit on the kind rather than on a worker because the matcher is built once, when the kind is — a worker that set its own would be setting something nothing reads.
 
