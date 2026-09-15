@@ -28,6 +28,8 @@ import {
 import {
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
+  REFUSED_SEAT_SKILLS_KEY_MESSAGE,
+  SEAT_SKILLS_KEY,
   type WorkerManifest,
 } from "../manifest";
 import { validateSegment } from "./segments";
@@ -232,6 +234,13 @@ function parseWorkerMd(
   if (Object.hasOwn(declared, REFUSED_PERSONA_KEY)) {
     throw new Error(
       `${WORKER_MD} in "${workerName}/" ${REFUSED_PERSONA_KEY_MESSAGE}`,
+    );
+  }
+
+  // The second imposed key, refused at this door for the reason the first is.
+  if (Object.hasOwn(declared, SEAT_SKILLS_KEY)) {
+    throw new Error(
+      `${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_SKILLS_KEY_MESSAGE}`,
     );
   }
 

@@ -137,36 +137,39 @@ instance, minted with the worker's id (`hire.ts:199-200` passes `{ id: manifest.
 storage layer already keys isolated resources as `${identityId}:${flowId}` on the **instance**
 id, not the kind (`resolveResourceScopeId`, `packages/engine/src/stores/scope-keys.ts:324`).
 
-**No new primitive is needed** — one option field has to be threaded through.
-`DefineSkillsCollectionOptions` accepts `prefix`, `maxInstances` and `scope` but does not
-forward `flowIsolation` (`packages/orchestration/src/skills/collection.ts:57-68`), while the
-`defineResourceCollection` it wraps accepts it
-(`packages/core/src/types/resource-collection.ts:58`).
+**No new primitive was needed** — one option field had to be threaded through.
+`DefineSkillsCollectionOptions` accepted `prefix`, `maxInstances` and `scope` but did not
+forward `flowIsolation`, while the `defineResourceCollection` it wraps accepts it
+(`packages/core/src/types/resource-collection.ts:58`). **FIX-1362 forwards it**, and the
+built-in kind switches it on.
 
 ### The contents — population
 
 Isolation alone gives every seat its own *empty* drawer and then fills all of them from the
 same jar.
 
-`createSkillsLibrary` captures one static `initialSkills` array when the kind is defined —
-once per kind, not once per seat (`packages/orchestration/src/skills/library.ts:264`). The
-runtime seeder writes exactly that array into whichever collection ref it is handed
-(`ensureSeeded`, `packages/orchestration/src/skills/seeding.ts`; called that way from
-`run-skill-tool.ts`, `load-tool.ts`, `context-fn.ts`, `binding-reader.ts` and `seed-step.ts`).
-N isolated seats therefore end up with N separate buckets holding N *identical* catalogs.
+`createSkillsLibrary` captured one static `initialSkills` array when the kind was defined —
+once per kind, not once per seat. The runtime seeder writes exactly what it is handed into
+whichever collection ref it is handed (`ensureSeeded`,
+`packages/orchestration/src/skills/seeding.ts`; called that way from `run-skill-tool.ts`,
+`load-tool.ts`, `context-fn.ts`, `binding-reader.ts` and `seed-step.ts`). N isolated seats
+would therefore end up with N separate buckets holding N *identical* catalogs.
 
-There is no channel for a per-seat set either: `WorkerManifest` is `{ id, declared, body }` and
-nothing more, and `hireWorkforce` forwards only frontmatter settings — so the union
-`read-seat-skills.ts` already computes has nowhere to ride into the mint.
+There was no channel for a per-seat set either: `WorkerManifest` was `{ id, declared, body }`
+and nothing more, and `hireWorkforce` forwards only frontmatter settings — so the union
+`read-seat-skills.ts` already computes had nowhere to ride into the mint.
 
 **The contract therefore requires an instance-specific seeding path.** The seat's computed union
 must reach *that seat's* collection as its `initialSkills`, so `ensureSeeded` writes that seat's
 skills and no one else's. Acceptance criterion 5 is written to fail without one.
 
-Where the handoff lives — a per-seat key on the kind's `configSchema`, a per-instance option on
-the library, or a seed at hire time — is **FIX-1362's to design**. That it must exist is decided
-here. (Same defect class as FIX-1372, filed against the reference app: an activator built with
-no `initialSkills` shows every matcher tier an empty catalog on turn 1.)
+**Built by FIX-1362**, and the handoff it chose is the settings bag: the loader resolves each
+seat's union onto its record as `WorkerManifest.skills`, the hire step imposes it as the
+`seatSkills` setting the way a body is imposed as `instructions`, and the library's
+`initialSkills` takes a resolver that reads it off `ctx.flow.config`. A seat's `skills:` folder
+therefore reaches only that seat's collection. (Same defect class as FIX-1372, filed against the
+reference app: an activator built with no `initialSkills` shows every matcher tier an empty
+catalog on turn 1.)
 
 ### Copy-in is the honest lock-in, and it is named
 
@@ -180,12 +183,17 @@ purpose (`packages/orchestration/src/skills/seeding.ts:116-117`).
 `needsResed` finds the persisted record stale against the FIX-918 migration shape — it still
 carries a legacy non-inline `contextMode` the source dropped, the source declares `agents:` the
 record lacks, or the source's `contextMode` changed (`seeding.ts:69-74,128-135`). Those replace a
-seat's copy without anyone refreshing it. Whether that reseeding should be narrowed for seat
-copies is **FIX-1362's call**; this contract's job is to state the behaviour, not design it away.
+seat's copy without anyone refreshing it. FIX-1362 left that reseeding as it is for seat copies:
+it fires on a *schema* mismatch between the persisted record and the current parser, never on a
+body edit, so it repairs records the renderer would otherwise skip rather than propagating an
+upstream rewording. Narrowing it would leave a seat quietly holding a skill that never renders.
 
-Refreshing a running seat *otherwise* is a deliberate act **with no mechanism yet**; FIX-1362 owns
-building one. Saying so is this contract's job — the alternative is a privacy promise that reads
-as live sharing and is not.
+Refreshing a running seat *otherwise* is a deliberate act, and **FIX-1362 built the mechanism**:
+`refreshSeededSkills` rewrites a named skill's folder from a source set. It replaces a touched
+folder **whole** — deleting keys the new source does not carry — so a supporting file withdrawn
+upstream cannot outlive the withdrawal; it touches only names whose manifest still exists, so a
+deliberate deletion stands; and ordinary seeding stays additive, because a file the source never
+had is the seat's own edit.
 
 ### This clause supersedes drift note §3a
 
@@ -238,9 +246,12 @@ honestly — not "remembers with zero configuration", and not "one setting on th
 
 ### The skills entry point is pinned: `createSkillsLibrary` + per-generator binding
 
-**Not `createSkillsCapability`.** Two overlapping entry points exist and reconciling them is
-FIX-1362's; but *which one the default is made of* is a contract call, because leaving it open
-lets FIX-1363 and FIX-1362 ship two different default stacks under one name.
+**Not `createSkillsCapability`.** Two overlapping entry points exist. *Which one the default is
+made of* is a contract call, because leaving it open lets FIX-1363 and FIX-1362 ship two
+different default stacks under one name — and FIX-1362 **pins that choice and draws the docs
+boundary** around it (its §11). **Deprecating the other surface is FIX-1390's**, not FIX-1362's:
+retiring a published entry point is its own change with its own migration, and folding it into a
+per-seat seat feature would multiply the blast radius for no gain.
 
 The library wins on the same argument as C3, one level down: its activation is per binding, so
 a skill given to one generator never appears in another's context, where the capability keeps a
@@ -358,13 +369,12 @@ BP-037 neither the spec nor its POC lands on `main`.
 
 - **Two parallel skills entry points** — `createSkillsLibrary` + binding, and
   `createSkillsCapability` — overlap heavily and cross-reference each other, and the published
-  guide teaches the one not picked. C5 pins which one the built-in uses; *reconciling* the two
-  surfaces is FIX-1362's (drift note §2a), correcting the guide is FIX-1366's.
-- **Two threads for FIX-1362, not one** — the `flowIsolation` passthrough *and* a per-seat handoff
-  for `initialSkills`. C3 carries the diagnosis; both are required, neither is designed here.
+  guide teaches the one not picked. C5 pins which one the built-in uses; *deprecating* the other
+  is **FIX-1390's** (drift note §2a), correcting the guide is FIX-1366's.
 - **Per-seat cost, unmeasured** — isolated storage plus a per-seat `ensureSeeded` means one
   bucket and one cold-start seed pass per seat. At a large roster times a large catalog that is
-  a real multiplier and nobody has measured it. Flagged for FIX-1362; not a reason to change
-  C3, which trades it for a privacy promise the storage actually keeps.
+  a real multiplier and nobody has measured it. FIX-1362 cut the obvious part — a skill-less seat
+  does no storage work at all — but the roster × catalog case is still unrun. Not a reason to
+  change C3, which trades it for a privacy promise the storage actually keeps.
 - **No durable per-member memory** — C4's named gap. FIX-1364 carries it onto the teaching
   surface and files a ticket.

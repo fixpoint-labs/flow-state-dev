@@ -66,12 +66,12 @@ Both folder names must be lowercase letters, digits, and single hyphens, at most
 
 ## Reading the tree
 
-Point `readWorkforceDirectory` at the root:
+Point `readWorkforce` at the root:
 
 ```ts
-import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
-const { workers, errors } = await readWorkforceDirectory("./workforce");
+const { workers, errors, skillErrors } = await readWorkforce("./workforce");
 ```
 
 You get one record per worker:
@@ -81,8 +81,11 @@ interface WorkerManifest {
   id: string;                        // "engineering.lead"
   declared: Record<string, unknown>; // the frontmatter, exactly as written
   body: string;                      // the instructions below it, or "" for none
+  skills?: InitialSkill[];           // the skills this worker can see
 }
 ```
+
+`skills` is the union of the skills folders that worker draws from — see [Skills](#skills) below. If you only want the worker records and not their skills, `readWorkforceDirectory` reads the same tree and leaves `skills` off.
 
 For the `lead` folder above:
 
@@ -267,9 +270,7 @@ description: Holds the engineering board.
 You are the engineering lead. You break work into tasks and report back.
 ```
 
-The built-in reads whatever skills your app handed over, and it has no memory. Its settings are `instructions`, `model`, and `tools` — plus a switch for up-front skill matching, which is off by default so a stock worker never spends an extra model call per turn deciding whether a skill applies. Naming a tool in `tools:` requires your app to have supplied a catalog carrying that key; a name with nothing behind it is refused at the hire rather than quietly dropped.
-
-Out of the box, every worker of this kind reads the same set of skills. Giving each worker its own is coming; until it does, treat the skills a worker can reach as shared across the roster.
+The built-in has no memory. Its settings are `instructions`, `model`, `tools`, and the `skills` switches below. Naming a tool in `tools:` requires your app to have supplied a catalog carrying that key; a name with nothing behind it is refused at the hire rather than quietly dropped.
 
 To use your own worker everywhere instead, register a flow under `agent` and it wins for every seat:
 
@@ -282,6 +283,65 @@ hireWorkforce(manifests, {
 ```
 
 `defineAgentWorkerFlow()` with no arguments *is* the built-in, so configuring it means replacing it — there is no second set of options on `hireWorkforce`. That also means a roster hired with no `kinds` at all carries an empty tool catalog.
+
+## Skills
+
+A worker's skills are that worker's. Each one keeps its own copy, so two workers on one roster never read each other's instructions.
+
+Which skills a worker gets is decided by where the folders sit. Three places feed one worker:
+
+```
+workforce/
+  org/
+    skills/
+      house-style/          # every worker on every team
+        SKILL.md
+  teams/
+    qa/
+      skills/
+        regression/         # every worker on the qa team
+          SKILL.md
+      workers/
+        tester/
+          WORKER.md
+          skills/
+            write-regression/   # this worker only
+              SKILL.md
+```
+
+The `tester` worker holds all three. The `qa` lead next door holds the first two. Nobody on another team holds `regression` at all, and no one anywhere else holds `write-regression`.
+
+A skill sitting beside a worker needs no list — the folder already says whose it is. Listing it in `skills:` does something different: it decides how the worker *uses* what it holds.
+
+### Using them
+
+Holding a skill is not the same as running with it. A skill a worker merely holds costs nothing until something activates it, and a worker that uses no skill on a turn pays for none of them.
+
+There are three ways in:
+
+```md
+---
+description: Writes regression tests for reported bugs.
+tools: [runTests]
+skills:
+  active: [house-style]
+  activateTool: true
+---
+
+You write regression tests for reported bugs.
+```
+
+- **`active`** lists the skills that are in context on every turn. Use it for the handful a worker should never be without — a house style, a format it always follows. Naming a skill it does not hold is refused, listing what it does hold.
+- **A slash message.** Someone typing `/write-regression fix the flake` activates that skill for the turn. This always works, needs no setting, and only responds to what a person typed — a model emitting the same text does not trigger it.
+- **`activateTool`** lets the model pull a skill in partway through a turn, once it knows what it is dealing with. Off by default, because turning it on puts a listing of everything the worker holds into every prompt.
+
+There is a fourth path, off by default: `skills.enableLlmClassifier` adds a small model call at the front of each turn that decides whether a skill applies. It catches cases a slash and an always-on list miss, and it costs a provider round trip on every message.
+
+### Editing a skill later
+
+A worker keeps a copy from the moment it first reads a skill. Fixing a typo in the company's copy does not reach a worker already running with it, and deleting a skill a worker has does not take it away either. Both are deliberate: a worker's drawer is its own.
+
+Pulling an edit through is a separate, explicit act — `refreshSeededSkills` from `@flow-state-dev/orchestration`, given the skills you want refreshed. A refresh replaces the whole folder for each skill it touches, so a supporting file the source has dropped is gone afterwards, and so is anything that worker added inside that folder. A skill the worker deleted stays deleted.
 
 ## When a worker needs more than settings
 
@@ -358,6 +418,8 @@ const seats = hireWorkforce(workers, {
 ## Related pages
 
 - [Workforce](./overview) — what a hired roster is, and when to reach for it instead of a task board.
+- [Skills](../skills/overview) — what a `SKILL.md` is and what goes in one.
+- [Activation paths](../skills/activation.md) — the ways a skill becomes active, and what each costs.
 - [Channels](./channels.md) — several agents on one topic, with one durable transcript and nobody owning a row.
 - [Orchestration](../orchestration/overview) — coordinating units of work on a board.
 - [Agents](../orchestration/agents) — board workers, personas, and `createWorkforceCapability`.

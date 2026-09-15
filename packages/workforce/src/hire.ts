@@ -23,6 +23,8 @@ import {
   INSTRUCTIONS_KEY,
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
+  REFUSED_SEAT_SKILLS_KEY_MESSAGE,
+  SEAT_SKILLS_KEY,
   type WorkerManifest
 } from "./manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
@@ -170,6 +172,15 @@ export function hireWorkforce(
       continue;
     }
 
+    // The other imposed key, refused here for the same reason: a hand-built
+    // roster never passes the loader, and a flow whose `configSchema` declares
+    // `seatSkills` would accept an authored one and run with a skill set no
+    // folder backs.
+    if (Object.hasOwn(settings, SEAT_SKILLS_KEY)) {
+      refuse(REFUSED_SEAT_SKILLS_KEY_MESSAGE);
+      continue;
+    }
+
     // A body is instructions; whitespace is not. An empty string handed to a
     // flow that declares `instructions` would be a worse lie than omitting it —
     // and it would turn every thin seat into a failed hire.
@@ -184,6 +195,17 @@ export function hireWorkforce(
       }
       // Verbatim: the check is on the trimmed body, the value is the body.
       settings[INSTRUCTIONS_KEY] = manifest.body;
+    }
+
+    // The seat's own skills, imposed the way the body is — and, like the body,
+    // only when there is something to impose. An EMPTY set is left off the bag
+    // on purpose: a flow kind that declares no `seatSkills` in its own
+    // `configSchema` (any custom kind written before this existed) would refuse
+    // the key, and a roster that simply keeps no skills folders must not stop
+    // hiring those kinds. A kind that does declare it defaults to the empty set
+    // itself, so the two paths agree.
+    if (manifest.skills !== undefined && manifest.skills.length > 0) {
+      settings[SEAT_SKILLS_KEY] = manifest.skills;
     }
 
     // The refusal that stood here SPLITS; it does not disappear. One condition
