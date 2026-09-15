@@ -3,7 +3,7 @@
 "@flow-state-dev/workforce": minor
 ---
 
-Give each worker on a roster its own skills.
+Give each worker on a roster its own skills (FIX-1362).
 
 Two workers on one roster used to read the same bucket, and nothing filled that bucket from a worker's own folders — so a skills folder dropped beside a worker did nothing, and the skills a worker could reach were everyone's.
 
