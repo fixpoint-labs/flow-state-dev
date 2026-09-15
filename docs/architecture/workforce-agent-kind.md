@@ -64,8 +64,23 @@ Generator slots stay `prompt` / `context` / `history` / `user`. Instructions com
 `prompt: [default, instructions]`.
 
 `tools` is a hard runtime fence, not a hint: a seat may call exactly the catalog keys it names,
-and an empty list means none, regardless of anything else the app's catalog or the skills
-library contributes (see C5).
+and an empty list means none, regardless of what the app's catalog carries, what the skills
+library contributes, or what a bound skill's `allowed-tools` declares (see C5).
+
+**One named hole, and it is enforced by convention rather than by mechanism.** FIX-1364 added a
+`uses` option to `defineAgentWorkerFlow`, which is a third contributor of tools. The framework's
+resolver ends in `[...base, ...staticTools, ...dynTools]` — a union, not an intersection — so a
+capability's tools reach a seat whose `tools:` is empty. Every consumer therefore turns
+tool-bearing presets off itself, which is what FIX-1364's memory recipe does with `recall` and
+`connect`, and what its fence test covers: that recipe, not the general case.
+
+**This is a gap in the enforcement, not a softening of the rule.** The sentence above is still the
+contract, and FIX-1393 makes it true by mechanism by moving the intersection into
+`@flow-state-dev/core` (declared `tools:` ∩ capability tools, empty stays empty). Until it lands,
+consumer opt-outs are necessary and are **not** a second fence story. Do not add a per-consumer
+fence in the meantime: FIX-1362's `resolveBuild` catalog is the one structural enforcement point
+for the delegation surface, and a third would be another door to forget. Tracked in
+[Known gaps](#known-gaps-flagged-not-built).
 
 The shared `default` prompt is owned and shipped elsewhere (FIX-1344 part 2, not yet landed).
 Until it does, the kind ships against `instructions` alone with an explicit seam for `default`
