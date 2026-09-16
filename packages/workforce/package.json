@@ -65,6 +65,8 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/memory": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.3",
@@ -72,7 +74,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "node ../../scripts/typecheck.mjs",
+    "typecheck": "node ../../scripts/typecheck.mjs && tsc -p tsconfig.test-d.json",
     "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",
     "test:watch": "vitest --root ."

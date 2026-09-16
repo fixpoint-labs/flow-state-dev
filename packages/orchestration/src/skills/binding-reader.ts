@@ -20,8 +20,11 @@
  */
 
 import type { BlockContext } from "@flow-state-dev/core/types";
-import type { InitialSkill } from "@flow-state-dev/core";
 import { readActivations, type ActivationLocation } from "./activation-store";
+import {
+  resolveInitialSkills,
+  type InitialSkillsSource,
+} from "./initial-skills";
 import { resolveResourceCollection } from "../tasks";
 import { renderActiveSkillBody } from "./render-skill-body";
 import { ensureSeeded } from "./seeding";
@@ -38,9 +41,10 @@ export interface SkillBindingReaderOptions {
   /**
    * Bundled defaults so the reader can seed the collection on its first render
    * — otherwise a static-only binding (or one with the load-tool preset off)
-   * scans an empty catalog on turn 1 and renders nothing.
+   * scans an empty catalog on turn 1 and renders nothing. A resolver is
+   * resolved against this render's context, before any storage is touched.
    */
-  initialSkills?: InitialSkill[];
+  initialSkills?: InitialSkillsSource;
 }
 
 /**
@@ -57,8 +61,13 @@ export function buildSkillBindingReader(
     if (!collection) return null;
     // Seed on first render so static bodies resolve on turn 1. Idempotent and
     // memoized per collection ref; failures fall through with an empty catalog.
+    //
+    // The set is resolved HERE and handed over, rather than inside
+    // `ensureSeeded`, for the reason the memo exists: the sentinel is keyed on
+    // the collection ref, which every site in one request shares, so each site
+    // resolves its own array and at most one of them does the writing.
     try {
-      await ensureSeeded(collection, opts.initialSkills);
+      await ensureSeeded(collection, resolveInitialSkills(opts.initialSkills, ctx));
     } catch {
       // Seeding failure already logged inside ensureSeeded.
     }

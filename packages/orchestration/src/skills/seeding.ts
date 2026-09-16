@@ -17,7 +17,8 @@
 
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { InitialSkill, SkillsCollectionMeta } from "@flow-state-dev/core";
-import { META_KEY, skillFileKey, skillManifestKey } from "./collection";
+import { META_KEY, skillManifestKey } from "./collection";
+import { writeSkillFolder } from "./internal/write-skill-folder";
 import { parseSkillMd, validateSkillName } from "./skill-md";
 
 /** Per-(collection-ref, processInstance) sentinel — seed at most once. */
@@ -140,31 +141,19 @@ async function needsResed(
 /**
  * Write a single skill's full folder. Idempotent: if a partial folder
  * exists from a prior failed seed, existing entries are overwritten.
+ *
+ * **Additive** — `prune` is deliberately off. A file inside a skill's folder
+ * that the source never had is the holder's own edit, and removing it on an
+ * ordinary seeding pass is precisely the propagation copy-in refuses. Only
+ * `refreshSeededSkills` prunes, where that loss is the point. The write itself
+ * is shared with refresh so the key rules and the `_seededAt` stamp cannot
+ * drift apart between the two.
  */
 async function seedOne(
   collection: ResourceCollectionRef,
   skill: InitialSkill,
 ): Promise<void> {
-  // Validate the SKILL.md text up front so we never half-write a broken skill.
-  const parsed = parseSkillMd(skill.skillMd, { expectedName: skill.name });
-  parsed.state._seededAt = new Date().toISOString();
-
-  const manifestKey = skillManifestKey(skill.name);
-  const stateRecord = parsed.state as unknown as Record<string, unknown>;
-  const manifest = await collection.create(
-    manifestKey,
-    stateRecord as never,
-    { replace: true },
-  );
-  await manifest.writeContent(skill.skillMd);
-
-  for (const file of skill.files ?? []) {
-    const key = skillFileKey(skill.name, file.path);
-    // File entries carry their content in `writeContent`; state is unused.
-    // `getOrCreate` makes the ensure-then-write a single call.
-    const ref = await collection.getOrCreate(key);
-    await ref.writeContent(file.content);
-  }
+  await writeSkillFolder(collection, skill);
 }
 
 async function loadMeta(

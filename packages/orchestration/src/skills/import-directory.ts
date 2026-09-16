@@ -14,7 +14,17 @@ import { skillFileKey, skillManifestKey } from "./collection";
 import { parseSkillMd } from "./skill-md";
 
 export interface ImportSkillsDirectoryOptions {
-  /** Overwrite existing entries. Default `false` (skip name collisions). */
+  /**
+   * Overwrite existing entries. Default `false` (skip name collisions).
+   *
+   * **Overwriting is not refreshing, and the difference is what gets left
+   * behind.** This writes the source's files over whatever is there and
+   * enumerates nothing, so a supporting file the source has since DROPPED
+   * survives and stays reachable through `prompt-ref`. To pull a source edit
+   * through cleanly — withdrawn files included — use `refreshSeededSkills`,
+   * which replaces a skill's folder whole. Reach for `overwrite` when you mean
+   * "write these on top", not "make this match the source".
+   */
   overwrite?: boolean;
 }
 

@@ -8,14 +8,32 @@
  * out of the root so importing this package does not pull a consumer onto
  * `node:fs`.
  *
- * A worker is a flow kind plus its instructions; there is no Agent factory
- * here. Beside the seat factory sit two helpers: `definePersona`, which
- * declares the persona resources a flow renders as a system prompt, and
- * `createWorkforceCapability`, which surfaces a roster through the capability
- * system.
+ * The same split covers file-declared documents: `ResourceDoc` is the record,
+ * `./loader` reads it off disk, and `resourcesFromDocs` here turns records into
+ * the resource map an app spreads into its flow.
+ *
+ * A worker is a flow kind plus its instructions; there is no Agent class here,
+ * only the flow a kind resolves to. A record that names no kind is hired into
+ * the built-in `agent` kind, whose flow `defineAgentWorkerFlow` builds — called
+ * with no arguments it *is* the built-in, and called with arguments it is how
+ * an app replaces it. Beside the
+ * seat factory sit two helpers: `definePersona`, which declares the persona
+ * resources a flow renders as a system prompt, and `createWorkforceCapability`,
+ * which surfaces a roster through the capability system.
+ *
+ * The package also ships the **channel** floor: `channelFlow`, the one built-in
+ * channel kind, and the two-phase binder (`channelInstances` at build time,
+ * `openChannels` at runtime) that turns channel records into one registered
+ * instance per kind and one named session per channel. A worker record and a
+ * channel record look alike and bind differently, and the difference is worth
+ * holding on to: hiring a worker MINTS a flow copy per record, while opening a
+ * channel opens a SESSION per record on a shared one.
  */
 
+export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { hireWorkforce, type HireOptions } from "./hire";
-export type { WorkerManifest } from "./manifest";
+export { resourcesFromDocs } from "./resources-from-docs";
+export type { WorkerManifest, ResourceDoc } from "./manifest";
+export * from "./channel";

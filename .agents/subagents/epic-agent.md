@@ -77,7 +77,7 @@ Take the single action the dispatch calls for:
   never changes.
 
   **Carry the links line's `Explainer:` entry forward.** When the epic has an
-  [explainer](../skills/epic-explainer/SKILL.md), `explainer-agent` puts an
+  [explainer](../skills/spec-explainer/SKILL.md), `explainer-agent` puts an
   `Explainer: <blob URL>` line there on its first build and never edits the description
   again — the description is yours. So every refresh of the above-the-fold blocks must
   **preserve that line**; the coordinator passes you the current URL, and dropping it is

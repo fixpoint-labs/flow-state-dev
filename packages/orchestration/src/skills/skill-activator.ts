@@ -22,15 +22,19 @@
  * kitchen-sink thinking-style auto-router) live in their own pipelines and
  * compose alongside this one if a flow wants both.
  *
- * Tier-3 LLM classification is opt-out via `enableLlmClassifier: false` —
- * useful in tests and in deployments that only want deterministic tiers.
+ * Tier-3 LLM classification is opt-out via `enableLlmClassifier: false`, and
+ * tier-2 keyword matching is opt-out via `enableKeywordMatch: false` — useful
+ * in tests and in deployments that only want a subset of the tiers.
  */
 
 import { z } from "zod";
 import { sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import type { InitialSkill } from "@flow-state-dev/core";
 import type { ExplicitActivationScope } from "./activation-store";
+import {
+  isInitialSkillsResolver,
+  type InitialSkillsSource,
+} from "./initial-skills";
 import { createApplySkillActivation } from "./apply-skill-activation";
 import { createCatalogSeedStep } from "./seed-step";
 import {
@@ -63,6 +67,15 @@ export interface SkillActivatorOptions {
    */
   enableLlmClassifier?: boolean;
   /**
+   * When `false`, skillActivator skips tier 2 (keyword scan) entirely. The
+   * apply handler runs against whatever the slash tier — and, if enabled,
+   * the classifier — produced. Default `true`, preserving today's pipeline
+   * for orchestration's own callers. The built-in `agent` kind
+   * (`@flow-state-dev/workforce`) is the one caller that sets this `false`:
+   * keyword matching is not part of that kind's contract.
+   */
+  enableKeywordMatch?: boolean;
+  /**
    * Where the matcher writes its resolved activations. Default
    * `{ scope: "session", field: "activeSkills" }`. To feed a Skills v2
    * per-generator binding, point this at that binding's explicit
@@ -82,9 +95,11 @@ export interface SkillActivatorOptions {
    * The matcher runs upstream of the generator, so it can't rely on the binding
    * reader's lazy seeding — on a fresh collection the slash/keyword/classifier
    * tiers would otherwise see an empty catalog on turn 1 and match nothing.
-   * Pass the same `initialSkills` given to `createSkillsLibrary`.
+   * Pass the same `initialSkills` given to `createSkillsLibrary` — including a
+   * per-execution resolver, which is resolved at the seed step against that
+   * turn's own context.
    */
-  initialSkills?: InitialSkill[];
+  initialSkills?: InitialSkillsSource;
 }
 
 /**
@@ -98,13 +113,10 @@ export function createSkillActivator(
 ): BlockDefinition<typeof activatorInputSchema, typeof activatorInputSchema> {
   const collectionKey = options.collectionKey ?? "skills";
   const enableLlm = options.enableLlmClassifier ?? true;
+  const enableKeyword = options.enableKeywordMatch ?? true;
 
   const allowed = options.allowed;
   const slashTier = createSkillSlashMatch({
-    collectionKey,
-    ...(allowed ? { allowed } : {}),
-  });
-  const keywordTier = createSkillKeywordMatch({
     collectionKey,
     ...(allowed ? { allowed } : {}),
   });
@@ -128,14 +140,26 @@ export function createSkillActivator(
     stateSchema: skillActivatorStateSchema,
   });
 
-  // Only prepend the seed step when there are bundled defaults to seed.
-  if (initialSkills && initialSkills.length > 0) {
+  // Only prepend the seed step when there are bundled defaults to seed. Under a
+  // RESOLVER there is no build-time answer to that question, so the step is
+  // always prepended and decides per turn — it returns before any storage read
+  // when the resolver hands back nothing.
+  if (isInitialSkillsResolver(initialSkills) || (initialSkills && initialSkills.length > 0)) {
     pipeline = pipeline.tap(seedStep);
   }
 
-  pipeline = pipeline
-    .tap(slashTier)
-    .tapIf((_input, ctx) => !ctx.sequencer?.state.resolved, keywordTier);
+  pipeline = pipeline.tap(slashTier);
+
+  if (enableKeyword) {
+    const keywordTier = createSkillKeywordMatch({
+      collectionKey,
+      ...(allowed ? { allowed } : {}),
+    });
+    pipeline = pipeline.tapIf(
+      (_input, ctx) => !ctx.sequencer?.state.resolved,
+      keywordTier,
+    );
+  }
 
   if (enableLlm) {
     const classifier = createSkillClassifierSequencer({

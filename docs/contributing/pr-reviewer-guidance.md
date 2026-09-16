@@ -69,6 +69,15 @@ worth building, so blocks 1–3 state the problem in observable behaviour and pr
 decision in consequences — customers, promises, timing, reversibility. The full contract is
 [`asking-for-decisions.md`](asking-for-decisions.md); §3 below applies it.
 
+**Don't restate state a reader can query.** CI status, draft state, approval holds, test
+counts — all of it moves after the body is written and nothing fails when it does, so point
+at it instead and keep the pointer de-pinned: *the current head*, not a SHA a reviewer has
+to work out has been superseded. The distinction is durable fact versus live claim — *the
+review was pinned to `abc1234`* stays true forever, *`abc1234` is green* was true once.
+The default move is to point, not to snapshot. Only where a claim about
+now genuinely must sit in prose does it need a guard that fails when it stops holding —
+and then something that actually breaks when stale, not a second snapshot.
+
 **The contract moved below the fold; it did not go away.** It is the one lever we have on
 reviewers we can't instruct, and it measurably raises what comes back. But it says the
 same thing on every PR of its kind, which is exactly what a `<details>` is for.
@@ -124,6 +133,12 @@ Rules, all cheap to check:
 - **If the prose beside it says the same thing, cut one.** Usually the prose, if the
   diagram is genuinely clearer. Never keep both out of politeness.
 - **Two is the ceiling**, and the second one needs a reason.
+
+**On a spec or epic PR, that one diagram is already spoken for.** Every spec carries a
+[visual explainer](../../.agents/skills/spec-explainer/SKILL.md) beside it, and its *After*
+panel is what goes in block 2, followed by a one-line link to the full document. So the
+question on those PRs is not *does a diagram earn its place* — one is standard — but whether
+anything justifies a **second**, and the bar for that is the same as anywhere else.
 
 ## 3. What's asked of you
 

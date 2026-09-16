@@ -14,7 +14,7 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-export const WORKER_AGENT_KIND = "worker-agent";
+export const CUSTOM_AGENT_KIND = "custom-agent";
 export const INTAKE_KIND = "intake";
 
 const inputSchema = z.object({ note: z.string() });
@@ -46,7 +46,7 @@ const start = handler({
 
 /** Nested read, opinionated kind — the far end of the body's journey. */
 const recordInstructions = handler({
-  name: "worker-agent-record",
+  name: "custom-agent-record",
   inputSchema,
   outputSchema: z.void(),
   flowConfigSchema: needsInstructions,
@@ -84,8 +84,8 @@ const clientView = {
   }
 };
 
-export const workerAgentFlow = defineFlow({
-  kind: WORKER_AGENT_KIND,
+export const customAgentFlow = defineFlow({
+  kind: CUSTOM_AGENT_KIND,
   cardinality: "collection",
   configSchema: z.object({
     /** Where a worker's instructions arrive. Declaring it is what makes this kind opinionated. */
@@ -94,7 +94,7 @@ export const workerAgentFlow = defineFlow({
     tools: z.array(z.string()).default([])
   }),
   actions: {
-    run: { inputSchema, block: sequencer({ name: "worker-agent-work", inputSchema }).step(start).tap(recordInstructions) }
+    run: { inputSchema, block: sequencer({ name: "custom-agent-work", inputSchema }).step(start).tap(recordInstructions) }
   },
   session: { stateSchema: seatState, client: clientView }
 });
