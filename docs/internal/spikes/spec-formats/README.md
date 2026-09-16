@@ -99,18 +99,17 @@ Feedback on round 1, in one line each: the SVG POC is the clearest thing here an
 
 **Where the figures went.** Each SVG sits with the document that owns its concept: the drawers and the cost stacks in the spec (what changes, what it costs), the layers and refresh grid in the decisions (D1 and D3), the fence in the rules with its mermaid companion beside it, and none in the plan. FIX-1366 got two new figures where position is the content: a before/after wireframe of the front door with the anchor drawn, and a nine-cell coverage grid of the reference.
 
-**The PR-body test.** The figures serve correctly: every URL form tried (`raw.githubusercontent.com`, `github.com/…/blob/…?raw=true`, `github.com/…/raw/…`) returns `image/svg+xml`, which is what GitHub's image proxy needs. **What failed is the write path.** The GitHub tool an agent session posts PR bodies through wraps any URL ending in `.svg` in backticks on write, in all four forms tried: inline markdown image, HTML `img`, reference-style image, and a bare link. GitHub then renders code, not an image. Plain links in the same body are untouched, so this is a deliberate defang of image URLs, and it was not routed around. Two consequences for a template:
+**The PR-body test.** The figures serve correctly: every URL form tried (`raw.githubusercontent.com`, `github.com/…/blob/…?raw=true`, `github.com/…/raw/…`) returns the right content type for GitHub's image proxy. **What failed is the write path, for every image form.** The GitHub tool an agent session posts PR bodies through defangs images on write: an absolute URL to an image file is wrapped in backticks (SVG and PNG alike, in inline markdown, HTML `img`, reference-style, bare-link, and GitHub's `#gh-dark-mode-only` pair), and a relative-path image has its leading `!` stripped so it becomes a link. GitHub then renders code or a link, never a picture. Links to markdown files on the branch pass untouched. This is a deliberate guard against images in agent-posted bodies, and it was not routed around, although a probe showed the proxy would have allowed a direct API write. Consequences for a template:
 
-- **A person can paste it; the agent can't.** The snippet below is paste-ready. Whether it renders once pasted is the half of the test only a human can run.
-- **The `PR.md` files still carry an inline image line**, because that's the shape a template should produce. When the body is posted by an agent, the template needs a fallback: a plain link to the spec's figure, which the tool leaves alone.
+- **An agent-written PR body links to the spec, whose blob view renders the figures.** That form survives the tool and costs the reader one click. The two `PR.md` files still carry an inline image line, because that's what a *person* pasting the body should produce.
+- **A person can paste a figure into the body.** Whether it renders once pasted is the half of the test only a human can run. Paste-ready, for PR #1784:
 
-One more limit once it does render: an image responds to the *operating system's* colour scheme, not GitHub's theme setting, so a reader running GitHub dark on an OS set to light sees the light figure.
+  ```md
+  ![Refresh, as a grid of files over time](https://github.com/fixpoint-labs/flow-state-dev/blob/claude/spec-pr-doc-formats-trwy46/docs/internal/spikes/spec-formats/FIX-1362/e-svg-poc/figures/png/refresh.light.png?raw=true#gh-light-mode-only)
+  ![Refresh, as a grid of files over time](https://github.com/fixpoint-labs/flow-state-dev/blob/claude/spec-pr-doc-formats-trwy46/docs/internal/spikes/spec-formats/FIX-1362/e-svg-poc/figures/png/refresh.dark.png?raw=true#gh-dark-mode-only)
+  ```
 
-Paste-ready, for PR #1784:
-
-```md
-![Refresh, as a grid of files over time](https://github.com/fixpoint-labs/flow-state-dev/blob/claude/spec-pr-doc-formats-trwy46/docs/internal/spikes/spec-formats/FIX-1362/e-svg-poc/figures/refresh.svg?raw=true)
-```
+**SVG to PNG is easy, and worth one thing.** `FIX-1362/e-svg-poc/figures/png/` holds 2x renders of two figures in both themes, made by the same headless Chromium that checked the SVGs: render the SVG in a 940-wide page with `--force-device-scale-factor=2`, then truncate the PNG to the viewBox height (new-headless Chromium's viewport is shorter than its window, so the screenshot needs a crop; a 30-line pure-Python row truncation does it with no image library). What a PNG pair buys: GitHub's `#gh-light-mode-only` / `#gh-dark-mode-only` URL suffixes follow *GitHub's* theme setting, which an SVG's `prefers-color-scheme` media query can't, since an image follows the operating system's scheme. What it costs: two files per figure that aren't diffable, and a render step every time the SVG changes. The SVG stays the source of truth; the PNGs are build output.
 
 **Measured** (prose words, fences excluded):
 
