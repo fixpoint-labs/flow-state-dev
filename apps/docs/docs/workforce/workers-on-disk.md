@@ -9,7 +9,7 @@ description: "Workforce convention: describe each worker in a folder, read the t
 
 Workforce is how you describe a roster of workers and hire it as addressable flow copies. You can write each worker in TypeScript, or put each one in a folder and read the folder at startup.
 
-`readWorkforceDirectory` turns a folder tree into plain records. `hireWorkforce` turns those records into flow copies you register.
+`readWorkforce` turns a folder tree into plain records. `hireWorkforce` turns those records into flow copies you register.
 
 ## The tree
 
@@ -41,7 +41,7 @@ Settings between the `---` fences, instructions below them:
 ```md
 ---
 description: Holds the engineering board and breaks work into tasks.
-flow: worker-agent
+flow: custom-agent
 model: openai/gpt-5.4-mini
 tools: [board, search]
 ---
@@ -50,7 +50,7 @@ You are the engineering lead. You do not write code yourself. You break the
 request into tasks, assign them, and report what came back.
 ```
 
-`description` is the only key the file itself requires, and `persona:` the only one it refuses. `flow` names which of your flow kinds this worker runs, and [hiring](#hiring-the-roster) needs it.
+`description` is the only key the file itself requires, and `persona:` the only one it refuses. `flow` names which of your flow kinds this worker runs. Leave it out and [hiring](#hiring-the-roster) gives you [the built-in worker](#the-worker-you-get-without-writing-one).
 
 Reading the file checks no other key. Whatever else you write lands on the record spelled exactly as you spelled it. The flow a worker names has the final say: at hiring it [refuses a setting it never declared](#the-flow-decides-what-a-worker-may-declare).
 
@@ -94,7 +94,7 @@ const lead = workers.find((worker) => worker.id === "engineering.lead")!;
 
 lead.declared;
 // { description: "Holds the engineering board and breaks work into tasks.",
-//   flow: "worker-agent",
+//   flow: "custom-agent",
 //   model: "openai/gpt-5.4-mini",
 //   tools: ["board", "search"] }
 lead.body;     // "You are the engineering lead. …"
@@ -143,7 +143,7 @@ Logging a warning and carrying on is the tempting alternative, and it fails quie
 
 ### What is passed over in silence
 
-A team's `resources/`, `skills/` or `tools/` folder, a `workers/` folder at the top of the tree, a `README.md` sitting inside `teams/<team>/workers/`, an OS or editor file such as `.DS_Store`: none of these are read, and none are reported. The rule is that the path occupies a worker slot, `teams/<team>/workers/<worker>/`, not that the path looks like a worker.
+A team's `resources/`, `skills/` or `tools/` folder, a `workers/` folder at the top of the tree, a `README.md` sitting inside `teams/<team>/workers/`, an OS or editor file such as `.DS_Store`: none of these produces a worker, and none is reported. The rule is that the path occupies a worker slot, `teams/<team>/workers/<worker>/`, not that the path looks like a worker. A team's `skills/` folder is still read, by the separate walk described under [Skills](#skills).
 
 Inside a worker slot the opposite holds. A folder there that produces no worker is always named in `errors`.
 
@@ -153,10 +153,10 @@ Inside a worker slot the opposite holds. A folder there that produces no worker 
 
 ```ts
 import { hireWorkforce } from "@flow-state-dev/workforce";
-import { workerAgentFlow, intakeFlow } from "./flows";
+import { customAgentFlow, intakeFlow } from "./flows";
 
 const seats = hireWorkforce(workers, {
-  kinds: { "worker-agent": workerAgentFlow, intake: intakeFlow },
+  kinds: { "custom-agent": customAgentFlow, intake: intakeFlow },
 });
 
 flowRegistry.registerMany(seats);
@@ -172,8 +172,8 @@ Pass `defineFlow(...)` results directly as `kinds`. The call reads no files and 
 A flow kind declares its settings with `configSchema`:
 
 ```ts
-export const workerAgentFlow = defineFlow({
-  kind: "worker-agent",
+export const customAgentFlow = defineFlow({
+  kind: "custom-agent",
   cardinality: "collection",
   configSchema: z.object({
     instructions: z.string(),
@@ -216,7 +216,7 @@ Every `config` is frozen. A worker asking for something its flow never declared 
 
 ```
 hireWorkforce refused 1 of 3 workers; nothing was hired:
-  - worker "engineering.lead" — Flow "worker-agent" instance "engineering.lead"
+  - worker "engineering.lead" — Flow "custom-agent" instance "engineering.lead"
     has an invalid config bag: "temperature" is not a declared setting.
 ```
 
@@ -260,7 +260,7 @@ A record is refused when it:
 
 ## The worker you get without writing one
 
-A record that leaves `flow:` out entirely is hired into the built-in worker kind. Its body becomes that worker's instructions, and it talks — that is the whole out-of-the-box promise. A name, a description, some instructions, and you have a working worker.
+A record that leaves `flow:` out entirely is hired into the built-in worker kind. Its body becomes that worker's instructions, and it talks.
 
 ```md
 ---
@@ -270,19 +270,50 @@ description: Holds the engineering board.
 You are the engineering lead. You break work into tasks and report back.
 ```
 
-The built-in has no memory — see [Giving workers memory](#giving-workers-memory) for how to change that. Its settings are `instructions`, `model`, `tools`, and the `skills` switches below. Naming a tool in `tools:` requires your app to have supplied a catalog carrying that key; a name with nothing behind it is refused at the hire rather than quietly dropped.
+The built-in has no memory — see [Giving workers memory](#giving-workers-memory) for how to change that. Its settings are `instructions`, `model`, `tools`, and the `skills` switches below.
 
-To use your own worker everywhere instead, register a flow under `agent` and it wins for every seat:
+A worker names its tools by key in `tools:`, and the keys come from the kind's **catalog**: a map from key to tool that your app passes when it builds the kind, since a file on disk can only carry a name. A built-in worker may call the keys its own `tools:` lists, plus one tool that arrives only when the worker turns on [`skills.activateTool`](#using-them). Nothing else reaches it. Naming a key the catalog does not carry is refused at the hire, by name. An empty `tools:`, or none at all, means no catalog tools, whatever else the catalog holds.
+
+That extra tool is the skill loader: it lets the model pull a skill the worker holds into the turn as it runs. It is not a catalog tool, so `tools:` neither lists it nor holds it back.
+
+Skills do not widen the list any other way. A skill a worker holds can declare `allowed-tools`, and naming a tool there does not grant it. A skill that delegates work to other workers is fenced the same way: those workers are seated from the holding worker's `tools:`, so a worker with `tools: []` reaches no catalog tool through a delegate either.
+
+That fence is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so whether a `tools:` name is checked against a catalog at all is that kind's business, and a capability mounted on its generator can put a tool in front of a worker that never named one.
+
+To give the built-in a tool catalog, build the kind yourself with `defineAgentWorkerFlow` and pass it under `agent`:
 
 ```ts
 import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { boardTool, searchTool } from "./tools";
 
-hireWorkforce(manifests, {
-  kinds: { agent: defineAgentWorkerFlow({ catalog: myTools, skills: mySkills }) }
+const { workers } = await readWorkforce("./workforce");
+
+const seats = hireWorkforce(workers, {
+  kinds: {
+    agent: defineAgentWorkerFlow({
+      catalog: { board: boardTool, search: searchTool },
+    }),
+  },
 });
 ```
 
-`defineAgentWorkerFlow()` with no arguments *is* the built-in, so configuring it means replacing it — there is no second set of options on `hireWorkforce`. That also means a roster hired with no `kinds` at all carries an empty tool catalog.
+`defineAgentWorkerFlow()` with no arguments *is* the built-in, so the copy you pass replaces it rather than adding to it. It takes over for the seats that run on the `agent` kind: the records that leave `flow:` out, and any that name `agent` outright. A worker naming any other kind is unaffected. A roster hired with no `kinds` at all therefore carries an empty tool catalog.
+
+`defineAgentWorkerFlow` takes:
+
+| Option | What it does |
+| --- | --- |
+| `catalog` | The tools workers may name in `tools:`, by key. Left out, the built-in has no tools at all. |
+| `skills` | Skills every worker of this kind holds, on top of the ones its own folders hold. A name that collides with a skill a worker already holds is refused at the hire. |
+| `model` | The model a worker uses when its own file names none. |
+| `classifierModel` | The model behind `skills.enableLlmClassifier`, an optional per-turn check that decides whether a skill applies. [Using them](#using-them) covers what it costs. |
+| `confidenceThreshold` | How sure that check must be before it counts a skill as matching. Defaults to `0.65`. |
+| `uses` | Capabilities every worker of this kind carries, attached to the generator that answers. |
+| `afterAnswer` | A block that runs after the worker answers, without changing the reply. |
+| `isolateUserState` | Give each worker its own user-scoped storage instead of one shared cell. |
+
+`classifierModel` and `confidenceThreshold` belong to the kind: nothing reads either until a worker turns `skills.enableLlmClassifier` on, and a `WORKER.md` that names one is refused at the hire, by name, along with any other setting the kind does not declare. The last three are what [Giving workers memory](#giving-workers-memory) uses.
 
 ## Skills
 
@@ -317,7 +348,7 @@ A skill sitting beside a worker needs no list — the folder already says whose 
 
 Holding a skill is not the same as running with it. A skill a worker merely holds costs nothing until something activates it, and a worker that uses no skill on a turn pays for none of them.
 
-There are three ways in:
+Three things activate one:
 
 ```md
 ---
@@ -335,11 +366,11 @@ You write regression tests for reported bugs.
 - **A slash message.** Someone typing `/write-regression fix the flake` activates that skill for the turn. This always works, needs no setting, and only responds to what a person typed — a model emitting the same text does not trigger it.
 - **`activateTool`** lets the model pull a skill in partway through a turn, once it knows what it is dealing with. Off by default, because turning it on puts a listing of everything the worker holds into every prompt.
 
-There is a fourth path, off by default: `skills.enableLlmClassifier` adds a small model call at the front of each turn that decides whether a skill applies. It catches cases a slash and an always-on list miss, and it costs a provider round trip on every message.
+A fourth path is off by default. `skills.enableLlmClassifier` adds a small model call at the front of each turn that decides whether a skill applies. It catches cases a slash and an always-on list miss, and it costs a provider round trip on every message.
 
 ### Editing a skill later
 
-A worker keeps a copy from the moment it first reads a skill. Fixing a typo in the company's copy does not reach a worker already running with it, and deleting a skill a worker has does not take it away either. Both are deliberate: a worker's drawer is its own.
+A worker keeps a copy from the moment it first reads a skill. Fixing a typo in the company's copy does not reach a worker already running with it, and deleting a skill a worker has does not take it away either. A worker's drawer is its own.
 
 Pulling an edit through is a separate, explicit act — `refreshSeededSkills` from `@flow-state-dev/orchestration`, given the skills you want refreshed. A refresh replaces the whole folder for each skill it touches, so a supporting file the source has dropped is gone afterwards, and so is anything that worker added inside that folder. A skill the worker deleted stays deleted. Check the returned `failed` list: a refresh that could not finish a skill names it there rather than reporting silence.
 
@@ -364,6 +395,7 @@ Here is the whole recipe:
 ```ts
 import { AGENT_KIND, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
 import { system } from "@flow-state-dev/memory";
+import { boardTool, searchTool } from "./tools";
 
 const mem = system({
   model: "openai/gpt-5.4-mini",
@@ -373,7 +405,7 @@ const mem = system({
 });
 
 const remembers = defineAgentWorkerFlow({
-  catalog: myTools,
+  catalog: { board: boardTool, search: searchTool },
   uses: [
     mem.capability.presets({
       // Memory's two tools, turned off. `recall` searches stored memory on
@@ -472,7 +504,7 @@ And at startup, the new kind goes in `kinds` beside the ones the rest of the ros
 import { hireWorkforce } from "@flow-state-dev/workforce";
 
 const seats = hireWorkforce(workers, {
-  kinds: { "worker-agent": workerAgentFlow, "request-triage": requestTriageFlow },
+  kinds: { "custom-agent": customAgentFlow, "request-triage": requestTriageFlow },
 });
 ```
 
@@ -480,8 +512,8 @@ const seats = hireWorkforce(workers, {
 
 ## What this does not do
 
-- It does not resolve tool or capability names. `tools: [board, search]` is carried as two strings, and whether those tools exist is checked when the worker is put to work.
-- It does not read anything outside `teams/<team>/workers/<worker>/`. Team-level and organization-level folders are part of the layout, and nothing here reads them.
+- Reading the tree does not resolve tool or capability names. `tools: [board, search]` comes off the file as two strings; whether anything backs those names is checked at the hire, by the kind the worker runs on. The built-in checks them against its catalog. A kind you write decides for itself.
+- It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the three skills folders each worker draws from ([Skills](#skills)). A team's `resources/` or `tools/` folder is layout, not input.
 - It does not follow symlinks, at any level of the walk.
 - It does not watch the tree. Read it once, at startup.
 - It does not staff a [task board](../orchestration/task-board.md). A hired seat is an address you open a session against; a board's workers are in-process and claim tasks from a collection. A board calls its registry entries seats too. Same idea, different mechanism.

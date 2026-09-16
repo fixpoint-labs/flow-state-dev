@@ -14,7 +14,7 @@ workforce/teams/engineering/workers/lead/WORKER.md
 
 ```md
 ---
-flow: worker-agent
+flow: custom-agent
 description: Holds the board.
 model: openai/gpt-5.4-mini
 ---
@@ -28,11 +28,11 @@ import { hireWorkforce } from "@flow-state-dev/workforce";
 const { workers, errors } = await readWorkforce("./workforce");
 if (errors.length) throw new Error(`workforce: ${errors.length} worker(s) failed to load`);
 
-const seats = hireWorkforce(workers, { kinds: { "worker-agent": workerAgentFlow } });
+const seats = hireWorkforce(workers, { kinds: { "custom-agent": customAgentFlow } });
 flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
-`workerAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package — decides what a worker may declare.
+`customAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package — decides what a worker may declare.
 
 This example names a custom kind because that is what it is demonstrating. A record that leaves `flow:` out is hired into the built-in `agent` kind instead, and needs no `kinds` argument at all — see **Hiring** below.
 
@@ -200,12 +200,10 @@ the hire step the way a body is imposed as `instructions`. A `WORKER.md` declari
 itself is refused by name at both the loader and the hire step — where a skill folder sits is
 what decides who can see it.
 
-**A custom kind only receives it if its own `configSchema` declares `seatSkills`.** This is the
-one imposed setting that works that way, and deliberately: a body is written by the worker's
-author, but a worker's skills come from folders somebody else added, and one `org/skills/` folder
-makes every worker's set non-empty. Imposing it unconditionally would make adding a shared skill
-break every custom kind on the roster at once, for a setting their authors never saw. Declare the
-key to opt in.
+**A custom kind only receives it if its own `configSchema` declares `seatSkills`.** It is the one
+imposed setting that works that way: a body is written by the worker's author, but a worker's
+skills come from folders somebody else added, and one `org/skills/` folder makes every worker's
+set non-empty. Declare the key to opt in.
 
 ## Hiring a workforce
 
@@ -219,13 +217,13 @@ import { hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
 const workers: WorkerManifest[] = [
   {
     id: "engineering.lead",
-    declared: { flow: "worker-agent", description: "Holds the board.", model: "openai/gpt-5.4-mini" },
+    declared: { flow: "custom-agent", description: "Holds the board.", model: "openai/gpt-5.4-mini" },
     body: "You are the engineering lead. You break work into tasks and report what came back.",
   },
   { id: "engineering.intake", declared: { flow: "intake", description: "The front door." }, body: "" },
 ];
 
-const seats = hireWorkforce(workers, { kinds: { "worker-agent": workerAgentFlow, intake: intakeFlow } });
+const seats = hireWorkforce(workers, { kinds: { "custom-agent": customAgentFlow, intake: intakeFlow } });
 flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
@@ -235,11 +233,15 @@ verbatim and parsed against its `configSchema`. That schema is closed, so a sett
 declared is refused by name at the hire.
 
 **A record that leaves `flow:` out is hired into the built-in worker kind** — it talks, its body
-arrives as its instructions, and it reads whatever skills the app supplied. `kinds` is therefore
-optional. A `flow:` that is present but empty or whitespace-only still refuses: it names no kind,
-and only an absent key means the built-in. To replace the built-in, pass your own flow under `agent`
-(`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`) and it wins for every seat — configuring
-it is kind replacement, not an option on `hireWorkforce`.
+arrives as its instructions, and it reads the skills its own folders hold plus any the app seeded
+through `defineAgentWorkerFlow({ skills })`. It has no memory: nothing it is told survives the
+turn. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only still
+refuses: it names no kind, and only an absent key means the built-in. To replace the built-in,
+pass your own flow under `agent`
+(`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`). It takes over for the seats that run
+on the `agent` kind (the records that leave `flow:` out, and any that name `agent`) and leaves a
+worker on any other kind alone. Configuring the built-in is kind replacement, not an option on
+`hireWorkforce`.
 
 A worker record declares data: a description, the kind it runs, and that kind's settings. Behavior
 lives in the flow the kind names, so a worker that has to do something none of your kinds do is a

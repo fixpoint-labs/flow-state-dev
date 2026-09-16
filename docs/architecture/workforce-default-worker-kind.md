@@ -1,4 +1,4 @@
-# The Default Workforce Agent Kind — Locked Contract
+# The Default Workforce Worker Kind — Locked Contract
 
 A team describes a worker in a file — a name, a description, some instructions — and gets a
 working agent. Four separate pieces of work build toward that promise at the same time, in
@@ -63,16 +63,25 @@ name (`REFUSED_PERSONA_KEY`, same file).
 Generator slots stay `prompt` / `context` / `history` / `user`. Instructions compose as
 `prompt: [default, instructions]`.
 
-`tools` is a hard runtime fence, not a hint: a seat may call exactly the catalog keys it names,
-and an empty list means none, regardless of what the app's catalog carries, what the skills
-library contributes, or what a bound skill's `allowed-tools` declares (see C5).
+`tools` is a hard runtime fence over the app's catalog, not a hint: a seat may call exactly the
+catalog keys it names, and an empty list means no catalog tools, regardless of what the app's
+catalog carries or what a bound skill's `allowed-tools` declares (see C5). The delegation surface
+is fenced to the same list (FIX-1362's `toolSeatFence`), so a seat with `tools: []` reaches no
+catalog tool through a skill's `agents:` either.
 
-**One named hole, and it is enforced by convention rather than by mechanism.** FIX-1364 added a
-`uses` option to `defineAgentWorkerFlow`, which is a third contributor of tools. The framework's
-resolver ends in `[...base, ...staticTools, ...dynTools]` — a union, not an intersection — so a
-capability's tools reach a seat whose `tools:` is empty. Every consumer therefore turns
-tool-bearing presets off itself, which is what FIX-1364's memory recipe does with `recall` and
-`connect`, and what its fence test covers: that recipe, not the general case.
+**The hole is capability tools, and it is enforced by convention rather than by mechanism.** The
+framework's resolver ends in `[...base, ...staticTools, ...dynTools]` — a union, not an
+intersection — so a capability mounted through `uses` reaches a seat whose `tools:` is empty.
+Two consequences, and the first ships in the default kind:
+
+- **The skills binding is such a capability.** A seat that sets `skills.activateTool: true` is
+  bound with `dynamicActivation`, which installs the skill-loader tool. That tool reaches the
+  model without appearing in `tools:`. It is the one tool the shipped kind adds, it is opt-in per
+  seat, and it is not a catalog tool — so the sentence above still holds for everything the app
+  registered.
+- **An app's own `uses` (FIX-1364) is the general case.** Every consumer turns tool-bearing
+  presets off itself, which is what FIX-1364's memory recipe does with `recall` and `connect`,
+  and what its fence test covers: that recipe, not the general case.
 
 **This is a gap in the enforcement, not a softening of the rule.** The sentence above is still the
 contract, and FIX-1393 makes it true by mechanism by moving the intersection into
