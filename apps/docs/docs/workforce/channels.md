@@ -69,7 +69,7 @@ workforce/
           CHANNEL.md
 ```
 
-A channel is a folder with a fixed file in it, the way a worker is a folder with a `WORKER.md`. The `CHANNEL.md` is the record above: frontmatter, then the charter. Someone who does not write TypeScript can open a fourth channel, or rewrite what one of them is for, by editing a document.
+A channel is a folder with a fixed file in it, the way a worker is a folder with a `WORKER.md`. The `CHANNEL.md` is the record above: frontmatter, then the charter. Someone who does not write TypeScript can add a fourth channel, or rewrite what one of them is for, by editing a file.
 
 Point `readChannelsDirectory` at the root:
 
@@ -89,7 +89,7 @@ interface ChannelManifest {
 }
 ```
 
-`channels` is the array `channelInstances` and `openChannels` take, the same one you would otherwise build by hand. Reading the tree opens nothing. No instance is registered and no session exists yet.
+`channels` is the array `channelInstances` and `openChannels` take. Reading the tree opens nothing. No instance is registered and no session exists yet.
 
 The subpath matters. `@flow-state-dev/workforce/loader` imports `node:fs`, so it only runs on Node. The package root, where the binding calls live, stays isomorphic.
 
@@ -141,7 +141,7 @@ if (errors.length) {
 }
 ```
 
-A reported folder is a channel your app was supposed to have. Log a warning and carry on, and the app boots with a team that has nowhere to talk. Fail at startup unless you have a specific reason to run a short roster.
+A reported folder is a channel your app was supposed to have. Log a warning and carry on, and the app boots with a team that has nowhere to talk. Fail at startup unless you have a specific reason to boot without it.
 
 ## Opening it, and why an unopened id is not a channel
 
