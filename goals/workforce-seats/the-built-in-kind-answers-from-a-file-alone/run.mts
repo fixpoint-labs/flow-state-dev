@@ -113,7 +113,13 @@ function fixtureDrift(): string[] {
       );
     }
     // The token must be reachable ONLY through this worker's own file, or
-    // leg (b) grades something the fixture handed to both seats.
+    // leg (b) grades something the fixture handed to both seats — whether by
+    // a sibling's file or by the question every seat is asked.
+    if (carriesToken(fixture.question, worker.token)) {
+      failures.push(
+        `${worker.id}: the question already carries its token ${worker.token}, so every seat would echo it`,
+      );
+    }
     for (const other of fixture.workers) {
       if (other.id !== worker.id && text.includes(other.token)) {
         failures.push(`${worker.id}: its WORKER.md also carries ${other.id}'s token ${other.token}`);
@@ -180,10 +186,27 @@ function hireCallPassesNoKinds(): string[] {
   if (calls.length === 0) {
     return ["the harness contains no hireWorkforce call — the check is not driving the subject"];
   }
-  const withKinds = calls.filter((args) => args.includes("kinds"));
-  return withKinds.length > 0
-    ? [`the harness passes a kinds argument (${withKinds.join(" | ")}), which proves nothing about the built-in`]
+  // Any second argument, not just one spelled `kinds` — `hireWorkforce(workers,
+  // options)` carries a kinds map the name never mentions, and goal.md's own
+  // criterion is `hireWorkforce(workers)` with one argument.
+  const withArgs = calls.filter((args) => hasSecondArgument(args));
+  return withArgs.length > 0
+    ? [
+        `the harness passes a second argument to hireWorkforce (${withArgs.join(" | ")}) — ` +
+          `anything beyond the roster can carry a kind, which proves nothing about the built-in`,
+      ]
     : [];
+}
+
+/** A comma outside every bracket in a captured argument list. */
+function hasSecondArgument(args: string): boolean {
+  let depth = 0;
+  for (const ch of args) {
+    if ("([{".includes(ch)) depth += 1;
+    else if (")]}".includes(ch)) depth -= 1;
+    else if (ch === "," && depth === 0) return true;
+  }
+  return false;
 }
 
 /** Case- and separator-insensitive: `HALYARD-6182`, `Halyard 6182`, `halyard6182`. */
@@ -215,6 +238,9 @@ await runGoal(() => {
       GOAL_CONTROL: CONTROL,
       GOAL_USER_ID: fixture.userId,
       GOAL_QUESTION: fixture.question,
+      // The harness stops asking once a pair comes back clean; it grades
+      // nothing. Every verdict below is reached here, over every attempt.
+      GOAL_TOKENS: JSON.stringify(Object.fromEntries(fixture.workers.map((w) => [w.id, w.token]))),
       GOAL_WORKFORCE_DIR: fixturePath(import.meta.url, "workforce"),
       GOAL_MIXED_DIR: fixturePath(import.meta.url, "mixed-roster"),
     },

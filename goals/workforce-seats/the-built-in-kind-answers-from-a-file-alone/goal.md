@@ -10,7 +10,7 @@ No flow is written, no kind is registered, and `hireWorkforce` is called with **
 
 **Signal:** four legs, run against the real HTTP route over a real `createFlowState` host with a real model.
 
-(0) **Fixture integrity, before a model call is spent.** Every `WORKER.md` is compared against `input.json` body-for-body and description-for-description, whole values rather than `includes`, and each file is checked for its sibling's token. Separately, `harness.mts`'s source is read and every `hireWorkforce(` call site asserted to pass no `kinds` — read statically, because a runtime report could only say what the harness chose to say, and passing a `kinds` map would prove nothing about the built-in.
+(0) **Fixture integrity, before a model call is spent.** Every `WORKER.md` is compared against `input.json` body-for-body and description-for-description, whole values rather than `includes`; each file is checked for its sibling's token and the question for either; and `mixed-roster/`'s two workers are checked to still declare the flow kinds `input.json` says, since a roster that is no longer mixed makes leg (c) green for some other reason. Separately, `harness.mts`'s source is read and every `hireWorkforce(` call site asserted to take exactly one argument — read statically, because a runtime report could only say what the harness chose to say, and anything beyond the roster can carry a kind under any name.
 
 (a) **C1 — it hires from files alone.** `readWorkforce` over the tree, `hireWorkforce(workers)` with one argument, two seats back in id order, each addressable by its own worker id, both registered through the real registry.
 
@@ -22,7 +22,7 @@ No flow is written, no kind is registered, and `hireWorkforce` is called with **
 
 The controls below are the other half of this. A control has to fail **at the leg it controls**: editing the fixture bodies would die at leg 0's integrity check and prove only that the checksum works, so every control perturbs the **harness** instead and leaves the fixture tree untouched.
 
-**Model:** `openai/gpt-5.4-mini` (gateway-qualified; `GOAL_MODEL` overrides). Two model calls on the passing path — one question per seat — retried inside a single harness execution when the model is flaky. Roughly six to run the full verification including the two model-backed controls.
+**Model:** `openai/gpt-5.4-mini` (gateway-qualified; `GOAL_MODEL` overrides). Two model calls on the passing path — one question per seat — retried inside a single harness execution only while the model is flaky, since a clean pair ends the loop. Around sixteen to run the full verification, because a control that can never produce a clean pair spends every attempt.
 
 **Run:** `pnpm tsx goals/workforce-seats/the-built-in-kind-answers-from-a-file-alone/run.mts`
 

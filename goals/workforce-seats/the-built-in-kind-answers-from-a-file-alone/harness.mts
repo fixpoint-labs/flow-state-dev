@@ -41,6 +41,8 @@ const MIXED_DIR = process.env.GOAL_MIXED_DIR ?? "";
 const USER_ID = process.env.GOAL_USER_ID ?? "u_goal";
 const QUESTION = process.env.GOAL_QUESTION ?? "";
 const ORG_ID = process.env.GOAL_ORG_ID ?? "org_goal";
+/** Worker id -> its held-out token, for the stopping rule only. See the loop. */
+const TOKENS = JSON.parse(process.env.GOAL_TOKENS ?? "{}") as Record<string, string>;
 
 /**
  * The built-in kind's default model setting is the provider-neutral intent
@@ -54,6 +56,25 @@ const modelResolver = createModelResolver({
   defaultModel: MODEL,
   intents: { chat: [MODEL] },
 });
+
+/**
+ * The answer loop's stopping rule: every seat carried its own token and none
+ * of its siblings'. Deliberately the same shape as run.mts's leg (b) grading,
+ * duplicated rather than shared because a harness cannot import `goals/lib`
+ * (it runs copied into the app's root) — and because run.mts stays the only
+ * place a verdict is reached. Erring lenient here costs an extra call; erring
+ * strict here cannot turn a failing pair green.
+ */
+function everySeatOnItsOwnToken(replies: Record<string, string>): boolean {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const ids = Object.keys(TOKENS);
+  if (ids.length === 0) return false;
+  return ids.every((id) => {
+    const reply = norm(replies[id] ?? "");
+    if (reply === "" || !reply.includes(norm(TOKENS[id]))) return false;
+    return ids.every((other) => other === id || !reply.includes(norm(TOKENS[other])));
+  });
+}
 
 type Item = { type?: string; role?: string; content?: unknown; text?: unknown };
 
@@ -123,23 +144,47 @@ async function main(): Promise<void> {
       }),
       { params: { path } } as never,
     );
+    if (!res.ok) {
+      throw new Error(`POST ${path.join("/")} returned ${res.status}: ${await res.text()}`);
+    }
     const body = (await res.json()) as { request?: { id: string } };
-    const requestId = body.request?.id ?? "";
-    for (let i = 0; i < 400; i += 1) {
+    const requestId = body.request?.id;
+    if (requestId === undefined || requestId === "") {
+      // Polling an empty id just times out, and an empty reply grades as a
+      // wrong answer — a route error wearing leg (b)'s failure as a mask.
+      throw new Error(`POST ${path.join("/")} returned no request id: ${JSON.stringify(body)}`);
+    }
+    // The engine's own liveness window is 30s, so a shorter budget here would
+    // report a healthy-but-slow call as an empty reply for the same reason.
+    const deadline = Date.now() + 35_000;
+    while (Date.now() < deadline) {
       const record = (await stores.request.get(requestId)) as
         | { status?: string; items?: Item[]; output?: unknown }
         | undefined;
-      if (record !== undefined && record.status !== "in_progress") {
+      if (record !== undefined && record.status !== undefined && record.status !== "in_progress") {
+        // Only a completed turn's text counts. The engine persists whatever
+        // items a turn emitted before it died, so accepting any terminal
+        // status would let a model that printed the token and then failed
+        // satisfy leg (b).
+        if (record.status !== "completed") {
+          throw new Error(`${address}: the request ended "${record.status}", not "completed"`);
+        }
         const fromItems = assistantText(record.items ?? []);
         const fromOutput = typeof record.output === "string" ? record.output : "";
         return `${fromItems}\n${fromOutput}`.trim();
       }
       await new Promise((r) => setTimeout(r, 25));
     }
-    return "";
+    throw new Error(`${address}: no terminal status within 35s`);
   }
 
-  // Hiring and registration happened once, above. Only the question repeats.
+  // Hiring and registration happened once, above. Only the question repeats,
+  // and only while the model is being flaky: a clean pair ends the loop, so a
+  // passing run costs one call per seat rather than ATTEMPTS per seat.
+  //
+  // This is a STOPPING rule, not a verdict. run.mts grades every attempt
+  // recorded here and owns the pass/fail, so a stopping rule that is too
+  // lenient can only make the check fail, never pass.
   const attempts: Array<Record<string, string>> = [];
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
     const replies: Record<string, string> = {};
@@ -147,6 +192,7 @@ async function main(): Promise<void> {
       replies[seat.id] = await ask(seat.id, `s_${attempt}_${seat.id.replace(/\W/g, "_")}`);
     }
     attempts.push(replies);
+    if (everySeatOnItsOwnToken(replies)) break;
   }
   out.attempts = attempts;
 
