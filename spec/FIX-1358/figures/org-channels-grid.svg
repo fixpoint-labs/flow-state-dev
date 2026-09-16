@@ -1,0 +1,60 @@
+<svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Three readings of org slash channels, each traced to what an author ends up doing. Column one, teach it as shipped, which is what the epic spec claims: the author writes the file, nothing loads it, no error names it, and they debug their own tree. Column two, leave it out the way org slash workers is left out: the author reads the epic spec instead, writes the file anyway, and lands in the same silence. Column three, teach it as a named gap, the chosen reading: the author declares the channel on the team and knows why. A note across the bottom says the epic spec still claims org scope ships, and that correction is not this issue's to make.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-lost { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-won  { fill:var(--surface); stroke:var(--prose); stroke-width:1.6; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-bad  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+    .t-good { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+    .rowlbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.1em; }
+  </style>
+
+  <text class="rowlbl" x="16" y="78">THE ATLAS SAYS</text>
+  <text class="rowlbl" x="16" y="140">THE AUTHOR</text>
+  <text class="rowlbl" x="16" y="202">THEY FIND</text>
+
+  <g id="as-shipped">
+    <rect class="n-lost" x="150" y="16" width="246" height="212" rx="5"/>
+    <text class="t-lbl" x="166" y="38">READING 1 · AS SHIPPED</text>
+    <text class="t-b"   x="166" y="60">what the epic claims</text>
+    <text class="t-s"   x="166" y="82">org/channels/ works</text>
+    <text class="t-s"   x="166" y="144">writes org/channels/all/</text>
+    <text class="t-s"   x="166" y="162">CHANNEL.md</text>
+    <text class="t-bad" x="166" y="206">SILENCE. NO CHANNEL,</text>
+    <text class="t-bad" x="166" y="220">NO ERROR, NO CAUSE.</text>
+  </g>
+
+  <g id="omitted">
+    <rect class="n-lost" x="412" y="16" width="246" height="212" rx="5"/>
+    <text class="t-lbl" x="428" y="38">READING 2 · LEFT OUT</text>
+    <text class="t-b"   x="428" y="60">D7's move for workers</text>
+    <text class="t-s"   x="428" y="82">nothing at all</text>
+    <text class="t-s"   x="428" y="144">reads the epic spec,</text>
+    <text class="t-s"   x="428" y="162">writes the file anyway</text>
+    <text class="t-bad" x="428" y="206">THE SAME SILENCE.</text>
+    <text class="t-bad" x="428" y="220">TOLD TWICE IT WORKS.</text>
+  </g>
+
+  <g id="named-gap">
+    <rect class="n-won" x="674" y="16" width="250" height="212" rx="5"/>
+    <text class="t-lbl" x="690" y="38">READING 3 · NAMED GAP</text>
+    <text class="t-b"   x="690" y="60">locked, no reader</text>
+    <text class="t-s"   x="690" y="82">the door is not open yet</text>
+    <text class="t-s"   x="690" y="144">declares it on the team</text>
+    <text class="t-s"   x="690" y="162">and knows why</text>
+    <text class="t-good" x="690" y="206">A CHANNEL, AND ONE</text>
+    <text class="t-good" x="690" y="220">FEWER PLACE TO LOOK.</text>
+  </g>
+
+  <text class="t-lbl" x="16" y="262">READING 1 IS NOT A STRAW MAN — IT IS WHAT FIX-1351's SET TABLE AND PEOPLE TABLE SAY TODAY.</text>
+  <text class="t-lbl" x="16" y="282">CORRECTING THE EPIC'S OWN PROMISE IS COMMENTED UP (ER-14), NOT EDITED HERE.</text>
+</svg>

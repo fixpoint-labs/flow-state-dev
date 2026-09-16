@@ -1,0 +1,77 @@
+<svg viewBox="0 0 940 436" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The atlas file-tree figure, today and after. Today: one banner reading TREE, PROPOSED CONVENTION over org with resources and skills, and teams slash teamId with resources, skills, and workers slash name holding WORKER.md, skills and resources. No channels anywhere, and every slot carries the same proposed banner although five readers have merged. After: the same tree with a tag per slot — resources, skills, the seat folder and WORKER.md marked exists; a new channels slash name slash CHANNEL.md under the team marked exists; org slash channels marked a named gap, locked open with no reader; TEAM.md and the worker's own resources marked proposed with their issue numbers. A fence strip across the bottom: org slash workers is taught nowhere, and nothing under packages moves.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-stale{ fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-fence{ fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-p    { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-dim  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-ex   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+    .t-pr   { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+    .t-gap  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+    .t-cut  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+  </style>
+
+  <g id="today">
+    <rect class="n-stale" x="16" y="16" width="440" height="330" rx="5"/>
+    <text class="t-lbl" x="34" y="38">ATLAS §06 TODAY</text>
+    <rect x="34" y="50" width="404" height="20" rx="3" fill="var(--accent-soft)"/>
+    <text class="t-lbl" x="42" y="64">TREE · PROPOSED CONVENTION</text>
+    <text class="t-p"   x="34"  y="96">org/</text>
+    <text class="t-dim" x="58"  y="115">resources/</text>
+    <text class="t-dim" x="58"  y="134">skills/</text>
+    <text class="t-p"   x="34"  y="162">teams/&lt;teamId&gt;/</text>
+    <text class="t-dim" x="58"  y="181">resources/</text>
+    <text class="t-dim" x="58"  y="200">skills/</text>
+    <text class="t-p"   x="58"  y="219">workers/&lt;name&gt;/</text>
+    <text class="t-dim" x="82"  y="238">WORKER.md</text>
+    <text class="t-dim" x="82"  y="257">skills/</text>
+    <text class="t-dim" x="82"  y="276">resources/</text>
+    <text class="t-cut" x="34"  y="308">NO channels/ ANYWHERE. ONE BANNER FOR THIRTEEN ISSUES.</text>
+    <text class="t-lbl" x="34"  y="328">FIVE READERS HAVE MERGED. THE FIGURE SAYS NONE HAVE.</text>
+  </g>
+
+  <g id="after">
+    <rect class="n-box" x="484" y="16" width="440" height="330" rx="5"/>
+    <text class="t-lbl" x="502" y="38">AFTER · A TAG PER SLOT</text>
+    <text class="t-p"   x="502" y="64">org/</text>
+    <text class="t-p"   x="526" y="83">resources/</text>
+    <text class="t-ex"  x="700" y="83">EXISTS</text>
+    <text class="t-p"   x="526" y="102">skills/</text>
+    <text class="t-ex"  x="700" y="102">EXISTS</text>
+    <text class="t-dim" x="526" y="121">channels/</text>
+    <text class="t-gap" x="700" y="121">NAMED GAP · NO READER</text>
+    <text class="t-p"   x="502" y="149">teams/&lt;teamId&gt;/</text>
+    <text class="t-dim" x="526" y="168">TEAM.md</text>
+    <text class="t-pr"  x="700" y="168">PROPOSED · FIX-1377</text>
+    <text class="t-p"   x="526" y="187">channels/&lt;name&gt;/</text>
+    <text class="t-ex"  x="700" y="187">EXISTS · #1793</text>
+    <text class="t-p"   x="550" y="206">CHANNEL.md</text>
+    <text class="t-p"   x="526" y="225">resources/</text>
+    <text class="t-ex"  x="700" y="225">EXISTS</text>
+    <text class="t-p"   x="526" y="244">skills/</text>
+    <text class="t-ex"  x="700" y="244">EXISTS</text>
+    <text class="t-p"   x="526" y="263">workers/&lt;name&gt;/</text>
+    <text class="t-ex"  x="700" y="263">EXISTS · #1689</text>
+    <text class="t-p"   x="550" y="282">WORKER.md</text>
+    <text class="t-p"   x="550" y="301">skills/</text>
+    <text class="t-ex"  x="700" y="301">EXISTS</text>
+    <text class="t-dim" x="550" y="320">resources/</text>
+    <text class="t-pr"  x="700" y="320">PROPOSED · FIX-1368</text>
+  </g>
+
+  <g id="fence">
+    <rect class="n-fence" x="16" y="362" width="908" height="58" rx="5"/>
+    <text class="t-lbl" x="34" y="384">THE FENCE</text>
+    <text class="t-cut" x="34" y="406">org/workers/ IS TAUGHT NOWHERE (D7 · ER-13) · NOTHING UNDER packages/ MOVES · §08 AND §14 ARE NOT MERGED</text>
+  </g>
+</svg>
