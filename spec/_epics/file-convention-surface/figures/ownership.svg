@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 336" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: a matrix of seven cross-cutting rules against seven issues. Path level is scope is decided by FIX-1356 and consumed by FIX-1352 and FIX-1354. Kind to one instance is built by FIX-1311 and consumed by FIX-1352. CHANNEL.md names the kind is built by FIX-1352 and consumed by FIX-1311 and FIX-1357. Consumed stripped, derived refused is decided by FIX-1354 and consumed by FIX-1352 and FIX-1356. Seats stay WORKER.md is decided by FIX-1342 and consumed by FIX-1311 and FIX-1357. One scan, one kinds map is built by FIX-1357 and consumed by FIX-1311 and FIX-1352. Hire admits the config is built by FIX-1367 and consumed by FIX-1356. Every rule has exactly one owner.">
+<svg viewBox="0 0 940 356" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: a matrix of seven cross-cutting rules against seven issues. Path level is scope is decided by FIX-1356 and consumed by FIX-1354, while FIX-1352 consumes only its team half and the org half has no owner. Kind to one instance is built by FIX-1311 and consumed by FIX-1352. CHANNEL.md names the kind is built by FIX-1352 and consumed by FIX-1311 and FIX-1357. Consumed stripped, derived refused is decided by FIX-1354 and consumed by FIX-1352 and FIX-1356. Seats stay WORKER.md is decided by FIX-1342 and consumed by FIX-1311 and FIX-1357. One scan, one kinds map is built by FIX-1357 and consumed by FIX-1311 and FIX-1352. Hire admits the config is built by FIX-1367 and consumed by FIX-1356. Every rule has exactly one owner, and one cell is a gap: the org door of the channels convention is declared and unbuilt.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -11,6 +11,7 @@
     .cell  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
     .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
     .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .gap   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
     .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
              font-size:9.5px; letter-spacing:.1em; }
     .t-col { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
@@ -18,6 +19,7 @@
     .t-own { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
              font-weight:700; font-size:9.5px; letter-spacing:.06em; }
     .t-use { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gap { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
   </style>
 
   <text class="t-lbl" x="16" y="20">WHO OWNS WHAT — EVERY RULE HAS EXACTLY ONE OWNER</text>
@@ -36,7 +38,7 @@
     <text class="t-row" x="16" y="78">ER-1 · path level is scope</text>
     <rect class="cell" x="276" y="60" width="92" height="30"/>
     <rect class="cell" x="368" y="60" width="92" height="30"/>
-    <rect class="use"  x="460" y="60" width="92" height="30"/><text class="t-use" x="481" y="79">consumes</text>
+    <rect class="gap"  x="460" y="60" width="92" height="30"/><text class="t-gap" x="470" y="79">team half</text>
     <rect class="use"  x="552" y="60" width="92" height="30"/><text class="t-use" x="573" y="79">consumes</text>
     <rect class="own"  x="644" y="60" width="92" height="30"/><text class="t-own" x="668" y="79">DECIDES</text>
     <rect class="cell" x="736" y="60" width="92" height="30"/>
@@ -114,6 +116,8 @@
     <text class="t-use" x="40" y="320">the one owner — decides or builds it</text>
     <rect class="use" x="276" y="308" width="16" height="14"/>
     <text class="t-use" x="300" y="320">consumes it, and must not re-decide it</text>
-    <text class="t-use" x="600" y="320">FIX-1355, the lab, consumes every row and owns none</text>
+    <rect class="gap" x="600" y="308" width="16" height="14"/>
+    <text class="t-gap" x="624" y="320">consumed in part — the rest has no owner</text>
+    <text class="t-use" x="16" y="344">FIX-1355, the lab, consumes every row and owns none</text>
   </g>
 </svg>

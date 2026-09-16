@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 382" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path: thirteen lanes against time from September 11 to a now line at September 16, with nothing after it scheduled. Done bars: the kinds fence and skills on September 11, ChannelFlow from September 12 to 14, channels and resources from September 11 to 16, and one atlas page on September 12. On the now line: the boot scan and the atlas remainder each opened a spec and are in spec review. Ahead of it: the WorkerConfig admission is ready and not started; worker resources, TEAM.md, Door B and the loader extract are unscheduled; the pentest lab Proof is last and required. The critical path is marked in the gutter and runs from the kinds fence through ChannelFlow and the channels convention to the lab.">
+     aria-label="The path: thirteen lanes against time from September 11 to a now line at September 16, with nothing after it scheduled. Done bars: the kinds fence and skills on September 11, ChannelFlow from September 12 to 14, channels and resources from September 11 to 16, and one atlas page on September 12. On the now line: the WorkerConfig admission, the boot scan and the atlas remainder each opened a spec and are in spec review. Ahead of it: worker resources, TEAM.md, Door B and the loader extract are unscheduled; the pentest lab Proof is last and required. The critical path is marked in the gutter and runs from the kinds fence through ChannelFlow and the channels convention to the lab.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -10,7 +10,6 @@
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
     .done  { fill:var(--code); stroke:none; }
     .todo  { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
-    .ready { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
     .wip   { fill:var(--accent); stroke:none; }
     .lane  { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
     .axis  { stroke:var(--rule); stroke-width:1; }
@@ -60,8 +59,8 @@
   <g id="lanes-ahead">
     <text class="t-ln" x="16" y="180">FIX-1367 admission</text>
     <path class="lane" d="M572 175 L924 175"/>
-    <rect class="ready" x="576" y="171" width="104" height="12" rx="2"/>
-    <text class="t-s" x="692" y="180">ready, not started</text>
+    <rect class="wip" x="576" y="171" width="104" height="12" rx="2"/>
+    <text class="t-s" x="692" y="180">in spec review · #1807</text>
 
     <text class="t-ln" x="16" y="202">FIX-1357 boot scan</text>
     <path class="lane" d="M572 197 L924 197"/>
@@ -95,16 +94,14 @@
   <path class="now" d="M560 50 L560 346"/>
 
   <g id="legend">
-    <rect class="done" x="120" y="360" width="16" height="10" rx="2"/>
-    <text class="t-s" x="144" y="369">done</text>
-    <rect class="wip" x="196" y="359" width="16" height="12" rx="2"/>
-    <text class="t-s" x="220" y="369">in spec review</text>
-    <rect class="ready" x="330" y="359" width="16" height="12" rx="2"/>
-    <text class="t-s" x="354" y="369">ready, nothing blocks it</text>
-    <rect class="todo" x="520" y="359" width="16" height="12" rx="2"/>
-    <text class="t-s" x="544" y="369">not started</text>
-    <circle class="critd" cx="640" cy="365" r="3.2"/>
-    <path class="crit" d="M640 359 L640 371"/>
-    <text class="t-s" x="656" y="369">on the critical path to the proof</text>
+    <rect class="done" x="200" y="360" width="16" height="10" rx="2"/>
+    <text class="t-s" x="224" y="369">done</text>
+    <rect class="wip" x="276" y="359" width="16" height="12" rx="2"/>
+    <text class="t-s" x="300" y="369">in spec review</text>
+    <rect class="todo" x="410" y="359" width="16" height="12" rx="2"/>
+    <text class="t-s" x="434" y="369">not started</text>
+    <circle class="critd" cx="530" cy="365" r="3.2"/>
+    <path class="crit" d="M530 359 L530 371"/>
+    <text class="t-s" x="546" y="369">on the critical path to the proof</text>
   </g>
 </svg>

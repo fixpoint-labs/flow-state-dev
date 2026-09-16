@@ -51,7 +51,17 @@ not one issue's design, is wrong.
 |---|---|
 | **Instead of** | Team-only slots · or org slots at the `workforce/` root with no `org/` segment |
 | **Because** | A company-wide conversation home must not invent a fake team in order to exist. And the shipped readers already walk `<root>/org/<slot>` — skills on `main`, resources on its branch — so relocating org scope is a breaking change to two merged conventions, not a notation choice |
-| **Locks in** | `org/` and `teams/<teamId>/` carry the same four slots. FIX-1352 walks **both** channel doors. Resources is org + team; skills is org ∪ team ∪ worker-local. The code door keeps its own tree beside them, not under `teams/` |
+| **Locks in** | `org/` and `teams/<teamId>/` carry the same four slots. **Both** channel doors are in scope. Resources is org + team; skills is org ∪ team ∪ worker-local. The code door keeps its own tree beside them, not under `teams/` |
+
+**What shipped, and what didn't.** Resources and skills read `org/`
+([#1737](https://github.com/fixpoint-labs/flow-state-dev/pull/1737),
+[#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728)). Channels does not:
+`readChannelsDirectory` walks `teams/<teamId>/channels/` only, so a planted
+`org/channels/…/CHANNEL.md` comes back in neither results nor errors — found by the POC on
+[#1805](https://github.com/fixpoint-labs/flow-state-dev/pull/1805), and readable in the merged
+reader's own header. **The lock is not rewritten to team-only.** The slot stays; the org half is
+unbuilt and unowned, and who closes it is [Open 5](#open). An atlas that draws `org/channels/` as
+a *named gap* is right; one that deletes the slot contradicts this card.
 
 <a name="d4"></a>
 ## D4 · A key the convention *consumes* is stripped; a key it *derives* is refused
@@ -104,11 +114,13 @@ substance above is untouched by that; the placement is [Open](#open).
 
 ## Who owns what
 
-![Who owns what: a matrix of seven cross-cutting rules by seven issues, each rule with exactly one decides or builds cell and consumes cells elsewhere](figures/ownership.svg)
+![Who owns what: a matrix of seven cross-cutting rules by seven issues, each rule with exactly one decides or builds cell and consumes cells elsewhere, and one half-consumed cell where the channels convention reads the team door but not the org one](figures/ownership.svg)
 
 Every rule in the set has one owner. Read a row to see where a decision is made, where it is
 built, and where it is only consumed; a *consumes* cell is a place a child must not re-decide.
-FIX-1355, the lab, consumes every row and owns none — which is what makes it a proof.
+FIX-1355, the lab, consumes every row and owns none — which is what makes it a proof. One cell is
+neither: ER-1's channels cell is **half consumed** — the team door is read, the `org/` door is
+not, and no issue owns closing it.
 
 ## Decided in review, recorded so no child reopens them
 
@@ -130,6 +142,12 @@ FIX-1355, the lab, consumes every row and owns none — which is what makes it a
   blocking edge while Linear carried only `related` links. Linear now records FIX-1311 **blocks**
   FIX-1352 and both are Done, so whether whole-issue granularity was too coarse is closed by
   events rather than by a ruling.
+
+- **`org/channels/` is a named gap, not a retracted lock.** FIX-1358's POC found the shipped
+  channels reader walks `teams/` only, while the epic still taught a company-wide channel as
+  something you drop in `org/channels/` today. [D3](#d3) stands as org + team; what changes is the
+  claim, not the decision. Correcting the sentence is honesty about today — it does not
+  invent-kill org channels, and no child may read it that way.
 
 **No end-state POC was built** — the set's shape was settled by owner stamps on this PR, and five
 issues have since shipped, so the division is evidenced by what landed rather than by a throwaway.
@@ -164,6 +182,21 @@ documents is one parameterised collection; FIX-1354 installs singles at the same
 keys agree but the install shapes differ and compatibility is unverified. Whoever moves documents
 onto a collection settles it first.
 
+**5. Who closes the `org/` half of the channels reader?** *(Decides: the owner, with the
+Architect. Blocks: nothing today; ER-22's docs claim, and any lab intake DM meant to be
+company-wide.)* [D3](#d3) locked `org/` and `teams/<teamId>/` as the same slots, and two of the
+three conventions shipped that way. Channels shipped the team door only, and the gap belongs to
+no issue in the set — FIX-1352 is Done, and widening a merged reader from this epic is what
+[D7](#d7) refused for `org/workers/`. **The trade-off:** file a child now and the set grows a
+fifth late arrival off the path to the proof, exactly the tail the necessity check is watching;
+leave it and the epic's own headline promise — a company-wide channel without inventing a fake
+team — stays unbuilt with nobody holding it. **Recommendation:** leave it unfiled and let the lab
+decide, the same tripwire shape as D7 — FIX-1355 is the first thing that would want a
+company-wide channel, and if it does, that is the moment it has a consumer and a reader goes on
+the floor. **What would change my mind:** an author hitting it before the lab does, which makes it
+a live defect rather than an unfinished lock. **If wrong:** the proof stalls on a door the epic
+said was open, and the atlas teaches a gap that did not need to be one.
+
 ## How it got here
 
 - **Stood up late (Sep 11)** — four sub-specs had already converged with no epic document; the
@@ -178,3 +211,6 @@ onto a collection settles it first.
 - **`TEAM.md` locked (Sep 12)** — D8.
 - **Migrated to the four-document set (Sep 16)** — form only. Superseded readings were dropped
   rather than kept beneath their replacements; the branch history holds them.
+- **The org half of channels became a named gap (Sep 16)** — FIX-1358's POC showed the shipped
+  reader walks `teams/` only. D3 keeps its org + team lock; the set stops claiming `org/channels/`
+  opens today, and who closes it is now an open question rather than an assumption.
