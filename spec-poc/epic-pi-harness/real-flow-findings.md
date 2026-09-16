@@ -26,9 +26,15 @@ REQUEST IDS: test_flow_req_...ea00df985007d  test_flow_req_...2e5a4444de6c
 
 1. **A real flow action dispatches and returns a real terminal status** (`completed`) and a
    real typed output. This is the shape a pi extension renders.
-2. **Two dispatches on one shared session produce distinct request ids** while sharing store
-   state — exactly the pairing PI-2 must keep straight when resuming a flow across pi
-   sessions and forks. Session continuity is not hypothetical; the substrate already has it.
+2. **Two sequential dispatches against one in-process engine each reach terminal
+   `completed`, each with a distinct request id.** That is the whole of it. The handler under
+   test touches no state, and `testFlow` mints a fresh request id on every call
+   (`packages/testing/src/test-utilities/testFlow.ts:159` — `generateId("test_flow_req")`,
+   which is timestamp + random and reads neither `sessionId` nor `stores`), so the same
+   inequality would hold for two unrelated sessions, or if the shared session and stores were
+   ignored outright. **Same-session continuity across a runtime restart remains unproven** —
+   one process, in-memory stores, no teardown — which is the position the epic-spec already
+   holds. An earlier version of this file concluded the opposite from this test.
 3. **A pure `handler` flow needs no LLM and no network**, so the epic's transport and routing
    claims can be tested in CI without keys.
 
@@ -36,16 +42,30 @@ REQUEST IDS: test_flow_req_...ea00df985007d  test_flow_req_...2e5a4444de6c
 
 **Theme 8's item routing was invented.** The spec split items into "progress · status" versus
 "outputs · gaps" — a four-way vocabulary that does not exist. The real `RuntimeItem` union in
-`@flow-state-dev/contracts` has **24 types**:
+`@flow-state-dev/contracts` has **17 types**:
 
 ```text
-block_trace · component · container · continuation · debug · error · file
-generator_step · message · output_audio · output_text · ping · reasoning
-reasoning_text · refusal · resource_change · router_decision · source
+block_trace · component · container · continuation · error · generator_step
+message · reasoning · resource_change · router_decision · source
 state_change · state_snapshot · status · suspension · suspension_resume · tool_output
 ```
 
-Two of these matter beyond routing:
+`RuntimeItem` is `OutputItem` — 13 members in `packages/contracts/src/items/types.ts` — plus
+the four trace types `block_trace`, `router_decision`, `state_snapshot` and `generator_step`
+(`packages/contracts/src/items/internal.ts`). 13 + 4 = 17, and `types.ts` carries exactly 17
+`type: "…"` discriminator literals.
+
+**An earlier version of this file said 24.** It reached that number by taking every type name
+in the items tree, which sweeps in seven names that are not item discriminators at all:
+`output_text`, `reasoning_text`, `refusal`, `file` and `output_audio` are ContentPart types
+living *inside* an item, in a `message`'s `content` array or a `reasoning`'s `summary`
+(`items/content.ts`); `debug` and `ping` are SSE event types on the transport envelope
+(`items/events.ts`). That distinction is the finding worth keeping: **a renderer allowlist
+built from "every type name in the items tree" over-counts by pulling in content parts and
+transport events.** Route on an item's own `type`; a content part is reached by walking into
+the item that holds it, and a transport event never reaches a renderer at all.
+
+One of these matters beyond routing:
 
 - **`suspension` / `suspension_resume`** — FSD *already has* a first-class suspend/resume item
   pair, and `testFlow` already reports a `"suspended"` terminal status. The epic's §5 open
@@ -53,11 +73,13 @@ Two of these matter beyond routing:
   It may not: the durable mid-run question mechanism may already exist in the item vocabulary.
   **This is the single most useful thing this probe found**, and it should be checked before
   that question is answered.
-- **`ping`** — a keepalive, which is a routing decision the spec never made (it must never
-  reach the LLM, and probably never the operator either).
+
+And one thing outside the item vocabulary still needs a decision the spec never made: the
+`ping` **SSE event** is a keepalive that must never reach the LLM, and probably never the
+operator either. It is a transport-layer filter, not an item-routing rule.
 
 A simple `handler` emitted exactly one `block_trace` item. So the routing policy cannot be
-stated as a two-bucket rule; it needs a default for 24 types, and the safe default is
+stated as a two-bucket rule; it needs a default for 17 types, and the safe default is
 *TUI-only unless explicitly promoted*, not the reverse.
 
 ## What it does NOT establish
@@ -66,5 +88,7 @@ stated as a two-bucket rule; it needs a default for 24 types, and the safe defau
   (theme 2) is still untested. A follow-up should boot `fsdev dev` and drive the real
   `/api/flows/{kind}/actions/{action}` route.
 - Nothing about a **generator** (LLM) flow, tool loops, or streaming deltas.
+- Nothing about **same-session continuity across a runtime restart**. Both dispatches run in
+  one process against in-memory stores that are never torn down.
 - Nothing about the **pi side**. This probe and the pi probe still do not touch each other;
   no end-to-end path has run.

@@ -72,7 +72,7 @@ describe("a real FSD flow, driven the way a pi extension would drive it", () => 
     });
   });
 
-  it("shares state across two dispatches, which is what PI-2 continuity needs", async () => {
+  it("runs two sequential dispatches on one session, each reaching completed with its own request id", async () => {
     const { createInMemoryStores } = await import("@flow-state-dev/engine");
     const stores = createInMemoryStores();
 
@@ -109,10 +109,16 @@ describe("a real FSD flow, driven the way a pi extension would drive it", () => 
     });
 
     console.log("REQUEST IDS:", first.requestId, second.requestId);
+    // What this does NOT establish: same-session continuity, across a runtime
+    // restart or otherwise. The handler touches no state, both dispatches run in
+    // one process against in-memory stores that are never torn down, and
+    // `testFlow` mints a fresh request id on every call (timestamp + random)
+    // without reading `sessionId` or `stores` — so the inequality below would
+    // hold just as well for two unrelated sessions. It says only that a second
+    // dispatch on a shared session still reaches a terminal status and is
+    // identified separately from the first.
     expect(first.status).toBe("completed");
     expect(second.status).toBe("completed");
-    // Distinct requests within one shared session — the pairing a pi extension
-    // must keep straight when it resumes a flow across pi sessions.
     expect(first.requestId).not.toBe(second.requestId);
   });
 });
