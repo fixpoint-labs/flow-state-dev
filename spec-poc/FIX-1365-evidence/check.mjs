@@ -11,8 +11,11 @@
  *        kind's factory appears in no goal check at all.
  *   C-B  Every `hireWorkforce(` call site under `goals/` passes a `kinds`
  *        argument — so no goal hires the built-in the way an app would.
- *   C-C  Every `goals/workforce-*` goal declares a model-free `Model:` field —
- *        so no goal has ever run a model through a hired seat.
+ *   C-C  Every `goals/workforce-*` goal declares a model-free `Model:` field.
+ *        NOTE the limit: this reads the DECLARED field (the one `goal:all`
+ *        itself reads), so it establishes what the corpus declares, not that no
+ *        `run.mts` anywhere contacts a model. The spec's claim is narrowed to
+ *        match; C-A and C-B carry the rest.
  *
  * TOTALITY, not a spot check: C-B and C-C enumerate from the filesystem and
  * assert over *every* hit found, so a goal nobody listed still has to satisfy
@@ -28,7 +31,7 @@
  *
  * Throwaway: lives on the never-merged spec branch, ships nowhere.
  */
-import { readdirSync, readFileSync, writeFileSync, rmSync, mkdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const REPO = new URL("../../", import.meta.url).pathname.replace(/\/$/, "");
@@ -47,6 +50,19 @@ function walk(dir, out = []) {
 
 const plant = process.env.PLANT;
 let planted;
+/** Everything planted lives under these; removed in `finally` so a crash cannot leave them. */
+const PLANT_DIRS = [join(GOALS, "_planted-control"), join(GOALS, "workforce-planted")];
+
+function cleanup() {
+  for (const dir of PLANT_DIRS) rmSync(dir, { recursive: true, force: true });
+}
+
+let exitCode = 0;
+
+// A crash between planting and the cleanup at the end would leave a fake goal
+// sitting in the real corpus. The whole run is therefore wrapped, and cleanup
+// happens in `finally`.
+try {
 if (plant) {
   const dir = join(GOALS, "_planted-control");
   mkdirSync(dir, { recursive: true });
@@ -129,16 +145,19 @@ const evidence = [];
   }
 }
 
-if (planted) {
-  rmSync(join(GOALS, "_planted-control"), { recursive: true, force: true });
-  rmSync(join(GOALS, "workforce-planted"), { recursive: true, force: true });
-}
-
 if (failures.length > 0) {
   console.error(`FAIL${plant ? ` (planted control "${plant}" — this failure is the expected result)` : ""}`);
   for (const f of failures) console.error(`  - ${f}`);
-  process.exit(1);
+  exitCode = 1;
+} else {
+  console.log(`PASS${plant ? ` — PLANTED CONTROL "${plant}" WAS NOT CAUGHT; the claim is not actually checked` : ""}`);
+  for (const e of evidence) console.log(`  - ${e}`);
+  // A planted run that reaches here found nothing, which is itself a failure.
+  exitCode = plant ? 1 : 0;
 }
-console.log(`PASS${plant ? ` — PLANTED CONTROL "${plant}" WAS NOT CAUGHT; the claim is not actually checked` : ""}`);
-for (const e of evidence) console.log(`  - ${e}`);
-process.exit(plant ? 1 : 0);
+} finally {
+  // Deliberately NOT process.exit() inside the try: it terminates immediately
+  // and `finally` never runs, which would leave the planted files behind.
+  cleanup();
+}
+process.exit(exitCode);
