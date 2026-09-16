@@ -1384,12 +1384,23 @@ Neither is written until approved.
 
 ### Findings recorded, not fixed
 
-- **Review-body-only reviews are a reproducible notification hole.** `cursor[bot]`'s "Code Snob"
-  restraint automation submits its entire finding set in the **review body with zero inline
-  comments** on **5 of 7 implementation PRs** (#1754, #1776, #1782, #1785, #1790). On #1776 that body
-  carried a substantive restraint finding with a POC PR attached — verified independently at wrap.
-  On #1790 an entire review round exists only because both cursor reviews were found ~1h45m late.
-  `get_reviews` is the only channel that sees these.
+- **A PR's opening reviews can be lost to a subscription race.** *(Corrected after first writing —
+  see below.)* Reviews posted between PR **creation** and **subscription activation** are never
+  delivered. On #1790 that window ran 02:25:18 → ~02:28:21 and swallowed both `cursor[bot]` reviews
+  (02:27:11, 02:27:15); everything from 02:29:35 on arrived normally. An entire review round exists
+  only because they were found ~1h45m later, by calling `get_reviews` directly.
+
+  **This was first written as "body-only reviews never reach a session", which is wrong** — a
+  body-only cursor review on #1796 delivered normally 25 minutes after subscription. The
+  discriminator is *time relative to subscription*, not review shape. The error is the cycle's own
+  dominant class committed in the instrument that measures it: a mechanism asserted from a
+  correlation nobody had tried to break.
+
+  What remains true and is separately worth knowing: `cursor[bot]`'s restraint automation puts its
+  entire finding set in the **review body with zero inline comments** on **5 of 7** implementation
+  PRs (#1754, #1776, #1782, #1785, #1790), and on #1776 that body carried a substantive restraint
+  finding with a POC PR attached. A reader who scans only inline comments misses it — but that is a
+  reading habit, not a delivery hole.
 - **`settle-claim`'s front door: zero invocations, 8 claims settled.** Cycle 8's finding **re-tests
   as unchanged**. The outcome stays healthy — 6 of 8 settlements were *run* rather than argued and
   **3 came back REFUTED** — but every one went through an ad-hoc `spec-poc/` directory, a committed
@@ -1420,6 +1431,8 @@ Neither is written until approved.
    **14 fence findings / ~30% of non-`nit` findings**. If the share holds after the BP sharpening
    lands, the fix is at the wrong altitude — the class may need a check, not a sentence.
 3. **Does a required `get_reviews` read change the round count?** Predicted effect is narrow and
-   specific: rounds that exist *only* because a body-only review was found late should go to zero.
-   #1790's third round is the baseline instance.
+   specific: rounds that exist *only* because a PR's opening reviews were missed should go to zero.
+   #1790's third round is the baseline instance. Note the fix survived its own justification being
+   corrected — a subscription race is a *better* reason to read reviews directly than a body-only
+   blind spot, because it is silent and hits the reviews that open a PR.
 4. **Run the escape sweep.** Twice deferred now.
