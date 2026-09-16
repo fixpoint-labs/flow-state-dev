@@ -568,6 +568,7 @@ diff.
 
 The directory is committed to `epic/<name>` and opened as the never-merged epic PR. The Linear
 document attached to the Epic issue is **the four files in reading order** under their own H1s,
-figures linked to the branch (`https://github.com/<owner>/<repo>/blob/epic/<name>/spec/_epics/<name>/figures/<name>.svg`),
+figures linked to the branch (`https://github.com/<owner>/<repo>/blob/epic/<name>/spec/_epics/<name>/figures/<name>.svg`)
+and every cross-document link (`DECISIONS.md#d4`, `PLAN.md`) rewritten to the same branch URL,
 re-mirrored on every refresh. Linear renders neither `<details>` nor a repo-relative image, so
 the document carries links and the ordering carries the fold.

@@ -88,6 +88,9 @@ const RETIRED_EXEMPT = [
   "docs/internal/",
 ];
 
+// Bounded to `.md` and `.svg` on purpose: those are the two file kinds a spec set
+// holds (spec-figures.md admits no other asset into `figures/`), and a path with
+// no extension names a directory, which is a location, not a link that dangles.
 const SPEC_CITATION =
   /(?<!docs\/)\bspec\/(?:[A-Z]{2,6}-\d+(?:[^\s`"')]*)?|_epics\/[^\s<>`"')]+)\.(?:md|svg)/g;
 const CITATION_EXEMPT = [

@@ -2957,7 +2957,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
               // when it is not is the false-evidence failure orchestration.md forbids, and it lands in
               // artifacts a later reader trusts.
               (settledVerdicts(item.row.verdicts).length
-                ? `POC settlement(s) landed on this issue. Apply them per issue-spec 6.5.3 BEFORE anything else — fold each verdict, post the evidence-backed reply on its thread, and record the claim as resolved-with-evidence in the spec's §12:\n${renderVerdicts(settledVerdicts(item.row.verdicts))}\n`
+                ? `POC settlement(s) landed on this issue. Apply them per issue-spec 6.5.3 BEFORE anything else — fold each verdict, post the evidence-backed reply on its thread, and record the claim as resolved-with-evidence in DECISIONS.md → Settled:\n${renderVerdicts(settledVerdicts(item.row.verdicts))}\n`
                 : '') +
               (unsettledVerdicts(item.row.verdicts).length
                 ? `A POC came back INCONCLUSIVE on ${unsettledVerdicts(item.row.verdicts).length} claim(s). ` +

@@ -238,7 +238,7 @@ for f in "$D"/*.md; do echo "$f $(grep -c '^```' "$f")"; done
 for f in "$D"/*.md; do awk '/^```mermaid/{f=1;next} /^```/{f=0} f{print FILENAME":"FNR": "$0}' "$f"; done \
   | grep -E '(\[[^]"]*[(),;:/·][^]]*\])|(\|[^|"]*[(),;:/·][^|]*\|)'
 
-# 3. Every figure has a sentence under it — a figure line followed by a blank line then a heading is missing one
+# 3. List every figure line — this only lists; read each one's next paragraph by eye and confirm it is a sentence, not a heading
 grep -nE '^!\[|^<img ' "$D"/*.md
 
 # 4. Every SVG: self-contained, both themes, accessible, reviewable

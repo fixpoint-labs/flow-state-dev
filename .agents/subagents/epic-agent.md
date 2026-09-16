@@ -56,8 +56,9 @@ Take the single action the dispatch calls for:
   what stays, the sign-off), `DECISIONS.md` (the tree, the cross-cutting cards, the ownership
   matrix figure), `BUSINESS-RULES.md`, `PLAN.md` (the path figure, what each issue entails) and
   `figures/` — commit it to `epic/<name>`, open the **never-merged** epic PR, and **attach it as
-  the Epic issue's Linear document** (the four files in reading order, figures as links to the
-  branch). Return the epic issue ID + epic PR link. Do **not** approve the objective yourself —
+  the Epic issue's Linear document** (the four files in reading order, figures and every
+  cross-document link rewritten to the branch — `epic-spec-template.md` → "Publishing and
+  mirroring"). Return the epic issue ID + epic PR link. Do **not** approve the objective yourself —
   you surface it; the coordinator takes it to the human for the sign-off, which is an
   **approving comment or GitHub Review** on the epic PR, **or the owner's own `epic approved`
   label**. Nobody but the owner applies that label — not you, not the coordinator.

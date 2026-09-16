@@ -632,7 +632,10 @@ labelled illustrative. **Real code belongs on the spec branch** as a POC
 The directory is committed to `spec/<ISSUE-ID>` and opened as the spec PR. The Linear document
 attached to the issue is **the four files in reading order** — `SPEC`, `DECISIONS`,
 `BUSINESS-RULES`, `PLAN` — under their own H1s, with every figure line replaced by a link to the
-file on the retained branch (`https://github.com/<owner>/<repo>/blob/spec/<ISSUE-ID>/spec/<ISSUE-ID>/figures/<name>.svg`).
-Linear renders neither `<details>` nor a repo-relative image, so the document carries links and
-the ordering carries the fold. Every edit to the branch is mirrored in the same change set; the
+file on the retained branch (`https://github.com/<owner>/<repo>/blob/spec/<ISSUE-ID>/spec/<ISSUE-ID>/figures/<name>.svg`)
+and **every cross-document link rewritten the same way** — `DECISIONS.md#d2` becomes
+`https://github.com/<owner>/<repo>/blob/spec/<ISSUE-ID>/spec/<ISSUE-ID>/DECISIONS.md#d2`, since in
+one concatenated document a relative sibling path addresses nothing. Linear renders neither
+`<details>` nor a repo-relative image, so the document carries links and the ordering carries
+the fold. Every edit to the branch is mirrored in the same change set; the
 Linear copy is the one that survives the PR.

@@ -415,10 +415,9 @@ How this workflow's research feeds the set:
   and every row in the people table traces to a rule and a surface, and reconcile any that
   don't (either the plan is incomplete or the spec overpromised — fix it). `SPEC.md` stays
   a *promise* the plan keeps, not an outline of it.
-- **The figures are drawn, rendered and looked at before publishing.** The *what changes*
-  figure is not optional; the rest are drawn where position carries the meaning
-  ([`spec-figures.md`](../../../docs/contributing/spec-figures.md)). Every figure gets its
-  sentence. Run the verify block there before Step 6.
+- **The figures are drawn here; Step 6 renders and verifies them once before publishing.**
+  The *what changes* figure is not optional; the rest are drawn where position carries the
+  meaning ([`spec-figures.md`](../../../docs/contributing/spec-figures.md)).
 
 ### Step 5: Validate the Spec
 
@@ -518,7 +517,7 @@ Publish the **full set** in two places that must hold the same content: the dire
 
    **`<details>` belongs in the PR body, not in the spec documents.** The set is mirrored to a Linear document, which renders the tag as raw HTML; the split into four documents is already its fold.
 
-4. **Publish to Linear.** Check for an existing spec document on the issue: `update_document` if one exists, else `create_document` linked to the issue — the four files in reading order under their own H1s, every figure line replaced by a link to the file on the branch (`spec-template.md` → "Publishing and mirroring").
+4. **Publish to Linear.** Check for an existing spec document on the issue: `update_document` if one exists, else `create_document` linked to the issue — the four files in reading order under their own H1s, every figure line and every cross-document link (`DECISIONS.md#d2`) rewritten to the file on the branch (`spec-template.md` → "Publishing and mirroring").
 
 5. **Update issue relations and comment**:
    - Add/update dependency relations discovered during research (`save_issue` with `blockedBy` / `blocks`).
