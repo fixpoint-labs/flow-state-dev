@@ -1,0 +1,91 @@
+<svg viewBox="0 0 940 230" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A grid of the built-in worker's nine options, five the app supplies and four a worker declares, in two rows: what the reference documents today and what it documents after. Today three cells are documented and six are missing. After, all nine are documented; the three classifier-related cells carry a marker saying documented but not promoted.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B; --rule:#D5D4CB;
+            --accent:#3E4E8C; --code:#2C7C69; --code-soft:#DCEDE7; --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F3DEDC; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81; --rule:#2B3135;
+              --accent:#8B9BD8; --code:#5DBBA1; --code-soft:#14302A; --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1F1E; } }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-xs { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; letter-spacing:.04em; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .f-code{ fill:var(--code); } .f-gone{ fill:var(--gone); } .f-prose{ fill:var(--prose); }
+    .c-doc { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .c-miss{ fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .c-quiet{ fill:var(--surface); stroke:var(--code); stroke-width:1.2; }
+    .grp   { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:3 3; }
+  </style>
+
+  <text class="t-lbl" x="40" y="28">THE REFERENCE · 9 OPTIONS · what the page says exists</text>
+
+  <g id="headers">
+    <rect class="grp" x="180" y="40" width="384" height="20" rx="3"/>
+    <text class="t-xs" x="188" y="54">APP SUPPLIES · AgentWorkerFlowOptions</text>
+    <rect class="grp" x="576" y="40" width="324" height="20" rx="3"/>
+    <text class="t-xs" x="584" y="54">WORKER DECLARES · its own file</text>
+    <text class="t-xs" x="184" y="80">catalog</text>
+    <text class="t-xs" x="260" y="80">skills</text>
+    <text class="t-xs" x="336" y="80">model</text>
+    <text class="t-xs" x="412" y="70">classifier</text>
+    <text class="t-xs" x="412" y="80">Model</text>
+    <text class="t-xs" x="488" y="70">confidence</text>
+    <text class="t-xs" x="488" y="80">Threshold</text>
+    <text class="t-xs" x="580" y="80">instructions</text>
+    <text class="t-xs" x="660" y="80">model</text>
+    <text class="t-xs" x="740" y="80">tools</text>
+    <text class="t-xs" x="820" y="70">skills.enable</text>
+    <text class="t-xs" x="820" y="80">LlmClassifier</text>
+  </g>
+
+  <g id="today">
+    <text class="t-s" x="40" y="106">today</text>
+    <text class="t-xs f-gone" x="40" y="118">"3 settings + a switch"</text>
+    <rect class="c-miss" x="180" y="88" width="70" height="30" rx="3"/>
+    <rect class="c-miss" x="256" y="88" width="70" height="30" rx="3"/>
+    <rect class="c-miss" x="332" y="88" width="70" height="30" rx="3"/>
+    <rect class="c-miss" x="408" y="88" width="70" height="30" rx="3"/>
+    <rect class="c-miss" x="484" y="88" width="70" height="30" rx="3"/>
+    <rect class="c-doc"  x="576" y="88" width="76" height="30" rx="3"/>
+    <rect class="c-doc"  x="656" y="88" width="76" height="30" rx="3"/>
+    <rect class="c-doc"  x="736" y="88" width="76" height="30" rx="3"/>
+    <rect class="c-miss" x="816" y="88" width="84" height="30" rx="3"/>
+    <text class="t-xs" x="188" y="107">missing</text>
+    <text class="t-xs" x="264" y="107">missing</text>
+    <text class="t-xs" x="340" y="107">missing</text>
+    <text class="t-xs" x="416" y="107">missing</text>
+    <text class="t-xs" x="492" y="107">missing</text>
+    <text class="t-xs f-code" x="584" y="107">listed</text>
+    <text class="t-xs f-code" x="664" y="107">listed</text>
+    <text class="t-xs f-code" x="744" y="107">listed</text>
+    <text class="t-xs" x="824" y="107">"a switch"</text>
+  </g>
+
+  <g id="after">
+    <text class="t-s" x="40" y="156">after</text>
+    <text class="t-xs f-code" x="40" y="168">all 9 · emphasis kept</text>
+    <rect class="c-doc"   x="180" y="138" width="70" height="30" rx="3"/>
+    <rect class="c-doc"   x="256" y="138" width="70" height="30" rx="3"/>
+    <rect class="c-doc"   x="332" y="138" width="70" height="30" rx="3"/>
+    <rect class="c-quiet" x="408" y="138" width="70" height="30" rx="3"/>
+    <rect class="c-quiet" x="484" y="138" width="70" height="30" rx="3"/>
+    <rect class="c-doc"   x="576" y="138" width="76" height="30" rx="3"/>
+    <rect class="c-doc"   x="656" y="138" width="76" height="30" rx="3"/>
+    <rect class="c-doc"   x="736" y="138" width="76" height="30" rx="3"/>
+    <rect class="c-quiet" x="816" y="138" width="84" height="30" rx="3"/>
+    <text class="t-xs f-code" x="188" y="157">listed</text>
+    <text class="t-xs f-code" x="264" y="157">listed</text>
+    <text class="t-xs f-code" x="340" y="157">listed</text>
+    <text class="t-xs" x="416" y="157">quiet</text>
+    <text class="t-xs" x="492" y="157">quiet</text>
+    <text class="t-xs f-code" x="584" y="157">listed</text>
+    <text class="t-xs f-code" x="664" y="157">listed</text>
+    <text class="t-xs f-code" x="744" y="157">listed</text>
+    <text class="t-xs" x="824" y="157">quiet</text>
+  </g>
+
+  <g id="legend">
+    <rect class="c-doc" x="40" y="196" width="12" height="12" rx="2"/><text class="t-xs" x="58" y="206">documented</text>
+    <rect class="c-quiet" x="150" y="196" width="12" height="12" rx="2"/><text class="t-xs" x="168" y="206">quiet = documented, not promoted · classifier off by default</text>
+    <rect class="c-miss" x="560" y="196" width="12" height="12" rx="2"/><text class="t-xs" x="578" y="206">not on the page · a reader goes to source</text>
+  </g>
+</svg>

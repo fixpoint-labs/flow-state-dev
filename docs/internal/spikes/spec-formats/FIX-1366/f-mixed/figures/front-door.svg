@@ -1,0 +1,91 @@
+<svg viewBox="0 0 940 380" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two wireframes of the Workforce docs. Today: the Overview page's first example is a kinds map naming worker-agent, and the built-in worker is taught two-thirds down a different page, Workers on disk, with no link between them. After: the Overview's first example is a hire with no kinds, a callout names the built-in and says it has no memory, and an anchor link points into the same section on Workers on disk, which has grown to list all nine options. The sidebar is unchanged in both.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B; --rule:#D5D4CB;
+            --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81; --rule:#2B3135;
+              --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .t-b  { fill:var(--ink);   font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-weight:600; font-size:12px; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-xs { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; letter-spacing:.04em; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .f-accent{ fill:var(--accent); } .f-code{ fill:var(--code); } .f-gone{ fill:var(--gone); } .f-prose{ fill:var(--prose); }
+    .page  { fill:var(--surface);   stroke:var(--rule); stroke-width:1.2; }
+    .side  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .blk   { fill:var(--surface-2); stroke:none; }
+    .blk-gone { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .blk-new  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .blk-thin { fill:none; stroke:var(--prose); stroke-width:1; stroke-dasharray:3 3; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.1; fill:none; }
+    .ln-anchor{ stroke:var(--code); stroke-width:1.6; fill:none; }
+    .ln-none  { stroke:var(--gone); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--code)"/>
+    </marker>
+  </defs>
+
+  <g id="today">
+    <text class="t-lbl" x="40" y="28">TODAY</text>
+    <rect class="page" x="40" y="40" width="400" height="150" rx="5"/>
+    <rect class="side" x="40" y="40" width="96" height="150" rx="5"/>
+    <text class="t-xs" x="50" y="60">WORKFORCE</text>
+    <text class="t-s f-accent" x="50" y="78">Overview</text>
+    <text class="t-s" x="50" y="94">Workers on disk</text>
+    <text class="t-s" x="50" y="110">Channels</text>
+    <text class="t-b" x="150" y="62">Overview · Hire a roster</text>
+    <rect class="blk" x="150" y="72" width="270" height="8" rx="2"/>
+    <rect class="blk-gone" x="150" y="88" width="270" height="44" rx="3"/>
+    <text class="t-s" x="158" y="103">hireWorkforce({ kinds: {</text>
+    <text class="t-s f-prose" x="158" y="117">  "worker-agent": workerAgentFlow } })</text>
+    <text class="t-xs f-prose" x="150" y="148">first example: a kinds map is the required step</text>
+    <text class="t-xs f-gone" x="150" y="162">the placeholder reads like the shipped default</text>
+    <text class="t-xs f-gone" x="150" y="178">the built-in is never mentioned</text>
+
+    <rect class="page" x="40" y="220" width="400" height="140" rx="5"/>
+    <text class="t-b" x="52" y="242">Workers on disk</text>
+    <rect class="blk" x="52" y="252" width="376" height="6" rx="2"/>
+    <rect class="blk" x="52" y="264" width="376" height="6" rx="2"/>
+    <rect class="blk" x="52" y="276" width="376" height="6" rx="2"/>
+    <text class="t-xs" x="52" y="300">… line 258, two-thirds down a page about the file format …</text>
+    <rect class="blk-thin" x="52" y="308" width="376" height="40" rx="3"/>
+    <text class="t-s" x="60" y="323">The worker you get without writing one</text>
+    <text class="t-xs f-prose" x="60" y="338">good prose · says 3 settings, API has 5 + 4</text>
+    <path class="ln-none" d="M300,190 L300,218"/>
+    <text class="t-xs f-gone" x="308" y="208">no link</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="500" y="28">AFTER</text>
+    <rect class="page" x="500" y="40" width="400" height="150" rx="5"/>
+    <rect class="side" x="500" y="40" width="96" height="150" rx="5"/>
+    <text class="t-xs" x="510" y="60">WORKFORCE</text>
+    <text class="t-s f-accent" x="510" y="78">Overview</text>
+    <text class="t-s" x="510" y="94">Workers on disk</text>
+    <text class="t-s" x="510" y="110">Channels</text>
+    <text class="t-xs" x="510" y="180">sidebar unchanged</text>
+    <text class="t-b" x="610" y="62">Overview · Hire a roster</text>
+    <rect class="blk" x="610" y="72" width="270" height="8" rx="2"/>
+    <rect class="blk-new" x="610" y="88" width="270" height="30" rx="3"/>
+    <text class="t-s" x="618" y="107">hireWorkforce({ dir })      ← no kinds</text>
+    <rect class="blk-new" x="610" y="124" width="270" height="30" rx="3"/>
+    <text class="t-s f-code" x="618" y="136">This is the built-in worker. It has no memory.</text>
+    <text class="t-s f-code" x="618" y="149">→ the full reference</text>
+    <text class="t-xs" x="610" y="172">then: kinds, for a kind of your own</text>
+    <text class="t-xs" x="610" y="184">example kind shown as custom-agent</text>
+
+    <rect class="page" x="500" y="220" width="400" height="140" rx="5"/>
+    <text class="t-b" x="512" y="242">Workers on disk</text>
+    <rect class="blk" x="512" y="252" width="376" height="6" rx="2"/>
+    <rect class="blk" x="512" y="264" width="376" height="6" rx="2"/>
+    <rect class="blk-new" x="512" y="280" width="376" height="68" rx="3"/>
+    <text class="t-s" x="520" y="296">The worker you get without writing one</text>
+    <text class="t-xs" x="520" y="310">same heading · same prose · grown where thin:</text>
+    <text class="t-xs f-code" x="520" y="324">5 app options · 4 worker settings · tools: fence + its hole</text>
+    <text class="t-xs" x="520" y="338">no memory line stays · factory replacement stays</text>
+    <path class="ln-anchor" d="M880,140 L892,140 L892,206 L700,206 L700,278" marker-end="url(#ah)"/>
+    <text class="t-xs f-code" x="708" y="218">anchor link</text>
+  </g>
+</svg>

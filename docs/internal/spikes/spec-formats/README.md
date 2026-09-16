@@ -81,6 +81,35 @@ Prose words, fenced blocks excluded. B's diagrams and D's diff blocks are **not*
 
 **Cost of being wrong: low.** These are templates. A bad pick costs one issue's spec written twice.
 
+## Round 2 · the mixed set
+
+Feedback on round 1, in one line each: the SVG POC is the clearest thing here and belongs in the docs, with a short description under each and a mermaid companion where it helps. The journey spec and PR body work. The explainer's real job is the decision record. The form is out, but a rules document that lays the logic cases out for a human is in. The plan is for the LLM, so its shape should be whatever the LLM reads best.
+
+**The set**, in `FIX-1362/f-mixed/` and `FIX-1366/f-mixed/`:
+
+| File | Job | Reader | Carries |
+|---|---|---|---|
+| `PR.md` | Decide whether to open the rest | Product owner | People table · one SVG by absolute raw URL · sign-off lines · look here |
+| `SPEC.md` | What changes, for whom | Product owner | People table · SVGs with a description each · a `diff` of the file-shaped surface · one mermaid for mechanism · sign-off lines linking into the decisions |
+| `DECISIONS.md` | Considered vs chosen, why, locks in, how it evolved | Product owner, then the implementer | Decision tree · a card per decision with its figure · decided-not-asked · dropped alternatives · the round-by-round story |
+| `BUSINESS-RULES.md` | The logic cases, as rules a human reviews | Product owner and implementer | Numbered `BR-n` rows: when → then → proved by · the fence and refresh figures · a mermaid *fix or leave* where a sweep needs a stop rule |
+| `PLAN.md` | Build it | The implementing agent | Surfaces with IDs and the `BR-n` each serves · a mermaid DAG · checks · pinned names · guardrails with a *because* · at-implement-time |
+
+**On the plan, since the plan is for the LLM.** Three things matter more to an implementing agent than to a person. **Identifiers it can cite**: a `BR-13` it can name in a test description and a PR body beats a paragraph it has to paraphrase. **A dependency graph as text**: mermaid source is structured text an LLM reads directly, so the DAG stays mermaid; an SVG is coordinates to it, so the plan carries none. **Rules with a reason**: a guardrail with a *because* column is followed more reliably than a bare imperative, and it lets the agent recognise when the reason no longer holds. The plan in the mixed set is C's tables with B's DAG and a `because` on every guardrail. What it drops: prose, the people table, every figure.
+
+**Where the figures went.** Each SVG sits with the document that owns its concept: the drawers and the cost stacks in the spec (what changes, what it costs), the layers and refresh grid in the decisions (D1 and D3), the fence in the rules with its mermaid companion beside it, and none in the plan. FIX-1366 got two new figures where position is the content: a before/after wireframe of the front door with the anchor drawn, and a nine-cell coverage grid of the reference.
+
+**The PR-body test.** PR #1784's own description now embeds one figure by its `raw.githubusercontent.com` URL, and the two `PR.md` files do the same. The URL serves as `image/svg+xml`, which is what GitHub's image proxy needs. One limit to know: an image responds to the *operating system's* colour scheme, not GitHub's theme setting, so a reader running GitHub dark on an OS set to light sees the light figure. Read the PR on GitHub to confirm it renders; that's the one check this session can't run.
+
+**Measured** (prose words, fences excluded):
+
+| | PR | Spec | Decisions | Rules | Plan | Spec + decisions + rules + plan | vs today | Figures |
+|---|---|---|---|---|---|---|---|---|
+| FIX-1362 · mixed | 387 | 617 | 777 | 963 | 968 | 3,325 | 4,536 · **73%** | 5 SVG · 4 mermaid |
+| FIX-1366 · mixed | 359 | 547 | 875 | 810 | 662 | 2,894 | 5,545 · **52%** | 2 SVG · 3 mermaid |
+
+**Read that number honestly.** The mixed set is the longest rewrite in the spike, at roughly three-quarters of the original on the code spec. It's four documents instead of one, and the rules document alone is nearly a thousand words because it says every case once. What changed isn't the total; it's that no reader reads all of it. The product owner reads the PR and the spec (about 1,000 words plus four pictures) and opens the decisions when a sign-off line isn't obvious. The implementer reads the rules and the plan. The rules are the one document both open. If the goal is a shorter *corpus*, this isn't it. If the goal is that nobody reads a book, it is.
+
 ## If a shape is picked, what changes
 
 1. `docs/contributing/spec-template.md` → two files: a spec template and a plan template, with the budgets above.
