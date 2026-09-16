@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 382" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path: thirteen lanes against time from September 11 to a now line at September 16, with everything after it unscheduled. Done bars: the kinds fence and skills on September 11, ChannelFlow from September 12 to 14, channels and resources from September 11 to 16, and one atlas page on September 12. Ahead of the now line: the WorkerConfig admission is ready and not started; the boot scan, the atlas remainder, worker resources, TEAM.md, Door B and the loader extract are unscheduled; the pentest lab Proof is last and required. The critical path is marked in the gutter and runs from the kinds fence through ChannelFlow and the channels convention to the lab.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .done  { fill:var(--code); stroke:none; }
+    .todo  { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .ready { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .lane  { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
+    .axis  { stroke:var(--rule); stroke-width:1; }
+    .now   { stroke:var(--gone); stroke-width:1.4; }
+    .crit  { fill:none; stroke:var(--ink-3); stroke-width:1.2; }
+    .critd { fill:var(--ink-3); stroke:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-ln  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.06em; }
+  </style>
+
+  <text class="t-lbl" x="16" y="20">THE PATH — ONE LANE PER ISSUE, AGAINST TIME</text>
+
+  <g id="axis">
+    <path class="axis" d="M200 46 L924 46"/>
+    <text class="t-s" x="200" y="38">Sep 11</text>
+    <text class="t-s" x="272" y="38">Sep 12</text>
+    <text class="t-s" x="416" y="38">Sep 14</text>
+    <text class="t-now" x="566" y="38">now · Sep 16</text>
+    <text class="t-s" x="700" y="38">ahead · nothing scheduled</text>
+  </g>
+
+  <g id="critical-path">
+    <path class="crit" d="M188 67 L188 331"/>
+    <circle class="critd" cx="188" cy="67" r="3.2"/>
+    <circle class="critd" cx="188" cy="111" r="3.2"/>
+    <circle class="critd" cx="188" cy="133" r="3.2"/>
+    <circle class="critd" cx="188" cy="331" r="3.2"/>
+  </g>
+
+  <g id="lanes-done">
+    <text class="t-ln" x="16" y="70">FIX-1342 kinds fence</text>
+    <rect class="done" x="200" y="61" width="30" height="12" rx="2"/>
+    <text class="t-ln" x="16" y="92">FIX-1356 skills</text>
+    <rect class="done" x="200" y="83" width="30" height="12" rx="2"/>
+    <text class="t-ln" x="16" y="114">FIX-1311 ChannelFlow</text>
+    <rect class="done" x="272" y="105" width="144" height="12" rx="2"/>
+    <text class="t-ln" x="16" y="136">FIX-1352 channels</text>
+    <rect class="done" x="200" y="127" width="360" height="12" rx="2"/>
+    <text class="t-ln" x="16" y="158">FIX-1354 resources</text>
+    <rect class="done" x="200" y="149" width="360" height="12" rx="2"/>
+  </g>
+
+  <g id="lanes-ahead">
+    <text class="t-ln" x="16" y="180">FIX-1367 admission</text>
+    <path class="lane" d="M572 175 L924 175"/>
+    <rect class="ready" x="576" y="171" width="104" height="12" rx="2"/>
+    <text class="t-s" x="692" y="180">ready, not started</text>
+
+    <text class="t-ln" x="16" y="202">FIX-1357 boot scan</text>
+    <path class="lane" d="M572 197 L924 197"/>
+
+    <text class="t-ln" x="16" y="224">FIX-1358 atlas</text>
+    <rect class="done" x="272" y="215" width="30" height="12" rx="2"/>
+    <path class="lane" d="M572 219 L924 219"/>
+
+    <text class="t-ln" x="16" y="246">FIX-1368 worker resources</text>
+    <path class="lane" d="M572 241 L924 241"/>
+
+    <text class="t-ln" x="16" y="268">FIX-1377 TEAM.md</text>
+    <path class="lane" d="M572 263 L924 263"/>
+
+    <text class="t-ln" x="16" y="290">FIX-1388 resources Door B</text>
+    <path class="lane" d="M572 285 L924 285"/>
+
+    <text class="t-ln" x="16" y="312">FIX-1389 loader extract</text>
+    <path class="lane" d="M572 307 L924 307"/>
+
+    <text class="t-ln" x="16" y="334">FIX-1355 lab Proof</text>
+    <path class="lane" d="M572 329 L748 329"/>
+    <rect class="todo" x="748" y="325" width="176" height="12" rx="2"/>
+    <text class="t-s" x="758" y="334">required — the epic ends here</text>
+  </g>
+
+  <path class="now" d="M560 50 L560 346"/>
+
+  <g id="legend">
+    <rect class="done" x="200" y="360" width="16" height="10" rx="2"/>
+    <text class="t-s" x="224" y="369">done</text>
+    <rect class="ready" x="300" y="359" width="16" height="12" rx="2"/>
+    <text class="t-s" x="324" y="369">ready, nothing blocks it</text>
+    <rect class="todo" x="486" y="359" width="16" height="12" rx="2"/>
+    <text class="t-s" x="510" y="369">not started</text>
+    <circle class="critd" cx="608" cy="365" r="3.2"/>
+    <path class="crit" d="M608 359 L608 371"/>
+    <text class="t-s" x="624" y="369">on the critical path to the proof</text>
+  </g>
+</svg>
