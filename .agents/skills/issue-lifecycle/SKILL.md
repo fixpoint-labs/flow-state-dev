@@ -48,7 +48,7 @@ On each invocation, reconstruct the phase from a **small** read:
   **The load-bearing spec-PR signal is the approval:** an **approving comment or GitHub
     Review from a human** on the spec PR (from the PR's
     comments — `pull_request_read` `get_comments` — or its reviews — `get_reviews`) — the
-    human's durable sign-off on the full spec (Part I + Part II): either a comment saying "approved" authored
+    human's durable sign-off on the full spec set (the four documents): either a comment saying "approved" authored
     by a human (not a bot, not a bot-authored comment), or a Review whose **latest state is
     `APPROVED` on the current head** authored by a human who is not the PR's own author (GitHub
     already blocks a PR author from approving their own PR, but check `review.user != pr.user`
@@ -85,7 +85,7 @@ On each invocation, reconstruct the phase from a **small** read:
   taken, the **spec-review round count** (see the convergence budget below), the
   **PR-feedback round count** (`prFeedbackRounds` — see the cap below), and any
   **in-flight or settled claim** (`settling: <claim> · poc: in-flight | <verdict>` — see POC
-  settlement below; a settled claim's evidence lives in the spec's §12, not here). A few
+  settlement below; a settled claim's evidence lives in the spec's `DECISIONS.md`, not here). A few
   lines. Update it at the end of every step. It is a cache of handles,
   not a log of content.
 
@@ -133,8 +133,8 @@ boundary. The gate is the only place a human blocks; once it opens, keep moving.
 
 | Phase (derived) | Next bounded action | Then |
 |---|---|---|
-| **NEEDS_SPEC** — spec route, no spec yet *(a direct-route issue skips this row and the next)* | Dispatch a sub-agent: *run `issue-spec <issue>`*. It researches, drafts **Part I ("The Case") and Part II ("The Build Plan")**, opens the spec PR **ready for review**, and returns Part I + open questions + spec PR link, then exits. | Surface Part I + the spec PR to the user for review; record handles; end turn → AWAITING_SPEC_APPROVAL. |
-| **AWAITING_SPEC_APPROVAL** — spec PR is open (Part I + II) | On a **spec-PR review event**, *and only while the round budget allows* (see below): dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch (triage against the bar, fold spec-level findings, record the rest as §13 notes, escalate direction forks), returns what changed + rounds actually spent + whether anything was spec-level, exits; add the **rounds it reports spent** to the count (not one per event — see below). When **approval lands** on the spec PR — an approving human comment, a Review whose latest state is `APPROVED` on the current head (human, not a bot, not the PR's own author), **or the `spec approved` label, attributed to the owner** (see [Waking](#waking) — presence alone is not the test); see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates. A human `CHANGES_REQUESTED` withholds the gate whichever channel approved. Do NOT apply the label yourself — it is the owner's signal, not a record you write: **close the spec PR** per [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Closing the spec PR" (mirror Linear from the branch head, close unmerged, **never delete the branch**) — *unless a POC settlement on a load-bearing claim is still in flight, in which case leave it open until the verdict lands* (see POC settlement below; this defers cleanup only, never implementation) — and — **without ending the turn** — proceed straight into NEEDS_IMPLEMENTATION and dispatch implementation. The approval is the release; nothing external separates approved from implementing. If the user conveys sign-off **in-session** instead of commenting or reviewing, that in-session sign-off satisfies the gate identically (the comment/review channel exists only for the *async* wake; a live "approved" needs none) — record it as `approvedInSession` (the head SHA they approved) and proceed the same way; do not apply the label. | **Chain into NEEDS_IMPLEMENTATION in the same wake** — do not end the turn on the approval. (While *unapproved*, end the turn and wait: **human sign-off** — an approving comment/review or an in-session "approved" — is the one required gate in; don't implement without one.) |
+| **NEEDS_SPEC** — spec route, no spec yet *(a direct-route issue skips this row and the next)* | Dispatch a sub-agent: *run `issue-spec <issue>`*. It researches, drafts **the four documents and the figures** (`SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`), opens the spec PR **ready for review**, and returns the sign-off lines + open questions + spec PR link, then exits. | Surface the sign-off lines + the spec PR to the user for review; record handles; end turn → AWAITING_SPEC_APPROVAL. **Under an epic**, this transition is what the wake's epic-spec refresh reads — report it accurately. |
+| **AWAITING_SPEC_APPROVAL** — spec PR is open (the four documents) | On a **spec-PR review event**, *and only while the round budget allows* (see below): dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch (triage against the bar, fold spec-level findings, record the rest in `PLAN.md → Notes from review`, escalate direction forks), returns what changed + rounds actually spent + whether anything was spec-level, exits; add the **rounds it reports spent** to the count (not one per event — see below). When **approval lands** on the spec PR — an approving human comment, a Review whose latest state is `APPROVED` on the current head (human, not a bot, not the PR's own author), **or the `spec approved` label, attributed to the owner** (see [Waking](#waking) — presence alone is not the test); see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates. A human `CHANGES_REQUESTED` withholds the gate whichever channel approved. Do NOT apply the label yourself — it is the owner's signal, not a record you write: **close the spec PR** per [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Closing the spec PR" (mirror Linear from the branch head, close unmerged, **never delete the branch**) — *unless a POC settlement on a load-bearing claim is still in flight, in which case leave it open until the verdict lands* (see POC settlement below; this defers cleanup only, never implementation) — and — **without ending the turn** — proceed straight into NEEDS_IMPLEMENTATION and dispatch implementation. The approval is the release; nothing external separates approved from implementing. If the user conveys sign-off **in-session** instead of commenting or reviewing, that in-session sign-off satisfies the gate identically (the comment/review channel exists only for the *async* wake; a live "approved" needs none) — record it as `approvedInSession` (the head SHA they approved) and proceed the same way; do not apply the label. | **Chain into NEEDS_IMPLEMENTATION in the same wake** — do not end the turn on the approval. (While *unapproved*, end the turn and wait: **human sign-off** — an approving comment/review or an in-session "approved" — is the one required gate in; don't implement without one.) |
 | **NEEDS_IMPLEMENTATION** — spec approved, **or** a direct-route (bug) issue, which enters here | **Single-PR (default):** dispatch a sub-agent to *run `issue-implement <issue>`* — implements on `fix/<ISSUE>` (the spec PR was already closed at the approval gate; `issue-implement` skips the close when it finds it already closed, and a bug has none to close), runs `review`, opens the impl PR, returns summary + key decisions + PR link, exits. **A direct-route worker that finds no reproduction, or finds the "bug" is really a feature, returns `specRequired` instead of building** — that re-routes the issue to `NEEDS_SPEC`. A design *decision* found mid-diagnosis is not that: it ships with the fix and is surfaced on the PR. **Multi-PR (the spec declares a PR plan):** advance the plan by one bounded step via the **`issue-multi-pr` workflow** — see [Multi-PR issues](#multi-pr-issues-pr-plan) below. | Record impl PR#(s); subscribe; end turn → PR_FEEDBACK. |
 | **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR, *and only while the round cap allows* (see below): dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit; add the rounds it reports spent to `prFeedbackRounds`. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
 | **DONE** — impl PR merged **and** (multi-PR) the assembled goal passed | none | Update the cache to DONE; report completion. |
@@ -185,8 +185,8 @@ to make room for — the opposite of the point. Then:
 
 - **Rounds 1–2** — dispatch Step 6.5 on the event batch as normal.
 - **Round 2 returns** — the spec has **converged**. Surface it to the user for the approval
-  gate, stating that it's converged and that remaining open threads are carried as §13
-  implementer notes. Then **stop dispatching review rounds**; further spec-PR review events
+  gate, stating that it's converged and that remaining open threads are carried as
+  implementer notes in the plan. Then **stop dispatching review rounds**; further spec-PR review events
   are logged in the cache and ignored until the gate resolves. The only event that still
   acts is a **human** one — an approving comment/review (the gate), or the user asking for
   a specific change.
@@ -197,8 +197,8 @@ to make room for — the opposite of the point. Then:
 
 Three things make stopping safe, all canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review": the spec
-PR is never merged so open threads gate nothing; below-the-bar feedback is preserved in §13
-and reaches the implementer; and implementation re-reviews the design against real code.
+PR is never merged so open threads gate nothing; below-the-bar feedback is preserved in
+`PLAN.md → Notes from review` and reaches the implementer; and implementation re-reviews the design against real code.
 **A bot `CHANGES_REQUESTED` neither holds the gate nor extends the budget.**
 
 The counter resets only if the *user* asks for a spec-level change after convergence — that
@@ -274,7 +274,7 @@ Four things are the orchestrator's:
   verdict lands**, so a `REFUTED` verdict still has a live artifact and thread to fold into.
   Closing it is cleanup, not a precondition for implementing, and the deferral has to be passed
   *down*: `issue-implement` Step 3 otherwise closes every open spec PR itself, so the
-  `(POC in flight)` marker in §12 is what tells it to leave this one alone. (Already closed?
+  `(POC in flight)` marker in `DECISIONS.md` is what tells it to leave this one alone. (Already closed?
   The Linear document is canonical from then on; fold there — or re-open the PR if the fold
   genuinely needs the thread back, since the branch is retained.) **Then close it once the
   verdict is recorded** — a deferred PR left open forever is an obsolete artifact you keep
@@ -294,6 +294,16 @@ Four things are the orchestrator's:
   `INCONCLUSIVE` would be the worst of both: implementation continuing on an unresolved premise
   with no live artifact to correct it, and the one outcome that most needs a human left with
   nowhere to land.
+
+## Under an epic, your transitions move the epic spec
+
+Every phase transition this lifecycle reports — spec PR opened, approval detected, impl PR
+opened, merged — is what the epic coordinator's wake reads to refresh the epic-spec's set
+table, its dependency graph and its path figure, and to re-pin the epic PR body
+(`epic-lifecycle` → the loop; `epic-spec-template.md` → "What refreshes, and when"). You never
+edit the epic spec yourself; you owe the wake an accurate phase and the PR handles, in the
+status line, on the wake the transition happened. A transition reported late reads on the epic
+PR as an issue that stalled.
 
 ## Linear status is a mirror you own
 
@@ -338,7 +348,7 @@ assembled goal has passed** (a spec PR never counts). If these IDs ever stop res
 ## Multi-PR issues (PR plan)
 
 When the spec declares a **PR plan** (a DAG of sub-PRs — `issue-spec` Large
-issues, Part II §8), the `NEEDS_IMPLEMENTATION` and `PR_FEEDBACK` phases generalize
+issues, `PLAN.md → Sequence`), the `NEEDS_IMPLEMENTATION` and `PR_FEEDBACK` phases generalize
 from one PR to the plan. The single spec-approval up front covers the whole plan; you
 still stop before merge on each sub-PR.
 

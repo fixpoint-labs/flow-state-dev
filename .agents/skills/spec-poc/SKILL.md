@@ -44,8 +44,8 @@ and "the shape is obvious" is a complete reason to skip (tenet 3 — earn every 
    cheaper than after.
 2. **The composition is novel** — a block/pattern/capability arrangement with no precedent
    in the repo, where prose describes it but nobody can tell if it holds together.
-3. **The ergonomics only become visible in code.** Part I §5's usage examples looked fine
-   and you don't believe them.
+3. **The ergonomics only become visible in code.** The diff in `SPEC.md` looked fine and you
+   don't believe it.
 4. **It has a look.** Any devtool, renderer, or kitchen-sink surface where the reviewer's
    real question is *what does it look like* — a question no paragraph answers.
 5. **Two shapes are genuinely in contention** and side-by-side would settle it → build
@@ -60,7 +60,8 @@ and "the shape is obvious" is a complete reason to skip (tenet 3 — earn every 
    end state — rough, unshipped, all the issues' surfaces together — and look at it.
 
 **Not a trigger:** wanting to start coding, a reviewer asking for more detail (that's
-depth-pulled prose, or a §13 note), or a claim asserted once (answer it in the thread).
+depth-pulled prose, or a review note in the plan), or a claim asserted once (answer it in the
+thread).
 
 ## The four kinds
 
@@ -82,7 +83,7 @@ a `goals/` entry — see "Exit".
 ### 2. Shape POC — write the solution out
 
 Sketch source files showing the composition: the real block kinds, the real seams, enough
-wiring to see whether it hangs together. Not the spec's *pseudocode* sketch (§7, which is
+wiring to see whether it hangs together. Not the plan's *pseudocode* sketch (which is
 deliberately unrunnable) — this is real files that really run, on a branch where nothing
 ships.
 
@@ -115,9 +116,9 @@ division into issues hold, does one issue's deliverable make another's redundant
 seam that needs an owner named in the epic's themes.
 
 Deliberately incomplete and deliberately not per-issue-clean — it exists to be *looked at*
-and then thrown away. Summarize what it showed in the epic-spec's **§3 Shape of the whole**
-(four lines: built · see it · showed · changed) and delete nothing until the objective gate
-has passed.
+and then thrown away. Summarize what it showed in the epic-spec's `DECISIONS.md` → **What the
+end-state POC showed** (four lines: built · see it · showed · changed) and delete nothing until
+the objective gate has passed.
 
 ## Variants — when the fork is contested
 
@@ -134,8 +135,8 @@ arguing. Four rules, and the second is the one that gets broken:
    differently, what each is better at, what each costs, and the **question the choice turns
    on**. Not a recommendation-free dump — say which you'd pick and why, then let it be
    argued with.
-4. **The chosen variant becomes a numbered §6 Decision** in the spec, citing the POC. A
-   variant comparison that doesn't end in a Decision was a tour, not a fork.
+4. **The chosen variant becomes a decision card** in `DECISIONS.md`, citing the POC. A
+   variant comparison that doesn't end in a decision was a tour, not a fork.
 
 **Two or three — deliberately tighter than [`prototype`](../prototype/SKILL.md)'s UI default of
 3 (cap 5).** Not drift: every variant here is a published artifact a reviewer has to open and
@@ -197,23 +198,23 @@ Three requirements:
 3. **Say it's throwaway.** The contract block in `spec-template.md` already excludes POC
    files from review; repeating it here is cheap and it works.
 
-Then the **spec** gets the durable record: §7 points at the POC in one line and states what
-it showed; §12 records a premise it settled (with the same "resolved, don't reopen" force a
-`settle-claim` verdict has); *Spec evolution* gets a line **only if the POC moved the
-design** — `- **After POC** — <what changed>, because the run showed <what>.` At epic
-altitude the record is §3 instead.
+Then the **spec** gets the durable record: `PLAN.md`'s POC line points at the POC and states
+what it showed; `DECISIONS.md → Settled` records a premise it settled (with the same "resolved,
+don't reopen" force a `settle-claim` verdict has); *How it got here* gets a line **only if the
+POC moved the design** — `- **POC** — <what changed>, because the run showed <what>.` At epic
+altitude the record is `DECISIONS.md → What the end-state POC showed` instead.
 
 **Report a POC that changed nothing.** "Built it, the premise held, no change" is a real
-result and it belongs in §7. Only recording POCs that found problems teaches the next reader
-that a quiet POC was a failure.
+result and it belongs on the plan's POC line. Only recording POCs that found problems teaches
+the next reader that a quiet POC was a failure.
 
 ## Exit — it never merges
 
 The spec PR closes **unmerged** the moment the spec is approved, and **its branch is kept**
 (BP-037), so the POC's working life ends at the gate but its code stays reachable. **Its value
 is meant to be consumed before that point** — a POC exists to inform the gate. What survives is
-the record: the spec's §7/§12 summary, the closed PR whose diff GitHub keeps viewable, and the
-retained `spec/<ISSUE-ID>` branch. **Cite the PR** — it renders the POC with no checkout — and
+the record: the plan's POC line and the decisions' settled claims, the closed PR whose diff
+GitHub keeps viewable, and the retained `spec/<ISSUE-ID>` branch. **Cite the PR** — it renders the POC with no checkout — and
 reach for the branch when someone wants to run it.
 
 ### Building one *after* approval — re-open, don't start a second PR
@@ -223,7 +224,7 @@ on the **already-approved spec**, on the surface it already has:
 
 1. Check out the retained branch (`git fetch origin spec/<ISSUE-ID> && git checkout -B spec/<ISSUE-ID> origin/spec/<ISSUE-ID>` — never re-base it on `main`), commit the POC under `spec-poc/<ISSUE-ID>-<slug>/`, push.
 2. **Re-open the closed spec PR** (`gh pr reopen <spec-pr>`) with a comment saying what it answers and how to run it. Same PR, same review history, same reviewers.
-3. Record what it showed in §7 — **pushed to the branch** *and* mirrored to Linear. A re-opened PR is live, which is the one exception to a closed spec branch being a frozen record (BP-037); it re-freezes on close.
+3. Record what it showed on the plan's POC line — **pushed to the branch** *and* mirrored to Linear. A re-opened PR is live, which is the one exception to a closed spec branch being a frozen record (BP-037); it re-freezes on close.
 4. **Close it again, unmerged.** If the POC *changed the direction*, that fold needs fresh sign-off first: keep the PR open and escalate it as a **blocker** for the coordinator to surface. Neither phase re-gates by itself — a standing `spec approved` label survives pushes, and a row already implementing cannot return to the spec gate — so don't wait on an approval nobody will read. Whoever applies the answer folds it and closes the PR.
 
 Re-opening never re-opens the approval gate, never resumes spec review, and never merges.
@@ -239,10 +240,10 @@ What crosses the line, and how:
 
 | Outcome | Where it goes |
 |---|---|
-| **A premise it settled** | Spec §12, as resolved-with-evidence. Costs a later reviewer zero rounds to reopen. |
-| **A characterization test worth keeping** | Named in §10 as a CI spec to write, or graduated into `goals/<describe>/<it>/` properly (`goal.md` with a real anti-game field). Re-written under `tdd` on the impl branch — not copied. |
-| **The shape** | §7 cites **the spec PR URL** plus the path inside it. The PR renders the POC with no checkout, which is what a reader wants; the branch is retained too (BP-037), so reach for it when someone needs to *run* the code. The implementer starts *from* it; they don't inherit it. |
-| **A chosen variant** | A numbered §6 Decision. |
+| **A premise it settled** | `DECISIONS.md → Settled`, as resolved-with-evidence. Costs a later reviewer zero rounds to reopen. |
+| **A characterization test worth keeping** | Named in the plan's checks as a CI spec to write, or graduated into `goals/<describe>/<it>/` properly (`goal.md` with a real anti-game field). Re-written under `tdd` on the impl branch — not copied. |
+| **The shape** | The plan's POC line cites **the spec PR URL** plus the path inside it. The PR renders the POC with no checkout, which is what a reader wants; the branch is retained too (BP-037), so reach for it when someone needs to *run* the code. The implementer starts *from* it; they don't inherit it. |
+| **A chosen variant** | A decision card in `DECISIONS.md`. |
 | **A refuted premise** | Fold it into the spec **before** the gate. This is the cheapest possible version of that discovery. |
 | **A framework bug it uncovered** | File it via `issue-manager`, related to the source issue. Don't let it live only in a PR description. |
 

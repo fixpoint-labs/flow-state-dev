@@ -6,7 +6,7 @@
  * wraps the body in an async function, which is why the top-level `return` below is legal.
  * Contract: `docs/contributing/orchestration.md` → "The workflow-script contract".
  *
- * When a spec declares a PR plan (`issue-spec` Part II §8), the issue's implementation is a
+ * When a spec declares a PR plan (`PLAN.md → Sequence`), the issue's implementation is a
  * DAG of sub-PRs rather than one PR. The ready set, the base each sub-PR takes, the rebase a
  * merged dependency forces, and the assembled end-to-end goal are pure procedure — canonical
  * in `issue-lifecycle` § "Multi-PR issues" and `orchestration.md` § "Worktree branching".

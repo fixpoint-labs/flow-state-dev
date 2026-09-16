@@ -76,7 +76,7 @@ jobs:
           node-version: 22
 
       # A spec PR (branch `spec/<ISSUE-ID>`) and an epic PR (branch
-      # `epic/<name>`, carrying `spec/_epics/<name>.md`) hold the in-flight spec
+      # `epic/<name>`, carrying `spec/_epics/<name>/`) hold the in-flight spec
       # by design and are never merged, so they are exempt. Keyed on the BRANCH,
       # not the `spec` label: the label is applied after the PR is created, and
       # `labeled` is not a default `pull_request` event type — a label-keyed

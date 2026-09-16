@@ -179,7 +179,7 @@ caller decides what to do with the verdict; you decide what's true.
   the human's, and no run answers it. If the claim you were handed turns out to be a value
   judgment in empirical clothing, return `INCONCLUSIVE` and say that's what it is.
 - **You never edit the spec, comment on the PR, or touch Linear** (beyond filing a genuine
-  bug via `issue-manager`). The caller owns the thread reply, the §12 record, and the fold —
+  bug via `issue-manager`). The caller owns the thread reply, the `DECISIONS.md → Settled` record, and the fold —
   same read-only-to-the-artifact discipline as `cross-spec-review`.
 - **You never prompt the user.** You return a verdict; the coordinator surfaces it.
 - **Leave nothing behind on the verdict-only path.** `_prototypes/` must stay genuinely

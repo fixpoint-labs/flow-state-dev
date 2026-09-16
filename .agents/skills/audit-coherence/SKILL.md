@@ -59,7 +59,7 @@ Hunt all three. They differ in where the fix lands.
      No argument → propose a scope rather than boiling the ocean; a focused audit that
      finds real conflicts beats a shallow whole-repo pass.
    - **A change** (a PR, branch, or working diff) — how `review` runs this skill as
-     its **coherence lens**. Read the spec's Part I ("The Case") and the *shape* of the
+     its **coherence lens**. Read the spec's `SPEC.md` and `DECISIONS.md` and the *shape* of the
      diff, and judge whether the solution coheres with the tenets it claims and the
      patterns it sits beside. This is the apex review question — the "directionally-right
      spec but the design feels off" failure a line-level review can't see; weigh a

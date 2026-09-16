@@ -106,7 +106,7 @@ flowchart TD
 | Store | What it is | Lifetime | Home |
 |---|---|---|---|
 | **Coordinator status table** | The coordinator's **internal working memory** — one row per issue (phase, spec PR#, impl PR#, gate-pending, worktree). Updated constantly. | Session-only | `.orchestration/` (**gitignored — never committed**) |
-| **Epic-spec running index** | A **durable, exposed audit log** — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. *Are we winning* is not here; it is in the epic report, where live state is. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc) |
+| **Epic-spec set table, graph and path** | A **durable, exposed status board** — the set table with every issue's state and PR links, the dependency graph, and the path figure, in the epic-spec's `SPEC.md` and `PLAN.md`, for humans and issue agents to navigate from one place. Refreshed by `epic-agent` whenever a child's phase changes (the wake dispatches it), so it reads as current on the epic PR. *Are we winning* is still the epic report's: a count here says where the set is, not whether it is working. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc + the epic PR body's as-of line and figure pins) |
 | **Mailbox handle brief** | A **durable, exposed handoff** for agents *outside* this repo, who can see neither Linear nor our PRs — the epic's objective and gate state, per-issue rows, blockers, what's next. Refreshed from the table when state changes. | Life of the epic | `handles/<slug>.md` on the epic's mailbox handle |
 
 They overlap in *content* (all three know the PR numbers) but differ in *purpose and
@@ -114,7 +114,7 @@ audience*: the table is private and ephemeral; the index is public and durable, 
 readers inside this repo; the brief is public and durable, for agents who cannot see
 inside it at all.
 
-**Only the table is a live source.** The index and the brief are both **projections**
+**Only the table is a live source.** The set table and the brief are both **projections**
 refreshed *from* it, and neither is ever read back as current state — a cold-resumed
 coordinator rebuilds its table from Linear and the PRs, then rewrites both. That
 direction is what keeps a stale brief from being mistaken for live state: it is a
@@ -185,15 +185,17 @@ one-parent rule** — an issue that already has a functional parent is linked wi
 `relates-to` and flagged, never silently detached.
 
 **Contents and shape:
-[`epic-spec-template.md`](epic-spec-template.md)** — the five sections (purpose &
-objective · themes & long-horizon direction · shape of the whole · running index · open
-cross-cutting questions), each with a worked example, plus the reviewer
-guidance the epic PR description leads with. Read the template; it is the single source of truth for what
-each section owes its reader, exactly as `spec-template.md` is for an issue spec.
+[`epic-spec-template.md`](epic-spec-template.md)** — the same four documents as an issue spec
+at epic altitude (`SPEC.md` with the teams table, *what's in the box*, the live set table and
+the dependency graph · `DECISIONS.md` with the cross-cutting calls and the ownership matrix ·
+`BUSINESS-RULES.md` with the rules every child obeys · `PLAN.md` with the path), plus the
+figures ([`spec-figures.md`](spec-figures.md)) and the reviewer contract the epic PR carries.
+Read the template; it is the single source of truth for what each document owes its reader,
+exactly as `spec-template.md` is for an issue spec.
 
 **Conventions:**
 
-- **Branch `epic/<name>`**; the doc lives at `spec/_epics/<name>.md` on that branch.
+- **Branch `epic/<name>`**; the set lives at `spec/_epics/<name>/` on that branch.
 - **Never-merged epic PR** — the reviewable + commentable surface. Stays open for the life
   of the *epic*; closes **unmerged** when the epic wraps.
 - **The epic branch is never deleted** — it stays referenceable. Issue spec branches follow
@@ -204,9 +206,15 @@ each section owes its reader, exactly as `spec-template.md` is for an issue spec
   epic is its **parent** (check `issue.parent`; does it carry the `Epic` Kind label?). No registry, no
   free-text parsing.
 - **Authored/maintained by the `epic-agent`**, dispatched by the coordinator. The agent
-  **never starts over**: each dispatch it reads the current epic-spec (the doc + PR thread
+  **never starts over**: each dispatch it reads the current epic-spec (the set + PR thread
   are its durable memory) and applies one bounded update. No private `memory:` — the state
-  is the visible doc.
+  is the visible set.
+- **Refreshed for the life of the epic.** The set table's status, the dependency graph's
+  placeholders and borders, the path figure, and the epic PR body's as-of line and figure pins
+  move whenever a child's phase changes — the wake dispatches an `epic-agent` refresh on any
+  transition it detected, outside the review budget, so the epic PR reads as current without
+  anyone re-deriving it. The refresh is a commit on the epic PR; the owner's `epic approved`
+  label is the approval channel that survives it (see Gates).
 - **Reviewed at the same altitude as an issue spec** — the epic-spec is a *direction*
   artifact, so "Spec review: the bar and the convergence rule" below governs its PR too.
   Feedback that doesn't change the epic's objective or a cross-cutting decision belongs to
@@ -303,7 +311,7 @@ out-of-band chat approval:
 
 | Gate | Signal | Meaning | Blocks |
 |---|---|---|---|
-| **Spec approval** | an approving comment, an approving GitHub Review, **or the owner's `spec approved` label** on the spec PR | The full spec (Part I + Part II) is directionally signed off | implementing that issue |
+| **Spec approval** | an approving comment, an approving GitHub Review, **or the owner's `spec approved` label** on the spec PR | The full spec set (the four documents) is directionally signed off | implementing that issue |
 | **Epic objective** | an approving comment, an approving GitHub Review, **or the owner's `epic approved` label** on the epic PR | The epic's purpose/outcome is worth pursuing | *ramping* the epic's issues (they hold before their first action) |
 
 The epic-objective gate is the **only** epic-level gate — the epic's *direction* (themes,
@@ -439,7 +447,7 @@ flowchart LR
   end
   subgraph Issue[Per issue]
     RT{category?}
-    RT -->|feature/enhancement| NS[NEEDS_SPEC] --> SPEC[spec PR: Case + Build Plan]
+    RT -->|feature/enhancement| NS[NEEDS_SPEC] --> SPEC["spec PR: the four documents"]
     SPEC -->|spec approved| IMPL[implement]
     RT -->|bug: no spec| IMPL
     IMPL --> FB[PR feedback] --> MERGE([human merges])
@@ -465,9 +473,9 @@ statement of the bar and how a spec-review round terminates; `issue-spec`,
 ### What sign-off certifies
 
 **Directional correctness, and nothing more.** An approved spec means: the problem is
-real, the approach will work, the decisions in Part I are the ones we want, and the build
+real, the approach will work, the decisions in `DECISIONS.md` are the ones we want, and the
 plan's shape and sequence are sound. It does **not** mean the design is finished, the
-names are final, or every question a reader could raise has been answered. Part II is
+names are final, or every question a reader could raise has been answered. `PLAN.md` is
 *directional by construction* (see `spec-template.md`) — the implementer settles
 signatures, local structure, and line-level choices in the code, under `tdd`/`diagnose`
 and the challenger.
@@ -484,13 +492,13 @@ altitude: *does acting on this change the approach?* Then pick exactly one dispo
 
 | Disposition | When | What happens |
 |---|---|---|
-| **Fold in** — spec-level | The approach is wrong, won't work, or solves the wrong problem · a Part I Decision is wrong or missing · a constraint the design didn't account for invalidates it · scope is wrong (a deliverable that shouldn't ship, or a missing one) · the spec contradicts itself | Re-draft the affected sections (anti-addenda rule), mirror repo doc ↔ Linear, reply on the thread |
-| **Note for the implementer** *(the default)* | Anything below that line: naming, file layout, local structure, which helper, error-message wording, a micro-optimization, a test-name preference, "have you considered X *here*", a detail Part II deliberately left open | Record **verbatim** under the spec's *Review notes for the implementer* section, reply once saying it's left for implementation, move on. **Do not rewrite the design prose around it.** |
-| **Drop, specifically for the solution sketch** | A spec may carry rough illustrative code showing the *shape* of the proposed solution (`spec-template.md` §7). Feedback that it lacks error handling, has loose types, misses edge cases, misnames things, or wouldn't compile | Reply once: the sketch is illustrative and deliberately incomplete. **Never** fold, and don't even carry it as a §13 note — a note implies the implementer should weigh it, and there is nothing to weigh about code that isn't shipping. Only feedback on the sketch's *direction* (wrong layer, wrong composition, won't work at all) is real, and that is ordinary **Fold in** |
+| **Fold in** — spec-level | The approach is wrong, won't work, or solves the wrong problem · a decision in `DECISIONS.md` is wrong or missing · a case the rules miss invalidates the design · scope is wrong (a deliverable that shouldn't ship, or a missing one) · the spec contradicts itself | Re-draft the affected document (anti-addenda rule; a figure the change moves is redrawn), mirror repo doc ↔ Linear, reply on the thread |
+| **Note for the implementer** *(the default)* | Anything below that line: naming, file layout, local structure, which helper, error-message wording, a micro-optimization, a test-name preference, "have you considered X *here*", a detail `PLAN.md` deliberately left open | Record **verbatim** under `PLAN.md → Notes from review`, reply once saying it's left for implementation, move on. **Do not rewrite the design prose around it.** |
+| **Drop, specifically for the solution sketch** | A spec may carry rough illustrative code showing the *shape* of the proposed solution (`PLAN.md`'s sketch). Feedback that it lacks error handling, has loose types, misses edge cases, misnames things, or wouldn't compile | Reply once: the sketch is illustrative and deliberately incomplete. **Never** fold, and don't even carry it as a review note — a note implies the implementer should weigh it, and there is nothing to weigh about code that isn't shipping. Only feedback on the sketch's *direction* (wrong layer, wrong composition, won't work at all) is real, and that is ordinary **Fold in** |
 | **Drop** | Already answered in the spec · out of the issue's scope · a preference with no defect behind it · a factual error about the codebase | Reply once with the pointer or the correction. No spec edit, no note. |
 
 **The default disposition is Note, and the burden of proof is on folding.** If you can't
-name which Part I Decision or which part of the approach changes, it is not spec-level —
+name which decision or which part of the approach changes, it is not spec-level —
 it's a note. Genuine factual corrections and broken references are the one cheap
 exception: fix them inline without ceremony (they don't move the design, so they don't
 cost a round).
@@ -598,8 +606,8 @@ So the discipline is ours, not theirs:
 
 ### How this shows up in the artifacts
 
-- **`spec-template.md`** — the reviewer contract and the *Parts worth reviewing closely*
-  block, and *Review notes for the implementer* (§13) as the home for below-the-bar feedback.
+- **`spec-template.md`** — the reviewer contract and the *Reviewers · look here* block, and
+  `PLAN.md → Notes from review` as the home for below-the-bar feedback.
 - **`pr-reviewer-guidance.md`** — the two audiences, the PR-description layout, the three PR
   altitudes, and what makes a *Parts worth reviewing closely* block useful rather than
   decorative. Its general half — the fold, the word budgets, the density rules — is
@@ -640,8 +648,9 @@ defer cleanup only, never implementation.
 ### Re-opening for a POC
 
 A POC worth building *after* sign-off goes on the same PR: commit it to the retained branch,
-`gh pr reopen`, then close again unmerged once §7 carries the result on the branch and in
-Linear. A re-opened PR is live — the one exception to a closed spec branch being frozen.
+`gh pr reopen`, then close again unmerged once the plan's POC line carries the result on the
+branch and in Linear. A re-opened PR is live — the one exception to a closed spec branch being
+frozen.
 
 It does not re-open the gate, does not resume spec review (late feedback is implementer notes),
 and never merges. If the POC *changes the direction*, that fold needs fresh sign-off: keep the
@@ -766,10 +775,10 @@ in round three, so a trigger noticed early is the best case available.
   end-state nobody would have chosen if they'd seen it. A rough **end-state POC** — all the
   set's surfaces sketched together, unshipped — makes that visible before the objective gate,
   which is the last moment the *division into issues* is cheap to change. It is recorded in
-  the epic-spec's [§3 Shape of the whole](epic-spec-template.md).
+  the epic-spec's `DECISIONS.md` → [*What the end-state POC showed*](epic-spec-template.md).
 
 Where a direction fork is genuinely contested, a POC can carry **2–3 radically different
-variants**, compared on one page, and the chosen one becomes a numbered §6 Decision. Equal
+variants**, compared on one page, and the chosen one becomes a decision card. Equal
 effort on each is the rule that matters — a strawman variant manufactures consent for the
 option the author already preferred and puts a human's approval on it.
 
@@ -777,9 +786,9 @@ option the author already preferred and puts a human's approval on it.
 flowchart LR
   A[spec / epic authoring] -->|trigger fires| P[spec-poc<br/>on the never-merged branch]
   P --> S{what it showed}
-  S -->|premise held| R1[record in §7 / §3<br/>no change]
+  S -->|premise held| R1["record in the plan's POC line<br/>no change"]
   S -->|premise false| R2[fold before the gate<br/>cheapest version of the discovery]
-  S -->|variants| R3[human picks → a §6 Decision]
+  S -->|variants| R3["human picks → a decision card"]
   R1 & R2 & R3 --> G([approval gate])
   P -.->|non-blocking, but disclosed| G
 ```
@@ -824,9 +833,9 @@ to be independent of both.)
 
 ### Where the record lives
 
-- **The spec** — §7 in one line (what was built, what it showed), §12 for a premise it
-  settled, and a *Spec evolution* entry **only if it moved the design**. At epic altitude,
-  §3 instead.
+- **The spec** — `PLAN.md`'s POC line (what was built, what it showed), `DECISIONS.md →
+  Settled` for a premise it settled, and a *How it got here* entry **only if it moved the
+  design**. At epic altitude, `DECISIONS.md → What the end-state POC showed` instead.
 - **The PR description** — the POC block: one runnable command per artifact, the question it
   answers, and that it's throwaway.
 - **A POC that changed nothing still gets its line.** "The premise held" is a real result;
@@ -1010,8 +1019,8 @@ The settlement has to *replace* debate rounds, not add to them:
 
 | Outcome | What it means | What ships |
 |---|---|---|
-| **CONFIRMED** | The spec's premise held | A verdict reply on the thread + the claim recorded as resolved-with-evidence (§12). **Nothing committed** — the POC is deleted. |
-| **REFUTED** | The premise is false; the approach has to change | The same reply, plus the fold (one round, outside the budget) and a *Spec evolution* line: *"After POC settlement — <what changed>, because the run showed <what>."* |
+| **CONFIRMED** | The spec's premise held | A verdict reply on the thread + the claim recorded as resolved-with-evidence (`DECISIONS.md → Settled`). **Nothing committed** — the POC is deleted. |
+| **REFUTED** | The premise is false; the approach has to change | The same reply, plus the fold (one round, outside the budget) and a *How it got here* line: *"POC settlement — <what changed>, because the run showed <what>."* |
 | **INCONCLUSIVE** | The claim couldn't be reduced to a check, or the run didn't discriminate | Say so plainly, say why, and hand the claim back as a decision the human makes. **Never** a fabricated verdict — false evidence is worse than an unsettled debate, because it ends the debate wrongly. |
 
 A POC opens a **draft PR only when it produced something worth a human's attention**: it
@@ -1026,10 +1035,11 @@ stopped being throwaway.
 Three places, each for a different reader, none optional:
 
 - **The thread** — the verdict reply, so the reviewer who raised it sees the answer.
-- **The spec's §12** — the claim as a *resolved* question with the evidence, so the next
-  reviewer (usually a bot with no memory of the thread) can't reopen it blind.
-- **The *Spec evolution* timeline** — one line, but **only if the verdict moved the design**.
-  A CONFIRMED claim changed nothing, so it earns no entry (same rule as a §13 note).
+- **`DECISIONS.md → Settled`** — the claim as a *resolved* question with the evidence, so the
+  next reviewer (usually a bot with no memory of the thread) can't reopen it blind.
+- **`DECISIONS.md → How it got here`** — one line, but **only if the verdict moved the
+  design**. A CONFIRMED claim changed nothing, so it earns no entry (same rule as a review
+  note).
 
 ## How feedback flows (epic ↔ issues)
 

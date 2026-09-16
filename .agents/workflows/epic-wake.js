@@ -1988,6 +1988,26 @@ const WORKER_SCHEMA = {
   },
 }
 
+/**
+ * The epic-spec STATUS refresh — dispatched when a row's phase changed and no fold ran this wake.
+ * A fold already refreshes the set table as part of its update pass; this is the same refresh
+ * on its own, outside the review budget, so the epic PR reads as current on every transition
+ * (`epic-spec-template.md` → "What refreshes, and when").
+ */
+const EPIC_REFRESH_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['refreshed'],
+  properties: {
+    refreshed: {
+      type: 'string',
+      description: 'What moved — the set table, the dependency graph, the path figure, the PR-body pins — or "nothing" when the set already read that way',
+    },
+    head: { type: ['string', 'null'], description: 'The commit the set now sits on; the PR body\'s images are pinned to it' },
+    pins: { type: ['string', 'null'], description: 'The <img> lines a person has to paste, when the tool could not write them into the body' },
+  },
+}
+
 const EPIC_FOLD_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -2942,7 +2962,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
               (unsettledVerdicts(item.row.verdicts).length
                 ? `A POC came back INCONCLUSIVE on ${unsettledVerdicts(item.row.verdicts).length} claim(s). ` +
                   `Do NOT record these as resolved and do NOT fold a conclusion into the spec — the evidence settles nothing and the decision is the human's. ` +
-                  `Post what the POC actually found on the thread, leave the claim open in §12, and report it back unchanged so the coordinator can put it to them:\n${renderVerdicts(unsettledVerdicts(item.row.verdicts))}\n`
+                  `Post what the POC actually found on the thread, leave the claim open in DECISIONS.md → Open, and report it back unchanged so the coordinator can put it to them:\n${renderVerdicts(unsettledVerdicts(item.row.verdicts))}\n`
                 : '')
             : '') +
           // The decision this row escalated, and the human's answer to it. The escalating worker is
@@ -3067,7 +3087,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           ? `Fold what is listed above and NOTHING ELSE — there is no new review feedback to fold${epicAtBudget ? ' and the review budget is spent' : ''}, so do not re-read or re-fold already-consumed comments, and report roundsSpent: 0. The exemption covers the verdict and the answers only.\n`
           : `Fold the outstanding review feedback on epic PR #${epic.prNumber} into the epic-spec on branch ${epic.branch}, in your worktree.\n` +
             `Triage against the bar first: only objective-level or cross-cutting-decision-level feedback is folded. Anything about a single issue's internals is routed to that issue as an implementer note, never into the epic-spec — return each as a fanOut entry with the note text and the issues it concerns.\n`) +
-          `Refresh the epic-spec's running index from the PR handles already recorded. Never re-review to satisfy a bot.\n` +
+          `In the same pass, do the status refresh from the PR handles already recorded: the set table in SPEC.md (status, PR links, the as-of date, the counts line), the dependency graph (a newly filed issue gets its real id, a finished one a heavy border), PLAN.md's path figure, and the PR body's as-of line and figure pins. Never re-review to satisfy a bot.\n` +
           `Report the rounds you ACTUALLY spent — a batch of only factual corrections or broken references costs zero — and whether anything folded was above the bar.\n` +
           `Do not prompt the user.`,
         { label: 'fold:epic', phase: 'Advance', schema: EPIC_FOLD_SCHEMA, agentType: 'epic-agent', isolation: 'worktree' },
@@ -3236,6 +3256,48 @@ const issues = refreshed.map((row) =>
     folded: foldedVerdict.has(row.id),
   }),
 )
+
+// ---------------------------------------------------------------------------
+// The epic-spec's status refresh. The set table, the dependency graph, the path figure and the
+// PR body's pins move whenever a row's phase changed (`epic-spec-template.md` → "What refreshes,
+// and when"), so a reader of the epic PR sees the set as it is, not as it was at the gate. A
+// FOLD already refreshes as part of its update pass, so this runs only when no fold did — and
+// outside the review budget, because a status refresh is not an opinion.
+//
+// Compared against the rows the coordinator PASSED IN, not against the scan: a transition the
+// scan itself detected (a merge, an approval) is exactly what a reader wants reflected, and a
+// discovered row with no prior is a newly filed issue whose placeholder gets its id. Computed
+// from `issues` — after `nextRow` — so it sees what this wake's workers reported and what the
+// handle-missing guard refused, never a phase that will be rolled back.
+//
+// Sequential, after the Settle POCs: it shares the epic branch with the fold, and one worktree
+// at a time on that branch is the rule (`epic-lifecycle` → Epic setup). A dead refresh agent is
+// NOTHING HAPPENED (invariant 1): the table is stale until the next transition or fold, and the
+// log says so rather than inventing a refresh.
+// ---------------------------------------------------------------------------
+const priorPhaseById = new Map(rows.map((r) => [r.id, r.phase]))
+const phaseTransitions = issues
+  .filter((r) => r.phase !== priorPhaseById.get(r.id))
+  .map((r) => ({ id: r.id, from: priorPhaseById.get(r.id) || null, to: r.phase }))
+const refreshEpicWanted = phaseTransitions.length > 0 && !plan.foldEpic && !!epic.prNumber
+const epicRefresh = refreshEpicWanted
+  ? await agent(
+      `Refresh the epic-spec on branch ${epic.branch} for epic PR #${epic.prNumber}, in your worktree — the STATUS refresh only, no fold. Phases that moved this wake: ${phaseTransitions.map((t) => `${t.id} ${t.from || 'new'} → ${t.to}`).join('; ')}.\n` +
+        `Update SPEC.md's set table (status column, PR links, the as-of date, the counts line) and its dependency graph (a newly filed issue gets its real id and a solid border; a finished one a heavy border); redraw PLAN.md's path figure (bars and the now line); re-pin the PR body's figure images to the new head and update its as-of line; mirror the Linear document. Change nothing else — the objective, the decisions and the rules are not yours this dispatch. Report refreshed: what moved, or "nothing" if the set already read that way. Do not prompt the user.`,
+      { label: 'refresh:epic', phase: 'Settle', schema: EPIC_REFRESH_SCHEMA, agentType: 'epic-agent', isolation: 'worktree' },
+    )
+  : null
+if (refreshEpicWanted) {
+  log(
+    epicRefresh
+      ? `Epic-spec status refreshed for ${phaseTransitions.map((t) => t.id).join(', ')}: ${epicRefresh.refreshed}.`
+      : `Epic-spec status refresh returned nothing (agent died or skipped) — the set table is a wake behind for ${phaseTransitions.map((t) => t.id).join(', ')} until the next transition or fold.`,
+  )
+}
+// A refresh that wrote moved the epic branch's head exactly as a fold does, so a dead scout on the
+// next wake must not read the durable approval as sitting on the current head. It revised no
+// objective, though, so this wake's child gates stand: nothing they approve has changed.
+if (epicRefresh && epicRefresh.refreshed !== 'nothing') headUnconfirmed = true
 
 // Disclosure must cover EVERY unresolved claim touching an issue, not just the ones this wake
 // happened to dispatch: a claim the cap queued, one a worker raised this wake, and one whose POC
@@ -3519,7 +3581,11 @@ return {
     ...unsettled,
     ...newRequests,
   ],
-  dispatched: [...plan.advance.map((i) => `${i.action}:${i.row.id}`), ...(plan.foldEpic ? ['fold:epic'] : [])],
+  dispatched: [
+    ...plan.advance.map((i) => `${i.action}:${i.row.id}`),
+    ...(plan.foldEpic ? ['fold:epic'] : []),
+    ...(refreshEpicWanted ? ['refresh:epic'] : []),
+  ],
   deferred: plan.deferred.map((i) => i.row.id),
   converged: plan.converged.map((r) => r.id),
   // ---- Two decisions the coordinator was restating in prose. ---------------------------------------

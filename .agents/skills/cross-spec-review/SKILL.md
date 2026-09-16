@@ -42,7 +42,7 @@ finds the conflicts and hands them back.
 Aligning specs to each other only helps if each is already sound; cross-aligning to a spec
 that's still wrong propagates the flaw into its siblings. So the precondition is:
 
-- Every spec in the set has cleared its own spec-approval gate (Part I + Part II present
+- Every spec in the set has cleared its own spec-approval gate (the four documents present
   and signed off — see `issue-spec`), **and**
 - The user has explicitly approved running the cross-spec pass.
 
@@ -53,9 +53,10 @@ coherence"). If invoked standalone, confirm both conditions before reading anyth
 
 The **spec set** — a list of issue IDs / spec PR#s. For each, read the current spec text
 (the spec PR head copy while the PR is open, else the Linear document — same reconciliation
-rule as `issue-implement` Step 1). Read the whole spec, both parts: Part I carries the
-scope and decisions; Part II carries the API surface, sequence, and PR plan where most
-collisions live.
+rule as `issue-implement` Step 1). Read the whole set: `SPEC.md` and `DECISIONS.md` carry the
+scope and decisions; `BUSINESS-RULES.md` the cases; `PLAN.md` the surfaces, sequence, and PR
+plan where most collisions live. Check the epic's `BUSINESS-RULES.md` too — the rules every
+child obeys, each with an owner, are what conformance is measured against.
 
 ## What to look for (across the set, not within one)
 
@@ -73,8 +74,8 @@ Sweep every pair (and, where relevant, the whole set) for:
 - **Assumption conflicts.** One spec relies on behavior, a field, or a shape that another
   spec in the set removes, renames, or changes. The classic parallel-work break.
 - **Cross-issue dependency / sequencing conflicts.** Spec A's plan assumes Spec B lands
-  first while B assumes the reverse; or two PR plans (Part II §8) target the same files in
-  a way that will collide on merge regardless of issue-level independence.
+  first while B assumes the reverse; or two PR plans (`PLAN.md → Sequence`) target the same
+  files in a way that will collide on merge regardless of issue-level independence.
 - **Philosophy drift as a set.** The batch, taken together, pulls the framework in two
   directions at once, or several specs each add a near-duplicate primitive that should be
   one. Name it — this is the coherence auditor's core job at batch altitude.

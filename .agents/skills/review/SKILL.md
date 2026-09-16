@@ -57,10 +57,10 @@ themselves. There are two ways in, and they are not the same:
   `adhd`'s own pre-flight Step 1.
 - **Automatic triggering** happens only when the change is genuinely shape-open: **new
   public API surface**, a **new pattern / capability / block kind**, a **schema or scope
-  decision**, or a **spec whose §3 weighed no real alternative**.
+  decision**, or a **spec whose *considered and dropped* weighed no real alternative**.
 
 **The exclusions below govern automatic triggering only.** Don't auto-add the lens to a bug
-fix or a mechanical refactor. And an **approved spec that weighed a real alternative in §3**
+fix or a mechanical refactor. And an **approved spec whose `DECISIONS.md` weighed a real alternative**
 suppresses every automatic trigger, including new public API surface: the divergence already
 happened at the altitude where it was cheap and a human signed the result off, so re-running
 it against shipped code pays twice to relitigate a settled decision. If someone asks for it
@@ -70,7 +70,7 @@ anyway, they get it.
 
 1. **Dispatch the selected lenses as parallel sub-agents** (they're independent).
    - **Coherence** → run `audit-coherence` scoped to the target. On a change with a
-     spec, it reads the spec's Part I ("The Case") and the *shape* of the diff, judging
+     spec, it reads the spec's `SPEC.md` and `DECISIONS.md` and the *shape* of the diff, judging
      whether the solution coheres with the tenets it claims — the "directionally-right
      spec but the design feels off" failure the other lenses can't see. Its verdict is
      the most consequential: a coherence break usually means reshaping the approach, not
