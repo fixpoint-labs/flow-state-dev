@@ -13,6 +13,14 @@
 
 **The set:** seven issues in a chain. Recon, a contract, the kind, skills into it, a memory seam onto it, the teaching, and a required proof that hires the thing for real. As of 2026-09-16: 3 done, 3 in flight, 1 not started; the live table and the dependency graph are in [the spec](SPEC.md#the-set--as-of-2026-09-16).
 
+<img src="https://raw.githubusercontent.com/fixpoint-labs/flow-state-dev/0892195d6af5779db4a13d28c5ec054d1905aab4/docs/internal/spikes/spec-formats/FIX-1359-epic/f-mixed/figures/sequence.svg" width="940" alt="The path: one lane per issue against time, done bars for the first three, in-flight bars at the now line, an empty proof lane after them, the critical path drawn through audit, contract, kind and proof" />
+
+The path is redrawn on this PR as the set moves. Only skills and memory ever ran in parallel; the proof waits on both.
+
+<img src="https://raw.githubusercontent.com/fixpoint-labs/flow-state-dev/0892195d6af5779db4a13d28c5ec054d1905aab4/docs/internal/spikes/spec-formats/FIX-1359-epic/f-mixed/figures/ownership.svg" width="940" alt="Who owns what: a matrix of nine cross-cutting rules by seven issues, each rule with exactly one owner" />
+
+Every cross-cutting rule has one owner. A rule with two would be a seam; a rule with none would be a gap.
+
 ## Sign off
 
 1. **A stock agent seat is worth seven issues, now.** If wrong: a cycle on a kind nobody hires, which the proof exists to make impossible to miss.

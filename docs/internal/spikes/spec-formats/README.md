@@ -127,7 +127,7 @@ The mixed set is the shape for issue specs. This round applies it to an epic, us
 
 | File | At issue altitude | At epic altitude |
 |---|---|---|
-| `PR.md` | People table · one figure · sign-off | Teams table · the end-state figure · the set in one line each · sign-off on the objective and the two cross-cutting calls that pass the filters |
+| `PR.md` | People table · one figure · sign-off | Teams table · the end-state figure · the set in one line each · **the path and the ownership matrix**, so the PR body itself shows where the set is and who owns which rule · sign-off on the objective and the two cross-cutting calls that pass the filters |
 | `SPEC.md` | What changes, for whom | The objective as before/after for the teams who feel it · **what's in the box** as one figure · **the set, with live status**, refreshed on the epic PR as issues move · **the dependency graph** of how issues flow into each other · what stays as it is |
 | `DECISIONS.md` | D-n cards, the tree, evolution | The cross-cutting calls (the old "themes"), as cards with *instead of / because / locks in* · an **ownership matrix** of rule × issue · what was decided in review so no child reopens it |
 | `BUSINESS-RULES.md` | BR-n: when → then → proved by | **ER-n: the rules every child obeys**, with owner and where it's checked · what no child may do · how the set is run · what done means |
