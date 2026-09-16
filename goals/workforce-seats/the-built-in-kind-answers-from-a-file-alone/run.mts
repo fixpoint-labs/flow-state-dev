@@ -63,6 +63,17 @@ interface Observation {
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 
+/** The `key: value` lines between a WORKER.md's first two `---` fences. */
+function frontmatter(text: string): Record<string, string> {
+  const block = text.split(/^---$/m)[1] ?? "";
+  const out: Record<string, string> = {};
+  for (const line of block.split("\n")) {
+    const at = line.indexOf(":");
+    if (at > 0) out[line.slice(0, at).trim()] = line.slice(at + 1).trim();
+  }
+  return out;
+}
+
 /**
  * Leg 0, half one — the fixture tree against input.json, whole values.
  *
@@ -93,8 +104,13 @@ function fixtureDrift(): string[] {
           `  input.json: ${JSON.stringify(worker.body.trim())}`,
       );
     }
-    if (!text.includes(`description: ${worker.description}`)) {
-      failures.push(`${worker.id}: its WORKER.md description and input.json have drifted`);
+    const declared = frontmatter(text).description;
+    if (declared !== worker.description) {
+      failures.push(
+        `${worker.id}: its WORKER.md description and input.json have drifted.\n` +
+          `  file:       ${JSON.stringify(declared ?? null)}\n` +
+          `  input.json: ${JSON.stringify(worker.description)}`,
+      );
     }
     // The token must be reachable ONLY through this worker's own file, or
     // leg (b) grades something the fixture handed to both seats.
@@ -102,6 +118,48 @@ function fixtureDrift(): string[] {
       if (other.id !== worker.id && text.includes(other.token)) {
         failures.push(`${worker.id}: its WORKER.md also carries ${other.id}'s token ${other.token}`);
       }
+    }
+  }
+  return failures;
+}
+
+/**
+ * Leg 0, half one-and-a-half — the mixed-roster tree leg (c) refuses over.
+ *
+ * Leg (c) only tests all-or-nothing admission if the roster really is mixed:
+ * one worker naming a kind nobody registered, beside one that hires on the
+ * built-in. Neither property survives into the refusal message, so a tree
+ * edited to name only registered kinds would turn leg (c) green having
+ * refused for some other reason — or not refused at all.
+ */
+function mixedRosterDrift(): string[] {
+  const { validId, invalidId, invalidKind, builtInKind } = fixture.mixedRoster;
+  const wanted: Array<[string, string]> = [
+    [validId, builtInKind],
+    [invalidId, invalidKind],
+  ];
+  const failures: string[] = [];
+  for (const [id, wantKind] of wanted) {
+    const [team, name] = id.split(".");
+    const path = fixturePath(
+      import.meta.url,
+      `mixed-roster/teams/${team}/workers/${name}/WORKER.md`,
+    );
+    let text: string;
+    try {
+      text = readFileSync(path, "utf8");
+    } catch {
+      failures.push(`mixed roster: no WORKER.md for ${id} at ${path}`);
+      continue;
+    }
+    // No `flow` key means the built-in kind — which is exactly what the valid
+    // worker in this roster relies on. Write it out so both rows compare alike.
+    const declared = frontmatter(text).flow ?? builtInKind;
+    if (declared !== wantKind) {
+      failures.push(
+        `mixed roster: ${id} declares flow ${JSON.stringify(declared)}, wanted ` +
+          `${JSON.stringify(wantKind)} — the roster leg (c) refuses over is no longer mixed`,
+      );
     }
   }
   return failures;
@@ -139,11 +197,13 @@ await runGoal(() => {
   const evidence: string[] = [];
 
   // ---- leg 0 -------------------------------------------------------------
-  failures.push(...fixtureDrift(), ...hireCallPassesNoKinds());
+  failures.push(...fixtureDrift(), ...mixedRosterDrift(), ...hireCallPassesNoKinds());
   if (failures.length > 0) {
     return { failures, evidence: "stopped at leg 0 — no model call was spent" };
   }
-  evidence.push("leg 0: the fixture tree matches input.json and the hire passes no `kinds`");
+  evidence.push(
+    "leg 0: both fixture trees match input.json and the hire passes no `kinds`",
+  );
 
   const o = runHarness<Observation>({
     app: KITCHEN_SINK,
