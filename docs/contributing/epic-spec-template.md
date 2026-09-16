@@ -34,6 +34,11 @@ and the change is the whole of this file:
 | `PLAN.md` | Surfaces, DAG, checks, guardrails — for the implementer | **Sequencing, not building**: **the path** as lanes against time · what each issue consumes, delivers and releases · what unblocks what · coordination seams · not-children · the wrap | ~900 |
 | `figures/` | One figure the PR body carries | Three the PR body carries: the box, the ownership matrix, the path | — |
 
+**The nav line is the same at both altitudes.** The third line of every document is
+`[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)` with
+the current one bold and unlinked ([`spec-template.md`](spec-template.md)), so a reader who lands
+on the rules from a child's spec PR can flip to the decisions without climbing to the directory.
+
 **The plan is the document that changes most.** An issue plan says how to build one thing; an
 epic plan says what order N things run in, what each one entails, and what each hands the next.
 So its figure is time, not structure. It has no checks column, because each child's plan owns
@@ -210,8 +215,9 @@ Sections, in order:
 
 > # FIX-770 · Stream resilience: a dropped connection is a non-event
 >
+> **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+>
 > Epic · 4 issues · Streaming · Goal 1, validate through real usage
-> [Decisions](DECISIONS.md) · [Rules every issue obeys](BUSINESS-RULES.md) · [Plan](PLAN.md)
 >
 > ## Four teams, before and after
 >
@@ -322,6 +328,8 @@ cross-cutting decision.** Sections, in order:
 
 > # FIX-770 · Decisions
 >
+> [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+>
 > The calls that sit above any single issue: what was chosen, what lost, why, and what each
 > locks in for the four issues under it. Three are the sign-off surface. The rest were raised
 > in review and are recorded so no child reopens them.
@@ -422,6 +430,8 @@ no child may do · how the set is run · the proof (what done means).
 
 > # FIX-770 · Rules every issue in the set obeys
 >
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md)
+>
 > At epic altitude the rules aren't behaviours of one feature; they're the constraints every
 > child spec and implementation must satisfy, and the place a cross-spec review checks. Each
 > says who owns it and where it's checked.
@@ -483,6 +493,8 @@ any piece; that's each issue's own plan. Sections, in order:
 7. **Wrap** — what happens when the proof holds.
 
 > # FIX-770 · Plan
+>
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan**
 >
 > An epic plan sequences the work and says what each piece entails. It does not say how to
 > build any piece; that's each issue's own plan. IDs cross-reference

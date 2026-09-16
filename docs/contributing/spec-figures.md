@@ -248,6 +248,9 @@ done   # want ext=0 themes≥1 aria=1 lines<~150
 
 # 5. Prose words per document, fences excluded — against the budgets in the template
 for f in "$D"/*.md; do echo "$f $(awk '/^```/{f=!f; next} !f' "$f" | wc -w)"; done
+
+# 6. The nav line — line 3 of every document names all four, the current one bold; must print nothing
+for f in "$D"/*.md; do sed -n 3p "$f" | grep -qE 'Spec.*Decisions.*Rules.*Plan' || echo "$f: no nav line"; done
 ```
 
 Check 2 covers node labels `[…]` and edge labels `|…|`, scoped to fence contents so a markdown

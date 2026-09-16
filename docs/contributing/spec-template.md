@@ -17,6 +17,17 @@ when a sign-off line isn't obvious. The implementer reads `BUSINESS-RULES.md` an
 reviewer reads whichever document the *look here* block points them at. Each document is written
 for its reader alone and points at the others rather than repeating them.
 
+**Every document opens on the same nav line**, directly under its H1, with the current document
+bold and unlinked:
+
+```md
+**Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+```
+
+A reader lands on any one of the four from a PR comment, a review thread, or a Linear link, and
+the nav line is how they flip to the other three without climbing to the directory. It is the
+third line of every file, so the verify block can check for it.
+
 **The pictures carry the meaning; the prose reads them.** Every document except the plan opens on
 a table or a figure, and every figure has one sentence under it saying what to look at. What a
 figure is, which each document carries, and how one is drawn and checked is canonical in
@@ -217,8 +228,9 @@ after, and what am I signing*, in observable behaviour with no file paths. Secti
 
 > # FIX-775 · Resume a stream after a disconnect
 >
+> **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+>
 > Feature · `engine` + `client` · medium · 1 PR · no epic
-> [Decisions](DECISIONS.md) · [Business rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 >
 > ## Three people, before and after
 >
@@ -330,6 +342,8 @@ open or settled, then how the document got here. Sections, in order:
 
 > # FIX-775 · Decisions
 >
+> [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+>
 > What was considered, what was chosen, why, and what each choice locks in. Three decisions are
 > the sign-off surface. Everything else here is context for them.
 >
@@ -428,6 +442,8 @@ mermaid companion when the figure could be misread. Then the **failure taxonomy*
 
 > # FIX-775 · Business rules
 >
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md)
+>
 > The cases, written as rules. Each says what a person or the system does and what happens. The
 > *proved by* column is the check the plan runs. A human reviews this page; the plan turns it
 > into work.
@@ -515,6 +531,8 @@ No figures, no prose that restates the spec. Sections, in order:
 11. **Follow-ups** — filed or flagged, one line each.
 
 > # FIX-775 · Plan
+>
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan**
 >
 > Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
 > (BR-n) and [DECISIONS.md](DECISIONS.md) (D-n). `tdd`. One PR.
