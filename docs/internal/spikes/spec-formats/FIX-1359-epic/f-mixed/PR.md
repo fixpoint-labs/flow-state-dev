@@ -11,7 +11,7 @@
 
 **Why now.** The W2 epic is deleting the factory people use today. The replacement has to land first.
 
-**The set:** seven issues in a chain. Recon, a contract, the kind, skills into it, a memory seam onto it, the teaching, and a required proof that hires the thing for real.
+**The set:** seven issues in a chain. Recon, a contract, the kind, skills into it, a memory seam onto it, the teaching, and a required proof that hires the thing for real. As of 2026-09-16: 3 done, 3 in flight, 1 not started; the live table and the dependency graph are in [the spec](SPEC.md#the-set--as-of-2026-09-16).
 
 ## Sign off
 

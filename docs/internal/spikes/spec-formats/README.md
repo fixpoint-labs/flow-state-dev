@@ -128,12 +128,24 @@ The mixed set is the shape for issue specs. This round applies it to an epic, us
 | File | At issue altitude | At epic altitude |
 |---|---|---|
 | `PR.md` | People table · one figure · sign-off | Teams table · the end-state figure · the set in one line each · sign-off on the objective and the two cross-cutting calls that pass the filters |
-| `SPEC.md` | What changes, for whom | The objective as before/after for the teams who feel it · **what's in the box** as one figure · the set with why each issue is needed · what stays as it is |
+| `SPEC.md` | What changes, for whom | The objective as before/after for the teams who feel it · **what's in the box** as one figure · **the set, with live status**, refreshed on the epic PR as issues move · **the dependency graph** of how issues flow into each other · what stays as it is |
 | `DECISIONS.md` | D-n cards, the tree, evolution | The cross-cutting calls (the old "themes"), as cards with *instead of / because / locks in* · an **ownership matrix** of rule × issue · what was decided in review so no child reopens it |
 | `BUSINESS-RULES.md` | BR-n: when → then → proved by | **ER-n: the rules every child obeys**, with owner and where it's checked · what no child may do · how the set is run · what done means |
-| `PLAN.md` | Surfaces, DAG, checks, guardrails | **Sequencing, not building**: swimlanes against time with a now line · what each issue consumes, delivers and releases · where it is · what unblocks what · coordination seams · not-children · the wrap |
+| `PLAN.md` | Surfaces, DAG, checks, guardrails | **Sequencing, not building**: swimlanes against time with a now line · what each issue consumes, delivers and releases · where it is (a pointer at the spec's live table) · what unblocks what · coordination seams · not-children · the wrap |
 
-**The plan is the document that changes most.** An issue plan says how to build one thing; an epic plan says what order seven things run in, what each one entails, and what each hands the next. So its figure is time, not structure: lanes per issue, done and in-flight bars, a now line, the critical path drawn through. Its table is *consumes → delivers → releases*, which is the row an issue plan never needs. It has no checks column, because each child's plan owns those; it has a *where it is* table, because that's the question an epic reader arrives with.
+**The plan is the document that changes most.** An issue plan says how to build one thing; an epic plan says what order seven things run in, what each one entails, and what each hands the next. So its figure is time, not structure: lanes per issue, done and in-flight bars, a now line, the critical path drawn through. Its table is *consumes → delivers → releases*, which is the row an issue plan never needs. It has no checks column, because each child's plan owns those; its *where it is* section points at the spec's live table, because that's the question an epic reader arrives with and it should have one answer.
+
+**Status and the dependency graph live in the spec, once.** The epic spec is the document that gets refreshed as the set moves, so its issue table carries status and PR links and is the one live table; the plan and the swimlane figure point at it rather than repeating it. The dependency graph sits beside that table as mermaid, because it's a graph and because it's the thing that gets edited most: an epic spec usually causes its issues to be filed, so a node for an issue that doesn't exist yet is a placeholder that gets its real id later.
+
+```mermaid
+flowchart LR
+  A["FIX-1361 · contract"] --> B["FIX-XXX · the built-in kind"]
+  B --> C["FIX-XXX · per-seat skills"]
+  classDef proposed stroke-dasharray:4 3
+  class B,C proposed
+```
+
+The convention: `FIX-XXX · working title`, drawn dashed, replaced with the real id and a solid border when the issue is filed, and a heavy border once it's done. The title stays through all three, so the graph reads the same before and after filing.
 
 **The explainer's four panels dissolved the same way.** *Today* and *after* are the spec's teams table and box figure. *The set* is the spec's table plus the ownership matrix. *The path* is the plan's swimlanes. Nothing from the explainer was lost and nothing is in two places.
 
@@ -143,9 +155,9 @@ The mixed set is the shape for issue specs. This round applies it to an epic, us
 
 | | PR | Spec | Decisions | Rules | Plan | Set total | vs today | Figures |
 |---|---|---|---|---|---|---|---|---|
-| FIX-1359 · epic · mixed | 452 | 726 | 1,323 | 725 | 838 | 3,612 | 5,122 + 315 explainer · **66%** | 3 SVG · 3 mermaid |
+| FIX-1359 · epic · mixed | 474 | 876 | 1,323 | 725 | 774 | 4,172 | 5,122 + 315 explainer · **77%** | 3 SVG · 3 mermaid |
 
-The decisions document is the heaviest, and it should be: an epic's review history is where its reasoning lives, and this one reversed its memory mechanism twice. Everything else is under 850 words.
+The decisions document is the heaviest, and it should be: an epic's review history is where its reasoning lives, and this one reversed its memory mechanism twice. Everything else is under 900 words. The spec grew when it took the live status table (every PR link counts as words) and the dependency graph's legend; the plan shrank by the same DAG and table. Net, the set gained about 560 words, all of them status and graph, which is the part that will be re-read most.
 
 ## If a shape is picked, what changes
 

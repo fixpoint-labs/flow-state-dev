@@ -20,19 +20,41 @@ Epic · 7 issues · Workforce, Layer 2 · Goal 1, validate through real usage
 
 Everything inside the box is what a team gets for nothing. The fence is the decision that keeps it cheap: the built-in carries no memory import, and nothing at hire time can add one. Memory is composed in by the app, into a kind of its own, on scopes we already ship ([D4](DECISIONS.md#d4)). The bottom strip is what the set refuses to build.
 
-## The set
+## The set · as of 2026-09-16
 
-| Issue | What it delivers | Why the set needs it |
-|---|---|---|
-| FIX-1360 | Kitchen-sink drift audit | Cheap reconnaissance the next four cite instead of re-reading the app |
-| FIX-1361 | The kind's contract, including admission and loud-fail | A contract artifact before implementation starts |
-| FIX-1363 | The built-in `agent` kind | The substance |
-| FIX-1362 | Per-seat skills, isolated in storage | A seat that can't use its own skills isn't an agent |
-| FIX-1364 | The memory composition seam, and its named gaps | The honest answer to "does it remember" |
-| FIX-1366 | Teach the built-in | A kind that ships while the docs teach the killed factory leaves two ways in |
-| FIX-1365 | Thin proof: hire the built-in for real · **required** | The only child shaped to move Goal 1. Without it the epic adds surface and proves nothing |
+This table is the live one. It's refreshed on the epic PR as issues move; the plan and the figures point here rather than repeating it.
 
-Four are substance, one is recon, one is docs, one is the proof. Whether seven is really six was argued at the gate and is [D6](DECISIONS.md#d6).
+| Issue | What it delivers | Why the set needs it | Status |
+|---|---|---|---|
+| FIX-1360 | Kitchen-sink drift audit | Cheap reconnaissance the next four cite instead of re-reading the app | **Done** · [#1739](https://github.com/fixpoint-labs/flow-state-dev/pull/1739) |
+| FIX-1361 | The kind's contract, including admission and loud-fail | A contract artifact before implementation starts | **Done** · [#1751](https://github.com/fixpoint-labs/flow-state-dev/pull/1751) |
+| FIX-1363 | The built-in `agent` kind | The substance | **Done** · [#1754](https://github.com/fixpoint-labs/flow-state-dev/pull/1754) |
+| FIX-1362 | Per-seat skills, isolated in storage | A seat that can't use its own skills isn't an agent | Impl in review · spec [#1766](https://github.com/fixpoint-labs/flow-state-dev/pull/1766) · impl [#1776](https://github.com/fixpoint-labs/flow-state-dev/pull/1776) |
+| FIX-1364 | The memory composition seam, and its named gaps | The honest answer to "does it remember" | Impl in review · spec [#1768](https://github.com/fixpoint-labs/flow-state-dev/pull/1768) · impl [#1782](https://github.com/fixpoint-labs/flow-state-dev/pull/1782) |
+| FIX-1366 | Teach the built-in | A kind that ships while the docs teach the killed factory leaves two ways in | Spec in review · [#1765](https://github.com/fixpoint-labs/flow-state-dev/pull/1765) |
+| FIX-1365 | Thin proof: hire the built-in for real · **required** | The only child shaped to move Goal 1. Without it the epic adds surface and proves nothing | Not started · waits on FIX-1362 and FIX-1364 |
+
+3 done · 3 in flight · 1 not started. Four are substance, one is recon, one is docs, one is the proof. Whether seven is really six was argued at the gate and is [D6](DECISIONS.md#d6).
+
+## How the issues flow into each other
+
+```mermaid
+flowchart LR
+  A["FIX-1360 · drift audit"] -->|"the note"| B["FIX-1361 · contract"]
+  B -->|"the contract"| C["FIX-1363 · the kind"]
+  C -->|"a kind to bind into"| D["FIX-1362 · per-seat skills"]
+  C -->|"a kind to compose against"| E["FIX-1364 · memory seam"]
+  C -->|"a thing to teach"| F["FIX-1366 · teach"]
+  D --> G["FIX-1365 · proof · required"]
+  E --> G
+  X1["W2 · FIX-1344 · default prompt"] -.->|"consumed via a seam"| C
+  X2["W3 · FIX-1356 · skills convention"] -.->|"load rules"| D
+  classDef done stroke-width:2px
+  classDef proposed stroke-dasharray:4 3
+  class A,B,C done
+```
+
+An edge is what one issue hands the next. Dashed edges are inputs from other epics, not children. An epic spec usually causes its issues to be filed, so a node for an issue that doesn't exist yet reads `FIX-XXX · working title`, drawn dashed, and gets its real id when it's filed. All seven here are filed; the three with a heavy border are done.
 
 ## How the pieces reach the seat
 

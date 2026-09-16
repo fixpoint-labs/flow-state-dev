@@ -6,20 +6,7 @@ An epic plan sequences the work and says what each piece entails. It does not sa
 
 ![Swimlanes against time: two input lanes from other epics, seven issue lanes in chain order, done bars for the first three, in-flight bars for skills, memory and teach at the now line, an empty proof lane after them, and the critical path drawn through audit, contract, kind and proof](figures/sequence.svg)
 
-A chain, not a fan-out. Only the first two issues could start at the gate. The one real parallel window is skills beside memory once the kind exists, and that's where the set is now. Required does not move the proof earlier: it waits on both.
-
-```mermaid
-flowchart LR
-  A["FIX-1360<br/>drift audit"] -->|"the note"| B["FIX-1361<br/>contract"]
-  B -->|"the contract"| C["FIX-1363<br/>the kind"]
-  C -->|"a kind to bind into"| D["FIX-1362<br/>skills"]
-  C -->|"a kind to compose against"| E["FIX-1364<br/>memory seam"]
-  C -->|"a thing to teach"| F["FIX-1366<br/>teach"]
-  D --> G["FIX-1365<br/>proof · required"]
-  E --> G
-  X1["W2 · FIX-1344<br/>default prompt · not shipped"] -.->|"consumed via seam"| C
-  X2["W3 · FIX-1356<br/>skills convention · done"] -.->|"load rules"| D
-```
+A chain, not a fan-out. Only the first two issues could start at the gate. The one real parallel window is skills beside memory once the kind exists, and that's where the set is now. Required does not move the proof earlier: it waits on both. The dependency graph itself is in [the spec](SPEC.md#how-the-issues-flow-into-each-other); this document adds time to it.
 
 ## What each issue entails
 
@@ -33,19 +20,9 @@ flowchart LR
 | **FIX-1366** teach | spec → docs PR | The kind · the contract's vocabulary | The overview leads with the zero-code hire; the reference is complete; the Atlas stops teaching the killed factory | Nothing; it's a leaf | Small |
 | **FIX-1365** proof · required | spec → goal check | A roster · the kind · skills · the seam | One real hire of the built-in on the real path, asserted on behaviour | The epic's wrap | Small |
 
-## Where it is · as of 2026-09-16
+## Where it is
 
-| Issue | State | Evidence |
-|---|---|---|
-| FIX-1360 | **Done** | #1739 merged Sep 12 · note at `docs/internal/design/kitchen-sink-agent-drift.md` |
-| FIX-1361 | **Done** | #1751 merged Sep 13 · contract at `docs/architecture/workforce-agent-kind.md` |
-| FIX-1363 | **Done** | #1754 merged Sep 14 |
-| FIX-1362 | Impl in review | spec #1766 approved · impl #1776 open, two bot findings to work |
-| FIX-1364 | Impl in review | spec #1768 approved · impl #1782 open |
-| FIX-1366 | Spec in review | #1765 open, direction reversed twice in review, now grow-and-promote |
-| FIX-1365 | Not started | Blocked by FIX-1362 and FIX-1364 |
-| W2 FIX-1344 pt 2 | Not shipped | The kind ships against `instructions` with a seam (D3) |
-| W3 FIX-1356 | Done | Load rules consumed by FIX-1362 |
+Status lives in one place: [the set table in the spec](SPEC.md#the-set--as-of-2026-09-16). The swimlanes above carry the same state as a picture of time and are redrawn when it moves. The two inputs from other epics: W2's default prompt is not shipped, so the kind ships against `instructions` with a seam (D3); W3's skills convention is done and FIX-1362 consumes its load rules.
 
 ## What unblocks what, from here
 
@@ -69,4 +46,4 @@ FIX-1344 (W2 soft dep) · FIX-1356 (W3 convention) · FIX-1355 (W3 lab) · FIX-1
 
 ## Wrap
 
-When ER-17 holds: run the lessons pass over the set's review rounds, dispatch the docs polish over the workforce pages the children each edited in isolation, refresh this plan's status table one last time, and close the epic PR unmerged.
+When ER-17 holds: run the lessons pass over the set's review rounds, dispatch the docs polish over the workforce pages the children each edited in isolation, refresh the spec's set table and the swimlanes one last time, and close the epic PR unmerged.
