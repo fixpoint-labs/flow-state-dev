@@ -121,6 +121,32 @@ Feedback on round 1, in one line each: the SVG POC is the clearest thing here an
 
 **Read that number honestly.** The mixed set is the longest rewrite in the spike, at roughly three-quarters of the original on the code spec. It's four documents instead of one, and the rules document alone is nearly a thousand words because it says every case once. What changed isn't the total; it's that no reader reads all of it. The product owner reads the PR and the spec (about 1,000 words plus four pictures) and opens the decisions when a sign-off line isn't obvious. The implementer reads the rules and the plan. The rules are the one document both open. If the goal is a shorter *corpus*, this isn't it. If the goal is that nobody reads a book, it is.
 
+## Round 3 · the mixed set at epic altitude
+
+The mixed set is the shape for issue specs. This round applies it to an epic, using [PR #1730](https://github.com/fixpoint-labs/flow-state-dev/pull/1730) (FIX-1359, the built-in `agent` kind, seven issues) as the reference. Same five documents, in [`FIX-1359-epic/f-mixed/`](FIX-1359-epic/f-mixed/), with the altitude changing what each carries:
+
+| File | At issue altitude | At epic altitude |
+|---|---|---|
+| `PR.md` | People table · one figure · sign-off | Teams table · the end-state figure · the set in one line each · sign-off on the objective and the two cross-cutting calls that pass the filters |
+| `SPEC.md` | What changes, for whom | The objective as before/after for the teams who feel it · **what's in the box** as one figure · the set with why each issue is needed · what stays as it is |
+| `DECISIONS.md` | D-n cards, the tree, evolution | The cross-cutting calls (the old "themes"), as cards with *instead of / because / locks in* · an **ownership matrix** of rule × issue · what was decided in review so no child reopens it |
+| `BUSINESS-RULES.md` | BR-n: when → then → proved by | **ER-n: the rules every child obeys**, with owner and where it's checked · what no child may do · how the set is run · what done means |
+| `PLAN.md` | Surfaces, DAG, checks, guardrails | **Sequencing, not building**: swimlanes against time with a now line · what each issue consumes, delivers and releases · where it is · what unblocks what · coordination seams · not-children · the wrap |
+
+**The plan is the document that changes most.** An issue plan says how to build one thing; an epic plan says what order seven things run in, what each one entails, and what each hands the next. So its figure is time, not structure: lanes per issue, done and in-flight bars, a now line, the critical path drawn through. Its table is *consumes → delivers → releases*, which is the row an issue plan never needs. It has no checks column, because each child's plan owns those; it has a *where it is* table, because that's the question an epic reader arrives with.
+
+**The explainer's four panels dissolved the same way.** *Today* and *after* are the spec's teams table and box figure. *The set* is the spec's table plus the ownership matrix. *The path* is the plan's swimlanes. Nothing from the explainer was lost and nothing is in two places.
+
+**Three figures where position is the content:** what's in the box versus composed in versus replaced (containment and a fence), who owns which rule (a matrix), and the path (lanes against time). Each rendered in both themes and checked for overflow.
+
+**Measured** (prose words, fences excluded):
+
+| | PR | Spec | Decisions | Rules | Plan | Set total | vs today | Figures |
+|---|---|---|---|---|---|---|---|---|
+| FIX-1359 · epic · mixed | 452 | 726 | 1,323 | 725 | 838 | 3,612 | 5,122 + 315 explainer · **66%** | 3 SVG · 3 mermaid |
+
+The decisions document is the heaviest, and it should be: an epic's review history is where its reasoning lives, and this one reversed its memory mechanism twice. Everything else is under 850 words.
+
 ## If a shape is picked, what changes
 
 1. `docs/contributing/spec-template.md` → two files: a spec template and a plan template, with the budgets above.
