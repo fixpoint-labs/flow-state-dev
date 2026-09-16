@@ -538,12 +538,9 @@ Each record is plain data:
 
 | Field | Description |
 |-------|-------------|
-| `id` | `"<teamId>.<channelName>"`, minted from the two folder names — e.g. `"engineering.standup"`. This is the channel's session id. An `id:` in frontmatter is not, and refuses. |
-| `declared` | The frontmatter exactly as written. The reader asks only for a `description` and refuses a `system:`; the closed key list is checked later, at `channelInstances`. |
+| `id` | `"<teamId>.<channelName>"`, minted from the two folder names — e.g. `"engineering.standup"`. This is the channel's session id. An `id:` in the frontmatter does not set it, and refuses. |
+| `declared` | The frontmatter exactly as written. A `CHANNEL.md` must set `description`, and cannot set `system:`; either one fails at load. The rest of what a channel may declare (`flow`, `members`, `instructions`) is checked when you call `channelInstances`, so a misspelled key loads without complaint and refuses at registration. |
 | `body` | The Markdown below the frontmatter — the channel's charter. |
-
-**A file cannot declare `system:`.** Whether a channel is a system channel follows from where it
-was declared, so declaring it lands in `errors` instead of in the record.
 
 **A channel is a folder, not a file**, unlike a resource. A loose file in a `channels/` folder is
 passed over, so a `README.md` sitting beside the channel folders is fine. Team and channel folder
@@ -551,11 +548,11 @@ names must be lowercase letters, digits and single hyphens, at most 64 character
 `channels/` folder is not an error: an app can declare no channels in files, or build some records
 by hand and read the rest.
 
-The reader builds nothing and resolves nothing — which kind a `flow:` names is `channelInstances`'
-question, not the reader's. It throws only when `root` itself cannot be read or is a symlink. A
-folder that produces no channel lands in `errors`, keyed by its path, and every other channel still
-loads. Treat a non-empty `errors` as fatal at startup unless you have a reason to run a short
-roster.
+The reader builds nothing: no instance, no session, no registry entry. A `flow:` naming a kind you
+never passed is not caught here; `channelInstances` refuses it. It throws only when `root` itself
+cannot be read or is a symlink. A folder that produces no channel lands in `errors`, keyed by its
+path, and every other channel still loads. Treat a non-empty `errors` as fatal at startup unless you
+have a reason to run a short roster.
 
 The subpath is separate because the reader imports `node:fs`; the package root stays isomorphic.
 
