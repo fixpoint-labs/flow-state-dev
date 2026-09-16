@@ -71,4 +71,8 @@ Hire composes one bag and hands it over. The kind's schema is the only thing tha
 1. **[D1](DECISIONS.md#d1) · Hire hands the bag to every kind, and a kind that has not composed the contract stops hiring — the whole roster refuses, at boot.** If wrong: anyone running a custom worker kind has a startup failure on upgrade and an edit to make. The alternative is keeping a silence we already know misleads.
 2. **[D2](DECISIONS.md#d2) · A kind's own settings live inside one `params` bag the kind closes, not at the top level beside ours.** If wrong: we ship a door nothing walks through yet, and authors learn the nesting for a collision that hasn't happened.
 
-**Open: none.** Number 1 is the one to weigh — it is the only line here that costs anybody an edit. What lost and why: [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
+**Open: number 2.** A restraint review argues `params` should wait for the first kind that actually
+needs it, and no filed issue is the contract's next key — so the placeholder would ship with
+nothing using it. Number 1 is the line that costs anybody an edit, and the alternative to it is a
+silence we already know misleads. What lost and why: [DECISIONS.md](DECISIONS.md). The cases:
+[BUSINESS-RULES.md](BUSINESS-RULES.md).
