@@ -99,7 +99,18 @@ Feedback on round 1, in one line each: the SVG POC is the clearest thing here an
 
 **Where the figures went.** Each SVG sits with the document that owns its concept: the drawers and the cost stacks in the spec (what changes, what it costs), the layers and refresh grid in the decisions (D1 and D3), the fence in the rules with its mermaid companion beside it, and none in the plan. FIX-1366 got two new figures where position is the content: a before/after wireframe of the front door with the anchor drawn, and a nine-cell coverage grid of the reference.
 
-**The PR-body test.** PR #1784's own description now embeds one figure by its `raw.githubusercontent.com` URL, and the two `PR.md` files do the same. The URL serves as `image/svg+xml`, which is what GitHub's image proxy needs. One limit to know: an image responds to the *operating system's* colour scheme, not GitHub's theme setting, so a reader running GitHub dark on an OS set to light sees the light figure. Read the PR on GitHub to confirm it renders; that's the one check this session can't run.
+**The PR-body test.** The figures serve correctly: every URL form tried (`raw.githubusercontent.com`, `github.com/…/blob/…?raw=true`, `github.com/…/raw/…`) returns `image/svg+xml`, which is what GitHub's image proxy needs. **What failed is the write path.** The GitHub tool an agent session posts PR bodies through wraps any URL ending in `.svg` in backticks on write, in all four forms tried: inline markdown image, HTML `img`, reference-style image, and a bare link. GitHub then renders code, not an image. Plain links in the same body are untouched, so this is a deliberate defang of image URLs, and it was not routed around. Two consequences for a template:
+
+- **A person can paste it; the agent can't.** The snippet below is paste-ready. Whether it renders once pasted is the half of the test only a human can run.
+- **The `PR.md` files still carry an inline image line**, because that's the shape a template should produce. When the body is posted by an agent, the template needs a fallback: a plain link to the spec's figure, which the tool leaves alone.
+
+One more limit once it does render: an image responds to the *operating system's* colour scheme, not GitHub's theme setting, so a reader running GitHub dark on an OS set to light sees the light figure.
+
+Paste-ready, for PR #1784:
+
+```md
+![Refresh, as a grid of files over time](https://github.com/fixpoint-labs/flow-state-dev/blob/claude/spec-pr-doc-formats-trwy46/docs/internal/spikes/spec-formats/FIX-1362/e-svg-poc/figures/refresh.svg?raw=true)
+```
 
 **Measured** (prose words, fences excluded):
 
