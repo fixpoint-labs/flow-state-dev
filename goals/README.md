@@ -91,6 +91,7 @@ Two constraints worth knowing:
 
 - A harness is **not typechecked** by `goals/tsconfig.json` — its imports resolve against the app, not against `goals/`. It's excluded rather than typechecked against the wrong project.
 - It runs as a **real file**, not `tsx -e`. `tsx -e` compiles to CJS, so top-level await anywhere in the import graph is a hard error — and kitchen-sink's `flowstate` chain has one.
+- It **cannot import `goals/lib`**. The copy runs from the app's root, so a relative path back here does not resolve, and making `@flow-state-dev/goals` a dependency of the app to fix that would couple the app to its own test corpus. A harness that needs a `goals/lib` helper copies it in.
 
 ## Running
 
