@@ -167,13 +167,7 @@ The built-in forgets everything between turns. Memory costs tokens on every turn
 
 You turn it on by composing it into your own copy of the kind. A *capability* is a bundle you attach to a block — the context it injects, the tools it adds, the storage it needs — and memory ships as one. [Memory](../memory/overview.md) covers the system itself: its tiers, what each one stores, and every knob `system()` takes. What follows is how a roster of workers picks it up.
 
-Three of `defineAgentWorkerFlow`'s options carry it:
-
-- `uses` — capabilities every worker of this kind carries.
-- `afterAnswer` — a block that runs after the worker answers.
-- `isolateUserState` — give each worker its own storage instead of one shared cell.
-
-Here is the whole recipe:
+It rides on the last three options in the table above — `uses`, `afterAnswer` and `isolateUserState`. Here is the whole recipe:
 
 ```ts
 import { AGENT_KIND, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";

@@ -12,7 +12,7 @@ A skill can become active in three ways:
 
 Most apps want the up-front path as the default and `runSkill` as an escape hatch the agent can use when it changes its mind mid-turn. This page covers all three.
 
-The [built-in worker kind](../workforce/built-in-worker.md#using-them) takes a subset. A worker gets slash matching plus whatever it lists as always-on; the classifier tier is opt-in per worker, and so is the mid-turn tool.
+The [built-in worker kind](../workforce/built-in-worker.md#using-them) takes a subset, and describes it in the up-front path's own [matching tiers](#three-tiers) rather than in these three paths — so its page counts a tier where this one counts a path. A worker gets slash matching plus whatever it lists as always-on; the classifier tier is opt-in per worker, and so is the mid-turn tool.
 
 ## Why two paths
 
