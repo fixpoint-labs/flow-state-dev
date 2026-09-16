@@ -1,6 +1,6 @@
 ---
 title: Channels
-sidebar_position: 3
+sidebar_position: 4
 sidebar_label: Channels
 description: "A channel is a named session on a flow kind the framework ships: several agents talking about one topic, with one durable transcript, where nobody is assigned the work and nobody closes it out."
 ---
@@ -13,7 +13,7 @@ That is a channel. The framework ships one kind that runs them, and a channel is
 
 ## What a channel is
 
-A **flow kind** is a definition you register. A **session** is one conversation running on a registered flow, with its own durable state. A **seat** is one named participant: a worker, a person, anything that posts.
+A **flow kind** is a definition you register. A **session** is one conversation running on a registered flow, with its own durable state. A channel's **members** are the names it lists, usually [hired workers](./workers-on-disk.md).
 
 A channel is a session. Not a flow, not a collection, not a new type sitting beside them. The framework ships the kind, which is called `channel`, and every channel you open is another named session on that one registered instance. Two channels, one instance. A hundred channels, still one instance.
 
@@ -27,7 +27,7 @@ Session state is also why the conversation stays in one place. A post is a reque
 2. **Back-and-forth, "keep talking" → a channel**, when you want one durable home for the history and posts that land on the channel rather than on the poster. A DM is the one-member case of the same thing, not a separate mechanism.
 3. **Claim it and settle it → the [task board](../orchestration/task-substrate.md)**, not a channel. Channels are many participants and no claim; a row that somebody takes and finishes is a board's job.
 4. **Do not fake a DM by dumping the dialogue into a worker's session.** Session history is machinery: tool calls, refusals, dispatch handles. A channel is what owns a clean transcript.
-5. **Do not put seat-owned work on a channel.** A post runs in the channel's session and waking members is a notification; neither one hands anybody a claim.
+5. **Do not put work somebody owns on a channel.** A post runs in the channel's session and waking members is a notification; neither one hands anybody a claim.
 
 :::
 
@@ -46,7 +46,7 @@ Post what you finished, what you're on, and what's blocking you.
 
 No line says which kind it runs. An omitted `flow:` selects the built-in, which is the common case and the reason the first channel you write carries no configuration at all.
 
-`members` is the channel's roster. It decides who gets woken when somebody posts, and it is checked when a post claims to be from a particular seat. It is the declared list and nothing else writes it: there is no join or leave verb yet, so changing who is in a channel means editing the record and opening a fresh channel. An edit does not reach a channel that is already open.
+`members` is the channel's roster. It decides who gets woken when somebody posts, and it is checked when a post claims to be from a particular member. It is the declared list and nothing else writes it: there is no join or leave verb yet, so changing who is in a channel means editing the record and opening a fresh channel. An edit does not reach a channel that is already open.
 
 Four keys are declarable: `flow`, `description`, `members`, `instructions`. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
 
@@ -207,7 +207,7 @@ A session belongs to one user. That means **every line of a given channel carrie
 
 The `author` field is what distinguishes participants, and the framework cannot verify it. The poster supplies it, and it is stored beside `authorVerified: false` to say so out loud. A post claiming an `author` who is not in the channel's members is refused, but that is a check against the declared roster, not proof of who is calling.
 
-So: a channel transcript is evidence that the channel's own principal wrote a line. It is close to no evidence about which seat did. If you are building an audit trail or an approval flow, this gives you a much weaker guarantee than the field names suggest. Naming the posting seat needs something the framework does not expose yet.
+So: a channel transcript is evidence that the channel's own principal wrote a line. It is close to no evidence about which member did. If you are building an audit trail or an approval flow, this gives you a much weaker guarantee than the field names suggest. Naming the posting member needs something the framework does not expose yet.
 
 ## Where posting from another flow works, and where it doesn't
 
@@ -249,4 +249,4 @@ That map is the whole registration surface. There is no second API, and a custom
 - No watching of a channels tree. It is read once, at startup.
 - No delete, and no retirement.
 - No summary pass over a long transcript.
-- No resolution of member names. A `members:` entry naming a seat that does not exist is accepted, and a delivery to it fails like any other delivery.
+- No resolution of member names. A `members:` entry naming a worker that does not exist is accepted, and a delivery to it fails like any other delivery.

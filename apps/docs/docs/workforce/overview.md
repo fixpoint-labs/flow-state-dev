@@ -50,7 +50,7 @@ flowRegistry.registerMany(seats);
 
 That worker file names no `flow:`, so it runs on the built-in worker kind. Its body becomes its instructions, and it talks.
 
-It has no memory — nothing it is told survives the turn. A **skill** is a folder of instructions a worker can pull into a turn; `readWorkforce` collects the ones sitting beside each worker in the tree, and the built-in reads them. [The worker you get without writing one](./workers-on-disk#the-worker-you-get-without-writing-one) covers its settings, what your app can configure, and the rest of what it does not do.
+It has no memory — nothing it is told survives the turn. A **skill** is a folder of instructions a worker can pull into a turn; `readWorkforce` collects the ones sitting beside each worker in the tree, and the built-in reads them. Those skills are stored at org scope, so a request to one of these workers has to carry an `orgId`. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
 
 To run a worker on a flow you wrote yourself, name that flow's kind in the worker's `flow:`. Here is `teams/engineering/workers/triage/WORKER.md`:
 
@@ -74,7 +74,7 @@ const seats = hireWorkforce(workers, {
 
 `requestTriageFlow` is your own `defineFlow(...)`, and `"request-triage"` is its `kind`. A record that names no `flow:` is hired into the built-in, so one roster can run both. You get back one seat per worker, ordered by id.
 
-Pass a flow under a key that is not its own `kind` and the hire is refused. [Workers on disk](./workers-on-disk#when-a-worker-needs-more-than-settings) walks through writing a flow kind of your own.
+Pass a flow under a key that is not its own `kind` and the hire is refused. [Workers on disk](./workers-on-disk.md#when-a-worker-needs-more-than-settings) walks through writing a flow kind of your own.
 
 `hireWorkforce` reads no files and registers nothing. A refused hire throws and returns nothing.
 
@@ -87,6 +87,7 @@ Workforce does not staff a task board. It does not replace flows, sessions, or r
 ## Related pages
 
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, and `hireWorkforce`.
+- [The built-in worker](./built-in-worker) — the `agent` kind a record with no `flow:` runs on: its settings, tools, skills, and memory.
 - [Channels](./channels) — several agents on one topic, with one durable transcript and nobody owning a row.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.
