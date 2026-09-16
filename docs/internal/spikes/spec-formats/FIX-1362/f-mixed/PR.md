@@ -8,7 +8,7 @@
 | **fixes a typo in a company skill** | Everyone sees it | Running workers keep their copy until refreshed |
 | **runs a turn with no skill** | Free | Still free |
 
-![Today one shared drawer with no levels; after, two aligned drawers with org, team, own bands](https://raw.githubusercontent.com/fixpoint-labs/flow-state-dev/claude/spec-pr-doc-formats-trwy46/docs/internal/spikes/spec-formats/FIX-1362/e-svg-poc/figures/drawers.svg)
+<img src="https://raw.githubusercontent.com/fixpoint-labs/flow-state-dev/44b6c292b1affcd8ce827fdb736136fa466e3adf/docs/internal/spikes/spec-formats/FIX-1362/e-svg-poc/figures/drawers.svg" width="940" alt="Today one shared drawer with no levels; after, two aligned drawers with org, team, own bands" />
 
 Each seat gets its own drawer, filled from its own folders. The band a skill sits in is where it came from. `house-style` is in both drawers as two copies, which is the refresh decision below.
 

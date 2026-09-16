@@ -8,7 +8,7 @@
 
 Plus: a public Atlas page stops calling a removed API a pending decision.
 
-![Two wireframes: today the overview leads with a kinds map and the built-in is taught unlinked on another page; after, the overview leads with the zero-code hire and anchors into the same section, grown](https://raw.githubusercontent.com/fixpoint-labs/flow-state-dev/claude/spec-pr-doc-formats-trwy46/docs/internal/spikes/spec-formats/FIX-1366/f-mixed/figures/front-door.svg)
+<img src="https://raw.githubusercontent.com/fixpoint-labs/flow-state-dev/44b6c292b1affcd8ce827fdb736136fa466e3adf/docs/internal/spikes/spec-formats/FIX-1366/f-mixed/figures/front-door.svg" width="940" alt="Two wireframes: today the overview leads with a kinds map and the built-in is taught unlinked on another page; after, the overview leads with the zero-code hire and anchors into the same section, grown" />
 
 The content already exists and is good. What moves is where a reader meets it. The sidebar is the same on both sides; the anchor arrow is the whole promotion.
 
