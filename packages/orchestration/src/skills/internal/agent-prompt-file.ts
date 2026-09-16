@@ -163,6 +163,25 @@ export function promptRefDualWriteError(
 }
 
 /**
+ * A file that opened a `---` fence and never closed it.
+ *
+ * `splitFrontmatter` returns the whole file as body in that case, which is
+ * indistinguishable from a file with no frontmatter at all — and, now that the
+ * prompt file owns `tools`/`model`/`visibility`/`context-supply`, silently
+ * losing every one of them. Detected here rather than in `splitFrontmatter`
+ * because `SKILL.md` and `WORKER.md` share that function and are not changing
+ * their tolerance for it.
+ *
+ * An empty-but-closed fence (`---` immediately followed by `---`) is NOT this:
+ * it also yields empty YAML, and it is a legitimate way to write no settings.
+ */
+function opensAFenceItNeverCloses(text: string): boolean {
+  const lines = text.split(/\r?\n/);
+  if (lines[0]?.trim() !== "---") return false;
+  return !lines.slice(1).some((line) => line.trim() === "---");
+}
+
+/**
  * Split a prompt Markdown file into body + optional YAML frontmatter.
  * A file with no `---` fences is all body.
  */
@@ -170,12 +189,19 @@ export function parseAgentPromptFile(
   text: string,
   agentKey: string,
 ): ParsedAgentPromptFile {
+  const location = `agent prompt file for \`${agentKey}\``;
+  if (opensAFenceItNeverCloses(text)) {
+    throw new Error(
+      `${location}: the frontmatter opens with \`---\` and never closes. Add the ` +
+        `closing \`---\` — without it every setting is read as prompt text and the ` +
+        `agent runs on defaults.`,
+    );
+  }
   const { yaml, body } = splitFrontmatter(text);
   if (yaml.trim().length === 0) {
     return { body, tuning: {} };
   }
   const raw = parseFrontmatterYaml(yaml);
-  const location = `agent prompt file for \`${agentKey}\``;
   for (const k of Object.keys(raw)) {
     if (!AGENT_PROMPT_FILE_KEYS.has(k)) {
       throw new Error(

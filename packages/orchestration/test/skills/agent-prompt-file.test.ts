@@ -44,6 +44,24 @@ describe("parseAgentPromptFile", () => {
     expect(parsed.tuning).toEqual({});
   });
 
+  it("rejects a frontmatter fence that opens and never closes", () => {
+    // Without this refusal the whole file — `---`, settings and all — becomes
+    // the persona, every tuning field is dropped, and the agent runs on
+    // defaults. That is the failure this file's frontmatter now owns.
+    const unterminated = ["---", "model: openai/gpt-5.4-mini", "tools: [search]", "", "You research things."].join("\n");
+    expect(() => parseAgentPromptFile(unterminated, "researcher")).toThrow(/never closes/);
+    expect(() => parseAgentPromptFile(unterminated, "researcher")).toThrow(/researcher/);
+  });
+
+  it("accepts an empty but closed fence, which also yields no YAML", () => {
+    // The near-miss that makes the check above non-trivial: this reaches the
+    // same empty-YAML branch, and refusing it would break a legitimate file.
+    const closedButEmpty = ["---", "---", "You research things."].join("\n");
+    const parsed = parseAgentPromptFile(closedButEmpty, "researcher");
+    expect(parsed.body).toBe("You research things.");
+    expect(parsed.tuning).toEqual({});
+  });
+
   it("rejects an unknown frontmatter key", () => {
     expect(() =>
       parseAgentPromptFile("---\nfoo: bar\n---\n\nbody", "analyzer"),
