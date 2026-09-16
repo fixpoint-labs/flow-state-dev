@@ -231,6 +231,7 @@ const sidebars: SidebarsConfig = {
         "workforce/overview",
         "workforce/workers-on-disk",
         "workforce/channels",
+        "workforce/documents-on-disk",
       ],
     },
     {
