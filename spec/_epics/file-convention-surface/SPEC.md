@@ -44,15 +44,15 @@ figures point here rather than repeating it.
 | FIX-1356 | Skills file convention — the per-seat skills register over org ∪ team ∪ worker-local | The register FIX-1367 fills; also where path-level-is-scope first shipped | **Done** · spec [#1716](https://github.com/fixpoint-labs/flow-state-dev/pull/1716) · impl [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728) |
 | FIX-1367 | Thin `WorkerConfig` admission — hire fills the `skills` bag, plus one extension placeholder | "A seat works" is not honest until hire invokes the flow with a config the kind admits | **Todo** — ready, nothing blocks it |
 | FIX-1355 | Thin pentest lab **Proof** | The only child shaped to move Goal 1, and the first consumer that declares any of it in files | Backlog — waits on nothing that isn't done |
-| FIX-1357 | Kinds + blocks boot scan under `workforce/flows/{workers,channels}/` | The one registration door; until it ships a hand-passed `{ kinds }` map stays valid | Backlog |
-| FIX-1358 | Atlas: the ChannelFlow teach and the full tree | The conventions are only real to an author who is taught them | Backlog · one page landed [#1742](https://github.com/fixpoint-labs/flow-state-dev/pull/1742) · **route unset** |
+| FIX-1357 | Kinds + blocks boot scan under `workforce/flows/{workers,channels}/` | The one registration door; until it ships a hand-passed `{ kinds }` map stays valid | **In spec review** · spec [#1804](https://github.com/fixpoint-labs/flow-state-dev/pull/1804) |
+| FIX-1358 | Atlas: the ChannelFlow teach and the full tree | The conventions are only real to an author who is taught them | **In spec review** · spec [#1805](https://github.com/fixpoint-labs/flow-state-dev/pull/1805) · one page landed [#1742](https://github.com/fixpoint-labs/flow-state-dev/pull/1742) |
 | FIX-1368 | Worker-level resources — `workers/<name>/resources/` as a third root | FIX-1354 deferred it as a scope cut, not a rejection | Backlog |
 | FIX-1377 | Optional `TEAM.md` — description, team instructions, hire's prompt compose | Instructions are duplicated on every `WORKER.md` without it | Backlog |
 | FIX-1388 | Resources **Door B** — capability and resource modules (discover, install, select) | Door A ships read-only Markdown; anything with state or behaviour still needs hand-written TypeScript | Backlog |
 | FIX-1389 | Workforce loader primitives extract — one shared tree-walk, thin per-slot adapters | Four readers now re-implement the walk, and the contracts have already drifted | Backlog |
 
-5 done · 1 ready · 7 in backlog. FIX-1353 (*L2 channels as sessions/boards*) closed as a
-duplicate of FIX-1352 and is dropped from the set.
+5 done · 2 in spec review · 1 ready · 5 in backlog. FIX-1353 (*L2 channels as
+sessions/boards*) closed as a duplicate of FIX-1352 and is dropped from the set.
 
 **Is thirteen really six?** The floor was seven items; five have landed and the count grew to
 thirteen, entirely from follow-ons the conventions' own reviews raised. None of the four late

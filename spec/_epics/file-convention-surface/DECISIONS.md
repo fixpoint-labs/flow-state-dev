@@ -78,7 +78,7 @@ not one issue's design, is wrong.
 |---|---|
 | **Instead of** | `kinds/`, a flat filename suffix, or a kind file sitting beside `WORKER.md` / `CHANNEL.md` |
 | **Because** | Channel kinds and worker kinds are the same problem, so they get one door invented once. Documents declare; they never define a kind |
-| **Locks in** | One scan produces one `{ kinds }` map, with `workforce/blocks/` scanned beside it. `flow:` only ever names an already-registered kind. A hand-passed `{ kinds }` map stays valid until the scan ships, which is why FIX-1357 sitting in backlog holds up nothing |
+| **Locks in** | One scan produces one `{ kinds }` map, with `workforce/blocks/` scanned beside it. `flow:` only ever names an already-registered kind. A hand-passed `{ kinds }` map stays valid until the scan ships, which is why FIX-1357 not having shipped yet holds up nothing |
 
 <a name="d7"></a>
 ## D7 · `org/workers/` stays locked open, unowned, and untaught

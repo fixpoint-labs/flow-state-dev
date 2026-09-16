@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 382" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path: thirteen lanes against time from September 11 to a now line at September 16, with everything after it unscheduled. Done bars: the kinds fence and skills on September 11, ChannelFlow from September 12 to 14, channels and resources from September 11 to 16, and one atlas page on September 12. Ahead of the now line: the WorkerConfig admission is ready and not started; the boot scan, the atlas remainder, worker resources, TEAM.md, Door B and the loader extract are unscheduled; the pentest lab Proof is last and required. The critical path is marked in the gutter and runs from the kinds fence through ChannelFlow and the channels convention to the lab.">
+     aria-label="The path: thirteen lanes against time from September 11 to a now line at September 16, with nothing after it scheduled. Done bars: the kinds fence and skills on September 11, ChannelFlow from September 12 to 14, channels and resources from September 11 to 16, and one atlas page on September 12. On the now line: the boot scan and the atlas remainder each opened a spec and are in spec review. Ahead of it: the WorkerConfig admission is ready and not started; worker resources, TEAM.md, Door B and the loader extract are unscheduled; the pentest lab Proof is last and required. The critical path is marked in the gutter and runs from the kinds fence through ChannelFlow and the channels convention to the lab.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -11,6 +11,7 @@
     .done  { fill:var(--code); stroke:none; }
     .todo  { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
     .ready { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .wip   { fill:var(--accent); stroke:none; }
     .lane  { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
     .axis  { stroke:var(--rule); stroke-width:1; }
     .now   { stroke:var(--gone); stroke-width:1.4; }
@@ -32,7 +33,7 @@
     <text class="t-s" x="272" y="38">Sep 12</text>
     <text class="t-s" x="416" y="38">Sep 14</text>
     <text class="t-now" x="566" y="38">now · Sep 16</text>
-    <text class="t-s" x="700" y="38">ahead · nothing scheduled</text>
+    <text class="t-s" x="700" y="38">ahead · in flight or unscheduled</text>
   </g>
 
   <g id="critical-path">
@@ -64,10 +65,14 @@
 
     <text class="t-ln" x="16" y="202">FIX-1357 boot scan</text>
     <path class="lane" d="M572 197 L924 197"/>
+    <rect class="wip" x="576" y="193" width="104" height="12" rx="2"/>
+    <text class="t-s" x="692" y="202">in spec review · #1804</text>
 
     <text class="t-ln" x="16" y="224">FIX-1358 atlas</text>
     <rect class="done" x="272" y="215" width="30" height="12" rx="2"/>
     <path class="lane" d="M572 219 L924 219"/>
+    <rect class="wip" x="576" y="215" width="104" height="12" rx="2"/>
+    <text class="t-s" x="692" y="224">in spec review · #1805</text>
 
     <text class="t-ln" x="16" y="246">FIX-1368 worker resources</text>
     <path class="lane" d="M572 241 L924 241"/>
@@ -90,14 +95,16 @@
   <path class="now" d="M560 50 L560 346"/>
 
   <g id="legend">
-    <rect class="done" x="200" y="360" width="16" height="10" rx="2"/>
-    <text class="t-s" x="224" y="369">done</text>
-    <rect class="ready" x="300" y="359" width="16" height="12" rx="2"/>
-    <text class="t-s" x="324" y="369">ready, nothing blocks it</text>
-    <rect class="todo" x="486" y="359" width="16" height="12" rx="2"/>
-    <text class="t-s" x="510" y="369">not started</text>
-    <circle class="critd" cx="608" cy="365" r="3.2"/>
-    <path class="crit" d="M608 359 L608 371"/>
-    <text class="t-s" x="624" y="369">on the critical path to the proof</text>
+    <rect class="done" x="120" y="360" width="16" height="10" rx="2"/>
+    <text class="t-s" x="144" y="369">done</text>
+    <rect class="wip" x="196" y="359" width="16" height="12" rx="2"/>
+    <text class="t-s" x="220" y="369">in spec review</text>
+    <rect class="ready" x="330" y="359" width="16" height="12" rx="2"/>
+    <text class="t-s" x="354" y="369">ready, nothing blocks it</text>
+    <rect class="todo" x="520" y="359" width="16" height="12" rx="2"/>
+    <text class="t-s" x="544" y="369">not started</text>
+    <circle class="critd" cx="640" cy="365" r="3.2"/>
+    <path class="crit" d="M640 359 L640 371"/>
+    <text class="t-s" x="656" y="369">on the critical path to the proof</text>
   </g>
 </svg>
