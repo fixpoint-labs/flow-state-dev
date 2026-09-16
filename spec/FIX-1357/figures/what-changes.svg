@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 330" role="img"
+     aria-label="A horizontal fence divides build time above from run time below. Above it: the owner-locked folders, fsdev gen walking them, and one generated module of static imports. Below it: hireWorkforce and taskBoard receiving the maps they already take, marked unchanged, and a struck-out box showing the rejected design in which the framework itself walks the tree at run time."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-code { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-acc  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-gone { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.11em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .arrow  { fill:none; stroke:var(--ink-2); stroke-width:1.3; }
+    .arrow-gone { fill:none; stroke:var(--gone); stroke-width:1.3; stroke-dasharray:5 4; }
+    .head   { fill:var(--ink-2); }
+    .head-gone { fill:var(--gone); }
+    .fence  { stroke:var(--ink-3); stroke-width:1.1; stroke-dasharray:7 5; }
+    .strike { stroke:var(--gone); stroke-width:1.3; }
+  </style>
+
+  <g id="build-band">
+    <text class="t-lbl" x="20" y="26">BUILD TIME · THE TOOLCHAIN WALKS THE TREE</text>
+
+    <rect class="n-box" x="20" y="38" width="226" height="124" rx="5"/>
+    <text class="t-b"   x="36" y="62">the locked tree</text>
+    <text class="t-s"   x="36" y="86">workforce/flows/workers/</text>
+    <text class="t-s"   x="36" y="104">workforce/flows/channels/</text>
+    <text class="t-s"   x="36" y="122">workforce/blocks/</text>
+    <text class="t-lbl" x="36" y="146">ONE FILE · ONE KIND OR BLOCK</text>
+
+    <path class="arrow" d="M246,100 L288,100"/>
+    <path class="head" d="M288,95 L297,100 L288,105 z"/>
+
+    <rect class="n-code" x="298" y="62" width="168" height="76" rx="5"/>
+    <text class="t-b"   x="314" y="90">fsdev gen</text>
+    <text class="t-s"   x="314" y="112">walks · names · refuses</text>
+
+    <path class="arrow" d="M466,100 L508,100"/>
+    <path class="head" d="M508,95 L517,100 L508,105 z"/>
+
+    <rect class="n-code" x="518" y="38" width="240" height="124" rx="5"/>
+    <text class="t-b"   x="534" y="62">workforce.gen.ts</text>
+    <text class="t-s"   x="534" y="86">import researcher from …</text>
+    <text class="t-s"   x="534" y="104">export const kinds  = { … }</text>
+    <text class="t-s"   x="534" y="122">export const blocks = { … }</text>
+    <text class="t-lbl" x="534" y="146">STATIC IMPORTS · ANY BUNDLER</text>
+
+    <text class="t-s" x="778" y="94">committed,</text>
+    <text class="t-s" x="778" y="110">checked in CI</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M20,186 L920,186"/>
+    <text class="t-lbl" x="778" y="182">ABOVE · DISCOVERY</text>
+    <text class="t-lbl" x="778" y="210">BELOW · NOTHING NEW</text>
+  </g>
+
+  <g id="run-band">
+    <path class="arrow" d="M580,162 L580,206 L440,206 L440,226"/>
+    <path class="head" d="M435,226 L440,235 L445,226 z"/>
+    <path class="arrow" d="M700,162 L700,206 L752,206 L752,226"/>
+    <path class="head" d="M747,226 L752,235 L757,226 z"/>
+
+    <rect class="n-gone" x="20" y="236" width="250" height="72" rx="5"/>
+    <text class="t-gone" x="36" y="262">the framework walks the tree</text>
+    <text class="t-gone" x="36" y="282">and imports what it finds</text>
+    <path class="strike" d="M32,288 L258,252"/>
+    <text class="t-lbl" x="36" y="302">EMPTY ON A BUNDLED HOST</text>
+
+    <path class="arrow-gone" d="M145,236 L145,200"/>
+    <text class="t-gone" x="132" y="196">✕</text>
+    <text class="t-lbl" x="160" y="222">THIS PATH NEVER CROSSES</text>
+
+    <rect class="n-acc" x="300" y="236" width="278" height="72" rx="5"/>
+    <text class="t-b"   x="318" y="264">hireWorkforce</text>
+    <text class="t-s"   x="318" y="284">receives { kinds }</text>
+    <text class="t-lbl" x="318" y="302">UNCHANGED</text>
+
+    <rect class="n-acc" x="612" y="236" width="278" height="72" rx="5"/>
+    <text class="t-b"   x="630" y="264">taskBoard</text>
+    <text class="t-s"   x="630" y="284">receives { workers }</text>
+    <text class="t-lbl" x="630" y="302">UNCHANGED</text>
+  </g>
+</svg>
