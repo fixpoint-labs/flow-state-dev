@@ -35,8 +35,10 @@ That record names no `flow:`, so it is hired into the built-in `agent` kind and 
 argument. Its body becomes its instructions and steers its answers.
 
 The built-in stores each worker's skills at org scope, so **a request to one of these workers has
-to carry an `orgId`**. One carrying only a `userId` fails with `Resource "skills" is not
-registered` before the model is reached.
+to resolve to an org**. One that resolves to a `userId` alone fails with `Resource "skills" is not
+registered` before the model is reached. On the default principal resolver, send an `orgId` with
+the request; if you configure your own `resolvePrincipal`, return the org from there — the route
+reads the resolved principal and ignores a body `orgId`, so a caller cannot name its own org.
 
 To run a worker on a flow you wrote, name that flow's `kind` in the record's `flow:` and pass the
 flow under the same key:

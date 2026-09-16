@@ -40,7 +40,7 @@ A worker's **skills** — the folders of instructions it can pull into a turn, c
 Resource "skills" is not registered
 ```
 
-Send an `orgId` with the request. [The client reference](/docs/configuration/client) covers how a request carries one.
+The request has to resolve to an org. An app on the default principal resolver does that by sending an `orgId` with the request; an app that configures its own `resolvePrincipal` has to return the org from there, because the route reads the resolved principal and ignores a body `orgId` — a caller cannot name its own org. [The client reference](/docs/configuration/client) covers how a request carries one.
 
 ## Tools
 
@@ -50,8 +50,9 @@ A worker names its tools by key in `tools:`, and the keys come from the kind's *
 
 - **The skill loader**, when the worker sets [`skills.activateTool`](#using-them). It lets the model pull a skill the worker holds into the turn as it runs. It is not a catalog tool, so `tools:` neither lists it nor holds it back.
 - **A tool a capability carries**, when you attach one through `defineAgentWorkerFlow`'s `uses`. A capability's tools reach every worker of the kind whatever that worker's `tools:` names, so turn tool-bearing presets off unless you want them on the whole roster. [Giving workers memory](#giving-workers-memory) does exactly that.
+- **The delegation controls**, when a skill the worker holds declares `agents:`. Activating that skill puts the task board's eight tools and `runBoard` on the worker, so it can create tasks and run them. They are not catalog tools either, and `tools: []` does not hold them back.
 
-Skills do not widen the list any other way. A skill a worker holds can declare `allowed-tools`, and naming a tool there does not grant it. A skill that delegates work to other workers is fenced the same way: those workers are seated from the holding worker's `tools:`, so a worker with `tools: []` reaches no catalog tool through a delegate either.
+Past those three, a skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's `tools:`, so a worker with `tools: []` reaches no catalog tool through a delegate — it can command the board, but the workers it commands are fenced.
 
 Checking `tools:` against a catalog is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so whether a `tools:` name is checked against anything is that kind's business.
 
@@ -147,7 +148,7 @@ You write regression tests for reported bugs.
 - **A slash message.** Someone typing `/write-regression fix the flake` activates that skill for the turn. This always works, needs no setting, and only responds to what a person typed — a model emitting the same text does not trigger it.
 - **`activateTool`** lets the model pull a skill in partway through a turn, once it knows what it is dealing with. Off by default, because turning it on puts a listing of everything the worker holds into every prompt.
 
-A fourth path is off by default. `skills.enableLlmClassifier` adds a small model call at the front of each turn that decides whether a skill applies. It catches cases a slash and an always-on list miss, and it costs a provider round trip on every message.
+A fourth path is off by default. `skills.enableLlmClassifier` adds a small model call that decides whether a skill applies. It catches cases a slash and an always-on list miss. A slash match settles the turn before it runs, so it costs a provider round trip on every message that isn't one.
 
 [Activation paths](../skills/activation.md) covers the same mechanisms for a flow of your own, where you wire them up yourself.
 
