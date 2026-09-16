@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Three regions. The box on the left is what a WORKER.md carrying only instructions gets with zero config lines: hire selects the built-in agent kind when flow is omitted, and the seat talks and uses its own skills, consuming the shared default prompt. A fence on the box's edge says no memory import. Top right, composed in by the app: the shipped memory pieces assembled into the app's own kind, which plugs into the same kinds map. Bottom right, replaced in one line: flow names a custom kind and wins; a typo'd name fails loudly. A strip at the bottom lists what is deliberately not built.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B; --rule:#D5D4CB;
+            --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F3DEDC; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81; --rule:#2B3135;
+              --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1F1E; } }
+    .t-b  { fill:var(--ink);   font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-xs { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; letter-spacing:.04em; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .f-accent{ fill:var(--accent); } .f-code{ fill:var(--code); } .f-gone{ fill:var(--gone); } .f-prose{ fill:var(--prose); }
+    .box   { fill:var(--surface);   stroke:var(--rule); stroke-width:1.2; }
+    .box2  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-code{ fill:var(--code-soft); stroke:var(--code); stroke-width:1.3; }
+    .n-acc { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-prose{ fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-gone{ fill:none; stroke:var(--gone); stroke-width:1.1; stroke-dasharray:4 3; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .ln-acc{ stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .ln-gone{ stroke:var(--gone); stroke-width:1.3; fill:none; stroke-dasharray:5 4; }
+    .fence { stroke:var(--accent); stroke-width:2.2; fill:none; stroke-dasharray:7 5; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--ink-3)"/></marker>
+    <marker id="ah-acc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent)"/></marker>
+  </defs>
+
+  <g id="the-box">
+    <text class="t-lbl" x="40" y="28">IN THE BOX · a WORKER.md with only instructions · zero config lines</text>
+    <rect class="box2" x="40" y="40" width="480" height="230" rx="6"/>
+    <rect class="box" x="56" y="58" width="130" height="50" rx="5"/>
+    <text class="t-s" x="66" y="78">WORKER.md</text>
+    <text class="t-xs" x="66" y="94">instructions · no flow:</text>
+    <path class="ln" d="M186,83 L214,83" marker-end="url(#ah)"/>
+    <rect class="box" x="216" y="58" width="120" height="50" rx="5"/>
+    <text class="t-s" x="226" y="78">hire</text>
+    <text class="t-xs" x="226" y="94">no flow: → built-in</text>
+    <path class="ln" d="M336,83 L364,83" marker-end="url(#ah)"/>
+    <rect class="n-code" x="366" y="58" width="138" height="50" rx="5"/>
+    <text class="t-s" x="376" y="78">seat · agent kind</text>
+    <text class="t-xs" x="376" y="94">talks · uses its skills</text>
+
+    <rect class="box" x="56" y="130" width="210" height="44" rx="5"/>
+    <text class="t-s" x="66" y="148">default prompt · consumed</text>
+    <text class="t-xs" x="66" y="163">shipped by W2 · seam if not landed</text>
+    <rect class="box" x="286" y="130" width="218" height="44" rx="5"/>
+    <text class="t-s" x="296" y="148">skills · org ∪ team ∪ own</text>
+    <text class="t-xs" x="296" y="163">per seat · real storage identity</text>
+
+    <rect class="n-code" x="56" y="196" width="448" height="30" rx="5"/>
+    <text class="t-s" x="66" y="215">replaceable in one line: flow: myCustomAgent wins when registered</text>
+    <text class="t-xs f-gone" x="56" y="252">a typo'd kind name fails loudly · it never silently hires the agent</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M520,40 L520,270"/>
+    <text class="t-lbl f-accent" x="534" y="52">THE FENCE</text>
+    <text class="t-xs f-accent" x="534" y="66">no memory import on the built-in</text>
+    <text class="t-xs f-accent" x="534" y="78">nothing at hire time can add one</text>
+  </g>
+
+  <g id="composed">
+    <text class="t-lbl" x="560" y="112">COMPOSED IN · by the app, once</text>
+    <rect class="box" x="560" y="122" width="340" height="66" rx="6"/>
+    <rect class="n-acc" x="572" y="132" width="150" height="46" rx="5"/>
+    <text class="t-s" x="582" y="150">shipped memory pieces</text>
+    <text class="t-xs" x="582" y="166">session · user · org</text>
+    <path class="ln-acc" d="M722,155 L750,155" marker-end="url(#ah-acc)"/>
+    <rect class="n-acc" x="752" y="132" width="138" height="46" rx="5"/>
+    <text class="t-s" x="762" y="150">the app's own kind</text>
+    <text class="t-xs" x="762" y="166">a seam, not a setting</text>
+    <path class="ln-acc" d="M560,155 L528,155 L528,215 L506,215" marker-end="url(#ah-acc)"/>
+    <text class="t-xs" x="560" y="204">plugs into the same kinds map · a gap is named, never faked</text>
+  </g>
+
+  <g id="not-built">
+    <text class="t-lbl f-gone" x="40" y="300">NOT BUILT · on purpose</text>
+    <rect class="n-gone" x="40" y="310" width="150" height="26" rx="4"/><text class="t-xs f-gone" x="50" y="327">a second Agent type</text>
+    <rect class="n-gone" x="200" y="310" width="200" height="26" rx="4"/><text class="t-xs f-gone" x="210" y="327">a new memory-isolation primitive</text>
+    <rect class="n-gone" x="410" y="310" width="130" height="26" rx="4"/><text class="t-xs f-gone" x="420" y="327">a persona builder</text>
+    <rect class="n-gone" x="550" y="310" width="170" height="26" rx="4"/><text class="t-xs f-gone" x="560" y="327">a Collab or channel roster</text>
+    <rect class="n-gone" x="730" y="310" width="100" height="26" rx="4"/><text class="t-xs f-gone" x="740" y="327">an MCP door</text>
+  </g>
+</svg>

@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 400" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Swimlanes against time. Two dashed lanes at the top are inputs from other epics: the skills file convention, done before the epic opened, and the default worker prompt, still not shipped and consumed through a seam. Seven lanes below are the epic's issues in chain order. Solid bars are done: the drift audit, the contract, and the kind itself landed on consecutive days. Dashed accent bars are in flight at the now line: per-seat skills and the memory seam in implementation review, the teaching issue in spec review. The proof lane is empty until both skills and memory land. Arrows between lanes are the dependencies; the chain from audit to contract to kind to proof is the critical path.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B; --rule:#D5D4CB;
+            --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81; --rule:#2B3135;
+              --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-xs { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; letter-spacing:.04em; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .f-accent{ fill:var(--accent); } .f-code{ fill:var(--code); } .f-gone{ fill:var(--gone); }
+    .lane  { stroke:var(--rule); stroke-width:1; }
+    .done  { fill:var(--code-soft);   stroke:var(--code);   stroke-width:1.3; }
+    .flight{ fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.3; stroke-dasharray:5 3; }
+    .todo  { fill:none; stroke:var(--ink-3); stroke-width:1; stroke-dasharray:3 3; }
+    .ext   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .extno { fill:none; stroke:var(--prose); stroke-width:1; stroke-dasharray:4 3; }
+    .now   { stroke:var(--gone); stroke-width:1.8; stroke-dasharray:6 4; }
+    .dep   { stroke:var(--ink-3); stroke-width:1.1; fill:none; }
+    .crit  { stroke:var(--code); stroke-width:1.8; fill:none; }
+    .future{ fill:var(--surface-2); opacity:.45; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--ink-3)"/></marker>
+    <marker id="ahc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--code)"/></marker>
+  </defs>
+
+  <text class="t-lbl" x="40" y="28">THE PATH · one lane per issue · chain order · as of 2026-09-16</text>
+  <rect class="future" x="720" y="44" width="180" height="326"/>
+  <g id="axis">
+    <text class="t-xs" x="220" y="56">Sep 11 · gate</text>
+    <text class="t-xs" x="320" y="56">Sep 12</text>
+    <text class="t-xs" x="420" y="56">Sep 13</text>
+    <text class="t-xs" x="520" y="56">Sep 14</text>
+    <text class="t-xs" x="620" y="56">Sep 15</text>
+    <text class="t-xs f-gone" x="724" y="56">now</text>
+    <text class="t-xs" x="800" y="56">next</text>
+    <path class="now" d="M720,62 L720,370"/>
+  </g>
+
+  <g id="inputs">
+    <text class="t-s" x="40" y="86">W3 · FIX-1356 skills conv.</text>
+    <text class="t-xs f-code" x="220" y="86">done before the gate · consumed by FIX-1362</text>
+    <text class="t-s" x="40" y="114">W2 · FIX-1344 default prompt</text>
+    <rect class="extno" x="220" y="100" width="680" height="20" rx="3"/><text class="t-xs f-prose" x="228" y="114">not shipped · the kind consumes it through a seam whenever it lands</text>
+    <path class="lane" d="M40,130 L900,130"/>
+  </g>
+
+  <g id="lanes">
+    <text class="t-s" x="40" y="154">FIX-1360 drift audit</text>
+    <rect class="done" x="220" y="140" width="100" height="20" rx="3"/><text class="t-xs f-code" x="226" y="154">done · #1739</text>
+    <text class="t-s" x="40" y="184">FIX-1361 contract</text>
+    <rect class="done" x="320" y="170" width="100" height="20" rx="3"/><text class="t-xs f-code" x="326" y="184">done · #1751</text>
+    <text class="t-s" x="40" y="214">FIX-1363 the kind</text>
+    <rect class="done" x="420" y="200" width="100" height="20" rx="3"/><text class="t-xs f-code" x="426" y="214">done · #1754</text>
+    <text class="t-s" x="40" y="244">FIX-1362 per-seat skills</text>
+    <rect class="done" x="520" y="230" width="100" height="20" rx="3"/><text class="t-xs f-code" x="526" y="244">spec · #1766</text>
+    <rect class="flight" x="620" y="230" width="220" height="20" rx="3"/><text class="t-xs f-accent" x="626" y="244">impl in review · #1776</text>
+    <text class="t-s" x="40" y="274">FIX-1364 memory seam</text>
+    <rect class="done" x="520" y="260" width="100" height="20" rx="3"/><text class="t-xs f-code" x="526" y="274">spec · #1768</text>
+    <rect class="flight" x="620" y="260" width="220" height="20" rx="3"/><text class="t-xs f-accent" x="626" y="274">impl in review · #1782</text>
+    <text class="t-s" x="40" y="304">FIX-1366 teach</text>
+    <rect class="flight" x="620" y="290" width="220" height="20" rx="3"/><text class="t-xs f-accent" x="626" y="304">spec in review · #1765</text>
+    <text class="t-s" x="40" y="334">FIX-1365 proof · required</text>
+    <rect class="todo" x="840" y="320" width="60" height="20" rx="3"/><text class="t-xs" x="846" y="334">after</text>
+    <text class="t-xs" x="40" y="360">the epic cannot finish without the proof lane · it waits on skills and memory, not on teach</text>
+  </g>
+
+  <g id="deps">
+    <path class="crit" d="M320,160 L320,170" marker-end="url(#ahc)"/>
+    <path class="crit" d="M420,190 L420,200" marker-end="url(#ahc)"/>
+    <path class="crit" d="M520,220 L520,230" marker-end="url(#ahc)"/>
+    <path class="dep"  d="M520,220 L520,226 L512,226 L512,260 L518,260" marker-end="url(#ah)"/>
+    <path class="dep"  d="M520,220 L520,226 L504,226 L504,290 L618,290" marker-end="url(#ah)"/>
+    <path class="crit" d="M840,250 L850,250 L850,318" marker-end="url(#ahc)"/>
+    <path class="crit" d="M840,280 L858,280 L858,318" marker-end="url(#ahc)"/>
+  </g>
+
+  <g id="legend">
+    <rect class="done" x="560" y="380" width="12" height="10" rx="2"/><text class="t-xs" x="578" y="389">done</text>
+    <rect class="flight" x="620" y="380" width="12" height="10" rx="2"/><text class="t-xs" x="638" y="389">in flight</text>
+    <rect class="todo" x="700" y="380" width="12" height="10" rx="2"/><text class="t-xs" x="718" y="389">not started</text>
+    <path class="crit" d="M800,385 L820,385"/><text class="t-xs" x="826" y="389">critical path</text>
+  </g>
+</svg>
