@@ -8,14 +8,13 @@ and [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n).
 
 ## The path
 
-![The path: thirteen lanes against time, done bars for the kinds fence, skills, ChannelFlow, channels and resources behind the now line at September 16, the WorkerConfig admission, the boot scan and the atlas in spec review on the now line, empty lanes ahead of it for worker resources, TEAM.md, Door B and the loader extract, and the pentest lab Proof last, with the critical path drawn through the three conventions to the lab](figures/path.svg)
+![The path: thirteen lanes against time, done bars for the kinds fence, skills, ChannelFlow, channels and resources behind the now line at September 16, the WorkerConfig admission and the atlas spec approved and the boot scan still in spec review on the now line, empty lanes ahead of it for worker resources, TEAM.md, Door B and the loader extract, and the pentest lab Proof last, with the critical path drawn through the three conventions to the lab](figures/path.svg)
 
-Five lanes are behind the now line, three opened a spec on it, and five are ahead of it, none of
-them scheduled. The critical path is short and already clear: the three conventions land, and
-the lab proves them. What the picture shows that the set table can't is the shape of the
-delay — every convention shipped
-before its consumer, which is the risk D1's necessity check accepted and ER-15 is the tripwire
-for. The dependency graph itself is in
+Five lanes are behind the now line, three opened a spec on it — two of them now approved and
+waiting to be built — and five are ahead of it, none of them scheduled. The critical path is
+short and already clear: the three conventions land, and the lab proves them. What the picture
+shows that the set table can't is the shape of the delay — every convention shipped before its
+consumer, which is the risk D1's necessity check accepted and ER-15 is the tripwire for. The dependency graph itself is in
 [the spec](SPEC.md#how-the-issues-flow-into-each-other); this document adds time to it.
 
 ## What each issue entails
@@ -27,9 +26,9 @@ for. The dependency graph itself is in
 | **FIX-1311** ChannelFlow | spec → impl | D1 · D2 · D5 · the fence | The default kind, its two-phase binder, `ChannelManifest` and the `system:` refusal | FIX-1352 | Large |
 | **FIX-1352** channels | spec → impl | The kind (D2) · `ChannelManifest` · D3 | `CHANNEL.md` at **team** scope, and the walk primitives the others consume — the `org/` door is unbuilt ([Open 5](DECISIONS.md#open)) | FIX-1355 · FIX-1358 · FIX-1389 | Medium |
 | **FIX-1354** resources | spec → impl | The walk primitives · D4 | Markdown documents under `resources/`, org and team — **Door A** | FIX-1368 · FIX-1388 | Medium |
-| **FIX-1367** admission | spec → impl | The skills register (ER-7) | Hire invoking the flow with a config the kind admits, plus the extension placeholder | The lab's honesty claim | Small |
+| **FIX-1367** admission | spec → impl | The skills register (ER-7) | Hire invoking the flow with a config the kind admits — the seat's skills bag, on every record | The lab's honesty claim | Small |
 | **FIX-1355** lab Proof · **required** | spec → goal check | All three conventions · FIX-1367 | One thin pentest lab, declared in files, multi-seat on the real path | The epic's wrap | Medium |
-| **FIX-1357** boot scan | spec → impl | D6's locked folder | One scan, one `{ kinds }` map, `workforce/blocks/` beside it | Custom kinds without a hand-passed map | Medium |
+| **FIX-1357** boot scan | spec → impl | D6's locked folder | One scan, three maps — worker kinds, channel kinds, blocks | Custom kinds without hand-passed maps | Medium |
 | **FIX-1358** atlas | spec → impl | D1 · D2 · D3 · D8 | The ChannelFlow teach and the full-tree teach | Authors | Small |
 | **FIX-1368** worker resources | spec → impl | FIX-1354's reader | `workers/<name>/resources/` as a third root | — | Small |
 | **FIX-1377** `TEAM.md` | spec → impl | D8 · hire's existing team walk | Optional team instructions and the locked prompt order | — | Small |
@@ -49,8 +48,11 @@ and FIX-1367 does not wait on it.
 
 1. **Nothing blocks FIX-1355.** Every convention it consumes is Done. The lab is the next thing
    the epic needs, and it is the only one whose absence stops the epic finishing (ER-19).
-2. **FIX-1367 is in spec review** ([#1807](https://github.com/fixpoint-labs/flow-state-dev/pull/1807))
-   — its register merged, and it is what discharges ER-15 for skills.
+2. **FIX-1367's spec is approved** ([#1807](https://github.com/fixpoint-labs/flow-state-dev/pull/1807),
+   closed unmerged) — implementation is all it waits on now, and it is what discharges ER-15 for
+   skills. **FIX-1358's is approved too**
+   ([#1805](https://github.com/fixpoint-labs/flow-state-dev/pull/1805)), which puts ER-22's teach
+   on the floor.
 3. **FIX-1355 starting** → the [Open](DECISIONS.md#open) DM-opener question gets its answer, or
    gets skipped, at that moment. That is the tripwire, not a separate task.
 4. **FIX-1355 needing a shared infrastructure seat** → and only then, a reader for `org/workers/`

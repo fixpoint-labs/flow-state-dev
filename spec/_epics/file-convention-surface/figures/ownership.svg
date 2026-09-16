@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 356" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: a matrix of seven cross-cutting rules against seven issues. Path level is scope is decided by FIX-1356 and consumed by FIX-1354, while FIX-1352 consumes only its team half and the org half has no owner. Kind to one instance is built by FIX-1311 and consumed by FIX-1352. CHANNEL.md names the kind is built by FIX-1352 and consumed by FIX-1311 and FIX-1357. Consumed stripped, derived refused is decided by FIX-1354 and consumed by FIX-1352 and FIX-1356. Seats stay WORKER.md is decided by FIX-1342 and consumed by FIX-1311 and FIX-1357. One scan, one kinds map is built by FIX-1357 and consumed by FIX-1311 and FIX-1352. Hire admits the config is built by FIX-1367 and consumed by FIX-1356. Every rule has exactly one owner, and one cell is a gap: the org door of the channels convention is declared and unbuilt.">
+     aria-label="Who owns what: a matrix of seven cross-cutting rules against seven issues. Path level is scope is decided by FIX-1356 and consumed by FIX-1354, while FIX-1352 consumes only its team half and the org half has no owner. Kind to one instance is built by FIX-1311 and consumed by FIX-1352. CHANNEL.md names the kind is built by FIX-1352 and consumed by FIX-1311 and FIX-1357. Consumed stripped, derived refused is decided by FIX-1354 and consumed by FIX-1352 and FIX-1356. Seats stay WORKER.md is decided by FIX-1342 and consumed by FIX-1311 and FIX-1357. One scan, three maps is built by FIX-1357 and consumed by FIX-1311 and FIX-1352. Hire admits the config is built by FIX-1367 and consumed by FIX-1356. Every rule has exactly one owner, and one cell is a gap: the org door of the channels convention is declared and unbuilt.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -90,7 +90,7 @@
   </g>
 
   <g id="r6">
-    <text class="t-row" x="16" y="248">ER-6 · one scan, one kinds map</text>
+    <text class="t-row" x="16" y="248">ER-6 · one scan, three maps</text>
     <rect class="cell" x="276" y="230" width="92" height="30"/>
     <rect class="use"  x="368" y="230" width="92" height="30"/><text class="t-use" x="389" y="249">consumes</text>
     <rect class="use"  x="460" y="230" width="92" height="30"/><text class="t-use" x="481" y="249">consumes</text>

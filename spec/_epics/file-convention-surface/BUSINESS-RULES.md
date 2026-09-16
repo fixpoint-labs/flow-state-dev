@@ -16,8 +16,8 @@ owns it and where it's checked. ER-1 to ER-7 are the rows of the ownership matri
 | ER-3 | A `CHANNEL.md` declares a channel the way a `WORKER.md` declares a seat: `flow:` names the kind, omitting it selects the built-in, and a misspelled one fails loudly | FIX-1352 | FIX-1352's reader tests |
 | ER-4 | A key the convention **consumes** is stripped from the declared bag; a key it **derives** is refused — as a set, applied after any allowlisted passthrough | FIX-1354 defines · 1352, 1356, 1368, 1388 consume | Every child's spec review |
 | ER-5 | Seats stay `WORKER.md`. A custom kind is a flow factory, never a richer folder, and the framework never runtime-imports a seat's TypeScript | FIX-1342 | Shipped — [#1712](https://github.com/fixpoint-labs/flow-state-dev/pull/1712) |
-| ER-6 | One boot scan produces one `{ kinds }` map, with `workforce/blocks/` beside it; a document never defines a kind | FIX-1357 | FIX-1357's spec · FIX-1342's fence |
-| ER-7 | Hire invokes the flow with a config the kind admits — the `skills` bag from the seat register plus one always-present extension placeholder | FIX-1367 | FIX-1367's **non-agent Proof**, which is the contract gate |
+| ER-6 | One boot scan behind one door produces **three** maps — worker kinds for `hireWorkforce`, channel kinds for `channelInstances`, blocks beside them; a document never defines a kind | FIX-1357 | FIX-1357's spec · FIX-1342's fence |
+| ER-7 | Hire invokes the flow with a config the kind admits — the seat register's skills bag and the seat's instructions, at the top level, declared and closed. There is no extension placeholder | FIX-1367 | FIX-1367's **non-agent Proof**, which is the contract gate |
 
 **On ER-1**: the rule is the lock, and it is half built. Resources and skills read `org/`; the
 shipped channels reader walks `teams/` only, so `org/channels/` is declarable and unread. That is
@@ -26,7 +26,11 @@ a named gap with no owner, not a retraction — [D3](DECISIONS.md#d3) and
 
 **On ER-7**: empty or unused is fine; the *absent door* is not. A seat that mints and is handed
 nothing it declared is what makes "a seat works" dishonest, and an agent E2E does not stand in
-for the check.
+for the check. The extension bag this rule used to promise is **cut** — a kind's known settings
+stay at the top level where the framework closes them, and open-ended data (a dictionary whose
+keys a kind cannot name in advance) goes in one declared key whose own schema is a record, which
+is what `closeConfigSchema` already tells an author. Nothing in the tree has that shape yet, so no
+child ships the key on spec.
 
 ## What no child may do
 

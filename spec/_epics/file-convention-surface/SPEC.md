@@ -44,17 +44,17 @@ figures point here rather than repeating it.
 | FIX-1352 | Channels file convention at **team** scope; the shared walk primitives | The one convention with no prior art — a channel could not be declared at all | **Done** · spec [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711) · impl [#1793](https://github.com/fixpoint-labs/flow-state-dev/pull/1793) — the `org/` door [D3](DECISIONS.md#d3) locked is unbuilt and unowned |
 | FIX-1354 | Resources file convention — Markdown documents under `resources/` | A document was the one thing an author could only declare in TypeScript | **Done** · spec [#1715](https://github.com/fixpoint-labs/flow-state-dev/pull/1715) · impl [#1737](https://github.com/fixpoint-labs/flow-state-dev/pull/1737) |
 | FIX-1356 | Skills file convention — the per-seat skills register over org ∪ team ∪ worker-local | The register FIX-1367 fills; also where path-level-is-scope first shipped | **Done** · spec [#1716](https://github.com/fixpoint-labs/flow-state-dev/pull/1716) · impl [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728) |
-| FIX-1367 | Thin `WorkerConfig` admission — hire fills the `skills` bag, plus one extension placeholder | "A seat works" is not honest until hire invokes the flow with a config the kind admits | **In spec review** · spec [#1807](https://github.com/fixpoint-labs/flow-state-dev/pull/1807) |
+| FIX-1367 | Thin `WorkerConfig` admission — hire fills the seat's skills bag on every record | "A seat works" is not honest until hire invokes the flow with a config the kind admits | **Spec approved** · spec [#1807](https://github.com/fixpoint-labs/flow-state-dev/pull/1807) closed unmerged |
 | FIX-1355 | Thin pentest lab **Proof** | The only child shaped to move Goal 1, and the first consumer that declares any of it in files | Backlog — waits on nothing that isn't done |
-| FIX-1357 | Kinds + blocks boot scan under `workforce/flows/{workers,channels}/` | The one registration door; until it ships a hand-passed `{ kinds }` map stays valid | **In spec review** · spec [#1804](https://github.com/fixpoint-labs/flow-state-dev/pull/1804) |
-| FIX-1358 | Atlas: the ChannelFlow teach and the full tree | The conventions are only real to an author who is taught them | **In spec review** · spec [#1805](https://github.com/fixpoint-labs/flow-state-dev/pull/1805) · one page landed [#1742](https://github.com/fixpoint-labs/flow-state-dev/pull/1742) |
+| FIX-1357 | Kinds + blocks boot scan under `workforce/flows/{workers,channels}/` | The one registration door; until it ships the kinds maps are hand-passed, one per call site | **In spec review** · spec [#1804](https://github.com/fixpoint-labs/flow-state-dev/pull/1804) |
+| FIX-1358 | Atlas: the ChannelFlow teach and the full tree | The conventions are only real to an author who is taught them | **Spec approved** · spec [#1805](https://github.com/fixpoint-labs/flow-state-dev/pull/1805) closed unmerged · one page landed [#1742](https://github.com/fixpoint-labs/flow-state-dev/pull/1742) |
 | FIX-1368 | Worker-level resources — `workers/<name>/resources/` as a third root | FIX-1354 deferred it as a scope cut, not a rejection | Backlog |
 | FIX-1377 | Optional `TEAM.md` — description, team instructions, hire's prompt compose | Instructions are duplicated on every `WORKER.md` without it | Backlog |
 | FIX-1388 | Resources **Door B** — capability and resource modules (discover, install, select) | Door A ships read-only Markdown; anything with state or behaviour still needs hand-written TypeScript | Backlog |
 | FIX-1389 | Workforce loader primitives extract — one shared tree-walk, thin per-slot adapters | Four readers now re-implement the walk, and the contracts have already drifted | Backlog |
 
-5 done · 3 in spec review · 5 in backlog. FIX-1353 (*L2 channels as sessions/boards*) closed as
-a duplicate of FIX-1352 and is dropped from the set.
+5 done · 2 spec approved and waiting to be built · 1 in spec review · 5 in backlog. FIX-1353
+(*L2 channels as sessions/boards*) closed as a duplicate of FIX-1352 and is dropped from the set.
 
 **Is thirteen really six?** The floor was seven items; five have landed and the count grew to
 thirteen, entirely from follow-ons the conventions' own reviews raised. None of the four late
@@ -62,8 +62,8 @@ arrivals sits on the path to the proof: the tail grew while the proof did not st
 the `org/` half of a convention the owner had already locked stayed unbuilt and unowned. The set
 is kept on the check it was approved on, and that check is now **owed rather than argued**: each
 convention earns a non-lab consumer before the lab lands ([ER-15](BUSINESS-RULES.md)), and today
-skills has one waiting in FIX-1367, channels has a kind but no reader of a declaration, and
-resources has none.
+skills has one approved and waiting to be built in FIX-1367, channels has a kind but no reader
+of a declaration, and resources has none.
 
 ## How the issues flow into each other
 

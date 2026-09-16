@@ -88,7 +88,7 @@ a *named gap* is right; one that deletes the slot contradicts this card.
 |---|---|
 | **Instead of** | `kinds/`, a flat filename suffix, or a kind file sitting beside `WORKER.md` / `CHANNEL.md` |
 | **Because** | Channel kinds and worker kinds are the same problem, so they get one door invented once. Documents declare; they never define a kind |
-| **Locks in** | One scan produces one `{ kinds }` map, with `workforce/blocks/` scanned beside it. `flow:` only ever names an already-registered kind. A hand-passed `{ kinds }` map stays valid until the scan ships, which is why FIX-1357 not having shipped yet holds up nothing |
+| **Locks in** | One door, **three maps** — worker kinds for `hireWorkforce`, channel kinds for `channelInstances`, and `workforce/blocks/` beside them. One scan, not one map: the two kinds maps are different types on different functions and never merge. `flow:` only ever names an already-registered kind. The hand-passed maps stay valid until the scan ships, which is why FIX-1357 not having shipped yet holds up nothing |
 
 <a name="d7"></a>
 ## D7 · `org/workers/` stays locked open, unowned, and untaught
@@ -142,6 +142,25 @@ not, and no issue owns closing it.
   blocking edge while Linear carried only `related` links. Linear now records FIX-1311 **blocks**
   FIX-1352 and both are Done, so whether whole-issue granularity was too coarse is closed by
   events rather than by a ruling.
+
+- **D6 emits three maps, not one, and that was always what the code required.** The card read
+  *one scan produces one `{ kinds }` map*. Verified against merged code: a worker kind goes to
+  `hireWorkforce` (`kinds?: Record<string, AnyFlowType>`), a channel kind goes to
+  `channelInstances(manifests, { kinds })` — a different map, of a different type
+  (`ChannelInstancesOptions.kinds: Record<string, ChannelKind>`), on a different function, which
+  is where `read-channels-directory.ts` already tells authors to pass one. With
+  `workforce/blocks/` beside them that is three exports, and FIX-1357's spec ships them as
+  `kinds`, `channelKinds` and `blocks`. **D6 itself stands** — one door, one scan, no per-kind
+  registration path. Only the arithmetic was wrong, and no child may read the correction as
+  permission to open a second door.
+
+- **FIX-1367's `params` bag is cut, so ER-7's extension placeholder is not shipping.** The owner's
+  rule: `params` is for open-ended dictionary data — a dictionary whose keys a kind cannot name in
+  advance — while structurally important or common settings stay at the top level, declared and
+  closed. The contract ships as `instructions?` plus `seatSkills`. When a kind does have
+  open-ended data, it gets one declared key whose own schema is a **record**, which is already
+  what `closeConfigSchema` tells an author when it refuses a catchall. ER-7's substance is
+  untouched: hire still invokes the flow with a config the kind admits.
 
 - **`org/channels/` is a named gap, not a retracted lock.** FIX-1358's POC found the shipped
   channels reader walks `teams/` only, while the epic still taught a company-wide channel as
@@ -211,6 +230,10 @@ said was open, and the atlas teaches a gap that did not need to be one.
 - **`TEAM.md` locked (Sep 12)** — D8.
 - **Migrated to the four-document set (Sep 16)** — form only. Superseded readings were dropped
   rather than kept beneath their replacements; the branch history holds them.
+- **Two claims corrected against shipped code (Sep 16)** — D6's map count (one scan emits three
+  maps, not one) and ER-7's extension placeholder (cut with FIX-1367's `params`). Both decisions
+  stand; only what the set claimed about them moved. FIX-1358 and FIX-1367 had their specs
+  approved the same day.
 - **The org half of channels became a named gap (Sep 16)** — FIX-1358's POC showed the shipped
   reader walks `teams/` only. D3 keeps its org + team lock; the set stops claiming `org/channels/`
   opens today, and who closes it is now an open question rather than an assumption.
