@@ -143,7 +143,7 @@ Logging a warning and carrying on is the tempting alternative, and it fails quie
 
 ### What is passed over in silence
 
-A team's `resources/`, `skills/` or `tools/` folder, a `workers/` folder at the top of the tree, a `README.md` sitting inside `teams/<team>/workers/`, an OS or editor file such as `.DS_Store`: none of these produces a worker, and none is reported. The rule is that the path occupies a worker slot, `teams/<team>/workers/<worker>/`, not that the path looks like a worker. A team's `skills/` folder is still read, by the separate walk described under [Skills](#skills).
+A team's `channels/`, `resources/`, `skills/` or `tools/` folder, a `workers/` folder at the top of the tree, a `README.md` sitting inside `teams/<team>/workers/`, an OS or editor file such as `.DS_Store`: none of these produces a worker, and none is reported. The rule is that the path occupies a worker slot, `teams/<team>/workers/<worker>/`, not that the path looks like a worker. A team's `skills/` folder is still read, by the separate walk described under [Skills](#skills).
 
 Inside a worker slot the opposite holds. A folder there that produces no worker is always named in `errors`.
 

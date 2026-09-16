@@ -504,6 +504,58 @@ and `instructions` (or a body, which is the same setting). The list is closed an
 `channelInstances`: an undeclared key, an `id:`, a `system:`, or a body alongside `instructions:`
 each refuse by name.
 
+### Declaring channels in files
+
+A channel can be a folder with a `CHANNEL.md` in it, the way a worker is a folder with a
+`WORKER.md`. `readChannelsDirectory` walks `<root>/teams/<teamId>/channels/<channelName>/` and
+hands back the same `ChannelManifest[]` the two calls above take.
+
+```
+workforce/teams/engineering/channels/standup/CHANNEL.md
+workforce/teams/engineering/channels/incidents/CHANNEL.md
+```
+
+```md
+---
+description: Where the engineering team posts daily status.
+flow: channel
+members: [engineering.lead, engineering.analyst]
+---
+
+Post what you finished, what you're on, and what's blocking you.
+```
+
+```ts
+import { readChannelsDirectory } from "@flow-state-dev/workforce/loader";
+
+const { channels, errors } = await readChannelsDirectory("./workforce");
+if (errors.length) throw new Error(`workforce: ${errors.length} channel(s) failed to load`);
+
+flowRegistry.registerMany(channelInstances(channels));
+```
+
+Each record is plain data:
+
+| Field | Description |
+|-------|-------------|
+| `id` | `"<teamId>.<channelName>"`, minted from the two folder names — e.g. `"engineering.standup"`. This is the channel's session id. An `id:` in the frontmatter does not set it, and refuses. |
+| `declared` | The frontmatter exactly as written. A `CHANNEL.md` must set `description`, and cannot set `system:`; either one fails at load. The rest of what a channel may declare (`flow`, `members`, `instructions`) is checked when you call `channelInstances`, so a misspelled key loads without complaint and refuses at registration. |
+| `body` | The Markdown below the frontmatter — the channel's charter. |
+
+**A channel is a folder, not a file**, unlike a resource. A loose file in a `channels/` folder is
+passed over, so a `README.md` sitting beside the channel folders is fine. Team and channel folder
+names must be lowercase letters, digits and single hyphens, at most 64 characters. A team with no
+`channels/` folder is not an error: an app can declare no channels in files, or build some records
+by hand and read the rest.
+
+The reader builds nothing: no instance, no session, no registry entry. A `flow:` naming a kind you
+never passed is not caught here; `channelInstances` refuses it. It throws only when `root` itself
+cannot be read or is a symlink. A folder that produces no channel lands in `errors`, keyed by its
+path, and every other channel still loads. Treat a non-empty `errors` as fatal at startup unless you
+have a reason to run a short roster.
+
+The subpath is separate because the reader imports `node:fs`; the package root stays isomorphic.
+
 ### Posting and reading
 
 `post` and `read` are declared both as public actions and as internal entries, so a client and
@@ -596,6 +648,7 @@ leaves an empty session there, and re-running binds it.
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Register these. |
 | `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. Idempotent. |
+| `readChannelsDirectory(root)` | Read a `teams/<id>/channels/<name>/` tree into one `ChannelManifest` per channel. Ships from the `./loader` subpath (Node only). |
 | `ChannelManifest` | One channel record: `{ id, declared, body }`. |
 | `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
 | `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |
@@ -624,6 +677,10 @@ leaves an empty session there, and re-running binds it.
 | A setting the convention derives, or `prefetchMode: "lazy"`, in a document file | Collected in `readResourcesDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the file's path |
 | Workforce root unreadable or symlinked, read for documents | `readResourcesDirectory` throws — the root is never followed through a link |
 | Document cannot become a resource | `resourcesFromDocs` throws naming the ref — a setting the convention derives, a lazy `prefetchMode`, or frontmatter `defineResource` itself rejects |
+| A `channels/` slot, `teams/` or a team folder unreadable or symlinked | Collected in `readChannelsDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
+| Channel folder fails to load | Collected in `readChannelsDirectory`'s `errors` as `kind: "channel-load-failed"`, keyed by the folder's path — an unusable name, a symlink, or a missing, unreadable or malformed `CHANNEL.md` |
+| `system:` in a `CHANNEL.md` | Collected in `readChannelsDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the channel folder's path |
+| Workforce root unreadable or symlinked, read for channels | `readChannelsDirectory` throws — the root is never followed through a link |
 | Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, or `instructions:` given both in the frontmatter and as a body. Collected: one error names every bad channel, and nothing is registered |
 | Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
