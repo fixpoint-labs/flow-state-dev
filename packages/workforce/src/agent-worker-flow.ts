@@ -12,7 +12,7 @@
  * same call with arguments is how an app replaces it. A finished flow value
  * could not carry the app's tool catalog or its skills, which would force a
  * second configuration door onto the hire step — see the contract's C1 in
- * `docs/architecture/workforce-agent-kind.md`.
+ * `docs/architecture/workforce-default-worker-kind.md`.
  *
  * {@link AgentWorkerFlowOptions} is the single enumeration of what only the
  * app can supply — its tool catalog, its skills, and its model choices. The
