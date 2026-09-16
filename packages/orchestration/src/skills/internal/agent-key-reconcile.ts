@@ -14,7 +14,8 @@ import type { AgentSpec } from "@flow-state-dev/core";
 /**
  * True when two agent specs share a key but are NOT identical — a real
  * collision. Identical specs dedupe into one board worker; only divergent ones
- * collide.
+ * collide. Callers hydrate a `prompt-ref` (file body + frontmatter) before
+ * comparing — the path string alone is not the agent unit.
  */
 export function specsCollide(a: AgentSpec, b: AgentSpec): boolean {
   return !deepEqual(a, b);

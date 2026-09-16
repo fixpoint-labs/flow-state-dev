@@ -18,7 +18,11 @@ import type { GeneratorTool, InitialSkill } from "@flow-state-dev/core";
 import { runForTest, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
-import { collectAgentSources } from "../../src/skills/delegation-surface";
+import {
+  agentPurpose,
+  buildDelegationTools,
+  collectAgentSources,
+} from "../../src/skills/delegation-surface";
 import {
   DELEGATION_BOARD_FIELD,
   taskTools as taskToolsSingleton,
@@ -451,6 +455,91 @@ describe("delegation surface — active ∪ runtime activation input", () => {
     } as never);
     expect(sources).toHaveLength(0);
   });
+
+  it("hydrates a live collection prompt-ref onto an imported skill's roster", async () => {
+    // A skill imported after seeding has no bundled files. Roster purpose
+    // still has to read the live prompt file — otherwise the coordinator
+    // sees "a delegation agent" while the worker has the real description.
+    const collection = createMockSkillsCollection();
+    collection._store.set("skills/imported/SKILL.md", {
+      name: "skills/imported/SKILL.md",
+      state: {
+        description: "imported",
+        agents: { analyzer: { promptRef: "./reference/analyze.md" } },
+      },
+      content: null,
+    });
+    collection._store.set("skills/imported/reference/analyze.md", {
+      name: "skills/imported/reference/analyze.md",
+      state: {},
+      content: [
+        "---",
+        "description: Analyzes one competitor.",
+        "tools: [search]",
+        "---",
+        "",
+        "You analyze one competitor at length.",
+      ].join("\n"),
+    });
+    const { ctx } = buildDelegationCtx({ collection });
+    (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
+      { name: "imported", mode: "inline", activatedAt: 1 },
+    ];
+    const sources = await collectAgentSources(ctx, {
+      catalog: {},
+      collectionKey: "skills",
+      location: { kind: "explicit", scope: "session", field: "activeSkills" },
+      staticSources: [],
+      bundledAgentIndex: new Map(),
+      dynamicEligible: true,
+    } as never);
+    expect(sources).toHaveLength(1);
+    const spec = sources[0]!.agents["analyzer"]!;
+    expect(agentPurpose(spec, sources[0]!.files)).toBe("Analyzes one competitor.");
+  });
+
+  it("warns and skips a runtime-activated skill whose prompt file is malformed", async () => {
+    // A model-driven load must not crash the turn on a config typo. Static
+    // skills still throw at bind; runtime activations warn+skip.
+    const collection = createMockSkillsCollection();
+    collection._store.set("skills/imported/SKILL.md", {
+      name: "skills/imported/SKILL.md",
+      state: {
+        description: "imported",
+        agents: { analyzer: { promptRef: "./reference/analyze.md" } },
+      },
+      content: null,
+    });
+    collection._store.set("skills/imported/reference/analyze.md", {
+      name: "skills/imported/reference/analyze.md",
+      state: {},
+      content: "---\ncolour: blue\n---\n\nYou analyze.\n",
+    });
+    const { ctx } = buildDelegationCtx({ collection });
+    (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
+      { name: "imported", mode: "inline", activatedAt: 1 },
+    ];
+    const deps = {
+      catalog: {},
+      collectionKey: "skills",
+      location: { kind: "explicit", scope: "session", field: "activeSkills" },
+      staticSources: [],
+      bundledAgentIndex: new Map(),
+      dynamicEligible: true,
+    } as never;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const names = (await buildDelegationTools(ctx, deps))
+        .map(toolName)
+        .filter((n): n is string => n !== undefined);
+      expect(names).not.toContain("analyzer");
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringMatching(/malformed prompt file — skipped[\s\S]*colour/),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -531,6 +620,71 @@ describe("delegation surface — two active skills sharing an agent", () => {
         prompt: "p",
         inputSchema: z.object({}),
         uses: [skills2.with({ active: ["team-a", "team-c"] } as never)],
+      }),
+    ).toThrow(/different spec/);
+  });
+
+  it("collides same-key prompt-ref agents when the prompt files disagree", () => {
+    // After FIX-1370 the skill entry is only the path. Collision must
+    // compare the hydrated file (tools/model/body), or two skills silently
+    // share the first worker.
+    const skill = (
+      name: string,
+      analyzeMd: string,
+    ): InitialSkill => ({
+      name,
+      skillMd: [
+        "---",
+        `description: ${name}`,
+        "agents:",
+        "  analyzer:",
+        "    prompt-ref: ./reference/analyze.md",
+        "---",
+        "",
+        name,
+      ].join("\n"),
+      files: [{ path: "reference/analyze.md", content: analyzeMd }],
+    });
+    const searchOnly = [
+      "---",
+      "tools: [search]",
+      "---",
+      "",
+      "You analyze.",
+    ].join("\n");
+    const searchAndFetch = [
+      "---",
+      "tools: [search, fetch]",
+      "---",
+      "",
+      "You analyze.",
+    ].join("\n");
+
+    const same = createSkillsLibrary({
+      catalog: {},
+      initialSkills: [skill("team-a", searchOnly), skill("team-b", searchOnly)],
+    });
+    expect(() =>
+      generator({
+        name: "g-same",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        inputSchema: z.object({}),
+        uses: [same.with({ active: ["team-a", "team-b"] } as never)],
+      }),
+    ).not.toThrow();
+
+    const divergent = createSkillsLibrary({
+      catalog: {},
+      initialSkills: [skill("team-a", searchOnly), skill("team-b", searchAndFetch)],
+    });
+    expect(() =>
+      generator({
+        name: "g-divergent",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        inputSchema: z.object({}),
+        uses: [divergent.with({ active: ["team-a", "team-b"] } as never)],
       }),
     ).toThrow(/different spec/);
   });

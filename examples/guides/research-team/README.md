@@ -22,10 +22,10 @@ router, and `SKILL.md` folders — each wired into a flow you can run with `fsde
 
 ## How a skill staffs its team
 
-Every agent in both skills is defined right in its `SKILL.md`: a `prompt-ref`
-pointing at a persona file in the skill folder, plus the tools and model that
-seat needs. Nothing in app code registers them, so the team travels with the
-skill — copy the folder and the team comes with it.
+Every agent in both skills is a `prompt-ref` seat in its `SKILL.md`. The
+persona file's YAML frontmatter owns that agent's tools and model; the skill
+entry is just the assignee name. Nothing in app code registers them, so the
+team travels with the skill — copy the folder and the team comes with it.
 
 ## Run it with fsdev
 

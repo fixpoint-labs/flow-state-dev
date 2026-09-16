@@ -25,9 +25,9 @@ A skill delegates by declaring a team under `agents:` and commanding it through 
 
 ## Fork-like: a conversation-supply agent
 
-Set `context-supply: conversation` on an agent entry and it inherits the parent conversation up to the point it was dispatched, then diverges on its own. The field is set per agent, not per skill, so two agents in the same skill can differ. Leave it off and the agent sees only its task input, which is the default. There is no `isolated` value to set: omitting the field is how you get isolation.
+Set `context-supply: conversation` on an agent and it inherits the parent conversation up to the point it was dispatched, then diverges on its own. The field is set per agent, not per skill, so two agents in the same skill can differ. Leave it off and the agent sees only its task input, which is the default. There is no `isolated` value to set: omitting the field is how you get isolation.
 
-`context-supply` applies to `prompt` and `prompt-ref` agents. Setting it on an `agent-ref` entry throws, at parse time and again at materialization.
+Write the field on the skill entry for a `prompt:` agent. Write it in the prompt file's YAML frontmatter for a `prompt-ref` agent. Setting it on an `agent-ref` entry throws.
 
 ```yaml
 agents:
@@ -37,6 +37,14 @@ agents:
   extractor:
     prompt: Pull the action items out of the task you are given.
     # no context-supply -> isolated (the default): sees only its task input
+```
+
+```md
+---
+description: Summarizes the discussion so far.
+context-supply: conversation
+---
+Summarize the discussion into a short brief.
 ```
 
 The `summarizer` above is fork-like. It reads the conversation that already happened, produces a brief, and only that brief re-enters the host's history. Its own reasoning stays out, because output isolation (`itemVisibility.history: false`) is unchanged by the input lever. If you also mark that agent's output history-visible (`visibility: primary`, or `visibility: { client: true, history: true }`), its sub-work does re-enter the host's history and the isolation is gone.

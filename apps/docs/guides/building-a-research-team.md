@@ -228,10 +228,8 @@ description: Multi-angle company research by a small team of analysts.
 agents:
   market-analyst:
     prompt-ref: ./reference/market.md
-    tools: [search, fetch]
   financial-analyst:
     prompt-ref: ./reference/financials.md
-    tools: [search, fetch]
   synthesizer:
     prompt-ref: ./reference/synthesis.md
 ---
@@ -245,8 +243,20 @@ You run the board. Extract the target from the user's message, then:
 4. Call `runBoard` once. Surface the synthesizer task's report as-is.
 ```
 
-The `prompt-ref` personas live beside the SKILL.md, so the whole team travels
-with the skill folder — no app wiring beyond the tool catalog:
+The `prompt-ref` personas live beside the SKILL.md. Each persona file can carry
+YAML frontmatter for `tools`, `model`, `visibility`, and `context-supply`. The
+skill entry is the seat name and the path:
+
+```md title="skills/research-company/reference/market.md"
+---
+description: Describes the target company's market positioning.
+tools: [search, fetch]
+---
+You are a market analyst…
+```
+
+The whole team travels with the skill folder — no app wiring beyond the tool
+catalog:
 
 ```ts title="skills.ts"
 import { createSkillsLibrary } from "@flow-state-dev/orchestration";
@@ -255,9 +265,8 @@ import { search, fetch } from "@flow-state-dev/tools";
 export const skills = createSkillsLibrary({
   catalog: { search: search(), fetch: fetch() },
   initialSkills,
-  // Inline `prompt`/`prompt-ref` agents materialize straight from the
-  // SKILL.md — there is nothing else to pass. Section 5 covers the other
-  // ways to fill a seat.
+  // `prompt` / `prompt-ref` agents come from the skill folder.
+  // Section 5 covers the other ways to fill a seat.
 });
 ```
 
@@ -282,11 +291,10 @@ agent's history. When the graph *should* stay fixed in code, register a
 
 ## 5. Three ways to staff a seat
 
-Section 4's team is defined entirely inline — every agent is a `prompt-ref`
-persona in the skill folder. That's one of three ways to fill a seat on the
-board.
+Section 4's team lives in the skill folder. Every agent is a `prompt-ref`
+persona. That's one of three ways to fill a seat on the board.
 
-**An inline prompt agent.** A `prompt` or `prompt-ref` right in the SKILL.md. The
+**A `prompt` or `prompt-ref` agent.** The declaration lives in the SKILL.md. The
 persona travels with the skill; no app code registers it. That's section 4's
 whole team, and every seat in the example's other skill, `competitor-analysis` —
 a `discoverer` that picks the competitors, an `analyzer` queued once per
@@ -296,21 +304,26 @@ competitor, and a `comparison-writer` gated on all of them:
 agents:
   discoverer:
     prompt-ref: ./reference/discover.md
-    tools: [search, taskTools]
   analyzer:
     prompt-ref: ./reference/analyze.md
-    tools: [search, fetch]
-    model: openai/gpt-5.4-mini
   comparison-writer:
     prompt-ref: ./reference/compare.md
 ```
 
-`taskTools` on the `discoverer` is what lets it fan out mid-drain: it enqueues
-the analyzer tasks and the gated writer task onto the same board the coordinator
-is already running.
+`taskTools` on the discoverer's persona file is what lets it fan out mid-drain:
+it enqueues the analyzer tasks and the gated writer task onto the same board
+the coordinator is already running. `search` and `model` live on the persona
+file the same way (`model: openai/gpt-5.4-mini` on the analyzer):
 
-Inline agents need no library wiring beyond the tool catalog the `tools:` keys
-resolve against. That's the whole of
+```md title="src/skills/competitor-analysis/reference/discover.md (frontmatter)"
+---
+description: Identifies competitors and queues the analysis board.
+tools: [search, taskTools]
+---
+```
+
+A `prompt` or `prompt-ref` agent needs no library wiring beyond the tool catalog
+the `tools:` keys resolve against. That's the whole of
 [`src/skills.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/skills.ts)
 in the example: a `catalog`, the bundled skills, and no agent registry anywhere.
 
@@ -364,7 +377,8 @@ structured input — and runs the whole graph with one `runBoard` call. That dra
 a real board drain: independent tasks run in parallel, dep-gated tasks wait, and one
 settled board comes back. The `competitor-analysis` skill does this — the
 coordinator picks the competitors and fans out one analyzer per pick. An agent can
-even decide its own fan-out mid-drain: give it `tools: [taskTools]` and it enqueues
+even decide its own fan-out mid-drain: list `taskTools` in its `tools` (on the
+skill entry for `prompt:`, on the prompt file for `prompt-ref`) and it enqueues
 follow-up tasks onto the same board while the drain runs. See
 [Delegation](/docs/skills/delegation).
 

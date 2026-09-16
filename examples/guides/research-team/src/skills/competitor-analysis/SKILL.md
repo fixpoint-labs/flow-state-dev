@@ -3,23 +3,20 @@ description: Produce a competitor analysis as a comparison matrix plus a synthes
 keywords: [competitor, competitors, competition, compare, versus, landscape, market]
 argument-hint: <product, company, or market>
 
-# Every agent on this team is defined right here in the skill: a prompt-ref to
-# a persona file in the skill folder, plus the tools and model it needs.
+# Every agent on this team is a prompt-ref. Tools and model live on the
+# persona file's YAML frontmatter — the skill entry is the seat name.
 agents:
   discoverer:
     prompt-ref: ./reference/discover.md
-    tools: [search, taskTools]
   analyzer:
     prompt-ref: ./reference/analyze.md
-    tools: [search, fetch]
-    model: openai/gpt-5.4-mini
   comparison-writer:
     prompt-ref: ./reference/compare.md
 ---
 
 This skill runs a competitor-analysis team on your task board. A discoverer picks 3-5 competitors and queues one analyzer per competitor plus a comparison-writer gated on all of them. The analyzers run in parallel; the comparison-writer waits on all of them and formats the matrix.
 
-All three are inline prompt agents defined in this skill — their personas live in the skill folder, and the team travels with the skill. From the board's point of view they're all just agents you assign tasks to.
+All three are prompt-ref seats defined in this skill — their personas live in the skill folder (tools and model on the file's frontmatter), and the team travels with the skill. From the board's point of view they're all just agents you assign tasks to.
 
 You seed the board and run it. Extract the target from the user's message (for "who competes with Linear?", the target is `Linear`; if the user named several targets, pick the one they led with), then:
 
