@@ -14,7 +14,6 @@ workforce/teams/engineering/workers/lead/WORKER.md
 
 ```md
 ---
-flow: custom-agent
 description: Holds the board.
 model: openai/gpt-5.4-mini
 ---
@@ -28,13 +27,29 @@ import { hireWorkforce } from "@flow-state-dev/workforce";
 const { workers, errors } = await readWorkforce("./workforce");
 if (errors.length) throw new Error(`workforce: ${errors.length} worker(s) failed to load`);
 
-const seats = hireWorkforce(workers, { kinds: { "custom-agent": customAgentFlow } });
+const seats = hireWorkforce(workers);
 flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
-`customAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package — decides what a worker may declare.
+That record names no `flow:`, so it is hired into the built-in `agent` kind and needs no `kinds`
+argument. Its body becomes its instructions and steers its answers.
 
-This example names a custom kind because that is what it is demonstrating. A record that leaves `flow:` out is hired into the built-in `agent` kind instead, and needs no `kinds` argument at all — see **Hiring** below.
+The built-in stores each worker's skills at org scope, so **a request to one of these workers has
+to resolve to an org**. One that resolves to a `userId` alone fails with `Resource "skills" is not
+registered` before the model is reached. On the default principal resolver, send an `orgId` with
+the request; if you configure your own `resolvePrincipal`, return the org from there — the route
+reads the resolved principal and ignores a body `orgId`, so a caller cannot name its own org.
+
+To run a worker on a flow you wrote, name that flow's `kind` in the record's `flow:` and pass the
+flow under the same key:
+
+```ts
+const seats = hireWorkforce(workers, { kinds: { "custom-agent": customAgentFlow } });
+```
+
+`customAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config
+and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package —
+decides what a worker may declare. One roster can mix both.
 
 ## Personas
 
@@ -67,7 +82,7 @@ Each record is plain data:
 | Field | Description |
 |-------|-------------|
 | `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. |
-| `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and a refused `persona:`. |
+| `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and a refused `persona:` and `seatSkills:`. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
 
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
@@ -234,16 +249,18 @@ label. Everything else is that worker's settings, handed to the flow
 verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
 declared is refused by name at the hire.
 
-**A record that leaves `flow:` out is hired into the built-in worker kind** — it talks, its body
+**A record that leaves `flow:` out is hired into the built-in `agent` kind** — it talks, its body
 arrives as its instructions, and it reads the skills its own folders hold plus any the app seeded
 through `defineAgentWorkerFlow({ skills })`. It has no memory: nothing it is told survives the
-turn. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only still
-refuses: it names no kind, and only an absent key means the built-in. To replace the built-in,
-pass your own flow under `agent`
-(`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`). It takes over for the seats that run
-on the `agent` kind (the records that leave `flow:` out, and any that name `agent`) and leaves a
-worker on any other kind alone. Configuring the built-in is kind replacement, not an option on
-`hireWorkforce`.
+turn. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only
+refuses, because it names no kind — only an absent key means the built-in.
+
+Configure that kind by replacing it. Build the flow with `defineAgentWorkerFlow` and pass it under
+`agent` (`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`). It takes over for every
+seat that runs on the `agent` kind — the records that leave `flow:` out, and any that name `agent`
+— and leaves a worker on any other kind alone. A flow of your own registered under `agent` must
+declare `kind: "agent"` and `cardinality: "collection"`; without the second, each seat mints and is
+then refused when you register it, because a singleton's id is its kind.
 
 A worker record declares data: a description, the kind it runs, and that kind's settings. Behavior
 lives in the flow the kind names, so a worker that has to do something none of your kinds do is a
@@ -275,10 +292,18 @@ worker.
 | `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string, it cannot change the answer, and a failure in it does not fail the turn. Absent, nothing runs after the answer. |
 | `isolateUserState` | Forwarded to `defineFlow`. Gives each worker its own user-scoped storage, keyed on the worker's id, instead of one cell shared across the roster. Default `false`. |
 
-**The tools fence and `uses`.** A worker may call exactly the catalog keys its `tools:` names, and
-the generator's own `tools:` mapping is the only stock registration path. A capability's tools are
-the exception: they reach every worker of the kind, whatever that worker's `tools:` names. Turn a
-capability's tool-bearing presets off unless you want them on the whole roster.
+**The tools fence.** A worker's `tools:` decides which of the app's catalog tools it can call, and
+the generator's own `tools:` mapping is the only path a catalog tool takes onto a worker. A skill
+does not widen it: a skill's `allowed-tools` are validated against the catalog but never
+registered, and a skill's delegated workers are seated from the holding worker's own list.
+
+Two tools reach a worker without appearing in `tools:`, and neither is a catalog tool:
+
+- the **skill loader**, when a worker sets `skills.activateTool: true` — it pulls a skill the worker
+  already holds into the turn;
+- any tool a **capability** carries, when the kind is built with `uses`. Those reach every worker of
+  the kind whatever its `tools:` names, so turn tool-bearing presets off unless you want them on the
+  whole roster.
 
 #### The memory recipe
 
@@ -320,8 +345,9 @@ Each of these fails quietly if you skip it:
 - **`afterAnswer` is the write side.** Without it the durable stores are never written.
 - **`semantic` and `episodic` on.** They are off by default, and with `recall` off as well the
   durable stores would be written and never read back.
-- **`recall` and `connect` off.** They are the only tool-bearing presets. A worker that wants
-  on-demand search gets the recall tool through the app's own catalog, where it opts in by name.
+- **`recall` and `connect` off.** They are memory's tool-bearing presets, so left on they reach every
+  worker of the kind whatever its `tools:` names. A worker that wants on-demand search gets the
+  recall tool through the app's own catalog, where it opts in by name.
 
 Isolation is a decision for the whole kind: a roster is all-isolated or all-shared.
 

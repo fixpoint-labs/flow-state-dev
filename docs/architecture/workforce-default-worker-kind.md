@@ -9,16 +9,23 @@ what the pieces owe each other. **It is a contract, not a design** — it does n
 worker kind, wire its skills, compose in its memory, or write the guides. Those are
 FIX-1363, FIX-1362, FIX-1364 and FIX-1366, and each cites this file rather than re-deriving it.
 
-Two things are false today, and both are load-bearing:
+**Status: the contract has shipped.** Both facts it was written against have been closed. It is
+kept as the record of what the pieces owed each other, and of the constraints a change in this
+area is still bound by — not as a description of pending work.
 
-- **A worker file that carries only instructions is refused.** `hireWorkforce` requires a
-  `flow:` key and refuses anything without one
-  (`packages/workforce/src/hire.ts:167`). The zero-config seat the epic leads with is a
-  locked door, not an untaken shortcut.
-- **A worker's skills are not that worker's.** The skills library keys its collection at
-  `"skills"`, org scope, with no per-seat isolation
-  (`packages/orchestration/src/skills/library.ts`). Two seats in one org share one bucket.
-  The per-seat *view* is real (`read-seat-skills.ts`); the per-seat *storage* is not.
+The two facts it was written against, and where each landed:
+
+- **A worker file carrying only instructions was refused.** `hireWorkforce` required a `flow:`
+  key. It no longer does: an absent key resolves to the built-in `agent` kind, and only a
+  *present* `flow:` that names nothing still refuses (C2).
+- **A worker's skills were not that worker's.** The skills library keyed its collection at
+  `"skills"`, org scope, with no per-seat isolation, so two seats in one org shared a bucket.
+  The kind now declares `flowIsolation`, and each seat is seeded from its own resolved union (C3).
+
+One property of that second fix is worth carrying forward, because it reaches callers: the
+collection is still **org-scoped**, so a request to a built-in worker must be bound to an org.
+A request carrying only a `userId` fails with `Resource "skills" is not registered` before the
+model is reached. Tracked as FIX-1403.
 
 Related, and deliberately not restated here:
 
@@ -30,12 +37,8 @@ Related, and deliberately not restated here:
 - [`docs/contributing/architecture-reference.md`](../contributing/architecture-reference.md)
   — carries the two rows a reader needs without opening this file.
 
-**Today → after this contract.** The two facts above are the *today* column; the diagram below is
-the **after** state, not what ships now:
-
-- **Today** — an absent `flow:` is refused, and every seat's skills share one org-wide bucket.
-- **After** — an absent `flow:` hires the built-in worker kind, and a seat's skills are stored
-  under that seat's own instance id.
+The diagram is the shipped shape: an absent `flow:` hires the built-in worker kind, and a seat's
+skills are stored under that seat's own instance id.
 
 ```mermaid
 flowchart TD
@@ -119,7 +122,7 @@ how "absent means default" and "wrong means error" drift apart. The complete rul
 | roster passes `kinds: { agent: … }` | the app's flow wins; the built-in is merged *underneath* whatever the caller supplied |
 
 The existing refusal for a flow filed under someone else's kind name still applies to the
-built-in: a replacement must declare `kind: "agent"` (`packages/workforce/src/hire.ts:184`,
+built-in: a replacement must declare `kind: "agent"` (`packages/workforce/src/hire.ts`,
 the `factory.kind !== kind` check). **Adding an implicit default must not weaken any existing
 refusal** — that is the loud-fail obligation the epic assigned here.
 
@@ -157,7 +160,7 @@ The seat's *view* already works: `org ∪ teams/<thatTeam> ∪ workers/<thatSeat
 from two levels refused rather than shadowed (`duplicateSkillNameMessage`, same file).
 
 The kind declares its skills collection **isolated per flow instance**. A seat *is* a flow
-instance, minted with the worker's id (`hire.ts:199-200` passes `{ id: manifest.id }`), and the
+instance, minted with the worker's id (`hire.ts` mints each seat with `{ id: manifest.id }`), and the
 storage layer already keys isolated resources as `${identityId}:${flowId}` on the **instance**
 id, not the kind (`resolveResourceScopeId`, `packages/engine/src/stores/scope-keys.ts:324`).
 
@@ -328,15 +331,12 @@ not teach surface. No list is enumerated here on purpose: the grep is the source
 snapshot would go stale before either issue lands. Note what a markdown-only grep misses:
 `docs/atlas/workforce.html` is a rendered page (drift note §2f).
 
-**One published line is FIX-1363's, not FIX-1366's**, because it is a behaviour statement, not
-teaching prose: `apps/docs/docs/workforce/workers-on-disk.md:248` teaches, as current
-behaviour, that a record is refused when it *"declares no `flow`, so there is no kind to hire
-it into"* — the page's paraphrase of the live refusal at `hire.ts:167`. That is the exact door
-C2 opens, so the line is factually wrong the moment FIX-1363 ships and must be corrected in the
-same change set. It needs naming because it sits outside every issue's declared scope:
-FIX-1366's scoping grep (drift note §2f) searches
-`defineAgent|materializeAgent|AgentRegistry|createAgentRegistry`, and this page contains none
-of them.
+**One published line was FIX-1363's, not FIX-1366's** — landed. `workers-on-disk` taught, as
+current behaviour, that a record is refused when it *"declares no `flow`, so there is no kind to
+hire it into"*: the page's paraphrase of the refusal C2 removed. It needed naming because it sat
+outside every issue's declared scope — FIX-1366's scoping grep (drift note §2f) searches
+`defineAgent|materializeAgent|AgentRegistry|createAgentRegistry`, and that page contains none of
+them.
 
 ---
 
@@ -377,7 +377,7 @@ compose memory into its own kind is FIX-1364's and is not stated here.
 | Case | Expected |
 |---|---|
 | Worker file names a kind that isn't registered | Refuse by name, list the kinds passed. Never fall back to the default — that is the typo risk the epic traded for this rule |
-| App registers a flow under `agent` whose own kind is something else | Refuse, via the existing mismatched-kind check (`hire.ts:184`). The built-in's presence must not create an exemption |
+| App registers a flow under `agent` whose own kind is something else | Refuse, via the existing mismatched-kind check (`hire.ts`, the `factory.kind !== kind` check). The built-in's presence must not create an exemption |
 | App registers `agent` without `cardinality: "collection"` | Seats mint, then registration refuses each by name — see C2, which carries the rule and the error |
 | App registers `agent` *and* a worker says `flow: agent` | The app's flow. One resolution path, whether the name was implicit or written |
 | Worker file carries a body **and** an `instructions:` key | Already refused today (two sources, no precedence rule). Unchanged |
