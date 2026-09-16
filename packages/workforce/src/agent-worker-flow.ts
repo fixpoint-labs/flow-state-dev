@@ -42,11 +42,25 @@
  * `toolSeatFence` that narrows them to this seat's own `tools:` list. The fence
  * is the seat's, not the skill's: a seat with `tools: []` reaches nothing,
  * including through a worker it delegated to.
+ *
+ * The one place that fence is upheld by convention rather than by the
+ * framework is {@link AgentWorkerFlowOptions.uses}: the resolver unions a
+ * capability's tools onto the generator's list instead of intersecting it
+ * with the seat's, so an app passing a capability with default-on tools must
+ * turn them off at the preset. FIX-1393 moves the intersection into
+ * `@flow-state-dev/core`, at which point the convention stops mattering. The
+ * rule itself does not change either way.
  */
 
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { GeneratorTool, InitialSkill, ToolCatalog } from "@flow-state-dev/core";
+import type {
+  BlockDefinition,
+  GeneratorTool,
+  InitialSkill,
+  ToolCatalog,
+  UsesSlot
+} from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   activeSkillsArraySchema,
@@ -158,6 +172,69 @@ export interface AgentWorkerFlowOptions {
   classifierModel?: string;
   /** Confidence the matcher's third tier must reach. Mirrors `createSkillActivator`. */
   confidenceThreshold?: number;
+  /**
+   * Capabilities every worker of this kind carries, composed onto the answer
+   * generator beside the skills library — which stays first and is never
+   * displaced.
+   *
+   * Deliberately generic. This is the door an app composes memory through
+   * (`uses: [mem.capability.presets({ ... })]`); it is not a memory option,
+   * and this package knows nothing about memory.
+   *
+   * **A STATIC entry's resources reach the flow on their own**, through the
+   * generator's `declaredResources` and `defineFlow`'s merge — so a capability
+   * passed as a plain ref needs nothing declared alongside it.
+   *
+   * **A DYNAMIC entry (`(ctx) => refs`) does not.** `UsesSlot` accepts both,
+   * and a resolver function contributes context and tools only: resources have
+   * to exist before the block runs, so they must be declared statically
+   * somewhere (see `UsesEntry` in `@flow-state-dev/core`). Pass a capability
+   * dynamically and its stores are *not* installed by that entry alone.
+   *
+   * **Tool-carrying presets are not fenced here.** The framework's resolver
+   * unions a capability's tools onto the generator's own list rather than
+   * intersecting it, so a preset that ships a tool reaches a worker whose
+   * `tools:` is empty. FIX-1393 lands that intersection in
+   * `@flow-state-dev/core`; until it does, an app passing a capability with
+   * default-on tools turns them off at the preset, as the README's memory
+   * recipe does with `recall` and `connect`.
+   */
+  uses?: UsesSlot;
+  /**
+   * Give each worker of this kind its own user-scoped storage, instead of one
+   * cell shared by every worker serving the same person. Default: false,
+   * matching the framework (BP-027).
+   *
+   * Forwarded to the flow untouched. The key is the worker's id, so renaming
+   * a worker leaves its isolated data behind under the old name — and so does
+   * flipping this flag on a roster already in use.
+   *
+   * All-or-nothing for the kind: a roster is either all-isolated or
+   * all-shared, never a mix. Mixing would need each resource to carry its own
+   * `flowIsolation`, which is FIX-1396's.
+   */
+  isolateUserState?: boolean;
+  /**
+   * A block run after the worker answers, as a side-chain — it cannot change
+   * the answer, and a failure in it does not fail the turn.
+   *
+   * **It receives the answer generator's output: the assistant's reply text,
+   * as a string.** `.sideChain` with no connector passes the preceding step's
+   * output straight through, and `agent-answer` declares no `outputSchema`.
+   * The type here is deliberately wide (core's own `.sideChain` takes
+   * `BlockDefinition<any, any>`), so a block expecting some other shape
+   * compiles and fails at run time — check yours against a string, or give it
+   * a `connectInput` connector that reads what it actually needs.
+   * `mem.captureFromItems` is the latter: its connector ignores this input
+   * and reads the session's items.
+   *
+   * The write-side door. Memory's capture pipeline goes here
+   * (`afterAnswer: mem.captureFromItems`); without it a worker carrying
+   * memory reads what something else stored and records nothing of its own.
+   *
+   * Omitted, the kind's sequence is exactly what it is today.
+   */
+  afterAnswer?: BlockDefinition<any, any>;
 }
 
 /**
@@ -450,7 +527,9 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       inputSchema,
       flowConfigSchema: settings,
       itemVisibility: { client: true, history: true },
-      uses: [binding],
+      // The skills binding stays FIRST and is never displaced: an app's own
+      // capabilities compose beside it. That is what the `uses` option is for.
+      uses: [binding, ...(options.uses ?? [])],
       // The prompt seam — a MARKED INSERTION POINT, NOT AN ABSTRACTION.
       //
       // The shared default worker system prompt (FIX-1344 part 2) is not shipped.
@@ -559,7 +638,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     }
   });
 
-  const run = sequencer({ name: "agent-run", inputSchema, flowConfigSchema: settings })
+  const answered = sequencer({ name: "agent-run", inputSchema, flowConfigSchema: settings })
     .tapIf((_input, ctx) => ctx.flow.config.skills.enableLlmClassifier !== true, matcherWithoutClassifier)
     .tapIf((_input, ctx) => ctx.flow.config.skills.enableLlmClassifier === true, matcherWithClassifier)
     .tap(appendSeatDefaults)
@@ -577,12 +656,22 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       ]
     });
 
+  // Appended only when the app passed one, so a no-argument call still builds
+  // the sequence it built before this option existed rather than one carrying
+  // an inert extra step. `.sideChain` rather than `.step`: a post-answer block
+  // must not be able to change the answer, and a failure inside it — a capture
+  // call that times out, say — is not a conversation failure.
+  const run = options.afterAnswer ? answered.sideChain(options.afterAnswer) : answered;
+
   return defineFlow({
     kind: AGENT_KIND,
     // Required by contract C2. A plain singleton's seats mint and are then
     // refused at REGISTRATION, one by one — which is why the goal check for
     // this kind reaches the registry rather than stopping at the mint.
     cardinality: "collection",
+    // Each worker gets its own user-scoped cell when the app asks for one;
+    // shared across the roster otherwise, which is the framework's default.
+    isolateUserState: options.isolateUserState ?? false,
     configSchema: settings,
     actions: { run: { inputSchema, block: run } }
   });

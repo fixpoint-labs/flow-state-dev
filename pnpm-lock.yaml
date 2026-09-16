@@ -1711,6 +1711,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
+      '@flow-state-dev/memory':
+        specifier: workspace:*
+        version: link:../memory
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing

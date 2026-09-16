@@ -63,9 +63,33 @@ name (`REFUSED_PERSONA_KEY`, same file).
 Generator slots stay `prompt` / `context` / `history` / `user`. Instructions compose as
 `prompt: [default, instructions]`.
 
-`tools` is a hard runtime fence, not a hint: a seat may call exactly the catalog keys it names,
-and an empty list means none, regardless of anything else the app's catalog or the skills
-library contributes (see C5).
+`tools` is a hard runtime fence over the app's catalog, not a hint: a seat may call exactly the
+catalog keys it names, and an empty list means no catalog tools, regardless of what the app's
+catalog carries or what a bound skill's `allowed-tools` declares (see C5). The delegation surface
+is fenced to the same list (FIX-1362's `toolSeatFence`), so a seat with `tools: []` reaches no
+catalog tool through a skill's `agents:` either.
+
+**The hole is capability tools, and it is enforced by convention rather than by mechanism.** The
+framework's resolver ends in `[...base, ...staticTools, ...dynTools]` — a union, not an
+intersection — so a capability mounted through `uses` reaches a seat whose `tools:` is empty.
+Two consequences, and the first ships in the default kind:
+
+- **The skills binding is such a capability.** A seat that sets `skills.activateTool: true` is
+  bound with `dynamicActivation`, which installs the skill-loader tool. That tool reaches the
+  model without appearing in `tools:`. It is the one tool the shipped kind adds, it is opt-in per
+  seat, and it is not a catalog tool — so the sentence above still holds for everything the app
+  registered.
+- **An app's own `uses` (FIX-1364) is the general case.** Every consumer turns tool-bearing
+  presets off itself, which is what FIX-1364's memory recipe does with `recall` and `connect`,
+  and what its fence test covers: that recipe, not the general case.
+
+**This is a gap in the enforcement, not a softening of the rule.** The sentence above is still the
+contract, and FIX-1393 makes it true by mechanism by moving the intersection into
+`@flow-state-dev/core` (declared `tools:` ∩ capability tools, empty stays empty). Until it lands,
+consumer opt-outs are necessary and are **not** a second fence story. Do not add a per-consumer
+fence in the meantime: FIX-1362's `resolveBuild` catalog is the one structural enforcement point
+for the delegation surface, and a third would be another door to forget. Tracked in
+[Known gaps](#known-gaps-flagged-not-built).
 
 The shared `default` prompt is owned and shipped elsewhere (FIX-1344 part 2, not yet landed).
 Until it does, the kind ships against `instructions` alone with an explicit seam for `default`
@@ -206,15 +230,27 @@ Stated against the note by name because epic theme 8 sends every later issue to 
 build the refuted mechanism. The note is a dated characterization and explicitly not
 maintained, so it is **not edited** — the correction lives here.
 
-## C4 — Memory attaches to existing scopes, and the gap is named
+## C4 — Memory attaches to existing scopes, and per-seat memory works
 
 `session`, `user`, `org`, plus per-instance isolation where a resource wants it. **Identity and
 durable per-member memory are not on the seat object.**
 
-The honest gap, verified in the reference app: user-scoped memory is durable per *end user*,
-with no member or seat identity in it, so a multi-seat roster serving one person shares one
-memory (drift note §3b). This contract states the gap; FIX-1364 carries it onto the teaching
-surface and files a ticket. **Nothing here invents a new isolation primitive.**
+**Corrected by FIX-1364 — "member" here has always meant *seat*** (one flow instance on the
+roster), not a person identity outliving seats and not a separate member graph. Read that way,
+the gap this contract named is a **default, not a missing primitive**: user-scoped resources are
+shared per end user unless something isolates them (BP-027), and
+`defineFlow({ isolateUserState: true })` isolates them on the instance id — which a seat has.
+A characterization test with a control case (POC on the FIX-1364 spec branch, and the shipped
+tests in `packages/workforce/test/agent-worker-memory.test.ts`) showed a fact written through
+one seat is invisible to its neighbour with the flag on, and visible with it off. The kind
+forwards the flag through `defineAgentWorkerFlow({ isolateUserState })`. **Nothing invents a new
+isolation primitive, and no memory field goes on the seat object.**
+
+The residual limit is narrower than the original gap statement and is filed rather than taught
+as a blocker: the flag is on the kind, and memory's resource factories do not forward
+`flowIsolation` per tier, so a roster is all-isolated or all-shared and cannot mix. Renaming a
+seat moves where its isolated data lives, which orphans that seat's memory; documented, not
+migrated.
 
 ## C5 — Out of the box is the cheap path, and cheap includes *off*
 
@@ -376,5 +412,17 @@ BP-037 neither the spec nor its POC lands on `main`.
   a real multiplier and nobody has measured it. FIX-1362 cut the obvious part — a skill-less seat
   does no storage work at all — but the roster × catalog case is still unrun. Not a reason to
   change C3, which trades it for a privacy promise the storage actually keeps.
-- **No durable per-member memory** — C4's named gap. FIX-1364 carries it onto the teaching
-  surface and files a ticket.
+- **Capability tools union onto a seat's `tools:` instead of intersecting it** — C1 says a
+  seat may call exactly the keys it names, and the framework's tools resolver ends in
+  `[...base, ...staticTools, ...dynTools]`. So today the rule is upheld at each consumer:
+  the `uses` door FIX-1364 opened carries the same residue, and its documented memory recipe
+  turns the tool-bearing presets off rather than relying on a fence. **FIX-1393 moves the
+  intersection into `@flow-state-dev/core`** (declared `tools:` ∩ capability tools, empty
+  stays empty). Until it lands the consumer opt-outs are necessary, and FIX-1364's fence test
+  covers that recipe, not the general case.
+- **Memory isolation is per kind, not per tier** — C4's residual, and all that is left of it:
+  FIX-1364 corrected C4 itself, since "member" there means *seat* and `isolateUserState`
+  already isolates on the instance id. What remains is that the flag lives on the flow
+  definition and memory's resource factories declare no `flowIsolation` of their own, so a
+  roster cannot mix a shared tier with a per-seat one. Same shape as C3's skills-collection
+  gap; belongs to the memory package. Filed as FIX-1396.
