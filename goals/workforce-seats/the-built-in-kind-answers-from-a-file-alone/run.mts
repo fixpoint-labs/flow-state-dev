@@ -243,6 +243,7 @@ await runGoal(() => {
       GOAL_TOKENS: JSON.stringify(Object.fromEntries(fixture.workers.map((w) => [w.id, w.token]))),
       GOAL_WORKFORCE_DIR: fixturePath(import.meta.url, "workforce"),
       GOAL_MIXED_DIR: fixturePath(import.meta.url, "mixed-roster"),
+      GOAL_MIXED_VALID_ID: fixture.mixedRoster.validId,
     },
   });
 

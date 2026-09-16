@@ -43,6 +43,13 @@ const QUESTION = process.env.GOAL_QUESTION ?? "";
 const ORG_ID = process.env.GOAL_ORG_ID ?? "org_goal";
 /** Worker id -> its held-out token, for the stopping rule only. See the loop. */
 const TOKENS = JSON.parse(process.env.GOAL_TOKENS ?? "{}") as Record<string, string>;
+/**
+ * The mixed roster's valid worker, by id. Named by the fixture rather than
+ * inferred from "the record with no `flow` key": a worker may name the
+ * built-in kind explicitly, and inferring would then pick the wrong record —
+ * silently turning the partial-hire control into a hire-nothing control.
+ */
+const MIXED_VALID_ID = process.env.GOAL_MIXED_VALID_ID ?? "";
 
 /**
  * The built-in kind's default model setting is the provider-neutral intent
@@ -85,7 +92,7 @@ function messageText(item: Item): string {
   if (Array.isArray(content)) {
     return content
       .map((part) => (typeof part === "string" ? part : String((part as { text?: string })?.text ?? "")))
-      .join("");
+      .join(" ");
   }
   return String(content);
 }
@@ -210,7 +217,7 @@ async function main(): Promise<void> {
       CONTROL === "partial-hire"
         ? // The failure mode the leg exists to catch: admit the good record and
           // report the bad one, instead of refusing the whole call.
-          hireWorkforce(mixedRecords.filter((w) => !Object.hasOwn(w.declared, "flow")))
+          hireWorkforce(mixedRecords.filter((w) => w.id === MIXED_VALID_ID))
         : hireWorkforce(mixedRecords);
     returned = hiredSeats.map((s) => s.id);
   } catch (error) {
@@ -229,8 +236,7 @@ async function main(): Promise<void> {
       modelResolver,
     } as never);
     const afterRouter = await afterState.getRouter();
-    const validId = mixedRecords.find((w) => !Object.hasOwn(w.declared, "flow"))?.id ?? "";
-    const path = [validId, "s_after_refusal", "actions", "run"];
+    const path = [MIXED_VALID_ID, "s_after_refusal", "actions", "run"];
     const res = await afterRouter.POST(
       new Request(`http://goal/api/flows/${path.join("/")}`, {
         method: "POST",
