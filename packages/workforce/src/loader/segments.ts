@@ -1,6 +1,6 @@
 /**
- * What a name in the tree is allowed to be — a team or worker folder, or a
- * document file.
+ * What a name in the tree is allowed to be — a team, worker or channel folder,
+ * or a document file.
  *
  * One rule, shared by every reader that names a level of the tree, because the
  * readers must agree on it for the same reason a worker id and a path must: the
@@ -37,12 +37,14 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
 /**
  * What a segment names, for the error to say.
  *
- * `Team` and `Worker` are the two halves of a seat's address. `Document` is a
- * file-declared resource's name — the one segment that is a *file* rather than
- * a folder, and the one whose identity is joined with a `/` rather than a `.`,
- * because a document's ref is a storage-key namespace and never routes.
+ * `Team` and `Worker` are the two halves of a seat's address, and `Channel` is
+ * the second half of a channel's — dot-joined the same way, because a channel
+ * id is a flow instance id and a session id. `Document` is a file-declared
+ * resource's name — the one segment that is a *file* rather than a folder, and
+ * the one whose identity is joined with a `/` rather than a `.`, because a
+ * document's ref is a storage-key namespace and never routes.
  */
-export type SegmentLabel = "Team" | "Worker" | "Document";
+export type SegmentLabel = "Team" | "Worker" | "Channel" | "Document";
 
 /** Validate one path segment against the naming rules. Throws on a break. */
 export function validateSegment(segment: string, label: SegmentLabel): void {
@@ -58,7 +60,9 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
     const identity =
       label === "Document"
         ? `it becomes part of the document's ref, which is joined with a "/"`
-        : `it becomes part of the worker's identity, which is joined with a "."`;
+        : label === "Channel"
+          ? `it becomes part of the channel's identity, which is joined with a "."`
+          : `it becomes part of the worker's identity, which is joined with a "."`;
     throw new Error(
       `${what} "${segment}" must be lowercase letters, digits, and single ` +
         `hyphens (not at the start or end) — ${identity}`,

@@ -9,8 +9,9 @@
  * three levels it draws from; both stay exported for a caller that wants one
  * half on its own. Alongside them, `readResourcesDirectory` scans
  * `org/resources/` and `teams/<id>/resources/` and returns one `ResourceDoc` per
- * document. All four stop there — nothing here builds a flow, an agent, a
- * resource or a registry.
+ * document, and `readChannelsDirectory` scans `teams/<id>/channels/<name>/` and
+ * returns one `ChannelManifest` per channel. All five stop there — nothing here
+ * builds a flow, an agent, a resource, a channel instance or a registry.
  *
  * Kept behind a subpath so importing the package root does not pull a consumer
  * onto `node:fs`.
@@ -41,6 +42,13 @@ export {
   type ResourceDocErrorKind,
 } from "./read-resources-directory";
 
+export {
+  readChannelsDirectory,
+  type ChannelManifestError,
+  type ChannelManifestErrorKind,
+  type ReadChannelsDirectoryResult,
+} from "./read-channels-directory";
+
 export type { PathReport } from "./structural-directory";
 
-export type { WorkerManifest, ResourceDoc } from "../manifest";
+export type { WorkerManifest, ResourceDoc, ChannelManifest } from "../manifest";
