@@ -179,6 +179,13 @@ export interface DelegationSurfaceDeps {
   >;
   /** Restrict runtime lookups to these names (the binding's `allowed` list). */
   allowedNames?: string[];
+  /**
+   * Per-execution ceiling on which catalog keys a board worker may be seated
+   * with, forwarded from `SkillsLibraryOptions.toolSeatFence`. It narrows
+   * {@link resolveToolSeats} and nothing else — it cannot grant a key the
+   * catalog lacks. Read once per execution in `resolveBuild`, before the memo.
+   */
+  toolSeatFence?: (ctx: BlockContext) => readonly string[] | undefined;
   /** Whether this binding has a runtime activation path at all. */
   dynamicEligible: boolean;
   /**
@@ -519,6 +526,20 @@ async function resolveBuild(
   // Validate BEFORE the memo so the snapshot keys on the roster that is actually
   // built, and both builders below see the identical list.
   const { sources, rejected } = validateAgentKeys(collected);
+  // Read outside the memo closure, with the execution's own context. It is
+  // constant for this execution (a flow's config is), so it cannot go stale
+  // against a cached build — and reading it here keeps the closure free of
+  // anything that needs a different schedule than the snapshot's.
+  //
+  // Applied to the CATALOG rather than to any one consumer of it. Two separate
+  // paths hand a skill's `agents:` the app's tools — a tool seat, and a
+  // DECLARED agent, whose own `tools:` list resolves against whatever catalog
+  // this surface was built with (both `materializeWorker` branches take it,
+  // inline and `agent-ref`). Fencing one and not the other is how a `tools: []`
+  // host ends up delegating to an agent that calls what the host itself cannot.
+  // Narrowing the catalog once closes every path that exists now and any added
+  // later, which is why it is done here and not at each call site.
+  const fencedDeps = fenceCatalog(deps, deps.toolSeatFence?.(ctx));
   // Reported on its own memo, outside the build closure: the build may legitimately
   // be cached when only the rejected set changed, and the report must still land.
   reportRejectedAgentKeys(ctx, rejected);
@@ -544,10 +565,11 @@ async function resolveBuild(
     const installs = rosterPurposes.size > 0 || deps.allowEmptyRoster;
     if (!installs) return { tools: [], guidance: null };
     // Declared agents win their key, so seats are resolved against the roster
-    // that already exists (FIX-925).
-    const toolSeats = resolveToolSeats(sources, deps.catalog, rosterPurposes);
+    // that already exists (FIX-925). Both this and `buildTools` below run
+    // against the FENCED deps — that is what makes the ceiling total.
+    const toolSeats = resolveToolSeats(sources, fencedDeps.catalog, rosterPurposes);
     return {
-      tools: await buildTools(ctx, deps, sources, rosterPurposes, toolSeats),
+      tools: await buildTools(ctx, fencedDeps, sources, rosterPurposes, toolSeats),
       guidance: buildGuidance(rosterPurposes, toolSeats.size > 0),
     };
   });
@@ -606,6 +628,41 @@ function buildRosterPurposes(sources: DelegationAgentSource[]): Map<string, stri
  *   - **Already an agent's key.** A declared agent shadows a same-named tool,
  *     matching what the coordinator is told: the agent gets the roster line.
  */
+/**
+ * Narrow a build's whole catalog to the host's ceiling
+ * (`SkillsLibraryOptions.toolSeatFence`), once, so nothing downstream can reach
+ * past it.
+ *
+ * **Why the catalog and not each consumer.** A skill's `agents:` reaches the
+ * app's tools by two independent routes: a **tool seat** (`resolveToolSeats`),
+ * and a **declared agent**, which is materialized into a generator of its own
+ * whose `tools:` list resolves against this catalog — on both branches of
+ * `materializeWorker`, inline and `agent-ref`. Fencing the seats alone leaves
+ * the second route wide open, which is a host with `tools: []` delegating to an
+ * agent that calls what the host itself was refused. Narrowing here covers both,
+ * and covers whatever third route is added later without it having to remember.
+ *
+ * Returns `deps` unchanged when there is no fence, so the default path allocates
+ * nothing. The fence only ever narrows: a key the catalog lacks is still absent,
+ * and an empty fence yields an empty catalog.
+ */
+function fenceCatalog(
+  deps: DelegationSurfaceDeps,
+  fence: readonly string[] | undefined,
+): DelegationSurfaceDeps {
+  if (fence === undefined) return deps;
+  const allowed = new Set(fence);
+  const catalog: ToolCatalog = {};
+  for (const key of Object.keys(deps.catalog)) {
+    // `Object.hasOwn` per BP-031: the catalog is a plain object, so a
+    // prototype key would otherwise read as present.
+    if (allowed.has(key) && Object.hasOwn(deps.catalog, key)) {
+      catalog[key] = deps.catalog[key]!;
+    }
+  }
+  return { ...deps, catalog };
+}
+
 function resolveToolSeats(
   sources: DelegationAgentSource[],
   catalog: ToolCatalog,

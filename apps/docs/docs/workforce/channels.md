@@ -129,7 +129,7 @@ Client posts through the ordinary action route still work on the same host. Only
 By default a post lands and nobody is told. Give the kind a notify block and it runs once per declared member per post:
 
 ```ts
-channelInstances(channels, { kinds: { channel: createChannelFlow({ notify: wakeMember }) } });
+channelInstances(channels, { kinds: { channel: defineChannelFlow({ notify: wakeMember }) } });
 ```
 
 The delivery runs in its own request, outside the post's turn, so a slow notification never delays the next post. A delivery that fails is recorded and the rest are still attempted; the post stays written either way, because the transcript is the durable record and waking people is best-effort.
@@ -143,7 +143,7 @@ You will usually not need this. A standup, a direct message and an announcement 
 When the workflow genuinely diverges, pass your own factory at boot:
 
 ```ts
-channelInstances(channels, { kinds: { "my-channel": createMyChannelFlow() } });
+channelInstances(channels, { kinds: { "my-channel": defineMyChannelFlow() } });
 ```
 
 A record carrying `flow: my-channel` then runs on that kind's own instance, and every channel naming it is a session there. One instance per custom kind, still never one per record. A `flow:` naming a kind you did not pass is refused by name; it never quietly falls back to the built-in.

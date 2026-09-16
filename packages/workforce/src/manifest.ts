@@ -10,6 +10,8 @@
  * is a `ResourceDoc`.
  */
 
+import type { InitialSkill } from "@flow-state-dev/core";
+
 /**
  * One worker, as declared on disk or hand-built. Declared once, in this module; the loader
  * returns this type rather than a second one of its own.
@@ -29,6 +31,21 @@ export interface WorkerManifest {
    * Empty for a thin seat; reaches a hired flow as `config.instructions`.
    */
   body: string;
+  /**
+   * The skills this seat can see — the org ∪ team ∪ own-folder union, already
+   * resolved, in level order.
+   *
+   * Filled by the joined loader (`readWorkforce`) and **absent on a hand-built
+   * record**, which is the difference between "this seat has no skills" and
+   * "nobody read any folders for it". A non-empty set reaches a hired flow as
+   * `config.seatSkills` ({@link SEAT_SKILLS_KEY}), the same way a body reaches
+   * it as `instructions`.
+   *
+   * Carried on the record rather than looked up at run time because a running
+   * block deliberately cannot see which instance it is: the record is what the
+   * mint reads, so the record is where a per-seat set has to ride.
+   */
+  skills?: InitialSkill[];
 }
 
 /**
@@ -92,6 +109,36 @@ export const INSTRUCTIONS_KEY = "instructions";
  * it that way would hire, carry no `instructions`, and say nothing about it.
  */
 export const REFUSED_PERSONA_KEY = "persona";
+
+/**
+ * The second setting name the seat factory imposes: where a seat's resolved
+ * skill set arrives in its flow's settings bag.
+ *
+ * Spelled `seatSkills` rather than `skills` because the built-in kind's bag
+ * already carries an author-written `skills` object (the always-on list and the
+ * activate-tool switch). One key that is sometimes authored and sometimes
+ * imposed is the `instructions`-versus-body collision again, and that one is
+ * refused rather than resolved.
+ *
+ * Declared here, beside {@link INSTRUCTIONS_KEY}, for the same reason: the
+ * loader fills the record, the factory imposes the key, and both doors refuse
+ * the one spelling that is not theirs to accept. Two doors refusing two
+ * spellings is the bug this constant prevents.
+ */
+export const SEAT_SKILLS_KEY = "seatSkills";
+
+/**
+ * The one wording for {@link SEAT_SKILLS_KEY}, shared by the loader and the
+ * seat factory. Names no subject — the caller supplies what it can name.
+ *
+ * Refused for the reason `persona` is: a flow whose `configSchema` declares
+ * `seatSkills` would take an authored one happily, and the seat would run with
+ * a skill set nobody's folders back — silently, and only for that worker.
+ */
+export const REFUSED_SEAT_SKILLS_KEY_MESSAGE =
+  `declares \`${SEAT_SKILLS_KEY}:\`, which is not a setting a worker declares. ` +
+  `A seat's skills are the folders it can see — the org's, its team's, and its own — ` +
+  `and reading them is the loader's job.`;
 
 /**
  * The one wording for {@link REFUSED_PERSONA_KEY}, shared by the loader and the

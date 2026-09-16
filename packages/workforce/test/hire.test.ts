@@ -24,8 +24,8 @@ const work = handler({
 });
 
 /** The opinionated kind: it declares that it takes instructions. */
-const workerAgentFlow = defineFlow({
-  kind: "worker-agent",
+const customAgentFlow = defineFlow({
+  kind: "custom-agent",
   cardinality: "collection",
   configSchema: z.object({
     instructions: z.string(),
@@ -68,7 +68,7 @@ const staleDeskFlow = defineFlow({
 });
 
 const kinds: HireOptions["kinds"] = {
-  "worker-agent": workerAgentFlow,
+  "custom-agent": customAgentFlow,
   intake: intakeFlow,
   door: doorFlow,
   "stale-desk": staleDeskFlow
@@ -84,7 +84,7 @@ const lead = record({
   id: "engineering.lead",
   declared: {
     description: "Holds the engineering board.",
-    flow: "worker-agent",
+    flow: "custom-agent",
     model: "openai/gpt-5.4-mini",
     tools: ["board", "search"]
   },
@@ -117,7 +117,7 @@ describe("hireWorkforce", () => {
   it("mints one copy per record, carrying its own id, in id order", () => {
     const seats = hireWorkforce([lead, intake], { kinds });
     expect(seats.map((s) => s.id)).toEqual(["engineering.intake", "engineering.lead"]);
-    expect(seats.map((s) => s.kind)).toEqual(["intake", "worker-agent"]);
+    expect(seats.map((s) => s.kind)).toEqual(["intake", "custom-agent"]);
   });
 
   // 2
@@ -166,7 +166,7 @@ describe("hireWorkforce", () => {
     const seat = hireOne(
       record({
         id: "engineering.lead",
-        declared: { flow: "worker-agent", instructions: "From the frontmatter." },
+        declared: { flow: "custom-agent", instructions: "From the frontmatter." },
         body: "   \n\t  \n"
       })
     );
@@ -201,7 +201,7 @@ describe("hireWorkforce", () => {
     const message = refusalOf([record({ id: "engineering.scribe", declared: { flow: "note-taker" } })]);
     expect(message).toContain('worker "engineering.scribe"');
     expect(message).toContain('"note-taker"');
-    expect(message).toContain('"worker-agent"');
+    expect(message).toContain('"custom-agent"');
     expect(message).toContain('"intake"');
   });
 
@@ -219,21 +219,49 @@ describe("hireWorkforce", () => {
     let seats: FlowInstance[] | undefined;
     let message = "";
     try {
-      seats = hireWorkforce([lead], { kinds: { ...kinds, "worker-agent": intakeFlow } });
+      seats = hireWorkforce([lead], { kinds: { ...kinds, "custom-agent": intakeFlow } });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
     expect(seats).toBeUndefined();
     expect(message).toContain('worker "engineering.lead"');
-    expect(message).toContain('"worker-agent"');
+    expect(message).toContain('"custom-agent"');
     expect(message).toContain('"intake"');
   });
 
-  // 7
-  it("refuses a record with no `flow`, naming the worker", () => {
-    const message = refusalOf([record({ id: "engineering.ghost", declared: { description: "no kind" } })]);
+  // 7 — a record with no `flow:` no longer refuses; it hires the built-in
+  // `agent` kind (see `agent-worker-flow.test.ts`). What still refuses is a `flow:`
+  // that is present and names nothing.
+  it("refuses a record whose `flow` is whitespace-only, naming the worker", () => {
+    const message = refusalOf([
+      record({ id: "engineering.ghost", declared: { description: "no kind", flow: "   " } })
+    ]);
     expect(message).toContain('worker "engineering.ghost"');
     expect(message).toContain("flow");
+  });
+
+  // 7 (the YAML-valueless case) — a `flow:` key parsed from a file with no
+  // value arrives as an own property holding `null`, the same shape a
+  // hand-built `flow: null`/`flow: undefined` manifest carries. That is a
+  // PRESENT key and must refuse, exactly like the whitespace case above —
+  // only an ABSENT key resolves to the built-in.
+  it("refuses a record whose `flow` is present but valueless (null), naming the worker", () => {
+    const message = refusalOf([
+      record({ id: "engineering.ghost", declared: { description: "no kind", flow: null } })
+    ]);
+    expect(message).toContain('worker "engineering.ghost"');
+    expect(message).toContain("flow");
+    expect(message).toContain("null");
+  });
+
+  // 7 (the non-string case) — a `flow:` that IS present but names no string
+  // at all (a hand-built roster, or a stray YAML number) must refuse with
+  // what was actually declared, not silently hire the built-in.
+  it("refuses a record whose `flow` is present but not a string, naming what was declared", () => {
+    const message = refusalOf([record({ id: "engineering.ghost", declared: { flow: 42 } })]);
+    expect(message).toContain('worker "engineering.ghost"');
+    expect(message).toContain("flow");
+    expect(message).toContain("42");
   });
 
   // 8
@@ -248,7 +276,7 @@ describe("hireWorkforce", () => {
 
   // 8 (the other half) — a required setting the record omits refuses at the mint.
   it("lets the flow refuse a record that omits a required setting", () => {
-    const message = refusalOf([record({ id: "engineering.lead", declared: { flow: "worker-agent" } })]);
+    const message = refusalOf([record({ id: "engineering.lead", declared: { flow: "custom-agent" } })]);
     expect(message).toContain('worker "engineering.lead"');
     expect(message).toContain("instructions");
   });
@@ -257,7 +285,7 @@ describe("hireWorkforce", () => {
   it("reports every bad record in one error", () => {
     const message = refusalOf([
       record({ id: "engineering.scribe", declared: { flow: "note-taker" } }),
-      record({ id: "engineering.ghost", declared: {} })
+      record({ id: "engineering.ghost", declared: { flow: "   " } })
     ]);
     expect(message).toContain('worker "engineering.scribe"');
     expect(message).toContain('worker "engineering.ghost"');
@@ -268,7 +296,7 @@ describe("hireWorkforce", () => {
   it("builds nothing partially — one bad record takes the whole call", () => {
     let seats: FlowInstance[] | undefined;
     expect(() => {
-      seats = hireWorkforce([lead, intake, record({ id: "engineering.ghost", declared: {} })], {
+      seats = hireWorkforce([lead, intake, record({ id: "engineering.ghost", declared: { flow: "   " } })], {
         kinds
       });
     }).toThrow();
@@ -305,7 +333,7 @@ describe("hireWorkforce", () => {
     const message = refusalOf([
       record({
         id: "engineering.lead",
-        declared: { description: "Holds the board.", flow: "worker-agent", persona: "the old spelling" }
+        declared: { description: "Holds the board.", flow: "custom-agent", persona: "the old spelling" }
       })
     ]);
     expect(message).toContain('worker "engineering.lead"');

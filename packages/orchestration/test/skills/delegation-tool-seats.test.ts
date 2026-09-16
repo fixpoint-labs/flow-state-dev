@@ -99,10 +99,15 @@ function teamSkill(allowedTools?: string[]): InitialSkill {
   };
 }
 
-function surface(skill: InitialSkill, toolCatalog: ToolCatalog = catalog) {
+function surface(
+  skill: InitialSkill,
+  toolCatalog: ToolCatalog = catalog,
+  toolSeatFence?: () => readonly string[],
+) {
   const skills = createSkillsLibrary({
     catalog: toolCatalog,
     initialSkills: [skill],
+    ...(toolSeatFence ? { toolSeatFence } : {}),
   });
   const gen = generator({
     name: "executive",
@@ -291,5 +296,83 @@ describe("delegation tool seats — guidance cost", () => {
     expect(guidance).not.toContain("Your team:");
     expect(guidance).toContain("also assignable");
     expect(guidance).toContain("rejected");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The caller's ceiling (`toolSeatFence`)
+// ---------------------------------------------------------------------------
+//
+// The seats above are derived from the SKILL. That is right when the skill and
+// the host were configured together, and wrong the moment a host merely HOLDS
+// skills it did not choose — a per-instance catalog, where a skill's `agents:`
+// would otherwise reach the whole app catalog through a board worker even
+// though the host itself was granted nothing. The fence is how a caller that
+// owns its own tool registration keeps that closed.
+describe("delegation tool seats — the caller's fence", () => {
+  it("narrows whole-catalog seats to the fence", async () => {
+    const { gen, ctx, selfState } = surface(teamSkill(), catalog, () => ["httpGet"]);
+    const addTask = pickTool(await resolveTools(gen, ctx), "addTask");
+
+    const inside = await runForTest(addTask, { goal: "fetch", assignee: "httpGet" }, ctx);
+    expect((inside as { ok: boolean }).ok).toBe(true);
+
+    const outside = await runForTest(addTask, { goal: "search", assignee: "webSearch" }, ctx);
+    expect((outside as { ok: boolean }).ok).toBe(false);
+    expect((outside as { error: string }).error).toContain("unknown_assignee");
+
+    expect(Object.values(board(selfState)).map((t) => t.assignee)).toEqual(["httpGet"]);
+  });
+
+  // The fence is the HOST's, not the skill's: a skill naming a tool in its own
+  // `allowed-tools` must not be able to reach past what the host was granted.
+  it("narrows a skill's own `allowed-tools` too", async () => {
+    const { gen, ctx } = surface(teamSkill(["httpGet", "crawl"]), catalog, () => ["crawl"]);
+    const addTask = pickTool(await resolveTools(gen, ctx), "addTask");
+
+    const inside = await runForTest(addTask, { goal: "crawl", assignee: "crawl" }, ctx);
+    expect((inside as { ok: boolean }).ok).toBe(true);
+
+    const outside = await runForTest(addTask, { goal: "fetch", assignee: "httpGet" }, ctx);
+    expect((outside as { ok: boolean }).ok).toBe(false);
+    expect((outside as { error: string }).error).toContain("unknown_assignee");
+  });
+
+  // An empty fence is the case that matters most — a host granted no tools at
+  // all. It must mean NO seats, not "unset, so all of them".
+  it("seats nothing at all on an empty fence", async () => {
+    const { gen, ctx } = surface(teamSkill(), catalog, () => []);
+    const tools = await resolveTools(gen, ctx);
+    const addTask = pickTool(tools, "addTask");
+
+    for (const key of ["httpGet", "webSearch", "crawl"]) {
+      const result = await runForTest(addTask, { goal: key, assignee: key }, ctx);
+      expect((result as { ok: boolean }).ok).toBe(false);
+      expect((result as { error: string }).error).toContain("unknown_assignee");
+    }
+
+    // ...and the guidance must not advertise what cannot be assigned.
+    const guidance = await buildGuidanceText(gen, ctx);
+    expect(guidance).not.toContain("also assignable");
+  });
+
+  // A declared agent is not a catalog tool, so the fence must leave the actual
+  // roster alone — it narrows seats, it does not dismantle delegation.
+  it("leaves the declared roster reachable", async () => {
+    const { gen, ctx } = surface(teamSkill(), catalog, () => []);
+    const addTask = pickTool(await resolveTools(gen, ctx), "addTask");
+
+    const result = await runForTest(addTask, { goal: "analyse", assignee: "analyst" }, ctx);
+    expect((result as { ok: boolean }).ok).toBe(true);
+  });
+
+  // The default has to stay exactly what it was.
+  it("changes nothing when no fence is given", async () => {
+    const { gen, ctx } = surface(teamSkill());
+    const addTask = pickTool(await resolveTools(gen, ctx), "addTask");
+    for (const key of ["httpGet", "webSearch", "crawl"]) {
+      const result = await runForTest(addTask, { goal: key, assignee: key }, ctx);
+      expect((result as { ok: boolean }).ok).toBe(true);
+    }
   });
 });

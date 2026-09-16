@@ -1,4 +1,4 @@
-# The Default Workforce Agent Kind — Locked Contract
+# The Default Workforce Worker Kind — Locked Contract
 
 A team describes a worker in a file — a name, a description, some instructions — and gets a
 working agent. Four separate pieces of work build toward that promise at the same time, in
@@ -6,7 +6,7 @@ four separate checkouts: the agent itself, its skills, its memory, and the teach
 
 This document is what they all read, so they do not each invent a different answer. It fixes
 what the pieces owe each other. **It is a contract, not a design** — it does not build the
-agent kind, wire its skills, compose in its memory, or write the guides. Those are
+worker kind, wire its skills, compose in its memory, or write the guides. Those are
 FIX-1363, FIX-1362, FIX-1364 and FIX-1366, and each cites this file rather than re-deriving it.
 
 Two things are false today, and both are load-bearing:
@@ -34,14 +34,14 @@ Related, and deliberately not restated here:
 the **after** state, not what ships now:
 
 - **Today** — an absent `flow:` is refused, and every seat's skills share one org-wide bucket.
-- **After** — an absent `flow:` hires the built-in `agent` kind, and a seat's skills are stored
+- **After** — an absent `flow:` hires the built-in worker kind, and a seat's skills are stored
   under that seat's own instance id.
 
 ```mermaid
 flowchart TD
   W["WORKER.md<br/>instructions, no flow:"] --> H[hireWorkforce<br/>the one admission gate]
   K["kinds map<br/>built-in merged underneath"] --> H
-  H -->|absent flow:| A[built-in agent kind]
+  H -->|absent flow:| A[built-in worker kind]
   H -->|unregistered name| X[refuse, by name]
   A --> P["prompt: [default, instructions]"]
   A --> S["skills: org ∪ team ∪ seat<br/>stored per seat"]
@@ -53,7 +53,7 @@ flowchart TD
 
 ## C1 — Composition, not a type
 
-The agent kind is a flow like any other. Its settings bag (`configSchema`) declares
+The worker kind is a flow like any other. Its settings bag (`configSchema`) declares
 `instructions`, `model`, `tools`, and the skills switches. It declares **no memory switch** — per
 C5 memory is composed into a kind at definition time, not turned on here. `instructions` is the worker
 file's body arriving as one setting — the hire step already imposes that key
@@ -62,6 +62,34 @@ name (`REFUSED_PERSONA_KEY`, same file).
 
 Generator slots stay `prompt` / `context` / `history` / `user`. Instructions compose as
 `prompt: [default, instructions]`.
+
+`tools` is a hard runtime fence over the app's catalog, not a hint: a seat may call exactly the
+catalog keys it names, and an empty list means no catalog tools, regardless of what the app's
+catalog carries or what a bound skill's `allowed-tools` declares (see C5). The delegation surface
+is fenced to the same list (FIX-1362's `toolSeatFence`), so a seat with `tools: []` reaches no
+catalog tool through a skill's `agents:` either.
+
+**The hole is capability tools, and it is enforced by convention rather than by mechanism.** The
+framework's resolver ends in `[...base, ...staticTools, ...dynTools]` — a union, not an
+intersection — so a capability mounted through `uses` reaches a seat whose `tools:` is empty.
+Two consequences, and the first ships in the default kind:
+
+- **The skills binding is such a capability.** A seat that sets `skills.activateTool: true` is
+  bound with `dynamicActivation`, which installs the skill-loader tool. That tool reaches the
+  model without appearing in `tools:`. It is the one tool the shipped kind adds, it is opt-in per
+  seat, and it is not a catalog tool — so the sentence above still holds for everything the app
+  registered.
+- **An app's own `uses` (FIX-1364) is the general case.** Every consumer turns tool-bearing
+  presets off itself, which is what FIX-1364's memory recipe does with `recall` and `connect`,
+  and what its fence test covers: that recipe, not the general case.
+
+**This is a gap in the enforcement, not a softening of the rule.** The sentence above is still the
+contract, and FIX-1393 makes it true by mechanism by moving the intersection into
+`@flow-state-dev/core` (declared `tools:` ∩ capability tools, empty stays empty). Until it lands,
+consumer opt-outs are necessary and are **not** a second fence story. Do not add a per-consumer
+fence in the meantime: FIX-1362's `resolveBuild` catalog is the one structural enforcement point
+for the delegation surface, and a third would be another door to forget. Tracked in
+[Known gaps](#known-gaps-flagged-not-built).
 
 The shared `default` prompt is owned and shipped elsewhere (FIX-1344 part 2, not yet landed).
 Until it does, the kind ships against `instructions` alone with an explicit seam for `default`
@@ -84,8 +112,8 @@ how "absent means default" and "wrong means error" drift apart. The complete rul
 
 | Worker file says | Result |
 |---|---|
-| no `flow:` | the built-in agent kind |
-| `flow: agent` | the built-in agent kind — same kind, named explicitly |
+| no `flow:` | the built-in worker kind |
+| `flow: agent` | the built-in worker kind — same kind, named explicitly |
 | `flow: <registered>` | that kind, exactly as today |
 | `flow: <not registered>` | **refused by name**, listing the kinds that were passed — today's wording, unchanged |
 | roster passes `kinds: { agent: … }` | the app's flow wins; the built-in is merged *underneath* whatever the caller supplied |
@@ -133,36 +161,39 @@ instance, minted with the worker's id (`hire.ts:199-200` passes `{ id: manifest.
 storage layer already keys isolated resources as `${identityId}:${flowId}` on the **instance**
 id, not the kind (`resolveResourceScopeId`, `packages/engine/src/stores/scope-keys.ts:324`).
 
-**No new primitive is needed** — one option field has to be threaded through.
-`DefineSkillsCollectionOptions` accepts `prefix`, `maxInstances` and `scope` but does not
-forward `flowIsolation` (`packages/orchestration/src/skills/collection.ts:57-68`), while the
-`defineResourceCollection` it wraps accepts it
-(`packages/core/src/types/resource-collection.ts:58`).
+**No new primitive was needed** — one option field had to be threaded through.
+`DefineSkillsCollectionOptions` accepted `prefix`, `maxInstances` and `scope` but did not
+forward `flowIsolation`, while the `defineResourceCollection` it wraps accepts it
+(`packages/core/src/types/resource-collection.ts:58`). **FIX-1362 forwards it**, and the
+built-in kind switches it on.
 
 ### The contents — population
 
 Isolation alone gives every seat its own *empty* drawer and then fills all of them from the
 same jar.
 
-`createSkillsLibrary` captures one static `initialSkills` array when the kind is defined —
-once per kind, not once per seat (`packages/orchestration/src/skills/library.ts:264`). The
-runtime seeder writes exactly that array into whichever collection ref it is handed
-(`ensureSeeded`, `packages/orchestration/src/skills/seeding.ts`; called that way from
-`run-skill-tool.ts`, `load-tool.ts`, `context-fn.ts`, `binding-reader.ts` and `seed-step.ts`).
-N isolated seats therefore end up with N separate buckets holding N *identical* catalogs.
+`createSkillsLibrary` captured one static `initialSkills` array when the kind was defined —
+once per kind, not once per seat. The runtime seeder writes exactly what it is handed into
+whichever collection ref it is handed (`ensureSeeded`,
+`packages/orchestration/src/skills/seeding.ts`; called that way from `run-skill-tool.ts`,
+`load-tool.ts`, `context-fn.ts`, `binding-reader.ts` and `seed-step.ts`). N isolated seats
+would therefore end up with N separate buckets holding N *identical* catalogs.
 
-There is no channel for a per-seat set either: `WorkerManifest` is `{ id, declared, body }` and
-nothing more, and `hireWorkforce` forwards only frontmatter settings — so the union
-`read-seat-skills.ts` already computes has nowhere to ride into the mint.
+There was no channel for a per-seat set either: `WorkerManifest` was `{ id, declared, body }`
+and nothing more, and `hireWorkforce` forwards only frontmatter settings — so the union
+`read-seat-skills.ts` already computes had nowhere to ride into the mint.
 
 **The contract therefore requires an instance-specific seeding path.** The seat's computed union
 must reach *that seat's* collection as its `initialSkills`, so `ensureSeeded` writes that seat's
 skills and no one else's. Acceptance criterion 5 is written to fail without one.
 
-Where the handoff lives — a per-seat key on the kind's `configSchema`, a per-instance option on
-the library, or a seed at hire time — is **FIX-1362's to design**. That it must exist is decided
-here. (Same defect class as FIX-1372, filed against the reference app: an activator built with
-no `initialSkills` shows every matcher tier an empty catalog on turn 1.)
+**Built by FIX-1362**, and the handoff it chose is the settings bag: the loader resolves each
+seat's union onto its record as `WorkerManifest.skills`, the hire step imposes it as the
+`seatSkills` setting the way a body is imposed as `instructions`, and the library's
+`initialSkills` takes a resolver that reads it off `ctx.flow.config`. A seat's `skills:` folder
+therefore reaches only that seat's collection. (Same defect class as FIX-1372, filed against the
+reference app: an activator built with no `initialSkills` shows every matcher tier an empty
+catalog on turn 1.)
 
 ### Copy-in is the honest lock-in, and it is named
 
@@ -176,12 +207,17 @@ purpose (`packages/orchestration/src/skills/seeding.ts:116-117`).
 `needsResed` finds the persisted record stale against the FIX-918 migration shape — it still
 carries a legacy non-inline `contextMode` the source dropped, the source declares `agents:` the
 record lacks, or the source's `contextMode` changed (`seeding.ts:69-74,128-135`). Those replace a
-seat's copy without anyone refreshing it. Whether that reseeding should be narrowed for seat
-copies is **FIX-1362's call**; this contract's job is to state the behaviour, not design it away.
+seat's copy without anyone refreshing it. FIX-1362 left that reseeding as it is for seat copies:
+it fires on a *schema* mismatch between the persisted record and the current parser, never on a
+body edit, so it repairs records the renderer would otherwise skip rather than propagating an
+upstream rewording. Narrowing it would leave a seat quietly holding a skill that never renders.
 
-Refreshing a running seat *otherwise* is a deliberate act **with no mechanism yet**; FIX-1362 owns
-building one. Saying so is this contract's job — the alternative is a privacy promise that reads
-as live sharing and is not.
+Refreshing a running seat *otherwise* is a deliberate act, and **FIX-1362 built the mechanism**:
+`refreshSeededSkills` rewrites a named skill's folder from a source set. It replaces a touched
+folder **whole** — deleting keys the new source does not carry — so a supporting file withdrawn
+upstream cannot outlive the withdrawal; it touches only names whose manifest still exists, so a
+deliberate deletion stands; and ordinary seeding stays additive, because a file the source never
+had is the seat's own edit.
 
 ### This clause supersedes drift note §3a
 
@@ -194,15 +230,27 @@ Stated against the note by name because epic theme 8 sends every later issue to 
 build the refuted mechanism. The note is a dated characterization and explicitly not
 maintained, so it is **not edited** — the correction lives here.
 
-## C4 — Memory attaches to existing scopes, and the gap is named
+## C4 — Memory attaches to existing scopes, and per-seat memory works
 
 `session`, `user`, `org`, plus per-instance isolation where a resource wants it. **Identity and
 durable per-member memory are not on the seat object.**
 
-The honest gap, verified in the reference app: user-scoped memory is durable per *end user*,
-with no member or seat identity in it, so a multi-seat roster serving one person shares one
-memory (drift note §3b). This contract states the gap; FIX-1364 carries it onto the teaching
-surface and files a ticket. **Nothing here invents a new isolation primitive.**
+**Corrected by FIX-1364 — "member" here has always meant *seat*** (one flow instance on the
+roster), not a person identity outliving seats and not a separate member graph. Read that way,
+the gap this contract named is a **default, not a missing primitive**: user-scoped resources are
+shared per end user unless something isolates them (BP-027), and
+`defineFlow({ isolateUserState: true })` isolates them on the instance id — which a seat has.
+A characterization test with a control case (POC on the FIX-1364 spec branch, and the shipped
+tests in `packages/workforce/test/agent-worker-memory.test.ts`) showed a fact written through
+one seat is invisible to its neighbour with the flag on, and visible with it off. The kind
+forwards the flag through `defineAgentWorkerFlow({ isolateUserState })`. **Nothing invents a new
+isolation primitive, and no memory field goes on the seat object.**
+
+The residual limit is narrower than the original gap statement and is filed rather than taught
+as a blocker: the flag is on the kind, and memory's resource factories do not forward
+`flowIsolation` per tier, so a roster is all-isolated or all-shared and cannot mix. Renaming a
+seat moves where its isolated data lives, which orphans that seat's memory; documented, not
+migrated.
 
 ## C5 — Out of the box is the cheap path, and cheap includes *off*
 
@@ -234,14 +282,25 @@ honestly — not "remembers with zero configuration", and not "one setting on th
 
 ### The skills entry point is pinned: `createSkillsLibrary` + per-generator binding
 
-**Not `createSkillsCapability`.** Two overlapping entry points exist and reconciling them is
-FIX-1362's; but *which one the default is made of* is a contract call, because leaving it open
-lets FIX-1363 and FIX-1362 ship two different default stacks under one name.
+**Not `createSkillsCapability`.** Two overlapping entry points exist. *Which one the default is
+made of* is a contract call, because leaving it open lets FIX-1363 and FIX-1362 ship two
+different default stacks under one name — and FIX-1362 **pins that choice and draws the docs
+boundary** around it (its §11). **Deprecating the other surface is FIX-1390's**, not FIX-1362's:
+retiring a published entry point is its own change with its own migration, and folding it into a
+per-seat seat feature would multiply the blast radius for no gain.
 
 The library wins on the same argument as C3, one level down: its activation is per binding, so
 a skill given to one generator never appears in another's context, where the capability keeps a
 session-global `activeSkills` bag. The published guide currently teaches the capability;
 correcting that is FIX-1366's, not a reason to pick it.
+
+"Whole catalog" here means the load tool's reach over the *skill* catalog (`allowed` omitted), not
+licence for the skills library to re-widen a seat's tool reach past its own `tools:` (C1) — the
+default kind hands the library the app's tool catalog with registration turned off
+(`createSkillsLibrary({ catalog, registerCatalogTools: false })`), so a bound skill's
+`allowed-tools` are still validated against it but never registered by the library itself. A
+stock-kind skill may declare `allowed-tools` naming a tool in the app catalog; registration stays
+solely the generator's own `tools:` mapping (C1).
 
 ## C6 — What must not be invented
 
@@ -306,7 +365,7 @@ Each criterion belongs to the issue whose own build makes it true: **1–3 to FI
 thin proof; **4 to FIX-1363**, which builds the built-in and the merge-underneath; **5 and 6 to
 FIX-1362**, which builds the instance-specific seeding path C3 requires; and **7 to a grep**, riding
 with either building issue. FIX-1365 stays thin by the epic's fence — *a thin hire of the OOTB
-agent kind, nothing more* — so 4–6 land on their builders as one tracer-bullet behaviour each,
+worker kind, nothing more* — so 4–6 land on their builders as one tracer-bullet behaviour each,
 rather than deferring to a single downstream check. Every assignment is also recorded on its own
 Linear issue, which is where an owner picks it up.
 
@@ -346,13 +405,24 @@ BP-037 neither the spec nor its POC lands on `main`.
 
 - **Two parallel skills entry points** — `createSkillsLibrary` + binding, and
   `createSkillsCapability` — overlap heavily and cross-reference each other, and the published
-  guide teaches the one not picked. C5 pins which one the built-in uses; *reconciling* the two
-  surfaces is FIX-1362's (drift note §2a), correcting the guide is FIX-1366's.
-- **Two threads for FIX-1362, not one** — the `flowIsolation` passthrough *and* a per-seat handoff
-  for `initialSkills`. C3 carries the diagnosis; both are required, neither is designed here.
+  guide teaches the one not picked. C5 pins which one the built-in uses; *deprecating* the other
+  is **FIX-1390's** (drift note §2a), correcting the guide is FIX-1366's.
 - **Per-seat cost, unmeasured** — isolated storage plus a per-seat `ensureSeeded` means one
   bucket and one cold-start seed pass per seat. At a large roster times a large catalog that is
-  a real multiplier and nobody has measured it. Flagged for FIX-1362; not a reason to change
-  C3, which trades it for a privacy promise the storage actually keeps.
-- **No durable per-member memory** — C4's named gap. FIX-1364 carries it onto the teaching
-  surface and files a ticket.
+  a real multiplier and nobody has measured it. FIX-1362 cut the obvious part — a skill-less seat
+  does no storage work at all — but the roster × catalog case is still unrun. Not a reason to
+  change C3, which trades it for a privacy promise the storage actually keeps.
+- **Capability tools union onto a seat's `tools:` instead of intersecting it** — C1 says a
+  seat may call exactly the keys it names, and the framework's tools resolver ends in
+  `[...base, ...staticTools, ...dynTools]`. So today the rule is upheld at each consumer:
+  the `uses` door FIX-1364 opened carries the same residue, and its documented memory recipe
+  turns the tool-bearing presets off rather than relying on a fence. **FIX-1393 moves the
+  intersection into `@flow-state-dev/core`** (declared `tools:` ∩ capability tools, empty
+  stays empty). Until it lands the consumer opt-outs are necessary, and FIX-1364's fence test
+  covers that recipe, not the general case.
+- **Memory isolation is per kind, not per tier** — C4's residual, and all that is left of it:
+  FIX-1364 corrected C4 itself, since "member" there means *seat* and `isolateUserState`
+  already isolates on the instance id. What remains is that the flag lives on the flow
+  definition and memory's resource factories declare no `flowIsolation` of their own, so a
+  roster cannot mix a shared tier with a per-seat one. Same shape as C3's skills-collection
+  gap; belongs to the memory package. Filed as FIX-1396.

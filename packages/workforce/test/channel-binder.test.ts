@@ -18,7 +18,7 @@ import { z } from "zod";
 import {
   CHANNEL_KIND,
   channelInstances,
-  createChannelFlow,
+  defineChannelFlow,
   openChannels,
   type ChannelManifest
 } from "../src/index";
@@ -102,7 +102,7 @@ describe("channelInstances", () => {
   });
 
   it("lets a caller replace the built-in wholesale under its own key", () => {
-    const replacement = createChannelFlow({
+    const replacement = defineChannelFlow({
       notify: handler({
         name: "notify",
         inputSchema: z.unknown(),

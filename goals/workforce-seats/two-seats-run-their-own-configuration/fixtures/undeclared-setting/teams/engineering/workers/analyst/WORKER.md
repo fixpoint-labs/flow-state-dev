@@ -1,6 +1,6 @@
 ---
 description: Reads the numbers.
-flow: worker-agent
+flow: custom-agent
 temperature: "0.2"
 ---
 

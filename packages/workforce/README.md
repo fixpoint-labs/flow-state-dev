@@ -14,7 +14,7 @@ workforce/teams/engineering/workers/lead/WORKER.md
 
 ```md
 ---
-flow: worker-agent
+flow: custom-agent
 description: Holds the board.
 model: openai/gpt-5.4-mini
 ---
@@ -22,17 +22,19 @@ You are the engineering lead. You break work into tasks and report what came bac
 ```
 
 ```ts
-import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { hireWorkforce } from "@flow-state-dev/workforce";
 
-const { workers, errors } = await readWorkforceDirectory("./workforce");
+const { workers, errors } = await readWorkforce("./workforce");
 if (errors.length) throw new Error(`workforce: ${errors.length} worker(s) failed to load`);
 
-const seats = hireWorkforce(workers, { kinds: { "worker-agent": workerAgentFlow } });
+const seats = hireWorkforce(workers, { kinds: { "custom-agent": customAgentFlow } });
 flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
-`workerAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package — decides what a worker may declare.
+`customAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package — decides what a worker may declare.
+
+This example names a custom kind because that is what it is demonstrating. A record that leaves `flow:` out is hired into the built-in `agent` kind instead, and needs no `kinds` argument at all — see **Hiring** below.
 
 ## Personas
 
@@ -176,7 +178,34 @@ there and be missing from a seat's set. Drop the key and both readers agree.
 
 The reader registers nothing and starts nothing. Wiring the records into a running seat is the
 caller's job: pass `skills` as the `initialSkills` of the skills capability or library you build
-for that worker.
+for that worker — or let `readWorkforce` do it, below.
+
+### Reading the whole roster at once
+
+`readWorkforce` does both walks and hands back records that already carry their skills, which is
+what `hireWorkforce` needs to give each seat its own catalog:
+
+```ts
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
+
+const { workers, errors, skillErrors } = await readWorkforce("./workforce");
+// workers[0].skills — that seat's org ∪ team ∪ own union, resolved
+const seats = hireWorkforce(workers);
+```
+
+Two error channels, because they are different severities: `errors` is a worker slot that failed
+(a seat the app does not have), `skillErrors` is a seat that loaded short, one entry per affected
+seat. Both are collected rather than thrown; treating either as fatal is the caller's call.
+
+The record's `skills` reaches the built-in `agent` kind as its `seatSkills` setting, imposed by
+the hire step the way a body is imposed as `instructions`. A `WORKER.md` declaring `seatSkills:`
+itself is refused by name at both the loader and the hire step — where a skill folder sits is
+what decides who can see it.
+
+**A custom kind only receives it if its own `configSchema` declares `seatSkills`.** It is the one
+imposed setting that works that way: a body is written by the worker's author, but a worker's
+skills come from folders somebody else added, and one `org/skills/` folder makes every worker's
+set non-empty. Declare the key to opt in.
 
 ## Hiring a workforce
 
@@ -190,13 +219,13 @@ import { hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
 const workers: WorkerManifest[] = [
   {
     id: "engineering.lead",
-    declared: { flow: "worker-agent", description: "Holds the board.", model: "openai/gpt-5.4-mini" },
+    declared: { flow: "custom-agent", description: "Holds the board.", model: "openai/gpt-5.4-mini" },
     body: "You are the engineering lead. You break work into tasks and report what came back.",
   },
   { id: "engineering.intake", declared: { flow: "intake", description: "The front door." }, body: "" },
 ];
 
-const seats = hireWorkforce(workers, { kinds: { "worker-agent": workerAgentFlow, intake: intakeFlow } });
+const seats = hireWorkforce(workers, { kinds: { "custom-agent": customAgentFlow, intake: intakeFlow } });
 flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
@@ -204,6 +233,17 @@ The factory reads **`flow`**, which names the kind to instantiate, and **`descri
 label. Everything else is that worker's settings, handed to the flow
 verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
 declared is refused by name at the hire.
+
+**A record that leaves `flow:` out is hired into the built-in worker kind** — it talks, its body
+arrives as its instructions, and it reads the skills its own folders hold plus any the app seeded
+through `defineAgentWorkerFlow({ skills })`. It has no memory: nothing it is told survives the
+turn. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only still
+refuses: it names no kind, and only an absent key means the built-in. To replace the built-in,
+pass your own flow under `agent`
+(`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`). It takes over for the seats that run
+on the `agent` kind (the records that leave `flow:` out, and any that name `agent`) and leaves a
+worker on any other kind alone. Configuring the built-in is kind replacement, not an option on
+`hireWorkforce`.
 
 A worker record declares data: a description, the kind it runs, and that kind's settings. Behavior
 lives in the flow the kind names, so a worker that has to do something none of your kinds do is a
@@ -222,6 +262,74 @@ record that declares `instructions:` and carries an empty or blank one hires on 
 A `WORKER.md` has no `persona` setting: declaring it lands the worker in
 `readWorkforceDirectory`'s `errors`, or is refused by `hireWorkforce` for a hand-built record.
 Spell it `instructions`.
+
+### Composing capabilities into the built-in kind
+
+`defineAgentWorkerFlow` takes three more app-level options beyond its catalog, skills and model
+choices. All three are optional. `defineAgentWorkerFlow()` with no arguments builds the stock
+worker.
+
+| Option | What it does |
+| --- | --- |
+| `uses` | Capabilities attached to every worker's answer generator. The skills binding stays first and is never displaced. A capability passed as a plain ref brings its own storage with it; one passed as a `(ctx) => refs` resolver contributes context and tools only, and its storage has to be declared statically somewhere. |
+| `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string, it cannot change the answer, and a failure in it does not fail the turn. Absent, nothing runs after the answer. |
+| `isolateUserState` | Forwarded to `defineFlow`. Gives each worker its own user-scoped storage, keyed on the worker's id, instead of one cell shared across the roster. Default `false`. |
+
+**The tools fence and `uses`.** A worker may call exactly the catalog keys its `tools:` names, and
+the generator's own `tools:` mapping is the only stock registration path. A capability's tools are
+the exception: they reach every worker of the kind, whatever that worker's `tools:` names. Turn a
+capability's tool-bearing presets off unless you want them on the whole roster.
+
+#### The memory recipe
+
+Memory is one thing you can pass through these options. Install `@flow-state-dev/memory`
+separately:
+
+```ts
+import { AGENT_KIND, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { system } from "@flow-state-dev/memory";
+
+const mem = system({
+  model: "openai/gpt-5.4-mini",
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+});
+
+const remembers = defineAgentWorkerFlow({
+  catalog: appTools,
+  uses: [
+    mem.capability.presets({
+      recall: false,    // a tool — off, per the fence above
+      connect: false,   // a tool — off
+      semantic: true,   // context injection; OFF by default
+      episodic: true,   // context injection; OFF by default
+    }),
+  ],
+  isolateUserState: true,
+  afterAnswer: mem.captureFromItems,
+});
+
+const seats = hireWorkforce(workers, { kinds: { [AGENT_KIND]: remembers } });
+```
+
+Each of these fails quietly if you skip it:
+
+- **`system()`, not `createMemoryCapability`.** The latter builds the read side only, producing a
+  worker that recalls what something else stored and records nothing of its own.
+- **`afterAnswer` is the write side.** Without it the durable stores are never written.
+- **`semantic` and `episodic` on.** They are off by default, and with `recall` off as well the
+  durable stores would be written and never read back.
+- **`recall` and `connect` off.** They are the only tool-bearing presets. A worker that wants
+  on-demand search gets the recall tool through the app's own catalog, where it opts in by name.
+
+Isolation is a decision for the whole kind: a roster is all-isolated or all-shared.
+
+`isolateUserState` decides **where** a worker's user-scoped data is keyed, so anything that
+changes the key leaves the old data behind. Two ways that happens, both with no migration:
+**renaming a worker** (the key is its id), and **flipping the flag on a roster already in use**
+(shared and isolated are different cells). Decide it before the roster carries anything worth
+keeping.
 
 Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
 every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.
@@ -433,7 +541,7 @@ an audit or approval flow on this and you get a far weaker guarantee than the fi
 
 ### Waking members
 
-`createChannelFlow({ notify })` takes a block run once per declared member per post. It runs in its
+`defineChannelFlow({ notify })` takes a block run once per declared member per post. It runs in its
 own request, outside the post's turn, so a slow delivery never delays the next post. A delivery that
 fails is recorded; the post stays written and membership is unchanged. Without a slot, posts land and
 nobody is woken.
@@ -449,10 +557,10 @@ members and charter.
 
 ```ts
 // A kind of your own, alongside the built-in.
-channelInstances(channels, { kinds: { "my-channel": createMyChannelFlow() } });
+channelInstances(channels, { kinds: { "my-channel": defineMyChannelFlow() } });
 
 // Or replace the built-in wholesale, keeping the standard behaviour with your own notify block.
-channelInstances(channels, { kinds: { channel: createChannelFlow({ notify }) } });
+channelInstances(channels, { kinds: { channel: defineChannelFlow({ notify }) } });
 ```
 
 Your factory carries the same contract the built-in does: `cardinality: "singleton"`, so
@@ -472,16 +580,19 @@ leaves an empty session there, and re-running binds it.
 
 | Export | Description |
 |--------|-------------|
+| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. |
+| `AGENT_KIND` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
-| `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker. Ships from the `./loader` subpath (Node only). |
+| `readWorkforce(root)` | Read the tree into records that already carry their own skills — `readWorkforceDirectory` joined with `readSeatSkills` per seat. What most apps want. Ships from the `./loader` subpath (Node only). |
+| `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker, without their skills. Ships from the `./loader` subpath (Node only). |
 | `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Ships from the `./loader` subpath (Node only). |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
 | `readResourcesDirectory(root)` | Read `org/resources/` and `teams/<id>/resources/` into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
 | `resourcesFromDocs(documents)` | Turn document records into the flow resource map, keyed by each document's ref. Spread it into your own `resources`. |
-| `WorkerManifest` | One worker record: `{ id, declared, body }`. |
+| `WorkerManifest` | One worker record: `{ id, declared, body, skills? }`. |
 | `ResourceDoc` | One document record: `{ ref, declared, body }`. |
-| `createChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
+| `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Register these. |
 | `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. Idempotent. |
@@ -496,7 +607,8 @@ leaves an empty session there, and re-running binds it.
 |-------|------|
 | Duplicate agent name | `createWorkforceCapability` construction |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
-| Workforce root unreadable | `readWorkforceDirectory` throws |
+| Workforce root unreadable | `readWorkforceDirectory` and `readWorkforce` throw |
+| One seat's skills failed to load | Collected in `readWorkforce`'s `skillErrors`, one entry per affected seat, each carrying that seat's id and `readSeatSkills`' own error list |
 | Bad `team` or `worker` name | `readSeatSkills` throws |
 | Skills root unreadable | `readSeatSkills` throws |
 | Skills level unreadable | Collected in `readSeatSkills`'s `errors` as `kind: "unlistable-level"`, keyed by the level's path — an absent level is empty instead |
@@ -505,7 +617,7 @@ leaves an empty session there, and re-running binds it.
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
-| Worker cannot be hired | `hireWorkforce` — no `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, `instructions` given both in the frontmatter and as a body, or a `persona:` key. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name the built-in's catalog does not carry, a skill name reaching one seat from both the app's `skills` and its own folders, `instructions` given both in the frontmatter and as a body, or a `persona:` or `seatSkills:` key. Collected: one error names every bad worker |
 | A `resources/` slot, `org/`, `teams/` or a team folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
 | Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |

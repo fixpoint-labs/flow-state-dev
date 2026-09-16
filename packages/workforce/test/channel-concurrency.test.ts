@@ -23,7 +23,7 @@ import {
   CHANNEL_KIND,
   channelFlow,
   channelNotifyInputSchema,
-  createChannelFlow
+  defineChannelFlow
 } from "../src/index";
 
 const USER_ID = "u_queue";
@@ -65,7 +65,7 @@ async function until(predicate: () => boolean | Promise<boolean>, label: string)
 
 describe("what the post entry's queue holds", () => {
   it("declares queue on both post doors and allow on the fan-out", () => {
-    const instance = createChannelFlow({ notify })();
+    const instance = defineChannelFlow({ notify })();
 
     expect(instance.actions.post.concurrency).toBe("queue");
     expect(instance.internal?.actions.post?.concurrency).toBe("queue");
@@ -78,7 +78,7 @@ describe("what the post entry's queue holds", () => {
   });
 
   it("hands fan-out to a second request in the channel's session, not to the post's own", async () => {
-    const instance = createChannelFlow({ notify })();
+    const instance = defineChannelFlow({ notify })();
     const state = createFlowState({
       flows: { [CHANNEL_KIND]: instance },
       stores: { default: { primary: inMemoryStores() } },

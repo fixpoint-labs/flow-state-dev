@@ -52,7 +52,7 @@ function dir(root: string, rel: string): string {
 
 const LEAD_MD = `---
 description: Holds the engineering board and breaks work into tasks.
-flow: worker-agent
+flow: custom-agent
 model: openai/gpt-5.4-mini
 tools: [board, search]
 ---
@@ -71,7 +71,7 @@ describe("readWorkforceDirectory", () => {
     expect(workers).toHaveLength(1);
     expect(workers[0]!.declared).toEqual({
       description: "Holds the engineering board and breaks work into tasks.",
-      flow: "worker-agent",
+      flow: "custom-agent",
       model: "openai/gpt-5.4-mini",
       tools: ["board", "search"],
     });

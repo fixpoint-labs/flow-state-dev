@@ -435,6 +435,19 @@ Launch an `Explore` sub-agent to review the Documentation Plan (Part II §11) sp
 
 Address any issues the validators surface. If there are unresolvable questions, add them to the "Open Questions" section.
 
+#### The spec's factual base gets a checker before it gets a reviewer
+
+A spec that rests on counted or enumerated facts — *these N call sites*, *every adapter does X*, *this surface lacks Y* — must ship with **one executable check that re-derives them**, committed to the spec branch and run before you publish. Not prose asserting the numbers; a script or a test that fails when the claim stops being true.
+
+**Why it goes here, at Step 5, and not into review.** A hand-derived factual base does not converge by being argued about — each round corrects one number and leaves the ones nobody looked at. One spec ran **thirty-five rounds against a two-round budget**, overwhelmingly on evidence accuracy, and eventually built exactly this checker; it worked immediately. The only spec that cycle to hold its budget had built its evidence before review and used it to **refute the premise the issue was written on**.
+
+Two properties it needs, both learned the same way:
+
+- **A totality assertion, not just a spot check.** A checker that verifies the sites it knows about cannot report the one nobody listed. The corpus checker that caught the most was the one asserting *every* tracked file is classified as in-scope or deliberately out.
+- **A negative control, run.** The first version of that assertion silently passed a planted unclassified file, because a subtree rule absorbed it — *the exact failure the assertion existed to prevent, inside the assertion*. Plant something the check must reject, watch it fail, then remove it. A green check you have never seen go red is not evidence (tenet 7).
+
+Skip it when the spec rests on no counted facts, and **say so in one line** rather than leaving the omission silent. Where a single disputed behavioural claim is the issue rather than a whole factual base, that is `settle-claim`'s job, not this one.
+
 ### Step 6: Publish the spec — ready spec PR + Linear (kept in sync)
 
 Publish the **full spec (Part I + Part II)** in two places that must hold identical content: a versioned doc in the repo (the reviewable artifact) and the Linear document (the issue-attached copy).
