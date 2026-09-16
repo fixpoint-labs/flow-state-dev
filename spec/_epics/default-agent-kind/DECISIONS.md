@@ -1,5 +1,7 @@
 # FIX-1359 · Decisions
 
+[Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+
 The calls that sit above any single issue: what was chosen, what lost, why, and what each locked in for the seven issues under it. Six are the sign-off surface or shape the set. The rest were raised in review, or ruled on the epic PR while the children ran, and are recorded so no child reopens them.
 
 ## The tree

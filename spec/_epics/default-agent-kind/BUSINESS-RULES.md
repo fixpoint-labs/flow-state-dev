@@ -1,5 +1,7 @@
 # FIX-1359 · Rules every issue in the set obeys
 
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md)
+
 At epic altitude the rules aren't behaviours of one feature; they're the constraints every child spec and implementation had to satisfy, and the place the cross-spec review checked. Each says who owned it and where it was checked. At the wrap, every check named below was run; the two that decide whether the epic is finished, ER-18 and ER-19, are noted with where they passed.
 
 ## What a team gets, and what it doesn't

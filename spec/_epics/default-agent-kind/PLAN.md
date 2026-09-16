@@ -1,5 +1,7 @@
 # FIX-1359 · Plan
 
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan**
+
 An epic plan sequences the work and says what each piece entails. It does not say how to build any piece; that was each issue's own plan. IDs cross-reference [DECISIONS.md](DECISIONS.md) (D-n) and [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n). The epic wrapped on 2026-09-16; this is the plan's final state.
 
 ## The path

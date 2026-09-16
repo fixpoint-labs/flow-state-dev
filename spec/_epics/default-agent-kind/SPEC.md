@@ -1,7 +1,8 @@
 # FIX-1359 · Default Workforce agent flow: a built-in, replaceable `agent` kind
 
+**Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+
 Epic · 7 issues · Workforce, Layer 2 · Goal 1, validate through real usage · **wrapped 2026-09-16**
-[Decisions](DECISIONS.md) · [Rules every issue obeys](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
 ## Three teams, before and after
 
