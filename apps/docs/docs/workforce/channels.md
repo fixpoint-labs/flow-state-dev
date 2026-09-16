@@ -50,6 +50,99 @@ No line says which kind it runs. An omitted `flow:` selects the built-in, which 
 
 Four keys are declarable: `flow`, `description`, `members`, `instructions`. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
 
+## Channels on disk
+
+That record has a home on disk, in the same tree as [workers](./workers-on-disk.md) and [documents](./documents-on-disk.md). One folder per channel, grouped by team:
+
+```
+workforce/
+  teams/
+    engineering/
+      channels/
+        standup/
+          CHANNEL.md
+        incidents/
+          CHANNEL.md
+    marketing/
+      channels/
+        standup/
+          CHANNEL.md
+```
+
+A channel is a folder with a fixed file in it, the way a worker is a folder with a `WORKER.md`. The `CHANNEL.md` is the record above: frontmatter, then the charter. Someone who does not write TypeScript can open a fourth channel, or rewrite what one of them is for, by editing a document.
+
+Point `readChannelsDirectory` at the root:
+
+```ts
+import { readChannelsDirectory } from "@flow-state-dev/workforce/loader";
+
+const { channels, errors } = await readChannelsDirectory("./workforce");
+```
+
+You get one record per channel:
+
+```ts
+interface ChannelManifest {
+  id: string;                        // "engineering.standup"
+  declared: Record<string, unknown>; // the frontmatter, exactly as written
+  body: string;                      // the charter below it, verbatim
+}
+```
+
+`channels` is the array `channelInstances` and `openChannels` take, the same one you would otherwise build by hand. Reading the tree opens nothing. No instance is registered and no session exists yet.
+
+The subpath matters. `@flow-state-dev/workforce/loader` imports `node:fs`, so it only runs on Node. The package root, where the binding calls live, stays isomorphic.
+
+### A channel's id comes from the folders
+
+The team folder and the channel folder, joined with a dot. `teams/engineering/channels/standup/` becomes `engineering.standup`, which is the channel's session id: the id you address when you post to it. The team qualifier means marketing can have a `standup` of its own without checking what engineering called theirs.
+
+Both folder names must be lowercase letters, digits, and single hyphens, at most 64 characters each. So `daily-standup` is fine. `Stand Up` and `stand.up` are reported when the tree is read, with the rule in the message.
+
+### What the file is checked for
+
+`description` is the only key the file itself requires, and `system:` the only one it refuses. Everything else lands on `declared` spelled exactly as you spelled it, and the closed list of four keys is checked later. So a `CHANNEL.md` that says `member:` instead of `members:` reads without complaint and is refused by name when you bind the roster.
+
+### When a folder is wrong
+
+A folder that should have produced a channel and did not lands in `errors`, and the rest of the channels load anyway. Say the lounge folder holds other files but no `CHANNEL.md`:
+
+```ts
+errors;
+// [{ kind: "channel-load-failed",
+//    path: "teams/engineering/channels/lounge",
+//    error: Error('Channel folder "lounge" has no CHANNEL.md. A channel folder declares
+//                  one channel, and every channel is a CHANNEL.md. …') }]
+```
+
+`path` is slash-separated and relative to the root you passed, so it starts at `teams/`. It names the folder that failed so you can go find it. It is not a path you can open.
+
+`kind` names the condition, so a caller can tolerate one class and still refuse another:
+
+| `kind` | When |
+|--------|------|
+| `channel-load-failed` | One channel folder did not load: a folder name that breaks the rules, a symlinked folder, or a `CHANNEL.md` that is missing, unreadable, carries no frontmatter, or declares no `description`. |
+| `refused-declaration` | The file declares `system:`. |
+| `unreadable-slot` | A structural folder is a symlink or exists and cannot be listed: `teams`, a team folder, or a team's `channels`. The channels beneath it cannot be enumerated, so the folder is reported under its own path. |
+
+`readChannelsDirectory` throws only about the root you passed: when it cannot be read at all, and when it is a symlink. Links are never followed at any level of the walk. A root with no `teams/` comes back as `{ channels: [], errors: [] }`, and a team with no `channels/` folder is not an error either.
+
+A file sitting loose in a `channels/` folder is passed over in silence, so a `README.md` next to the channel folders is fine, as are OS and editor droppings such as `.DS_Store`.
+
+#### Treat a non-empty `errors` as fatal
+
+```ts
+const { channels, errors } = await readChannelsDirectory("./workforce");
+if (errors.length) {
+  throw new Error(
+    `channels: ${errors.length} channel(s) failed to load\n` +
+      errors.map(({ path, error }) => `  ${path}: ${error.message}`).join("\n"),
+  );
+}
+```
+
+A reported folder is a channel your app was supposed to have. Log a warning and carry on, and the app boots with a team that has nowhere to talk. Fail at startup unless you have a specific reason to run a short roster.
+
 ## Opening it, and why an unopened id is not a channel
 
 Binding happens in two calls, because the two halves happen at two different times. An instance is registered when the server is built. A session can only be opened once the server is running.
@@ -153,6 +246,7 @@ That map is the whole registration surface. There is no second API, and a custom
 ## What channels do not do yet
 
 - No join or leave. Membership is the declared list; changing it means changing the record and opening a fresh channel.
+- No watching of a channels tree. It is read once, at startup.
 - No delete, and no retirement.
 - No summary pass over a long transcript.
 - No resolution of member names. A `members:` entry naming a seat that does not exist is accepted, and a delivery to it fails like any other delivery.
