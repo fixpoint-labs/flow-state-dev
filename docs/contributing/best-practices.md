@@ -24,7 +24,7 @@ is marked `Superseded` and links its replacement; it is never deleted.
 the lasting layer. A BP that merely restates a tenet is **folded** into that tenet
 (marked Superseded, pointing to it) rather than kept as always-loaded duplication.
 Best practices are the *situational, specific* layer — kept few, and mostly worked
-out per spec (`issue-spec` Part I focus practices). Sharpen or prune before you
+out per spec (the plan's guardrails, each with a *because*). Sharpen or prune before you
 add; a BP that traces to no tenet is a smell.
 
 Update policy:
@@ -199,7 +199,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-006 | Keep planning/tracking labels (spec IDs, Linear refs) out of code and tests |
 | BP-008 | Keep root README onboarding-first and current |
 | BP-009 | Maintain package-level READMEs for public packages |
-| BP-037 | Specs live on their spec PR (`spec/<ISSUE-ID>.md`) and in Linear — never on `main` |
+| BP-037 | Specs live on their spec PR (`spec/<ISSUE-ID>/`, four documents and figures) and in Linear — never on `main` |
 | BP-039 | Lead with the problem in plain language, collapse the derivation below the fold (grok before diving deep) |
 | BP-040 | Spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds |
 | BP-041 | Frame every ask as a business decision — the fork, plain terms, the trade-off, a recommendation, what would change your mind, what being wrong costs |

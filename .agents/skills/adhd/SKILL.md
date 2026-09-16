@@ -193,10 +193,10 @@ public surface clears the same bar as the original ask — normalization, observ
 composition, vocabulary — or it dies there. Divergence that launders a wrapper feature
 past the gate is a failure of this skill, not a win.
 
-**Output.** Feed the shortlist into the spec's **§3 (Tradeoffs & alternatives)** — the
-main alternative weighed and why this one wins, plus the simpler approach considered. If
-divergence surfaced a genuinely live fork the user should rule on, it goes to **§6
-(Decisions & rules)** in the six-part shape from
+**Output.** Feed the shortlist into the spec's **`DECISIONS.md` → Considered and dropped** —
+the main alternative weighed and why this one wins, plus the simpler approach considered. If
+divergence surfaced a genuinely live fork the user should rule on, it goes to
+**`DECISIONS.md` → Open** in the six-part shape from
 [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md), not as a
 neutral menu. Rejected branches are one line each. Do not paste the wide set into the spec.
 
@@ -206,8 +206,8 @@ neutral menu. Rejected branches are one line each. Do not paste the wide set int
 default** — it is not part of the standing lens set, because after the code exists most
 alternatives are expensive regret. It fires when the caller asks for it, or when the
 change trips the pre-flight gate on its own: new public API surface, a new pattern /
-capability / block kind, a schema or scope decision, or a spec whose §3 weighed no real
-alternative.
+capability / block kind, a schema or scope decision, or a spec whose *considered and dropped*
+weighed no real alternative.
 
 **Scope: alternatives only.** In this context the skill reports *other shapes the change
 could have taken*. It does not report bugs (correctness lens), bloat (restraint lens), or

@@ -36,7 +36,8 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   `spec-poc/<ISSUE-ID>-<slug>/` on the spec branch, which CI ignores
   ([`spec-poc`](../skills/spec-poc/SKILL.md)). It's part of authoring, not a separate dispatch:
   you already have the branch and the context, and you're the one who knows which premise is
-  load-bearing. Costs **zero** review rounds. Record it in §7 (and §12 for a premise it settled)
+  load-bearing. Costs **zero** review rounds. Record it on the plan's POC line (and in
+  `DECISIONS.md → Settled` for a premise it settled)
   and name it in the PR's POC block with the literal command to run it — a POC nobody can run is
   waste. Report it on the `spec_poc:` line of your status (below); if a load-bearing one is
   unfinished, say so there so the coordinator can disclose it when it surfaces the gate.
@@ -45,12 +46,12 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   judgment, not mechanism, and it isn't worth a workflow field until the practice has run.
 - spec PR open, **still awaiting approval**, with unhandled review events → run one
   `issue-spec` Step 6.5 round and stop. Triage against the spec-review bar: fold only what
-  changes the approach, record the rest verbatim as §13 implementer notes, escalate genuine
+  changes the approach, record the rest verbatim in `PLAN.md → Notes from review`, escalate genuine
   direction forks. **Report the rounds you spent and whether anything was spec-level** — the
   coordinator budgets rounds off that (two by default; see `issue-lifecycle` → "The
   spec-review round budget"), so report it accurately: a batch that was **only** factual
   corrections or broken references is **`spec_review: 0`** (those get fixed inline by rule and
-  cost no round); a batch you triaged into §13 notes is one round. Do not chase threads to
+  cost no round); a batch you triaged into review notes is one round. Do not chase threads to
   zero; the spec PR is never merged.
   **A factual claim that is now being argued in circles is a fourth disposition — Settle**
   (`issue-spec` 6.5.3). The trigger is **repetition, not confidence**: only once the same
@@ -59,14 +60,14 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   asserted *once* is ordinary triage — answer it and move on. When it does fire, don't argue
   it, don't guess a side, and **don't dispatch the POC yourself** (you exit before its verdict
   could land): return the claim slice as `settle_requested` and let the coordinator dispatch
-  the `poc-agent`. It costs **zero** rounds. **Record the claim in the spec's §12 marked
+  the `poc-agent`. It costs **zero** rounds. **Record the claim in `DECISIONS.md → Open` marked
   `(POC in flight)` and push it before you exit** — your status line dies with this dispatch,
   so the spec doc is the only thing that carries the settlement downstream.
 - **spec approved** (the approval is already present when you're dispatched, or you detect it
   this run) → **this is a release, not a stop.** Close the spec PR per
   [`orchestration.md`](../../docs/contributing/orchestration.md) → "Closing the spec PR"
   (mirror Linear from the branch head, close unmerged, **never delete the branch**).
-  **Unless the spec's §12
+  **Unless the spec's `DECISIONS.md`
   carries a claim marked `(POC in flight)`, or the coordinator passed you a live `settling`, in
   which case leave it open** for the verdict to be folded into; the coordinator closes it later.
   Then implement on the issue's branch and open the impl PR — **all in this one dispatch.** Do not return at

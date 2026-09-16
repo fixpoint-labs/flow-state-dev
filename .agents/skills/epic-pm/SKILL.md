@@ -21,7 +21,7 @@ spending attention on the ones your own objective already answers.
 | | What this posture does first |
 |---|---|
 | **Defined** — the five lines below already hold | **Cut it.** [The restraint pass](#the-restraint-pass), before the objective gate and before every spec gate |
-| **Thin or unfiled** — anything less, including a filed epic whose §1 cannot answer them | **Shape it.** [Interview](#shaping-a-thin-epic) until they hold, then stand the epic up |
+| **Thin or unfiled** — anything less, including a filed epic whose `SPEC.md` cannot answer them | **Shape it.** [Interview](#shaping-a-thin-epic) until they hold, then stand the epic up |
 
 Both end at the **same** objective gate `epic-lifecycle` already has. This posture adds no gate —
 and *"don't build it"* is a live answer at that one. Give it when you believe it.
@@ -53,8 +53,9 @@ guess at for the rest of the run:
 measure answers *is it working* at every report. And line 3 is scoreable, so it is gameable —
 score the method, not the number.
 
-They live in **§1 of the epic-spec**, written by `epic-agent`, never by you
-([`epic-spec-template.md`](../../../docs/contributing/epic-spec-template.md) → §1). You keep a
+They live in **the epic-spec's `SPEC.md`**, between the teams table and *what's in the box*,
+written by `epic-agent`, never by you
+([`epic-spec-template.md`](../../../docs/contributing/epic-spec-template.md) → `SPEC.md`). You keep a
 verbatim copy in `.orchestration/epic.md`: you may not read the epic-spec (token discipline), and
 every call you absorb below is tested against these five lines, every wake. Refresh the copy when
 a fold changes the objective.
@@ -88,7 +89,7 @@ Before any `epic-agent` dispatch. An agent cannot write an objective nobody has 
 - **Stop when you can answer the next three product questions the set will raise without them.**
   That is the bar, not exhaustiveness — the interview exists to buy the absorption above, so it
   is finished when it has.
-- **Then stand it up:** dispatch `epic-agent` with the agreed five lines as §1. Where the work
+- **Then stand it up:** dispatch `epic-agent` with the agreed five lines for `SPEC.md`. Where the work
   items don't exist yet, file the **fewest issues that produce the outcome** via `issue-manager`,
   parented under the epic (`epic-lifecycle` → Intake). A *phase 2* issue is not filed — it is a
   line in **Not doing**.
@@ -101,7 +102,7 @@ The framework is mature and carries known bloat (`philosophy.md` → "Where we a
 default here is **cut**, at both altitudes:
 
 - **The set, before the objective gate.** Name the issue you would drop and why it survived — the
-  §1 holistic necessity check, mandatory under this posture rather than exemplary. No dispatch:
+  set table's holistic necessity check, mandatory under this posture rather than exemplary. No dispatch:
   it is a judgment over the set and the five lines, and you hold both.
 - **Each spec, before its approval gate.** Dispatch [`second-look`](../second-look/SKILL.md) on
   the issue ID — its spec target is a forward estimate, so it cuts lines before they are written.

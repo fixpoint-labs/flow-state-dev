@@ -134,11 +134,17 @@ Rules, all cheap to check:
   diagram is genuinely clearer. Never keep both out of politeness.
 - **Two is the ceiling**, and the second one needs a reason.
 
-**On a spec or epic PR, that one diagram is already spoken for.** Every spec carries a
-[visual explainer](../../.agents/skills/spec-explainer/SKILL.md) beside it, and its *After*
-panel is what goes in block 2, followed by a one-line link to the full document. So the
-question on those PRs is not *does a diagram earn its place* — one is standard — but whether
-anything justifies a **second**, and the bar for that is the same as anywhere else.
+**On a spec or epic PR, blocks 1 and 2 take a fixed shape, and the diagram is already
+spoken for.** The problem and the solution are one **people table** — *someone who… · today ·
+after* (a spec) or *a team that… · today · after this epic* (an epic) — cut from the spec's own
+`SPEC.md`. Under it goes the spec's figure, as a raw image pinned to the commit that holds it
+([`spec-figures.md`](spec-figures.md) → "In the PR body"), with its one sentence: the *what
+changes* figure on a spec PR; on an epic PR the box, then the path and the ownership matrix
+further down. So the question on those PRs is not *does a diagram earn its place* but whether
+anything justifies one more, and the bar for that is the same as anywhere else. The full
+instance of each body is the template's:
+[`spec-template.md`](spec-template.md) → "The PR body" and
+[`epic-spec-template.md`](epic-spec-template.md) → "The PR body".
 
 ## 3. What's asked of you
 
@@ -187,6 +193,27 @@ they're being informed or asked.
 **Never a bare number.** "Decision 3" as a heading makes the reader rebuild a map they don't
 have; the substance goes in the heading, and the number, if the spec has one, goes after it.
 
+**The compact form, on a spec or epic PR only.** There the reader is *ratifying* decisions a
+spec already argues in full one click away, so each ratified decision is one numbered line — the
+decision in bold, then *If wrong:* and its cost — under a `## Sign off` heading, hardest first,
+with the one to weigh named and a link to `DECISIONS.md`:
+
+```md
+## Sign off
+
+1. **A skill beside a worker is reachable, not always-on.** If wrong: the first thing people
+   try looks broken.
+2. **A seat holds a copy. Refresh is deliberate and replaces the folder whole.** If wrong:
+   withdrawn instructions stay live, or a refresh destroys edits someone expected to keep.
+
+**Open: none.** Number 1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
+```
+
+A **live fork is never compact**: it keeps its own subheading and the full six-part shape, above
+the ratified lines. And the compact form stays on spec and epic PRs — on an implementation PR
+the decisions were made while building and the body is the only place they're written down, so
+each keeps its subheading and two bullets.
+
 **Write the *If this is wrong* bullet in consequences, not mechanism.** "A permanently
 ambiguous public guard surface, or a migration third parties didn't need" is a cost a product
 owner can price. "The two guards would both have to be maintained" is a fact about our code,
@@ -198,12 +225,12 @@ one decision and one fork is a healthy PR, and a change following an approved sp
 none. Past three, either the filters weren't applied or this PR carries more product surface
 than one PR should.
 
-> **On a spec PR the §6 Decisions are what approval certifies, so none is dropped — they are
-> *sorted*.** The ones that pass both filters get a subheading here; the rest go one bullet
-> each in the collapsed engineering block. Nothing is hidden and nothing is approved unseen. A
-> §6 that yields six product decisions is a §6 that put the owner in the engineer's chair, and
-> the fix for that is upstream in the spec ([`spec-template.md`](spec-template.md) → §6), not
-> a longer list here.
+> **On a spec PR the decisions in `DECISIONS.md` are what approval certifies, so none is
+> dropped — they are *sorted*.** The ones that pass both filters get a line here; the rest go
+> one bullet each in the collapsed engineering block. Nothing is hidden and nothing is approved
+> unseen. A decisions doc that yields six product decisions is one that put the owner in the
+> engineer's chair, and the fix for that is upstream in the spec
+> ([`spec-template.md`](spec-template.md) → `DECISIONS.md`), not a longer list here.
 
 ### The live forks — the full ask, below the ratified ones
 
@@ -361,20 +388,19 @@ What goes down here:
   ```
 
   **Omit the block when nothing was filtered out** — never pad it, and never keep a decision
-  out of §6 just to have something to put here.
+  out of `DECISIONS.md` just to have something to put here.
 
   It earns its place on an **implementation PR**, where the decisions made while building
   genuinely mix the two and the PR body is the only place they are written down. On a **spec
-  PR** it is a safety net rather than a section: a compliant §6 is product-only by
-  construction ([`spec-template.md`](spec-template.md) → §6), so normally nothing filters out
-  and the block is omitted. It appears only when §6 collected an implementation call the
-  filters caught, which keeps §6 complete without the reader having to approve it.
-  **Implementation calls a compliant spec made deliberately live in Part II**, which is in the
-  committed doc diff a reviewer already reads — don't copy them into the body.
-- **The long-form case.** On a spec PR, the rest of Part I — tradeoffs, focus practices,
-  worked examples, the Decisions in full. Blocks 1–3 above are §1, §2 and the §6 Decisions
-  that passed the filters, so the collapsed block picks up where they stop and nothing is
-  said twice.
+  PR** it is a safety net rather than a section: a compliant `DECISIONS.md` is product-only by
+  construction ([`spec-template.md`](spec-template.md) → `DECISIONS.md`), so normally nothing
+  filters out and the block is omitted. It appears only when the decisions doc collected an
+  implementation call the filters caught, which keeps it complete without the reader having to
+  approve it. **Implementation calls a compliant spec made deliberately live in `PLAN.md` →
+  Decided, not asked**, which is in the committed doc diff a reviewer already reads — don't
+  copy them into the body.
+- **The long-form case.** On a spec or epic PR, **nothing**: the four documents are the diff,
+  and the links line names them. On an implementation PR, the case the body condensed.
 - **Verification output.** Test runs, goal-check transcripts, red/green evidence. State
   the verdict above the fold in a clause; the scrollback lives here.
 - **File-by-file changes**, when there are enough to be a list rather than a sentence.
@@ -386,8 +412,8 @@ collapsed **How to review this** section.
 
 | PR kind | The one question | The human judges | Automated review helps most on | Do **not** report |
 |---|---|---|---|---|
-| **Spec PR** (`spec/<ISSUE-ID>`, never merged) | Is this the right approach? | The numbered Decisions, scope, whether it's worth building at all | Constraints that would *invalidate* the design, factual errors about the codebase, internal contradictions, a missed dependency | Names, signatures, file layout, local structure, test names, anything Part II left open on purpose, the solution sketch at the line level, and **POC code at all** |
-| **Epic PR** (`epic/<name>`, never merged) | Is this body of work worth doing — and does the set overbuild? | The objective, whether it's really N issues or N−1, the cross-cutting decisions | A theme that contradicts another, an issue in the index that doesn't serve the objective, a missing issue the objective implies | Any single issue's approach, architecture, or test plan — anything touching exactly one issue |
+| **Spec PR** (`spec/<ISSUE-ID>`, never merged) | Is this the right approach? | The numbered decisions, scope, whether it's worth building at all | Constraints that would *invalidate* the design, a case the rules miss, factual errors about the codebase, internal contradictions, a missed dependency | Names, signatures, file layout, local structure, test names, anything `PLAN.md` left open on purpose, the figures at the pixel level, the solution sketch at the line level, and **POC code at all** |
+| **Epic PR** (`epic/<name>`, never merged) | Is this body of work worth doing — and does the set overbuild? | The objective, whether it's really N issues or N−1, the cross-cutting decisions | A cross-cutting decision that contradicts another, a rule with no owner or two, an issue in the set that doesn't serve the objective, a missing issue the objective implies | Any single issue's approach, architecture, or test plan — anything touching exactly one issue — and the status in the set table, which is refreshed as the set moves |
 | **Implementation PR** (`fix/<ISSUE-ID>`, merges) | Is this correct, and does it match the approved direction? | The implementation decisions and their ramifications, what was subtracted, whether the goal was actually *proved* | Correctness, second paths (BP-035), auth/routing from caller-controllable input (BP-031), legacy-shape tolerance (BP-030), concurrency and null boundaries | Re-litigating a Decision the spec already settled and a human approved; style the codebase has already settled |
 
 **The implementation row is the asymmetry worth noticing.** On a spec or epic PR we are
@@ -399,11 +425,13 @@ same review is the mistake this table exists to prevent.
 
 ## Where each block is authored
 
-- **Spec PR** — blocks 1–3 are the spec's own §1, §2 and the §6 Decisions that passed the
-  filters, condensed by `issue-spec` Step 6; contract from [`spec-template.md`](spec-template.md) → "How to
-  review this".
-- **Epic PR** — authored by the `epic-agent` when it opens or refreshes the epic PR;
-  contract from [`epic-spec-template.md`](epic-spec-template.md).
+- **Spec PR** — blocks 1–3 are `SPEC.md`'s people table, its figure, and the decisions that
+  passed the filters in compact form, condensed by `issue-spec` Step 6; the instance and the
+  contract are [`spec-template.md`](spec-template.md) → "The PR body" and "How to review this".
+- **Epic PR** — authored by the `epic-agent` when it opens the epic PR and refreshed by it for
+  the epic's life (the as-of line and the figure pins on every status change, the rest on a
+  material objective change); the instance and the contract are
+  [`epic-spec-template.md`](epic-spec-template.md) → "The PR body" and "How to review this".
 - **Implementation PR** — authored in `issue-implement` Step 9; contract is one of the
   four variants below, picked by what backs the change.
 
@@ -422,20 +450,20 @@ in advance — a pass scoped from the material, or work whose issue was filed af
 **1. Spec-backed** (Feature · Enhancement · Improvement with an approved spec):
 
 > **How to review this.** This implements an **approved spec** — the approach and the numbered
-> Decisions in its §6 are already signed off by a human, so please review the **code against
-> that direction**, not the direction itself. The spec lives on the issue's **Linear document**
-> (the durable copy) and on the **closed spec PR** ([link](#)), which keeps its review history.
-> Don't expect `spec/<ISSUE-ID>.md` to be in *this* diff — the spec PR closes unmerged at
-> approval and the spec never lands on `main` (BP-037).
+> decisions in its `DECISIONS.md` are already signed off by a human, so please review the
+> **code against that direction**, not the direction itself. The spec lives on the issue's
+> **Linear document** (the durable copy) and on the **closed spec PR** ([link](#)), which keeps
+> its review history. Don't expect `spec/<ISSUE-ID>/` to be in *this* diff — the spec PR closes
+> unmerged at approval and the spec never lands on `main` (BP-037).
 >
 > **Most valuable here:** correctness on the second path (the legacy shape, the null
 > boundary, the concurrent case, the cancel path), anything deriving an auth or routing
 > decision from caller-controllable input, and a behaviour the tests assert *around*
 > rather than *on*.
 >
-> **Already settled upstream:** the approach and every §6 Decision (human-approved — if
-> one is wrong, say so as a spec finding and it gets folded back; don't re-argue it inline),
-> and the conventions in `docs/contributing/best-practices.md`.
+> **Already settled upstream:** the approach and every decision in the spec's `DECISIONS.md`
+> (human-approved — if one is wrong, say so as a spec finding and it gets folded back; don't
+> re-argue it inline), and the conventions in `docs/contributing/best-practices.md`.
 
 **2. A bug on the direct route** (no spec, by design — the hard part was the diagnosis):
 
@@ -500,10 +528,13 @@ quietly altered — and whether the new arrangement genuinely navigates better t
 Each variant ends there. **"Parts worth reviewing closely" is not part of the contract** —
 it's authored per PR and lives above the fold, at position 4, where a human reaches it.
 
-## Worked example
+## Worked example — the fold, on a long-form body
 
-A real spec PR, before and after. The change is the *order* and what's collapsed. Almost
-none of the prose is new.
+A real spec PR from before the people-table shape, before and after. The change is the
+*order* and what's collapsed; almost none of the prose is new. A spec PR today takes the shorter
+shape in [`spec-template.md`](spec-template.md) → "The PR body" — the table, the figure, the
+compact sign-off — and this example stays because the ordering it shows is the same rule under
+both shapes, and because an implementation PR's body still reads like the *after*.
 
 **Before** — the first thing on screen is a block identical on every spec PR, and the
 first thing asked of the reviewer is to look closely at three decisions they haven't met:
@@ -610,20 +641,13 @@ stops being cheap and becomes a breaking change we've promised not to make.
 
 > **1. Decision 7 — the premise that FIX-992 already closed part of this.** …
 
-**Spec doc:** [`spec/<ISSUE-ID>.md`](#) · **Linear:** [FIX-981](#) · **Epic:** [FIX-939](#) (M1 of 5)
+**Spec:** [`spec/<ISSUE-ID>/`](#) · **Linear:** [FIX-981](#) · **Epic:** [FIX-939](#) (M1 of 5)
 · Docs-only, never merged — closed unmerged once the spec is approved.
 
 <details>
 <summary><b>How to review this</b> — altitude, what's in scope, what's deliberately unsettled</summary>
 
 …contract, verbatim…
-
-</details>
-
-<details>
-<summary><b>The full case</b> — tradeoffs, focus practices, worked examples, Decisions in full</summary>
-
-…Part I §3–§6…
 
 </details>
 ````

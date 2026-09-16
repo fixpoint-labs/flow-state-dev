@@ -218,7 +218,7 @@ Each item is self-contained — they will answer #3 without re-reading #1.
 | Surface | Where the ask lives |
 |---|---|
 | **Conversation** | A `Need your sign-off` block, when you hit a fork or reach a gate |
-| **Spec** | §6 Decisions is the sign-off surface; a **live fork** among them gets the full shape, and §12 open questions always do ([`spec-template.md`](spec-template.md)) |
+| **Spec** | `DECISIONS.md` is the sign-off surface; a **live fork** among its cards gets the full shape, and its open questions always do ([`spec-template.md`](spec-template.md)) |
 | **PR description** | Block 3, *What's asked of you* ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3) |
 | **A gate** | The spec-approval and epic-objective gates, surfaced by the lifecycles ([`orchestration.md`](orchestration.md) → Gates) |
 | **A blocker** | A worker escalating a fork it can't settle — the escalation carries the parts, the coordinator surfaces them |
@@ -226,8 +226,8 @@ Each item is self-contained — they will answer #3 without re-reading #1.
 **Most decisions are not live forks, and most don't reach them at all** — see the two filters
 above. Of the few that do, most are being *ratified*: a subheading naming the decision and a
 line on what a wrong one costs. The full six-part shape is for the one or two genuinely open,
-plus anything in a spec's §12. Applying it to every decision buries the live ones; applying it
-to none leaves them to be found.
+plus anything open in a spec's `DECISIONS.md`. Applying it to every decision buries the live
+ones; applying it to none leaves them to be found.
 
 ## Worked example
 

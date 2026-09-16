@@ -10,9 +10,10 @@
  *    `.github/workflows/ci.yml`, which explains why the `spec` label can't be
  *    the key); every other PR and `main` itself is checked.
  * 2. Source and docs must not cite a spec by repo path. No spec file exists on
- *    `main`, so a `spec/FIX-123.md` or `spec/_epics/<name>.md` reference is
- *    dangling the moment it is written — a comment states its reason, it does
- *    not link to one.
+ *    `main`, so a `spec/FIX-123/SPEC.md`, a `spec/FIX-123/figures/x.svg` or a
+ *    `spec/_epics/<name>/PLAN.md` reference is dangling the moment it is
+ *    written — a comment states its reason, it does not link to one. (The
+ *    pre-directory shape, `spec/FIX-123.md`, is caught for the same reason.)
  *
  * Exits non-zero with the offending paths and the fix. No dependencies, so CI
  * runs it without an install.
@@ -49,8 +50,8 @@ const SCAN_ROOTS = [
 
 /**
  * Root-level docs are maintained surfaces too, and no tree above reaches them.
- * They name the path *shape* (`spec/<ISSUE-ID>.md`), which the patterns below
- * deliberately don't match — an angle-bracket placeholder is not a citation.
+ * They name the path *shape* (`spec/<ISSUE-ID>/SPEC.md`), which the patterns
+ * below deliberately don't match — an angle-bracket placeholder is not a citation.
  */
 const SCAN_FILES = ["README.md", "CLAUDE.md", "AGENTS.md"];
 
@@ -66,14 +67,15 @@ const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".next", ".turbo", "
  * script and its test (both of which must name a pattern to match it) and the
  * historical record under `docs/internal/` are exempt.
  *
- * A `spec/FIX-123.md` citation is a dangling pointer in code. The docs that
- * define the convention need no exemption for it — they write the *placeholder*,
- * which neither pattern matches, so the distinction does the work an exempt list
- * would otherwise have to. Only the two files that must quote a concrete path to
- * match it (this script and its test) are exempt.
+ * A `spec/FIX-123/SPEC.md` citation is a dangling pointer in code, and so is a
+ * figure inside that directory (`spec/FIX-123/figures/drawers.svg`). The docs
+ * that define the convention need no exemption for it — they write the
+ * *placeholder*, which neither pattern matches, so the distinction does the work
+ * an exempt list would otherwise have to. Only the two files that must quote a
+ * concrete path to match it (this script and its test) are exempt.
  *
  * Both spec shapes are dangling for the same reason — an epic PR (`epic/<name>`,
- * carrying `spec/_epics/<name>.md`) is never merged either, so a link to it dies
+ * carrying `spec/_epics/<name>/`) is never merged either, so a link to it dies
  * with the PR exactly like an issue spec's. Neither arm matches an angle-bracket
  * placeholder: `[A-Z]{2,6}-\d+` can't match `<ISSUE-ID>`, and the epic arm
  * excludes `<>` for the same reason. Docs describing the convention write the
@@ -86,8 +88,11 @@ const RETIRED_EXEMPT = [
   "docs/internal/",
 ];
 
+// Bounded to `.md` and `.svg` on purpose: those are the two file kinds a spec set
+// holds (spec-figures.md admits no other asset into `figures/`), and a path with
+// no extension names a directory, which is a location, not a link that dangles.
 const SPEC_CITATION =
-  /(?<!docs\/)\bspec\/(?:[A-Z]{2,6}-\d+(?:[^\s`"')]*)?|_epics\/[^\s<>`"')]+)\.md/g;
+  /(?<!docs\/)\bspec\/(?:[A-Z]{2,6}-\d+(?:[^\s`"')]*)?|_epics\/[^\s<>`"')]+)\.(?:md|svg)/g;
 const CITATION_EXEMPT = [
   "docs/internal/",
   "scripts/validate-spec-folder.mjs",
@@ -184,7 +189,7 @@ function main() {
     console.error(`\n✗ ${retired.length} reference(s) to the retired docs/specs/ tree:\n`);
     for (const hit of retired) console.error(`    ${hit.file}:${hit.line}  →  ${hit.text}`);
     console.error(
-      `\n  That directory no longer exists. Specs live at spec/<ISSUE-ID>.md on their` +
+      `\n  That directory no longer exists. Specs live at spec/<ISSUE-ID>/ on their` +
         `\n  spec branch, and in Linear after it closes. Update the path.\n`,
     );
   }

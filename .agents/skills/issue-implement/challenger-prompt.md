@@ -16,8 +16,8 @@ whose shape the spec nailed). Reach for the challenger when a boundary has any o
   what the surrounding code actually does.
 - A spec assumption is now checkable against real code for the first time (an API
   behaves differently than the spec implied; a type/contract doesn't line up).
-- The step sits on a load-bearing decision from Part I (§6) and the implementation
-  is about to commit to it.
+- The step sits on a load-bearing decision from the spec's `DECISIONS.md` and the
+  implementation is about to commit to it.
 - You feel the "this feels off" tug. That tug is the signal meta-awareness exists to
   catch — spend a challenge on it.
 
@@ -43,8 +43,9 @@ Agent tool (Plan) — keep on the default (Opus) judgment tier; the challenger i
     direction is sound unless the code contradicts it.
 
     ## The spec's relevant reasoning
-    [Paste Part I §6 Decisions & rules + the Part II Technical Design / step this
-     boundary implements. The challenger judges the CODE against THIS.]
+    [Paste the relevant decision cards from DECISIONS.md, the rules from BUSINESS-RULES.md,
+     and the PLAN.md surface / step this boundary implements. The challenger judges the
+     CODE against THIS.]
 
     ## What's been built up to this boundary
     [Paste the relevant code/diff so far, and the interfaces the next step depends on.]
@@ -67,7 +68,7 @@ Agent tool (Plan) — keep on the default (Opus) judgment tier; the challenger i
     - If BLIND SPOT:
       - **What the spec assumed** vs **what the code shows** — concrete, with refs.
       - **Severity:** LOCAL (a step-level correction; direction intact) or
-        DIRECTION-CHANGING (a Part I decision no longer holds).
+        DIRECTION-CHANGING (a decision in DECISIONS.md no longer holds).
       - **Recommended correction** — the smallest change that resolves it, biased
         toward refining an existing primitive over adding surface (tenet 2/3).
     Do not pad. If the spec holds, say so in one line — a challenger that always

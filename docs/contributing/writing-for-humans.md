@@ -80,12 +80,13 @@ under.
 |---|---|
 | PR body, small change | ~50 — usually the whole visible body; often no *detail* worth collapsing, but the reviewer contract is still there (see below) |
 | PR body, implementation | ~150 |
-| PR body, spec or epic PR | ~400 for the problem, the solution and the focus list — the spec doc holds the full case, the body holds enough to judge whether to open it. A diagram or any optional section costs on top, and each has to earn it |
+| PR body, spec PR | ~400 for the people table, the figure's sentence, the sign-off and the look-here list — the spec set holds the full case, the body holds enough to judge whether to open it. The figure itself costs nothing; a second one has to earn it |
+| PR body, epic PR | ~450 — the same, with the path and the ownership matrix and their sentences |
 | PR or review comment | ~100 |
 | A single review finding | ~40 — the trace and the evidence collapse |
 | Linear issue | ~100 — problem, who feels it, outcome |
-| Issue spec, Part I (The Case) | ~400 |
-| Epic spec, §1 (objective) | ~500 |
+| Issue spec, per document | `SPEC.md` ~700 · `DECISIONS.md` ~900 · `BUSINESS-RULES.md` ~900 · `PLAN.md` ~1,000, prose words with fences excluded ([`spec-template.md`](spec-template.md)). The set is longer than one document; no one reader reads all of it |
+| Epic spec, per document | `SPEC.md` ~900 · `DECISIONS.md` ~1,300 · `BUSINESS-RULES.md` ~800 · `PLAN.md` ~900 ([`epic-spec-template.md`](epic-spec-template.md)) |
 | A live decision ask, per fork | ~200 — the six parts, one to three sentences each ([`asking-for-decisions.md`](asking-for-decisions.md)). Decisions the reader is only ratifying get a heading and a line |
 
 Over budget is a signal to **cut**, not to collapse more. A 900-word collapsible is still
@@ -113,7 +114,7 @@ more, since a small change is where a reviewer is most likely to assume the wron
   never a table, **capped at three** ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) →
   §3); what they're informed of goes below it, however many there are.
 
-  Where an artifact defines a sign-off surface — a spec's §6 Decisions are what approval
+  Where an artifact defines a sign-off surface — a spec's `DECISIONS.md` is what approval
   certifies — nothing on that surface is ever *dropped*, but it is **sorted** by that same
   test, so the reader approves nothing they can't see and reads nothing they can't act on.
   A sign-off surface where most items are informational is a signal the surface itself
@@ -197,7 +198,7 @@ mostly *for* the bot without weakening it.
 **Where a surface doesn't render HTML, the ordering still carries the fold.** Linear
 documents and issue descriptions are the cases we hit: same above-the-fold content first,
 then a `---`, then the detail under a `## Detail` heading. This is why `<details>` belongs
-in a **PR body** and not in a spec doc — `spec/<ISSUE-ID>.md` is mirrored verbatim
-to a Linear document (BP-037), and a collapsed block there renders as raw HTML. The spec's
-own Part I / Part II split is already its fold. Check what a surface renders before
-relying on it collapsing; the ordering never needs checking.
+in a **PR body** and not in a spec document — the four files under `spec/<ISSUE-ID>/` are
+mirrored to a Linear document (BP-037), and a collapsed block there renders as raw HTML. The
+spec's split into four documents, each for one reader, is already its fold. Check what a
+surface renders before relying on it collapsing; the ordering never needs checking.
