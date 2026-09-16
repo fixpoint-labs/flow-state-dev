@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 348" role="img"
+     aria-label="Today, hire probes each flow kind and hands the seat's skills only to a kind that already declared the key, so any other kind silently receives nothing. After, hire always hands the bag through one declared WorkerConfig door, and a kind that did not compose that door is refused at the mint by name, taking the whole roster with it."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-gate { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-door { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .n-dead { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .edge   { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .edge-d { stroke:var(--gone); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+    .rule   { stroke:var(--rule); stroke-width:1; }
+  </style>
+  <defs>
+    <marker id="a" markerWidth="7" markerHeight="7" refX="6" refY="3.2" orient="auto">
+      <path d="M0,0 L6,3.2 L0,6.4 z" fill="var(--ink-3)"/>
+    </marker>
+    <marker id="ag" markerWidth="7" markerHeight="7" refX="6" refY="3.2" orient="auto">
+      <path d="M0,0 L6,3.2 L0,6.4 z" fill="var(--gone)"/>
+    </marker>
+  </defs>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="26">TODAY</text>
+    <rect class="n-box" x="16" y="52" width="140" height="44" rx="5"/>
+    <text class="t-b" x="30" y="72">seat register</text>
+    <text class="t-s" x="30" y="87">org ∪ team ∪ own</text>
+
+    <rect class="n-box" x="196" y="52" width="110" height="44" rx="5"/>
+    <text class="t-b" x="210" y="78">hire</text>
+
+    <rect class="n-gate" x="346" y="40" width="210" height="68" rx="5"/>
+    <text class="t-lbl" x="360" y="60">PROBE</text>
+    <text class="t-s" x="360" y="78">did this kind declare</text>
+    <text class="t-s" x="360" y="92">the key already?</text>
+
+    <rect class="n-box" x="596" y="18" width="250" height="42" rx="5"/>
+    <text class="t-b" x="610" y="44">the agent kind</text>
+    <text class="t-s" x="610" y="76">declared it, so it gets the bag</text>
+
+    <rect class="n-dead" x="596" y="94" width="250" height="42" rx="5"/>
+    <text class="t-b" x="610" y="120">any other kind</text>
+    <text class="t-gone" x="610" y="152">never asked, so it gets nothing</text>
+    <text class="t-gone" x="610" y="166">— and nothing is said</text>
+
+    <path class="edge"   d="M156,74 L190,74" marker-end="url(#a)"/>
+    <path class="edge"   d="M306,74 L340,74" marker-end="url(#a)"/>
+    <path class="edge"   d="M556,68 L576,68 L576,39 L590,39" marker-end="url(#a)"/>
+    <path class="edge-d" d="M556,80 L576,80 L576,115 L590,115" marker-end="url(#ag)"/>
+  </g>
+
+  <line class="rule" x1="16" y1="190" x2="924" y2="190"/>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="212">AFTER</text>
+    <rect class="n-box" x="16" y="238" width="140" height="44" rx="5"/>
+    <text class="t-b" x="30" y="258">seat register</text>
+    <text class="t-s" x="30" y="273">unchanged</text>
+
+    <rect class="n-box" x="196" y="238" width="110" height="44" rx="5"/>
+    <text class="t-b" x="210" y="264">hire</text>
+
+    <rect class="n-door" x="346" y="226" width="210" height="68" rx="5"/>
+    <text class="t-lbl" x="360" y="246">THE DOOR</text>
+    <text class="t-s" x="360" y="264">WorkerConfig — handed</text>
+    <text class="t-s" x="360" y="278">over always, never probed</text>
+
+    <rect class="n-box" x="596" y="204" width="250" height="42" rx="5"/>
+    <text class="t-b" x="610" y="230">every kind that composed it</text>
+    <text class="t-s" x="610" y="262">gets the bag; may ignore it</text>
+
+    <rect class="n-dead" x="596" y="280" width="250" height="42" rx="5"/>
+    <text class="t-b" x="610" y="306">a kind that did not</text>
+    <text class="t-gone" x="610" y="338">refused at the mint, by name</text>
+
+    <path class="edge"   d="M156,260 L190,260" marker-end="url(#a)"/>
+    <path class="edge"   d="M306,260 L340,260" marker-end="url(#a)"/>
+    <path class="edge"   d="M556,254 L576,254 L576,225 L590,225" marker-end="url(#a)"/>
+    <path class="edge-d" d="M556,266 L576,266 L576,301 L590,301" marker-end="url(#ag)"/>
+  </g>
+</svg>
