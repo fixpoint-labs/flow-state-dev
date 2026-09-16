@@ -105,45 +105,90 @@ function argumentOf(text, open) {
  * Blank out comments and string bodies, keeping every byte offset, so prose
  * mentioning `import()` in a doc comment is not counted as a call. Length is
  * preserved on purpose: offsets still address the original text.
+ *
+ * A template literal is part text and part CODE: everything inside a `${...}`
+ * substitution is an ordinary expression, so an `import()` written there is an
+ * import. Blanking the whole template — which this did until spec review round
+ * one — hid exactly the call the check exists to find, and hid it from `total`
+ * as well, so the totality assertion could not notice either. Substitutions are
+ * therefore scanned rather than blanked, with nesting tracked so a `}` inside a
+ * nested string never closes one early.
  */
 function blankNonCode(text) {
   const out = text.split("");
-  let i = 0;
   const hide = (from, to) => {
     for (let k = from; k < to && k < out.length; k += 1) if (out[k] !== "\n") out[k] = " ";
   };
-  while (i < text.length) {
-    const two = text.slice(i, i + 2);
-    if (two === "/*") {
-      const end = text.indexOf("*/", i + 2);
-      const stop = end === -1 ? text.length : end + 2;
-      hide(i, stop);
-      i = stop;
-      continue;
+
+  /** Blank a `'`/`"` body, keeping the quotes so a literal argument still reads as one. */
+  function scanQuoted(i, quote) {
+    let j = i + 1;
+    while (j < text.length) {
+      if (text[j] === "\\") { j += 2; continue; }
+      if (text[j] === quote) break;
+      j += 1;
     }
-    if (two === "//") {
-      const end = text.indexOf("\n", i);
-      const stop = end === -1 ? text.length : end;
-      hide(i, stop);
-      i = stop;
-      continue;
-    }
-    const ch = text[i];
-    if (ch === '"' || ch === "'" || ch === "`") {
-      let j = i + 1;
-      while (j < text.length) {
-        if (text[j] === "\\") { j += 2; continue; }
-        if (text[j] === ch) break;
-        j += 1;
-      }
-      // The quotes stay; only the body is blanked, so a literal argument is
-      // still recognisable as one.
-      hide(i + 1, j);
-      i = j + 1;
-      continue;
-    }
-    i += 1;
+    hide(i + 1, j);
+    return j + 1;
   }
+
+  /** Blank a template's text chunks; hand each `${...}` back to the code scanner. */
+  function scanTemplate(i) {
+    let j = i + 1;
+    let chunk = j;
+    while (j < text.length) {
+      if (text[j] === "\\") { j += 2; continue; }
+      if (text[j] === "`") { hide(chunk, j); return j + 1; }
+      if (text[j] === "$" && text[j + 1] === "{") {
+        hide(chunk, j);
+        j = scanCode(j + 2, true);
+        chunk = j;
+        continue;
+      }
+      j += 1;
+    }
+    hide(chunk, j);
+    return j;
+  }
+
+  /**
+   * Walk code from `i`. With `untilClose`, stop just past the `}` that closes
+   * the substitution we were called for, counting nested braces on the way.
+   */
+  function scanCode(i, untilClose) {
+    let depth = 0;
+    while (i < text.length) {
+      const two = text.slice(i, i + 2);
+      if (two === "/*") {
+        const end = text.indexOf("*/", i + 2);
+        const stop = end === -1 ? text.length : end + 2;
+        hide(i, stop);
+        i = stop;
+        continue;
+      }
+      if (two === "//") {
+        const end = text.indexOf("\n", i);
+        const stop = end === -1 ? text.length : end;
+        hide(i, stop);
+        i = stop;
+        continue;
+      }
+      const ch = text[i];
+      if (ch === '"' || ch === "'") { i = scanQuoted(i, ch); continue; }
+      if (ch === "`") { i = scanTemplate(i); continue; }
+      if (untilClose) {
+        if (ch === "{") depth += 1;
+        else if (ch === "}") {
+          if (depth === 0) return i + 1;
+          depth -= 1;
+        }
+      }
+      i += 1;
+    }
+    return i;
+  }
+
+  scanCode(0, false);
   return out.join("");
 }
 

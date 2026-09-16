@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 260" role="img"
-     aria-label="Two columns. The left column, generate time, holds six refusals: a directory inside a locked folder, an illegal basename, a declared kind that disagrees with its file, nothing usable exported, one name claimed by two folders, and an unreadable folder. The right column, run time, is almost empty: it holds one entry, the refusal that already exists today for a kind that was never registered."
+<svg viewBox="0 0 940 250" role="img"
+     aria-label="Three columns, left to right. Generate time holds four refusals the walk can see from paths alone: a directory in a locked folder, an illegal basename, one name in both flow folders, and an unreadable folder. The app's build holds one: a file that exports nothing usable, caught by the app's own typecheck. Run time holds three, each marked as a refusal that already ships today: a kind its file does not name, a cardinality its folder forbids, and a kind never registered at all."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -11,57 +11,74 @@
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
     .panel  { fill:none; stroke:var(--rule); stroke-width:1.2; }
     .n-code { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-pro  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
     .n-acc  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
     .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
               font-size:9.5px; letter-spacing:.11em; }
-    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
     .t-r    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
     .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-id   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
   </style>
 
   <g id="generate-column">
-    <text class="t-lbl" x="20" y="22">GENERATE TIME · FATAL, COLLECTED, ONE RUN NAMES ALL OF THEM</text>
-    <rect class="panel" x="20" y="32" width="520" height="210" rx="5"/>
+    <text class="t-lbl" x="20" y="22">GENERATE TIME · WHAT A WALKER CAN SEE</text>
+    <rect class="panel" x="20" y="32" width="300" height="180" rx="5"/>
 
-    <rect class="n-code" x="34" y="44" width="492" height="28" rx="4"/>
+    <rect class="n-code" x="34" y="44" width="272" height="28" rx="4"/>
     <text class="t-id" x="46" y="62">BR-6</text>
-    <text class="t-r"  x="92" y="62">a directory sits inside a locked folder</text>
+    <text class="t-r"  x="92" y="62">a directory in a locked folder</text>
 
-    <rect class="n-code" x="34" y="76" width="492" height="28" rx="4"/>
+    <rect class="n-code" x="34" y="76" width="272" height="28" rx="4"/>
     <text class="t-id" x="46" y="94">BR-8</text>
-    <text class="t-r"  x="92" y="94">the basename is not a legal segment</text>
+    <text class="t-r"  x="92" y="94">an illegal basename</text>
 
-    <rect class="n-code" x="34" y="108" width="492" height="28" rx="4"/>
-    <text class="t-id" x="46" y="126">BR-9</text>
-    <text class="t-r"  x="92" y="126">the flow declares a kind its file does not</text>
+    <rect class="n-code" x="34" y="108" width="272" height="28" rx="4"/>
+    <text class="t-id" x="46" y="126">BR-11</text>
+    <text class="t-r"  x="92" y="126">one name in both flow folders</text>
 
-    <rect class="n-code" x="34" y="140" width="492" height="28" rx="4"/>
-    <text class="t-id" x="46" y="158">BR-10</text>
-    <text class="t-r"  x="92" y="158">the file exports nothing usable</text>
+    <rect class="n-code" x="34" y="140" width="272" height="28" rx="4"/>
+    <text class="t-id" x="46" y="158">BR-12</text>
+    <text class="t-r"  x="92" y="158">a locked folder, unreadable</text>
 
-    <rect class="n-code" x="34" y="172" width="492" height="28" rx="4"/>
-    <text class="t-id" x="46" y="190">BR-11</text>
-    <text class="t-r"  x="92" y="190">two folders claim one name</text>
+    <text class="t-s" x="34" y="186">fatal · collected · one run</text>
+    <text class="t-s" x="34" y="202">names all of them</text>
+  </g>
 
-    <rect class="n-code" x="34" y="204" width="492" height="28" rx="4"/>
-    <text class="t-id" x="46" y="222">BR-12</text>
-    <text class="t-r"  x="92" y="222">a locked folder is there and unreadable</text>
+  <g id="typecheck-column">
+    <text class="t-lbl" x="340" y="22">THE APP'S BUILD · WHAT A TYPE CAN SEE</text>
+    <rect class="panel" x="340" y="32" width="260" height="180" rx="5"/>
+
+    <rect class="n-pro" x="354" y="44" width="232" height="44" rx="4"/>
+    <text class="t-id" x="366" y="61">BR-10</text>
+    <text class="t-r"  x="366" y="78">the file exports nothing usable</text>
+
+    <text class="t-s" x="354" y="112">the generated maps are typed,</text>
+    <text class="t-s" x="354" y="128">so the app's own tsc reads</text>
+    <text class="t-s" x="354" y="144">every discovered file for free</text>
+
+    <text class="t-lbl" x="354" y="186">fsdev NEVER LOADED IT</text>
+    <text class="t-lbl" x="354" y="202">STILL BEFORE THE APP RUNS</text>
   </g>
 
   <g id="run-column">
-    <text class="t-lbl" x="560" y="22">RUN TIME · NOTHING NEW</text>
-    <rect class="panel" x="560" y="32" width="360" height="210" rx="5"/>
+    <text class="t-lbl" x="620" y="22">RUN TIME · SHIPPED TODAY, UNCHANGED</text>
+    <rect class="panel" x="620" y="32" width="300" height="180" rx="5"/>
 
-    <rect class="n-acc" x="574" y="44" width="332" height="46" rx="4"/>
-    <text class="t-id" x="586" y="62">BR-13</text>
-    <text class="t-r"  x="586" y="80">a kind that was never registered</text>
+    <rect class="n-acc" x="634" y="44" width="272" height="44" rx="4"/>
+    <text class="t-id" x="646" y="61">BR-9</text>
+    <text class="t-r"  x="690" y="61">a kind its file does not name</text>
+    <text class="t-s"  x="690" y="78">hireWorkforce, as today</text>
 
-    <text class="t-s"  x="586" y="112">the refusal hireWorkforce</text>
-    <text class="t-s"  x="586" y="128">already throws today</text>
+    <rect class="n-acc" x="634" y="96" width="272" height="44" rx="4"/>
+    <text class="t-id" x="646" y="113">BR-18</text>
+    <text class="t-r"  x="690" y="113">a cardinality its folder forbids</text>
+    <text class="t-s"  x="690" y="130">the registry, as today</text>
 
-    <text class="t-lbl" x="586" y="184">NO NEW OPTION</text>
-    <text class="t-lbl" x="586" y="204">NO NEW CALL</text>
-    <text class="t-lbl" x="586" y="224">NO NEW FAILURE AT BOOT</text>
+    <rect class="n-acc" x="634" y="148" width="272" height="44" rx="4"/>
+    <text class="t-id" x="646" y="165">BR-13</text>
+    <text class="t-r"  x="690" y="165">a kind never registered at all</text>
+    <text class="t-s"  x="690" y="182">hireWorkforce, as today</text>
+
+    <text class="t-lbl" x="634" y="234">NO NEW OPTION · NO NEW CALL · NO NEW FAILURE</text>
   </g>
 </svg>
