@@ -117,19 +117,29 @@ export interface Entry {
  * workforce tree can come from anywhere, and one could escape the root or point
  * at something sensitive.
  *
- * Classified with its trailing separators removed, because `lstat` resolves the
- * *final* symlink when a path ends in one: `<link>` is a link, `<link>/` is the
- * directory behind it. The trailing form is the ordinary way a directory gets
- * written down — it falls out of config, environment variables and hand-joined
- * paths — so classifying the string exactly as given would leave the no-follow
- * answer one character from being wrong, here and in everything built on it.
+ * The answer is the one the path **as written** produces, with exactly one
+ * exception: when removing the trailing separators reveals a symlink, that wins.
+ * Nothing else about the spelling changes any answer.
  *
- * That removal and **nothing else**, which is the part worth guarding. A
- * trailing separator is the only piece of a path's spelling that cannot change
- * which entry the path denotes; every other normalization can. `path.resolve`
- * and `path.normalize` both collapse `..` *lexically*, while the kernel applies
- * it *after* traversing a symlinked component, so the two disagree exactly when
- * a link is involved:
+ * The exception exists because `lstat` resolves the *final* symlink when a path
+ * ends in a separator: `<link>` is a link, `<link>/` is the directory behind it.
+ * The trailing form is the ordinary way a directory gets written down — it falls
+ * out of config, environment variables and hand-joined paths — so classifying
+ * the string exactly as given would leave the no-follow answer one character
+ * from being wrong, here and in everything built on it.
+ *
+ * The exception is kept that narrow because a trailing separator is otherwise a
+ * real assertion about the path, and the filesystem enforces it: `<file>/` fails
+ * with `ENOTDIR`, and answering `file` for it would have this helper accept a
+ * spelling that nothing underneath it can open. So the strip decides
+ * symlink-ness and the original decides everything else — `<file>/` stays
+ * `unreadable`, `<missing>/` stays `absent`.
+ *
+ * What gets stripped is guarded just as narrowly. A trailing separator is the
+ * only piece of a path's spelling that cannot change which entry the path
+ * denotes; every other normalization can. `path.resolve` and `path.normalize`
+ * both collapse `..` *lexically*, while the kernel applies it *after* traversing
+ * a symlinked component, so the two disagree exactly when a link is involved:
  *
  * ```
  * spelled           <base>/a/../c     with `a` a link to <base>/sub/b
@@ -154,8 +164,27 @@ export interface Entry {
  * empty — the one thing a caller told to treat them as fatal cannot see.
  */
 export async function classify(target: string): Promise<Entry> {
+  // Only the symlink answer comes from the stripped spelling. Everything else
+  // comes from the path as written, because a trailing separator is a real
+  // assertion about the path — `<file>/` is a thing the filesystem refuses
+  // (`ENOTDIR`), and answering `file` for it would have this helper accept a
+  // spelling that nothing underneath it can open.
+  //
+  // The order is not interchangeable. Asking the original first and keeping a
+  // successful answer would miss the whole point: `<link>/` succeeds and says
+  // `directory`, because that spelling is exactly what hides the link.
+  const stripped = withoutTrailingSeparators(target);
+  if (stripped !== target) {
+    try {
+      if ((await fs.lstat(stripped)).isSymbolicLink()) return { kind: "symlink" };
+    } catch {
+      // Not answerable from the stripped spelling. The path as written decides,
+      // and will report the same failure.
+    }
+  }
+
   try {
-    const stat = await fs.lstat(withoutTrailingSeparators(target));
+    const stat = await fs.lstat(target);
     if (stat.isSymbolicLink()) return { kind: "symlink" };
     if (stat.isDirectory()) return { kind: "directory" };
     if (stat.isFile()) return { kind: "file" };

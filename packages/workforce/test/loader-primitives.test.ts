@@ -209,6 +209,33 @@ describe("classify and openStructuralDirectory", () => {
     expect(opened.entries).toBeUndefined();
   });
 
+  it("answers for the path as written, except where stripping reveals a symlink", async () => {
+    // The strip exists only to stop `lstat` following a *final* link, and it
+    // must change nothing else. A trailing separator is otherwise a real
+    // assertion about a path, which the filesystem enforces: `<file>/` fails
+    // with ENOTDIR. Answering `file` for it would have this published helper
+    // accept a spelling that nothing underneath it can open, and would break
+    // the documented rule that every non-ENOENT failure stays `unreadable`.
+    const dir = base();
+    mkdirSync(join(dir, "adir"));
+    writeFileSync(join(dir, "afile"), "x\n");
+    symlinkSync(join(dir, "afile"), join(dir, "link-to-file"));
+    symlinkSync(join(dir, "nope"), join(dir, "dangling"));
+
+    // Unchanged by the strip — the path as written decides.
+    expect(await classify(join(dir, "afile"))).toEqual({ kind: "file" });
+    expect((await classify(`${join(dir, "afile")}${sep}`)).kind).toBe("unreadable");
+    expect(await classify(`${join(dir, "adir")}${sep}`)).toEqual({ kind: "directory" });
+    expect(await classify(`${join(dir, "missing")}${sep}`)).toEqual({ kind: "absent" });
+
+    // Changed by the strip, and only here: the stripped spelling reveals a
+    // link. Both read as a plain failure without it — `unreadable` for the
+    // link to a file, `absent` for the dangling one — which would let a link
+    // through under a trailing-separator spelling, or silently skip it.
+    expect(await classify(`${join(dir, "link-to-file")}${sep}`)).toEqual({ kind: "symlink" });
+    expect(await classify(`${join(dir, "dangling")}${sep}`)).toEqual({ kind: "symlink" });
+  });
+
   it("does not refuse a trailing `.` segment — a known gap, not a guarantee", async () => {
     // `<link>/.` still reaches the directory behind the link, because `.` is a
     // segment and the normalization deliberately touches none. Covering it
