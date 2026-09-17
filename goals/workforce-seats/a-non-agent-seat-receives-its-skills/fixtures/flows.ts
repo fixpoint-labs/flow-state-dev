@@ -6,8 +6,12 @@
  * contract, is handed the same bag, and receives the skills its seat's folders
  * resolved — and a block nested inside its action can read them.
  *
- * Two kinds, identical but for one line. `triageFlow` composes the contract.
- * `noContractFlow` does not, and exists to be refused.
+ * Three kinds, and they do not all make the same claim. `triageFlow` composes
+ * the contract and carries the DELIVERY claim: a nested block reads the skills
+ * its seat's folders resolved. `noContractFlow` and `handRolledFlow` are a
+ * control pair carrying the STRUCTURAL claim: hire imposes a bag, and a schema
+ * that cannot accept it is refused. They run a different action set on purpose
+ * — see `controlActions` below.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { workerConfigSchema } from "@flow-state-dev/workforce";
@@ -85,10 +89,56 @@ const clientView = {
   }
 };
 
+/**
+ * What the CONTROL pair's nested block needs: the kind's own setting, and
+ * nothing the admission contract imposes.
+ *
+ * Mirrors the sibling goal's `needsDesk`. The reason it exists is the reason
+ * the control pair does not share `triageFlow`'s action set: `recordSkills`
+ * independently requires `seatSkills` through its `flowConfigSchema`, so a
+ * control that ran it would be refused by that block's requirement whether or
+ * not its own schema could accept the imposed bag. Both causes would produce
+ * the same refusal, and the control would certify whichever one the reader
+ * already believed — the exact conflation this pair was rebuilt to remove.
+ */
+const needsDesk = z.object({ desk: z.string() });
+
+/**
+ * The control pair's nested read: its own setting only.
+ *
+ * Still NESTED rather than at the action root, for the reason `recordSkills`
+ * is: the pair's positive half must run to completion on a real spread, not
+ * merely mint.
+ */
+const recordDesk = handler({
+  name: "triage-record-desk",
+  inputSchema,
+  outputSchema: z.void(),
+  flowConfigSchema: needsDesk,
+  sessionStateSchema: seatState,
+  execute: async (_input, ctx) => {
+    await ctx.session.patchState({ desk: ctx.flow.config.desk });
+  }
+});
+
+/** The delivery claim's action set — reads the admitted `seatSkills`. */
 const actions = {
   run: {
     inputSchema,
     block: sequencer({ name: "triage-work", inputSchema }).tap(start).tap(recordSkills)
+  }
+};
+
+/**
+ * The structural claim's action set — requires only `desk`.
+ *
+ * Separate from `actions` so that the control pair's outcome is decided by
+ * each kind's own `configSchema` and by nothing else in the fixture.
+ */
+const controlActions = {
+  run: {
+    inputSchema,
+    block: sequencer({ name: "triage-control-work", inputSchema }).tap(start).tap(recordDesk)
   }
 };
 
@@ -112,6 +162,12 @@ export const triageFlow = defineFlow({
  * causes certifies whichever one the reader already believes. This one declares
  * two of the three contract keys and omits the one that makes the bag
  * unacceptable, so only the structural cause is left.
+ *
+ * For the same reason it runs `controlActions` rather than `triageFlow`'s: an
+ * action set containing `recordSkills` would REQUIRE `seatSkills` through that
+ * block's own `flowConfigSchema`, and this kind would then be refused by the
+ * block whether or not its schema could accept the imposed bag — a second
+ * cause, reintroducing the conflation the paragraph above removes.
  */
 export const noContractFlow = defineFlow({
   kind: NO_CONTRACT_KIND,
@@ -122,7 +178,7 @@ export const noContractFlow = defineFlow({
     // `seatSkills` omitted — the single reason the imposed bag is refused.
     desk: z.string().default("front")
   }),
-  actions,
+  actions: controlActions,
   session: { stateSchema: seatState, client: clientView }
 });
 
@@ -132,6 +188,9 @@ export const noContractFlow = defineFlow({
  *
  * It hires. Without it, the refusal above would still be consistent with a
  * nominal check, and this goal would certify a rule the implementation rejects.
+ *
+ * Runs `controlActions` like its twin, so the pair differs in exactly one
+ * thing: whether its `configSchema` declares `seatSkills`.
  */
 export const handRolledFlow = defineFlow({
   kind: HAND_ROLLED_KIND,
@@ -142,6 +201,6 @@ export const handRolledFlow = defineFlow({
     seatSkills: z.array(z.object({ name: z.string(), skillMd: z.string() }).passthrough()).default([]),
     desk: z.string().default("front")
   }),
-  actions,
+  actions: controlActions,
   session: { stateSchema: seatState, client: clientView }
 });
