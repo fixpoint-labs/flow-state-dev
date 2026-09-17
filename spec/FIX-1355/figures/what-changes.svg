@@ -1,0 +1,111 @@
+<svg viewBox="0 0 940 400" role="img"
+     aria-label="Left: the workforce folder tree, ten Markdown files across an org level and two teams. A dashed seam separates it from the three things the lab writes in code: the probe seat kind, the notify router and the host with its org wrap. Right: the run, top to bottom — an operator post with no author, the open channel session with its two declared members, the fan-out waking both seats, each reading its own document, and one transcript of three lines. Bottom left, outside everything, a third hired seat in another team that is never woken. A fenced strip along the bottom names what the lab does not touch: org slash channels, which nothing reads, MCP, and the Collab roster."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-prose { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .n-acc   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-code  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-gone  { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .t-lbl   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+               font-size:9.5px; letter-spacing:.11em; }
+    .t-b     { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s     { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .arrow   { fill:none; stroke:var(--ink-2); stroke-width:1.3; }
+    .head    { fill:var(--ink-2); }
+    .seam    { stroke:var(--ink-3); stroke-width:1.1; stroke-dasharray:7 5; }
+  </style>
+
+  <g id="tree">
+    <text class="t-lbl" x="16" y="26">DECLARED IN FILES · NOTHING ELSE</text>
+    <rect class="n-prose" x="16" y="36" width="256" height="212" rx="5"/>
+    <text class="t-b" x="32" y="60">workforce/</text>
+    <text class="t-s" x="32" y="84">org/resources/rules-of-engagement.md</text>
+    <text class="t-s" x="32" y="102">org/skills/report-format/</text>
+    <text class="t-s" x="32" y="126">teams/pentest/resources/scope.md</text>
+    <text class="t-s" x="32" y="144">teams/pentest/skills/port-scan/</text>
+    <text class="t-s" x="32" y="162">teams/pentest/channels/findings/</text>
+    <text class="t-s" x="32" y="180">teams/pentest/workers/recon/</text>
+    <text class="t-s" x="32" y="198">teams/pentest/workers/triage/</text>
+    <text class="t-s" x="32" y="222">teams/audit/workers/scribe/</text>
+    <text class="t-s" x="32" y="240">teams/audit/skills/port-scan/</text>
+  </g>
+
+  <g id="outsider">
+    <rect class="n-gone" x="16" y="268" width="256" height="52" rx="5"/>
+    <text class="t-gone" x="32" y="290">audit.scribe · hired, not a member</text>
+    <text class="t-s" x="32" y="308">never woken · holds its OWN port-scan</text>
+  </g>
+
+  <g id="seam">
+    <path class="seam" d="M292,20 L292,330"/>
+    <text class="t-lbl" x="306" y="26">THE LAB'S OWN CODE</text>
+
+    <rect class="n-box" x="306" y="36" width="150" height="58" rx="5"/>
+    <text class="t-b" x="320" y="58">probe kind</text>
+    <text class="t-s" x="320" y="78">one internal entry</text>
+
+    <rect class="n-box" x="306" y="106" width="150" height="58" rx="5"/>
+    <text class="t-b" x="320" y="128">notify router</text>
+    <text class="t-s" x="320" y="148">declares its addresses</text>
+
+    <rect class="n-box" x="306" y="176" width="150" height="58" rx="5"/>
+    <text class="t-b" x="320" y="198">host · org wrap</text>
+    <text class="t-s" x="320" y="218">createFlowState</text>
+
+    <text class="t-lbl" x="306" y="256">EVERYTHING ELSE IS</text>
+    <text class="t-lbl" x="306" y="270">THE FRAMEWORK'S</text>
+  </g>
+
+  <g id="run">
+    <text class="t-lbl" x="480" y="26">ONE RUN · THE REAL PATH</text>
+
+    <rect class="n-box" x="480" y="36" width="220" height="44" rx="5"/>
+    <text class="t-b" x="496" y="56">an operator posts</text>
+    <text class="t-s" x="496" y="72">no author · the only human line</text>
+
+    <path class="arrow" d="M590,80 L590,100"/>
+    <path class="head" d="M585,100 L590,109 L595,100 z"/>
+
+    <rect class="n-acc" x="480" y="110" width="420" height="52" rx="5"/>
+    <text class="t-b" x="496" y="132">channel session · pentest.findings</text>
+    <text class="t-s" x="496" y="150">members: pentest.recon, pentest.triage · charter from CHANNEL.md</text>
+
+    <path class="arrow" d="M560,162 L560,186"/>
+    <path class="head" d="M555,186 L560,195 L565,186 z"/>
+    <path class="arrow" d="M800,162 L800,186"/>
+    <path class="head" d="M795,186 L800,195 L805,186 z"/>
+    <text class="t-lbl" x="592" y="180">FAN-OUT · MEMBERS ONLY</text>
+
+    <rect class="n-code" x="480" y="196" width="200" height="56" rx="5"/>
+    <text class="t-b" x="494" y="218">pentest.recon</text>
+    <text class="t-s" x="494" y="238">teams/pentest/scope.md</text>
+
+    <rect class="n-code" x="700" y="196" width="200" height="56" rx="5"/>
+    <text class="t-b" x="714" y="218">pentest.triage</text>
+    <text class="t-s" x="714" y="238">rules-of-engagement.md</text>
+
+    <path class="arrow" d="M560,252 L560,276"/>
+    <path class="head" d="M555,276 L560,285 L565,276 z"/>
+    <path class="arrow" d="M800,252 L800,276"/>
+    <path class="head" d="M795,276 L800,285 L805,276 z"/>
+    <text class="t-lbl" x="600" y="270">AT ONCE · ONE QUEUED SESSION</text>
+
+    <rect class="n-acc" x="480" y="286" width="420" height="52" rx="5"/>
+    <text class="t-b" x="496" y="308">one transcript · three lines</text>
+    <text class="t-s" x="496" y="326">each line carries its own document, skills and instructions</text>
+  </g>
+
+  <g id="fence">
+    <path class="seam" d="M16,356 L920,356"/>
+    <text class="t-lbl" x="16" y="378">NOT TOUCHED · org/channels/ (DECLARABLE, UNREAD) · MCP · THE COLLAB ROSTER</text>
+  </g>
+</svg>
