@@ -10,12 +10,13 @@ work.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | A `.ts` file sits in a `resources/` folder the convention reads | It appears in the generated module under the same ref a document of that name would get, so where it sits is what names it | CI, over a fixture tree |
+| BR-1 | A `.ts` file sits in any of the three `resources/` folders the convention reads — the organisation's, a team's, or one worker's own | It appears in the generated module under the same ref a document of that name would get, so where it sits is what names it | CI, over a fixture tree |
 | BR-2 | Its basename breaks the rules for a name in this tree | Refused by name, and **nothing is generated** — one run names every bad entry, not the first | CI |
 | BR-3 | A `resources/` folder is a symlink, or is there and cannot be listed | Reported at that path. Symlinks are never followed, at any level | CI |
 | BR-4 | A `.md` and a `.ts` in one folder share a basename | Refused, naming both files. They would mint one ref between them, and a silent winner is the failure this issue is about | CI |
 | BR-5 | Any other file sits in the folder — a note, an image | Passed over without a word, as today | CI |
 | BR-6 | The tree has changed and the generated module has not | `fsdev gen --check` exits non-zero and says which files disagree | CI |
+| BR-20 | A `.ts` capability sits inside one worker's own `resources/` folder | Found and installed like any other, under that worker's own ref. The folder is an address, not a private scope, and it gives that worker's file no power to install | CI |
 
 ## Installing what was found
 

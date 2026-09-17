@@ -10,7 +10,7 @@ Install and Select.
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the code-convention walk | A fourth family beside the three locked code folders: the scoped `resources/` folders, TypeScript entries only, refs minted the way the document walk mints them. A separate adapter over the shared walk primitives — not a parameter on the document reader | BR-1 BR-2 BR-3 BR-5 |
+| S1 | `workforce` · the code-convention walk | A fourth family beside the three locked code folders: **all three** scoped `resources/` roots — the organisation's, a team's and a worker's own (D3) — TypeScript entries only, refs minted the way the document walk mints them. A separate adapter over the shared walk primitives, consuming what FIX-1389 published rather than growing a parallel walk | BR-1 BR-2 BR-3 BR-5 BR-20 |
 | S2 | `workforce` · the code-convention render | A fourth exported map on the generated module, keyed by ref, typed so a module exporting the wrong shape fails the app's own typecheck rather than the walk | BR-9 |
 | S3 | `workforce` · the one place both doors' refs are known | Refuse a basename claimed by both a document and a module. The convergence point for ref uniqueness — where both lists exist, not in either walk | BR-4 BR-10 |
 | S4 | `cli` · the generate command | Count and print the new family in the summary; `--check` covers it with no special case | BR-6 |
@@ -54,7 +54,7 @@ its own. P2 makes the map usable. P3 is the seat's half, and the only one touchi
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S1 | BR-1, BR-2, BR-3, BR-5 over a fixture tree. Refusals collect — one run names every bad entry |
+| V1 | S1 | BR-1, BR-2, BR-3, BR-5, BR-20 over a fixture tree covering all three roots. Refusals collect — one run names every bad entry |
 | V2 | S2 | BR-9: a fixture module exporting the wrong shape fails to compile, naming its file |
 | V3 | S3 | BR-4 and BR-10 refuse, naming both files. The negative control: remove the rule and watch the fixture pass silently |
 | V4 | S4 | BR-6: `--check` red on a changed tree, green after regenerating |
@@ -133,14 +133,14 @@ published walk primitives. Nothing here is a claim nobody has checked.
 
 ## At implement time
 
-- **The tools fence may have moved.** The core change cutting capability tools down to a seat's
-  declared list is in review, not merged; BR-16 and BR-17 are its behaviour. If it has landed,
-  assert against it. If not, assert what the kind honours today and do **not** build a second
-  intersection here.
-- **The shared walk primitives are on `main`** — root open, team walk, path classification, the
-  ignored-name list, the segment rule. Build on them; do not parameterise an existing reader.
-- **Re-read the open fork's answer first** ([DECISIONS.md](DECISIONS.md#open)). Two roots or three
-  is the first thing S1 needs.
+- **The tools fence may have moved.** FIX-1393 (#1852) is in review, not merged, and BR-16 and
+  BR-17 are its behaviour. If it has landed, assert against it. If not, assert only what the kind
+  honours today and do **not** build a second intersection here — and a Select goal check that
+  assumes the hard fence waits on it.
+- **The shared walk primitives are on `main`**, but FIX-1389 is still in development and carrying
+  follow-ups. Consume its published primitives — root open, team walk, path classification, the
+  ignored-name list, the segment rule — rather than growing a parallel walk, and do not
+  parameterise an existing reader.
 - **The reference app's workforce tree is reachable from nothing** — imported by no entry point and
   absent from the Next build, already recorded against the code-convention goal. Shape VG on the
   real hire-and-answer path, and do not take that blocker on here.
