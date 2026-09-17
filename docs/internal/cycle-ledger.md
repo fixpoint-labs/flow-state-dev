@@ -1609,12 +1609,19 @@ This entry carries the counts, the scoring, the proposed fixes and what was drop
 such.**
 
 - **Passes** — automated review submissions from `cursor[bot]` + `chatgpt-codex-connector[bot]`,
-  counted from `GET /pulls/N/reviews`. This is **cycles 4, 5 and 7's pass metric, unchanged**, and
-  it is comparable to those cycles directly.
+  counted from `GET /pulls/N/reviews`. This is **cycles 4 and 5's pass metric, unchanged**, and is
+  comparable to them directly. **It is not cycle 7's**, which counts `github-code-quality[bot]` as
+  a third reviewer — cycle 7's own Method says so, and says cycles 4–5 did not count it.
 - **Rounds** — **spent review rounds**: a maximal group of consecutive passes with no non-merge
-  commit between them, followed by at least one non-merge commit. This is **cycle 7's *spent
-  review wave*, reused rather than redefined**, and it is the unit BP-040's budget is written in —
-  a review, then a response. Every budget comparison in this entry uses this column.
+  commit between them, followed by at least one non-merge commit. It is the unit BP-040's budget is
+  written in — a review, then a response. Every budget comparison in this entry uses this column.
+  **It applies cycle 7's *spent review wave* rule over a narrower reviewer set, so it is not the
+  same measurement.** Cycle 7 counts waves over three reviewers (`cursor[bot]`,
+  `chatgpt-codex-connector[bot]` and `github-code-quality[bot]`); this entry counts them over the
+  two-bot `Passes` set above. A third reviewer can open a wave the two-bot set does not see, so
+  these rounds run **at or below** cycle 7's on the same PR and a cross-cycle round comparison
+  needs the third reviewer added back first. #1513's row shows the size of the effect: 3 passes on
+  the two-bot set, 14 once `greptile`, `github-code-quality` and the owner are counted.
 - **Folds** — non-merge commits pushed after the first automated pass. This is a **new
   measurement, introduced here, comparable to nothing before it.** It answers a different
   question: how many times an artifact was *rewritten* under review. **Never set a fold count
@@ -1738,7 +1745,12 @@ it. Both figures were wrong; the rows total 198. An eight-fold spec row (#994) w
 from the overrun count. **The wide honesty reading was 45**, adding all 19 `stale-restatement`
 observations to the 26 when six of them are the same observations — the exact double-count this
 file's header forbids, committed by the entry that argued for the fence, and caught on review of
-the re-cut. It is 39. **#1461's 24 rounds were also called the worst overrun "in this ledger"**,
+the re-cut. **The `Passes` and `Rounds` columns were both declared comparable to cycle 7's and are
+not** — cycle 7 counts a third reviewer, `github-code-quality[bot]`, in both. This is the same
+error cycle 7 records its own first draft making, in the opposite direction; the Method block now
+fences it. **The round/fold gap was called zero on nine of thirteen spec rows and concentrated in
+four**; #1673's gap of 1 was missed, so it is eight and five, corrected here and in the sidecar
+table it is read from. **#1461's 24 rounds were also called the worst overrun "in this ledger"**,
 true of the file this entry was collected against, which ended at cycle 7. Cycle 8 has since landed
 carrying #1445 at **35** rounds against the same budget — under a unit this entry's Method block
 does not reconcile with its own, so neither row can be ranked against the other without
@@ -1880,12 +1892,16 @@ Otherwise it walks `src/**.ts`, regex-scans import specifiers, and prints
 entry rather than quoted — a one-file package with three unambiguous type errors passes with exit
 0; the probe and its output are in the sidecar.
 
-**The trap is live in this repository today**, and it has an inverse face: deps installed but
+**The trap was live in this repository at the wrap (2026-09-10)** — see the note below — and it has
+an inverse face: deps installed but
 `core`'s `dist` stale reports ~22 type errors in untouched files, which nearly got a correct fix
 rejected. Cost this epic, from the author's record on #1675: **four fabricated measurements**, and
 a worker came close to reporting an approved spec's central mechanism as broken. Filed as
-**FIX-1032** (High, *Ready to Spec*), fix open at
-[#1677](https://github.com/fixpoint-labs/flow-state-dev/pull/1677). A sibling instrument,
+**FIX-1032** (High, *Ready to Spec*), fixed at
+[#1677](https://github.com/fixpoint-labs/flow-state-dev/pull/1677), **which merged 2026-09-10,
+two minutes before this entry's first PR opened.** `scripts/typecheck.mjs` on `main` now exits 1
+when `tsc` is absent, so the probe above is a dated observation of the trap, not current guidance.
+It is kept because it is the evidence proposal C rests on. A sibling instrument,
 `packages/orchestration/test/types.type-test.ts`, states that vitest typecheck covers it; nothing
 does (**FIX-1239**, High, Backlog).
 
@@ -2013,5 +2029,5 @@ trend. A is proposed on the systematic overrun; the carriage split is corroborat
 4. **Does `vacuous-assertion` recur?** Three instances this cycle, in the epic whose subject was
    honesty. If the class does not appear next cycle, retire the label rather than keeping it.
 5. **Does the round/fold gap stay small?** `folds ≥ rounds` everywhere this cycle, with the gap
-   zero on nine of thirteen spec PRs and concentrated in four. If the gap widens, folds stop being
+   zero on eight of thirteen spec PRs and concentrated in five. If the gap widens, folds stop being
    a usable proxy for anything and the fold column should be retired rather than reinterpreted.

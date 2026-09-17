@@ -70,8 +70,8 @@ And the implementation rows, measured the same way:
 
 **Folds ≥ rounds on every row**, which is the mechanism that makes the two units
 non-interchangeable: a batch of correction-only commits answering one review costs one round and
-several folds. Among the spec rows the gap is zero on nine of thirteen and concentrated in four —
-#994 (8 folds, 3 rounds), #1461 (30 / 24), #992 (6 / 4), #1010 (9 / 8).
+several folds. Among the spec rows the gap is zero on eight of thirteen and concentrated in five —
+#994 (8 folds, 3 rounds), #1461 (30 / 24), #992 (6 / 4), #1010 (9 / 8), #1673 (2 / 1).
 
 **The pass column reproduces exactly.** All 28 `Passes` figures in the ledger's cycle-11 tables
 match a fresh count of `cursor[bot]` + `chatgpt-codex-connector[bot]` review submissions, and all
@@ -243,7 +243,9 @@ static typecheck passed (packages/probe): 1 source file(s) validated
 EXIT=0
 ```
 
-**The trap is live in this repository today.** The worktree the wrap was written in has no
+**The trap was live at the wrap; #1677 has since merged and closed it** — `scripts/typecheck.mjs`
+on `main` now exits 1 when `tsc` is absent. The reproduction below is the dated evidence, kept
+because it is what the ledger's proposal C rests on. The worktree the wrap was written in has no
 `node_modules/.bin/tsc`, so every `typecheck` run inside it reports success without checking
 anything.
 
@@ -255,8 +257,9 @@ stale.
 **Cost this epic**, from the author's record on #1675: **four fabricated measurements**, and a
 worker came close to reporting an approved spec's central mechanism as broken.
 
-Filed as **FIX-1032** (High, *Ready to Spec*); the fix is open and unmerged at
-[#1677](https://github.com/fixpoint-labs/flow-state-dev/pull/1677). A sibling instrument,
+Filed as **FIX-1032** (High, *Ready to Spec*); the fix
+[#1677](https://github.com/fixpoint-labs/flow-state-dev/pull/1677) **merged 2026-09-10T01:17Z**,
+two minutes before this entry's first PR opened — it was already stale as written. A sibling instrument,
 `packages/orchestration/test/types.type-test.ts`, states that vitest typecheck covers it; nothing
 does (**FIX-1239**, High, Backlog).
 
