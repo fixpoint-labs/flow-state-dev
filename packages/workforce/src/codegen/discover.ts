@@ -105,6 +105,22 @@ function typescriptExtension(entry: string): string | undefined {
 }
 
 /**
+ * The directories between the root and a locked folder — `flows` for
+ * `flows/workers`, nothing for `blocks`.
+ *
+ * They need opening in their own right, because {@link classify} answers for
+ * the FINAL entry of a path: asking about `flows/workers` resolves *through* a
+ * symlinked `flows` and reports the directory behind it. The shipped readers
+ * never meet this, since they classify each level as they walk; a locked path
+ * two segments deep has to do the same, or the no-follow promise holds for the
+ * last segment only.
+ */
+function pathInTo(dir: string): string[] {
+  const parts = dir.split("/");
+  return parts.slice(0, -1).map((_part, index) => parts.slice(0, index + 1).join("/"));
+}
+
+/**
  * Walk the three locked folders under `root` and return what they hold.
  *
  * One level only, one file per entry — a directory inside a locked folder is
@@ -121,10 +137,33 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
   const problems: string[] = [];
   /** Naming scope → the path that already claimed it. */
   const claimed = new Map<string, string>();
+  /** An intermediate directory → whether the walk may go through it. Shared, so `flows` is answered and reported once. */
+  const wayIn = new Map<string, boolean>();
 
   for (const slot of CODE_SLOTS) {
     const dir = path.join(root, ...slot.dir.split("/"));
     searched.push(slot.dir);
+
+    // Every level on the way in, before the locked folder itself. Two flow
+    // folders share `flows`, so the answer is cached and a refusal is filed
+    // once rather than once per folder behind it.
+    let passable = true;
+    for (const step of pathInTo(slot.dir)) {
+      let open = wayIn.get(step);
+      if (open === undefined) {
+        const stepped = await openStructuralDirectory(path.join(root, ...step.split("/")), step);
+        // Absent stays silent and needs no note: the locked folder under it is
+        // absent too, which is an app with no custom code of this kind.
+        if (stepped.refusal !== undefined) problems.push(stepped.refusal.error.message);
+        open = stepped.refusal === undefined;
+        wayIn.set(step, open);
+      }
+      if (!open) {
+        passable = false;
+        break;
+      }
+    }
+    if (!passable) continue;
 
     const opened = await openStructuralDirectory(dir, slot.dir);
     if (opened.refusal !== undefined) {

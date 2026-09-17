@@ -26,7 +26,7 @@ import {
   renderWorkforceCode,
   type DiscoveredFile,
 } from "@flow-state-dev/workforce/codegen";
-import { openRoot } from "@flow-state-dev/workforce/loader";
+import { classify, openRoot, refusedSymlink } from "@flow-state-dev/workforce/loader";
 import { EXIT_SUCCESS, EXIT_CONFIG_ERROR, EXIT_EXECUTION_ERROR } from "../exit-codes";
 
 /** Default location of an app's workforce tree, relative to where the command runs. */
@@ -80,8 +80,22 @@ export async function executeGenCommand(options: GenCommandOptions): Promise<Gen
   const rendered = renderWorkforceCode(files);
   const file = join(root, GENERATED_FILE_NAME);
 
+  // The no-follow promise covers what we WRITE as well as what we read. Both
+  // calls below follow a symlink: `writeFile` would overwrite whatever it
+  // points at, outside the configured root, and `readFile` would compare
+  // against a file that is not this app's. Checked before either, and in
+  // `--check` mode too, since the wrong comparison is its own kind of wrong.
+  if ((await classify(file)).kind === "symlink") {
+    throw refusedSymlink("generated file", GENERATED_FILE_NAME);
+  }
+
   const onDisk = await readFile(file, "utf-8").catch(() => undefined);
-  const upToDate = onDisk === rendered;
+  // Compared on content, not on bytes: a checkout with `core.autocrlf=true`
+  // hands back the committed file with CRLF while the renderer always emits
+  // LF, which would report a clean tree as stale and fail CI on Windows for a
+  // difference git introduced. Only the comparison normalises — what gets
+  // written stays LF.
+  const upToDate = onDisk !== undefined && onDisk.replace(/\r\n/g, "\n") === rendered;
 
   if (options.check !== true && !upToDate) await writeFile(file, rendered, "utf-8");
 

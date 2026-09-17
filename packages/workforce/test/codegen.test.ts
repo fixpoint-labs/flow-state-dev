@@ -155,6 +155,28 @@ describe("what the walk finds", () => {
     ]);
   });
 
+  it("does not follow a symlinked directory on the way in to a locked folder", async () => {
+    // The locked paths are two segments deep, and `classify` answers for the
+    // FINAL entry only. Checking `flows/workers` alone therefore resolves
+    // through a symlinked `flows` and registers whatever sits behind it —
+    // code from outside the configured root, imported by the generated module.
+    //
+    // Distinct from the symlinked-ancestor gap the loader documents, which is
+    // about paths ABOVE the root. This one is inside the tree, where the
+    // no-follow promise is unqualified. The shipped readers already hold that
+    // line by classifying each level as they walk; this walk jumped two.
+    const root = tree({
+      "blocks/triage.ts": "export default {};",
+      "elsewhere/workers/smuggled.ts": "export default {};",
+    });
+    symlinkSync(join(root, "elsewhere"), join(root, "flows"));
+
+    const problems = await refusalsOf(root);
+
+    // Reported once, not once per flow folder underneath it.
+    expect(problems).toEqual(['Symlinked directory "flows" — refused for safety']);
+  });
+
   it("does not follow a symlinked entry, in the wording the shipped readers use", async () => {
     const root = tree({
       "blocks/triage.ts": "export default {};",
