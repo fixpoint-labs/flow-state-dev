@@ -8,13 +8,13 @@ The authoritative rule is [BP-022](best-practices.md#bp-022-release-notes-via-ch
 
 ## When to write a changeset
 
-A changeset exists for one reader: somebody who has installed a published `@flow-state-dev/*` or `@thought-fabric/core` package and is deciding whether to upgrade. Write one when that person needs to know something. Otherwise don't — an empty fragment is not required either.
+A changeset exists for one reader: somebody who has installed a published `@flow-state-dev/*` package and is deciding whether to upgrade. Write one when that person needs to know something. Otherwise don't — an empty fragment is not required either.
 
 | Change | Changeset? |
 |---|---|
 | Public API, capability, block, CLI command, hook, env var, or config key a consumer calls — added, changed, or removed | Yes |
 | Behavior a consumer can observe from outside the package: return value, emitted item, error message they key off, default that shifts | Yes |
-| Anything scoped to a private package — `labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `plugins/*`, `goals` | No |
+| Anything scoped to a private package — `labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `packages/thought-fabric-core`, `plugins/*`, `goals` | No |
 | Internal refactor, test-only change, internal helper, infra, docs-site edit, type tightening behind a public surface | No |
 | Workflow file, lint config, repo-root tooling, agent skills | No |
 
@@ -36,7 +36,7 @@ Do not hand-write a fragment naming a private package. Changesets rejects a frag
 pnpm changeset
 ```
 
-The picker shows publishable packages only (`@flow-state-dev/*` + `@thought-fabric/core`); private packages are filtered out by `privatePackages: { version: false }`.
+The picker shows publishable packages only (`@flow-state-dev/*`); private packages are filtered out by `privatePackages: { version: false }`.
 
 Pick the affected packages, choose the bump, write the entry. The CLI saves `.changeset/<random-words>.md` — keep the random name; you don't need to rename it. Commit it with the PR.
 

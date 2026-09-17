@@ -101,6 +101,12 @@ jobs:
         if: github.event_name == 'pull_request'
         run: node scripts/validate-changeset-refs.mjs
 
+      # `private` is the only field `changeset publish` filters on, and an npm
+      # name is given away permanently, so the packages we hold back are checked
+      # on every PR and push rather than at release time.
+      - name: Packages held out of the publish set
+        run: node scripts/validate-publish-set.mjs
+
       # Unconditional, unlike the two above. A literal NUL makes git render the
       # whole file as binary, so the change lands with no diff for anyone to
       # review — which is exactly as bad on a push to main as on a PR, and is

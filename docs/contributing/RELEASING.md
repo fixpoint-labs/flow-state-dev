@@ -1,13 +1,13 @@
 # Releasing
 
-How we publish `@flow-state-dev` and `@thought-fabric` packages to npm. For how to write changeset fragments, see [release-notes-workflow.md](./release-notes-workflow.md).
+How we publish the `@flow-state-dev` packages to npm. For how to write changeset fragments, see [release-notes-workflow.md](./release-notes-workflow.md).
 
 ## Versioning policy
 
 - All packages start at 0.x (currently 0.1.0 baseline).
 - Pre-1.0 discipline: `patch` for compatible changes, `minor` for breaking changes. Never file a `major` changeset while pre-1.0. Changesets will jump the package straight to 1.0.0. [release-notes-workflow.md](./release-notes-workflow.md#pre-10-discipline-current-state) is the authoritative wording.
 - Graduate to 1.0 only by explicit decision, not by accident.
-- Only publishable packages are versioned. `.changeset/config.json` sets `privatePackages: { version: false }`, so every `private: true` package — `labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `plugins/*`, `goals` — is skipped by both `pnpm changeset` and `pnpm version-packages`.
+- Only publishable packages are versioned. `.changeset/config.json` sets `privatePackages: { version: false }`, so every `private: true` package — `labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `packages/thought-fabric-core`, `plugins/*`, `goals` — is skipped by both `pnpm changeset` and `pnpm version-packages`.
 
 ## Tag scheme
 
@@ -19,7 +19,7 @@ How we publish `@flow-state-dev` and `@thought-fabric` packages to npm. For how 
 
 - All packages use npm provenance attestation (`--provenance` flag + `id-token: write` in CI). Under Trusted Publishing the flag becomes unnecessary — npm generates provenance automatically.
 - Scoped packages require `publishConfig.access: "public"` (already set in every `package.json`).
-- `@thought-fabric/core` publishes under the `@thought-fabric` npm scope.
+- `@thought-fabric/core` is **not published**. It is marked `private` in its `package.json`, which is the only flag `changeset publish` filters on — `.changeset/config.json`'s `ignore` list affects versioning, not publishing. Only the private `kitchen-sink` app consumes it, over a workspace link. `scripts/validate-publish-set.mjs` (CI: **Process guards**) fails if that flag is ever removed, since an npm name is given away permanently.
 
 ## The publish must go through pnpm
 
@@ -86,7 +86,7 @@ Note: `changeset publish` does not guarantee topological order. For strict order
 Run before any publish (automated or manual):
 
 ```bash
-# Walk the real publish set — exactly the 28 publishable packages, private ones skipped
+# Walk the real publish set — exactly the 27 publishable packages, private ones skipped
 pnpm publish -r --dry-run --no-git-checks
 
 # Check exports and types resolution
@@ -99,23 +99,23 @@ grep -r 'console\.log\|debugger' packages/*/dist/ --include='*.js'
 
 ## First publish (one-time — not done yet)
 
-Nothing has been published under either scope. All 28 packages are new, and that is what makes the first publish different from every release after it: **npm will not let you configure a trusted publisher for a package that does not exist.** `npm trust` says so outright — "The package you're configuring must already exist on the npm registry." There is no pre-registration. So the first publish is token-authenticated, and Trusted Publishing is configured afterwards, against packages that by then exist.
+Nothing has been published under the `@flow-state-dev` scope. All 27 packages are new, and that is what makes the first publish different from every release after it: **npm will not let you configure a trusted publisher for a package that does not exist.** `npm trust` says so outright — "The package you're configuring must already exist on the npm registry." There is no pre-registration. So the first publish is token-authenticated, and Trusted Publishing is configured afterwards, against packages that by then exist.
 
 ### Already in place
 
 - `CHANGESETS_TOKEN` is configured. `release.yml` runs on every push to `main` and keeps the **Version Packages** PR current — it has been open and refreshing since 2026-09-09.
-- All 28 publishable packages carry `files`, `license`, `repository.directory`, a README, and the `publishConfig` dist-path override.
+- All 27 publishable packages carry `files`, `license`, `repository.directory`, a README, and the `publishConfig` dist-path override.
 - `changesets/action@v1` resolves to v1.9.0, which writes the `.npmrc` auth line only when `NPM_TOKEN` is defined and omits it otherwise. The same pin works for both the token publish and the OIDC publish later, so the action version does not need to change. Do **not** jump to `@v2` while still on a token: v2 dropped `NPM_TOKEN` handling entirely.
 
-### Missing
+### The token
 
-`NPM_TOKEN`. Until the secret exists, `release:ci` prints `Skipping npm publish in CI: NPM_TOKEN is not set` and publishes nothing.
+`release:ci` publishes only when `NPM_TOKEN` is set; without it the step prints `Skipping npm publish in CI: NPM_TOKEN is not set` and publishes nothing. A secret's value and scope are not readable from CI, so the only proof the scope is right is the publish itself.
 
-The token must be a **granular access token scoped to all packages in both organizations**, read and write. A token scoped to *selected packages* cannot work — there are no packages to select yet.
+The token must be a **granular access token scoped to all packages in the `flow-state-dev` organization**, read and write. A token scoped to _selected packages_ cannot work — there are no packages to select yet. No second org is involved: everything published lives under `@flow-state-dev`.
 
 ### Steps
 
-1. Confirm both npm orgs exist and the publishing account has publish rights on each: `flow-state-dev`, `thought-fabric`.
+1. Confirm the `flow-state-dev` npm org exists and the publishing account has publish rights on it.
 2. Add the `NPM_TOKEN` repository secret.
 3. Review the open **Version Packages** PR. Note that the accumulated changesets have already moved past the 0.1.0 launch baseline — most packages publish as `0.1.1`, `orchestration` and `workforce` as `0.2.0`, `codex` and `cursor` as `0.0.2`. That is legal and harmless; fighting changesets to force a clean 0.1.0 means hand-editing 76 generated files.
 4. Merge it. `release.yml` runs `release:ci` → `release:build` → `changeset publish --provenance`.
@@ -140,7 +140,7 @@ Either way the canary proof in step 2 is what settles it, since this rests on re
 
 Then:
 
-1. Configure a trusted publisher for each of the 28 packages. `npm trust` (npm ≥ 11.15.0, 2FA required) does this from the CLI, so it can be a loop rather than 28 trips through the website:
+1. Configure a trusted publisher for each of the 27 packages. `npm trust` (npm ≥ 11.15.0, 2FA required) does this from the CLI, so it can be a loop rather than 27 trips through the website:
    ```bash
    npm trust github <package> --repo fixpoint-labs/flow-state-dev --file release.yml --allow-publish -y
    ```
@@ -158,10 +158,10 @@ Then:
 
 ## Required repository secrets
 
-| Secret | Purpose |
-|--------|---------|
-| `CHANGESETS_TOKEN` | GitHub token with `contents: write` and `pull-requests: write` for release PR automation |
-| `NPM_TOKEN` | npm granular access token, read+write on all packages in the `flow-state-dev` and `thought-fabric` orgs. Needed for the first publish only; removed once Trusted Publishing is in place |
+| Secret             | Purpose                                                                                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CHANGESETS_TOKEN` | GitHub token with `contents: write` and `pull-requests: write` for release PR automation                                                                          |
+| `NPM_TOKEN`        | npm granular access token, read+write on all packages in the `flow-state-dev` org. Needed for the first publish only; removed once Trusted Publishing is in place |
 
 ## Node.js version requirement
 
