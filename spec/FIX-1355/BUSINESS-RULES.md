@@ -12,7 +12,7 @@ plan turns each row into a leg.
 |---|---|---|---|
 | BR-1 | The lab is pointed at its tree and nothing is registered by hand | Three seats, one channel, **two** documents (the org's and the pentest team's — the only files under a `resources/`) and each seat's own skills come back. No file is named in the lab's code except the root | G |
 | BR-2 | A seat runs | Its `instructions` are its own `WORKER.md` body, carrying that file's token and no sibling's | G · M |
-| BR-3 | A seat's skills are read | Exactly its org ∪ team ∪ own union, by name: `recon` holds three, `triage` two, `scribe` two. The two `port-scan` folders carry different tokens, and each seat holds its own team's | G |
+| BR-3 | A seat's skills are read | Exactly its org ∪ team ∪ own union, by name: `recon` holds three, `triage` two, `scribe` two — and **each seat's records exclude the other team's token**, so a seat holding both its own and its sibling's is red rather than green. The two `port-scan` folders carry different tokens, and each seat holds its own team's. Graded **off each seat**, through its own config inside a running block — not through the transcript, which by BR-13 can never carry `scribe` | G |
 | BR-4 | A seat reads its document | Through the resource surface, at the ref the convention mints — bare at org level, `teams/<id>/<name>` for a team's — body intact | G · M |
 | BR-5 | The channel opens | At the id its two folder names mint, carrying the declared members and `CHANNEL.md`'s body as its charter | G |
 
@@ -38,7 +38,7 @@ post takes to get here is [SPEC.md](SPEC.md#how-a-post-reaches-a-seat).
 |---|---|---|---|
 | BR-11 | Both member seats answer one post at once | Both lines are in the final transcript; neither append overwrites the other | G |
 | BR-12 | Each seat's line is read | It carries its own instructions token, document token and skill names — and none of its sibling's | G · M |
-| BR-13 | The non-member seat in the other team is looked for | It was never woken, and its token appears nowhere in the transcript | G |
+| BR-13 | The non-member seat in the other team is looked for | **The fan-out never woke it** — no delivery was dispatched to it — and its token appears nowhere in the transcript. The gate's own direct read of that seat's skills (BR-3) is not a wakening by the fan-out and writes nothing to the transcript; keeping the two apart is what lets the silent seat be both *silent* and *evidenced* | G |
 | BR-14 | The transcript is graded | On presence and attribution, never on index. Two concurrent appends have no guaranteed order; asserting one is how a correct implementation fails | G · M |
 | BR-15 | The store is closed and a fresh host is built over the same file | The transcript reads the same, line for line | G |
 
