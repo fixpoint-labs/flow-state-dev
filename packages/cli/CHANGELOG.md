@@ -1,5 +1,37 @@
 # @flow-state-dev/fsdev
 
+## 0.1.1
+
+### Patch Changes
+
+- 2b728c2: Custom flow kinds and blocks now register from the file tree: `fsdev gen` walks `workforce/flows/workers/`, `workforce/flows/channels/` and `workforce/blocks/` and writes a committed module exporting the `kinds`, `channelKinds` and `blocks` maps that `hireWorkforce`, `channelInstances` and a task board already take, so adding one no longer needs a startup line (FIX-1357).
+- Updated dependencies [7c52923]
+- Updated dependencies [cee0c62]
+- Updated dependencies [8270f00]
+- Updated dependencies [efd4981]
+- Updated dependencies [3c15e14]
+- Updated dependencies [d195a90]
+- Updated dependencies [33c8d10]
+- Updated dependencies [2b728c2]
+- Updated dependencies [a8e22c4]
+- Updated dependencies [bbecd2d]
+- Updated dependencies [23bc757]
+- Updated dependencies [119936d]
+- Updated dependencies [2f74e07]
+- Updated dependencies [7986a48]
+- Updated dependencies [8a1173a]
+- Updated dependencies [70f787e]
+- Updated dependencies [f9a3626]
+- Updated dependencies [af6d6b9]
+- Updated dependencies [d46fb72]
+  - @flow-state-dev/core@0.1.1
+  - @flow-state-dev/workforce@0.2.0
+  - @flow-state-dev/devtool@0.1.1
+  - @flow-state-dev/engine@0.1.1
+  - @flow-state-dev/node@0.1.1
+  - @flow-state-dev/store-sqlite@0.1.1
+  - @flow-state-dev/testing@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

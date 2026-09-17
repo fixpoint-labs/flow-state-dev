@@ -1,5 +1,20 @@
 # @flow-state-dev/harness-manager
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [7c52923]
+- Updated dependencies [a8e22c4]
+- Updated dependencies [23bc757]
+- Updated dependencies [64b323e]
+- Updated dependencies [119936d]
+- Updated dependencies [c25ad3e]
+- Updated dependencies [8a1173a]
+- Updated dependencies [23ac6de]
+  - @flow-state-dev/core@0.1.1
+  - @flow-state-dev/orchestration@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes
