@@ -505,7 +505,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   </div>
 
   <h3>DevForce Lab &#8212; software-eng shape</h3>
-  <p>The DevForce v0 demo is Workforce nouns: <strong>one eng team</strong>, workers on seats, <strong>channels</strong> (ChannelFlow named sessions), and an <strong>org/project board</strong> (<code>TaskCollection</code>). Project is sugar / board, never a type. <strong>Personal and request boards are fully out</strong> of the v0 demo. Worker roles (design / architect / dev / reviewer / QA, plus a harness-free EM) are kinds / opinions, not Agent L1. Product team later. The convention-proof job stays: when this Lab is built, it runs on the W3 file surface alone, with no MCP in lab v1.</p>
+  <p>The DevForce v0 demo is Workforce nouns: <strong>one eng team</strong> (<code>teams/eng/</code>), workers on seats, <strong>channels</strong> (ChannelFlow named sessions), and an <strong>org/project board</strong> (<code>TaskCollection</code>). Project is sugar / board, never a type. <strong>Personal and request boards are fully out</strong> of the v0 demo. Worker roles (design / architect / dev / reviewer / QA, plus a harness-free EM) are kinds / opinions, not Agent L1. Product team later &#8212; another folder, not a TeamFlow. The convention-proof job stays: when this Lab is built, it runs on the W3 file surface alone, with no MCP in lab v1.</p>
 
   <figure>
     <div class="fig-body">
@@ -605,33 +605,6 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <figcaption><b>Questions and decisions are channels. Philosophy is Door A <code>.md</code>.</b> Explicit promote from the decisions log into that file. Not an ambient dump written from decisions. If promote is not ready, v0 is decisions-log-only. No third store. Do not invent a philosophy flow. Soft resource + <code>reactTo</code> is not the conversation. Product team is later &#8212; do not seat it to make the Lab look finished.</figcaption>
   </figure>
 
-  <figure>
-    <div class="fig-body">
-      <svg viewBox="0 0 940 280" role="img" aria-label="Eng-team-first roster. Left: teams slash eng, proposed, with an engineering-manager seat that names no harness, plus design, architect, dev, reviewer, and QA seats that may name a harness. Right: product team later. Bottom cut: no second product, no Conductor-only path, no TeamFlow, one hire per kind is enough until INST.">
-        <rect class="n-prop" x="16" y="16" width="560" height="176" rx="5"/>
-        <text class="t-lbl" x="32" y="38">ENG TEAM FIRST &#183; PROPOSED</text>
-        <text class="t-b f-accent" x="32" y="64">teams/eng/</text>
-        <text class="t-xs" x="32" y="90">EM &#183; HARNESS-FREE COORDINATOR</text>
-        <text class="t-xs" x="32" y="108">DESIGN &#183; ARCHITECT &#183; DEV &#183; REVIEWER &#183; QA</text>
-        <text class="t-xs" x="32" y="126">ROLES = KINDS / OPINIONS. NOT Agent L1</text>
-        <text class="t-xs" x="32" y="144">GENERATORS / FLOWS. INSTR + MODEL + TOOLS</text>
-        <text class="t-s" x="32" y="168">seats = flow instances. WORKER.md.</text>
-
-        <rect class="n-prose" x="592" y="16" width="332" height="176" rx="5"/>
-        <text class="t-lbl" x="610" y="38">PRODUCT TEAM &#183; LATER</text>
-        <text class="t-b" x="610" y="64">not this Lab roster</text>
-        <text class="t-xs" x="610" y="90">REQUIREMENTS</text>
-        <text class="t-xs" x="610" y="108">PRIORITIZATION</text>
-        <text class="t-xs" x="610" y="126">RELEASE READINESS</text>
-        <text class="t-xs" x="610" y="152">SECOND TEAM WHEN IT EARNS IT</text>
-
-        <rect class="n-box" x="16" y="208" width="908" height="56" rx="5"/>
-        <text class="t-s" x="32" y="242">One team key from day one. A second team later is another folder, not a TeamFlow. One hire per kind is enough until INST.</text>
-      </svg>
-    </div>
-    <figcaption><b>Eng first. Product later.</b> The Lab roster is one keyed team. Worker roles are kinds / opinions, not Agent L1. The EM seat is a thin coordinator on the same worker contract &#8212; it does not name a harness. Coding seats may. Do not invent a second member kind to say that.</figcaption>
-  </figure>
-
   <h3>DevForce honesty &#8212; exists vs proposed</h3>
   <p>The demo narrative stays honest only if every noun keeps its tag. Do not demo a dashed box as if it shipped.</p>
   <div class="tw">
@@ -654,42 +627,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div id="pentest">
   <h3>Pentest Lab &#8212; sibling consumer (FIX-1355)</h3>
-  <p><a href="https://linear.app/fixpoint-labs/issue/FIX-1355">FIX-1355</a> is the thin pentest lab Proof for W3 file conventions &#8212; seats plus rooms / channels / resources / skills under pressure. Not a full product. Not MCP. Spec is in review; the Lab does not run. The shape is <strong>intake / recon / triage</strong> as kinds / opinions, not Agent L1. Same Workforce nouns as DevForce: a team, seats, ChannelFlow named sessions, an org/project board (<code>TaskCollection</code>). Different opinions: no EM/feature/philosophy stack, and no claim that software-eng roles belong here. Do not grow Layer&nbsp;2 around only this shape either.</p>
+  <p><a href="https://linear.app/fixpoint-labs/issue/FIX-1355">FIX-1355</a> is the thin pentest lab Proof for W3 file conventions &#8212; seats plus rooms / channels / resources / skills under pressure. Not a full product. Not MCP. Spec is in review; the Lab does not run. The shape is <strong>intake / recon / triage</strong> as kinds / opinions, not Agent L1. Same Workforce nouns as DevForce: a team, seats, ChannelFlow named sessions, an org/project board (<code>TaskCollection</code>). Different opinions: no EM/feature/philosophy stack, and no claim that software-eng roles belong here. Do not grow Layer&nbsp;2 around only this shape either. Tree-path examples under <code>teams/pentest/</code> in the Workforce README are loader fixtures, not this Lab running.</p>
   </div>
-
-  <figure>
-    <div class="fig-body">
-      <svg viewBox="0 0 940 280" role="img" aria-label="Pentest Lab sibling consumer. Left: FIX-1355 thin Proof, in spec review, does not run. Centre: intake, recon, triage as kinds and opinions, not Agent L1. Right: same Workforce nouns — team, seats, ChannelFlow, TaskCollection. Cut: do not supersede this Lab identity, do not overfit Layer 2 to pentest or to software eng, no MCP, no Channel Layer 1.">
-        <rect class="n-prop" x="16" y="16" width="292" height="176" rx="5"/>
-        <text class="t-lbl" x="32" y="38">FIX-1355 &#183; THIN PROOF</text>
-        <text class="t-b f-accent" x="32" y="64">in spec review</text>
-        <text class="t-xs" x="32" y="90">W3 CONVENTIONS UNDER PRESSURE</text>
-        <text class="t-xs" x="32" y="108">SEATS + CHANNELS + RESOURCES</text>
-        <text class="t-xs" x="32" y="126">+ SKILLS. NOT A FULL PRODUCT</text>
-        <text class="t-xs" x="32" y="152">LAB DOES NOT RUN. DO NOT CLAIM IT.</text>
-        <text class="t-s" x="32" y="176">sibling consumer. not superseded.</text>
-
-        <rect class="n-prop" x="324" y="16" width="292" height="176" rx="5"/>
-        <text class="t-lbl" x="340" y="38">SHAPE &#183; KINDS / OPINIONS</text>
-        <text class="t-b f-accent" x="340" y="64">intake / recon / triage</text>
-        <text class="t-xs" x="340" y="90">NOT Agent L1</text>
-        <text class="t-xs" x="340" y="108">NOT THE DEVFORCE ROSTER</text>
-        <text class="t-xs" x="340" y="126">NO EM / FEATURE / PHILOSOPHY</text>
-        <text class="t-xs" x="340" y="152">SAME WORKER CONTRACT</text>
-        <text class="t-s" x="340" y="176">plan this shape too.</text>
-
-        <rect class="n-code" x="632" y="16" width="292" height="176" rx="5"/>
-        <text class="t-lbl f-code" x="648" y="38">SAME NOUNS</text>
-        <text class="t-b" x="648" y="64">Workforce, not a fork</text>
-        <text class="t-xs" x="648" y="90">TEAM + SEATS + ChannelFlow</text>
-        <text class="t-xs" x="648" y="108">ORG / PROJECT BOARD</text>
-        <text class="t-xs" x="648" y="126">TaskCollection. NOT A TYPE</text>
-        <text class="t-xs" x="648" y="152">NO MCP IN LAB V1</text>
-        <text class="t-s" x="648" y="176">one product. two Labs.</text>
-      </svg>
-    </div>
-    <figcaption><b>Thin-pentest stays a Lab identity.</b> FIX-1355 is the convention Proof, not a DevForce substitute and not a retired sketch. Intake / recon / triage are kinds / opinions. The tree-path examples under <code>teams/pentest/</code> in the Workforce README are loader fixtures, not this Lab running.</figcaption>
-  </figure>
 
   <h3>Pentest honesty &#8212; exists vs proposed</h3>
   <p>Same rule as DevForce: keep the tag. A spec in review is not a hosted Lab.</p>
@@ -2701,35 +2640,7 @@ const replyToSender = <b>dispatcher</b>({
 
 <section id="conductor">
   <div id="devforce" class="sec-head"><span class="sec-num">16</span><h2>Labs sit on Workforce</h2></div>
-  <p class="lede">D-12: the product name <strong>Conductor is retired</strong>. <strong>DevForce</strong> (software eng) and <strong>Pentest Lab</strong> (<a href="https://linear.app/fixpoint-labs/issue/FIX-1355">FIX-1355</a>) are Labs built completely on Workforce &#8212; sibling consumers, not sibling products, not thin shells. The lock: <strong>Workforce is the product. Each Lab is consumer config / Proof shape on it.</strong> Design only until Workforce can host a Lab. Do not supersede thin-pentest as Lab identity. Plan both shapes so Layer&nbsp;2 is not overfit. One harness-manager stack. The roster names the harness; the DevForce EM seat names none. <code>omp</code> can fill a coding seat &#8212; proposed, not integrated. Do not grow a Conductor-only or Lab-only path beside Workforce. The old lock &#8212; separate tracks, later triangulation, Conductor-as-L3 &#8212; is <strong>superseded</strong>. The <a href="conductor.html">Conductor atlas</a> stays the encyclopedia of the old run. GTM timing is Strategy. North-star #10 is the usage gate DevForce is meant to serve.</p>
-
-  <figure>
-    <div class="fig-body">
-      <svg viewBox="0 0 940 300" role="img" aria-label="Exists versus proposed for Labs on Workforce. Left solid: the lock exists as Layer 2 convention. Workforce is the product. DevForce and Pentest Lab are sibling consumers. Product name Conductor is retired. Thin-pentest is not superseded. One harness-manager package. Layer 1 stays substrate. Right dashed: both Labs are design only. Seat-to-harness bind, factory, omp, and either Lab sitting on a Workforce team are not built. A band underneath: do not grow Conductor-only or Lab-only surfaces that skip Workforce, including the parked 1612 console half.">
-        <rect class="n-code" x="16" y="16" width="446" height="200" rx="5"/>
-        <text class="t-lbl f-code" x="34" y="38">EXISTS AS CONVENTION / LOCK</text>
-        <text class="t-b" x="34" y="68">two sibling Labs</text>
-        <text class="t-s" x="34" y="96">Workforce is the product</text>
-        <text class="t-xs" x="34" y="120">CONDUCTOR NAME RETIRED &#183; D-12</text>
-        <text class="t-xs" x="34" y="138">PENTEST IDENTITY STAYS &#183; FIX-1355</text>
-        <text class="t-xs" x="34" y="164">ONE HARNESS-MANAGER PACKAGE</text>
-        <text class="t-xs" x="34" y="182">NOT SIBLING SHIPS</text>
-
-        <rect class="n-prop" x="478" y="16" width="446" height="200" rx="5"/>
-        <text class="t-lbl" x="496" y="38">PROPOSED &#183; DESIGN ONLY</text>
-        <text class="t-b f-accent" x="496" y="68">calibrate L2 on both shapes</text>
-        <text class="t-s" x="496" y="96">not a build until hosted</text>
-        <text class="t-xs" x="496" y="120">SEAT &#8594; HARNESS BIND STILL OPEN</text>
-        <text class="t-xs" x="496" y="138">NEITHER LAB RUNS. DO NOT CLAIM IT.</text>
-        <text class="t-xs" x="496" y="164">PLAN BOTH. L2 NOT OVERFIT</text>
-        <text class="t-xs" x="496" y="182">THE LOCK IS NOW. THE HOSTS ARE NOT.</text>
-
-        <rect class="n-box" x="16" y="232" width="908" height="52" rx="5"/>
-        <text class="t-s" x="34" y="264">Park Conductor-only surfaces that skip Workforce. #1612 console half (PI-1..3) is that cut. Neither Lab reopens them.</text>
-      </svg>
-    </div>
-    <figcaption><b>Lock now. Hosts later.</b> Labs-as-consumers is the product lock, not a slice-4 horizon. What exists is the convention plus one harness-manager package. What is proposed is each Lab on a Workforce team &#8212; design only. Do not invert that honesty into &#8220;two products,&#8221; and do not collapse them into one Lab identity.</figcaption>
-  </figure>
+  <p class="lede">D-12: the product name <strong>Conductor is retired</strong>. <strong>DevForce</strong> (software eng) and <strong>Pentest Lab</strong> (<a href="https://linear.app/fixpoint-labs/issue/FIX-1355">FIX-1355</a>) are Labs built completely on Workforce &#8212; sibling consumers, not sibling products, not thin shells. The lock: <strong>Workforce is the product. Each Lab is consumer config / Proof shape on it.</strong> Design only until Workforce can host a Lab. Do not supersede thin-pentest as Lab identity. Plan both shapes so Layer&nbsp;2 is not overfit. Demo nouns, honesty tags, and the tree live in <a href="#lab">&#167;03</a>. One harness-manager stack. The roster names the harness; the DevForce EM seat names none. <code>omp</code> can fill a coding seat &#8212; proposed, not integrated. Do not grow a Conductor-only or Lab-only path beside Workforce. The old lock &#8212; separate tracks, later triangulation, Conductor-as-L3 &#8212; is <strong>superseded</strong>. The <a href="conductor.html">Conductor atlas</a> stays the encyclopedia of the old run. GTM timing is Strategy. North-star #10 is the usage gate DevForce is meant to serve.</p>
 
   <div class="tw">
     <table>
