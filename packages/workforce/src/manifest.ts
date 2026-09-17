@@ -111,8 +111,8 @@ export const INSTRUCTIONS_KEY = "instructions";
 export const REFUSED_PERSONA_KEY = "persona";
 
 /**
- * The second setting name the seat factory imposes: where a seat's resolved
- * skill set arrives in its flow's settings bag.
+ * `seatSkills` — imposed by the seat factory on every record, and where a
+ * seat's resolved skill set arrives in its flow's settings bag.
  *
  * Spelled `seatSkills` rather than `skills` because the built-in kind's bag
  * already carries an author-written `skills` object (the always-on list and the
@@ -128,12 +128,17 @@ export const REFUSED_PERSONA_KEY = "persona";
 export const SEAT_SKILLS_KEY = "seatSkills";
 
 /**
- * The third setting name the seat factory imposes: where a seat's TEAM-level
- * instructions arrive in its flow's settings bag.
+ * `teamInstructions` — where a seat's TEAM-level instructions will arrive in
+ * its flow's settings bag.
+ *
+ * **Nothing imposes it yet.** The factory imposes `instructions` and
+ * `seatSkills`; this key is declared by the contract and reserved, so a kind
+ * reading it today gets `undefined` however many instructions a team has
+ * written. What fills it is the team-level file, which FIX-1377 reads.
  *
  * Declared here, beside {@link INSTRUCTIONS_KEY} and {@link SEAT_SKILLS_KEY},
- * because it is the same sort of thing as both — a value the framework derives
- * from where a file sits and hands over, never one a file declares — and for
+ * because it is the same sort of thing as both — a value the framework will
+ * derive from where a file sits, never one a file declares — and for
  * the same reason they are here: every door that imposes or refuses it reads
  * one spelling from one place.
  *

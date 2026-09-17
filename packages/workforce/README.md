@@ -260,8 +260,9 @@ A worker kind is an ordinary flow. What makes it *hireable* is that its `configS
 | `teamInstructions?` | **Reserved: nothing populates it yet.** It is here so a kind composes the contract once and does not change again when the team-level layer arrives. Always absent today. |
 | `seatSkills` | The skills its folders resolved for it, in level order. Imposed on every seat, present and empty when there are none. |
 
-So hiring imposes two of the three today. The third is a declared door with nothing coming through
-it, and a kind that reads it gets `undefined` regardless of what any team has written.
+So hiring imposes `instructions` and `seatSkills` today. `teamInstructions` is a declared door with
+nothing coming through it, and a kind that reads it gets `undefined` regardless of what any team has
+written.
 
 Add your kind's own settings on top, at the same level:
 

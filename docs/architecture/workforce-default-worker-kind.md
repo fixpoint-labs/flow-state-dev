@@ -56,21 +56,23 @@ flowchart TD
 
 ## C1 — Composition, not a type
 
-The worker kind is a flow like any other. Its settings bag (`configSchema`) declares
-`instructions`, `model`, `tools`, and the skills switches. It declares **no memory switch** — per
-C5 memory is composed into a kind at definition time, not turned on here. `instructions` is the worker
-file's body arriving as one setting — the hire step already imposes that key
-(`packages/workforce/src/manifest.ts`, `INSTRUCTIONS_KEY`) and already refuses `persona` by
-name (`REFUSED_PERSONA_KEY`, same file).
+The worker kind is a flow like any other, and its settings bag (`configSchema`) is
+`workerConfigSchema().extend({ model, tools, skills })` — two sets, named here rather than counted,
+because a custom-kind author hand-rolling the wrong half gets a kind that refuses the whole roster
+at boot:
 
-**The first three of those are not this kind's — they are the admission contract, and this kind
-composes it like any other.** `workerConfigSchema()`
-(`packages/workforce/src/worker-config.ts`) declares `instructions?`, `teamInstructions?` and
-`seatSkills`, and the default kind's schema is `workerConfigSchema().extend({ model, tools, skills
-})`. `model`, `tools` and the switches are this kind's own, at the top level, which is where a
-kind's known settings go — the framework closes the set there and an undeclared key refuses by
-name. There is no nested bag for a kind's own settings; open-ended data gets one declared key whose
-schema is a record.
+| | Keys | Whose |
+|---|---|---|
+| **The admission contract** | `instructions?`, `teamInstructions?`, `seatSkills` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
+| **This kind's own** | `model`, `tools`, `skills` (the switches) | The default kind's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. |
+
+It declares **no memory switch** — per C5 memory is composed into a kind at definition time, not
+turned on here. `instructions` is the worker file's body arriving as one setting — the hire step
+imposes that key (`packages/workforce/src/manifest.ts`, `INSTRUCTIONS_KEY`) and refuses `persona`
+by name (`REFUSED_PERSONA_KEY`, same file).
+
+There is no nested bag for a kind's own settings; open-ended data gets one declared key whose schema
+is a record.
 
 The contract is what makes a kind hireable, and the hire step hands its bag to **every** kind
 rather than probing which ones declared a matching key. A kind whose schema cannot take that bag
