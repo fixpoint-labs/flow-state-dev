@@ -1,0 +1,82 @@
+<svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="One resources folder holds handbook.md and research.ts. Today the Markdown file is read as a document and reaches the seat, while the TypeScript file is skipped in silence. After, the Markdown path is unchanged and the TypeScript file travels through fsdev gen, the generated module and the kind's uses, with the seat's own file selecting which presets apply.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-slot { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-new  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .band   { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:3 4; }
+    .wire   { fill:none; stroke:var(--ink-3); stroke-width:1.4; }
+    .wire-n { fill:none; stroke:var(--code); stroke-width:1.6; }
+    .head   { fill:var(--ink-3); }
+    .head-n { fill:var(--code); }
+    .stop   { fill:none; stroke:var(--gone); stroke-width:2; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+  </style>
+
+  <g id="today">
+    <text class="t-lbl" x="20" y="24">TODAY</text>
+    <rect class="band" x="14" y="32" width="912" height="102" rx="6"/>
+    <rect class="n-slot" x="26" y="46" width="152" height="74" rx="5"/>
+    <text class="t-lbl" x="38" y="64">RESOURCES/</text>
+    <text class="t-s" x="38" y="84">handbook.md</text>
+    <text class="t-s" x="38" y="102">research.ts</text>
+
+    <path class="wire" d="M178,78 H756"/>
+    <polygon class="head" points="756,74 766,78 756,82"/>
+    <text class="t-s" x="330" y="72">read as a document, installed on the flow</text>
+
+    <path class="wire" d="M178,100 H300" stroke-dasharray="4 4"/>
+    <path class="stop" d="M306,92 L320,108 M320,92 L306,108"/>
+    <text class="t-gone" x="332" y="105">skipped, in silence</text>
+
+    <rect class="n-box" x="770" y="58" width="146" height="40" rx="5"/>
+    <text class="t-b" x="784" y="83">the seat</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="20" y="162">AFTER</text>
+    <rect class="band" x="14" y="170" width="912" height="118" rx="6"/>
+    <rect class="n-slot" x="26" y="184" width="152" height="74" rx="5"/>
+    <text class="t-lbl" x="38" y="202">RESOURCES/</text>
+    <text class="t-s" x="38" y="222">handbook.md</text>
+    <text class="t-s" x="38" y="240">research.ts</text>
+
+    <path class="wire" d="M178,206 H756"/>
+    <polygon class="head" points="756,202 766,206 756,210"/>
+    <text class="t-s" x="330" y="200">unchanged, byte for byte</text>
+
+    <path class="wire-n" d="M178,244 H206"/>
+    <polygon class="head-n" points="206,240 216,244 206,248"/>
+    <rect class="n-new" x="218" y="228" width="112" height="32" rx="5"/>
+    <text class="t-s" x="230" y="248">fsdev gen</text>
+
+    <path class="wire-n" d="M330,244 H360"/>
+    <polygon class="head-n" points="360,240 370,244 360,248"/>
+    <rect class="n-new" x="372" y="228" width="140" height="32" rx="5"/>
+    <text class="t-s" x="384" y="248">workforce.gen.ts</text>
+
+    <path class="wire-n" d="M512,244 H542"/>
+    <polygon class="head-n" points="542,240 552,244 542,248"/>
+    <rect class="n-new" x="554" y="228" width="128" height="32" rx="5"/>
+    <text class="t-s" x="566" y="248">the kind's uses</text>
+
+    <path class="wire-n" d="M682,244 H756"/>
+    <polygon class="head-n" points="756,240 766,244 756,248"/>
+    <text class="t-s" x="690" y="276">WORKER.md picks the presets</text>
+
+    <rect class="n-box" x="770" y="204" width="146" height="52" rx="5"/>
+    <text class="t-b" x="784" y="226">the seat</text>
+    <text class="t-s" x="784" y="244">document + capability</text>
+  </g>
+</svg>
