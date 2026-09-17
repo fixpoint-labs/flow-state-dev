@@ -2,7 +2,7 @@
 "@flow-state-dev/workforce": minor
 ---
 
-Every hireable worker kind now admits the same settings, and hiring always hands them over.
+Every hireable worker kind now admits the same settings, and hiring always hands them over (FIX-1367).
 
 `workerConfigSchema()` is the new admission contract: `instructions?`, `teamInstructions?` and
 `seatSkills`. Compose it into a worker kind's own schema and add that kind's settings at the top
