@@ -33,7 +33,12 @@ import {
   splitFrontmatter,
 } from "@flow-state-dev/orchestration";
 import { refusedDeclarationMessage, type ResourceDoc } from "../manifest";
-import { validateSegment } from "./segments";
+import {
+  DOCUMENT_EXTENSION,
+  RESOURCES_SLOT,
+  WORKERS_LEVEL,
+  mintResourceRef,
+} from "./resource-convention";
 import {
   IGNORED_ENTRIES,
   type PathReport,
@@ -44,15 +49,6 @@ import {
   unreadable,
   walkTeams,
 } from "./structural-directory";
-
-/** The slot a document sits in, under any of the three roots. */
-const RESOURCES_SLOT = "resources";
-
-/** The level a worker's folder sits in, under `org/` and under every team. */
-const WORKERS_LEVEL = "workers";
-
-/** The extension a document is written in. Anything else is not a document. */
-const DOCUMENT_EXTENSION = ".md";
 
 /**
  * Why one thing that should have produced a document did not — the discriminant
@@ -395,53 +391,4 @@ function parseResourceMd(
   }
 
   return { declared, body };
-}
-
-/**
- * Mint a document's whole identity from where it sits. Four forms, one per
- * place a `resources/` slot can be:
- *
- * - `"<name>"` — the org level
- * - `"teams/<teamId>/<name>"` — a team's
- * - `"workers/<workerName>/<name>"` — an org worker's, dropping `org/` exactly
- *   as an org document's ref does
- * - `"teams/<teamId>/workers/<workerName>/<name>"` — a team worker's
- *
- * The one place this string is built. Both optional parameters are read rather
- * than overloaded, because the four combinations ARE the four refs: a call site
- * passes what it has and never picks between shapes.
- *
- * Qualified by the folders above it so two teams — and two seats in one team —
- * can each have a `handbook` without coordinating names, and **path-joined, not
- * dot-joined**: the atlas fixes this key as a path, so a dotted ref would put
- * the same logical document at a different org storage row from anything else
- * following the atlas. The worker id's reason for dot-joining does not carry
- * across — a worker id becomes a flow instance id and a slashed one fails to
- * route, while a resource ref is a storage-key namespace and never routes.
- *
- * A `workers/` first segment cannot be confused with a `teams/` one or with a
- * single-segment org name: the segment rules admit neither `/` nor `.`, so no
- * legal document, team or worker name is ever the string `teams` followed by a
- * separator.
- *
- * Throws when a segment breaks the rules, naming the rule.
- */
-function mintResourceRef(
-  teamId: string | undefined,
-  workerName: string | undefined,
-  name: string,
-): string {
-  // Identity first, and validated outermost-in, so the message names the
-  // segment highest in the tree when more than one is unusable.
-  const prefix: string[] = [];
-  if (teamId !== undefined) {
-    validateSegment(teamId, "Team");
-    prefix.push("teams", teamId);
-  }
-  if (workerName !== undefined) {
-    validateSegment(workerName, "Worker");
-    prefix.push(WORKERS_LEVEL, workerName);
-  }
-  validateSegment(name, "Document");
-  return [...prefix, name].join("/");
 }

@@ -454,6 +454,34 @@ whose `kind` disagrees with its basename is refused at the hire.
 Passing `kinds` by hand keeps working, unchanged, and composes with a generated map with no
 precedence rule.
 
+### Resource modules from files
+
+The same command walks every `resources/` folder the convention reads and exports a fourth map,
+`resourceModules`, keyed by the same ref a document of that name in that folder would get (the table
+under [Reading documents from files](#reading-documents-from-files)). A `resources/` folder takes
+Markdown documents and TypeScript modules side by side: a `.md` file is a document, and a `.ts` file
+default-exports a capability or a resource.
+
+```
+workforce/teams/engineering/resources/
+  handbook.md      ← a document, unchanged
+  research.ts      ← default-exports a capability or a resource
+```
+
+```ts
+import { resourceModules } from "./workforce/workforce.gen";
+```
+
+One ref has one owner: a `.md` and a `.ts` of one name in one folder are refused by name at
+generation, rather than one of them quietly winning.
+
+What a module exports is checked by your own `tsc` against the generated map's types, because the
+walk never opens a module. `ResourceModuleExport` is what a module in the organisation's or a team's
+folder may be; `WorkerResourceModuleExport` is the narrower type the generated map holds a module in
+one **worker's own** `resources/` folder to — a resource, never a capability, because every seat of a
+kind shares that kind's capabilities and one installed from a single worker's folder would change
+every other seat. The generated file carries that sentence beside the entries it applies to.
+
 ## Reading documents from files
 
 A team's shared documents — a handbook, a glossary, an escalation procedure — can be Markdown files

@@ -49,6 +49,12 @@ function found(files: DiscoveredFile[]): string[] {
   return files.map((file) => `${file.slot}:${file.name}`);
 }
 
+/** Walk a tree and render it — both halves, the pair `fsdev gen` runs. */
+async function renderTree(root: string): Promise<string> {
+  const result = await discoverWorkforceCode(root);
+  return renderWorkforceCode(result.files, result.resourceModules);
+}
+
 /** Collect the refusal messages from a walk that should have refused. */
 async function refusalsOf(root: string): Promise<string[]> {
   try {
@@ -75,7 +81,9 @@ describe("the generator reads the tree, never the modules in it", () => {
     const result = await discoverWorkforceCode(root);
 
     expect(found(result.files)).toEqual(["block:triage", "channel:standup", "worker:researcher"]);
-    expect(renderWorkforceCode(result.files)).toContain(`"researcher": worker_researcher`);
+    expect(renderWorkforceCode(result.files, result.resourceModules)).toContain(
+      `"researcher": worker_researcher`,
+    );
   });
 });
 
@@ -151,9 +159,19 @@ describe("what the walk finds", () => {
     const { files, searched } = await discoverWorkforceCode(root);
 
     // Not an error: an app with no custom code is an ordinary app. And the
-    // command can still say where it looked.
+    // command can still say where it looked — the three locked folders by
+    // path, and Door B's four `resources/` slots as the patterns they are,
+    // because their concrete list is one line per seat in the tree.
     expect(files).toEqual([]);
-    expect(searched).toEqual(["flows/workers", "flows/channels", "blocks"]);
+    expect(searched).toEqual([
+      "flows/workers",
+      "flows/channels",
+      "blocks",
+      "org/resources",
+      "org/workers/*/resources",
+      "teams/*/resources",
+      "teams/*/workers/*/resources",
+    ]);
   });
 
   it("generates empty maps for a folder holding nothing it recognises", async () => {
@@ -369,9 +387,9 @@ describe("staying in step", () => {
     const forwards = tree(files);
     const backwards = tree(Object.fromEntries(Object.entries(files).reverse()));
 
-    const first = renderWorkforceCode((await discoverWorkforceCode(forwards)).files);
-    const second = renderWorkforceCode((await discoverWorkforceCode(forwards)).files);
-    const shuffled = renderWorkforceCode((await discoverWorkforceCode(backwards)).files);
+    const first = await renderTree(forwards);
+    const second = await renderTree(forwards);
+    const shuffled = await renderTree(backwards);
 
     // The file is committed. One that churns makes every PR noisy and makes
     // `--check` useless, so ordering is by path and never by creation order.
@@ -423,7 +441,7 @@ describe("the rendered module", () => {
       "blocks/triage.ts": "export default {};",
     });
 
-    const rendered = renderWorkforceCode((await discoverWorkforceCode(root)).files);
+    const rendered = await renderTree(root);
 
     // Static imports are why a bundled deploy behaves like a local one, and the
     // types are what make the app's own typecheck read every discovered file.
@@ -448,7 +466,7 @@ describe("the rendered module", () => {
       "flows/workers/a-0.ts": "export default {};",
     });
 
-    const rendered = renderWorkforceCode((await discoverWorkforceCode(root)).files);
+    const rendered = await renderTree(root);
 
     const bindings = [...rendered.matchAll(/^import (\w+) from/gm)].map((match) => match[1]);
     expect(new Set(bindings).size).toBe(bindings.length);
@@ -458,7 +476,7 @@ describe("the rendered module", () => {
   it("renders an empty map with no type import when a folder holds nothing", async () => {
     const root = tree({ "blocks/triage.ts": "export default {};" });
 
-    const rendered = renderWorkforceCode((await discoverWorkforceCode(root)).files);
+    const rendered = await renderTree(root);
 
     // An app with no custom kinds should not acquire an import because of a
     // folder it does not have — and there is no member for a type to catch.
