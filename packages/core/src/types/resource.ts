@@ -180,8 +180,12 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    *     has no semantic meaning and `true` is rejected at build time.
    *
    * Set `true` to opt user/org-scoped resources into per-flow isolation —
-   * stored at `(scopeId, flowKind, ref)`. See FIX-435 conflict-detection
-   * rules for collisions across flows.
+   * stored at `(scopeId, flowInstanceId, ref)`. The coordinate is the
+   * resolved **instance** id, not the kind (FIX-1323): two registered copies
+   * of one `collection` definition each get their own cell, and a singleton's
+   * instance id is its kind, so its keys are unchanged. A seat minted by
+   * `hireWorkforce` is one instance, so this keys per seat. See FIX-435
+   * conflict-detection rules for collisions across flows.
    */
   flowIsolation?: boolean;
   /**

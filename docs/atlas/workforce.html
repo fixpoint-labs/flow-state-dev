@@ -900,7 +900,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <table>
       <thead><tr><th>#</th><th>Prove</th><th>Atlas opinion</th><th>What growing the seam would fake</th></tr></thead>
       <tbody>
-        <tr><td>A</td><td>Durable memory / identity on agent/member scope, not the seat</td><td><span class="tag t-prop">opinion</span> <code>flowIsolation</code> resources on the worker flow. v1 prompt source is <code>instructions</code>, not a persona store. Thin seats do not need this. Prove isolated org/user rows outlive a DM and a project room, then key them per member. See <a href="#memory">&#167;07</a>.</td><td><code>Agent.resources</code>, <code>Agent.memory</code>, memory on the seat, a durable identity bag on the core type. No such fields on this pin.</td></tr>
+        <tr><td>A</td><td>Durable memory / identity on agent/member scope, not the seat</td><td><span class="tag t-prop">opinion</span> <code>flowIsolation</code> resources on the worker flow. v1 prompt source is <code>instructions</code>, not a persona store. Thin seats do not need this. <strong>Both halves of this proof have landed</strong>: the rows key per seat (one flow instance per seat), and they outlive a DM, a project room and a restart &#8212; they carry no session coordinate. What is <em>not</em> proved is keying them per <strong>member</strong>: a person across two seats still has two stores. See <a href="#memory">&#167;07</a>.</td><td><code>Agent.resources</code>, <code>Agent.memory</code>, memory on the seat, a durable identity bag on the core type. No such fields on this pin.</td></tr>
         <tr><td>B</td><td>Seat bind: worker &#8594; roster row &#8594; session, no Team type</td><td><span class="tag t-prop">proposed</span> A keyed row (<code>teamId</code> + seat) names a worker flow instance, an optional harness, and the session the room helpers open. Prove one row can seat a thin coordinator and a thick Agent without a Team object. Prove a second team is another key, not a new type. Thin seats skip member memory. They are not catalog rows.</td><td>A Team type whose job is to hold the bind. A singleton team with no key. <code>Agent.sessions</code>. Requiring every seat to be an Agent. Stuffing the row into <code>AgentRegistry</code>.</td></tr>
         <tr><td>C</td><td>Workers are generators/flows with instructions + model + tools; seats stay flow instances</td><td><span class="tag t-gone">invent-kill</span> Today on main: <code>defineAgent</code> returns <code>Agent</code>; <code>createAgentRegistry</code> / <code>materializeAgent</code> / <code>agent-ref</code> exist; one caller (<code>examples/guides/research-team</code>). Hire still names the body <code>persona</code> &#8212; leave it. Teach: <code>instructions</code> &#8594; generator <code>prompt</code>; seats = <code>WORKER.md</code>; hire takes an optional <code>{ kinds }</code>; one name&#8594;block list for skills and boards. Custom kinds are flow factories (W3 scan). <code>defineAgent</code> may not need to exist. <code>materializeAgent</code> is a placeholder &#8212; kill it; do not teach it. Stop growing the old surface now. Engine never sees a product registry.</td><td>Teaching <code>defineAgent</code> as a block factory. Teaching <code>materializeAgent</code> as the Workforce spine. Teaching <code>worker.ts</code> as a WorkerManifest / compose-a-record door. Teaching <code>persona</code> as the v1 hire species. Scanning seats into <code>AgentRegistry</code>. A second Agent type.</td></tr>
       </tbody>
@@ -1219,11 +1219,11 @@ const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });  <i
 
 <section id="memory">
   <div class="sec-head"><span class="sec-num">07</span><h2>Memory / knowledge scopes</h2></div>
-  <p class="lede">Knowledge is <strong>where the resource lives</strong>, not a Knowledge type. Layer&nbsp;1 already has three scopes: <code>session</code>, <code>user</code>, <code>org</code>. The convention names four uses of those scopes. The <a href="#files">&#167;06</a> tree is how you declare them: path level is scope. Access is resource scope plus who you are seated as. Identity and memory live on <strong>agent / member scope</strong>, not on the seat. Thin seats do not need member memory. Member scope is still the named gap &#8212; prove isolation on the in-flight L1 floor (INST). Member-memory <em>depth</em> is later / not now. Do not put memory on the core <code>Agent</code> type. OKF is later retrieval over these stores, not an RC gate, and not W1 or W2.</p>
+  <p class="lede">Knowledge is <strong>where the resource lives</strong>, not a Knowledge type. Layer&nbsp;1 already has three scopes: <code>session</code>, <code>user</code>, <code>org</code>. The convention names four uses of those scopes. The <a href="#files">&#167;06</a> tree is how you declare them: path level is scope. Access is resource scope plus who you are seated as. Identity and memory live on <strong>agent / member scope</strong>, not on the seat. Thin seats do not need member memory. Member scope is still the named gap &#8212; but the gap is <strong>member &#8800; seat</strong>, not isolation. Seat-private rows exist and are measured: <code>flowIsolation: true</code> keys on the flow instance id, and one instance is minted per seat. Member-memory <em>depth</em> is later / not now. Do not put memory on the core <code>Agent</code> type. OKF is later retrieval over these stores, not an RC gate, and not W1 or W2.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 400" role="img" aria-label="Four knowledge scopes on existing Layer 1 resources. User-private exists as user scope. Member or Agent identity is a named gap: Agent has no store; prove durable seat memory via flowIsolation on org and user rows first. Team is proposed convention: org-scoped content plus board keyed by team. Org exists as org scope shared across teams. Bottom band: access is resource scope plus who you are seated as. Cut: no Knowledge type, no memory field on Agent, no parallel graph, no OKF in foundation.">
+      <svg viewBox="0 0 940 400" role="img" aria-label="Four knowledge scopes on existing Layer 1 resources. User-private exists as user scope. Seat-private storage also exists: flowIsolation true keys org and user rows by flow instance id, and one instance is minted per seat. What remains a gap is member identity distinct from the seat, and the Agent type still has no store. Team is proposed convention: org-scoped content plus board keyed by team. Org exists as org scope shared across teams. Bottom band: access is resource scope plus who you are seated as. Cut: no Knowledge type, no memory field on Agent, no parallel graph, no OKF in foundation.">
         <rect class="n-code" x="16" y="16" width="220" height="220" rx="5"/>
         <text class="t-lbl f-code" x="32" y="38">1 &#183; USER-PRIVATE</text>
         <text class="t-b f-code" x="32" y="64">that human only</text>
@@ -1239,10 +1239,10 @@ const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });  <i
         <text class="t-b" x="268" y="64">this member, not the seat</text>
         <text class="t-s" x="268" y="90">Agent type has no store</text>
         <text class="t-xs" x="268" y="112">NO resources ON agent.ts</text>
-        <text class="t-xs" x="268" y="130">PROVE flowIsolation FIRST</text>
-        <text class="t-xs" x="268" y="156">KEYS (scopeId, flowKind, ref)</text>
-        <text class="t-xs" x="268" y="174">PER KIND, NOT PER SEAT</text>
-        <text class="t-b" x="268" y="210">named gap</text>
+        <text class="t-xs" x="268" y="130">flowIsolation: true EXISTS</text>
+        <text class="t-xs" x="268" y="156">KEYS (scopeId, INSTANCE, ref)</text>
+        <text class="t-xs" x="268" y="174">ONE INSTANCE PER SEAT</text>
+        <text class="t-b" x="268" y="210">exists &#183; member gap</text>
 
         <rect class="n-prop" x="488" y="16" width="220" height="220" rx="5"/>
         <text class="t-lbl" x="504" y="38">3 &#183; TEAM</text>
@@ -1273,7 +1273,7 @@ const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });  <i
         <text class="t-s" x="34" y="364">no Knowledge type &#183; no Agent.memory &#183; no parallel knowledge graph &#183; no OKF / knowledge hub in foundation</text>
       </svg>
     </div>
-    <figcaption><b>Four uses. Three Layer&nbsp;1 scopes.</b> <code>ResourceScope</code> is <code>"session" | "user" | "org"</code> &#8212; <code>packages/core/src/types/resource.ts</code>. There is no <code>"team"</code>, no <code>"agent"</code>, and no <code>Knowledge</code>. Team resources are an org row keyed by team. Member identity is the named gap: prove isolation, then ask whether a seat key is enough. Do not grow Agent to close it.</figcaption>
+    <figcaption><b>Four uses. Three Layer&nbsp;1 scopes.</b> <code>ResourceScope</code> is <code>"session" | "user" | "org"</code> &#8212; <code>packages/core/src/types/resource.ts</code>. There is no <code>"team"</code>, no <code>"agent"</code>, and no <code>Knowledge</code>. Team resources are an org row keyed by team. Seat-private storage exists &#8212; <code>flowIsolation: true</code>, keyed on the seat's flow instance id. The named gap is narrower than it was: <strong>member identity across seats</strong>, not isolation itself. Do not grow Agent to close it.</figcaption>
   </figure>
 
   <figure>
@@ -1299,8 +1299,8 @@ const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });  <i
         <text class="t-lbl" x="650" y="38">workers/&lt;name&gt;/resources/</text>
         <text class="t-b" x="650" y="64">&#8594; member identity</text>
         <text class="t-xs" x="650" y="90">EXISTS</text>
-        <text class="t-xs" x="650" y="108">PROVE flowIsolation FIRST</text>
-        <text class="t-xs" x="650" y="134">PER KIND, NOT PER SEAT</text>
+        <text class="t-xs" x="650" y="108">flowIsolation: true &#8594; PER SEAT</text>
+        <text class="t-xs" x="650" y="134">MEMBER &#8800; SEAT IS THE GAP</text>
         <text class="t-xs" x="650" y="152">NOT Agent.memory</text>
       </svg>
     </div>
@@ -1312,7 +1312,7 @@ const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });  <i
       <thead><tr><th>Scope we say</th><th>Status</th><th>What Layer 1 actually is</th><th>What would fake it</th></tr></thead>
       <tbody>
         <tr><td>User-private</td><td><span class="tag t-real">exists</span></td><td><code>scope: "user"</code>, default <code>flowIsolation: false</code>. Stored at <code>(userId, ref)</code>. That human&#8217;s rows. Every flow they touch can see them.</td><td>A fourth scope. A private bag on Agent. A Knowledge row with <code>owner: user</code>.</td></tr>
-        <tr><td>Member / Agent identity</td><td><span class="tag t-prose">named gap</span></td><td>Lives on agent/member scope, not on the seat. Thin seats do not need it. The core <code>Agent</code> type has no store &#8212; no <code>resources</code>, no <code>memory</code>. <code>flowIsolation: true</code> on user/org keys <code>(scopeId, flowKind, ref)</code>. That is per flow kind, not per team seat. Two <code>eng-manager</code> seats share those rows. Prove isolation outlives a DM and a project room first &#8212; in-flight L1 / INST, <a href="#fence">&#167;04</a> proof&nbsp;A. Member-memory depth is later / not now. A member key on an isolated collection is convention after that proof, not a field on the seat or on the core type.</td><td><code>Agent.memory</code>. Memory on the seat. <code>scope: "agent"</code>. Pretending <code>flowIsolation</code> is already per-seat. Seating two of the same kind and calling the shared row identity.</td></tr>
+        <tr><td>Member / Agent identity</td><td><span class="tag t-prose">member gap &#183; seat exists</span></td><td>Lives on agent/member scope, not on the seat. Thin seats do not need it. The core <code>Agent</code> type has no store &#8212; no <code>resources</code>, no <code>memory</code>. <strong>Seat-private storage exists.</strong> <code>flowIsolation: true</code> on user/org keys <code>(scopeId, flowInstanceId, ref)</code> &#8212; the resolved instance id, and <code>hireWorkforce</code> mints one instance per seat, so two <code>eng-manager</code> seats hold <em>separate</em> rows. Those rows are not session-scoped: one seat reads its own across a DM, a project room and a restart (<a href="#fence">&#167;04</a> proof&nbsp;A, both halves). What is still a gap is <strong>member &#8800; seat</strong>: a person who occupies two seats has two stores and nothing joins them. Member-memory depth is later / not now. A member key over the seats is convention, not a field on the seat or on the core type.</td><td><code>Agent.memory</code>. Memory on the seat. <code>scope: "agent"</code>. Teaching <code>flowIsolation</code> as per kind, or making a caller prove per-seat isolation before using it. Pretending a seat key alone answers durable <em>member</em> identity. A second isolation primitive beside <code>flowIsolation</code>.</td></tr>
         <tr><td>Team</td><td><span class="tag t-prop">proposed</span></td><td>No <code>scope: "team"</code>. Org-scoped resource or collection keyed <code>teams/[teamId]/[doc]</code> (same pattern rule as the team itself). Goals, rules, lessons are content + board &#8212; the <a href="#plan">&#167;13</a> plan=content move. Foundation writes and reads those rows. It does not invent a Team store.</td><td>A Team type that holds knowledge. A second doc store beside <code>readContent()</code>. A Knowledge package.</td></tr>
         <tr><td>Org</td><td><span class="tag t-real">exists</span></td><td><code>scope: "org"</code>, default shared across flows and teams. Stored at <code>(orgId, ref)</code>. Cross-team by being org, not by an org graph on Agent.</td><td>An org graph on Agent. A new edge type so two teams can &#8220;see&#8221; each other.</td></tr>
       </tbody>
@@ -1321,16 +1321,16 @@ const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });  <i
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 300" role="img" aria-label="Three sessions of the same worker flow. Each session is a room. Under them, one isolated org resource and one isolated user resource keyed by flowKind, shared across those sessions and invisible to other worker flows. A side note: Agent has no resources field; isolation is the member-identity proof, not a memory product.">
+      <svg viewBox="0 0 940 300" role="img" aria-label="Three sessions of one seat. Each session is a room. Under them, one isolated org resource and one isolated user resource keyed by the seat's flow instance id, shared across that seat's sessions and invisible to every other seat, including other seats of the same kind. A side note: Agent has no resources field; isolation is seat-private storage, not a memory product.">
         <rect class="n-prop" x="16" y="16" width="200" height="88" rx="4"/>
         <text class="t-s f-accent" x="30" y="40">session &#183; #eng</text>
         <text class="t-xs" x="30" y="60">THIS WORKER&#8217;S SUBSCRIBE</text>
-        <text class="t-xs" x="30" y="78">FLOW: ENG-MANAGER</text>
+        <text class="t-xs" x="30" y="78">SEAT: ENG-MANAGER</text>
 
         <rect class="n-prop" x="232" y="16" width="200" height="88" rx="4"/>
         <text class="t-s f-accent" x="246" y="40">session &#183; launch</text>
         <text class="t-xs" x="246" y="60">PROJECT ROOM</text>
-        <text class="t-xs" x="246" y="78">SAME FLOW KIND</text>
+        <text class="t-xs" x="246" y="78">SAME SEAT</text>
 
         <rect class="n-prop" x="448" y="16" width="200" height="88" rx="4"/>
         <text class="t-s f-accent" x="462" y="40">session &#183; dm</text>
@@ -1343,11 +1343,11 @@ const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });  <i
         <path class="ln" d="M116,140 L548,140"/>
 
         <rect class="n-code" x="16" y="152" width="632" height="124" rx="5"/>
-        <text class="t-lbl f-code" x="34" y="174">ISOLATED RESOURCES &#183; EXISTS &#183; THE PROOF</text>
+        <text class="t-lbl f-code" x="34" y="174">ISOLATED RESOURCES &#183; EXISTS &#183; MEASURED</text>
         <text class="t-s" x="34" y="200">org + user scope, flowIsolation: true</text>
-        <text class="t-xs" x="34" y="222">STORED AT (SCOPE ID, FLOW KIND, REF)</text>
-        <text class="t-xs" x="34" y="240">TRAVELS WITH THE FLOW KIND. NOT THE SEAT.</text>
-        <text class="t-xs" x="34" y="258">OTHER FLOW KINDS DO NOT SEE THESE ROWS</text>
+        <text class="t-xs" x="34" y="222">STORED AT (SCOPE ID, FLOW INSTANCE ID, REF)</text>
+        <text class="t-xs" x="34" y="240">TRAVELS WITH THE SEAT. ONE INSTANCE PER SEAT.</text>
+        <text class="t-xs" x="34" y="258">NO OTHER SEAT SEES THESE ROWS, SAME KIND OR NOT</text>
 
         <rect class="n-prop" x="664" y="16" width="260" height="260" rx="5"/>
         <text class="t-lbl" x="682" y="38">NOT THIS</text>
@@ -1361,7 +1361,7 @@ const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });  <i
         <text class="t-xs" x="682" y="248">IS THE RESOURCE</text>
       </svg>
     </div>
-    <figcaption><b>Isolation is the member-identity proof, not a memory product.</b> <code>flowIsolation</code> already keys user/org resources at <code>(scopeId, flowKind, ref)</code>. Default is <code>false</code> (shared across flows). Session scope is already flow-bound; <code>true</code> there is rejected at build. Persona is a prompt source. It is not this store. Prove isolation across a DM and a project room before growing Agent.</figcaption>
+    <figcaption><b>Isolation is seat-private storage, not a memory product.</b> <code>flowIsolation</code> keys user/org resources at <code>(scopeId, flowInstanceId, ref)</code> &#8212; the resolved <strong>instance</strong> id, and <code>hireWorkforce</code> mints one instance per seat, so two <code>eng-manager</code> seats hold their own rows. Default is <code>false</code> (shared across flows). Session scope is already flow-bound; <code>true</code> there is rejected at build. The rows are not session-scoped: one seat reads its own across a DM and a project room, and across a restart. Persona is a prompt source. It is not this store. What is still open is <strong>member &#8800; seat</strong> &#8212; a person who occupies two seats has two stores, and nothing joins them. Do not grow Agent to close that.</figcaption>
   </figure>
 
   <figure>
@@ -1443,7 +1443,7 @@ const flow = <b>defineFlow</b>({ kind: <em>"eng-manager"</em>, /* ... */ });  <i
 <b>defineResource</b>({ scope: <em>"user"</em>,  <i>/* user-private. shared across that human's flows */</i> })
 <b>defineResource</b>({ scope: <em>"org"</em>,   <i>/* org-wide. shared across teams */</i> })
 <b>defineResource</b>({ scope: <em>"org"</em>, flowIsolation: <em>true</em> })
-<i>// isolated: (orgId, flowKind, ref). The member-identity proof. Per kind, not per seat.</i>
+<i>// isolated: (orgId, flowInstanceId, ref). One instance per seat, so this is per seat.</i>
 
 <i>// PROPOSED &#8212; team goals / lessons. Same collection rule as the team.</i>
 <i>// Not a Knowledge type. Not an export today. Foundation writes and reads these.</i>
@@ -2737,7 +2737,7 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td>Workforce MCP (proposed L2 client door)</td><td><span class="tag t-prose">proposed · held</span></td><td>Held until W3 conventions + a Lab can run. See <a href="#mcp">&#167;15</a> and <a href="#vision">&#167;03</a>.</td></tr>
         <tr><td>Session routes</td><td><span class="tag t-real">exists</span></td><td><code>create_session</code>, list, get, delete, patch. Enough for factory bootstrap. No seed field on <code>defineFlow</code>.</td></tr>
         <tr><td>Same-flow group fan-out (board + N sessions)</td><td><span class="tag t-real">exists</span></td><td>A board (working set) plus one session per subscriber on the same flow. A post is <code>dispatcher()</code> &#215; N into those sessions. Pin: <code>create_session</code> + <code>dispatcher({ session: { id } })</code>. Cross-flow via <code>flowKind</code> exists. Hire-id still INST.</td></tr>
-        <tr><td><code>flowIsolation</code></td><td><span class="tag t-real">exists</span></td><td>User/org resources key per flow when true. Default false. Rejected at session scope. The member-identity <em>proof</em>, not a per-seat store. See <a href="#memory">&#167;07</a>.</td></tr>
+        <tr><td><code>flowIsolation</code></td><td><span class="tag t-real">exists</span></td><td>User/org resources key per flow <strong>instance</strong> when true &#8212; and one instance is minted per seat, so this <em>is</em> a per-seat store. Default false. Rejected at session scope. It does not answer member identity across seats. See <a href="#memory">&#167;07</a>.</td></tr>
         <tr><td>Knowledge scopes (user / member / team / org)</td><td><span class="tag t-prop">proposed convention</span></td><td>Four uses of existing <code>user</code> / <code>org</code> resources. The <a href="#files">&#167;06</a> tree is how you declare them (path level = scope). No <code>Knowledge</code> type. No <code>scope: "team"</code>. Team goals and lessons are org rows keyed by team plus the plan=content move. Member identity is still the named gap. OKF later indexes; not foundation. See <a href="#memory">&#167;07</a>.</td></tr>
         <tr><td><code>taskBoard</code> + <code>taskSchema</code></td><td><span class="tag t-real">exists</span></td><td>Unified plan/task primitive. Status set includes <code>parked</code>. Content for the prose half is <code>readContent()</code>.</td></tr>
         <tr><td>Reply-storm exclusion via <code>TaskCollectionRef.claim</code></td><td><span class="tag t-real">exists</span></td><td>One holder per post. Same CAS <code>taskBoard</code> drain uses. Eligibility narrows to that post. Who may attempt the claim is proposed Layer&nbsp;2. No board-lock type.</td></tr>
@@ -2842,7 +2842,7 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td>3</td><td><strong>FIX-1246</strong> same-session resume</td><td><span class="tag t-none">backlog</span></td><td>A parked harness run resumed from a second request must continue the same session. Restart is not success. A room helper that parks and later continues cannot treat a new session as resume. <em>Separate</em> from gap 9 (FIX-957) &#8212; that is the delegation board surviving a turn, not the worker session.</td></tr>
         <tr><td>4</td><td>Cross-flow fire-and-forget</td><td><span class="tag t-real">exists</span></td><td><code>dispatcher({ flowKind })</code> on this pin (#1600 / <code>7843f23f7</code>). The seam resolves <code>spec.flowKind</code> via <code>inputs.resolveFlow</code>. <code>session-not-addressable</code> now means the session belongs to a different flow or org. Hire-id / dynamic / multi-hire are gap 1, not this row.</td></tr>
         <tr><td>5</td><td><code>external-dispatcher</code> on <code>{ id }</code></td><td><span class="tag t-real">exists as refuse</span></td><td>Existing-session delivery past an external queue refuses by name (<code>create-request-host.ts</code> / <code>dispatch-operation</code>). <code>openDm</code> wake and same-flow <code>fanOutBoardPost</code> use <code>{ id }</code>. On BullMQ they refuse. The helper must surface that, not retry as <code>{ key }</code>. This is the session-addressability half of gap 7.</td></tr>
-        <tr><td>6</td><td>Member memory scope</td><td><span class="tag t-prose">named gap</span></td><td>Identity / memory live on agent/member scope, not on the seat. <code>flowIsolation</code> exists and keys per flow kind, not per seat. Thin seats do not need this. Prove isolation first &#8212; in-flight L1 / INST. Member-memory depth is later / not now, not W1 or W2. Do not put <code>memory</code> on the core <code>Agent</code> type or on the seat to close it. See <a href="#memory">&#167;07</a>.</td></tr>
+        <tr><td>6</td><td>Member memory scope</td><td><span class="tag t-prose">member gap &#183; seat exists</span></td><td>Identity / memory live on agent/member scope, not on the seat. <code>flowIsolation</code> exists and keys per flow <strong>instance</strong>, and one instance is minted per seat &#8212; so per-seat rows are available today and need no proof first. The remaining gap is <strong>member &#8800; seat</strong>: nothing joins the stores of two seats one person occupies. Thin seats do not need this. Member-memory depth is later / not now, not W1 or W2. Do not put <code>memory</code> on the core <code>Agent</code> type or on the seat to close it. See <a href="#memory">&#167;07</a>.</td></tr>
         <tr><td>7</td><td>Full conversation through dispatch</td><td><span class="tag t-prose">blocked-on</span></td><td>The proof is A &#8594; B &#8594; <code>{ from: true }</code> reply &#8594; later messages into the <em>existing</em> session. Layer&nbsp;1 path: FIX-1312 reverse <strong>exists</strong> + gap 4 <strong>exists</strong> + existing-session via external queue (gap 5). Workforce must <strong>not</strong> invent a delivery bus. Remaining hold is session addressability past a queue, plus multi-hire on FIX-1320.</td></tr>
         <tr><td>8</td><td>Board as address-model test</td><td><span class="tag t-prop">proposed · L2</span></td><td>FIX-1311 stays Layer&nbsp;2 assembly: collections + subscriptions in state + <code>reactTo</code>. <code>reactTo</code> exists (in-session, inline). Pressure: addresses-as-data vs statically declared dispatch targets &#8212; <code>dispatch.ts</code> says a target chosen from data is a router over declared dispatchers, not a dynamic address. Need that Layer&nbsp;1 composition explicit before Workforce mints a &#8220;dynamic dispatcher.&#8221; Teams = roster (FIX-1310). Room-roster park is FIX-1341 (Collab later) &#8212; fence/rewrite FIX-1311 when Collab opens; do not rush it as W2 next. See <a href="#collab">&#167;14</a>. Static-target notify can prove as L1 now &#8212; that is not the DevForce Lab, and not MCP.</td></tr>
         <tr><td>9</td><td>Durable task collections for delegation</td><td><span class="tag t-none">backlog</span></td><td><a href="https://linear.app/fixpoint-labs/issue/FIX-957">FIX-957</a>. Skills delegation still constructs the board with <code>backing: "sequencer"</code> (<code>delegation-surface.ts</code>) &#8212; turn-scoped. A hand-built durable collection already exists. Standing teams must not get a second Workforce task store. Separate from FIX-1246 (gap 3).</td></tr>
