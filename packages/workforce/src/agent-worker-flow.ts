@@ -70,6 +70,13 @@ import {
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { SEAT_SKILLS_KEY } from "./manifest";
+import {
+  catalogSeatCapabilities,
+  resolveSeatCapabilities,
+  seatCapabilityProblems,
+  type SeatCapabilityCatalog,
+  type SeatCapabilitySelection
+} from "./seat-capabilities";
 import { seatSkillSchema, workerConfigSchema } from "./worker-config";
 
 /**
@@ -121,6 +128,7 @@ interface SeatConfig {
   tools: string[];
   seatSkills: InitialSkill[];
   skills: { active: string[]; activateTool: boolean; enableLlmClassifier: boolean };
+  capabilities: SeatCapabilitySelection;
 }
 
 /**
@@ -192,6 +200,12 @@ export interface AgentWorkerFlowOptions {
    * somewhere (see `UsesEntry` in `@flow-state-dev/core`). Pass a capability
    * dynamically and its stores are *not* installed by that entry alone.
    *
+   * **A seat picks presets from what this option installs.** A worker file's
+   * `capabilities:` key names a capability listed here and the presets that
+   * seat wants; a name that is not a top-level static entry of this array is
+   * refused at the mint. Selecting only ever ADDS to what the entry already
+   * carries — see `./seat-capabilities`.
+   *
    * **Tool-carrying presets are not fenced here.** The framework's resolver
    * unions a capability's tools onto the generator's own list rather than
    * intersecting it, so a preset that ships a tool reaches a worker whose
@@ -253,7 +267,10 @@ export interface AgentWorkerFlowOptions {
  * this kind's, because only this kind holds the app's own skill names to
  * collide a seat's against.
  */
-function settingsSchema(options: AgentWorkerFlowOptions) {
+function settingsSchema(
+  options: AgentWorkerFlowOptions,
+  seatCapabilities: SeatCapabilityCatalog
+) {
   const catalog = options.catalog ?? {};
   const appSkillNames = new Set((options.skills ?? []).map((skill) => skill.name));
 
@@ -357,7 +374,38 @@ function settingsSchema(options: AgentWorkerFlowOptions) {
          */
         enableLlmClassifier: z.boolean().default(false)
       })
+      .default({}),
+
+    /**
+     * The capabilities this seat picks up from what its kind carries, and the
+     * presets it wants from each.
+     *
+     * ```yaml
+     * capabilities:
+     *   research: [briefing]
+     * ```
+     *
+     * **Default empty**, which carries every installed capability's own
+     * defaults — what every seat gets today. Naming presets ADDS to that; a
+     * seat has no way to switch one off, because what a workforce may do is
+     * the app's call and a worker file is not where it is reversed.
+     *
+     * Refused **at the mint**, by name: an unknown capability, an undeclared
+     * preset, and the three presets that cannot travel the per-seat path (one
+     * the app turned off, one on a capability with open config, and one whose
+     * surface has to exist before a request runs). The whole selection is
+     * validated before a seat answers anything, because a typo surfacing as a
+     * failed turn in front of a user is worse than the silence this key
+     * closes.
+     */
+    capabilities: z
+      .record(z.string(), z.array(z.string()))
       .default({})
+      .superRefine((selection, ctx) => {
+        for (const message of seatCapabilityProblems(seatCapabilities, selection)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+        }
+      })
   });
 }
 
@@ -411,7 +459,11 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
  */
 export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   const catalog = options.catalog ?? {};
-  const settings = settingsSchema(options);
+  // Read once, here: it is what a seat's `capabilities:` is validated against
+  // at the mint AND what the per-seat entry below resolves through, and two
+  // readings of one `uses` array is how the two halves drift apart.
+  const seatCapabilityCatalog = catalogSeatCapabilities(options.uses);
+  const settings = settingsSchema(options, seatCapabilityCatalog);
   const inputSchema = z.object({ message: z.string() });
 
   const appSkills = options.skills ?? [];
@@ -512,6 +564,31 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
    * The answering generator. Identity is all that varies between the two copies
    * — the binding and the name — so this is a factory, not a helper (BP-024).
    */
+  /**
+   * What THIS seat's own file added on top of the kind's capabilities — the
+   * presets it named that the kind does not already carry.
+   *
+   * A dynamic entry because it is the only `uses` slot that can see a seat: a
+   * kind is built once and hired many times, so a static entry is resolved
+   * before any seat exists. It carries the DELTA only; every capability stays
+   * on its own static entry, which is what keeps a preset from being resolved
+   * on both paths (the framework merges the two independently and dedupes
+   * across neither).
+   *
+   * Appended only when the kind installs something selectable, so a kind that
+   * passes no `uses` builds exactly the block it built before this key existed
+   * rather than one carrying an inert dynamic resolver.
+   */
+  const seatCapabilities = (ctx: BlockContext) =>
+    resolveSeatCapabilities(
+      seatCapabilityCatalog,
+      (ctx.flow.config as Partial<SeatConfig> | undefined)?.capabilities
+    );
+  const usesEntries = [
+    ...(options.uses ?? []),
+    ...(seatCapabilityCatalog.size > 0 ? [seatCapabilities] : [])
+  ];
+
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>
     generator({
       name,
@@ -520,7 +597,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       itemVisibility: { client: true, history: true },
       // The skills binding stays FIRST and is never displaced: an app's own
       // capabilities compose beside it. That is what the `uses` option is for.
-      uses: [binding, ...(options.uses ?? [])],
+      uses: [binding, ...usesEntries],
       // The prompt seam — a MARKED INSERTION POINT, NOT AN ABSTRACTION.
       //
       // The shared default worker system prompt (FIX-1344 part 2) is not shipped.

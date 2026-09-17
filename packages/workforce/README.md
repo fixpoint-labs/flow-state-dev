@@ -503,6 +503,34 @@ one resource map, under its own ref, beside the documents. Nothing is installed 
 returning both and letting you spread them keeps the wiring in your own source, the same way
 `resourcesFromDocs` does.
 
+### What one seat picks up
+
+A capability installed on a kind reaches every seat of that kind. A worker's own file names which of
+its presets *that* seat wants:
+
+```md
+---
+description: Holds the board.
+capabilities:
+  research: [briefing]
+---
+```
+
+A seat that names nothing carries each installed capability's own defaults, which is what every seat
+gets without the key. Naming presets **adds** to that — there is no spelling that takes one away.
+Which capabilities a workforce may reach is the app's call, made where it builds the kind; a worker
+file picks among them.
+
+The whole selection is checked when the roster is hired, so a typo is a refusal at boot rather than a
+failed answer in front of a user. A seat is refused, by name, when it names a capability its kind does
+not carry, a preset the capability does not declare, a preset the app turned off where it installed
+the capability, a preset on a capability that declares open config, or a preset whose surface has to
+exist before a request runs (`resources`, a state schema, `model`, `providerOptions` or `caching`).
+The last three are the app's to turn on for the whole kind.
+
+Only the built-in `agent` kind reads this key. A kind of your own reads whatever its own settings
+schema declares.
+
 ## Reading documents from files
 
 A team's shared documents — a handbook, a glossary, an escalation procedure — can be Markdown files
@@ -852,6 +880,7 @@ leaves an empty session there, and re-running binds it.
 | `mintResourceRef(teamId, workerName, name)` | The one rule that names a resource, whichever door read it — the ref a document or a module called `name` in that folder gets. Throws naming the segment that breaks the rules. Ships from the `./loader` subpath (Node only). |
 | `ResourceModules` | The generated `resourceModules` map: one entry per discovered module, keyed by its ref. |
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
+| `SeatCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that seat wants. Read by the built-in `agent` kind; validated at the hire. |
 | `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Register these. |

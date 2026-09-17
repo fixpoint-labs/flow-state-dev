@@ -1,0 +1,19 @@
+{
+  "userId": "u_goal",
+  "question": "What is this week's desk code?",
+  "capability": "research",
+  "seats": [
+    {
+      "id": "support.iris",
+      "selects": ["briefing"],
+      "knows": "LANTERN-2208"
+    },
+    {
+      "id": "support.otto",
+      "selects": [],
+      "knows": null
+    }
+  ],
+  "unselectedPreset": "ledger",
+  "unselectedToken": "THISTLE-6194"
+}

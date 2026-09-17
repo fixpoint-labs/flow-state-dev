@@ -42,6 +42,8 @@ A worker's own folder is what lets two seats each have a `runbook` without their
 
 A document is a **file**, not a folder. A worker and a skill are each a folder with a fixed file inside it; a document is `<name>.md` sitting directly in `resources/`. A directory in a `resources/` folder is reported rather than passed over, so `resources/handbook/RESOURCE.md` is an error and not a document that quietly went missing.
 
+A `.ts` file can sit in the same folder. That is the other door into a `resources/` folder: code rather than reference material, read by a build step instead of at startup, and covered in [Capabilities on disk](./capabilities-on-disk.md). The two doors share the folder and the [ref rule](#a-documents-ref) and nothing else, and a `.md` and a `.ts` of one name in one folder are refused rather than one of them quietly winning. Everything on this page describes the Markdown door alone.
+
 ## What a document file says
 
 Settings between the `---` fences, the document below them:
@@ -151,7 +153,7 @@ errors;
 
 `readResourcesDirectory` throws only about the root you passed: when it cannot be read at all, and when it is a symlink. Links are never followed at any level of the walk, and the root is no exception, so a linked root is refused rather than read from wherever it points. A root with neither `org/` nor `teams/` comes back as `{ documents: [], errors: [] }`, and a team with no `resources/` folder is not an error either.
 
-A file in a `resources/` folder that is not a `.md` is passed over in silence, as are OS and editor droppings such as `.DS_Store`.
+A file in a `resources/` folder that is not a `.md` is passed over in silence by this reader, as are OS and editor droppings such as `.DS_Store`. A `.ts` file is passed over here too, and picked up by the other door ([Capabilities on disk](./capabilities-on-disk.md)).
 
 #### Treat a non-empty `errors` as fatal
 

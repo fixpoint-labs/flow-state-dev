@@ -1,0 +1,334 @@
+/**
+ * What ONE seat picks up from the capabilities its kind carries.
+ *
+ * A kind installs capabilities once, for every seat of that kind — that is
+ * what `uses` is and this file does not change it. What it adds is the other
+ * half a `resources/` folder needs: a worker's own file naming which of those
+ * capabilities' presets *this* seat wants, so two seats of one kind can differ
+ * by what their own files say.
+ *
+ * **A seat adds; it never takes away.** A file that names nothing carries
+ * exactly what the kind installed, which is what every seat gets today. A file
+ * that names a preset carries that preset on top. There is no spelling that
+ * removes one — an app that wants a capability quieter for some seats turns it
+ * down where it installs it, because what a workforce *may* do is the app's
+ * call and a file a team edits is not where that is decided.
+ *
+ * ## Why the selection is resolved per turn and the install is not
+ *
+ * A kind is built once and hired many times: one block graph, one `uses`
+ * array, one settings schema, and a config bag per seat. So a seat's selection
+ * cannot reach a static `uses` entry — by the time a seat exists the entry is
+ * already resolved. The one slot that can see a seat is a DYNAMIC `uses`
+ * entry, `(ctx) => refs`, which the framework resolves per execution off
+ * `ctx.flow.config`.
+ *
+ * That path carries **context and tools only**. Resources, state schemas and
+ * the generator singletons have to exist before a block runs, so the framework
+ * resolves them at build time from static entries alone. Two consequences run
+ * through this whole file:
+ *
+ * - The capability stays on its STATIC entry exactly as the app wrote it, so
+ *   its resources and its default presets reach every seat the way they do
+ *   today. The dynamic entry carries **only the presets a seat named that were
+ *   not already active** — the delta, never the whole capability. No preset is
+ *   resolved twice, which matters because the framework resolves the two paths
+ *   independently and does not dedupe across them: a capability contributing
+ *   its presets on both would hand a seat that named a default preset two
+ *   copies of it.
+ * - A preset that can only be delivered at build time cannot be selected, and
+ *   a capability with open config cannot be reached dynamically at all. Both
+ *   are refused **at the mint**, by name, rather than failing on the seat's
+ *   first turn. See {@link BUILD_TIME_ONLY_KEYS} and {@link seatCapabilityProblems}.
+ *
+ * Everything here is pure and isomorphic: no `node:fs`, no registry, no state.
+ * The catalogue is built once when the kind is built; the per-turn half is one
+ * map lookup per named capability and one clone per capability that has a
+ * delta.
+ */
+
+import type { CapabilityRef, PresetDef, UsesSlot } from "@flow-state-dev/core";
+import { getBaseCapability, resolveActivePresets } from "@flow-state-dev/core/capability";
+
+/**
+ * What a worker file's `capabilities:` key parses to — capability name to the
+ * presets that seat wants.
+ *
+ * ```yaml
+ * capabilities:
+ *   research: [briefing]
+ * ```
+ *
+ * An empty list is legal and means *carry this capability's defaults*, which
+ * is also what naming the capability nowhere means. It reads as a no-op
+ * because it is one; refusing it would make an author delete a line to say the
+ * thing the line already says.
+ */
+export type SeatCapabilitySelection = Record<string, readonly string[]>;
+
+/**
+ * The surface keys a preset can declare that the dynamic path cannot deliver.
+ *
+ * The framework resolves a dynamic `uses` entry per execution, when the
+ * block's resources, state containers and model are long since fixed. So a
+ * preset declaring any of these is a build-time preset: the app installs it
+ * for the whole kind or nobody has it, and a seat naming it is refused rather
+ * than given half of it.
+ *
+ * Listed rather than derived by negation from `context`/`tools` on purpose — a
+ * key added to `PresetDef` later must be classified deliberately, and being
+ * absent from this list is the claim that the dynamic path carries it.
+ */
+const BUILD_TIME_ONLY_KEYS = [
+  "resources",
+  "sessionStateSchema",
+  "requestStateSchema",
+  "userStateSchema",
+  "orgStateSchema",
+  "sequencerStateSchema",
+  "stateSchema",
+  "targetStateSchemas",
+  "model",
+  "providerOptions",
+  "caching"
+] as const satisfies readonly (keyof PresetDef)[];
+
+/** Which build-time-only keys this preset declares, in the order listed above. */
+function buildTimeOnlySurface(preset: PresetDef): string[] {
+  return BUILD_TIME_ONLY_KEYS.filter((key) => preset[key] !== undefined);
+}
+
+/**
+ * One capability a seat may pick presets from, flattened once when the kind is
+ * built.
+ *
+ * Everything a refusal or a per-turn resolution needs is read here, so neither
+ * walks a capability again: the mint does map lookups and the turn does one
+ * clone per capability with a delta.
+ */
+interface SelectableCapability {
+  /**
+   * The ref the app installed, presets and config as the app configured them.
+   * A seat's clone is made from THIS, so an app's own `.presets()` and
+   * `.config()` survive into the seat's copy.
+   */
+  ref: CapabilityRef;
+  /** Every preset the capability declares, in declaration order. */
+  declared: string[];
+  /**
+   * The presets already active for every seat of this kind — the capability's
+   * own defaults as the app's `.presets()` left them. A seat naming one of
+   * these is naming what it already has, so it is carried once: it stays on
+   * the static path and never joins the delta.
+   */
+  activeForKind: Set<string>;
+  /**
+   * Presets the app turned OFF where it installed the capability.
+   *
+   * A seat may not switch one back on. The app's `false` is a statement about
+   * the whole kind — most sharply where it keeps a tool-bearing preset away
+   * from the model — and a file a team edits is not where that is reversed.
+   * Refused at the mint rather than honoured or ignored.
+   */
+  disabledByApp: Set<string>;
+  /**
+   * Whether the capability declares open config (`defineCapability({ config })`).
+   *
+   * The framework refuses such a capability on the dynamic path outright,
+   * because that path resolves presets only and would silently drop the config
+   * resolver's surface. So its presets are the app's to set, and a seat naming
+   * one is refused at the mint — where the alternative is a throw inside the
+   * seat's first answer.
+   */
+  hasOpenConfig: boolean;
+  /** Preset name to the build-time-only keys it declares; only non-empty entries are held. */
+  buildTimeOnly: Map<string, string[]>;
+}
+
+/** What a kind's `uses` offers a seat to pick from. */
+export type SeatCapabilityCatalog = ReadonlyMap<string, SelectableCapability>;
+
+/**
+ * Read the capabilities a seat may pick presets from off a kind's `uses`.
+ *
+ * **Top-level static entries only.** A dynamic entry is a function whose
+ * result is not known until a request runs, so nothing can be listed from it;
+ * and a capability reached transitively through another's own `uses` is that
+ * capability's internal business rather than something the app put on the
+ * kind. Both are passed over, so a seat naming one is refused by
+ * {@link seatCapabilityProblems} the same way a typo is.
+ *
+ * @param uses The kind's `uses` slot, as the app passed it.
+ * @returns The catalogue, keyed by capability name. Empty when the kind
+ *   installs no capabilities — in which case the kind grows no per-seat entry
+ *   at all and any selection is refused.
+ */
+export function catalogSeatCapabilities(uses: UsesSlot | undefined): SeatCapabilityCatalog {
+  const catalog = new Map<string, SelectableCapability>();
+  if (!uses) return catalog;
+
+  for (const entry of uses) {
+    if (typeof entry === "function") continue;
+    const base = getBaseCapability(entry);
+    const presetDefs = (base.__presetDefs ?? {}) as Record<string, PresetDef>;
+    const declared = Object.keys(presetDefs).filter((key) => key !== "default");
+
+    const overrides = ("__presetOverrides" in entry
+      ? ((entry as { __presetOverrides?: Record<string, unknown> }).__presetOverrides ?? {})
+      : {}) as Record<string, unknown>;
+
+    const buildTimeOnly = new Map<string, string[]>();
+    for (const name of declared) {
+      const keys = buildTimeOnlySurface(presetDefs[name]!);
+      if (keys.length > 0) buildTimeOnly.set(name, keys);
+    }
+
+    catalog.set(base.name, {
+      ref: entry,
+      declared,
+      // Asked of the framework rather than re-derived: which presets a ref
+      // resolves to is one rule, and a second reading of it here is how a
+      // seat's idea of "already on" drifts from the block's.
+      activeForKind: new Set(resolveActivePresets(entry).map((preset) => preset.name)),
+      disabledByApp: new Set(
+        Object.entries(overrides)
+          .filter(([, value]) => value === false)
+          .map(([name]) => name)
+      ),
+      hasOpenConfig: base.__configDef !== undefined,
+      buildTimeOnly
+    });
+  }
+
+  return catalog;
+}
+
+/** Quote a list for a refusal, or say there is nothing to list. */
+function listed(names: Iterable<string>): string {
+  const quoted = [...names].map((name) => `"${name}"`);
+  return quoted.length > 0 ? quoted.join(", ") : "(none)";
+}
+
+/**
+ * Every reason a seat's selection is refused, as messages — one per problem,
+ * so a file with two mistakes is told about both.
+ *
+ * Separated from the schema that reports them because the same list is what a
+ * test asserts on and what the refusal text is built from; a rule living only
+ * inside a `superRefine` closure can be checked only by minting a seat.
+ *
+ * @param catalog The kind's catalogue.
+ * @param selection What the worker's file named.
+ * @returns One message per problem, in file order. Empty when the selection is good.
+ */
+export function seatCapabilityProblems(
+  catalog: SeatCapabilityCatalog,
+  selection: SeatCapabilitySelection
+): string[] {
+  const problems: string[] = [];
+
+  for (const [name, presets] of Object.entries(selection)) {
+    const capability = catalog.get(name);
+    if (!capability) {
+      problems.push(
+        `names capability "${name}", which its kind does not carry. ` +
+          `This kind carries: ${listed(catalog.keys())}. ` +
+          `A capability reaches a kind through \`defineAgentWorkerFlow({ uses })\` — ` +
+          `install it there, or drop it from this worker.`
+      );
+      continue;
+    }
+
+    for (const preset of presets) {
+      if (!capability.declared.includes(preset)) {
+        problems.push(
+          `names preset "${preset}" on capability "${name}", which that capability does not ` +
+            `declare. It declares: ${listed(capability.declared)}.`
+        );
+        continue;
+      }
+
+      // Already carried: nothing to add and nothing to refuse. Skipped here so
+      // the three refusals below only ever fire on a preset that would really
+      // travel the per-seat path.
+      if (capability.activeForKind.has(preset)) continue;
+
+      if (capability.disabledByApp.has(preset)) {
+        problems.push(
+          `names preset "${preset}" on capability "${name}", which the app turned off where it ` +
+            `installed that capability. A seat adds to what its kind carries and never widens past ` +
+            `it — turn the preset back on at \`defineAgentWorkerFlow({ uses })\` if every seat ` +
+            `should have it.`
+        );
+        continue;
+      }
+
+      if (capability.hasOpenConfig) {
+        problems.push(
+          `names preset "${preset}" on capability "${name}", which declares open config. ` +
+            `A capability configured with \`.config()\` is resolved once, where the app installs ` +
+            `it, so its presets cannot be picked per seat — set them at ` +
+            `\`defineAgentWorkerFlow({ uses })\`.`
+        );
+        continue;
+      }
+
+      const buildTimeOnly = capability.buildTimeOnly.get(preset);
+      if (buildTimeOnly) {
+        problems.push(
+          `names preset "${preset}" on capability "${name}", which declares ` +
+            `${buildTimeOnly.join(", ")} — that has to exist before a request runs, so the preset ` +
+            `is the app's to turn on for the whole kind rather than one seat's to pick.`
+        );
+      }
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * The refs a seat's selection adds on top of what its kind already carries.
+ *
+ * One entry per named capability that has at least one preset the kind does
+ * not already have on. Each is a clone of the app's own ref with an explicit
+ * on/off for every declared preset — on for this seat's additions, off for
+ * everything else, the presets the static entry is already contributing
+ * included. That is what keeps a named default preset from arriving twice.
+ *
+ * Runs on every render of the generator's bindings, so it stays a map lookup
+ * and a clone per addition, and returns nothing at all for the common case of
+ * a seat that named none.
+ *
+ * Assumes the selection passed {@link seatCapabilityProblems} at the mint: an
+ * unknown capability or preset is skipped here rather than checked twice.
+ *
+ * @param catalog The kind's catalogue.
+ * @param selection What this seat's file named.
+ * @returns The per-seat refs for a dynamic `uses` entry.
+ */
+export function resolveSeatCapabilities(
+  catalog: SeatCapabilityCatalog,
+  selection: SeatCapabilitySelection | undefined
+): CapabilityRef[] {
+  if (!selection) return [];
+  const refs: CapabilityRef[] = [];
+
+  for (const [name, presets] of Object.entries(selection)) {
+    const capability = catalog.get(name);
+    if (!capability) continue;
+
+    const additions = presets.filter(
+      (preset) => capability.declared.includes(preset) && !capability.activeForKind.has(preset)
+    );
+    if (additions.length === 0) continue;
+
+    const overrides: Record<string, boolean> = {};
+    for (const preset of capability.declared) {
+      overrides[preset] = additions.includes(preset);
+    }
+    refs.push((capability.ref as { presets(overrides: unknown): CapabilityRef }).presets(overrides));
+  }
+
+  return refs;
+}
