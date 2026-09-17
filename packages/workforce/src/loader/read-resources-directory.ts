@@ -2,7 +2,8 @@
  * The resources convention loader — read a workforce tree's documents into
  * neutral records.
  *
- * Walks `<root>/org/resources/` and `<root>/teams/<teamId>/resources/`, reads
+ * Walks `<root>/org/resources/`, `<root>/teams/<teamId>/resources/` and every
+ * `resources/` folder inside a worker's own folder under either parent, reads
  * each `<name>.md`, and returns one plain record per document. Frontmatter is
  * settings and the Markdown body is the document, the same bargain `WORKER.md`
  * makes. Everything the convention does not derive is carried verbatim, so a
@@ -44,8 +45,11 @@ import {
   walkTeams,
 } from "./structural-directory";
 
-/** The slot a document sits in, under either root. */
+/** The slot a document sits in, under any of the three roots. */
 const RESOURCES_SLOT = "resources";
+
+/** The level a worker's folder sits in, under `org/` and under every team. */
+const WORKERS_LEVEL = "workers";
 
 /** The extension a document is written in. Anything else is not a document. */
 const DOCUMENT_EXTENSION = ".md";
@@ -59,7 +63,7 @@ const DOCUMENT_EXTENSION = ".md";
  * `error.message`. Every entry still carries the `path` it was observed at.
  */
 export type ResourceDocErrorKind =
-  /** A structural folder — a root, a team, or a `resources/` slot — is a symlink or is there and could not be listed. Every document under it is missing. */
+  /** A structural folder — a root, a team, a `workers/` level, a worker folder, or a `resources/` slot — is a symlink or is there and could not be listed. Every document under it is missing. */
   | "unreadable-slot"
   /** A directory sits where a document file belongs — the mistake an author arriving from `workers/` or `channels/` makes. */
   | "folder-where-file-belongs"
@@ -89,9 +93,10 @@ export interface ReadResourcesDirectoryResult {
    *
    * Usually a file in a `resources/` slot — or a directory in one, which is the
    * mistake this convention most expects. It can also be a structural folder —
-   * `org`, `org/resources`, `teams`, `teams/<id>`, `teams/<id>/resources` —
-   * when that folder is refused or unreadable, because the documents beneath it
-   * cannot be enumerated to be named individually.
+   * `org`, `org/resources`, `org/workers`, `teams`, `teams/<id>`,
+   * `teams/<id>/resources`, either level's `workers/<worker>` or that worker's
+   * `resources` — when that folder is refused or unreadable, because the
+   * documents beneath it cannot be enumerated to be named individually.
    *
    * Collected rather than thrown, for the reason the worker reader collects: a
    * library that hands back data does not get to set an app's boot policy. That
@@ -102,16 +107,23 @@ export interface ReadResourcesDirectoryResult {
 }
 
 /**
- * Read every `<root>/org/resources/<name>.md` and
- * `<root>/teams/<teamId>/resources/<name>.md`, and return one neutral record
- * per document.
+ * Read every `<name>.md` in a `resources/` folder anywhere the convention puts
+ * one — the org level, a team, and a worker's own folder under either of those
+ * — and return one neutral record per document.
+ *
+ * A worker's folder is an ADDRESS, not a visibility boundary. Its documents are
+ * minted under a worker-qualified ref and installed on the worker kind's flow
+ * like any other; what makes one private to the seat that owns it is
+ * `flowIsolation: true` in that document's own frontmatter, which this reader
+ * carries verbatim and never inspects.
  *
  * Throws only when `root` itself is refused — a symlink, or a path that cannot
  * be read at all. A configured root that does not exist, or that would take the
  * walk somewhere else entirely, is a wiring mistake, not a per-document one.
  *
  * A root with neither `org/` nor `teams/` is an empty result: an app may
- * declare no documents in files, and a team may have no `resources/` folder.
+ * declare no documents in files, and a team, or a seat, may have no
+ * `resources/` folder.
  * Everything else that goes wrong lands in `errors`, so one bad file never
  * costs an app its other documents.
  */
@@ -141,19 +153,117 @@ export async function readResourcesDirectory(
     await readSlot(path.join(root, "org", RESOURCES_SLOT), `org/${RESOURCES_SLOT}`, {
       documents,
       errors,
-      mintRef: (name) => mintResourceRef(undefined, name),
+      mintRef: (name) => mintResourceRef(undefined, undefined, name),
     });
+    // Org workers are rare shared-infra seats, and their documents load for the
+    // reason a team worker's do. Their ref drops `org/`, exactly as an org
+    // document's does. No seat can be hired at that address yet — the roster
+    // reader passes over `org/workers/` in silence and a worker id requires a
+    // team — which is a larger gap than this reader closes, and not a reason
+    // for the documents to go on being unread.
+    await walkWorkers(path.join(root, "org"), "org", undefined, { documents, errors });
   }
 
   for await (const team of walkTeams(root, report)) {
     await readSlot(path.join(team.dir, RESOURCES_SLOT), `${team.path}/${RESOURCES_SLOT}`, {
       documents,
       errors,
-      mintRef: (name) => mintResourceRef(team.id, name),
+      mintRef: (name) => mintResourceRef(team.id, undefined, name),
     });
+    await walkWorkers(team.dir, team.path, team.id, { documents, errors });
   }
 
   return { documents, errors };
+}
+
+/**
+ * Read every worker's `resources/` slot under one parent — `org/` or a team
+ * folder — and collect what they hold.
+ *
+ * One function called twice rather than two copies: the two parents differ only
+ * in the team id handed to the ref minter, and a second copy is how the levels
+ * of a tree start disagreeing about what a symlink means.
+ *
+ * This level is the worker reader's rule, not this reader's: a `workers/` level
+ * holds folders, so a *file* in it occupies no slot and is passed over in
+ * silence. Inside a worker's `resources/` slot the rule inverts back, because
+ * that is a documents slot and a directory in one is an author's mistake worth
+ * reporting.
+ *
+ * What it does NOT do is open `WORKER.md`. Whether a folder describes a seat is
+ * the roster reader's question, answered separately and already reported by the
+ * reader whose job it is; this one is answering a question about a file.
+ */
+async function walkWorkers(
+  parentDir: string,
+  parentPath: string,
+  teamId: string | undefined,
+  ctx: { documents: ResourceDoc[]; errors: ResourceDocError[] },
+): Promise<void> {
+  const workersPath = `${parentPath}/${WORKERS_LEVEL}`;
+  const slots = await openStructuralDirectory(
+    path.join(parentDir, WORKERS_LEVEL),
+    workersPath,
+  );
+  if (slots.refusal !== undefined) {
+    ctx.errors.push({
+      path: workersPath,
+      error: slots.refusal.error,
+      kind: "unreadable-slot",
+    });
+  }
+  if (slots.entries === undefined) return;
+
+  for (const workerName of slots.entries) {
+    if (IGNORED_ENTRIES.has(workerName)) continue;
+
+    // The one name at this level that is not a worker. `workers/resources/` is
+    // a sibling of the worker folders — an author writing one level too high —
+    // and treating it as a worker id would mint `.../workers/resources/<name>`
+    // for a worker nobody named, reading it out of
+    // `.../workers/resources/resources/`. Passed over rather than reported: it
+    // is a slot this convention does not claim, and the documents convention
+    // has no opinion about what else lives at the roster's level.
+    if (workerName === RESOURCES_SLOT) continue;
+
+    const workerDir = path.join(parentDir, WORKERS_LEVEL, workerName);
+    const entryPath = `${workersPath}/${workerName}`;
+    const slot = await classify(workerDir);
+
+    // A file under `workers/` does not occupy a worker slot — a slot is a
+    // directory — so it is skipped rather than reported, the way the roster
+    // reader skips one.
+    if (slot.kind === "absent" || slot.kind === "file") continue;
+
+    // Both refusals are structural: the folder is there and the walk will not
+    // go through it, so every document under it is missing and none of them can
+    // be named individually. `absent` and `unreadable` stay apart here for the
+    // reason they do at every other level — folded together, a folder we cannot
+    // stat is skipped in silence and its documents disappear with `errors`
+    // empty for a caller's fatal check to look at.
+    if (slot.kind === "symlink") {
+      ctx.errors.push({
+        path: entryPath,
+        error: refusedSymlink("worker folder", workerName),
+        kind: "unreadable-slot",
+      });
+      continue;
+    }
+    if (slot.kind === "unreadable") {
+      ctx.errors.push({
+        path: entryPath,
+        error: unreadable("Worker folder", workerName, slot.error),
+        kind: "unreadable-slot",
+      });
+      continue;
+    }
+
+    await readSlot(path.join(workerDir, RESOURCES_SLOT), `${entryPath}/${RESOURCES_SLOT}`, {
+      documents: ctx.documents,
+      errors: ctx.errors,
+      mintRef: (name) => mintResourceRef(teamId, workerName, name),
+    });
+  }
 }
 
 /** Everything reading one `resources/` slot needs that differs between roots. */
@@ -284,25 +394,50 @@ function parseResourceMd(
 }
 
 /**
- * Mint a document's whole identity from where it sits: `"<name>"` at the org
- * level, `"teams/<teamId>/<name>"` for a team's.
+ * Mint a document's whole identity from where it sits. Four forms, one per
+ * place a `resources/` slot can be:
  *
- * The one place this string is built. Team-qualified so two teams can each have
- * a `handbook` without coordinating names, and **path-joined, not dot-joined**:
- * the atlas fixes this key as a path, so a dotted ref would put the same
- * logical document at a different org storage row from anything else following
- * the atlas. The worker id's reason for dot-joining does not carry across — a
- * worker id becomes a flow instance id and a slashed one fails to route, while
- * a resource ref is a storage-key namespace and never routes.
+ * - `"<name>"` — the org level
+ * - `"teams/<teamId>/<name>"` — a team's
+ * - `"workers/<workerName>/<name>"` — an org worker's, dropping `org/` exactly
+ *   as an org document's ref does
+ * - `"teams/<teamId>/workers/<workerName>/<name>"` — a team worker's
+ *
+ * The one place this string is built. Both optional parameters are read rather
+ * than overloaded, because the four combinations ARE the four refs: a call site
+ * passes what it has and never picks between shapes.
+ *
+ * Qualified by the folders above it so two teams — and two seats in one team —
+ * can each have a `handbook` without coordinating names, and **path-joined, not
+ * dot-joined**: the atlas fixes this key as a path, so a dotted ref would put
+ * the same logical document at a different org storage row from anything else
+ * following the atlas. The worker id's reason for dot-joining does not carry
+ * across — a worker id becomes a flow instance id and a slashed one fails to
+ * route, while a resource ref is a storage-key namespace and never routes.
+ *
+ * A `workers/` first segment cannot be confused with a `teams/` one or with a
+ * single-segment org name: the segment rules admit neither `/` nor `.`, so no
+ * legal document, team or worker name is ever the string `teams` followed by a
+ * separator.
  *
  * Throws when a segment breaks the rules, naming the rule.
  */
-function mintResourceRef(teamId: string | undefined, name: string): string {
-  if (teamId === undefined) {
-    validateSegment(name, "Document");
-    return name;
+function mintResourceRef(
+  teamId: string | undefined,
+  workerName: string | undefined,
+  name: string,
+): string {
+  // Identity first, and validated outermost-in, so the message names the
+  // segment highest in the tree when more than one is unusable.
+  const prefix: string[] = [];
+  if (teamId !== undefined) {
+    validateSegment(teamId, "Team");
+    prefix.push("teams", teamId);
   }
-  validateSegment(teamId, "Team");
+  if (workerName !== undefined) {
+    validateSegment(workerName, "Worker");
+    prefix.push(WORKERS_LEVEL, workerName);
+  }
   validateSegment(name, "Document");
-  return `teams/${teamId}/${name}`;
+  return [...prefix, name].join("/");
 }

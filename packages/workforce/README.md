@@ -370,12 +370,17 @@ bargain `WORKER.md` makes.
 a worker or a skill, which is a folder with a fixed file inside it. A directory in a `resources/`
 slot lands in `errors` rather than being passed over.
 
-Two levels are read:
+Four places are read — the org level, a team, and a worker's own folder under either of those:
 
 | Path | Ref |
 |------|-----|
 | `<root>/org/resources/<name>.md` | `<name>` |
 | `<root>/teams/<teamId>/resources/<name>.md` | `teams/<teamId>/<name>` |
+| `<root>/teams/<teamId>/workers/<worker>/resources/<name>.md` | `teams/<teamId>/workers/<worker>/<name>` |
+| `<root>/org/workers/<worker>/resources/<name>.md` | `workers/<worker>/<name>` |
+
+A worker's `resources/` folder is how two seats each get their own `runbook` without their authors
+coordinating a name. The ref drops `org/` for an org worker, exactly as an org document's does.
 
 ```md
 ---
@@ -388,7 +393,7 @@ llmReadable: true
 Escalate anything customer-visible within 15 minutes.
 ```
 
-`readResourcesDirectory` walks both roots and returns one record per document; `resourcesFromDocs`
+`readResourcesDirectory` walks all four and returns one record per document; `resourcesFromDocs`
 turns those records into the resource map you already pass to a flow.
 
 ```ts
@@ -433,7 +438,7 @@ Each record is plain data:
 
 | Field | Description |
 |-------|-------------|
-| `ref` | The document's identity and storage key — a bare name at the org level, `teams/<teamId>/<name>` for a team's. It is also the accessor key, so a team's handbook is `ctx.resources["teams/engineering/handbook"]`. |
+| `ref` | The document's identity and storage key, taken from where the file sits — see the table above. It is also the accessor key, so a team's handbook is `ctx.resources["teams/engineering/handbook"]` and one seat's runbook is `ctx.resources["teams/pentest/workers/recon/runbook"]`. |
 | `declared` | The frontmatter exactly as written. A file that declares one of the refused settings below produces no record at all, so nothing is stripped here. |
 | `body` | The Markdown below the frontmatter, verbatim. It becomes the resource's content. |
 
@@ -441,16 +446,35 @@ Each record is plain data:
 definition's map rather than merging with it, so passing `resourcesFromDocs(documents)` there on its
 own drops whatever resources the flow kind declared. Spread it into your own map, as above.
 
-**The team folder is a namespace, not a visibility boundary.** Every file-declared document is
-org-scoped, and a flow's resource tools reach every installed document marked `llmReadable` with no
-per-team filter. Installing a whole tree on one flow makes every team's documents reachable from it.
-To give a team's seats only its own, filter the records before installing:
+**A folder is a namespace, not a visibility boundary — at every level.** Every file-declared
+document is org-scoped, and a flow's resource tools reach every installed document marked
+`llmReadable` with no per-team filter. Installing a whole tree on one flow makes every team's
+documents reachable from it. To give a team's seats only its own, filter the records before
+installing:
 
 ```ts
 const engineering = resourcesFromDocs(
   documents.filter((d) => d.ref.startsWith("teams/engineering/")),
 );
 ```
+
+This holds for a worker's folder too, and it is the thing most worth being clear about: putting a
+document under `workers/recon/` addresses it to that seat, it does not keep it from the others. Every
+seat hired into one kind shares that kind's flow definition, so by default all of them read the same
+row.
+
+**To make a document that seat's alone, say so in the document.** A file whose frontmatter carries
+`flowIsolation: true` gets one row per seat: the seat that writes it reads it back, and a sibling
+seat asking for the same document gets its own empty copy rather than an error.
+
+```md
+---
+description: This seat's own working notes.
+flowIsolation: true
+---
+```
+
+Both sentences are owed together. A worker folder without that line is an address, not a boundary.
 
 **`description` is required.** A file without one lands in `errors`. It reaches the resource with
 the rest of the frontmatter, and nothing puts it in front of a model. Write it for whoever opens the
@@ -467,8 +491,10 @@ A document that needs a state schema, a render function, reactive bindings or an
 code — those are functions, and a Markdown file cannot hold one. Session- and user-scoped resources
 are not file-declared.
 
-Document and team folder names follow the same rules as worker folders: lowercase letters, digits and
-single hyphens, at most 64 characters. A non-`.md` file in the slot is passed over in silence. An
+Document, team and worker folder names all follow one rule: lowercase letters, digits and
+single hyphens, at most 64 characters. A worker folder's documents load whether or not the folder
+holds a `WORKER.md` — this reader answers a question about a file, and a slot with no seat file is
+reported separately by `readWorkforceDirectory`. A non-`.md` file in the slot is passed over in silence. An
 absent `org/` root or `resources/` folder is not an error — a team may have no documents.
 
 `readResourcesDirectory` throws only when `root` itself cannot be read. Everything else lands in
@@ -669,7 +695,7 @@ leaves an empty session there, and re-running binds it.
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
-| `readResourcesDirectory(root)` | Read `org/resources/` and `teams/<id>/resources/` into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
+| `readResourcesDirectory(root)` | Read every `resources/` folder in the tree — org, team, and each worker's own — into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
 | `resourcesFromDocs(documents)` | Turn document records into the flow resource map, keyed by each document's ref. Spread it into your own `resources`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body, skills? }`. |
 | `ResourceDoc` | One document record: `{ ref, declared, body }`. |
@@ -700,7 +726,7 @@ leaves an empty session there, and re-running binds it.
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
 | Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name the built-in's catalog does not carry, a skill name reaching one seat from both the app's `skills` and its own folders, `instructions` given both in the frontmatter and as a body, or a `persona:` or `seatSkills:` key. Collected: one error names every bad worker |
-| A `resources/` slot, `org/`, `teams/` or a team folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
+| A `resources/` slot, `org/`, `teams/`, a team folder, a `workers/` level or a worker folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
 | Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |
 | A setting the convention derives, or `prefetchMode: "lazy"`, in a document file | Collected in `readResourcesDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the file's path |
