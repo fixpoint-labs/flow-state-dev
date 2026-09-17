@@ -91,6 +91,18 @@ export interface Entry {
  * workforce tree can come from anywhere, and one could escape the root or point
  * at something sensitive.
  *
+ * Classified through `path.resolve` rather than as written, because `lstat`
+ * resolves the *final* symlink when a path ends in a separator: `<link>` is a
+ * link, `<link>/` is the directory behind it. The trailing form is the ordinary
+ * way a directory gets written down — it falls out of config, environment
+ * variables and hand-joined paths — so classifying the string as given would
+ * leave the no-follow answer one character from being wrong, here and in
+ * everything built on it. `path.resolve` is string math and follows no link
+ * itself; it only strips the trailing separators, `.` segments and doubled
+ * separators that would make `lstat` follow one. It normalizes the path's
+ * *spelling*, not its symlinks — a link in an ancestor component survives it
+ * untouched, and this answer is about the final entry only.
+ *
  * Only a missing path is `absent`. Every other failure is `unreadable` and
  * stays distinct, for the same reason {@link openStructuralDirectory} keeps
  * them apart: a directory that is readable but not searchable (`r--` rather
@@ -100,7 +112,7 @@ export interface Entry {
  */
 export async function classify(target: string): Promise<Entry> {
   try {
-    const stat = await fs.lstat(target);
+    const stat = await fs.lstat(path.resolve(target));
     if (stat.isSymbolicLink()) return { kind: "symlink" };
     if (stat.isDirectory()) return { kind: "directory" };
     if (stat.isFile()) return { kind: "file" };
@@ -193,20 +205,17 @@ export function unreadable(what: string, name: string, cause: Error | undefined)
  * folder is: a bare `readdir` follows a symlink, and a symlinked root would
  * load the whole tree from somewhere the caller never configured.
  *
- * Classified through `path.resolve` rather than as written, because `lstat`
- * resolves the *final* symlink when a path ends in a separator: `<root>` is a
- * link, `<root>/` is the directory behind it. The trailing form is the ordinary
- * way a directory gets written down — it falls out of config, environment
- * variables and hand-joined paths — so checking the string as given would leave
- * the refusal one character from being bypassed. `path.resolve` is string math
- * and follows no link itself; it only strips the trailing separators, `.`
- * segments and doubled separators that would make `lstat` follow one.
+ * The refusal holds however the caller spelled the path — `<root>` and
+ * `<root>/` alike — because {@link classify} normalizes the spelling before it
+ * answers. That matters most here: a root is the one path in the tree a person
+ * writes by hand, into config or an environment variable, where the trailing
+ * form is the ordinary way to write a directory down.
  *
  * Returns nothing. Every reader goes on to open the levels it wants by name, so
  * the root's own entries have no reader.
  */
 export async function openRoot(root: string): Promise<void> {
-  if ((await classify(path.resolve(root))).kind === "symlink") {
+  if ((await classify(root)).kind === "symlink") {
     // Reported as the caller spelled it, so the message names the path they
     // configured rather than one they would have to recognize.
     throw refusedSymlink("workforce directory", root);

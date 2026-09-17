@@ -15,7 +15,13 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { IGNORED_ENTRIES, openRoot, walkTeams } from "../src/loader";
+import {
+  IGNORED_ENTRIES,
+  classify,
+  openRoot,
+  openStructuralDirectory,
+  walkTeams,
+} from "../src/loader";
 
 const roots: string[] = [];
 
@@ -136,5 +142,33 @@ describe("walkTeams reporting", () => {
         // The refused team is the only entry; nothing is expected to yield.
       }
     }).rejects.toThrow(/reporter failed/);
+  });
+});
+
+describe("classify and openStructuralDirectory", () => {
+  it("refuse a symlink however the caller spelled the path", async () => {
+    // The same bypass `openRoot` was fixed for, reachable through the two
+    // primitives this subpath publishes for the next convention's author:
+    // `lstat` resolves the *final* symlink when a path ends in a separator, so
+    // `<link>/` reports the directory behind the link. These two are the
+    // surface the README promises operates without following symlinks, and the
+    // trailing form is the ordinary way a directory gets written down, so the
+    // promise has to hold for it as much as for the bare spelling.
+    const { real, linked } = linkedRoot();
+
+    const spellings = [linked, `${linked}${sep}`, `${linked}${sep}${sep}`, `${linked}${sep}.${sep}`];
+    for (const spelling of spellings) {
+      expect(await classify(spelling)).toEqual({ kind: "symlink" });
+
+      const opened = await openStructuralDirectory(spelling, "teams");
+      expect(opened.entries).toBeUndefined();
+      expect(opened.refusal?.reason).toBe("symlink");
+    }
+
+    // Controls: the tree behind the link is ordinary at either spelling, so the
+    // refusals above are the link and not the trailing separator.
+    expect(await classify(real)).toEqual({ kind: "directory" });
+    expect(await classify(`${real}${sep}`)).toEqual({ kind: "directory" });
+    expect((await openStructuralDirectory(`${real}${sep}`, "teams")).entries).toEqual(["teams"]);
   });
 });

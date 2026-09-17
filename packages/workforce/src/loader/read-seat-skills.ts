@@ -141,11 +141,14 @@ export interface ReadSeatSkillsResult {
  * A level that is absent is not an error: an app may keep no org skills, and a
  * seat may have none of its own. A level that exists and cannot be listed is.
  *
- * Throws only when `root` itself cannot be read — a configured root that does
- * not exist is a wiring mistake, not a per-level one, and reading it as three
- * absent levels would hand back an empty set with an empty `errors`, which is
- * the shape of a seat that has no skills on purpose. Matches the sibling
- * reader, which answered this question first.
+ * Throws only when `root` itself is refused — a symlink, or a path that cannot
+ * be read at all. A configured root that does not exist, or that would take the
+ * read somewhere else entirely, is a wiring mistake, not a per-level one, and
+ * reading it as three absent levels would hand back an empty set with an empty
+ * `errors`, which is the shape of a seat that has no skills on purpose. A
+ * symlinked root is refused however the path is spelled; an operator running
+ * one deliberately should pass the path it resolves to. Matches the sibling
+ * readers, which answered this question first.
  *
  * @example
  * const { skills, errors } = await readSeatSkills("./workforce", {
