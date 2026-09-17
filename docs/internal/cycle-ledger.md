@@ -2069,13 +2069,36 @@ census:** they were applied where the epic's narrative named the shape, not by r
 thread, so an artifact without one is *not* evidence the shape was absent. The first draft of
 this entry summed the label into the class totals; that is corrected here.
 
-**Claims (per direction artifact).** `claims-settled` = **0 across all six spec PRs and the epic
-PR** — `settle-claim` was not invoked this cycle. `claims-looped` = **0** for #1804, #1807,
-#1810, #1814 (single-round: a claim argued in two or more rounds is impossible), and **0
-verified** for #1819 (every finding raised in round 1 and folded in one reply pass). **#1809 and
-the epic PR #1718: not collected** — a real gap, since the cycle's headline direction finding
-rests on #1809. Distinguishing a zero from an uncollected value is the reason both are written
-down; collect them for #1809 next cycle.
+**Claims (per direction artifact).** `claims-settled` counts claims that **went to a POC**, with
+verdicts — not `settle-claim` invocations. Those are two different numbers and the first draft of
+this paragraph conflated them, the same way it conflated a reading label with a class.
+
+- **#1814 (spec FIX-1368): `claims-looped` 1, `claims-settled` 1, verdict REFUTED.** The claim was
+  D2 — whether a worker's documents get a fence or only an address — and the settlement is the
+  most instructive result in the sample. The spec's own branch POC
+  (`spec-poc/FIX-1368-third-root/probe.mts`) priced the fence and found a per-seat install could
+  not mint a kind holding a block-declared lazy resource. **It measured an arm nobody proposed:**
+  FIX-1323 had already moved isolation from flow *kind* to flow *instance id*, and `hireWorkforce`
+  already mints one instance id per seat, so the fence needs no per-seat map. A second POC ran two
+  real `.md` fixtures through the production path end to end, with a firing red state, and refuted
+  the cost argument. The owner's call reversed from address to fence **after** the approval the
+  first POC had helped produce.
+- **#1804, #1807, #1810: `claims-looped` 0** — single-round.
+- **#1819: `claims-looped` 0, verified** — every finding raised in round 1 and folded in one reply
+  pass; no claim re-argued.
+- **#1809 and the epic PR #1718: not collected.** A real gap, since the cycle's headline direction
+  finding rests on #1809. Distinguishing a zero from an uncollected value is why both are written
+  down; collect them next cycle.
+- **`claims-settled` 0 for every other artifact**, and **`settle-claim` front-door invocations = 0
+  across the whole cycle** — the fourth-cycle figure, kept separate because the skill reads the two
+  in opposite directions.
+
+**Two instrument findings fall out of #1814.** First, `Rounds` **cannot see a looped claim**: #1814
+is a one-round artifact whose central claim was argued across several exchanges and reversed after
+approval, all in issue comments rather than review waves. A round counter reading waves will report
+0 loops on an artifact that looped. Second, a POC is **an assertion like any other** — the first one
+came back green about a cost that did not exist, because it probed an arm nobody had proposed. The
+cycle's own defect class, at settlement altitude.
 
 | PR | Kind | Rounds | Endpoint | Feedback classes | Felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|---|
@@ -2097,8 +2120,11 @@ down; collect them for #1809 next cycle.
 direction side held BP-040's two-round budget on **five of six**. The whole direction overrun is
 one artifact (#1809 at 6), and its own coordinator diagnosed it correctly in the moment: *"four
 rounds moved zero decisions… review converged on direction long ago and has been doing the
-implementer's job since."* Both long implementation PRs converged on a round that found nothing
-**after** every prior round found something.
+implementer's job since."* **One** of the two long implementation PRs converged on a round that
+found nothing after every prior round found something: **#1834**, whose seventh pass was clean.
+**#1833 did not** — its round 8 was another substantive coverage finding (see the escape analysis
+below), the fix for it landed in `591c5e4e3`, and the base merge `522da85d4` on top drew no pass
+before the merge. An earlier draft claimed both, which this entry's own accounting contradicts.
 
 ### The first fully-carried sample in four cycles
 
