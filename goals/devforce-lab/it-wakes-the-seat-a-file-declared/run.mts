@@ -136,7 +136,7 @@ function perturbedTree(label: string, edit: (root: string) => void): string {
 }
 
 /** What the harness "did" in its checkout: write the brief's file and commit it. */
-const commitWork: HarnessStubOptions["work"] = (run: StubRun) => {
+const commitWork: HarnessStubOptions["duringRun"] = (run: StubRun) => {
   writeFileSync(join(run.cwd, "GREETING.md"), "A greeting, as the brief asked.\n");
   commitAll(run.cwd, "add greeting module");
 };
@@ -153,9 +153,9 @@ function stubOptions(): HarnessStubOptions {
     // See goal.md → Findings: this control's red is a framework observation,
     // not a perturbation the lab detects.
     case "stopped-at-limit":
-      return { work: commitWork, outcome: "stopped-at-limit" };
+      return { duringRun: commitWork, outcome: "stopped-at-limit" };
     default:
-      return { work: commitWork };
+      return { duringRun: commitWork };
   }
 }
 

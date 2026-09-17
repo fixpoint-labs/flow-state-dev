@@ -45,7 +45,7 @@ export interface HarnessStubOptions {
    * read the result out of git. Absent means a run that produced nothing —
    * which is the red half of BR-13/BR-14.
    */
-  work?: (run: StubRun) => void | Promise<void>;
+  duringRun?: (run: StubRun) => void | Promise<void>;
   /**
    * The handle's `status`. `"completed"` is a verdict the manager reads as a
    * clean finish; `"errored"` is a failed attempt.
@@ -110,7 +110,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
           sessions += 1;
           await onSession(`sess_stub_${sessions}`, context);
 
-          await options.work?.(run);
+          await options.duringRun?.(run);
 
           return {
             source: "devforce-lab/stub",
