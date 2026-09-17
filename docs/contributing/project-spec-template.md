@@ -85,7 +85,7 @@ is not**.
 > | **Now** | 2 epics done · 1 in flight · 1 not started. Resume and heartbeats landed; policy defaults open |
 > | **Kill line** | If apps turn out to *want* to own reconnect, this project is mis-shaped — what changes is the default, not the remaining epics |
 >
-> <img src="…/<sha>/spec/_projects/streaming/figures/territory.svg" width="940" alt="The territory: resume, heartbeats and backoff inside the project; offline queueing and durable history outside it" />
+> <img src="…/<sha>/spec/_projects/<slug>/figures/territory.svg" width="940" alt="The territory: resume, heartbeats and backoff inside the project; offline queueing and durable history outside it" />
 >
 > Inside the line is what an app gets for nothing. Outside it is a store, and this project never
 > becomes one.
