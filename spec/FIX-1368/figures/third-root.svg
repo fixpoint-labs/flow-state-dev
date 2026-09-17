@@ -1,0 +1,64 @@
+<svg viewBox="0 0 940 320" role="img"
+     aria-label="Two aligned columns, today and after, each showing the three resource roots of a workforce tree. The org root and the team root read the same in both columns and mint a bare name and a team-qualified ref. The third root, a resources folder inside a worker folder, is drawn dashed and empty today with no document and no error, and solid after, minting a worker-qualified ref. A fence strip across the bottom marks what is still not built: nothing stops another seat reading a worker's document."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-live { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .n-void { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-fence{ fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-p    { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-d    { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g    { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+
+  <g id="headings">
+    <text class="t-lbl" x="16" y="20">TODAY</text>
+    <text class="t-lbl" x="484" y="20">AFTER</text>
+    <path d="M470 8 L470 296" stroke="var(--rule)" stroke-width="1"/>
+  </g>
+
+  <g id="today">
+    <rect class="n-box" x="16" y="32" width="438" height="60" rx="5"/>
+    <text class="t-p" x="32" y="54">org/resources/handbook.md</text>
+    <text class="t-s" x="32" y="76">→ ref "handbook"</text>
+
+    <rect class="n-box" x="16" y="104" width="438" height="60" rx="5"/>
+    <text class="t-p" x="32" y="126">teams/pentest/resources/handbook.md</text>
+    <text class="t-s" x="32" y="148">→ ref "teams/pentest/handbook"</text>
+
+    <rect class="n-void" x="16" y="176" width="438" height="60" rx="5"/>
+    <text class="t-d" x="32" y="198">teams/pentest/workers/recon/resources/runbook.md</text>
+    <text class="t-d" x="32" y="220">→ NO DOCUMENT · NO ERROR</text>
+  </g>
+
+  <g id="after">
+    <rect class="n-box" x="484" y="32" width="440" height="60" rx="5"/>
+    <text class="t-p" x="500" y="54">org/resources/handbook.md</text>
+    <text class="t-s" x="500" y="76">→ ref "handbook" · UNCHANGED</text>
+
+    <rect class="n-box" x="484" y="104" width="440" height="60" rx="5"/>
+    <text class="t-p" x="500" y="126">teams/pentest/resources/handbook.md</text>
+    <text class="t-s" x="500" y="148">→ ref "teams/pentest/handbook" · UNCHANGED</text>
+
+    <rect class="n-live" x="484" y="176" width="440" height="60" rx="5"/>
+    <text class="t-p" x="500" y="198">teams/pentest/workers/recon/resources/runbook.md</text>
+    <text class="t-b" x="500" y="220">→ ref "teams/pentest/workers/recon/runbook"</text>
+  </g>
+
+  <g id="fence">
+    <rect class="n-fence" x="16" y="252" width="908" height="52" rx="5"/>
+    <text class="t-g" x="32" y="274">NOT BUILT HERE</text>
+    <text class="t-s" x="32" y="294">the address says whose the document is · nothing stops another seat reading it · no per-seat install · no allowlist</text>
+  </g>
+</svg>
