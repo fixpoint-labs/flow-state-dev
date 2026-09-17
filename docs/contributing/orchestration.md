@@ -21,6 +21,9 @@ There are exactly **two lifecycles**, one per altitude: an issue has a lifecycle
 set of related issues has one too. Nothing coordinates a *bag* of unrelated issues —
 parallelism is a property of an epic, not a mode of its own.
 
+There are **three artifact altitudes**, which is one more than the lifecycles: the third,
+the project-spec, deliberately has no lifecycle of its own (see below).
+
 - **Epic lifecycle** — the coordinator. One thin, event-driven session that drives an
   **epic** and the issues under it in parallel, holds a compact status table, owns
   subscriptions, and dispatches worker sub-agents. It **does none of the work itself** — not
@@ -37,6 +40,11 @@ parallelism is a property of an epic, not a mode of its own.
   parallel always happens under an epic** — that's what makes them a set rather than a
   batch, and it's what gives their shared decisions somewhere to live. A single issue on
   its own needs no epic (`issue-lifecycle` runs standalone). See "The epic-spec" below.
+- **Project** — the altitude above the epic: a **Linear project**, holding several epics. Its
+  artifact is the **project-spec**, authored by the `project-agent` on a never-merged
+  `project/<slug>` PR. It has **no lifecycle and no gate** — it is maintained by whichever epic
+  lifecycle is running, and stays true in between because its status is derived from Linear
+  rather than accumulated. See "The project-spec" below.
 - **Worker sub-agents** — token-isolated agents the coordinator/lifecycle dispatch so heavy
   work happens in *their* context and only a compact summary returns:
   - `issue-worker` (worktree) — advances one issue by one lifecycle step.

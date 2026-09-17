@@ -1,7 +1,7 @@
 ---
 name: project-spec
 description: Build or refresh a PROJECT-SPEC — the standing four-document set for one Linear project (the outcome, the cross-epic decisions, the rules every epic obeys, the arc against time), on a never-merged PR that stays open and true for the project's whole life. One altitude above the epic-spec. Dispatched by epic-lifecycle whenever an epic is created, approved, or wraps; runnable standalone. Use when the user asks to "stand up the project spec", "update the project", "where is this project at", wants a project-level picture across several epics, or names a Linear project that has epics running under it.
-argument-hint: "<Linear project name or url> — optionally, the action (create | refresh | fold)"
+argument-hint: "<Linear project name or url> — optionally, the action (create | refresh | update)"
 ---
 
 # Project Spec
@@ -48,8 +48,8 @@ nothing is lost.
 ## Standalone use
 
 Invoke it directly on a project — `/project-spec Workforce: Layer 2 Abstraction` — to stand one up
-for a project that has epics but no spec yet, to refresh one that has drifted, or to fold review
-feedback from its PR. Resolve the project, then dispatch `project-agent` with the action; you hold
+for a project that has epics but no spec yet, to refresh one that has drifted, or to **update** it
+— the action that folds review feedback from its PR, records an answer, or carries an epic wrap. Resolve the project, then dispatch `project-agent` with the action; you hold
 handles, never the spec text.
 
 **Standing one up for a project with existing Linear content is the one action that needs care.**
@@ -75,6 +75,9 @@ through the API.
 Run the figure and document checks from
 [`spec-figures.md`](../../../docs/contributing/spec-figures.md) → "Verify" against
 `spec/_projects/<slug>/` — they are altitude-independent and this set is subject to all of them.
+**On a status-only refresh, scope them to what that pass actually edited** (the arc, the epics
+table, the PR body) rather than the whole tree: the territory figure and the rules did not move,
+and re-checking them every time an epic changes state is cost with nothing behind it.
 Then the two checks specific to this altitude:
 
 ```bash

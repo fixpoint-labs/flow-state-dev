@@ -643,7 +643,17 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   **It takes no slot from the epic branch** — `project-agent` works on `project/<slug>`, a
   different branch from `epic/<name>`, so it never races `epic-agent`. It *can* race a **second
   epic under the same project**: that collision resolves by **skipping**, never queueing, because
-  project status is re-derived from Linear every dispatch. A skipped refresh costs nothing.
+  project status is re-derived from Linear every dispatch.
+
+  **A skipped refresh loses no correctness — but it is not free.** The dispatch still spends a
+  sub-agent and a worktree before it discovers the branch is busy, and with the cap at two epics
+  on one project that collision is routine rather than rare. Two things keep it cheap, and both
+  are yours, not the agent's: **carry `project_slug` and `project_pr` in the epic record** beside
+  the epic handles, so a resume never re-discovers whether the project PR exists; and **don't
+  dispatch when you have nothing for it** — an epic-level transition is the trigger, so a wake
+  that saw none skips the dispatch itself rather than paying for the agent to report `nothing`.
+  The agent's own test for a busy branch is a non-fast-forward push: it exits `skipped: branch
+  busy` rather than retrying.
 
 - **Consider an end-state POC — before the objective gate, not after.** The objective gate is the
   **last moment the division into issues is cheap to change**, and whether the assembled surface
@@ -769,8 +779,9 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   stays after the epic PR closes unmerged, so the record survives the epic. Put the link to
   `SPEC.md` in the wrap report.
 
-  **Then dispatch [`project-agent`](../../subagents/project-agent.md) for the project-level
-  refresh** — this epic's row goes to done, its arc bar closes, the now line moves, and anything
+  **Then dispatch [`project-agent`](../../subagents/project-agent.md) with the `update` action** —
+  **not `refresh`**, which is forbidden from writing decisions and would silently drop the half
+  that matters. This epic's row goes to done, its arc bar closes, the now line moves, and anything
   the epic settled that binds a *sibling* epic is recorded in the project's `DECISIONS.md` →
   *decided once* so the next epic under that project reads the answer instead of re-litigating it.
   Wrap is the one moment that reliably produces cross-epic knowledge, so it is the one refresh not

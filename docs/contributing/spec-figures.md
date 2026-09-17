@@ -33,6 +33,15 @@ the **position** of an element means. If the thing is a graph, mermaid wins on e
 | Epic | **How the issues flow into each other** — the dependency graph, with what each hands the next | mermaid `flowchart LR`, edited in place as issues are filed and finish | `SPEC.md` beside the set table | No (linked) |
 | Epic | **Who owns what** — rule × issue, each rule with exactly one owner | SVG (a matrix) | `DECISIONS.md` | **Yes** |
 | Epic | **The path** — one lane per issue against time, done and in-flight bars, a now line, the critical path | SVG (lanes against time), **redrawn as the set moves** | `PLAN.md` | **Yes** |
+| Project | **The territory** — owned here · the substrate assembled but owned elsewhere · outside the project, with the fence that separates them | SVG (containment and a fence) | `SPEC.md` | **Yes** |
+| Project | **How the epics flow into each other** — the dependency graph, edited in place as epics are filed and wrap | mermaid `flowchart LR` | `SPEC.md` beside the epics table | No (linked) |
+| Project | **The arc** — one lane per epic against time, a now line, **redrawn as the project moves** | SVG (lanes against time) | `PLAN.md` | **Yes** |
+| Project | **Who owns what** — rule × epic | SVG (a matrix) | `DECISIONS.md` | Only once `BUSINESS-RULES.md` carries **three or more** rules |
+
+**The arc is the path one altitude up**, and it is drawn the same way for the same reason: lanes
+against time, redrawn every refresh. A project whose epics have no bars yet gets lane labels and no
+rectangles — an epic that has not started is not a zero-width bar, and a dashed placeholder box
+reads as duration to everyone who is not its author.
 
 **The plan carries no figures at issue altitude.** It is written for the implementing agent, which
 reads tables and a DAG faster than a picture. At epic altitude the plan's one figure is the path,
@@ -176,7 +185,7 @@ A figure nobody rendered is how a wrong one ships. Headless Chromium is on every
 renders both themes in a second:
 
 ```bash
-S=spec/<ISSUE-ID>/figures/<name>.svg; H=$(grep -oE 'viewBox="0 0 940 [0-9]+' "$S" | grep -oE '[0-9]+$')
+S=spec/<ISSUE-ID>/figures/<name>.svg   # or spec/_epics/<name>/… or spec/_projects/<slug>/…; H=$(grep -oE 'viewBox="0 0 940 [0-9]+' "$S" | grep -oE '[0-9]+$')
 CH=/opt/pw-browsers/chromium-*/chrome-linux/chrome
 printf '<html><body style="margin:0;background:#FCFCFA"><img src="%s" width="940"></body></html>' "$(realpath "$S")" > /tmp/light.html
 sed 's/@media (prefers-color-scheme: dark) {/@media all {/' "$S" > /tmp/dark.svg

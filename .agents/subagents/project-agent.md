@@ -50,10 +50,18 @@ not a clean default-branch one:
 Take the single action the dispatch calls for:
 
 - **Create** (first dispatch): **read the Linear project's existing `content` before you write
-  anything.** Most projects carry hand-written prose, sometimes thousands of words. Fold what is
-  still true into the four documents and report what you moved and what you dropped as stale.
+  anything.** Most projects carry hand-written prose, sometimes thousands of words.
+
+  **Commit it verbatim first, in its own commit, before you write a line of the set** — to
+  `spec/_projects/<slug>/absorbed/linear-content.md` with the date you read it. Only then fold
+  what is still true into the four documents. The overwrite is unrecoverable through the API, so
+  "I reported what I dropped" is no protection: the caller reads that report *after* the original
+  is gone, and a misjudged *stale* is then a deletion nobody can undo. A verbatim copy in git
+  makes every such call reversible by someone who disagrees with it later.
+
   Then write the set, commit it to `project/<slug>`, open the **never-merged** project PR, and
-  mirror the four files into the project's `content`. Return the PR link.
+  mirror the four files into the project's `content`. Return the PR link, and report what you
+  folded and what you left behind in `absorbed:`.
 
   **Epics that don't exist yet are placeholders** — a `FIX-XXX · working title` row, drawn dashed
   in the graph and given an empty lane in the arc. A later refresh swaps the real id in; the title
@@ -67,12 +75,20 @@ Take the single action the dispatch calls for:
   newly filed epic gets its real id and a solid border, a wrapped one a heavy border); redraw the
   arc figure in `PLAN.md` (bars and the now line); update the PR body's as-of line and re-pin its
   images to the new head; re-mirror to Linear. **Change nothing else** — the outcome, the decisions
-  and the rules are not yours this dispatch, whatever you notice. Report `refreshed:` with what
+  and the rules are not yours this dispatch, whatever you notice. **Re-render only the figures you
+  actually edited** (a status refresh touches the arc, never the territory), and verify those;
+  re-running the whole set's checks on a status-only pass is cost with nothing behind it. Report `refreshed:` with what
   moved, or `nothing` if the set already read that way, which is a real outcome.
 
-- **Update** (feedback to fold, or an answer to record): fold what is above the bar into the
-  outcome / the cards / *decided once*, re-drafting for coherence rather than appending — **and**
-  do the status refresh above in the same pass. Commit, push, re-mirror.
+- **Update** (feedback to fold, an answer to record, **or an epic wrapping**): fold what is above
+  the bar into the outcome / the cards / *decided once*, re-drafting for coherence rather than
+  appending — **and** do the status refresh above in the same pass. Commit, push, re-mirror.
+
+  **An epic wrap is always an Update, never a Refresh.** Wrap is the one moment that reliably
+  produces cross-epic knowledge — the settled claims, the rules that turned out to bind a sibling
+  — and a Refresh is forbidden from writing decisions, so dispatching one at wrap would drop
+  exactly the content this altitude exists to keep. If a wrap dispatch reaches you labelled
+  `refresh`, treat it as an Update and say so in `did:`.
 
   **Fold only what's above the bar.** The project-spec is a direction artifact, so the same bar
   applies ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Spec review"). Fold

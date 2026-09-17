@@ -3,7 +3,8 @@
 This folder holds **one spec at a time, on a spec branch, and never on `main`.**
 
 `issue-spec` writes `spec/<ISSUE-ID>/` here on branch `spec/<ISSUE-ID>` and opens the spec PR
-for review. An epic's set lives at `spec/_epics/<name>/` on branch `epic/<name>`. The spec PR
+for review. An epic's set lives at `spec/_epics/<name>/` on branch `epic/<name>`, and a Linear
+project's at `spec/_projects/<slug>/` on branch `project/<slug>`. The spec PR
 closes unmerged once the spec is approved (an epic PR stays open for the life of the epic); the
 branch is kept, so the reviewed copy stays fetchable, but it never lands on `main`. CI blocks any
 other PR that carries a file here, so a spec cannot reach `main` by accident or by a
@@ -22,8 +23,9 @@ Four documents and a folder of figures — one directory, not one file:
 | `figures/*.svg` | Everyone | The pictures where position is the content |
 
 The shape and the worked examples: [`docs/contributing/spec-template.md`](../docs/contributing/spec-template.md)
-(issue) and [`docs/contributing/epic-spec-template.md`](../docs/contributing/epic-spec-template.md)
-(epic). The figures: [`docs/contributing/spec-figures.md`](../docs/contributing/spec-figures.md).
+(issue), [`docs/contributing/epic-spec-template.md`](../docs/contributing/epic-spec-template.md)
+(epic) and [`docs/contributing/project-spec-template.md`](../docs/contributing/project-spec-template.md)
+(project). The figures: [`docs/contributing/spec-figures.md`](../docs/contributing/spec-figures.md).
 
 ## Where specs actually live
 
@@ -59,7 +61,11 @@ closes, and CI rejects one.
   to publish a post-approval POC is live again for as long as it is open
   ([`spec-poc`](../.agents/skills/spec-poc/SKILL.md)).
 - An epic's set is the opposite: it is **refreshed for the life of the epic** — the set table's
-  status, the dependency graph, and the path figure move as issues are filed and finish.
+  status, the dependency graph, and the path figure move as issues are filed and finish. A
+  **project's set is refreshed for the life of the project**, on epic-level transitions only, and
+  its PR never closes.
+- A project set also keeps `absorbed/linear-content.md`: the project's hand-written Linear
+  content, committed verbatim before the first mirror overwrote it. It is a record, never edited.
 - Throwaway proofs-of-concept for a spec go in `spec-poc/<ISSUE-ID>-<slug>/`, also never merged.
 
 See [BP-037](../docs/contributing/best-practices/process.md) and
