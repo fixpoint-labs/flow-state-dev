@@ -249,15 +249,22 @@ Settings are spelled the way the flow declares them.
 
 A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. Hiring imposes two settings in all: `instructions`, when the body is not empty, and `seatSkills`, always. A third, `teamInstructions`, is declared by the contract and reserved for a team-level layer; nothing fills it yet.
 
-Every hireable kind has that setting, because `workerConfigSchema()` declares it — so a worker's body always has somewhere to arrive, and no worker flow has to check for one. A kind that never composed the contract is the one that refuses, and it refuses every record on the roster rather than just the ones with a body:
+Every hireable kind has that setting, because `workerConfigSchema()` declares it — so a worker's body always has somewhere to arrive, and no worker flow has to check for one. A kind whose schema will not take what hiring imposes is the one that refuses, and it refuses every record on the roster rather than just the ones with a body:
 
 ```
 hireWorkforce refused 1 of 3 workers; nothing was hired:
   - worker "support.intake" — Flow "intake" instance "support.intake"
-    has an invalid config bag: "seatSkills" is not a declared setting.
-    This flow kind has not composed `workerConfigSchema()`, so it declares
-    nowhere for a seat's skills and instructions to arrive.
+    has an invalid config bag: "instructions", "seatSkills" is not a
+    declared setting. Those keys are the framework's: every hireable kind
+    admits `instructions`, `seatSkills` by composing `workerConfigSchema()`,
+    which is where a seat's instructions and its resolved skills arrive.
+    Wrap this kind's settings: `configSchema:
+    workerConfigSchema().extend({ ...its own settings })`.
 ```
+
+Note what the message does *not* say. It names the keys the schema would not take, not whether you
+called a particular helper — hiring cannot tell the difference, and the sentence above about
+hand-declaring is why.
 
 The instructions are available at `config.instructions`. What the flow does with them is the flow's business: a worker flow usually hands them to its generator as the system prompt. A flow that never reads them hires cleanly and ignores what the file said.
 
@@ -278,7 +285,7 @@ A record is refused when it:
 - declares a `flow` that is present but empty, or only whitespace — that names no kind. Leave the key out entirely to get the built-in `agent` kind;
 - names a kind that was not passed in `kinds`; the message lists the kinds that were, including `agent`;
 - declares a setting its flow never declared, or omits one its flow requires;
-- names a flow kind that never composed `workerConfigSchema()`, which leaves it nowhere to receive a seat's skills and instructions. That one refuses the whole roster, not just this record;
+- names a flow kind whose schema will not take what hiring imposes, leaving it nowhere to receive a seat's skills and instructions — composing `workerConfigSchema()` is the fix. That one refuses the whole roster, not just this record;
 - declares `instructions:` and carries a body;
 - declares `persona:`, `seatSkills:` or `teamInstructions:`, none of which is a setting a worker declares;
 - shares an id with another record in the same call, which is two workers claiming one address.

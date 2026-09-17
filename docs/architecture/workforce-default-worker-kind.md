@@ -86,10 +86,13 @@ does not track the contract: when a key is added, a composed kind receives it an
 refuses at boot naming the unrecognised key. That failure is loud and collected with the rest of
 the roster's problems, never silent, which is why the trade is acceptable and a second nominal gate
 is not worth the second authority it would create. That replaces a branch whose other arm was silence: a seat
-whose folders declared skills used to mint, run, and hold none, with nothing said anywhere. Two of
-the three keys are framework-imposed and never authored — `seatSkills` and `teamInstructions` are
-refused by name at the worker loader and at the hire, from the shared constants in `manifest.ts`,
-which every door references rather than re-spelling.
+whose folders declared skills used to mint, run, and hold none, with nothing said anywhere.
+
+**Imposed and never-authored are two different properties, and the contract's keys do not line up
+on them.** `instructions` and `seatSkills` are what hire puts in the bag — the first when the body
+is non-empty, the second on every record. `seatSkills` and `teamInstructions` are the ones no file
+may author, refused by name at the worker loader and at the hire, from the shared constants in
+`manifest.ts` that every door references rather than re-spelling. Only `seatSkills` is both.
 
 `teamInstructions` is a declared door with nothing coming through it until the team-level file
 lands; the point of declaring it here is that a kind composes the contract once and does not change

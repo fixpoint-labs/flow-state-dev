@@ -178,9 +178,10 @@ function admissionHint(refusal: string): string | undefined {
 
   const named = missing.map((key) => `\`${key}\``).join(", ");
   return (
-    `That key is the framework's: every hireable kind admits ${named} by composing ` +
-    `\`workerConfigSchema()\`, which is where a seat's instructions and its resolved skills arrive. ` +
-    `Wrap this kind's settings: \`configSchema: workerConfigSchema().extend({ ...its own settings })\`.`
+    `${missing.length === 1 ? "That key is" : "Those keys are"} the framework's: every hireable kind ` +
+    `admits ${named} by composing \`workerConfigSchema()\`, which is where a seat's instructions and ` +
+    `its resolved skills arrive. Wrap this kind's settings: ` +
+    `\`configSchema: workerConfigSchema().extend({ ...its own settings })\`.`
   );
 }
 
