@@ -522,11 +522,16 @@ Which capabilities a workforce may reach is the app's call, made where it builds
 file picks among them.
 
 The whole selection is checked when the roster is hired, so a typo is a refusal at boot rather than a
-failed answer in front of a user. A seat is refused, by name, when it names a capability its kind does
-not carry, a preset the capability does not declare, a preset the app turned off where it installed
-the capability, a preset on a capability that declares open config, or a preset whose surface has to
-exist before a request runs (`resources`, a state schema, `model`, `providerOptions` or `caching`).
-The last three are the app's to turn on for the whole kind.
+failed answer in front of a user. A seat is refused, by name, when it names:
+
+- a capability its kind does not carry
+- a preset the capability does not declare
+- a preset the app turned off where it installed the capability
+- a preset on a capability declared with a `config` block
+- a preset whose surface has to exist before a request runs (`resources`, a state schema, `model`,
+  `providerOptions` or `caching`)
+
+The last three are the app's to set where it installs the capability.
 
 Only the built-in `agent` kind reads this key. A kind of your own reads whatever its own settings
 schema declares.

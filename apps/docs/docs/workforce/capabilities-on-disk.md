@@ -9,8 +9,6 @@ description: "Put a TypeScript capability in a team's resources/ folder, run one
 
 A `resources/` folder takes TypeScript beside its Markdown. A `.md` file there is a [document](./documents-on-disk.md) — reference material a worker reads. A `.ts` file there is code: a **capability** (a bundle of context, tools and resources a worker can carry) or a plain resource.
 
-Two things make it work, and both are ordinary:
-
 1. `fsdev gen` walks the tree and writes the modules onto a generated file of plain imports. Your app imports that file.
 2. Each worker's own `WORKER.md` names which capabilities it wants, and which of their presets.
 
@@ -42,7 +40,7 @@ export default defineCapability({
 
 `default: []` means neither preset is on unless someone asks for it. Leave `default` out and every preset is on.
 
-The file default-exports one value, and it has to be a capability or a resource. Anything else fails your own `tsc` against the generated file, naming the file — the walk never opens a module to find out.
+The file default-exports one value, and it has to be a capability or a resource. Anything else fails your own `tsc` against the generated file, naming the file.
 
 A capability lives at the organization level or in a team. One inside a single **worker's** own `resources/` folder is refused by name, because every worker of a kind shares that kind's capabilities, so installing from one worker's folder would change all of them. A plain resource there is fine, and works like a document at that path.
 
@@ -62,9 +60,9 @@ export const resourceModules = {
 
 The key is the same [ref](./documents-on-disk.md#a-documents-ref) a document of that name in that folder would get, so a `.md` and a `.ts` of one name in one folder are refused at generation rather than one quietly winning.
 
-Adding a file is two steps, and the second one is the command. A tree that changed without it is caught by `fsdev gen --check`, which exits non-zero and says which files disagree. Wire it into CI: the file being stale is the one way a worker ends up quietly short.
+Run it again after adding or removing a file. `fsdev gen --check` exits non-zero when the generated file is out of date and prints what the tree holds, so it is worth wiring into CI: a stale file means a worker silently misses a capability.
 
-The command reads the tree at build time and the generated file imports the modules statically, which is why the same tree behaves the same on a plain Node host and behind a bundler.
+The imports in the generated file are static, so the same tree works on a plain Node host and behind a bundler.
 
 ## Installing what it found
 
@@ -111,7 +109,7 @@ capabilities:
 You answer questions about the support desk.
 ```
 
-That worker gets the `briefing` context. A worker whose file says nothing gets the capability's own defaults — for `research` above, nothing at all — and behaves exactly as it did before the key existed.
+That worker gets the `briefing` context. A worker whose file says nothing gets the capability's own defaults, which for `research` above is nothing at all.
 
 Two workers on one kind, differing only in those lines, answer differently.
 
@@ -127,7 +125,7 @@ Only the built-in [`agent` kind](./built-in-worker.md) reads this key. A kind yo
 
 ### A preset carrying a tool
 
-Presets carry tools as well as context, and a tool from a preset reaches the model for the worker that selected it. That is not a way around the worker's `tools:` list, though — see the [tools fence](./built-in-worker.md#tools).
+Presets carry tools as well as context, and a preset a worker selects gives that worker's model the preset's tools. The worker's `tools:` list does not hold them back: `tools:` names the kind's tool catalog, and [a tool a capability carries](./built-in-worker.md#tools) is not a catalog tool. Select a tool-bearing preset only where you want that worker to have the tool.
 
 ### When a file is wrong
 
@@ -148,4 +146,4 @@ Every bad selection on a worker is reported, not just the first.
 - It does not find anything at run time. `fsdev gen` reads the tree; the framework never opens a file your app wrote.
 - It does not let a worker install a capability. A worker file picks among what the kind carries.
 - It does not let a worker take something away. Selecting only adds.
-- It does not change the Markdown door. A `.md` file in a `resources/` folder means exactly what it meant before.
+- It does not affect `.md` files. A `.md` file in a `resources/` folder is still read as a document.

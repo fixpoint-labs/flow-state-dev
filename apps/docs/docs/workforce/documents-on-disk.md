@@ -42,7 +42,7 @@ A worker's own folder is what lets two seats each have a `runbook` without their
 
 A document is a **file**, not a folder. A worker and a skill are each a folder with a fixed file inside it; a document is `<name>.md` sitting directly in `resources/`. A directory in a `resources/` folder is reported rather than passed over, so `resources/handbook/RESOURCE.md` is an error and not a document that quietly went missing.
 
-A `.ts` file can sit in the same folder. That is the other door into a `resources/` folder: code rather than reference material, read by a build step instead of at startup, and covered in [Capabilities on disk](./capabilities-on-disk.md). The two doors share the folder and the [ref rule](#a-documents-ref) and nothing else, and a `.md` and a `.ts` of one name in one folder are refused rather than one of them quietly winning. Everything on this page describes the Markdown door alone.
+A `.ts` file can sit in the same folder. Those are code rather than reference material, read by a build step instead of at startup, and covered in [Capabilities on disk](./capabilities-on-disk.md). They share the folder and the [ref rule](#a-documents-ref) and nothing else, so a `.md` and a `.ts` of one name in one folder are refused rather than one of them winning. The rest of this page is about `.md` files.
 
 ## What a document file says
 
