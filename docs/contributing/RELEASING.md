@@ -19,7 +19,7 @@ How we publish the `@flow-state-dev` packages to npm. For how to write changeset
 
 - All packages use npm provenance attestation (`--provenance` flag + `id-token: write` in CI). Under Trusted Publishing the flag becomes unnecessary — npm generates provenance automatically.
 - Scoped packages require `publishConfig.access: "public"` (already set in every `package.json`).
-- `@thought-fabric/core` is **not published**. It is marked `private` in its `package.json`, which is the only flag `changeset publish` filters on — `.changeset/config.json`'s `ignore` list affects versioning, not publishing. Only the private `kitchen-sink` app consumes it, over a workspace link.
+- `@thought-fabric/core` is **not published**. It is marked `private` in its `package.json`, which is the only flag `changeset publish` filters on — `.changeset/config.json`'s `ignore` list affects versioning, not publishing. Only the private `kitchen-sink` app consumes it, over a workspace link. `scripts/validate-publish-set.mjs` (CI: **Process guards**) fails if that flag is ever removed, since an npm name is given away permanently.
 
 ## The publish must go through pnpm
 
@@ -111,7 +111,7 @@ Nothing has been published under the `@flow-state-dev` scope. All 27 packages ar
 
 `release:ci` publishes only when `NPM_TOKEN` is set; without it the step prints `Skipping npm publish in CI: NPM_TOKEN is not set` and publishes nothing. A secret's value and scope are not readable from CI, so the only proof the scope is right is the publish itself.
 
-The token must be a **granular access token scoped to all packages in the `flow-state-dev` organization**, read and write. A token scoped to *selected packages* cannot work — there are no packages to select yet. No second org is involved: everything published lives under `@flow-state-dev`.
+The token must be a **granular access token scoped to all packages in the `flow-state-dev` organization**, read and write. A token scoped to _selected packages_ cannot work — there are no packages to select yet. No second org is involved: everything published lives under `@flow-state-dev`.
 
 ### Steps
 
@@ -158,10 +158,10 @@ Then:
 
 ## Required repository secrets
 
-| Secret | Purpose |
-|--------|---------|
-| `CHANGESETS_TOKEN` | GitHub token with `contents: write` and `pull-requests: write` for release PR automation |
-| `NPM_TOKEN` | npm granular access token, read+write on all packages in the `flow-state-dev` org. Needed for the first publish only; removed once Trusted Publishing is in place |
+| Secret             | Purpose                                                                                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CHANGESETS_TOKEN` | GitHub token with `contents: write` and `pull-requests: write` for release PR automation                                                                          |
+| `NPM_TOKEN`        | npm granular access token, read+write on all packages in the `flow-state-dev` org. Needed for the first publish only; removed once Trusted Publishing is in place |
 
 ## Node.js version requirement
 
