@@ -2,8 +2,8 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
-Epic · 13 issues · Workforce: Layer 2 Abstraction · Goal 1 — Workforce foundation honesty /
-multi-seat real usage
+Epic · 13 committed deliverables (one closed as a duplicate) + 3 carried along ·
+Workforce: Layer 2 Abstraction · Goal 1 — Workforce foundation honesty / multi-seat real usage
 
 ## Four teams, before and after
 
@@ -32,10 +32,12 @@ than forgotten. One line in the box is a promise the set has not kept: `org/chan
 open and nothing reads it. That is a **gap**, not a refusal — the fence holds what the set won't
 build, and this is the one thing it hasn't.
 
-## The set · as of 2026-09-16
+## The set · as of 2026-09-17
 
 This table is the live one. It is refreshed on the epic PR as issues move; the plan and the
-figures point here rather than repeating it.
+figures point here rather than repeating it. **Committed deliverables** — the thirteen the epic
+promised — are first; three further sub-issues are **carried along** and promise nothing, which
+is the second table.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
@@ -44,26 +46,38 @@ figures point here rather than repeating it.
 | FIX-1352 | Channels file convention at **team** scope; the shared walk primitives | The one convention with no prior art — a channel could not be declared at all | **Done** · spec [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711) · impl [#1793](https://github.com/fixpoint-labs/flow-state-dev/pull/1793) — the `org/` door [D3](DECISIONS.md#d3) locked is unbuilt and unowned |
 | FIX-1354 | Resources file convention — Markdown documents under `resources/` | A document was the one thing an author could only declare in TypeScript | **Done** · spec [#1715](https://github.com/fixpoint-labs/flow-state-dev/pull/1715) · impl [#1737](https://github.com/fixpoint-labs/flow-state-dev/pull/1737) |
 | FIX-1356 | Skills file convention — the per-seat skills register over org ∪ team ∪ worker-local | The register FIX-1367 fills; also where path-level-is-scope first shipped | **Done** · spec [#1716](https://github.com/fixpoint-labs/flow-state-dev/pull/1716) · impl [#1728](https://github.com/fixpoint-labs/flow-state-dev/pull/1728) |
-| FIX-1367 | Thin `WorkerConfig` admission — hire fills the seat's skills bag on every record | "A seat works" is not honest until hire invokes the flow with a config the kind admits | **Spec approved** · spec [#1807](https://github.com/fixpoint-labs/flow-state-dev/pull/1807) closed unmerged |
-| FIX-1355 | Thin pentest lab **Proof** | The only child shaped to move Goal 1, and the first consumer that declares any of it in files | Backlog — waits on nothing that isn't done |
-| FIX-1357 | Kinds + blocks boot scan under `workforce/flows/{workers,channels}/` | The one registration door; until it ships the kinds maps are hand-passed, one per call site | **In spec review** · spec [#1804](https://github.com/fixpoint-labs/flow-state-dev/pull/1804) |
-| FIX-1358 | Atlas: the ChannelFlow teach and the full tree | The conventions are only real to an author who is taught them | **Spec approved** · spec [#1805](https://github.com/fixpoint-labs/flow-state-dev/pull/1805) closed unmerged · one page landed [#1742](https://github.com/fixpoint-labs/flow-state-dev/pull/1742) |
-| FIX-1368 | Worker-level resources — `workers/<name>/resources/` as a third root | FIX-1354 deferred it as a scope cut, not a rejection | Backlog |
-| FIX-1377 | Optional `TEAM.md` — description, team instructions, hire's prompt compose | Instructions are duplicated on every `WORKER.md` without it | Backlog |
-| FIX-1388 | Resources **Door B** — capability and resource modules (discover, install, select) | Door A ships read-only Markdown; anything with state or behaviour still needs hand-written TypeScript | Backlog |
-| FIX-1389 | Workforce loader primitives extract — one shared tree-walk, thin per-slot adapters | Four readers now re-implement the walk, and the contracts have already drifted | Backlog |
+| FIX-1353 | — | Closed as a duplicate of FIX-1352 | **Duplicate** · dropped from the set |
+| FIX-1389 | Workforce loader primitives extract — one shared tree-walk, thin per-slot adapters | Four readers re-implement the walk, and the contracts have already drifted | **In implementation** · spec [#1810](https://github.com/fixpoint-labs/flow-state-dev/pull/1810) closed unmerged · no impl PR yet |
+| FIX-1367 | Thin `WorkerConfig` admission — hire fills the seat's skills bag on every record | "A seat works" is not honest until hire invokes the flow with a config the kind admits | **Spec approved · held** · spec [#1807](https://github.com/fixpoint-labs/flow-state-dev/pull/1807) closed unmerged — owner re-confirm pending ([ER-7](BUSINESS-RULES.md)) |
+| FIX-1357 | Kinds + blocks boot scan under `workforce/flows/{workers,channels}/` | The one registration door; until it ships the kinds maps are hand-passed, one per call site | **Spec approved · held** · spec [#1804](https://github.com/fixpoint-labs/flow-state-dev/pull/1804) closed unmerged — owner re-confirm pending |
+| FIX-1358 | Atlas: the ChannelFlow teach and the full tree | The conventions are only real to an author who is taught them | **Spec approved · held** · spec [#1805](https://github.com/fixpoint-labs/flow-state-dev/pull/1805) closed unmerged — owner re-confirm pending · one page landed [#1742](https://github.com/fixpoint-labs/flow-state-dev/pull/1742) |
+| FIX-1368 | Worker-level resources — `workers/<name>/resources/` as a third root | FIX-1354 deferred it as a scope cut, not a rejection | **In spec review** · spec [#1814](https://github.com/fixpoint-labs/flow-state-dev/pull/1814) closed — held on its own **D2**, unresolved ([Open 6](DECISIONS.md#open)) |
+| FIX-1355 | Thin pentest lab **Proof** | The only child shaped to move Goal 1, and the first consumer that declares any of it in files | **In spec review** · spec [#1809](https://github.com/fixpoint-labs/flow-state-dev/pull/1809) |
+| FIX-1377 | Optional `TEAM.md` — description, team instructions, hire's prompt compose | Instructions are duplicated on every `WORKER.md` without it | **In spec review** · spec [#1819](https://github.com/fixpoint-labs/flow-state-dev/pull/1819) — blocked by FIX-1367 and FIX-1389 |
 
-5 done · 2 spec approved and waiting to be built · 1 in spec review · 5 in backlog. FIX-1353
-(*L2 channels as sessions/boards*) closed as a duplicate of FIX-1352 and is dropped from the set.
+5 done · 1 duplicate · 1 in implementation · 3 spec approved and **held** short of implementation
+on an owner re-confirm · 3 in spec review. **FIX-1388** (resources Door B) was removed from the
+epic by the owner and is no longer a child.
 
-**Is thirteen really six?** The floor was seven items; five have landed and the count grew to
-thirteen, entirely from follow-ons the conventions' own reviews raised. None of the four late
-arrivals sits on the path to the proof: the tail grew while the proof did not start, and while
-the `org/` half of a convention the owner had already locked stayed unbuilt and unowned. The set
-is kept on the check it was approved on, and that check is now **owed rather than argued**: each
-convention earns a non-lab consumer before the lab lands ([ER-15](BUSINESS-RULES.md)), and today
-skills has one approved and waiting to be built in FIX-1367, channels has a kind but no reader
-of a declaration, and resources has none.
+**Carried along — not committed W3 deliverables.** They are parented here because this is where
+they were found, not because the epic promised them. None has a lane in the path and none gates
+the proof.
+
+| Issue | What it is | Why it is not a deliverable |
+|---|---|---|
+| FIX-1412 | `openChannels` gives a channel session no org identity, so channel-woken seats can't read org-scoped docs | A defect found while building the set. Carried, not scoped in |
+| FIX-1414 | Org-level workers declared in the tree but unhireable — no seat, no id | An **unowned gap with two undecided directions**. Closing it is bigger than any ticket in this epic |
+| FIX-1416 | *Explore:* custom tools authoring — blocks scan + a `tools:` fence, optionally worker-colocated discovery | An **exploration**, not a commitment. It states its own invent-kill (no parallel `tools/` convention; capabilities and `uses` stay Door B's) and carries relations to FIX-1355 and FIX-1357 — the boundary the owner set on [#1809](https://github.com/fixpoint-labs/flow-state-dev/pull/1809) |
+
+**Is thirteen really six?** The floor was seven items; five have landed, the count grew to
+thirteen from follow-ons the conventions' own reviews raised, and one of those follow-ons — Door B
+— has since been removed by the owner. None of the late arrivals sits on the path to the proof:
+the tail grew while the proof did not start, and while the `org/` half of a convention the owner
+had already locked stayed unbuilt and unowned. The set is kept on the check it was approved on,
+and that check is now **owed rather than argued**: each convention earns a non-lab consumer before
+the lab lands ([ER-15](BUSINESS-RULES.md)), and today skills has one approved and held in
+FIX-1367, `TEAM.md` is claimed as one by FIX-1377, channels has a kind but no reader of a
+declaration, and resources has none.
 
 ## How the issues flow into each other
 
@@ -77,22 +91,25 @@ flowchart LR
   CH --> LAB["FIX-1355 · pentest lab Proof"]
   RES --> LAB
   SK --> LAB
-  CFG --> LAB
-  RES --> DB["FIX-1388 · resources Door B"]
+  CFG -.->|"compatibility · not blocking"| LAB
   RES --> WR["FIX-1368 · worker-level resources"]
   CH --> EX["FIX-1389 · loader primitives extract"]
   RES --> EX
   SK --> EX
   CH --> ATL["FIX-1358 · atlas teach"]
-  SK --> TEAM["FIX-1377 · optional TEAM.md"]
+  CFG -->|"blocks · the contract key"| TEAM["FIX-1377 · optional TEAM.md"]
+  EX -->|"blocks · the team enumerator"| TEAM
   classDef done stroke-width:2px
   class K,CF,CH,RES,SK done
 ```
 
-An edge is what one issue hands the next; a heavy border is done. Every node is filed, so the set
-carries no placeholders. The four nodes on the right — Door B, worker resources, the extract and
-`TEAM.md` — were all filed **after** the objective was approved, and none of them sits between
-anything and the lab.
+A solid edge is what one issue hands the next and blocks until it lands; the **dashed edge is a
+compatibility edge** — the lab does not wait on FIX-1367, it only has to stay valid once admission
+ships ([#1809](https://github.com/fixpoint-labs/flow-state-dev/pull/1809) verified this against
+merged code). A heavy border is done. Every node is filed, so the set carries no placeholders. The
+three nodes on the right — worker resources, the extract and `TEAM.md` — were all filed **after**
+the objective was approved, and none of them sits between anything and the lab. The three
+carried-along sub-issues are not drawn: they hand nothing to anything.
 
 ## What stays as it is
 
@@ -117,11 +134,13 @@ anything and the lab.
 2. **[D3](DECISIONS.md#d3) · Path level is scope: `org/` and `teams/<teamId>/` carry the same
    slots.** If wrong: the whole tree relocates, and three shipped readers move with it. **Half
    built:** resources and skills walk `org/`; channels does not, and no issue owns closing it.
-3. **Open · [who owns the DM opener?](DECISIONS.md#open)** The lab needs one durable intake DM
-   before any roster exists. Declaring it and posting into it both ship; the helper that *opens
-   and names* it belongs to nobody, and it is the same helper the consumer-reshape question keeps
-   on the Collab side of the fence. Blocks nothing today; blocks FIX-1355 if still unplaced when
-   the lab starts.
+3. **Open · [after `TEAM.md`, one folder teaches two rules](DECISIONS.md#open).** Team
+   *instructions* reach only that team's seats — they ride each seat's own config. Team
+   *documents* don't: they install on a worker **kind**, so every seat of that kind reaches every
+   team's documents. Both are true, for different reasons, and after FIX-1377 they describe two
+   files in one folder. It is bound to **FIX-1368's D2, which is unresolved** — three arms are
+   live (ship the address · fence it · report the folder and mint nothing). If D2 lands on the
+   fence, FIX-1377 is re-spec'd against one folder rule. Blocks nothing today.
 
 The objective is approved — owner comment and `epic approved` label, 2026-09-11 22:52Z. What
 lost, and why: [DECISIONS.md](DECISIONS.md). The rules every child obeys:

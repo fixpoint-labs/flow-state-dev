@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 382" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path: thirteen lanes against time from September 11 to a now line at September 16, with nothing after it scheduled. Done bars: the kinds fence and skills on September 11, ChannelFlow from September 12 to 14, channels and resources from September 11 to 16, and one atlas page on September 12. On the now line: the WorkerConfig admission and the atlas remainder have approved specs waiting to be built, and the boot scan is still in spec review. Ahead of it: worker resources, TEAM.md, Door B and the loader extract are unscheduled; the pentest lab Proof is last and required. The critical path is marked in the gutter and runs from the kinds fence through ChannelFlow and the channels convention to the lab.">
+<svg viewBox="0 0 940 362" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path: twelve lanes against time from September 11 to a now line at September 17. Done bars: the kinds fence and skills on September 11, ChannelFlow from September 12 to 14, channels and resources from September 11 to 16, and one atlas page on September 12. Crossing the now line: the loader extract, in implementation. Sitting on the now line, spec approved and held on an owner re-confirm: the WorkerConfig admission, the boot scan and the atlas remainder. Ahead of it, in spec review: worker resources held on its own open D2, TEAM.md blocked by the admission and the extract, and the pentest lab Proof, whose required bar is last. The critical path is marked in the gutter and runs from the kinds fence through ChannelFlow and the channels convention to the lab.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -10,8 +10,9 @@
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
     .done  { fill:var(--code); stroke:none; }
     .todo  { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
-    .wip   { fill:var(--accent); stroke:none; }
+    .impl  { fill:var(--accent); stroke:none; }
     .appr  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .rev   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
     .lane  { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
     .axis  { stroke:var(--rule); stroke-width:1; }
     .now   { stroke:var(--gone); stroke-width:1.4; }
@@ -25,23 +26,23 @@
              font-size:9.5px; letter-spacing:.06em; }
   </style>
 
-  <text class="t-lbl" x="16" y="20">THE PATH — ONE LANE PER ISSUE, AGAINST TIME</text>
+  <text class="t-lbl" x="16" y="20">THE PATH — ONE LANE PER LIVE DELIVERABLE, AGAINST TIME</text>
 
   <g id="axis">
     <path class="axis" d="M200 46 L924 46"/>
     <text class="t-s" x="200" y="38">Sep 11</text>
     <text class="t-s" x="272" y="38">Sep 12</text>
     <text class="t-s" x="416" y="38">Sep 14</text>
-    <text class="t-now" x="566" y="38">now · Sep 16</text>
+    <text class="t-now" x="566" y="38">now · Sep 17</text>
     <text class="t-s" x="700" y="38">ahead · in flight or unscheduled</text>
   </g>
 
   <g id="critical-path">
-    <path class="crit" d="M188 67 L188 331"/>
+    <path class="crit" d="M188 67 L188 309"/>
     <circle class="critd" cx="188" cy="67" r="3.2"/>
     <circle class="critd" cx="188" cy="111" r="3.2"/>
     <circle class="critd" cx="188" cy="133" r="3.2"/>
-    <circle class="critd" cx="188" cy="331" r="3.2"/>
+    <circle class="critd" cx="188" cy="309" r="3.2"/>
   </g>
 
   <g id="lanes-done">
@@ -58,53 +59,59 @@
   </g>
 
   <g id="lanes-ahead">
-    <text class="t-ln" x="16" y="180">FIX-1367 admission</text>
-    <path class="lane" d="M572 175 L924 175"/>
-    <rect class="appr" x="576" y="171" width="104" height="12" rx="2"/>
-    <text class="t-s" x="692" y="180">spec approved · #1807</text>
+    <text class="t-ln" x="16" y="180">FIX-1389 loader extract</text>
+    <path class="lane" d="M536 175 L924 175"/>
+    <rect class="impl" x="540" y="171" width="152" height="12" rx="2"/>
+    <text class="t-s" x="704" y="180">implementing · spec #1810</text>
 
-    <text class="t-ln" x="16" y="202">FIX-1357 boot scan</text>
+    <text class="t-ln" x="16" y="202">FIX-1367 admission</text>
     <path class="lane" d="M572 197 L924 197"/>
-    <rect class="wip" x="576" y="193" width="104" height="12" rx="2"/>
-    <text class="t-s" x="692" y="202">in spec review · #1804</text>
+    <rect class="appr" x="576" y="193" width="104" height="12" rx="2"/>
+    <text class="t-s" x="692" y="202">spec approved · held · #1807</text>
 
-    <text class="t-ln" x="16" y="224">FIX-1358 atlas</text>
-    <rect class="done" x="272" y="215" width="30" height="12" rx="2"/>
+    <text class="t-ln" x="16" y="224">FIX-1357 boot scan</text>
     <path class="lane" d="M572 219 L924 219"/>
     <rect class="appr" x="576" y="215" width="104" height="12" rx="2"/>
-    <text class="t-s" x="692" y="224">spec approved · #1805</text>
+    <text class="t-s" x="692" y="224">spec approved · held · #1804</text>
 
-    <text class="t-ln" x="16" y="246">FIX-1368 worker resources</text>
+    <text class="t-ln" x="16" y="246">FIX-1358 atlas</text>
+    <rect class="done" x="272" y="237" width="30" height="12" rx="2"/>
     <path class="lane" d="M572 241 L924 241"/>
+    <rect class="appr" x="576" y="237" width="104" height="12" rx="2"/>
+    <text class="t-s" x="692" y="246">spec approved · held · #1805</text>
 
-    <text class="t-ln" x="16" y="268">FIX-1377 TEAM.md</text>
+    <text class="t-ln" x="16" y="268">FIX-1368 worker resources</text>
     <path class="lane" d="M572 263 L924 263"/>
+    <rect class="rev" x="576" y="259" width="104" height="12" rx="2"/>
+    <text class="t-s" x="692" y="268">in spec review · #1814 · D2 open</text>
 
-    <text class="t-ln" x="16" y="290">FIX-1388 resources Door B</text>
+    <text class="t-ln" x="16" y="290">FIX-1377 TEAM.md</text>
     <path class="lane" d="M572 285 L924 285"/>
+    <rect class="rev" x="576" y="281" width="104" height="12" rx="2"/>
+    <text class="t-s" x="692" y="290">#1819 · blocked by 1367 + 1389</text>
 
-    <text class="t-ln" x="16" y="312">FIX-1389 loader extract</text>
+    <text class="t-ln" x="16" y="312">FIX-1355 lab Proof</text>
     <path class="lane" d="M572 307 L924 307"/>
-
-    <text class="t-ln" x="16" y="334">FIX-1355 lab Proof</text>
-    <path class="lane" d="M572 329 L748 329"/>
-    <rect class="todo" x="748" y="325" width="176" height="12" rx="2"/>
-    <text class="t-s" x="758" y="334">required — the epic ends here</text>
+    <rect class="rev" x="576" y="303" width="104" height="12" rx="2"/>
+    <rect class="todo" x="700" y="303" width="224" height="12" rx="2"/>
+    <text class="t-s" x="710" y="312">#1809 — required, the epic ends here</text>
   </g>
 
-  <path class="now" d="M560 50 L560 346"/>
+  <path class="now" d="M560 50 L560 324"/>
 
   <g id="legend">
-    <rect class="done" x="160" y="360" width="16" height="10" rx="2"/>
-    <text class="t-s" x="184" y="369">done</text>
-    <rect class="appr" x="222" y="359" width="16" height="12" rx="2"/>
-    <text class="t-s" x="246" y="369">spec approved</text>
-    <rect class="wip" x="332" y="359" width="16" height="12" rx="2"/>
-    <text class="t-s" x="356" y="369">in spec review</text>
-    <rect class="todo" x="448" y="359" width="16" height="12" rx="2"/>
-    <text class="t-s" x="472" y="369">not started</text>
-    <circle class="critd" cx="552" cy="365" r="3.2"/>
-    <path class="crit" d="M552 359 L552 371"/>
-    <text class="t-s" x="568" y="369">on the critical path to the proof</text>
+    <rect class="done" x="120" y="340" width="16" height="10" rx="2"/>
+    <text class="t-s" x="144" y="349">done</text>
+    <rect class="impl" x="182" y="339" width="16" height="12" rx="2"/>
+    <text class="t-s" x="206" y="349">implementing</text>
+    <rect class="appr" x="286" y="339" width="16" height="12" rx="2"/>
+    <text class="t-s" x="310" y="349">spec approved · held</text>
+    <rect class="rev" x="432" y="339" width="16" height="12" rx="2"/>
+    <text class="t-s" x="456" y="349">in spec review</text>
+    <rect class="todo" x="548" y="339" width="16" height="12" rx="2"/>
+    <text class="t-s" x="572" y="349">not started</text>
+    <circle class="critd" cx="652" cy="345" r="3.2"/>
+    <path class="crit" d="M652 339 L652 351"/>
+    <text class="t-s" x="668" y="349">on the critical path to the proof</text>
   </g>
 </svg>

@@ -3,8 +3,8 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
 The calls that sit above any single issue: what was chosen, what lost, and what each locks in for
-the thirteen issues under it. Two are the sign-off surface. The rest are owner locks taken during
-the epic and recorded so no child reopens them.
+the thirteen committed deliverables under it. Two are the sign-off surface. The rest are owner
+locks taken during the epic and recorded so no child reopens them.
 
 ## The tree
 
@@ -99,6 +99,13 @@ a *named gap* is right; one that deletes the slot contradicts this card.
 | **Because** | The lock opened a door no floor item reads. Inventing an issue places scope the owner has not placed; widening a merged reader re-scopes a shipped spec. And a documented door that reports nothing teaches a rule we are about to contradict — the silence class FIX-1342 just fixed |
 | **Locks in** | Shared **infrastructure** seats only — intake, harness-manager and their like — never a second roster product. It lands as a hire/loader follow-on (FIX-1335-class). **The tripwire:** if FIX-1355's lab needs one of those seats, that is the moment it has a consumer and a reader goes on the floor. Until then the tree is not a deliverable grant |
 
+**The lab does not want one** — FIX-1355's spec names no `org/workers/` seat, so this tripwire is
+silent rather than fired. What the door did produce is
+[FIX-1414](https://linear.app/fixpoint-labs/issue/FIX-1414): org-level workers declared in the
+tree and unhireable, no seat and no id. It is **carried along, not a committed deliverable** — an
+unowned gap with two undecided directions — and it is this card's predicted silence class arriving
+as a filed defect rather than as a user complaint. D7 stands; the door is still unowned.
+
 <a name="d8"></a>
 ## D8 · `TEAM.md` is one optional file, and the prompt stack order is locked
 
@@ -108,9 +115,13 @@ a *named gap* is right; one that deletes the slot contradicts this card.
 | **Because** | A team needs shared context, not a layer. Hire already walks the team level and already parses this frontmatter dialect, so the reader is one file at a fixed path — no walk, no index, no identity of its own |
 | **Locks in** | `[frameworkDefault?, teamInstructions, workerInstructions]` — the same array slot as the proposed default worker system prompt, not a second mechanism. Seat charter last, so role-specific instructions win an ordinary conflict. Absent means no team layer. **The reopen condition:** team *policy* dominating seat prose is an explicit reopen of this order, not something read into it. `ORG.md` is out, and is not taught as coming |
 
-The placement half of this lock — *fold into hire, no new W3 child* — was stamped, and **FIX-1377
-was subsequently filed and parented here**, which is the thin child that pick declined. The
-substance above is untouched by that; the placement is [Open](#open).
+The placement half of this lock — *fold into hire, no new W3 child* — is **superseded on placement
+only**, and by its own test. The stamp carried a wrong-direction condition: *if the reader half
+grows a real error contract or slot semantics, split later.* It did — FIX-1377's BR-1 to BR-10 are
+a full `TEAM.md` reader contract (absent, empty description, empty body, symlink, unreadable,
+directory-where-file-belongs, the derived-key refusal set, and frontmatter passthrough). So
+**FIX-1377 stands as the child, and the composition half still lands in hire.** The stamp was not
+wrong; its own condition fired. The substance above is untouched.
 
 ## Who owns what
 
@@ -121,6 +132,11 @@ built, and where it is only consumed; a *consumes* cell is a place a child must 
 FIX-1355, the lab, consumes every row and owns none — which is what makes it a proof. One cell is
 neither: ER-1's channels cell is **half consumed** — the team door is read, the `org/` door is
 not, and no issue owns closing it.
+
+**One consumer is deliberately not drawn.** FIX-1377 consumes ER-7 (it adds `teamInstructions` to
+the contract) and ER-4 (its derived-key refusal set), but it has no column in the matrix, because
+the ER-7 half is **pending an owner re-confirm** and a cell would read as settled. ER-7's *owner*
+has not moved — FIX-1367 still defines and builds it. The column goes in when the re-confirm does.
 
 ## Decided in review, recorded so no child reopens them
 
@@ -160,7 +176,38 @@ not, and no issue owns closing it.
   closed. The contract ships as `instructions?` plus `seatSkills`. When a kind does have
   open-ended data, it gets one declared key whose own schema is a **record**, which is already
   what `closeConfigSchema` tells an author when it refuses a catchall. ER-7's substance is
-  untouched: hire still invokes the flow with a config the kind admits.
+  untouched: hire still invokes the flow with a config the kind admits. **Not yet reflected in the
+  child:** FIX-1367's own spec documents on
+  [#1807](https://github.com/fixpoint-labs/flow-state-dev/pull/1807) still declare `params` — S1,
+  V1, the pinned names and the sketch — so the cut lives here and not there. Flagged, not fixed
+  from this branch.
+
+- **ER-7's contract carries a *third* framework-owned key — `teamInstructions` — and that is
+  `pending an owner re-confirm`, not settled.** FIX-1367 was approved carrying two keys plus
+  `params`; `params` was then cut, and FIX-1377's [D1](https://github.com/fixpoint-labs/flow-state-dev/pull/1819)
+  puts the team layer on the same contract as an imposed setting beside `instructions` and
+  `seatSkills`, rather than through hire's probe-the-kind-and-stay-silent-if-absent hack — which
+  is the exact silence FIX-1367 exists to delete. A block inside a seat's action then reads
+  `ctx.flow.config.teamInstructions` and `ctx.flow.config.instructions` as two values, neither
+  merged. **This changes a spec the owner already approved**, so ER-7 states three keys and states
+  that the third is unconfirmed. No child ships it until the re-confirm lands.
+
+- **`docs/atlas/workforce.html` §19 gap 6 is stale, and it misled this epic.** The entry reads
+  *"`flowIsolation` exists and keys per flow kind, not per seat"* (line ~2690) and is stamped
+  **NAMED GAP · PROVE flowIsolation FIRST · PER KIND, NOT PER SEAT**. That describes the
+  **pre-FIX-1323 bug**, which is fixed: the isolation coordinate is the flow **instance** id
+  (`${id}:${flow.id}` in `packages/engine/src/context/createExecutionContext.ts`), and
+  `hireWorkforce` already mints one instance id per seat (`id: manifest.id`,
+  `packages/workforce/src/hire.ts`). Settled by POC on the production `hireWorkforce` API with an
+  anti-game control — isolated, `bob` reads an empty note; flag flipped on the identical two-seat
+  setup, `bob` reads `alice-secret` — plus a green committed suite and a landed goal check. **So
+  the mechanism the stamp asked to be proved has been proved.** What does *not* exist is the
+  file-convention wiring: `read-resources-directory.ts` walks `org/resources/` and
+  `teams/<id>/resources/` and has no `workers/<name>/resources/` walk; `resourcesFromDocs`
+  hardcodes `scope: "org"` with no isolation option and installs at flow-definition time; hire's
+  minter forwards only `{ id, config }`. An authority-level-2 document describing a fixed bug as a
+  live gap is a **known-stale surface the epic owes a fix to** ([PLAN](PLAN.md#wrap)), and no
+  child may cite that stamp as current architecture.
 
 - **`org/channels/` is a named gap, not a retracted lock.** FIX-1358's POC found the shipped
   channels reader walks `teams/` only, while the epic still taught a company-wide channel as
@@ -174,21 +221,21 @@ issues have since shipped, so the division is evidenced by what landed rather th
 <a name="open"></a>
 ## Open
 
-**1. Who owns the helper that opens a DM?** *(Decides: the owner, with the Architect. Blocks:
-nothing today; FIX-1355 if it is still unplaced when the lab starts.)* The lab needs one durable
-intake DM before any roster exists. Under D2 a DM is a one-participant channel, so declaring one
-is a `CHANNEL.md` and posting into one is the default kind's own verb — **both are in
-admission**. Unowned is the *opener*: the helper that opens and names that session, the same one
-the consumer-reshape question keeps on the Collab side of the fence. **Recommendation:** place it
-on FIX-1355 the moment the lab starts, rather than inventing an owner now — it has fallen between
-issues twice, and a third home is a third place to fall. **What would change my mind:** a lab that
-opens with a group channel and no DM needs no owner at all.
+**1. ~~Who owns the helper that opens a DM?~~** *Dissolved, not answered* — the question stopped
+existing rather than getting an owner. FIX-1355's spec
+([#1809](https://github.com/fixpoint-labs/flow-state-dev/pull/1809)) settled that **the lab needs
+no durable intake DM at all**: under [D2](#d2) a DM is a one-participant channel, and one
+participant cannot show a fan-out, which is the thing the lab is there to prove. The lab opens a
+**declared team channel**, which `openChannels` already opens and names. That is exactly the
+condition this entry recorded as what would change its mind. The *opener* — the helper for an
+**undeclared** session — stays unowned, and nothing in the set now wants it.
 
-**2. Does `TEAM.md` fold into hire, or is FIX-1377 the child?** *(Decides: the owner, with the
-Lifecycle Manager. Blocks: nothing.)* The stamp was *fold into hire, no new W3 child*; FIX-1377
-exists as that child, parented here. **Recommendation:** let FIX-1377 stand and treat the fold as
-superseded — it is filed, it costs nothing to track, and the composition half lands in hire
-either way. **If wrong:** a duplicate of work hire does anyway, found at implementation.
+**2. ~~Does `TEAM.md` fold into hire, or is FIX-1377 the child?~~** *Closed: FIX-1377 stands as the
+child; the composition half still lands in hire; the fold is superseded on **placement only**.*
+The 2026-09-12 stamp read *fold into hire, no new W3 child* and carried its own wrong-direction
+test — *if the reader half grows a real error contract or slot semantics, split later.* It did:
+FIX-1377's BR-1 to BR-10 are a full `TEAM.md` reader contract. The stamp was not wrong; its own
+condition fired. Recorded at [D8](#d8).
 
 **3. Where does CAS live?** *(Decides: the owner, with the Architect. Blocks: nothing — it is out
 of admission on every reading.)* Brief, housekeeper and retirement are each placed by one stamp or
@@ -202,19 +249,65 @@ keys agree but the install shapes differ and compatibility is unverified. Whoeve
 onto a collection settles it first.
 
 **5. Who closes the `org/` half of the channels reader?** *(Decides: the owner, with the
-Architect. Blocks: nothing today; ER-22's docs claim, and any lab intake DM meant to be
-company-wide.)* [D3](#d3) locked `org/` and `teams/<teamId>/` as the same slots, and two of the
+Architect. Blocks: nothing today; ER-22's docs claim.)* [D3](#d3) locked `org/` and `teams/<teamId>/` as the same slots, and two of the
 three conventions shipped that way. Channels shipped the team door only, and the gap belongs to
 no issue in the set — FIX-1352 is Done, and widening a merged reader from this epic is what
 [D7](#d7) refused for `org/workers/`. **The trade-off:** file a child now and the set grows a
 fifth late arrival off the path to the proof, exactly the tail the necessity check is watching;
 leave it and the epic's own headline promise — a company-wide channel without inventing a fake
-team — stays unbuilt with nobody holding it. **Recommendation:** leave it unfiled and let the lab
-decide, the same tripwire shape as D7 — FIX-1355 is the first thing that would want a
-company-wide channel, and if it does, that is the moment it has a consumer and a reader goes on
-the floor. **What would change my mind:** an author hitting it before the lab does, which makes it
-a live defect rather than an unfinished lock. **If wrong:** the proof stalls on a door the epic
-said was open, and the atlas teaches a gap that did not need to be one.
+team — stays unbuilt with nobody holding it. **The tripwire has fired, and it fired negative.**
+The recommendation was to leave it unfiled and let the lab decide, D7's shape — FIX-1355 being the
+first thing that would want a company-wide channel. FIX-1355's spec
+([#1809](https://github.com/fixpoint-labs/flow-state-dev/pull/1809)) has now answered: it
+**declines** a company-wide channel under `org/channels/` by name — *"declarable and unread; the
+proof would wait on unbuilt, unowned work"* — and opens a declared **team** channel instead. So
+the lab will not put a reader on the floor, and **this gap now has no tripwire left**: it stays
+open with nothing scheduled to close it and nothing scheduled to force the question.
+**Recommendation, revised:** it still should not be filed off the path to the proof, but it can no
+longer be left to an event that will not happen — the honest options are to file it deliberately
+after the lab, or to accept it as a standing gap the docs teach (ER-22) and say so out loud.
+**What would change my mind:** an author hitting it, which makes it a live defect rather than an
+unfinished lock. **If wrong:** the epic wraps with its own headline promise — a company-wide
+channel without inventing a fake team — unbuilt and unowned.
+
+**6. After `TEAM.md`, `teams/<id>/` teaches two true-but-different rules. Ship that, or hold until
+the folder has one answer?** *(Decides: the owner, with the Architect. Blocks: nothing today; the
+docs wording, and whether FIX-1377 is re-spec'd. Raised by FIX-1377 commenting up under
+[ER-14](BUSINESS-RULES.md).)*
+
+- **In plain terms.** Team **instructions** really do reach only that team's seats — they ride
+  each seat's own configuration. Team **documents** do not: they install on a worker *kind*, so
+  every seat of that kind reaches every team's documents. That second half is what the shipped
+  page teaches today — *"the team folder is a namespace, not a visibility boundary"*
+  (`apps/docs/docs/workforce/documents-on-disk.md`, verified by a reviewer). Both halves are
+  accurate, for different reasons, and after FIX-1377 they describe two files in one folder.
+- **It is bound to [FIX-1368's D2](https://github.com/fixpoint-labs/flow-state-dev/pull/1814),
+  which is UNRESOLVED.** Three arms are live, and each does something different here:
+
+  | If D2 resolves to… | Then |
+  |---|---|
+  | **Address** — a folder *names* whose something is, and does not limit who reads it | FIX-1377 ships as written, and the atlas owes a paragraph teaching both rules out loud |
+  | **Fence** — a team or worker folder really does limit who can read | **FIX-1377 is re-spec'd against one folder rule.** Its cases survive; its teaching and docs plan do not |
+  | **Report-only** — the folder is reported rather than loaded, and scoping stays undecided | FIX-1377 ships as written, and the docs obligation still stands: team documents keep behaving as they do today |
+
+- **Where the reviewers stand, stated plainly:** two back the address (the FSD Architect, cursor);
+  **one dissents** (codex), on the ground that the stamped atlas keeps the folder a named gap. The
+  address arm has **not** won.
+- **The dissent's cited authority is stale, and that is not the same as the dissent being wrong.**
+  The stamp — *NAMED GAP · PROVE flowIsolation FIRST · PER KIND, NOT PER SEAT* — describes a bug
+  FIX-1323 fixed; isolation keys per flow **instance** and hire mints one per seat, proved on the
+  real path (see *Decided in review*). What is still true is that **the fence's cost is unpriced**
+  in FIX-1368's own spec, and that is an independent reason not to read the address as settled.
+- **Recommendation — and it is a recommendation, not a ruling on D2, which is the owner's on
+  FIX-1368:** ship FIX-1377 and make the atlas teach the difference explicitly, because the two
+  mechanisms genuinely differ and one rule would be a false simplification. Hold only if you
+  intend `teams/<id>/` to become a real visibility boundary, in which case FIX-1377 should be
+  written against that answer rather than ahead of it.
+- **What would change my mind:** a priced fence. The moment somebody costs the isolated landing
+  path, holding stops being an open-ended wait.
+- **If wrong:** a docs correction, and possibly an author who put a document in a team folder
+  expecting it to stay with the team. Nothing on disk moves, no storage ref changes, no config key
+  changes. Cheap to reverse.
 
 ## How it got here
 
@@ -237,3 +330,16 @@ said was open, and the atlas teaches a gap that did not need to be one.
 - **The org half of channels became a named gap (Sep 16)** — FIX-1358's POC showed the shipped
   reader walks `teams/` only. D3 keeps its org + team lock; the set stops claiming `org/channels/`
   opens today, and who closes it is now an open question rather than an assumption.
+- **Two opens closed and one opened (Sep 17)** — the DM opener **dissolved** (the lab needs no
+  DM: one participant cannot show a fan-out), and `TEAM.md`'s placement **closed** by its stamp's
+  own wrong-direction test firing. The new open is the one FIX-1377 raised: after a team layer,
+  one folder teaches two rules, and which rule wins is bound to FIX-1368's unresolved D2.
+- **Door B left the epic, and the tail was re-counted (Sep 17)** — the owner removed FIX-1388.
+  Three further sub-issues (FIX-1412, FIX-1414, FIX-1416) are marked **carried along** rather than
+  committed, so the child list stops reading as thirteen promises plus three.
+- **The atlas stamp behind the fence arm was refuted (Sep 17)** — `flowIsolation` keys per flow
+  instance, not per kind, and has since FIX-1323. The stamp stays cited nowhere as live
+  architecture, and `docs/atlas/workforce.html` §19 gap 6 becomes a fix the epic owes.
+- **Open 5's tripwire fired negative (Sep 17)** — FIX-1355 declines a company-wide channel, so the
+  lab will not put an `org/channels/` reader on the floor. The gap is unchanged; what changed is
+  that waiting for the lab stopped being a plan.

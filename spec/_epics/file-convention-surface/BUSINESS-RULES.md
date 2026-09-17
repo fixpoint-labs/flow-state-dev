@@ -14,10 +14,10 @@ owns it and where it's checked. ER-1 to ER-7 are the rows of the ownership matri
 | ER-1 | Path level is scope: `org/<slot>/` is shared across teams, `teams/<teamId>/<slot>/` belongs to one, and both carry the same slots | FIX-1356 defines · 1354 consumes · 1352 consumes the **team door only** | Each reader's tests · every child's spec review |
 | ER-2 | One ChannelFlow kind means one instance; a channel is a **named session** on it, holding its own members and transcript | FIX-1311 | FIX-1311's binder tests · the lab |
 | ER-3 | A `CHANNEL.md` declares a channel the way a `WORKER.md` declares a seat: `flow:` names the kind, omitting it selects the built-in, and a misspelled one fails loudly | FIX-1352 | FIX-1352's reader tests |
-| ER-4 | A key the convention **consumes** is stripped from the declared bag; a key it **derives** is refused — as a set, applied after any allowlisted passthrough | FIX-1354 defines · 1352, 1356, 1368, 1388 consume | Every child's spec review |
+| ER-4 | A key the convention **consumes** is stripped from the declared bag; a key it **derives** is refused — as a set, applied after any allowlisted passthrough | FIX-1354 defines · 1352, 1356, 1368, 1377 consume | Every child's spec review |
 | ER-5 | Seats stay `WORKER.md`. A custom kind is a flow factory, never a richer folder, and the framework never runtime-imports a seat's TypeScript | FIX-1342 | Shipped — [#1712](https://github.com/fixpoint-labs/flow-state-dev/pull/1712) |
 | ER-6 | One boot scan behind one door produces **three** maps — worker kinds for `hireWorkforce`, channel kinds for `channelInstances`, blocks beside them; a document never defines a kind | FIX-1357 | FIX-1357's spec · FIX-1342's fence |
-| ER-7 | Hire invokes the flow with a config the kind admits — the seat register's skills bag and the seat's instructions, at the top level, declared and closed. There is no extension placeholder | FIX-1367 | FIX-1367's **non-agent Proof**, which is the contract gate |
+| ER-7 | Hire invokes the flow with a config the kind admits — **three** framework-owned keys at the top level, declared and closed: the seat register's skills bag (`seatSkills`), the seat's own instructions (`instructions`), and its **team's** instructions (`teamInstructions`, *pending an owner re-confirm*). There is no extension placeholder | FIX-1367 defines · 1377 adds the team key, **unconfirmed** | FIX-1367's **non-agent Proof**, which is the contract gate. The third key is checked by FIX-1377's goal check *only if the re-confirm keeps it* — this rule is discharged by the Proof either way, so a re-confirm that drops it does not leave ER-7 gating on a check nobody runs |
 
 **On ER-1**: the rule is the lock, and it is half built. Resources and skills read `org/`; the
 shipped channels reader walks `teams/` only, so `org/channels/` is declarable and unread. That is
@@ -31,6 +31,12 @@ stay at the top level where the framework closes them, and open-ended data (a di
 keys a kind cannot name in advance) goes in one declared key whose own schema is a record, which
 is what `closeConfigSchema` already tells an author. Nothing in the tree has that shape yet, so no
 child ships the key on spec.
+
+**The third key is not settled.** FIX-1367's spec was approved carrying two keys plus `params`;
+`params` was then cut, and `teamInstructions` arrives from FIX-1377's D1 — the team layer enters
+as an imposed setting on this contract rather than through hire's probe-and-stay-silent hack,
+which is the silence ER-7 exists to delete. That **changes a spec the owner already approved**, so
+it is recorded here and held for an owner re-confirm. No child ships the key until it lands.
 
 ## What no child may do
 
@@ -48,6 +54,7 @@ child ships the key on spec.
 | # | Rule | Because |
 |---|---|---|
 | ER-14 | A cross-cutting question a child hits is commented **up** on the epic PR, not decided locally | [DECISIONS.md](DECISIONS.md) is the single place. A local answer is a second authority |
+| ER-14a | **OPEN — one is live.** After `TEAM.md`, `teams/<id>/` teaches two true-but-different rules: team **instructions** reach only that team's seats (they ride each seat's own config), while team **documents** stay namespace-not-boundary (installed on a kind, so every seat of that kind reaches every team's documents). Both halves are accurate; the second is what the shipped page teaches | Raised by FIX-1377 under ER-14 and **bound to FIX-1368's D2, unresolved** — three live arms (address · fence · report-only). All three, and the reviewer split, are [Open 6](DECISIONS.md#open). If D2 lands on the **fence**, FIX-1377 is re-spec'd against one folder rule. No child settles it locally |
 | ER-15 | Each convention earns a **non-lab consumer** before the lab lands, or that is the signal it was built too early | The set was approved on this check. Skills is owed one by FIX-1367; resources has none, which makes it the most exposed |
 | ER-16 | Every child's route reads *spec* by default; only a `Bug` label re-routes it, and an unlabelled issue's route stays unset rather than guessed | Fail-closed routing. FIX-1358 still carries no Kind label; it opened a spec on the default route and the label never arrived, which is flagged on the epic PR rather than read as a settled one |
 | ER-17 | A child's Linear state is mirrored the moment it changes | The epic wake derives blocked-by from Linear; a stale child blocks its dependants whatever its PRs say |
