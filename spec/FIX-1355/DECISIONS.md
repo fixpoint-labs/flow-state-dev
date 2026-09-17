@@ -89,30 +89,45 @@ own worker kind is a finding, filed as a follow-up.
 <a name="settled"></a>
 ## Settled
 
-**Round 1 re-read these and found the bare-router premise false** — corrected above. Treat a
-false one as a spec defect, not a detail.
+**Every premise below is run, not read** — `bash spec-poc/FIX-1355-runtime-premises/check-all.sh`,
+sixteen assertions, each with a control that makes it able to go red.
 
-Round 1 also **ran the two that move the shape.** The draft settled everything by reading merged
-code because this worktree carried no install; review pushed back, the install turned out to cost
-seven seconds, and the excuse did not survive the attempt. Both are now characterization checks
-in `spec-poc/FIX-1355-runtime-premises/`, each carrying the control that makes it able to go red
-([PLAN → Sketch](PLAN.md) has the commands). The rest are still read — the ladder stops where the
-cost of being wrong stops, and that boundary is stated below rather than left to be noticed.
+The draft settled all of these by reading merged code, because this worktree carried no install.
+**Round 1 found one of them false that way** (the bare router does dispatch — corrected above),
+which is the argument against the method rather than a detail. The install cost seven seconds.
 
-- **A dispatcher can address one hired seat** — **CONFIRMED, read**: an exact instance id through
-  the registry (`core/src/blocks/dispatcher.ts`, `engine/src/context/create-request-host.ts`).
+A first pass ran only the two where being wrong moved the *shape* and argued the rest could stay
+read because being wrong about them was cheap. Review upheld against that and was right on the
+text: BP-003 says *execute or parse it, don't read it* about **every claim the change rests on**
+and grants no exemption for a cheap one. So the cost boundary is gone, not restated.
+
+- **A dispatcher can address one hired seat** — **CONFIRMED, run**
+  (`check-key-child-created-and-inherits-org.mts`): a dispatcher naming a seat's exact instance id
+  reached that seat and no other — `pentest.recon` ran on instance `pentest.recon`, `pentest.triage`
+  on its own.
 - **The built-in `agent` kind cannot be dispatched into** — **CONFIRMED, run**
   (`check-agent-kind-has-no-internal-entry.mts`): the kind declares `actions: { run }` and no
   `internal` map, so an `internal` dispatch resolves nothing under `run` or any other name, and
   `resolveEntry` does not fall through from `internal` to a public action of the same name. The
   run's controls show the probe resolving both a public entry and a real internal one, so the
   green is the absent map and not a blind check. D3.
-- **A seat's skills reach a custom kind that declares the key** — **CONFIRMED, read**:
-  `hireWorkforce` imposes `seatSkills` on any kind whose probed config declares it
-  (`workforce/src/hire.ts`). The lab does not wait on FIX-1367 and stays valid once it lands.
-- **A delivery never crosses an org boundary, and a file-declared document is org-scoped** —
-  **CONFIRMED, read**: `resolveExistingSession` refuses a mismatch by name, `resourcesFromDocs`
-  sets `scope: "org"` — which is what forces the client wrap.
+- **A seat's skills reach a custom kind that declares the key** — **CONFIRMED, run**
+  (`check-seat-skills-reach-a-custom-kind.mts`): a kind declaring `seatSkills` received the seat's
+  union; a kind that does not declare it was left alone and still hired. Both halves, because the
+  claim is conditional — imposing the key unconditionally would break every custom kind on a
+  roster that has one shared `org/skills/` folder. The lab does not wait on FIX-1367 and stays
+  valid once it lands.
+- **A delivery never crosses an org boundary** — **CONFIRMED, run**
+  (`check-org-boundary-refusal.mts`): a cross-org delivery into an existing session is refused
+  `session-not-addressable`, naming both orgs, and the seat never runs; the same-org control
+  lands. A file-declared document is org-scoped (`resourcesFromDocs` sets `scope: "org"`), which
+  is what makes that boundary the lab's problem and forces the client wrap.
+- **A `{ key }` delivery creates the seat's session and inherits the sender's org** —
+  **CONFIRMED, run** (`check-key-child-created-and-inherits-org.mts`): both declared members were
+  woken by the framework's fan-out, each ran in its own created child carrying the lab's org, and
+  the record persisted with it. The control runs the same wiring with `session: { id }` — the
+  shape this plan carried before round 1 — and is refused `session-not-found` by name. This is the
+  premise S3 rests on, and the one round 1's own P1 fix turned on, so it is checked hardest.
 - **`openChannels` has nowhere to put an `orgId`** — **CONFIRMED, run**
   (`check-no-org-door.sh`). An absent field is not observable at runtime, so the evidence is a
   compile that must fail: a probe passing `orgId` to `openChannels` and to its `createSession`
@@ -130,8 +145,8 @@ cost of being wrong stops, and that boundary is stated below rather than left to
 
 - **Draft** — a goal family over one shared lab, every premise read off merged code first.
 - **Round 1** — no decision changed; one false premise corrected, the session target pinned,
-  duplicated narrative cut to one home each. The two shape-moving premises were then **run**
-  rather than read (`spec-poc/FIX-1355-runtime-premises/`); both held.
+  duplicated narrative cut to one home each. Every premise then moved from read to **run**
+  (`spec-poc/FIX-1355-runtime-premises/`); all held.
 - **Owner expand** — a tool leg folded into the model-backed check: a seat calls a block its
   `tools:` names, graded on the call, not the setting. No decision changed; D1–D3 stand. Where the
   block's file lives is a soft sequence, in [PLAN → At implement time](PLAN.md).
