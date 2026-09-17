@@ -253,7 +253,8 @@ Architect. Blocks: nothing today; ER-22's docs claim.)* [D3](#d3) locked `org/` 
 three conventions shipped that way. Channels shipped the team door only, and the gap belongs to
 no issue in the set — FIX-1352 is Done, and widening a merged reader from this epic is what
 [D7](#d7) refused for `org/workers/`. **The trade-off:** file a child now and the set grows a
-fifth late arrival off the path to the proof, exactly the tail the necessity check is watching;
+fourth late arrival off the path to the proof (three remain now Door B has left), exactly the tail
+the necessity check is watching;
 leave it and the epic's own headline promise — a company-wide channel without inventing a fake
 team — stays unbuilt with nobody holding it. **The tripwire has fired, and it fired negative.**
 The recommendation was to leave it unfiled and let the lab decide, D7's shape — FIX-1355 being the
