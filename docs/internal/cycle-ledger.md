@@ -2031,6 +2031,7 @@ trend. A is proposed on the systematic overrun; the carriage split is corroborat
 5. **Does the round/fold gap stay small?** `folds ≥ rounds` everywhere this cycle, with the gap
    zero on eight of thirteen spec PRs and concentrated in five. If the gap widens, folds stop being
    a usable proxy for anything and the fold column should be retired rather than reinterpreted.
+
 ---
 
 ## Cycle 12 — W3 file-convention epic wrap (FIX-1351) (2026-09-17)
