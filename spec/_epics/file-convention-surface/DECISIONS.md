@@ -366,3 +366,7 @@ docs wording, and whether FIX-1377 is re-spec'd. Raised by FIX-1377 commenting u
 - **Open 5's tripwire fired negative (Sep 17)** — FIX-1355 declines a company-wide channel, so the
   lab will not put an `org/channels/` reader on the floor. The gap is unchanged; what changed is
   that waiting for the lab stopped being a plan.
+- **FIX-1412 was narrowed against shipped code (Sep 17)** — it was filed as *the client has no org
+  door*; the client has one, and only `openChannels` won't thread an org through. Corrected by
+  round 2 of FIX-1355's spec review on a two-half compile check. A smaller ask, sized as a
+  parameter; the epic's shape is untouched because the issue is carried along.
