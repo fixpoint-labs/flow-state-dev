@@ -160,7 +160,7 @@ Pulling an edit through is a separate, explicit act — `refreshSeededSkills` fr
 
 ### Custom worker kinds
 
-Skills are handed to a worker only when its flow kind declares a `seatSkills` setting. The built-in does. A [kind you define yourself](./workers-on-disk.md#when-a-worker-needs-more-than-settings) does not until you add the key, so adding an org-wide skills folder never breaks workers running on your own kinds.
+Skills reach every hireable kind the same way, this one included: they arrive in the settings bag as `seatSkills`, because the kind's `configSchema` composed `workerConfigSchema()`. The built-in is built that way, and so is [a kind you define yourself](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare) — that page has the contract and what it holds. Your kind is free to ignore the skills it receives; what it cannot do is skip the door, since hiring hands the same settings to every seat.
 
 ## Giving workers memory
 

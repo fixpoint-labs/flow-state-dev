@@ -7,6 +7,7 @@
  * whole reason this goal reaches the registry instead of stopping at the hire.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 const inputSchema = z.object({ note: z.string() });
@@ -15,8 +16,7 @@ const inputSchema = z.object({ note: z.string() });
  * The caller's settings bag. `desk` is the tell: the built-in has no such
  * setting, so a seat carrying one cannot be ours.
  */
-const callerSettings = z.object({
-  instructions: z.string().optional(),
+const callerSettings = workerConfigSchema().extend({
   desk: z.string().default("front")
 });
 

@@ -50,7 +50,7 @@ You are the engineering lead. You do not write code yourself. You break the
 request into tasks, assign them, and report what came back.
 ```
 
-`description` is the only key the file itself requires. Two it refuses outright: `persona:`, and `seatSkills:`, which is decided by where a worker's skills folders sit rather than by what its file claims. `flow` names which of your flow kinds this worker runs. Leave it out and the worker is hired into [the built-in worker kind](./built-in-worker.md), which needs no flow of yours.
+`description` is the only key the file itself requires. Three it refuses outright: `persona:`, `seatSkills:`, and `teamInstructions:` — the last two because a seat's skills are decided by where its folders sit and a team's instructions belong to its team, rather than by what one worker's file claims. `flow` names which of your flow kinds this worker runs. Leave it out and the worker is hired into [the built-in worker kind](./built-in-worker.md), which needs no flow of yours.
 
 Reading the file checks no other key. Whatever else you write lands on the record spelled exactly as you spelled it. The flow a worker names has the final say: at hiring it [refuses a setting it never declared](#the-flow-decides-what-a-worker-may-declare).
 
@@ -120,7 +120,7 @@ What lands in `errors`:
 
 - a worker folder with no `WORKER.md`, including one that holds only other files (custom behavior is [a flow kind](#when-a-worker-needs-more-than-settings), not a second file in the folder);
 - a `WORKER.md` with no frontmatter, or one whose `description` is missing, empty, or not a string;
-- a `WORKER.md` that declares `persona:` or `seatSkills:`, neither of which is a setting a worker declares;
+- a `WORKER.md` that declares `persona:`, `seatSkills:` or `teamInstructions:`, none of which is a setting a worker declares;
 - a team or worker folder name that breaks the naming rules;
 - a symlink where a folder or a worker file belongs, refused rather than read;
 - a directory that exists but cannot be listed, reported under its own path (`teams`, `teams/<team>`, or `teams/<team>/workers`) so the seats beneath it are not lost silently.
@@ -171,14 +171,17 @@ Pass `defineFlow(...)` results directly as `kinds`. The call reads no files and 
 
 ### The flow decides what a worker may declare
 
-A flow kind declares its settings with `configSchema`:
+A flow kind declares its settings with `configSchema`. A kind you want to hire workers into starts
+from `workerConfigSchema()` and extends it:
 
 ```ts
+import { workerConfigSchema } from "@flow-state-dev/workforce";
+
 export const customAgentFlow = defineFlow({
   kind: "custom-agent",
   cardinality: "collection",
-  configSchema: z.object({
-    instructions: z.string(),
+  configSchema: workerConfigSchema().extend({
+    instructions: z.string(), // the contract's own is optional; this kind requires one
     model: z.string().default("openai/gpt-5.4-mini"),
     tools: z.array(z.string()).default([]),
   }),
@@ -188,10 +191,25 @@ export const customAgentFlow = defineFlow({
 export const intakeFlow = defineFlow({
   kind: "intake",
   cardinality: "collection",
-  configSchema: z.object({ desk: z.string().default("front") }),
+  configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
   actions: { run: { inputSchema, block: greet } },
 });
 ```
+
+`workerConfigSchema()` is the set of settings every seat's bag may carry, whatever kind it is: the
+worker's own instructions, the skills its folders resolved, and a reserved `teamInstructions` that
+nothing populates yet. Your kind's settings go on top with `.extend()`, at the same level, and the
+schema stays closed around all of them.
+
+You do not have to read any of it. A kind that composes the contract and never looks at the skills
+runs exactly as it would otherwise. But a kind with nowhere to put them stops hiring: the seat
+factory hands every worker the same settings, and a schema that cannot take them refuses at
+startup, naming the worker and the line to add. The alternative was a seat that hired, ran, and
+quietly held none of what its author's folders declared.
+
+What hiring checks is what your schema accepts, not which function built it. Declaring those keys
+by hand works too — composing is how you stay current, since a key added to the contract reaches a
+composed kind for free and makes a hand-rolled one refuse at startup until you add it as well.
 
 `cardinality: "collection"` is what lets one definition have many copies. A roster is exactly that: one copy per worker, each with its own id and its own settings. [Copies that differ by settings](../fundamentals/flows.md#copies-that-differ-by-settings) covers how a copy is configured, and [how an instance is addressed](../fundamentals/flows.md#how-an-instance-is-addressed) covers the URL each one answers on.
 
@@ -202,16 +220,19 @@ const lead = seats.find((seat) => seat.id === "engineering.lead")!;
 
 lead.config;
 // { instructions: "You are the engineering lead. …",
+//   seatSkills: [],
 //   model: "openai/gpt-5.4-mini",
 //   tools: ["board", "search"] }
 ```
+
+`seatSkills` is there because hiring hands it to every seat: this roster's folders held no skills for the lead, and present-and-empty is how that is spelled.
 
 Schema defaults fill in. `support.intake` declared no settings beyond its `flow` and `description`, so it gets the `intake` flow's default `desk`:
 
 ```ts
 const intake = seats.find((seat) => seat.id === "support.intake")!;
 
-intake.config; // { desk: "front" }
+intake.config; // { seatSkills: [], desk: "front" }
 ```
 
 Every `config` is frozen. A worker asking for something its flow never declared does not quietly run without it:
@@ -226,17 +247,28 @@ Settings are spelled the way the flow declares them.
 
 ### The body arrives as `instructions`
 
-A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. That is the only setting name the hire imposes.
+A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. Hiring imposes two settings in all: `instructions`, when the body is not empty, and `seatSkills`, always. A third, `teamInstructions`, is declared by the contract and reserved for a team-level layer; nothing fills it yet.
 
-A flow kind that takes instructions declares `instructions` in its `configSchema`. A kind that doesn't will refuse a body by name, the same way it refuses any other undeclared setting, so no worker flow has to check for one:
+Every hireable kind has that setting, because `workerConfigSchema()` declares it — so a worker's body always has somewhere to arrive, and no worker flow has to check for one. A kind whose schema will not take what hiring imposes is the one that refuses, and it refuses every record on the roster rather than just the ones with a body:
 
 ```
 hireWorkforce refused 1 of 3 workers; nothing was hired:
   - worker "support.intake" — Flow "intake" instance "support.intake"
-    has an invalid config bag: "instructions" is not a declared setting.
+    has an invalid config bag: "instructions", "seatSkills" is not a
+    declared setting. Those keys are the framework's: every hireable kind
+    admits `instructions`, `seatSkills` by composing `workerConfigSchema()`,
+    which is where a seat's instructions and its resolved skills arrive.
+    Wrap this kind's settings: `configSchema:
+    workerConfigSchema().extend({ ...its own settings })`.
 ```
 
-Declaring the key is what makes the instructions available, at `config.instructions`. What the flow does with them is the flow's business: a worker flow usually hands them to its generator as the system prompt. A flow that declares `instructions` and never reads it hires cleanly and ignores what the file said.
+Note what the message does *not* say. It names the keys the schema would not take, not whether you
+called a particular helper — hiring cannot tell the difference, and the sentence above about
+hand-declaring is why.
+
+The instructions are available at `config.instructions`. What the flow does with them is the flow's business: a worker flow usually hands them to its generator as the system prompt. A flow that never reads them hires cleanly and ignores what the file said.
+
+A kind that wants instructions to be mandatory says so itself, by making the key required when it extends the contract — `workerConfigSchema().extend({ instructions: z.string() })`. Then a worker of that kind with no body is a failed hire.
 
 A worker with no body is still fully addressable. It just carries no instructions: a body that is empty, or only whitespace, contributes no `instructions` key at all. A body that has content reaches the flow verbatim, leading and trailing whitespace included.
 
@@ -253,9 +285,9 @@ A record is refused when it:
 - declares a `flow` that is present but empty, or only whitespace — that names no kind. Leave the key out entirely to get the built-in `agent` kind;
 - names a kind that was not passed in `kinds`; the message lists the kinds that were, including `agent`;
 - declares a setting its flow never declared, or omits one its flow requires;
-- carries a body for a flow kind that declares no `instructions`;
+- names a flow kind whose schema will not take what hiring imposes, leaving it nowhere to receive a seat's skills and instructions — composing `workerConfigSchema()` is the fix. That one refuses the whole roster, not just this record;
 - declares `instructions:` and carries a body;
-- declares `persona:` or `seatSkills:`, neither of which is a setting a worker declares;
+- declares `persona:`, `seatSkills:` or `teamInstructions:`, none of which is a setting a worker declares;
 - shares an id with another record in the same call, which is two workers claiming one address.
 
 `kinds` itself is checked too. A flow passed under a key that is not its own `kind` is refused. The copy would otherwise come back carrying the right worker's id, and run the other kind's graph once you registered it.
@@ -268,6 +300,7 @@ Say the engineering team wants a worker that routes an incoming request in code,
 
 ```ts
 import { defineFlow, router } from "@flow-state-dev/core";
+import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { answer, escalate } from "./triage-blocks";
 
@@ -289,7 +322,7 @@ const triage = router({
 export const requestTriageFlow = defineFlow({
   kind: "request-triage",
   cardinality: "collection",
-  configSchema: z.object({
+  configSchema: workerConfigSchema().extend({
     instructions: z.string(),
     model: z.string().default("openai/gpt-5.4-mini"),
     escalateAbove: z.number().default(3),

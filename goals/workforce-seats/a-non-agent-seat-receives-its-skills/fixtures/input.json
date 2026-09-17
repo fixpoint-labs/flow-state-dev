@@ -1,0 +1,28 @@
+{
+  "userId": "u_non_agent_skills_goal",
+  "note": "A customer says they were charged twice and wants it escalated.",
+  "seats": {
+    "support": {
+      "id": "support.desk",
+      "flow": "request-triage",
+      "description": "Holds the support queue and decides who takes a request.",
+      "desk": "mezzanine",
+      "skills": ["house-style", "triage-tone", "escalation"]
+    },
+    "billing": {
+      "id": "billing.desk",
+      "flow": "request-triage",
+      "description": "Holds anything about money.",
+      "desk": "ground",
+      "skills": ["house-style", "dunning"]
+    }
+  },
+  "orgSkill": "house-style",
+  "control": {
+    "dir": "no-contract",
+    "id": "support.legacy",
+    "flow": "request-triage-legacy",
+    "description": "The same desk on a kind that never composed the contract.",
+    "desk": "mezzanine"
+  }
+}

@@ -6,6 +6,17 @@
  * `configSchema` is the only gatekeeper. This module reads `flow` and
  * `description` and hands over everything else — a worker's instructions
  * included, as one setting, `instructions`.
+ *
+ * **A bag goes to every record, and every record meets the kind's schema.**
+ * There is no probe of what a kind happens to declare and no thin record that
+ * mints without being admitted, because the one silent branch a probe has —
+ * *this kind did not declare the key, so say nothing* — is exactly the failure
+ * this step exists to remove. A kind whose schema cannot take that bag refuses,
+ * loudly, for the whole roster, at boot — and composing `workerConfigSchema()`
+ * is how a kind makes sure it can.
+ *
+ * What the kind's probed shape is still read for is the WORDING of that
+ * refusal, and nothing else. See {@link admissionHint}.
  */
 
 import type {
@@ -24,7 +35,9 @@ import {
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
   REFUSED_SEAT_SKILLS_KEY_MESSAGE,
+  REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
   SEAT_SKILLS_KEY,
+  TEAM_INSTRUCTIONS_KEY,
   type WorkerManifest
 } from "./manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
@@ -106,6 +119,72 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** The keys the contract declares, in the order an author reads them. */
+const CONTRACT_KEYS = [INSTRUCTIONS_KEY, TEAM_INSTRUCTIONS_KEY, SEAT_SKILLS_KEY] as const;
+
+/**
+ * Why a mint refused, in one added sentence — **or nothing, which is the
+ * common case.**
+ *
+ * A MESSAGE, never a gate. It runs only after the kind's own schema has already
+ * refused, and it cannot refuse on its own: the moment it could, admission
+ * would have two authorities. What it does is spare an author the guess between
+ * *"I misspelt a setting"* and *"my kind never opened the door the framework
+ * hands things through."*
+ *
+ * **It reads the refusal, not the kind.** An earlier version inferred contract
+ * absence from the blueprint's PROBED default bag — the shape a kind publishes
+ * for an empty config — and that inference was wrong in a case nobody had to
+ * contrive: a kind declaring `seatSkills` optional *without a default* probes
+ * to a bag with no such key, so a refusal about some other setting's bad value
+ * got "this kind has not composed the contract" appended to it. The kind
+ * accepted the whole imposed bag. The accusation was false.
+ *
+ * So the only thing consulted now is whether the refusal that actually happened
+ * named one of the contract's keys as undeclared. That is the sole condition
+ * under which the door is demonstrably missing; anything else, including a
+ * shape this function cannot interpret, gets silence. A hint that cannot know
+ * says nothing, because a confident wrong answer costs more than no answer.
+ *
+ * @param refusal The flow's own refusal message, already stringified.
+ * @returns One sentence naming the missing keys and the fix, or `undefined`.
+ */
+function admissionHint(refusal: string): string | undefined {
+  // The blunt case, and the only other one this can be sure of: the kind
+  // declares no `configSchema` at all, so core refuses the bag outright rather
+  // than reporting a key. No door of any kind, no ambiguity, nothing to infer.
+  if (refusal.includes("declares no configSchema")) {
+    return (
+      `A hireable kind must declare somewhere for a seat's instructions and resolved skills to ` +
+      `arrive: \`configSchema: workerConfigSchema()\`, extended with this kind's own settings.`
+    );
+  }
+
+  // `describeFlowConfigIssues` renders an undeclared TOP-LEVEL key as
+  // `"x" is not a declared setting`, and a key inside one of the kind's own
+  // nested objects as `… is not a declared setting of "path"`. Only the first
+  // is about the contract, so the suffixed form must not match — a nested
+  // `seatSkills` of someone else's object is not our door.
+  const missing = CONTRACT_KEYS.filter((key) =>
+    refusal
+      .replace(/\.$/, "")
+      .split("; ")
+      .some(
+        (segment) => segment.endsWith("is not a declared setting") && segment.includes(`"${key}"`)
+      )
+  );
+
+  if (missing.length === 0) return undefined;
+
+  const named = missing.map((key) => `\`${key}\``).join(", ");
+  return (
+    `${missing.length === 1 ? "That key is" : "Those keys are"} the framework's: every hireable kind ` +
+    `admits ${named} by composing \`workerConfigSchema()\`, which is where a seat's instructions and ` +
+    `its resolved skills arrive. Wrap this kind's settings: ` +
+    `\`configSchema: workerConfigSchema().extend({ ...its own settings })\`.`
+  );
+}
+
 /**
  * Turn worker records into one configured flow copy each, ordered by id.
  *
@@ -178,6 +257,17 @@ export function hireWorkforce(
     // folder backs.
     if (Object.hasOwn(settings, SEAT_SKILLS_KEY)) {
       refuse(REFUSED_SEAT_SKILLS_KEY_MESSAGE);
+      continue;
+    }
+
+    // The third contract key, refused for the sharper version of the same
+    // reason. Every hireable kind now DECLARES `teamInstructions` by composing
+    // the contract, so an authored one would not be caught by the closed
+    // schema the way an undeclared key is — it would be accepted, and the seat
+    // would run on team instructions its team never wrote. A team's
+    // instructions belong to its team.
+    if (Object.hasOwn(settings, TEAM_INSTRUCTIONS_KEY)) {
+      refuse(REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE);
       continue;
     }
 
@@ -256,45 +346,34 @@ export function hireWorkforce(
       continue;
     }
 
-    // The seat's own skills — imposed **only on a kind that declares the key**,
-    // which is why this sits here, after the kind is resolved, rather than up
-    // with the body.
+    // The seat's own skills, imposed on EVERY record — loaded or hand-built,
+    // non-empty or empty, whatever kind this is.
     //
-    // A worker's body is imposed unconditionally because a worker AUTHOR writes
-    // the body: a custom kind that does not declare `instructions` is a file its
-    // author can fix. A seat's skills are not like that. They come from folders
-    // somebody else added — one `org/skills/` folder makes `manifest.skills`
-    // non-empty for EVERY worker on the roster — so imposing them
-    // unconditionally would make a shared skills folder break every custom kind
-    // on that roster at once, for a setting those kinds never asked for and
-    // their authors never saw.
+    // No probe of what the kind declares. The probe's other arm was silence:
+    // a seat whose folders declared skills minted, ran, and held none, with
+    // nothing said anywhere. Handing the bag over unconditionally turns that
+    // into one loud refusal at boot, which an author can act on.
     //
-    // "Declares the key" is read off the kind's own probed default config, which
-    // is the same schema that would refuse the bag a moment later. A kind that
-    // declares it opts in by declaring it; every kind written before this
-    // existed is left exactly as it was.
-    if (manifest.skills !== undefined && manifest.skills.length > 0) {
-      const declared = (factory as { config?: Record<string, unknown> }).config;
-      if (declared !== undefined && Object.hasOwn(declared, SEAT_SKILLS_KEY)) {
-        settings[SEAT_SKILLS_KEY] = manifest.skills;
-      }
-    }
+    // `?? []` and not a conditional: present-and-empty is the answer for
+    // *nothing to give*, and the bag is handed over all the same. The record
+    // still distinguishes *never read for* (absent) from *read and empty*, and
+    // that distinction stays on the record, where it belongs.
+    settings[SEAT_SKILLS_KEY] = manifest.skills ?? [];
 
     try {
-      // A record that declared nothing passes no bag at all: `{}` is refused by
-      // a flow kind that declares no `configSchema`, which would make a thin
-      // seat unhireable. For a flow that declares one the two are identical.
-      seats.push(
-        minter(factory)(
-          Object.keys(settings).length > 0
-            ? { id: manifest.id, config: settings }
-            : { id: manifest.id }
-        )
-      );
+      // Always a bag, so always admitted. The branch that stood here passed no
+      // bag at all for a record that declared nothing — which is admission
+      // SKIPPED, not admission passed: a thin seat minted without its kind's
+      // schema ever seeing it. Every record meets the schema now, including the
+      // thinnest one there is.
+      seats.push(minter(factory)({ id: manifest.id, config: settings }));
     } catch (error) {
-      // The flow's own refusal, with the worker's id in front of it. Adding a
-      // check of our own here would be a second gatekeeper.
-      refuse(messageOf(error));
+      // The flow's own refusal, with the worker's id in front of it, and — when
+      // the kind's shape says what most likely went wrong — one sentence naming
+      // the fix. Still no check of our own: `admissionHint` cannot refuse.
+      const message = messageOf(error);
+      const hint = admissionHint(message);
+      refuse(hint === undefined ? message : `${message} ${hint}`);
     }
   }
 

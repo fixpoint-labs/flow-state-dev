@@ -2,9 +2,10 @@
  * The two worker flow kinds an app defines in code — what a worker's folder
  * points at, never what the folder builds.
  *
- * One is opinionated: it declares that it takes `instructions`, which is where a
- * worker's body arrives. One is thin: it declares a setting of its own and no
- * instructions at all, so a body handed to it is refused by its own schema.
+ * Both compose the admission contract, as every hireable kind must. One is
+ * opinionated — it REQUIRES `instructions`, so a seat of that kind without a
+ * body is a failed hire. One is thin: it requires only a setting of its own and
+ * leaves the contract's instructions door empty.
  *
  * Both read their settings from a block NESTED inside the action sequencer
  * rather than at the root, because a read that works at the root proves nothing
@@ -12,10 +13,13 @@
  * the property under test is which settings reach a running block.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 export const CUSTOM_AGENT_KIND = "custom-agent";
 export const INTAKE_KIND = "intake";
+export const NO_CONTRACT_KIND = "legacy-desk";
+export const HAND_ROLLED_KIND = "hand-rolled-desk";
 
 const inputSchema = z.object({ note: z.string() });
 
@@ -87,8 +91,13 @@ const clientView = {
 export const customAgentFlow = defineFlow({
   kind: CUSTOM_AGENT_KIND,
   cardinality: "collection",
-  configSchema: z.object({
-    /** Where a worker's instructions arrive. Declaring it is what makes this kind opinionated. */
+  configSchema: workerConfigSchema().extend({
+    /**
+     * REQUIRED here, which is this kind's own call: the contract's own
+     * `instructions` is optional, and a kind is free to tighten it. That is
+     * what makes this kind opinionated — a seat of this kind without
+     * instructions is a failed hire.
+     */
     instructions: z.string(),
     model: z.string().default("openai/gpt-5.4-mini"),
     tools: z.array(z.string()).default([])
@@ -102,11 +111,62 @@ export const customAgentFlow = defineFlow({
 export const intakeFlow = defineFlow({
   kind: INTAKE_KIND,
   cardinality: "collection",
-  // No `instructions` here, deliberately: a body handed to this kind refuses at the
-  // hire, by name, without this flow checking for one.
-  configSchema: z.object({ desk: z.string().default("front") }),
+  // Thin in what it REQUIRES, not in what it admits. It composes the contract
+  // like every hireable kind, so `instructions` is a door it has and leaves
+  // empty; the seat under it carries none because its record has no body.
+  configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
   actions: {
     run: { inputSchema, block: sequencer({ name: "intake-work", inputSchema }).step(start).tap(recordDesk) }
+  },
+  session: { stateSchema: seatState, client: clientView }
+});
+
+/**
+ * A kind whose schema **cannot accept the bag hire imposes** — it declares
+ * `instructions` but not `seatSkills`.
+ *
+ * Deliberately not "a kind with no contract keys at all". That version refused
+ * too, but for a reason that only *coincided* with the rule: stripping the
+ * helper also stripped the keys, so the observed refusal was equally consistent
+ * with hire checking whether `workerConfigSchema()` was called. It is not — see
+ * `handRolledFlow` below. This kind isolates the real cause by declaring part
+ * of the contract and still missing a key the bag carries.
+ */
+export const noContractFlow = defineFlow({
+  kind: NO_CONTRACT_KIND,
+  cardinality: "collection",
+  configSchema: z.object({
+    instructions: z.string().optional(),
+    teamInstructions: z.string().optional(),
+    // `seatSkills` is absent — the one key that makes the bag unacceptable.
+    desk: z.string().default("front")
+  }),
+  actions: {
+    run: { inputSchema, block: sequencer({ name: "legacy-work", inputSchema }).step(start).tap(recordDesk) }
+  },
+  session: { stateSchema: seatState, client: clientView }
+});
+
+/**
+ * The other half of the same rule, and the reason the refusal above means what
+ * it says: a schema that accepts the imposed bag **without ever calling
+ * `workerConfigSchema()`** hires exactly like a composed kind.
+ *
+ * Without this, the goal would certify a nominal invariant the implementation
+ * rejects — "a kind that did not call the helper refuses" — which is true of
+ * its fixture and false of the system.
+ */
+export const handRolledFlow = defineFlow({
+  kind: HAND_ROLLED_KIND,
+  cardinality: "collection",
+  configSchema: z.object({
+    instructions: z.string().optional(),
+    teamInstructions: z.string().optional(),
+    seatSkills: z.array(z.object({ name: z.string(), skillMd: z.string() }).passthrough()).default([]),
+    desk: z.string().default("front")
+  }),
+  actions: {
+    run: { inputSchema, block: sequencer({ name: "hand-rolled-work", inputSchema }).step(start).tap(recordDesk) }
   },
   session: { stateSchema: seatState, client: clientView }
 });
