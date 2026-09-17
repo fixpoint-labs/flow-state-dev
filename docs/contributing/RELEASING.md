@@ -33,6 +33,8 @@ Every release path builds through `release:build`, which is `packages:build` plu
 
 The two stay separate because `packages:build` is also the editor/typecheck input and the Vercel build step for `packages/ui` and `apps/kitchen-sink`, none of which want an app build. Publishing is the only caller that needs the assets, so publishing is what pays for them.
 
+The devtool package refuses to publish without them. Its `prepublishOnly` runs `scripts/check-assets.mjs`, which fails when `dist-client/index.html` is missing, so a release path that loses `build:assets` aborts rather than shipping a package whose `fsdev dev` throws. `pnpm publish` runs that hook before packing, and `changeset publish` calls `pnpm publish`.
+
 ```bash
 # What the tarball actually contains. `pnpm pack` takes no filter — `--filter` puts pnpm
 # in recursive mode, which pack rejects with "Unknown option: 'recursive'". Use --dir.
@@ -128,11 +130,15 @@ The token must be a **granular access token scoped to all packages in both organ
 
 ## Switching to Trusted Publishing (after the first publish)
 
-Blocked on a pnpm upgrade, not on npm.
+Blocked on the runner's npm version. A pnpm upgrade is one way to clear it, not a prerequisite.
 
-`changeset publish` spawns **`pnpm publish`** in this workspace, so pnpm is the CLI that has to perform the OIDC exchange — npm's own 11.5.1 floor never comes into it. pnpm gained OIDC support in **11.0.0**; this repo pins `pnpm@10.4.1`, which has none of it. The switch therefore waits on a pnpm major upgrade, which is its own change with its own risk and should be tracked separately rather than bundled into the release work.
+`changeset publish` spawns **`pnpm publish`**, but on pnpm 10 that command does not itself publish. It packs the tarball and then spawns `npm publish` on the `npm` it finds on `PATH`, with the parent environment spread into the child — so the Actions OIDC variables reach npm, and **npm** is the CLI that performs the exchange. In pnpm 10.4.1's bundled `dist/pnpm.cjs` the publish command ends in `runNpm(opts.npmPath, ["publish", "--ignore-scripts", <tarball>, ...args])`, and the helper that spawns it builds the child env as `{ ...process.env, ... }`. [pnpm#11513](https://github.com/pnpm/pnpm/issues/11513) reads the same way round: the reporter's OIDC publishes worked on pnpm 10 and broke on 11.0.8, when pnpm took publishing in-house.
 
-Once the upgrade has landed:
+So the floor that matters is npm ≥ 11.5.1, and `actions/setup-node` with `node-version: 22` installs npm 10.9.8. Adding a `npm install -g npm@latest` step to the release workflow clears it. Upgrading to pnpm 11, which implements OIDC natively, is the other route and is a larger change with its own risk.
+
+Either way the canary proof in step 2 is what settles it, since this rests on reading pnpm's source rather than on a publish anyone has watched.
+
+Then:
 
 1. Configure a trusted publisher for each of the 28 packages. `npm trust` (npm ≥ 11.15.0, 2FA required) does this from the CLI, so it can be a loop rather than 28 trips through the website:
    ```bash
@@ -140,7 +146,7 @@ Once the upgrade has landed:
    ```
    Snapshot Release publishes from a second workflow, so `snapshot-release.yml` needs its own trusted-publisher entry per package if snapshots are to stay tokenless.
 2. Prove it on `canary` before trusting it for `latest`. Run **Snapshot Release** and confirm it publishes with no token present. [pnpm#11513](https://github.com/pnpm/pnpm/issues/11513) reports OIDC publishes failing with a 404 on pnpm 11.0.8, so this is a real check, not a formality.
-3. Edit `release.yml`: drop `NPM_TOKEN` from the `changesets/action` env block. Keep `id-token: write`. Keep the action at `@v1`.
+3. Edit `release.yml`: add `npm install -g npm@latest` before the publish step (unless the pnpm upgrade route was taken instead), and drop `NPM_TOKEN` from the `changesets/action` env block. Keep `id-token: write`. Keep the action at `@v1`.
 4. Drop `--provenance` from `release`, `release:ci`, and `release:snapshot`, and drop the `NPM_TOKEN` guard from `release:ci`. Trusted Publishing generates provenance on its own.
 5. Revoke the npm token and delete the secret.
 
