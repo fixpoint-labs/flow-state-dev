@@ -52,6 +52,15 @@ jobs:
       - name: Build packages
         run: pnpm packages:build
 
+      # Published packages are ESM, so every relative import in `dist` needs a
+      # file extension or Node refuses it at import time. `moduleResolution:
+      # "Bundler"` lets source omit it and `tsc` emits it verbatim, and nothing
+      # in the repo notices because everything here resolves through `src`. That
+      # is how 0.1.1 shipped unimportable. Each package's build adds the
+      # extensions; this fails if one stops doing so.
+      - name: Built output is importable by Node
+        run: node scripts/add-esm-extensions.mjs --check packages/*/dist
+
       # Its OWN step, deliberately not folded into a build script: a script that
       # ran `fsdev gen` before building would regenerate the file and pass,
       # which is the one thing a staleness gate must not do. This fails when an

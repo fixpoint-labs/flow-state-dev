@@ -21,6 +21,14 @@ How we publish the `@flow-state-dev` packages to npm. For how to write changeset
 - Scoped packages require `publishConfig.access: "public"` (already set in every `package.json`).
 - `@thought-fabric/core` is **not published**. It is marked `private` in its `package.json`, which is the only flag `changeset publish` filters on — `.changeset/config.json`'s `ignore` list affects versioning, not publishing. Only the private `kitchen-sink` app consumes it, over a workspace link. `scripts/validate-publish-set.mjs` (CI: **Process guards**) fails if that flag is ever removed, since an npm name is given away permanently.
 
+## Built output must carry file extensions
+
+Packages are ESM (`"type": "module"`), so every relative import in `dist` needs an explicit `.js` — Node's resolver rejects `./items/predicates` with `ERR_MODULE_NOT_FOUND`. The workspace compiles with `moduleResolution: "Bundler"`, which lets source omit the extension and lets `tsc` emit it verbatim, and nothing in the repo notices because every package resolves through `src/*.ts`. **Only a consumer installing from npm runs that path**, which is how 0.1.1 shipped unimportable.
+
+Each publishable package's `build` runs `scripts/add-esm-extensions.mjs` after `tsc`, and CI re-checks the output with `--check`. The script rewrites only specifiers that already start with `./` or `../`; a bare specifier is left exactly as written, because rewriting one into a relative path is how `tsc-alias --resolve-full-paths` silently turned a cross-package re-export into a self-reference.
+
+The check that catches this class is not a dry run, a tarball listing, or `publint` — all three pass on broken output. It is installing the tarballs into an empty directory and importing each one.
+
 ## The publish must go through pnpm
 
 Every package sets `main` / `types` / `exports` to `src/*.ts` for local development and overrides them to `dist/*` under `publishConfig`. Substituting those fields at pack time is a **pnpm** feature; `npm publish` ignores them and would ship a tarball whose `main` points at a `src/` path that `files: ["dist"]` excludes — a broken package, silently.
@@ -92,6 +100,12 @@ pnpm publish -r --dry-run --no-git-checks
 # Check exports and types resolution
 npx publint ./packages/<name>
 npx @arethetypeswrong/cli --pack ./packages/<name>
+
+# The one that catches an unimportable package: install and import for real.
+# publint and the dry run both pass on output Node cannot load.
+pnpm --dir packages/<name> pack --pack-destination /tmp
+cd "$(mktemp -d)" && npm init -y >/dev/null && npm install /tmp/*.tgz
+node --input-type=module -e 'import "@flow-state-dev/core"'
 
 # Ensure no stray debug code in dist
 grep -r 'console\.log\|debugger' packages/*/dist/ --include='*.js'
