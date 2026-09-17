@@ -4,7 +4,7 @@
 
 Feature · `goals/` only, no package changes · small · 1 PR · epic [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351)
 
-## Four people, before and after
+## Five people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|

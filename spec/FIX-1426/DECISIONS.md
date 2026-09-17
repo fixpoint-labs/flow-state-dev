@@ -29,8 +29,8 @@ Solid edges are what you're signing. The dashed node is the question that is you
 | **Because** | The claim is that *a declared seat does the work*. Under co-location the row reaches a hand-written flow that happens to read seat files, and the seat is never the thing that was woken — which is the assertion this slice exists to replace with a result. A check built on co-location would report PASS on exactly the state we are trying to rule out |
 | **Locks in** | Every DevForce worker kind that can be given work carries board wiring — a `boardId` and a ledger identity shared with the coordinator board, plus its own same-flow gating dispatcher. So "a seat that can be given work" is permanently a heavier declaration than "a seat that can answer," and that asymmetry is inherited by the Lab and by anything built on it |
 
-**Settled by a run, not a read.** The POC (below) confirms the mechanism works with a real
-`harnessManager` at the recipient entry. It also found the cost: `defineFlow` refuses a flow that
+**Settled by a run, not a read.** The run recorded under *Settled* below confirms the mechanism
+works with a real `harnessManager` at the recipient entry. It also found the cost: `defineFlow` refuses a flow that
 declares a task entry with no board reachable that hands off to it, and the claim gate refuses a
 dispatch whose `boardId` differs from the one the recipient's own board was built with. So the
 recipient cannot declare only the remotely-addressed entry. That is a real constraint, not a
@@ -82,12 +82,18 @@ rather than grandfathered.
 ## Settled
 
 - **A `taskBoard` worker can hand a row across flows to a `harnessManager` entry on another flow
-  instance** — **CONFIRMED**. A POC on the real path (two real `defineFlow` instances through
-  `createFlowState`/`runAction`, a real `harnessManager`, a scripted harness, no model and no
-  network) settled the row `completed` on the recipient flow, with the child session attributed to
-  the recipient's kind. Red state produced: `flowKind: "no-such-seat-instance"` errors the row with
-  `flow-not-found`, so the check reaches the seam rather than rubber-stamping it. The POC is on this
-  branch at `spec-poc/FIX-1426-crossflow-handoff/`.
+  instance** — **CONFIRMED**. Reproducible anchors, both committed and runnable today:
+  `packages/orchestration/test/task-board/hand-off-cross-flow.test.ts` for the hand-off and the
+  same-board constraint, and `packages/harness-manager/test/slot.spec.ts` for the manager driving a
+  conforming harness model-free. What neither covers is the **join** — a real `harnessManager` at the
+  far end of a cross-flow hand-off, settling the originating row — and that is what was run before
+  drafting: two real `defineFlow` instances through `createFlowState`/`runAction`, a real
+  `harnessManager`, a scripted harness, no model and no network. The row settled `completed` on the
+  recipient flow with the child session attributed to the recipient's kind, and the red state was
+  produced (`flowKind: "no-such-seat-instance"` errors the row `flow-not-found`). That run happened
+  in a throwaway worktree; its verdict and the flow shapes are written up at
+  `spec-poc/FIX-1426-crossflow-handoff/NOTES.md`, which is a **record, not a re-runnable check**.
+  S8 is where the join becomes a standing check.
 - **`session: "per-task"` behaves identically cross-flow** — **CONFIRMED**. The session key is a
   pure function of `(boardId, taskId)`, computed by the sender, with no flow-specific component.
 - **The recipient flow must declare the same logical board itself** — **CONFIRMED**, and it reshaped

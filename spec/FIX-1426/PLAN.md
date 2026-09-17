@@ -15,11 +15,20 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 | S4 | `goals/devforce-lab/lab/board.mts` | The feature board and its static assignee→seat address map. `workers: { coder: dispatcher({ flowKind: "<seat instance id>", session: "per-task" }) }`. The key is an **assignee**, not a seat | BR-5 BR-6 BR-7 BR-8 |
 | S5 | `goals/devforce-lab/lab/phase.mts` | One phase: `buildPrompt` composed from the seat's own config, `isDone` = a commit the base ref lacks. No `gh`, no network | BR-10 BR-13 BR-14 BR-15 |
 | S6 | `goals/devforce-lab/lab/host.mts` | Read the tree, hand-assemble `{ em, coder }` from S2/S3, hire, open the channel, register the board. **Not** a barrel that defines the kinds | BR-1 BR-2 BR-16 |
-| S7 | `goals/devforce-lab/lab/harness-stub.mts` | The scripted run handle the gate puts in the slot: records the prompt and the cwd it was given, returns a configurable verdict. No model, no network | BR-10 BR-11 BR-12 |
+| S7 | `goals/devforce-lab/lab/harness-stub.mts` | The scripted run handle the gate puts in the slot: records the prompt and the cwd it was given, returns a configurable verdict. No model, no network. **Follow `fakeHarness` in `packages/harness-manager/test/slot.spec.ts`** — the neutral contract with no vendor SDK. Do not reach for `claudeCodeAgent` or anything in `labs/conductor`, which stays a read-only reference for the honesty check's slot options | BR-10 BR-11 BR-12 |
 | S8 | `goals/devforce-lab/it-wakes-the-seat-a-file-declared/` | The contract gate: `goal.md`, `run.mts`, `fixtures/`. Every control env-gated, `GOAL_CONTROL=list` prints them | all gate rules |
 | S9 | `goals/devforce-lab/it-commits-from-the-seats-own-file/` | The honesty check: same tree, same hire, same wiring, a real harness in S7's slot against a local scratch repo | BR-10 BR-13 BR-15 |
 | S10 | `goals/devforce-lab/lab/README.md` | What the directory is, what it works around, what each lab-owned file is for. Opens by saying it is evidence, not an application | — |
-| S11 | `spec-poc/FIX-1426-crossflow-handoff/` | **Removed** at implementation. It lives on the spec branch, which never merges | — |
+| S11 | `spec-poc/FIX-1426-crossflow-handoff/NOTES.md` | **Removed** at implementation. It lives on the spec branch, which never merges | — |
+
+**Why the kind files sit inside `workforce/`, not beside it.** `<root>/workforce/flows/workers/<id>.ts`
+is W3's convention, not a choice this slice makes: [#1834](https://github.com/fixpoint-labs/flow-state-dev/pull/1834)
+(FIX-1357) establishes it and emits `workforce/workforce.gen.ts` next to it, with
+`apps/kitchen-sink/workforce/flows/workers/desk-clerk.ts` as the shipped precedent. The pentest lab
+predates it and keeps its TypeScript at `lab/*.mts`, so the two labs differ on purpose — FIX-1427
+moves pentest onto this path rather than this slice moving off it. `what-declares-what.svg` still
+holds: `flows/` is the code side of the fence, and the loader walks only `workers/`, `skills/`,
+`resources/` and `channels/`, so nothing under `flows/` is read as a convention file (BR-16).
 
 ## Sequence
 
@@ -116,11 +125,17 @@ the gate (S8):
     assert reviewer is absent from the DISPATCH RECORD, not just from the result
 ```
 
-**POC:** `spec-poc/FIX-1426-crossflow-handoff/settle-crossflow-poc.spec.ts` on this branch. It
-settled D1's premise on the real path — two real flows, a real `harnessManager`, a scripted
-harness, no model. The premise held, **and it was not free**: the recipient must declare the same
-logical board itself, which is now D1's *Locks in*. Red state produced (`flow-not-found` on an
-unknown instance id), so the check reaches the seam. Run it with the command in that file's header.
+**POC:** `spec-poc/FIX-1426-crossflow-handoff/NOTES.md` on this branch. It records the run that
+settled D1's premise on the real path — two real flows, a real `harnessManager`, a scripted harness,
+no model — and carries the two flow shapes as a sketch. The premise held, **and it was not free**:
+the recipient must declare the same logical board itself, which is now D1's *Locks in*. Red state
+produced (`flow-not-found` on an unknown instance id), so the check reached the seam.
+
+That run is **not re-runnable from this branch** — it happened in a throwaway worktree, and the
+write-up is a record, not a check. What a reader can run today is the committed pair the notes point
+at: `pnpm --filter @flow-state-dev/orchestration test hand-off-cross-flow` (the hand-off and the
+same-board constraint) and `pnpm --filter @flow-state-dev/harness-manager test slot` (the manager
+driving a conforming harness model-free). They do not cover the join of the two, which is S8's job.
 
 ## At implement time
 
@@ -136,6 +151,23 @@ unknown instance id), so the check reaches the seam. Run it with the command in 
   *Locks in* should be revisited on the spec branch before building.
 - **Check whether FIX-1412** (org threading through `openChannels`) landed. If not, the pentest
   lab's two-line client wrap is still needed and BR-17 is its control.
+
+## Notes from review
+
+Recorded for the implementer to weigh against real code, per this PR's review contract. Not folded
+into the design — read them when you reach the surface each names.
+
+- **S8's wait loop.** Follow the pentest lab's deadline style, not a busy-poll. The settle run's
+  `until()` 10ms-interval loop was fine for a throwaway and is not a pattern to copy. *(Cursor,
+  round 1)*
+- **D1's double board is ergonomic cost, and it is already tracked.** [FIX-1408](https://linear.app/fixpoint-labs/issue/FIX-1408)
+  owns the scale question. Nothing for this slice to solve; don't invent a helper to hide it before a
+  third consumer exists. *(Cursor, round 1)*
+- **Don't extract a shared lab-host helper yet.** Two labs is not a pattern. Deliberately deferred;
+  re-raise at the third. *(Cursor, round 1)*
+- **S8/S9 stay split, and the `reviewer` seat stays.** Different falsification targets — merging them
+  or dropping the negative control would cost the thing each exists to prove. *(Cursor, round 1,
+  raised as skipped)*
 
 ## Follow-ups
 

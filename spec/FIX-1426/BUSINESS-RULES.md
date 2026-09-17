@@ -49,13 +49,6 @@ Left of the fence is what an author writes as Markdown; right of it is what the 
 BR-16 is the rule that keeps the board on the right: a `boards/` folder would be accepted by the
 tree and read by nobody.
 
-```mermaid
-flowchart LR
-  T["the file tree"] -->|"seats · skills · documents · channel"| H["hireWorkforce"]
-  C["app code"] -->|"board · the two kinds"| H
-  T -.->|"a boards/ folder · loaded by nobody"| X["silently nothing"]
-```
-
 ## Failure taxonomy
 
 An unregistered kind and an unknown tool key are **fatal at the hire** and refuse the whole roster,
