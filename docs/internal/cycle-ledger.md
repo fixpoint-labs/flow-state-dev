@@ -2077,11 +2077,13 @@ implementer's job since."* Both long implementation PRs converged on a round tha
 
 ### The first fully-carried sample in four cycles
 
-**Every commit on all four merged implementation branches descends from `bbf7b7eb5`** (the merge
+**Every commit on all six merged implementation branches descends from `bbf7b7eb5`** (the merge
 that put cycle 7's grounding on `main`, 09-16 01:41Z). Verified by ancestry on the branch heads
 (`<merge>^2`), not timestamps: `git merge-base <head> bbf7b7eb5` returns `bbf7b7eb5` itself for
-all four, so the fixes were in the tree from each branch's first commit. Cycles 8, 9 and 10 could
-score nothing; this one can.
+#1824, #1826, #1832, #1833, #1834 and #1835, so the fixes were in the tree from each branch's
+first commit. (Named individually because the first draft of this entry said "four" — the epic's
+four — while the sample is six; the two FIX-1389 branches were checked after review caught it.)
+Cycles 8, 9 and 10 could score nothing; this one can.
 
 - **BP-003's red-state clause — second clean win, and the pattern of its escapes is the finding.**
   It fired repeatedly and visibly: red states produced before the fix on the symlink findings
@@ -2100,10 +2102,21 @@ score nothing; this one can.
   nobody correcting anything, so no sweep was triggered. 10.6 fires when you correct a claim; this
   claim was never touched.
 
-### The dominant class — `vacuous-assertion`, ~20 of ~45 non-`nit` findings
+### The dominant class on implementation — `vacuous-assertion`, 20 of 62 non-`nit` findings
 
-Cycle 11 proposed minting it; this cycle it is the largest class by a wide margin and appears on
-**every** artifact in the sample that ran more than one round. The epic's own statement of it:
+Counted off the table above: **62 non-`nit` findings** — `missed-edge-case` 28, `vacuous-assertion`
+20, `docs-miss` 11, `design-off` 3. So `vacuous-assertion` is **not** the largest class overall;
+`missed-edge-case` is, and it is spread thinly across every artifact including the specs.
+
+**Restricted to the six implementation PRs it is the largest**: 15 of 37, against `missed-edge-case`
+12 and `docs-miss` 10. That is the honest form of the claim, and it is the one to score next cycle.
+
+(An earlier draft of this entry said "~20 of ~45" and "the largest class by a wide margin". Both
+were wrong, and a wrong baseline is worse than none, because the next cycle scores against it.
+Caught in review of the PR that lands this entry — a report is a claim.)
+
+Cycle 11 proposed minting it; it appears on **every** artifact in the sample that ran more than one
+round. The epic's own statement of it:
 
 > **A check that is green for the wrong reason — or red for the wrong reason.**
 
@@ -2166,8 +2179,10 @@ Cycle 11's **fix A** (the frozen-spec gate) remains unwritten and is not part of
 
 ### Claims to test next cycle
 
-1. **Does the consolidated BP-003 edit cut `vacuous-assertion`?** Baseline: ~20 of ~45 non-`nit`
-   findings, on a fully-carried sample. Score it only on branches that carry the edit.
+1. **Does the consolidated BP-003 edit cut `vacuous-assertion`?** Baseline: **20 of 62** non-`nit`
+   findings overall, **15 of 37** on implementation PRs, on a fully-carried sample. Score it only on
+   branches that carry the edit, and against the implementation figure — that is where the class
+   concentrates.
 2. **Does deriving a check's scope beat stating it?** Baseline: 11 found by one derived scan vs 4
    by six rounds of review, same population.
 3. **Does a freeze hold?** Cycle 11's fix A now has a second instance: #1809, five rounds moving
