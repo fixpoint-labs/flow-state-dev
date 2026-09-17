@@ -272,6 +272,8 @@ export type MergedCapabilitySurface = {
   targetStateSchemas: Record<string, ZodTypeAny> | undefined;
   contextEntries: Array<PresetContextEntry>;
   toolEntries: Array<GeneratorTool[] | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>)>;
+  /** Fence-exempt control tools (FIX-1393) — see `PresetDef.controlTools`. */
+  controlToolEntries: Array<GeneratorTool[] | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>)>;
   // Generator-only singletons. Last-wins among capabilities; block-level
   // setting wins over capability (handled in the generator block factory).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -294,6 +296,7 @@ export function createEmptyMergedSurface(): MergedCapabilitySurface {
     targetStateSchemas: undefined,
     contextEntries: [],
     toolEntries: [],
+    controlToolEntries: [],
     model: undefined,
     providerOptions: undefined,
     caching: undefined,
@@ -555,6 +558,17 @@ export function mergeSurfaceInto(
       );
     }
     acc.toolEntries.push(surface.tools);
+  }
+
+  // Generator control tools — generator only, same as `tools` (FIX-1393).
+  if (surface.controlTools !== undefined) {
+    if (blockKind !== "generator") {
+      throw new Error(
+        `Capability "${capName}" ${source} declares controlTools, ` +
+        `but the consuming block is a ${blockKind}. controlTools is only valid on generator blocks.`
+      );
+    }
+    acc.controlToolEntries.push(surface.controlTools);
   }
 
   // Generator singletons — generator only. Last-wins among capabilities;

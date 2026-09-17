@@ -792,7 +792,14 @@ export function createTaskToolsCapability(
     name: "taskTools",
     presets: {
       tools: {
-        tools: buildTaskTools(resolveCollection, roster),
+        // `controlTools`, not `tools` (FIX-1393): the delegation board is a
+        // framework control, not a grant from the app's catalog. A block only
+        // holds these because it — or a skill it holds that declared `agents:`
+        // — asked for a board, and that composition is the declaration. They
+        // are also unnameable: `buildTaskTools` mints them per resolver, so a
+        // `tools:` list has no stable key to let them back in. A skill worker
+        // declaring `tools: ["someCatalogTool"]` keeps its board.
+        controlTools: buildTaskTools(resolveCollection, roster),
       },
       default: ["tools"],
     },

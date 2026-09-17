@@ -100,6 +100,8 @@ export const assistant = generator({
 });
 ```
 
+Notice the generator declares no `tools:`. A declared `tools:` is the complete set of tools the model may call, so a generator that has one gets neither the skills catalog's tools nor `runSkill` from the capability. When a generator needs its own `tools:` for other reasons, list the catalog's tools there too. See [Tools a capability contributes](../fundamentals/capabilities#capability-tools).
+
 The first time the collection is read (whether by `skillActivator` or by the catalog context formatter), the initial skills are seeded. Later edits to skill bodies — via DevTool, a CLI, or an admin UI — take effect on the next turn. There's no redeploy.
 
 ## Main-agent scoping with `itemVisibility`

@@ -46,13 +46,16 @@ The request has to resolve to an org. An app on the default principal resolver d
 
 A worker names its tools by key in `tools:`, and the keys come from the kind's **catalog**: a map from key to tool that your app passes when it builds the kind, since a file on disk can only carry a name. Naming a key the catalog does not carry is refused at the hire, by name. An empty `tools:`, or none at all, means no catalog tools, whatever else the catalog holds.
 
-`tools:` is not the only way a tool reaches a worker, though:
+That list is the whole of what a worker can call. A capability you attach through [`defineAgentWorkerFlow`'s `uses`](#configuring-the-kind) can carry tools of its own, and they do not reach a worker: the model is handed the worker's own list and nothing else. Memory is the case you meet first. Its `recall` and `connect` presets are on by default, and a worker that named no tools still reaches the model with no tools. To give a worker one of them, put it in the catalog and let the worker name it, like any other tool.
 
-- **The skill loader**, when the worker sets [`skills.activateTool`](#using-them). It lets the model pull a skill the worker holds into the turn as it runs. It is not a catalog tool, so `tools:` neither lists it nor holds it back.
-- **A tool a capability carries**, when you attach one through `defineAgentWorkerFlow`'s `uses`. A capability's tools reach every worker of the kind whatever that worker's `tools:` names, so turn tool-bearing presets off unless you want them on the whole roster. [Giving workers memory](#giving-workers-memory) does exactly that.
-- **The delegation controls**, when a skill the worker holds declares `agents:`. Activating that skill puts the task board's eight tools and `runBoard` on the worker, so it can create tasks and run them. They are not catalog tools either, and `tools: []` does not hold them back.
+Everything else a capability brings is unaffected. Context injection, storage, and helpers arrive whatever `tools:` says, which is what the memory recipe [below](#giving-workers-memory) runs on: the worker reads what it remembers each turn and calls nothing to get it.
 
-Past those three, a skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's `tools:`, so a worker with `tools: []` reaches no catalog tool through a delegate — it can command the board, but the workers it commands are fenced.
+A worker's own settings can still put a **control** on it. A control is a piece of framework machinery rather than a tool from your catalog, and the setting that switched it on is what put it there, so `tools:` neither lists it nor holds it back:
+
+- **The skill loader**, when the worker sets [`skills.activateTool`](#using-them). It lets the model pull a skill the worker holds into the turn as it runs.
+- **The delegation controls**, when a skill the worker holds declares `agents:`. Activating that skill puts the task board's eight tools and `runBoard` on the worker, so it can create tasks and run them.
+
+A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's `tools:`, so a worker with `tools: []` reaches no catalog tool through a delegate — it can command the board, but the workers it commands are fenced.
 
 Checking `tools:` against a catalog is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so whether a `tools:` name is checked against anything is that kind's business.
 
@@ -186,8 +189,8 @@ const remembers = defineAgentWorkerFlow({
   catalog: { board: boardTool, search: searchTool },
   uses: [
     mem.capability.presets({
-      // Memory's two tools, turned off. `recall` searches stored memory on
-      // demand; `connect` traverses relations between entities. See below.
+      // Memory's two tools, off. A tool reaches a worker through the kind's
+      // catalog and the worker's own `tools:`, never through a capability.
       recall: false,
       connect: false,
       // What the worker reads back each turn. Both are off by default.
@@ -214,7 +217,22 @@ Tell a worker something in one conversation and it knows it in the next.
 
 **Turn `semantic` and `episodic` on.** They are off by default. Skip them and the durable stores fill up and are never read back, which is the failure that looks fine until someone starts a second conversation.
 
-**Turn `recall` and `connect` off.** They arrive as tools (`recall` searches stored memory on demand, `connect` walks the relations between entities), and a capability's tools reach every worker of the kind whatever its `tools:` names. With them off, a worker reads what it knows as injected context every turn instead of searching on request. If you want on-demand search back, put the [recall tool](../memory/recall-tool.md) in your app's own catalog, where a worker opts in by naming it like any other tool.
+**`recall` and `connect` are not how a worker searches.** They are memory's two tools: [`recall`](../memory/recall-tool.md) searches stored memory on demand, `connect` walks the relations between entities. Neither reaches a worker from the capability, so leaving the presets on buys nothing. To give a worker on-demand search, put the tool in the kind's catalog:
+
+```ts
+const remembers = defineAgentWorkerFlow({
+  catalog: { board: boardTool, search: searchTool, recall: mem.tool.recall() },
+  // ...the rest as above
+});
+```
+
+Then the worker names it like any other tool:
+
+```md
+---
+tools: [recall]
+---
+```
 
 ### What isolation does and does not give you
 

@@ -341,22 +341,24 @@ worker.
 
 | Option | What it does |
 | --- | --- |
-| `uses` | Capabilities attached to every worker's answer generator. The skills binding stays first and is never displaced. A capability passed as a plain ref brings its own storage with it; one passed as a `(ctx) => refs` resolver contributes context and tools only, and its storage has to be declared statically somewhere. |
+| `uses` | Capabilities attached to every worker's answer generator. The skills binding stays first and is never displaced. A capability passed as a plain ref brings its own storage with it; one passed as a `(ctx) => refs` resolver brings none, so anything it needs has to be declared statically somewhere. |
 | `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string, it cannot change the answer, and a failure in it does not fail the turn. Absent, nothing runs after the answer. |
 | `isolateUserState` | Forwarded to `defineFlow`. Gives each worker its own user-scoped storage, keyed on the worker's id, instead of one cell shared across the roster. Default `false`. |
 
-**The tools fence.** A worker's `tools:` decides which of the app's catalog tools it can call, and
-the generator's own `tools:` mapping is the only path a catalog tool takes onto a worker. A skill
-does not widen it: a skill's `allowed-tools` are validated against the catalog but never
-registered, and a skill's delegated workers are seated from the holding worker's own list.
+**The tools fence.** A worker's `tools:` is the complete set of tools it can call. The kind maps
+those names against the catalog and hands the model that list and nothing else. A skill does not
+widen it: a skill's `allowed-tools` are validated against the catalog but never registered, and a
+skill's delegated workers are seated from the holding worker's own list. Nor does a capability
+passed through `uses`: whatever tools it carries, the worker's own `tools:` is what the model gets.
+Everything else the capability brings — context, storage, helpers — arrives as usual.
 
-Two tools reach a worker without appearing in `tools:`, and neither is a catalog tool:
+What does reach a worker without appearing in `tools:` is a **control**, which is framework
+machinery rather than a tool from the app's catalog, switched on by the worker's own settings:
 
 - the **skill loader**, when a worker sets `skills.activateTool: true` — it pulls a skill the worker
   already holds into the turn;
-- any tool a **capability** carries, when the kind is built with `uses`. Those reach every worker of
-  the kind whatever its `tools:` names, so turn tool-bearing presets off unless you want them on the
-  whole roster.
+- the **delegation surface**, when a skill the worker holds declares `agents:`, which puts the task
+  board's eight tools plus `runBoard` on the worker.
 
 #### The memory recipe
 
@@ -378,8 +380,8 @@ const remembers = defineAgentWorkerFlow({
   catalog: appTools,
   uses: [
     mem.capability.presets({
-      recall: false,    // a tool — off, per the fence above
-      connect: false,   // a tool — off
+      recall: false,    // a tool — reaches a worker through the catalog, not here
+      connect: false,   // same
       semantic: true,   // context injection; OFF by default
       episodic: true,   // context injection; OFF by default
     }),
@@ -396,11 +398,13 @@ Each of these fails quietly if you skip it:
 - **`system()`, not `createMemoryCapability`.** The latter builds the read side only, producing a
   worker that recalls what something else stored and records nothing of its own.
 - **`afterAnswer` is the write side.** Without it the durable stores are never written.
-- **`semantic` and `episodic` on.** They are off by default, and with `recall` off as well the
-  durable stores would be written and never read back.
-- **`recall` and `connect` off.** They are memory's tool-bearing presets, so left on they reach every
-  worker of the kind whatever its `tools:` names. A worker that wants on-demand search gets the
-  recall tool through the app's own catalog, where it opts in by name.
+- **`semantic` and `episodic` on.** They are off by default, and without them the durable stores
+  would be written and never read back.
+
+`recall` and `connect` are memory's two tools, and the recipe leaves them off: a worker here reads
+what it remembers as injected context, and a capability's tools do not reach a worker in any case.
+A worker that wants on-demand search gets the tool through the catalog
+(`catalog: { recall: mem.tool.recall() }`) and names it in its own `tools:`.
 
 Isolation is a decision for the whole kind: a roster is all-isolated or all-shared.
 

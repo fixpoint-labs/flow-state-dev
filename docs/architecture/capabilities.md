@@ -22,11 +22,55 @@ top-level `CapabilityConfig` shares most of the same fields (always-on); the
 | `sequencerStateSchema` | sequencer only | Same as above; non-sequencer consumer is a build-time error |
 | `targetStateSchemas` | all | Map merged with same-ref dedup |
 | `context` | generator only | Entries appended; tag-name aggregation collapses contributions to the same key inside one XML tag |
-| `tools` | generator only | Arrays appended at runtime |
+| `tools` | generator only | Arrays appended at runtime — **but fenced**: dropped when the consuming block declares `tools:` (see *The tools fence* below) |
+| `controlTools` | generator only | Arrays appended at runtime; **never fenced** |
 | `model` | generator only | **Singleton**, last-wins among capabilities; block-level setting wins over capability |
 | `providerOptions` | generator only | Singleton, last-wins; block-level wins |
 | `caching` | generator only | Singleton, last-wins; block-level wins |
 | `fns` | all | Exposed at `ctx.cap.{name}` with TypeScript inference |
+
+## The tools fence (FIX-1393)
+
+A generator's declared `tools:` is the complete and exclusive set of **catalog**
+tools the model may call. It is a runtime boundary, not a convention.
+
+**Declaring the slot raises the fence — not the list being non-empty.**
+`tools: []` says "no tools"; omitting `tools:` entirely says nothing about tools
+and lets capability tools through, which is how a block that never mentions
+tools still gets them. Both produce an empty resolved list, so the two can only
+be told apart from the declaration itself.
+
+Two preset slots, because a capability contributes two different kinds of thing:
+
+| Slot | What it is | Behind a declared `tools:` |
+|---|---|---|
+| `tools` | a grant from the app's **catalog** | dropped |
+| `controlTools` | a framework **control** the block's own config asked for | kept |
+
+The carve-out is not a loophole. A block holds a control only because it
+composed the capability that carries it — that composition *is* the
+declaration — and a control is typically built inside the capability and never
+exported, so no `tools:` list could name it back in. Fencing one would leave a
+seat advertising a tool in its prompt that it cannot call.
+
+One capability may declare both, and the two shipped cases do:
+`createSkillsLibrary` registers the app catalog through `tools` and its own
+skill loader through `controlTools`; `taskTools` contributes the delegation
+board's eight tools entirely as controls. **This is why the exemption is
+per-contribution rather than per-capability** — a capability-level flag would
+free the skills library's whole catalog registration along with its loader.
+
+Capability catalog tools behind a raised fence are **dropped, not
+name-intersected** with the declaration. Intersecting would be dead code: a
+capability tool the block also named arrives through the declaration already,
+so the filtered remainder is either an identical instance the resolver's
+identity dedupe strips, or a same-name different instance that
+`assertUniqueToolNames` rejects. Dropping says the same thing without turning
+that second case into a throw.
+
+Canonical test: `packages/core/test/generator-tools-fence.test.ts`, which
+observes the list the *model* receives rather than an intermediate resolver
+result — the fence's whole claim is about what the model can call.
 
 ## Generator singletons (model, providerOptions, caching)
 

@@ -81,10 +81,11 @@ When a block lists a capability in `uses`, the framework merges the capability's
 | `stateSchema` | Merged into the block's own state (`ctx.self`) — valid on any block kind, since any block can hold state |
 | `fns` | Available at `ctx.cap.{name}` during execution |
 | Preset `context` entries | Concatenated into generator's context array (string, object-form, or function — see [Generator context](/docs/advanced/generator-context)) |
-| Preset `tools` | Merged into generator's tools |
+| Preset `tools` | Merged into generator's tools, unless the generator declares `tools:` itself |
+| Preset `controlTools` | Merged into generator's tools, whatever the generator declares |
 | Preset `sequencerStateSchema` | Merged into sequencer's state schema |
 
-The merge happens before the block is built. This is the key thing: capabilities aren't just a way to share resources. They're a way to share any block configuration. A generator that `uses` a capability with context and tools presets gets those injected into its config as if they were declared inline. The existing propagation — sequencer resource collection, `defineFlow` resource merging — works unchanged.
+The merge happens before the block is built. This is the key thing: capabilities aren't just a way to share resources. They're a way to share any block configuration. A generator that `uses` a capability with context and tools presets gets those injected into its config as if they were declared inline — with one qualification for tools, [below](#tools-and-controltools). The existing propagation — sequencer resource collection, `defineFlow` resource merging — works unchanged.
 
 `stateSchema` merges differently from the other schema fields: a field declared by two sources (two capabilities, or a capability and the block's own `stateSchema`) must be the *same schema reference*, or the build throws — no silent last-wins. This is the same reference-equality rule the sibling `resources` and `targetStateSchemas` merges use: to share a field deliberately, both sides reference one schema constant; otherwise use distinct field names. It's how a generator capability (a skills registry, say) can give its host generator a working `ctx.self` container without the generator author declaring `stateSchema` directly, while still catching an accidental name collision at build time instead of silently dropping one side. See [Block state](/docs/advanced/block-state) for `ctx.self`/`ctx.parent`.
 
@@ -118,6 +119,28 @@ const memoryCapability = defineCapability({
 ```
 
 By default, all listed presets are active. If you omit the `default` array, every preset is on.
+
+### `tools` and `controlTools` {#tools-and-controltools}
+
+A generator's `tools:` is the complete list of tools its model may call, so a preset's `tools` reach the model only when the consuming generator declares no `tools:` of its own. That is the right slot for a grant the consumer could have made by hand: a search tool, an MCP server's tools, anything it might reasonably want to withhold.
+
+`controlTools` is the other slot, and a generator's `tools:` does not touch it.
+
+```ts
+const scratchpad = defineCapability({
+  name: "scratchpad",
+  presets: {
+    // Built here, exported nowhere. A block holds it because it turned this
+    // preset on, and no `tools:` list could name it.
+    editing: { controlTools: [buildEditTool(collectionKey)] },
+    // A plain grant. A consumer that declares `tools:` decides whether to keep it.
+    search: { tools: [searchScratchpadTool] },
+    default: ["editing"],
+  },
+});
+```
+
+Reach for `controlTools` when the tool's presence is already implied by the consuming block's own configuration, and for nothing else. Both slots are generator-only, and one capability can use both: a skills library registers the app's catalog through `tools` and its own skill loader through `controlTools`.
 
 ### Cross-capability context aggregation
 

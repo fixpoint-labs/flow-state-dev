@@ -414,7 +414,12 @@ export function createSkillsLibrary(
       : { kind: "block" };
 
     const contributions: Partial<PresetDef> = {};
+    // Two buckets (FIX-1393): `tools` is the app-catalog grant, which a
+    // consuming block's `tools:` fences. `controlTools` are the framework
+    // controls a block only holds because its own config asked for them — the
+    // loader and the delegation surface — which the fence never touches.
     const tools: GeneratorTool[] = [];
+    const controlTools: GeneratorTool[] = [];
     const contextEntries: PresetDef["context"] = [];
 
     // Reader — always contributed (renders static `active` + dynamic activeState).
@@ -470,7 +475,13 @@ export function createSkillsLibrary(
 
     // `dynamicActivation` preset → install the load tool + catalog listing.
     if (dynamic) {
-      tools.push(
+      // The loader is a CONTROL, not a catalog grant (FIX-1393): a seat gets it
+      // by setting `skills.activateTool` in its own config, which is the
+      // declaration. It is built here and never exported, so a `tools:` fence
+      // could not name it back in — fencing it would leave the seat advertising
+      // a tool in its prompt that it cannot call. The catalog registered above
+      // stays in `tools`, where the fence can see it.
+      controlTools.push(
         createLoadSkillTool({
           collectionKey,
           location,
@@ -665,22 +676,26 @@ export function createSkillsLibrary(
         dynamicEligible: dynamicAgentEligible,
         allowEmptyRoster,
       };
-      // Static tools (catalog superset + load tool) are known now; the
-      // taskTools and runBoard resolve per execution.
-      const staticTools = [...new Set(tools)];
-      contributions.tools = (async (blockCtx) => [
-        ...staticTools,
+      // The catalog superset is known now and stays fenceable. The loader plus
+      // the delegation surface (taskTools + runBoard, resolved per execution)
+      // are controls — a skill that declared `agents:` is why they are here,
+      // and `tools:` must not cut a worker off from the board it was given.
+      if (tools.length > 0) contributions.tools = [...new Set(tools)];
+      const staticControls = [...new Set(controlTools)];
+      contributions.controlTools = (async (blockCtx) => [
+        ...staticControls,
         ...(await buildDelegationTools(blockCtx as never, surfaceDeps)),
-      ]) as PresetDef["tools"];
+      ]) as PresetDef["controlTools"];
       // Guidance context — the "how to delegate" playbook + live roster,
       // resolved at render time so runtime activations appear too.
       if (cfg.guidance !== false) {
         contextEntries.push(buildDelegationGuidance(surfaceDeps) as never);
       }
-    } else if (tools.length > 0) {
+    } else {
       // De-dupe by identity so a tool declared by both `active` and `allowed`
       // is contributed once.
-      contributions.tools = [...new Set(tools)];
+      if (tools.length > 0) contributions.tools = [...new Set(tools)];
+      if (controlTools.length > 0) contributions.controlTools = [...new Set(controlTools)];
     }
 
     // Group the reader + catalog under a single `<skills>` tag.

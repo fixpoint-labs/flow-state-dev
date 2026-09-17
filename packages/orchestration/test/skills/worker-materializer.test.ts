@@ -12,6 +12,7 @@ import {
 import type { WorkerMaterializationDeps } from "../../src/skills/worker-materializer";
 import { skillFileKey } from "../../src/skills/collection";
 import { createMockSkillsCollection } from "./mocks";
+import { buildDelegationCtx } from "./delegation-ctx";
 
 function deps(
   overrides: Partial<WorkerMaterializationDeps> = {},
@@ -215,6 +216,42 @@ describe("materializeWorker — prompt-driven branches", () => {
     const cfg = (block as { config?: { uses?: readonly { name?: string }[] } }).config;
     expect(cfg?.uses).toBeDefined();
     expect(cfg?.uses?.[0]?.name).toBe("taskTools");
+  });
+
+  it("a worker declaring `tools:` still reaches the model with the whole board (FIX-1393)", async () => {
+    // The fence regression this issue nearly shipped. `resolveCatalogTools`
+    // returns `[]` (never `undefined`) for the non-`taskTools` remainder, so
+    // this worker ALWAYS declares `tools: []` — the tightest possible fence —
+    // while its whole purpose is to drive the board. The board survives only
+    // because `taskTools` contributes through `controlTools`.
+    //
+    // Asserting `cfg.uses[0].name === "taskTools"` (the test above) cannot
+    // catch this: the capability stays wired while its tools vanish. This
+    // observes the list the MODEL is offered instead.
+    const block = await materializeWorker(
+      "discoverer",
+      { prompt: "find competitors", tools: ["taskTools"] },
+      deps(),
+    );
+    const cfg = (block as {
+      config?: {
+        tools?: (input: unknown, ctx: unknown) => Promise<Array<{ name?: string }>>;
+      };
+    }).config;
+    expect(typeof cfg?.tools).toBe("function");
+
+    const resolved = await cfg!.tools!({}, buildDelegationCtx({ self: false }));
+    const names = resolved.map((t) => t.name ?? (t as { config?: { name?: string } }).config?.name);
+    expect(names.sort()).toEqual([
+      "addTask",
+      "assignTask",
+      "blockTask",
+      "cancelTask",
+      "completeTask",
+      "failTask",
+      "listTasks",
+      "updateTask",
+    ]);
   });
 
   it("omits the uses slot when taskTools is not requested", async () => {
