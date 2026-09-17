@@ -28,4 +28,4 @@
 "@flow-state-dev/workspace": patch
 ---
 
-Importing any package now works. In 0.1.1 every package failed immediately with `ERR_MODULE_NOT_FOUND`, because the published JavaScript carried relative imports with no file extension — `./items/predicates` rather than `./items/predicates.js` — which Node's ESM resolver rejects. The build now emits the extensions, and subpath exports and the `fsdev` binary work alongside the main entry points.
+Importing any package now works. In 0.1.1 every package failed immediately with `ERR_MODULE_NOT_FOUND`, because the published JavaScript carried relative imports with no file extension — `./items/predicates` rather than `./items/predicates.js` — which Node's ESM resolver rejects. The build now emits the extensions, and subpath exports and the `fsdev` binary work alongside the main entry points (FIX-1431).
