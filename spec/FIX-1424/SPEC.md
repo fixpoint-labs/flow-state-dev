@@ -66,13 +66,15 @@ flowchart LR
   C["the catalogue · one entry per regression"] --> B["baseline · the claimed goals, unmutated"]
   B -->|"all green"| A["apply the entry to the source file"]
   A --> R["run only the goals that entry claims"]
-  R -->|"every claimed goal red"| K["KILLED"]
+  R -->|"every claimed goal's assertions ran and failed"| K["KILLED"]
   R -->|"any claimed goal green"| S["SURVIVED · the finding"]
+  R -->|"a claimed goal never reached its assertions"| E["ERRORED · nothing measured"]
   K --> V["revert · the worktree is as it was"]
   S --> V
+  E --> V
 ```
 
-An entry whose baseline is already red is reported invalid, not counted as a kill: a goal failing anyway proves nothing.
+An entry whose baseline is already red is reported invalid, not counted as a kill: a goal failing anyway proves nothing. Nor does a goal that crashed. A mutation that stops the file parsing makes every claimed goal exit non-zero without running a single assertion, and counting that as a kill would have the instrument manufacture exactly the false assurance it was built to remove — so a goal that renders no verdict is **ERRORED**, and the entry's verdict is withheld.
 
 ## What stays as it is
 
@@ -81,9 +83,13 @@ An entry whose baseline is already red is reported invalid, not counted as a kil
 - **Goals do not gate CI.** The suite's own contract is that goal checks run outside CI, by hand. The sweep inherits that and does not change what a PR must pass — see the open fork below.
 - **No new framework package or public surface.** One catalogue, one runner, both inside `goals/`.
 
+## One thing it cannot promise
+
+The mutation is a real edit to a real file in your working tree, so the sweep has to put it back. It does: from bytes captured before the edit, in a `finally`, on Ctrl-C, and — if somebody edited that file while the goals ran — by stopping and telling you rather than overwriting their work. But a process killed outright (`kill -9`, an out-of-memory kill, the machine going away) runs no cleanup at all. For that case the sweep writes a journal *before* it edits, and the next sweep or anchor-guard run finds it, names the file and restores it. So the honest promise is **detected and repaired on the next run**, not *never happened*. In between, `git status` shows a modified source file — visible, not hidden.
+
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · A mutation is a literal text edit to a package source file, applied in the working tree and reverted after the run — not a test seam built into the implementation.** If wrong: the sweep owns a clean worktree while it runs, and a catalogue entry goes stale whenever someone edits the line it anchors on.
+1. **[D1](DECISIONS.md#d1) · A mutation is a literal text edit to a package source file, applied in the working tree and reverted after the run — not a test seam built into the implementation.** If wrong: the sweep owns the target file while it runs, and a catalogue entry goes stale whenever someone edits the line it anchors on. **Changed since round 1:** the shape is the same, but how the edit is made safe was revised after review, and the worktree promise is now stated as *detected and repaired* rather than *never happened* — [the delta](DECISIONS.md#d1-revised).
 2. **[D2](DECISIONS.md#d2) · The catalogue covers model-free goals only, and behaviours proved only by a model-backed goal get no mutation coverage — stated, not implied.** If wrong: the sweep's own verdict becomes as flaky as the model, which is the false assurance this issue exists to remove.
 
 **Open: one — the cadence.** Does this run in CI on every PR, or as a periodic sweep? The full ask, with my recommendation, is in [DECISIONS.md → Open](DECISIONS.md#open). Number 2 is the one to weigh: it fixes what this instrument will and won't ever tell us. The reasoning and what lost is in [DECISIONS.md](DECISIONS.md); the cases in [BUSINESS-RULES.md](BUSINESS-RULES.md).

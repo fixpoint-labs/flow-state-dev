@@ -30,7 +30,10 @@ for (const dir of pkgDirs) {
   let target = "NO-EXPORTS-DOT";
   try {
     const pkg = JSON.parse(readFileSync(join(ROOT, "packages", dir, "package.json"), "utf8"));
-    const dot = (pkg.exports ?? {})["."];
+    // The F1 plant repoints ONE named package's entry away from ./src/index.ts,
+    // so D1's load-bearing "the seed target is live from source" assertion is
+    // itself negatively controlled rather than only asserted.
+    const dot = neg && dir === "workforce" ? "./dist/index.js" : (pkg.exports ?? {})["."];
     if (typeof dot === "string") target = dot;
     else if (dot && typeof dot === "object" && typeof dot.default === "string") target = dot.default;
   } catch { target = "UNREADABLE"; }
@@ -123,6 +126,9 @@ facts.push(`F4  the seed entries' shared \`find\` text occurs exactly once in pa
 const CLAIMED = [
   "goals/workforce-seats/a-non-agent-seat-receives-its-skills",
   "goals/workforce-seats/two-seats-run-their-own-configuration",
+  // The F5 plant claims a goal that does not exist, so "every claimed goal is
+  // real, model-free and runnable" is negatively controlled too.
+  ...(neg ? ["goals/workforce-seats/a-goal-that-does-not-exist"] : []),
 ];
 for (const id of CLAIMED) {
   const dir = join(ROOT, id);
@@ -135,13 +141,33 @@ facts.push(`F5  both goals the seed mutations claim exist, are model-free, and s
 // ---------------------------------------------------------------- report
 for (const f of facts) console.log(f);
 if (neg) {
-  const expected = 3;  // one plant each: F2 totality, F3, F4
-  if (failures.length !== expected) {
-    console.error(`\nNEGATIVE CONTROL FAILED — ${failures.length} planted violation(s) caught, wanted exactly ${expected}:`);
-    for (const f of failures) console.error(`  - ${f}`);
+  // Every fact carries a plant, and each plant is matched by IDENTITY, not by
+  // count. A count-only condition can be satisfied by an unrelated pre-existing
+  // failure standing in for a plant that has stopped firing — which would print
+  // NEGATIVE CONTROL OK over a check that no longer controls anything.
+  const PLANTED = [
+    ["F1", "packages/workforce does not resolve to ./src/index.ts"],
+    ["F2", "carry no machine-readable Model line beyond the two known"],
+    ["F3", "expected exactly C1-C4"],
+    ["F4", "wanted exactly 1"],
+    ["F5", "a-goal-that-does-not-exist"],
+  ];
+  const problems = [];
+  const matched = new Set();
+  for (const [id, needle] of PLANTED) {
+    const hit = failures.find((f) => f.includes(needle));
+    if (hit === undefined) problems.push(`${id}: planted violation was NOT caught (no failure matching "${needle}")`);
+    else matched.add(hit);
+  }
+  for (const f of failures) {
+    if (!matched.has(f)) problems.push(`unplanted failure — a real fact is broken, or a plant fired twice: ${f}`);
+  }
+  if (problems.length > 0) {
+    console.error(`\nNEGATIVE CONTROL FAILED — ${problems.length} problem(s):`);
+    for (const pr of problems) console.error(`  - ${pr}`);
     process.exit(1);
   }
-  console.log(`\nNEGATIVE CONTROL OK — all ${expected} planted violations caught:`);
+  console.log(`\nNEGATIVE CONTROL OK — all ${PLANTED.length} planted violations caught, each by identity:`);
   for (const f of failures) console.log(`  - ${f}`);
   process.exit(0);
 }
