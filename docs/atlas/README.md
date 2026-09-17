@@ -17,7 +17,7 @@ issue identifiers; anything under `apps/docs/` is published and may not.
 ## Contents
 
 - `conductor.html` — encyclopedia of the old Conductor run. D-12 retired the
-  product name; DevForce is the Lab on Workforce. Product lock lives on the
+  product name; DevForce and Pentest Lab are sibling Labs on Workforce. Product lock lives on the
   Workforce atlas.
 - `framework.html` — the framework architecture atlas: every package and
   system in `@flow-state-dev`, how they compose, and the open refactor
@@ -29,9 +29,11 @@ issue identifiers; anything under `apps/docs/` is published and may not.
   map; skills and boards share one name → `BlockDefinition` list.
   W3 grows the file-convention surface (kinds + blocks scan as the code
   door). `defineAgent` / `materializeAgent` are invent-kill / placeholder —
-  do not teach them as the path. DevForce is a proposed showcase / calibration
-  Lab on this surface (D-12) — design only; not claiming it runs. The page
-  teaches the lock and the honesty tags.
+  do not teach them as the path. DevForce (software eng) and Pentest Lab
+  (FIX-1355) are sibling consumer Labs on this surface (D-12) — neither is
+  hosted; do not supersede thin-pentest. Pentest's proof has landed as
+  `goals/pentest-lab/` and re-runs; that is evidence, not an application.
+  The page teaches the lock and the honesty tags.
 - `roadmap.html` — the public product horizon. Still written in the older
   three-jobs / sibling framing; Strategy owns that rewrite. Do not read it
   as outranking the Workforce lock.
