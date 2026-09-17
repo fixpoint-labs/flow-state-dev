@@ -249,12 +249,19 @@ export interface ResourceDoc {
   /**
    * Storage-key namespace and accessor key.
    *
-   * **The rule, rather than a list of the shapes it currently produces:** the
-   * ref is the document's path under the workforce root with the `resources/`
-   * segment removed and a leading `org/` removed. So a bare `<name>` at the org
-   * level, `teams/<teamId>/<name>` for a team's — and a level added later gets
-   * its ref from the same rule rather than from a new case. Written this way
-   * because the enumeration has gone stale before; the rule does not.
+   * **The rule:** the ref is the document's path under the workforce root with
+   * the `resources/` segment removed and a leading `org/` removed. The four
+   * forms it currently produces, one per place a `resources/` slot can sit:
+   *
+   * - `org/resources/<name>.md` → `<name>`
+   * - `teams/<teamId>/resources/<name>.md` → `teams/<teamId>/<name>`
+   * - `org/workers/<worker>/resources/<name>.md` → `workers/<worker>/<name>`
+   * - `teams/<teamId>/workers/<worker>/resources/<name>.md` →
+   *   `teams/<teamId>/workers/<worker>/<name>`
+   *
+   * The rule leads and the list follows it on purpose: a level added later gets
+   * its ref from the same rule rather than from a new case, so a stale list
+   * costs a reader nothing the rule above it has not already told them.
    *
    * Path-joined, not dot-joined: this is the key the atlas fixes for a team
    * document, and unlike a worker id it never routes, so a `/` in it is safe.
