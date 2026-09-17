@@ -2742,12 +2742,8 @@ export function generator<
   // -- Tools: single async resolver combining user tools + static caps + dynamic caps
   if (hasStaticTools || hasDynamic) {
     const userTools = normalizedConfig.tools;
-    // Declaring `tools:` at all is what raises the fence — NOT the list being
-    // non-empty (FIX-1393). `tools: []` says "no tools", while omitting the
-    // slot says nothing about tools, which is how every tool-bearing
-    // capability reaches a block that never mentions tools. Both produce an
-    // empty `base` below, so the two cases can only be told apart here, from
-    // the declaration itself.
+    // `tools: []` and omitting `tools:` both yield empty `base` — only the
+    // declaration itself is the fence. When it is up, capability tools do not add.
     const declaresTools = userTools !== undefined;
 
     (normalizedConfig as any).tools = async (input: unknown, ctx: BlockContext) => {
@@ -2755,19 +2751,6 @@ export function generator<
       const base: GeneratorTool[] = userTools
         ? Array.isArray(userTools) ? userTools : await (userTools as any)(input, ctx)
         : [];
-
-      // The fence: when the block declared `tools:`, capability-contributed
-      // tools are INTERSECTED with that declaration rather than unioned onto
-      // it, so a capability can never hand the model a tool the block did not
-      // name — and `tools: []` reaches the model with nothing at all. Keyed by
-      // tool name because the name is what the model calls. Resolved per
-      // invocation, so a `tools:` function fences against the list it returned
-      // for THIS input.
-      const fence = (tools: GeneratorTool[]): GeneratorTool[] => {
-        if (!declaresTools) return tools;
-        const declared = new Set(base.map((t) => t.name));
-        return tools.filter((t) => declared.has(t.name));
-      };
 
       // 2. Static capability preset tools
       const staticTools: GeneratorTool[] = hasStaticTools
@@ -2788,7 +2771,8 @@ export function generator<
         }
       }
 
-      return [...base, ...fence(staticTools), ...fence(dynTools)];
+      if (declaresTools) return base;
+      return [...base, ...staticTools, ...dynTools];
     };
   }
 
