@@ -47,14 +47,20 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
  * Checked in lowercase only, which is sufficient because the pattern above
  * already refuses every other casing. `clock$` needs no entry — `$` is not in
  * the allowlist.
+ *
+ * The numbered devices run **1–9, not 0–9**: `COM0` and `LPT0` are ordinary
+ * names on Windows, and refusing them would cost an author two portable names
+ * at every level of the tree for nothing. The same list, to the same bound,
+ * is in `engine`'s filesystem store — `workforce` denies `engine`, so the two
+ * cannot share it today.
  */
 const DOS_DEVICE_SEGMENTS: ReadonlySet<string> = new Set([
   "con",
   "prn",
   "aux",
   "nul",
-  ...Array.from({ length: 10 }, (_, n) => `com${n}`),
-  ...Array.from({ length: 10 }, (_, n) => `lpt${n}`),
+  ...Array.from({ length: 9 }, (_, n) => `com${n + 1}`),
+  ...Array.from({ length: 9 }, (_, n) => `lpt${n + 1}`),
 ]);
 
 /**

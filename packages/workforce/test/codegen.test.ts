@@ -273,6 +273,22 @@ describe("what the walk refuses", () => {
     }
   });
 
+  it("accepts the numbered names Windows does not reserve", async () => {
+    // Windows reserves COM1-COM9 and LPT1-LPT9. `com0` and `lpt0` are ordinary
+    // names, and this rule runs on every segment of the tree — so refusing them
+    // would quietly cost an author two portable names at every level. An
+    // over-refusal is as much a defect as a missed one and is harder to notice,
+    // because nothing fails: the name simply cannot be used.
+    const root = tree({
+      "flows/workers/com0.ts": "export default {};",
+      "blocks/lpt0.ts": "export default {};",
+    });
+
+    const { files } = await discoverWorkforceCode(root);
+
+    expect(files.map((file) => file.name)).toEqual(["lpt0", "com0"]);
+  });
+
   it("refuses one basename claimed by both flow folders", async () => {
     const root = tree({
       "flows/workers/standup.ts": "export default {};",

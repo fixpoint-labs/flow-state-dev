@@ -64,6 +64,8 @@ The team qualifier means every team can have a `lead` without checking what the 
 
 Both folder names must be lowercase letters, digits, and single hyphens, at most 64 characters each. So `api-designer` is fine. `API_Designer` and `api.designer` are refused when the tree is read, with the rule in the message.
 
+A handful of otherwise-legal names are refused as well: `con`, `prn`, `aux`, `nul`, `com1` through `com9`, and `lpt1` through `lpt9`. Windows treats these as device names rather than filenames, whatever extension follows, so a tree containing one cannot be checked out on a Windows machine at all. The rule covers every name in the tree, not just these two folders — teams, workers, channels, documents, and the files that declare your own flow kinds and blocks.
+
 ## Reading the tree
 
 Point `readWorkforce` at the root:
