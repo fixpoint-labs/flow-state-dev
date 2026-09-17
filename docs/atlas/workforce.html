@@ -306,7 +306,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-prop" x="16" y="16" width="292" height="188" rx="5"/>
         <text class="t-lbl" x="34" y="38">THE PRODUCT</text>
         <text class="t-b f-accent" x="34" y="68">Workforce</text>
-        <text class="t-s" x="34" y="96">roster + seats + rooms</text>
+        <text class="t-s" x="34" y="96">roster + seats + channels</text>
         <text class="t-xs" x="34" y="120">CLIENT TEAMS &#183; PERSONAL / ORG</text>
         <text class="t-xs" x="34" y="138">ONSECURITY = GTM NAME</text>
         <text class="t-xs" x="34" y="156">NOT AN IMPLEMENTATION CLAIM</text>
@@ -389,7 +389,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <table>
       <thead><tr><th></th><th>Layer 1</th><th>Layer 2</th></tr></thead>
       <tbody>
-        <tr><td>What it is</td><td>Substrate. Composable primitives with almost no product opinion.</td><td>The product. Roster / teams + seats + rooms + thin helpers over the substrate.</td></tr>
+        <tr><td>What it is</td><td>Substrate. Composable primitives with almost no product opinion.</td><td>The product. Roster / teams + seats + channels + thin helpers over the substrate.</td></tr>
         <tr><td>Who it is for</td><td>Authors who will compose their own harness.</td><td>Clients and personal/org workforces. DevForce and Pentest Lab are the proposed sibling Lab consumers on this layer &#8212; design only. Plan both so L2 is not overfit.</td></tr>
         <tr><td>What it must not do</td><td>Absorb one product&#8217;s knowledge. That is tenet&nbsp;4. Do not mint Team / Channel / MessageBoard here.</td><td>Invent a primitive the substrate does not have. Compose, or file a Layer&nbsp;1 gap. Do not fold this layer into core.</td></tr>
         <tr><td>Phased implement</td><td>In flight: <a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a> INST-1..3 for hire-id / multi-hire. <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code> exists. Cross-flow exists (<code>dispatcher({ flowKind })</code>). W2 mints a flow instance per seat from <code>WORKER.md</code>. It does not scan seats into <code>AgentRegistry</code>. Hire already takes <code>{ kinds }</code>. One hire per kind is enough for a Lab.</td><td><strong>W2</strong> foundation is mostly done except the FIX-1342 rewrite. <strong>W3</strong> (file-convention surface) is next. <strong>DevForce</strong> and <strong>Pentest Lab</strong> are proposed sibling consumers after conventions &#8212; design only; not claiming either runs. <strong>W1</strong> MCP is held until a Lab runs. Collab RC later (INST as needed for multi-hire). See <a href="#vision">&#167;03</a>.</td></tr>
