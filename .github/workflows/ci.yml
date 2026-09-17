@@ -58,8 +58,13 @@ jobs:
       # in the repo notices because everything here resolves through `src`. That
       # is how 0.1.1 shipped unimportable. Each package's build adds the
       # extensions; this fails if one stops doing so.
+      # `--all` rather than a `packages/*/dist` glob: a glob cannot report what
+      # is missing. A package that stops emitting `dist` drops out of the
+      # expansion and the check passes without ever looking at it, which is the
+      # same silence that let 0.1.1 ship. `--all` asks the workspace which
+      # packages publish and demands output from each.
       - name: Built output is importable by Node
-        run: node scripts/add-esm-extensions.mjs --check packages/*/dist
+        run: node scripts/add-esm-extensions.mjs --check --all
 
       # Its OWN step, deliberately not folded into a build script: a script that
       # ran `fsdev gen` before building would regenerate the file and pass,

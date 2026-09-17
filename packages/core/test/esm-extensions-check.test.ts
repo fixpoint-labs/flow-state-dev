@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root build script, plain .mjs with no type declarations.
 import {
+  maskedPositions,
+  publishableDists,
   rewriteSource,
   rewriteSpecifier,
 } from "../../../scripts/add-esm-extensions.mjs";
@@ -32,7 +34,7 @@ const rewriteText = (
   text: string,
   files: string[] = [],
   dirs: string[] = [],
-): { text: string; count: number } =>
+): { text: string; count: number; unresolved: string[] } =>
   (
     rewriteSource as (
       t: string,
@@ -40,7 +42,7 @@ const rewriteText = (
       e: string,
       f: Probe,
       g: Probe,
-    ) => { text: string; count: number }
+    ) => { text: string; count: number; unresolved: string[] }
   )(
     text,
     "/pkg/dist",
@@ -125,5 +127,86 @@ describe("extending relative specifiers in built output", () => {
   it("preserves the original quote style", () => {
     const out = rewriteText("import './a';\n", ["/pkg/dist/a.js"]);
     expect(out.text).toBe("import './a.js';\n");
+  });
+});
+
+/**
+ * `rewriteSpecifier` returns null for two opposite cases — already settled, and
+ * pointing at nothing — and only the first is harmless. A check that cannot
+ * tell them apart passes on output Node rejects, which is the bug this suite
+ * was written for in the first place.
+ */
+describe("relative imports that match no file", () => {
+  it("reports an extensionless specifier that resolves to nothing", () => {
+    const out = rewriteText('export * from "./nowhere";\n');
+    expect(out.count).toBe(0);
+    expect(out.unresolved).toEqual(["./nowhere"]);
+  });
+
+  it("does not report one that already carries an extension", () => {
+    const out = rewriteText('export * from "./gone.js";\n');
+    expect(out.unresolved).toEqual([]);
+  });
+
+  it("does not report a bare package specifier", () => {
+    expect(rewriteText('import { z } from "zod";\n').unresolved).toEqual([]);
+  });
+});
+
+/**
+ * Emitted output carries JSDoc, and `@flow-state-dev/node`'s aws-lambda entry
+ * documents `import { flowState } from "./flow-state"` in an `@example`. That
+ * is prose about the consumer's own file, not a module this package loads —
+ * it must neither be rewritten nor reported.
+ */
+describe("code and not-code", () => {
+  const docComment = [
+    "/**",
+    " * @example",
+    ' * import { flowState } from "./flow-state";',
+    " */",
+    'export * from "./real";',
+  ].join("\n");
+
+  it("leaves an import inside a doc comment alone", () => {
+    const out = rewriteText(docComment, ["/pkg/dist/real.js"]);
+    expect(out.count).toBe(1);
+    expect(out.unresolved).toEqual([]);
+    expect(out.text).toContain('"./flow-state"');
+    expect(out.text).toContain('"./real.js"');
+  });
+
+  it("leaves an import inside a line comment alone", () => {
+    const out = rewriteText('// import x from "./a";\n', ["/pkg/dist/a.js"]);
+    expect(out.count).toBe(0);
+  });
+
+  it("masks a string's interior but not the code around it", () => {
+    const mask = (maskedPositions as (t: string) => Uint8Array)('a "bc";');
+    expect(mask[0]).toBe(0);
+    expect(mask[3]).toBe(1);
+  });
+});
+
+/**
+ * A shell glob cannot report what is missing: a package that emits no dist
+ * drops out of `packages/*\/dist` and the check passes without ever seeing it.
+ * Discovery asks which packages publish, so the absence becomes a failure.
+ */
+describe("which packages must have output", () => {
+  const find = (manifests: Record<string, { private?: boolean }>): string[] =>
+    (
+      publishableDists as (
+        dirs: string[],
+        read: (dir: string) => { private?: boolean },
+      ) => string[]
+    )(Object.keys(manifests), (dir) => manifests[dir]!);
+
+  it("includes a package that publishes", () => {
+    expect(find({ core: {} })).toEqual(["core"]);
+  });
+
+  it("excludes a private package, whose dist nobody installs", () => {
+    expect(find({ core: {}, ui: { private: true } })).toEqual(["core"]);
   });
 });
