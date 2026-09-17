@@ -17,8 +17,9 @@
  * the next convention to build on rather than copy: `openRoot` opens the
  * configured root, `walkTeams` enumerates `teams/`, `openStructuralDirectory`
  * and `classify` answer for one path, `refusedSymlink` and `unreadable` are the
- * one wording for each refusal, and `IGNORED_ENTRIES` is the one list of names
- * that never denote anything. What a reader does inside a team is its own.
+ * one wording for each refusal, `IGNORED_ENTRIES` is the one list of names
+ * that never denote anything, and `validateSegment` is the one rule for what a
+ * name in this tree may be. What a reader does inside a team is its own.
  *
  * Kept behind a subpath so importing the package root does not pull a consumer
  * onto `node:fs`.
@@ -72,5 +73,7 @@ export {
   type PathReport,
   type WalkedTeam,
 } from "./structural-directory";
+
+export { validateSegment, type SegmentLabel } from "./segments";
 
 export type { WorkerManifest, ResourceDoc, ChannelManifest } from "../manifest";

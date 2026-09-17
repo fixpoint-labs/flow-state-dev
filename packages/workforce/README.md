@@ -360,6 +360,47 @@ keeping.
 Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
 every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.
 
+## Kinds and blocks from files
+
+The `kinds` map above names each kind a second time, after the flow already declared it. There is a
+file convention for that half too: put a flow under `workforce/flows/workers/` or
+`workforce/flows/channels/`, or a block under `workforce/blocks/`, and the basename is the name it
+registers under.
+
+```
+workforce/
+  flows/
+    workers/request-triage.ts     ← default-exports a flow, cardinality: "collection"
+    channels/standup.ts           ← default-exports a flow, singleton (the default)
+  blocks/triage.ts                ← default-exports a BlockDefinition
+```
+
+`fsdev gen` walks those three folders and writes `workforce/workforce.gen.ts` beside them, exporting
+`kinds`, `channelKinds` and `blocks` — the three parameters `hireWorkforce`, `channelInstances` and a
+task board already take.
+
+```ts
+import { hireWorkforce } from "@flow-state-dev/workforce";
+import { kinds } from "./workforce/workforce.gen";
+
+const seats = hireWorkforce(workers, { kinds });
+```
+
+Discovery is a **build step**, not something this package does while your app runs. A walk at startup
+works on a Node host and finds nothing on a bundled one, because after a Next or Vercel build those
+files are no longer separate modules. Static imports are identical on both. Commit the generated
+file, run `fsdev gen` in front of your build, and give `fsdev gen --check` its own CI step — inside a
+build script it would regenerate the file and always pass.
+
+The generator reads the tree and opens none of the modules in it, so it refuses only what a walker
+can see: an illegal basename, a directory inside a locked folder, one basename claimed by both flow
+folders, and a folder that is present and unreadable. Refusals are collected, so one run names all of
+them. A file that exports the wrong shape fails your own `tsc` against the generated module; a flow
+whose `kind` disagrees with its basename is refused at the hire.
+
+Passing `kinds` by hand keeps working, unchanged, and composes with a generated map with no
+precedence rule.
+
 ## Reading documents from files
 
 A team's shared documents — a handbook, a glossary, an escalation procedure — can be Markdown files
@@ -668,6 +709,9 @@ leaves an empty session there, and re-running binds it.
 | `openRoot(root)` / `walkTeams(root, report)` | The walk every reader above shares: open the configured root (throwing on a symlinked or unreadable one, however the path is spelled), then enumerate `teams/`, reporting a team folder that is refused or unreadable and yielding the rest. `report` may be `async` and is awaited before the walk moves on. What a reader does *inside* a team stays its own. Ships from the `./loader` subpath (Node only). |
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
+| `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
+| `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep and return what they hold, ordered by path. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
+| `renderWorkforceCode(files)` | Render those files as a module of static imports exporting `kinds`, `channelKinds` and `blocks`. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
 | `readResourcesDirectory(root)` | Read `org/resources/` and `teams/<id>/resources/` into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
 | `resourcesFromDocs(documents)` | Turn document records into the flow resource map, keyed by each document's ref. Spread it into your own `resources`. |

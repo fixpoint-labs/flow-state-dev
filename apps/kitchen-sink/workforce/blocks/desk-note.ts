@@ -1,0 +1,39 @@
+/**
+ * A custom block, declared by living in `workforce/blocks/`.
+ *
+ * Nothing registers it. `fsdev gen` walks this folder, and the basename is the
+ * name it registers under — the name a task board would assign by. The block's
+ * own `name` is a separate job (trace identity), so the two are allowed to
+ * differ and this one keeps them the same for readability.
+ *
+ * It reads the seat's settings off `ctx.flow.config`, which is what makes it
+ * useful as a demonstration: the answer names the desk this particular seat was
+ * configured with, so two seats on one kind produce visibly different answers.
+ */
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+/** What a caller sends the desk. */
+export const deskNoteInput = z.object({ note: z.string() });
+
+/** What comes back: the note, plus which seat answered and how it was configured. */
+export const deskNoteOutput = z.object({
+  answered: z.string(),
+  desk: z.string(),
+  instructions: z.string(),
+});
+
+export default handler({
+  name: "desk-note",
+  description: "Answers a note from the desk the seat was configured with.",
+  inputSchema: deskNoteInput,
+  outputSchema: deskNoteOutput,
+  execute: (input, ctx) => {
+    const config = ctx.flow.config as { desk: string; instructions?: string };
+    return {
+      answered: input.note,
+      desk: config.desk,
+      instructions: config.instructions ?? "",
+    };
+  },
+});

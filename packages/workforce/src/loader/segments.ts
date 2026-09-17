@@ -43,12 +43,25 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
  * resource's name — the one segment that is a *file* rather than a folder, and
  * the one whose identity is joined with a `/` rather than a `.`, because a
  * document's ref is a storage-key namespace and never routes.
+ *
+ * `Kind` and `Block` are the other two file-named levels: a flow file's
+ * basename under `workforce/flows/`, which becomes a kind name on the map an
+ * app registers, and a block file's basename under `workforce/blocks/`, which
+ * becomes the name a task board assigns by. They obey the same rule as every
+ * other segment for the same reason the rest do — a kind name is half of a
+ * minted flow instance id, and both are a path on disk at the same time.
  */
-export type SegmentLabel = "Team" | "Worker" | "Channel" | "Document";
+export type SegmentLabel = "Team" | "Worker" | "Channel" | "Document" | "Kind" | "Block";
+
+/**
+ * Labels whose segment is a *file* rather than a folder. Held as a set rather
+ * than as a comparison so adding a label cannot leave the wording behind.
+ */
+const FILE_LABELS: ReadonlySet<SegmentLabel> = new Set<SegmentLabel>(["Document", "Kind", "Block"]);
 
 /** Validate one path segment against the naming rules. Throws on a break. */
 export function validateSegment(segment: string, label: SegmentLabel): void {
-  const what = `${label} ${label === "Document" ? "file" : "folder"} name`;
+  const what = `${label} ${FILE_LABELS.has(label) ? "file" : "folder"} name`;
 
   if (segment.length > MAX_SEGMENT_LENGTH) {
     throw new Error(`${what} "${segment}" exceeds ${MAX_SEGMENT_LENGTH} characters`);
@@ -62,7 +75,11 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
         ? `it becomes part of the document's ref, which is joined with a "/"`
         : label === "Channel"
           ? `it becomes part of the channel's identity, which is joined with a "."`
-          : `it becomes part of the worker's identity, which is joined with a "."`;
+          : label === "Kind"
+            ? `it becomes the kind's name, which a worker file's \`flow:\` names and a minted flow instance id is built from`
+            : label === "Block"
+              ? `it becomes the name the block registers under, which a task board assigns by`
+              : `it becomes part of the worker's identity, which is joined with a "."`;
     throw new Error(
       `${what} "${segment}" must be lowercase letters, digits, and single ` +
         `hyphens (not at the start or end) — ${identity}`,
