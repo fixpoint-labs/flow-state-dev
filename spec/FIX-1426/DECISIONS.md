@@ -27,7 +27,7 @@ Solid edges are what you're signing. The dashed node is the question that is you
 |---|---|
 | **Instead of** | Conductor's shape: one flow carrying both the board and the `harnessManager` entry, with the seat's files read by that flow |
 | **Because** | The claim is that *a declared seat does the work*. Under co-location the row reaches a hand-written flow that happens to read seat files, and the seat is never the thing that was woken — which is the assertion this slice exists to replace with a result. A check built on co-location would report PASS on exactly the state we are trying to rule out |
-| **Locks in** | Every DevForce worker kind that can be given work carries board wiring — a `boardId` and a ledger identity shared with the coordinator board, plus its own same-flow gating dispatcher. So "a seat that can be given work" is permanently a heavier declaration than "a seat that can answer," and that asymmetry is inherited by the Lab and by anything built on it |
+| **Locks in** | A worker kind that can be given work carries board wiring — a `boardId` and a ledger identity shared with the coordinator board, plus its own same-flow gating dispatcher. **This is the current L1 tax, labelled interim, soft→[FIX-1408](https://linear.app/fixpoint-labs/issue/FIX-1408).** It is not the forever product rule, and the Lab must not teach it as one: board *authoring* is a channel-attached `TaskCollection` ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)), and W4 should be able to give a board a seat address without every work-capable kind duplicating board wiring. So what this locks in is two hand-declared boards in a `goals/` directory, expected to move — not an asymmetry anything else inherits |
 
 **Settled by a run, not a read.** The run recorded under *Settled* below confirms the mechanism
 works with a real `harnessManager` at the recipient entry. It also found the cost: `defineFlow` refuses a flow that
@@ -78,6 +78,27 @@ rather than grandfathered.
 | Prove the cross-flow hand-off with a unit test in `orchestration` and stop there | That test already exists and passes. It proves the seam; it proves nothing about a seat that came out of a folder, which is the part nobody has run |
 | Give the EM seat a real model so it decides what to file | Doubles the model surface for a claim that is structural. The EM's opinion is *that it names no harness*, not that it reasons well |
 | Declare the board as a file convention in the tree | The loader walks workers, skills, resources and channels only. A `boards/` folder loads as nothing, silently ([FIX-1421](https://linear.app/fixpoint-labs/issue/FIX-1421)). Boards are declared in app code, by design |
+
+## Ruled after approval — the interim label
+
+The owner approved this spec and raised one concern with it: he wants a better convention for
+declaring boards, since it will be common. Asked `fsd-architect`, who **split the question in two
+and ruled** (2026-09-17, project mailbox handle `fsd/project/workforce-l2`):
+
+- **Board authoring** — what an author declares — is a channel-attached `TaskCollection`
+  ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385), under W4). Workers do, channels
+  hold. A `boards/` folder in the tree is invent-killed as teaching, because the loader does not
+  walk it ([FIX-1421](https://linear.app/fixpoint-labs/issue/FIX-1421)) — which is BR-16.
+- **The cross-flow claim-gate tax** — what a recipient *flow* must declare — is a separate **L1**
+  constraint, carved onto [FIX-1408](https://linear.app/fixpoint-labs/issue/FIX-1408). Channel
+  config does **not** subsume the dispatch and claim guards today; they are different layers.
+- **No permanent third authoring shape**, and no second door: kind-owned boards are not to become
+  the product common case. A kind that needs a task entry may pay the D1 tax **labelled interim**.
+- **Lab Proofs keep hand-declared boards in host/code**, which is what `PLAN.md` already specifies.
+  No new epic, and no block on this spec.
+
+D1's *Locks in* above is written to that ruling. The one thing this spec must not do is grandfather
+the asymmetry as DevForce opinion.
 
 ## Settled
 

@@ -77,9 +77,13 @@ graded claim rather than an absence.
 ## Sign off
 
 1. **[D1](DECISIONS.md#d1) · The row reaches the seat's own flow instance, and the `coder` kind
-   therefore declares the same logical board itself.** If wrong: every DevForce worker kind
-   carries board wiring forever, making "a seat that can be given work" a heavier thing to declare
-   than "a seat that can answer" — and we find out after the Lab is built on it.
+   therefore declares the same logical board itself.** If wrong: a worker kind that can be given
+   work is a heavier thing to declare than one that can answer — and we find out after the Lab is
+   built on it. **Approved, and since ruled interim:** the Architect split board *authoring*
+   (channel-attached, [FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)) from this
+   cross-flow claim-gate tax (L1, soft→[FIX-1408](https://linear.app/fixpoint-labs/issue/FIX-1408)),
+   so the extra declaration is a current tax to label, not a rule the Lab teaches. See
+   [DECISIONS.md → Ruled after approval](DECISIONS.md#ruled-after-approval--the-interim-label).
 2. **[D2](DECISIONS.md#d2) · Two checks, and the contract gate runs with no model at all.** If
    wrong: the evidence is one model-backed run, which stays green while a seat reads none of its
    own files, because a model improvises around a missing document.
