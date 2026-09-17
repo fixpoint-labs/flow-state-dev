@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 296" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two aligned grids, five levels of the workforce tree by four readers. Today the root level and the team-folder level are a separate copy in each reader that walks them, the teams and slot levels already come from one shared primitive, and each reader's leaf loop is its own on purpose. After, the root and team-folder rows become one shared primitive too; the leaf row stays each reader's own, and the skills reader stays absent from the team row because it never enumerates teams.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .pnl   { fill:none; stroke:var(--rule); stroke-width:1.2; }
+    .copy  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.1; }
+    .share { fill:var(--code-soft); stroke:var(--code); stroke-width:1.1; }
+    .own   { fill:var(--surface); stroke:var(--accent); stroke-width:1.1; stroke-dasharray:3 2; }
+    .na    { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:2 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-c   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9px; text-anchor:middle; }
+    .t-n   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:10px; font-weight:600; text-anchor:middle; }
+  </style>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="18">TODAY</text>
+    <text class="t-b" x="16" y="36">four readers, five levels</text>
+    <rect class="pnl" x="16" y="46" width="446" height="206" rx="5"/>
+    <text class="t-c" x="158" y="66">workers</text>
+    <text class="t-c" x="244" y="66">channels</text>
+    <text class="t-c" x="330" y="66">resources</text>
+    <text class="t-c" x="416" y="66">skills</text>
+    <text class="t-s" x="26" y="94">the root</text>
+    <rect class="copy" x="117" y="78" width="82" height="24" rx="3"/>
+    <rect class="copy" x="203" y="78" width="82" height="24" rx="3"/>
+    <rect class="copy" x="289" y="78" width="82" height="24" rx="3"/>
+    <rect class="copy" x="375" y="78" width="82" height="24" rx="3"/>
+    <text class="t-s" x="26" y="126">teams/</text>
+    <rect class="share" x="117" y="110" width="82" height="24" rx="3"/>
+    <rect class="share" x="203" y="110" width="82" height="24" rx="3"/>
+    <rect class="share" x="289" y="110" width="82" height="24" rx="3"/>
+    <rect class="na" x="375" y="110" width="82" height="24" rx="3"/>
+    <text class="t-s" x="26" y="158">teams/&lt;id&gt;</text>
+    <rect class="copy" x="117" y="142" width="82" height="24" rx="3"/>
+    <rect class="copy" x="203" y="142" width="82" height="24" rx="3"/>
+    <rect class="copy" x="289" y="142" width="82" height="24" rx="3"/>
+    <rect class="na" x="375" y="142" width="82" height="24" rx="3"/>
+    <text class="t-s" x="26" y="190">the slot</text>
+    <rect class="share" x="117" y="174" width="82" height="24" rx="3"/>
+    <rect class="share" x="203" y="174" width="82" height="24" rx="3"/>
+    <rect class="share" x="289" y="174" width="82" height="24" rx="3"/>
+    <rect class="share" x="375" y="174" width="82" height="24" rx="3"/>
+    <text class="t-s" x="26" y="222">the leaf</text>
+    <rect class="own" x="117" y="206" width="82" height="24" rx="3"/>
+    <rect class="own" x="203" y="206" width="82" height="24" rx="3"/>
+    <rect class="own" x="289" y="206" width="82" height="24" rx="3"/>
+    <rect class="own" x="375" y="206" width="82" height="24" rx="3"/>
+    <text class="t-n" x="239" y="246">7 copies · 2 of the root copies never check for a symlink</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="478" y="18">AFTER</text>
+    <text class="t-b" x="478" y="36">two rows collapse, one stays yours</text>
+    <rect class="pnl" x="478" y="46" width="446" height="206" rx="5"/>
+    <text class="t-c" x="620" y="66">workers</text>
+    <text class="t-c" x="706" y="66">channels</text>
+    <text class="t-c" x="792" y="66">resources</text>
+    <text class="t-c" x="878" y="66">skills</text>
+    <text class="t-s" x="488" y="94">the root</text>
+    <rect class="share" x="579" y="78" width="340" height="24" rx="3"/>
+    <text class="t-n" x="749" y="94">openRoot</text>
+    <text class="t-s" x="488" y="126">teams/</text>
+    <rect class="share" x="579" y="110" width="254" height="24" rx="3"/>
+    <rect class="na" x="837" y="110" width="82" height="24" rx="3"/>
+    <text class="t-s" x="488" y="158">teams/&lt;id&gt;</text>
+    <rect class="share" x="579" y="142" width="254" height="24" rx="3"/>
+    <text class="t-n" x="706" y="158">forEachTeam</text>
+    <rect class="na" x="837" y="142" width="82" height="24" rx="3"/>
+    <text class="t-s" x="488" y="190">the slot</text>
+    <rect class="share" x="579" y="174" width="340" height="24" rx="3"/>
+    <text class="t-s" x="488" y="222">the leaf</text>
+    <rect class="own" x="579" y="206" width="82" height="24" rx="3"/>
+    <rect class="own" x="665" y="206" width="82" height="24" rx="3"/>
+    <rect class="own" x="751" y="206" width="82" height="24" rx="3"/>
+    <rect class="own" x="837" y="206" width="82" height="24" rx="3"/>
+    <text class="t-n" x="701" y="246">0 copies · every root checked · the leaf row untouched</text>
+  </g>
+
+  <g id="legend">
+    <rect class="copy" x="16" y="272" width="14" height="12" rx="2"/>
+    <text class="t-s" x="36" y="282">a copy in each reader</text>
+    <rect class="share" x="196" y="272" width="14" height="12" rx="2"/>
+    <text class="t-s" x="216" y="282">one shared primitive</text>
+    <rect class="own" x="376" y="272" width="14" height="12" rx="2"/>
+    <text class="t-s" x="396" y="282">each reader&apos;s own, on purpose</text>
+    <rect class="na" x="616" y="272" width="14" height="12" rx="2"/>
+    <text class="t-s" x="636" y="282">this reader never walks that level</text>
+  </g>
+</svg>
