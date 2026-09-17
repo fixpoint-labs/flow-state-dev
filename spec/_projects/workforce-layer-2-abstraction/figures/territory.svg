@@ -1,0 +1,54 @@
+<svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The territory: Workforce owns the Layer 2 conventions — Agent, Persona, Skill, Strategy, Role, Archetype, Team, Plan, Memory. Below the fence is the Layer 1 substrate it assembles but does not own: blocks, scope state, resources, the task board, dispatch, instructions. To the right, outside the project, sit the implementations of Tasks, Skills internals and Memory, which live in their own projects. The fence is one test: is there exactly one of it?">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-own  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-out  { fill:none; stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-out  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:6 4; fill:none; }
+    .t-fence{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+
+  <g id="owned">
+    <rect class="n-own" x="16" y="16" width="620" height="118" rx="6"/>
+    <text class="t-lbl" x="32" y="36">THIS PROJECT · LAYER 2 CONVENTIONS</text>
+    <text class="t-b"  x="32" y="60">Agent · Persona · Skill · Memory</text>
+    <text class="t-s"  x="32" y="80">the canonical nouns — one of each, assembled for you</text>
+    <text class="t-b"  x="32" y="104">Strategy · Role · Archetype · Team · Plan</text>
+    <text class="t-s"  x="32" y="122">conventions — one opinionated assembly among several valid ones</text>
+  </g>
+
+  <g id="not-here">
+    <rect class="n-out" x="656" y="16" width="268" height="118" rx="6"/>
+    <text class="t-lbl" x="672" y="36">NOT HERE · OWN PROJECTS</text>
+    <text class="t-out" x="672" y="58">Task &amp; Plan implementation</text>
+    <text class="t-out" x="672" y="78">Skills internals</text>
+    <text class="t-out" x="672" y="98">Memory implementation</text>
+    <text class="t-s"   x="672" y="120">this project owns the vocabulary</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M16 158 H924"/>
+    <text class="t-fence" x="16" y="152">Is there exactly one of it?  One → substrate, below.  Several valid → convention, above.</text>
+  </g>
+
+  <g id="substrate">
+    <rect class="n-sub" x="16" y="176" width="908" height="108" rx="6"/>
+    <text class="t-lbl" x="32" y="196">LAYER 1 SUBSTRATE · ASSEMBLED HERE, OWNED ELSEWHERE</text>
+    <text class="t-b"  x="32" y="220">Blocks · Scope state · Resources · Instructions format · Sub-flow invocation</text>
+    <text class="t-b"  x="32" y="244">Task Board · Dispatch · Stream visibility</text>
+    <text class="t-s"  x="32" y="266">correctness depends on there being exactly one — core / engine / orchestration</text>
+  </g>
+</svg>
