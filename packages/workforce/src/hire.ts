@@ -119,46 +119,68 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** The keys the contract declares, in the order an author reads them. */
+const CONTRACT_KEYS = [INSTRUCTIONS_KEY, TEAM_INSTRUCTIONS_KEY, SEAT_SKILLS_KEY] as const;
+
 /**
- * Why a mint most likely refused, in one added sentence — **or nothing.**
+ * Why a mint refused, in one added sentence — **or nothing, which is the
+ * common case.**
  *
  * A MESSAGE, never a gate. It runs only after the kind's own schema has already
  * refused, and it cannot refuse on its own: the moment it could, admission
- * would have two authorities, and a partial second authority is worse than
- * none. What it does is spare an author the guess between *"I misspelt a
- * setting"* and *"my kind never opened the door the framework hands things
- * through."*
+ * would have two authorities. What it does is spare an author the guess between
+ * *"I misspelt a setting"* and *"my kind never opened the door the framework
+ * hands things through."*
  *
- * It reads the kind's PROBED default bag — `config`, the shape a blueprint
- * publishes — which is the only view of a kind's schema available from here,
- * and it is partial in one named case. A kind an empty bag cannot satisfy
- * publishes an empty bag and `requiresConfig`, so *never composed the contract*
- * and *composed it and requires a setting of its own* look identical. There the
- * sentence states both rather than picking one: accusing the wrong fault would
- * mislead worse than the silence this whole change replaces.
+ * **It reads the refusal, not the kind.** An earlier version inferred contract
+ * absence from the blueprint's PROBED default bag — the shape a kind publishes
+ * for an empty config — and that inference was wrong in a case nobody had to
+ * contrive: a kind declaring `seatSkills` optional *without a default* probes
+ * to a bag with no such key, so a refusal about some other setting's bad value
+ * got "this kind has not composed the contract" appended to it. The kind
+ * accepted the whole imposed bag. The accusation was false.
+ *
+ * So the only thing consulted now is whether the refusal that actually happened
+ * named one of the contract's keys as undeclared. That is the sole condition
+ * under which the door is demonstrably missing; anything else, including a
+ * shape this function cannot interpret, gets silence. A hint that cannot know
+ * says nothing, because a confident wrong answer costs more than no answer.
+ *
+ * @param refusal The flow's own refusal message, already stringified.
+ * @returns One sentence naming the missing keys and the fix, or `undefined`.
  */
-function admissionHint(factory: AnyFlowType): string | undefined {
-  const blueprint = factory as { config?: Record<string, unknown>; requiresConfig?: boolean };
-  const declared = blueprint.config;
-
-  // The contract is demonstrably there: this refusal is about something else,
-  // so say nothing. Checked before `requiresConfig`, which is also true for a
-  // kind whose blocks require a setting — a kind whose bag we CAN read.
-  if (declared !== undefined && Object.hasOwn(declared, SEAT_SKILLS_KEY)) return undefined;
-
-  if (blueprint.requiresConfig === true) {
+function admissionHint(refusal: string): string | undefined {
+  // The blunt case, and the only other one this can be sure of: the kind
+  // declares no `configSchema` at all, so core refuses the bag outright rather
+  // than reporting a key. No door of any kind, no ambiguity, nothing to infer.
+  if (refusal.includes("declares no configSchema")) {
     return (
-      `This flow kind requires settings of its own, so what it declares cannot be read from here: ` +
-      `either it has not composed \`workerConfigSchema()\` — every hireable kind must, so the seat's ` +
-      `skills and instructions have a declared setting to arrive at — or it has, and one of its own ` +
-      `required settings is missing from this worker's file.`
+      `A hireable kind must declare somewhere for a seat's instructions and resolved skills to ` +
+      `arrive: \`configSchema: workerConfigSchema()\`, extended with this kind's own settings.`
     );
   }
 
+  // `describeFlowConfigIssues` renders an undeclared TOP-LEVEL key as
+  // `"x" is not a declared setting`, and a key inside one of the kind's own
+  // nested objects as `… is not a declared setting of "path"`. Only the first
+  // is about the contract, so the suffixed form must not match — a nested
+  // `seatSkills` of someone else's object is not our door.
+  const missing = CONTRACT_KEYS.filter((key) =>
+    refusal
+      .replace(/\.$/, "")
+      .split("; ")
+      .some(
+        (segment) => segment.endsWith("is not a declared setting") && segment.includes(`"${key}"`)
+      )
+  );
+
+  if (missing.length === 0) return undefined;
+
+  const named = missing.map((key) => `\`${key}\``).join(", ");
   return (
-    `This flow kind has not composed \`workerConfigSchema()\`, so it declares nowhere for a seat's ` +
-    `skills and instructions to arrive. Wrap its settings: ` +
-    `\`configSchema: workerConfigSchema().extend({ ...its own settings })\`.`
+    `That key is the framework's: every hireable kind admits ${named} by composing ` +
+    `\`workerConfigSchema()\`, which is where a seat's instructions and its resolved skills arrive. ` +
+    `Wrap this kind's settings: \`configSchema: workerConfigSchema().extend({ ...its own settings })\`.`
   );
 }
 
@@ -348,8 +370,9 @@ export function hireWorkforce(
       // The flow's own refusal, with the worker's id in front of it, and — when
       // the kind's shape says what most likely went wrong — one sentence naming
       // the fix. Still no check of our own: `admissionHint` cannot refuse.
-      const hint = admissionHint(factory);
-      refuse(hint === undefined ? messageOf(error) : `${messageOf(error)} ${hint}`);
+      const message = messageOf(error);
+      const hint = admissionHint(message);
+      refuse(hint === undefined ? message : `${message} ${hint}`);
     }
   }
 

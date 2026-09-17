@@ -50,7 +50,7 @@ You are the engineering lead. You do not write code yourself. You break the
 request into tasks, assign them, and report what came back.
 ```
 
-`description` is the only key the file itself requires. Two it refuses outright: `persona:`, and `seatSkills:`, which is decided by where a worker's skills folders sit rather than by what its file claims. `flow` names which of your flow kinds this worker runs. Leave it out and the worker is hired into [the built-in worker kind](./built-in-worker.md), which needs no flow of yours.
+`description` is the only key the file itself requires. Three it refuses outright: `persona:`, `seatSkills:`, and `teamInstructions:` — the last two because a seat's skills are decided by where its folders sit and a team's instructions belong to its team, rather than by what one worker's file claims. `flow` names which of your flow kinds this worker runs. Leave it out and the worker is hired into [the built-in worker kind](./built-in-worker.md), which needs no flow of yours.
 
 Reading the file checks no other key. Whatever else you write lands on the record spelled exactly as you spelled it. The flow a worker names has the final say: at hiring it [refuses a setting it never declared](#the-flow-decides-what-a-worker-may-declare).
 
@@ -120,7 +120,7 @@ What lands in `errors`:
 
 - a worker folder with no `WORKER.md`, including one that holds only other files (custom behavior is [a flow kind](#when-a-worker-needs-more-than-settings), not a second file in the folder);
 - a `WORKER.md` with no frontmatter, or one whose `description` is missing, empty, or not a string;
-- a `WORKER.md` that declares `persona:` or `seatSkills:`, neither of which is a setting a worker declares;
+- a `WORKER.md` that declares `persona:`, `seatSkills:` or `teamInstructions:`, none of which is a setting a worker declares;
 - a team or worker folder name that breaks the naming rules;
 - a symlink where a folder or a worker file belongs, refused rather than read;
 - a directory that exists but cannot be listed, reported under its own path (`teams`, `teams/<team>`, or `teams/<team>/workers`) so the seats beneath it are not lost silently.
@@ -219,16 +219,19 @@ const lead = seats.find((seat) => seat.id === "engineering.lead")!;
 
 lead.config;
 // { instructions: "You are the engineering lead. …",
+//   seatSkills: [],
 //   model: "openai/gpt-5.4-mini",
 //   tools: ["board", "search"] }
 ```
+
+`seatSkills` is there because hiring hands it to every seat: this roster's folders held no skills for the lead, and present-and-empty is how that is spelled.
 
 Schema defaults fill in. `support.intake` declared no settings beyond its `flow` and `description`, so it gets the `intake` flow's default `desk`:
 
 ```ts
 const intake = seats.find((seat) => seat.id === "support.intake")!;
 
-intake.config; // { desk: "front" }
+intake.config; // { seatSkills: [], desk: "front" }
 ```
 
 Every `config` is frozen. A worker asking for something its flow never declared does not quietly run without it:
@@ -243,7 +246,7 @@ Settings are spelled the way the flow declares them.
 
 ### The body arrives as `instructions`
 
-A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. That is the only setting name the hire imposes.
+A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. Hiring imposes two settings in all: `instructions`, when the body is not empty, and `seatSkills`, always. A third, `teamInstructions`, is declared by the contract and reserved for a team-level layer; nothing fills it yet.
 
 Every hireable kind has that setting, because `workerConfigSchema()` declares it — so a worker's body always has somewhere to arrive, and no worker flow has to check for one. A kind that never composed the contract is the one that refuses, and it refuses every record on the roster rather than just the ones with a body:
 

@@ -82,7 +82,7 @@ Each record is plain data:
 | Field | Description |
 |-------|-------------|
 | `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. |
-| `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and a refused `persona:` and `seatSkills:`. |
+| `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and three refused ones: `persona:`, `seatSkills:` and `teamInstructions:`. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
 
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
@@ -217,10 +217,10 @@ the hire step the way a body is imposed as `instructions`. A `WORKER.md` declari
 itself is refused by name at both the loader and the hire step — where a skill folder sits is
 what decides who can see it.
 
-**A custom kind only receives it if its own `configSchema` declares `seatSkills`.** It is the one
-imposed setting that works that way: a body is written by the worker's author, but a worker's
-skills come from folders somebody else added, and one `org/skills/` folder makes every worker's
-set non-empty. Declare the key to opt in.
+**Every hireable kind receives it**, because every hireable kind composes `workerConfigSchema()`,
+which declares the key. There is no opting in and no opting out: hiring hands the same settings to
+every seat, and a kind whose schema cannot take them refuses the whole roster at startup. Reading
+them is still optional — a kind that ignores `seatSkills` runs exactly as it did before.
 
 ## Hiring a workforce
 
@@ -746,7 +746,7 @@ leaves an empty session there, and re-running binds it.
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
-| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name the built-in's catalog does not carry, a skill name reaching one seat from both the app's `skills` and its own folders, `instructions` given both in the frontmatter and as a body, or a `persona:` or `seatSkills:` key. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name the built-in's catalog does not carry, a skill name reaching one seat from both the app's `skills` and its own folders, `instructions` given both in the frontmatter and as a body, a flow kind that has not composed `workerConfigSchema()`, or a `persona:`, `seatSkills:` or `teamInstructions:` key. Collected: one error names every bad worker |
 | A `resources/` slot, `org/`, `teams/` or a team folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
 | Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |

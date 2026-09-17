@@ -447,6 +447,54 @@ describe("hireWorkforce", () => {
     expect(message).toContain("belong to its team");
   });
 
+  // The hint must never accuse a kind that is demonstrably fine. This kind
+  // ACCEPTS the whole imposed bag, but declares `seatSkills` optional with no
+  // default — so its probed default bag carries no such key, and a version of
+  // the hint that inferred from probed defaults told its author they had never
+  // composed the contract when all they had was a typo in their own setting.
+  it("stays silent when the refusal is about the kind's own setting, not the contract", () => {
+    const optionalNoDefault = defineFlow({
+      kind: "optional-no-default",
+      cardinality: "collection",
+      configSchema: z.object({
+        instructions: z.string().optional(),
+        teamInstructions: z.string().optional(),
+        seatSkills: z.array(z.object({ name: z.string(), skillMd: z.string() })).optional(),
+        retries: z.number().default(3)
+      }),
+      actions: { run: { inputSchema, block: work } }
+    });
+    const withKind = { ...kinds, "optional-no-default": optionalNoDefault as never };
+
+    // It really does accept the bag — without this the test below would pass
+    // for a kind that is genuinely missing the door.
+    const [ok] = hireWorkforce(
+      [record({ id: "engineering.ok", declared: { flow: "optional-no-default" }, body: "Work." })],
+      { kinds: withKind }
+    );
+    expect(ok!.config).toMatchObject({ instructions: "Work.", seatSkills: [] });
+
+    let message = "";
+    try {
+      hireWorkforce(
+        [
+          record({
+            id: "engineering.typo",
+            declared: { flow: "optional-no-default", retries: "many" },
+            body: "Work."
+          })
+        ],
+        { kinds: withKind }
+      );
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain("retries");
+    // The accusation that must not appear.
+    expect(message).not.toContain("workerConfigSchema()");
+  });
+
   // BR-2's other half: a kind with no contract is a ROSTER problem, collected
   // alongside the others so one run names all of them, not thrown on its own.
   it("reports a missing contract alongside the roster's other problems", () => {
