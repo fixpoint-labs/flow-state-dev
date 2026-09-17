@@ -64,7 +64,11 @@ Update policy:
 - Rule:
   - Every claimed deliverable must have an evidence path and pass criteria, recorded on the change's spec / Linear issue.
   - A claim the change *rests* on carries the same burden — how many sites are in scope, whether one form is equivalent to another, what a path does at runtime. Settle it by executing or parsing; a careful reading and a reviewer's assertion are both guesses.
-  - The command itself is subject to **tenet 7** (`docs/philosophy.md` — *a check that cannot fire is not a check*). The shape to watch for: a green result from a command aimed at a **neighbour** of the claim, which passes for a reason unrelated to it.
+  - **A report is a claim.** "I fixed it", a status line, a completion note, a summary of someone else's work: verifying each of its inputs is not verifying it. Re-derive it from the artifact — the diff, the tree, the tracker — not from the list you worked off.
+  - The command itself is subject to **tenet 7** (`docs/philosophy.md` — *a check that cannot fire is not a check*). Three shapes:
+    - a green result from a command aimed at a **neighbour** of the claim, which passes for a reason unrelated to it;
+    - a command that **never ran the check** — a missing toolchain taking a fallback path, a skipped suite, a piped exit code measuring the tail, a per-item reporter silent about an item it was never given. Read what the command reports it *did*, not only its exit status;
+    - a check whose **stated scope is wider than its real one**. Where a check claims a class — *every call site*, *wherever that sentence appears* — derive the scope (scan and exclude) rather than list it, and write down what it cannot see.
   - **If you cannot say what would make this check fail, you have not verified anything.** Where a red state exists, produce it — revert the fix, feed it the value it must reject, run it where the thing it needs is absent. Where one does not (parity work holding pre-existing tests green, per `issue-implement` → *Exceptions*), the burden is unchanged but the demonstration differs: show the check reaches the code it claims to cover. Vacuous shapes are recognisable on sight — e.g. a substring comparison passing on a prefix, or an edit that matched nothing.
 - Why: Eliminates ambiguous "done" — and stops a change being scoped by an argument nobody ran, or signed off by a check that could not have failed.
 
