@@ -169,6 +169,22 @@ Body.
     ).rejects.toThrow(/Failed to read workforce directory/);
   });
 
+  it("refuses a symlinked root without following it", async () => {
+    // The root is the one level a bare `readdir` would follow. Every nested
+    // structural folder is classified first, so `teams -> /outside` is refused;
+    // a root that is itself a link has to be refused the same way, or the whole
+    // roster comes from somewhere the caller never configured.
+    const root = tree({ "real/teams/engineering/workers/lead/WORKER.md": LEAD_MD });
+    symlinkSync(join(root, "real"), join(root, "linked"));
+
+    // Control: the tree behind the link loads perfectly, so the refusal below
+    // is the symlink and not a broken fixture.
+    const direct = await readWorkforceDirectory(join(root, "real"));
+    expect(direct.workers.map((w) => w.id)).toEqual(["engineering.lead"]);
+
+    await expect(readWorkforceDirectory(join(root, "linked"))).rejects.toThrow(/Symlinked/);
+  });
+
   describe("a slot that cannot produce a manifest is reported, and the healthy worker still loads", () => {
     it("reports a worker folder with no WORKER.md", async () => {
       const root = tree(HEALTHY);

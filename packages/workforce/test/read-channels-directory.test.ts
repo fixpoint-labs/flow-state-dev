@@ -512,6 +512,20 @@ describe("readChannelsDirectory", () => {
   // own above or in a sibling suite; these are the two places where two
   // separately-correct halves could still disagree with each other.
   describe("shares the tree with what already reads it", () => {
+    it("walks teams/ only — an org channel is invisible, not an error", async () => {
+      // The channels convention is team-scoped, and whether it should widen to
+      // `org/` is deliberately somebody else's open question. The shared team
+      // walk hands this reader no `org/` scope, so a planted org channel is
+      // neither loaded nor reported: silence is what leaves that question open,
+      // where an error would answer it by implying the folder means something.
+      const { channels, errors } = await readChannelsDirectory(
+        tree({ ...HEALTHY, "org/channels/announce/CHANNEL.md": STANDUP }),
+      );
+
+      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(errors).toEqual([]);
+    });
+
     it("reads only its own slot, and leaves the worker reader reading only its own", async () => {
       // Both readers walk `teams/<id>/`. A slot rule that judged a path by what
       // it looks like rather than by the slot it occupies would make each
