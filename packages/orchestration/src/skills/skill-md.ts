@@ -23,7 +23,6 @@
 import type {
   AgentOverrides,
   AgentSpec,
-  ItemVisibility,
   Skill,
   SkillState,
 } from "@flow-state-dev/core";
@@ -33,6 +32,13 @@ import {
   parseScalar,
   splitFrontmatter,
 } from "../shared/frontmatter";
+import {
+  AGENT_TUNING_KEYS,
+  parseAgentTuning,
+  presentTuningKeys,
+  presentTuningOnSpec,
+  promptRefDualWriteError,
+} from "./internal/agent-prompt-file";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -209,7 +215,8 @@ export function isValidAgentKey(key: string): boolean {
  * `agents:` is what turns on the delegation surface in `createSkillsLibrary`:
  * the skill assigns work as tasks and drains its board; the board runs the
  * agents. Each entry is one of two shapes — inline (`prompt`/`prompt-ref`) or
- * a registry reference (`agent-ref`).
+ * a registry reference (`agent-ref`). A `prompt-ref` entry is the seat name;
+ * generator config lives in the prompt file's YAML frontmatter.
  */
 function parseAgentsField(v: unknown): Record<string, AgentSpec> {
   if (typeof v !== "object" || v === null || Array.isArray(v)) {
@@ -285,13 +292,25 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
     );
   }
 
+  // `prompt-ref`: the prompt file owns generator config. Leftover skill-entry
+  // tuning is dual-write — reject and point at the file's frontmatter.
+  if ("prompt-ref" in obj) {
+    const leftover = presentTuningKeys(obj);
+    if (leftover.length > 0) {
+      throw new Error(promptRefDualWriteError(key, leftover, String(obj["prompt-ref"])));
+    }
+  }
+
   // Inline tuning fields (`tools`/`model`/`visibility`) apply only to inline
-  // agents. On an `agent-ref` spec the materializer resolves the registered
-  // agent and applies `agent-overrides` — these top-level fields are silently
-  // ignored, so the agent would run with its default surface instead of the
-  // skill-authored one. Reject them and point at `agent-overrides`.
+  // `prompt:` agents. On an `agent-ref` spec the materializer resolves the
+  // registered agent and applies `agent-overrides` — these top-level fields
+  // are silently ignored, so the agent would run with its default surface
+  // instead of the skill-authored one. Reject them and point at
+  // `agent-overrides`.
   if ("agent-ref" in obj) {
-    const inlineTuning = ["tools", "model", "visibility"].filter((k) => k in obj);
+    const inlineTuning = AGENT_TUNING_KEYS.filter(
+      (k) => k !== "context-supply" && k in obj,
+    );
     if (inlineTuning.length > 0) {
       throw new Error(
         `SKILL.md agent \`${key}\`: ${inlineTuning.map((k) => `\`${k}\``).join(", ")} ` +
@@ -309,46 +328,24 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
     spec.agentOverrides = parseAgentOverrides(key, obj["agent-overrides"]);
   }
 
-  if ("tools" in obj) {
-    const t = obj["tools"];
-    if (!Array.isArray(t) || !t.every((x) => typeof x === "string")) {
-      throw new Error(`SKILL.md agent \`${key}\`: \`tools\` must be a string list`);
-    }
-    spec.tools = t as string[];
+  // FIX-920: `context-supply` applies to prompt/prompt-ref agents — an
+  // agent-ref agent owns its own context, so setting it there is a fail-loud
+  // error rather than a silent no-op (mirrors the inline-tuning rejection).
+  if ("context-supply" in obj && "agent-ref" in obj) {
+    throw new Error(
+      `SKILL.md agent \`${key}\`: \`context-supply\` applies to prompt/prompt-ref agents; ` +
+        `agent-ref agents own their own context.`,
+    );
   }
 
-  if ("visibility" in obj) {
-    spec.itemVisibility = parseVisibilityField(`agent \`${key}\``, obj["visibility"]);
-  }
-
-  if ("model" in obj) {
-    const m = obj["model"];
-    if (typeof m !== "string") {
-      throw new Error(`SKILL.md agent \`${key}\`: \`model\` must be a string`);
-    }
-    spec.model = m;
-  }
-
-  // FIX-920: `context-supply` controls how much prior conversation an inline
-  // agent inherits. It applies only to prompt/prompt-ref agents — an agent-ref
-  // agent owns its own context, so setting it there is a fail-loud error rather
-  // than a silent no-op (mirrors the inline-tuning-on-agent-ref rejection).
-  if ("context-supply" in obj) {
-    if ("agent-ref" in obj) {
-      throw new Error(
-        `SKILL.md agent \`${key}\`: \`context-supply\` applies to prompt/prompt-ref agents; ` +
-          `agent-ref agents own their own context.`,
-      );
-    }
-    const cs = obj["context-supply"];
-    if (cs !== "conversation") {
-      throw new Error(
-        `SKILL.md agent \`${key}\`: \`context-supply\`'s only value is "conversation" ` +
-          `— omit the field for the default (isolated) (got ${JSON.stringify(cs)})`,
-      );
-    }
-    spec.contextSupply = cs;
-  }
+  // Inline `prompt:` may still carry tools/model/visibility/context-supply on
+  // the skill entry (the tiny one-line persona). `prompt-ref` already rejected
+  // those keys above, so this only lands on `prompt:`.
+  const tuning = parseAgentTuning(obj, `SKILL.md agent \`${key}\``);
+  if (tuning.tools !== undefined) spec.tools = tuning.tools;
+  if (tuning.model !== undefined) spec.model = tuning.model;
+  if (tuning.itemVisibility !== undefined) spec.itemVisibility = tuning.itemVisibility;
+  if (tuning.contextSupply !== undefined) spec.contextSupply = tuning.contextSupply;
 
   return spec;
 }
@@ -365,58 +362,15 @@ function parseAgentOverrides(agentKey: string, v: unknown): AgentOverrides {
       );
     }
   }
-  const out: AgentOverrides = {};
-  if ("tools" in obj) {
-    const t = obj["tools"];
-    if (!Array.isArray(t) || !t.every((x) => typeof x === "string")) {
-      throw new Error(`SKILL.md agent \`${agentKey}\`: \`agent-overrides.tools\` must be a string list`);
-    }
-    out.tools = t as string[];
-  }
-  if ("model" in obj) {
-    const m = obj["model"];
-    if (typeof m !== "string") {
-      throw new Error(`SKILL.md agent \`${agentKey}\`: \`agent-overrides.model\` must be a string`);
-    }
-    out.model = m;
-  }
-  if ("visibility" in obj) {
-    out.itemVisibility = parseVisibilityField(`agent \`${agentKey}\` agent-overrides`, obj["visibility"]);
-  }
-  return out;
-}
-
-/**
- * Parse a `visibility` YAML value into an `ItemVisibility` object.
- *
- * Accepts either:
- *   - A mapping with `client` and `history` boolean fields.
- *   - A legacy string shorthand: `"primary"` | `"sub"` | `"trace"`.
- */
-function parseVisibilityField(location: string, v: unknown): ItemVisibility {
-  if (typeof v === "object" && v !== null && !Array.isArray(v)) {
-    const obj = v as Record<string, unknown>;
-    if (typeof obj["client"] !== "boolean" || typeof obj["history"] !== "boolean") {
-      throw new Error(
-        `SKILL.md ${location}: \`visibility\` mapping requires boolean \`client\` and \`history\` fields`,
-      );
-    }
-    return { client: obj["client"] as boolean, history: obj["history"] as boolean };
-  }
-  if (typeof v === "string") {
-    switch (v) {
-      case "primary": return { client: true, history: true };
-      case "sub": return { client: true, history: false };
-      case "trace": return { client: false, history: false };
-      default:
-        throw new Error(
-          `SKILL.md ${location}: \`visibility\` string must be "primary" | "sub" | "trace" — got ${JSON.stringify(v)}`,
-        );
-    }
-  }
-  throw new Error(
-    `SKILL.md ${location}: \`visibility\` must be a mapping ({ client, history }) or a shorthand string`,
+  const tuning = parseAgentTuning(
+    obj,
+    `SKILL.md agent \`${agentKey}\` agent-overrides`,
   );
+  const out: AgentOverrides = {};
+  if (tuning.tools !== undefined) out.tools = tuning.tools;
+  if (tuning.model !== undefined) out.model = tuning.model;
+  if (tuning.itemVisibility !== undefined) out.itemVisibility = tuning.itemVisibility;
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -741,7 +695,13 @@ function serializeAgents(
   lines.push("agents:");
   for (const [key, spec] of Object.entries(agents)) {
     lines.push(`  ${key}:`);
-    if (spec.promptRef !== undefined) lines.push(`    prompt-ref: ${yamlScalar(spec.promptRef)}`);
+    if (spec.promptRef !== undefined) {
+      const leftover = presentTuningOnSpec(spec);
+      if (leftover.length > 0) {
+        throw new Error(promptRefDualWriteError(key, leftover, spec.promptRef));
+      }
+      lines.push(`    prompt-ref: ${yamlScalar(spec.promptRef)}`);
+    }
     if (spec.prompt !== undefined) {
       // Use literal block scalar for prompts so multi-line values survive
       // a round-trip exactly.
@@ -761,6 +721,8 @@ function serializeAgents(
         lines.push(`        history: ${spec.agentOverrides.itemVisibility.history}`);
       }
     }
+    // A `prompt-ref` spec that passed the leftover check above has no
+    // skill-entry tuning left to write. Inline `prompt:` still does.
     if (spec.tools)
       lines.push(`    tools: [${spec.tools.map((t) => yamlScalar(t)).join(", ")}]`);
     if (spec.itemVisibility !== undefined) {

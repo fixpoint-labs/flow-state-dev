@@ -24,7 +24,7 @@ is marked `Superseded` and links its replacement; it is never deleted.
 the lasting layer. A BP that merely restates a tenet is **folded** into that tenet
 (marked Superseded, pointing to it) rather than kept as always-loaded duplication.
 Best practices are the *situational, specific* layer — kept few, and mostly worked
-out per spec (`issue-spec` Part I focus practices). Sharpen or prune before you
+out per spec (the plan's guardrails, each with a *because*). Sharpen or prune before you
 add; a BP that traces to no tenet is a smell.
 
 Update policy:
@@ -65,7 +65,8 @@ Update policy:
   - Every claimed deliverable must have an evidence path and pass criteria, recorded on the change's spec / Linear issue.
   - A claim the change *rests* on carries the same burden — how many sites are in scope, whether one form is equivalent to another, what a path does at runtime. Settle it by executing or parsing; a careful reading and a reviewer's assertion are both guesses.
   - The command itself is subject to **tenet 7** (`docs/philosophy.md` — *a check that cannot fire is not a check*). The shape to watch for: a green result from a command aimed at a **neighbour** of the claim, which passes for a reason unrelated to it.
-- Why: Eliminates ambiguous "done" — and stops a change being scoped by an argument nobody ran.
+  - **If you cannot say what would make this check fail, you have not verified anything.** Where a red state exists, produce it — revert the fix, feed it the value it must reject, run it where the thing it needs is absent. Where one does not (parity work holding pre-existing tests green, per `issue-implement` → *Exceptions*), the burden is unchanged but the demonstration differs: show the check reaches the code it claims to cover. Vacuous shapes are recognisable on sight — e.g. a substring comparison passing on a prefix, or an edit that matched nothing.
+- Why: Eliminates ambiguous "done" — and stops a change being scoped by an argument nobody ran, or signed off by a check that could not have failed.
 
 ### BP-007: Concise API and file-level documentation
 
@@ -198,7 +199,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-006 | Keep planning/tracking labels (spec IDs, Linear refs) out of code and tests |
 | BP-008 | Keep root README onboarding-first and current |
 | BP-009 | Maintain package-level READMEs for public packages |
-| BP-037 | Specs live on their spec PR (`spec/<ISSUE-ID>.md`) and in Linear — never on `main` |
+| BP-037 | Specs live on their spec PR (`spec/<ISSUE-ID>/`, four documents and figures) and in Linear — never on `main` |
 | BP-039 | Lead with the problem in plain language, collapse the derivation below the fold (grok before diving deep) |
 | BP-040 | Spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds |
 | BP-041 | Frame every ask as a business decision — the fork, plain terms, the trade-off, a recommendation, what would change your mind, what being wrong costs |

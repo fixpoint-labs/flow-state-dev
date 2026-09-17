@@ -7,10 +7,8 @@ argument-hint: <company name or ticker>
 agents:
   market-analyst:
     prompt-ref: ./reference/market.md
-    tools: [search, fetch]
   financial-analyst:
     prompt-ref: ./reference/financials.md
-    tools: [search, fetch]
   synthesizer:
     prompt-ref: ./reference/synthesis.md
 ---

@@ -1,0 +1,27 @@
+{
+  "userId": "u_goal",
+  "note": "stand up the board",
+  "roster": [
+    {
+      "id": "engineering.lead",
+      "description": "Holds the engineering board.",
+      "desk": "engineering",
+      "body": "You are the engineering lead. You break work into tasks and report back.",
+      "namesTheKind": false
+    },
+    {
+      "id": "engineering.scribe",
+      "description": "Takes the notes.",
+      "desk": "notes",
+      "body": "You take notes and keep them short.",
+      "namesTheKind": true
+    },
+    {
+      "id": "marketing.lead",
+      "description": "Holds the marketing board.",
+      "desk": "marketing",
+      "body": "You are the marketing lead.",
+      "namesTheKind": false
+    }
+  ]
+}

@@ -1172,3 +1172,392 @@ sample and excluded from every rate above.**
 3. **Is a live worker duplicated again?** Fix A's only job. One instance this cycle; a second
    after the fix means the check is not being spent, and the next move is a handle the
    `epic-wake` script can refuse to re-dispatch rather than a rule the coordinator must remember.
+
+## Cycle 8 — durable-storage-symmetry epic wrap (FIX-1157) (2026-08-28)
+
+**Numbered after cycle 7 although this epic wrapped before it.** The two runs measured different epics independently and landed out of order. Everything below was computed against cycles 1–6: cycle 7's PRs are not in this sample. That is why this entry scores cycle 6's claims rather than cycle 7's, and why the `stale-restatement` count runs through cycle 6 only — cycle 7 recorded that class on three of its PRs but selected a different one.
+
+FIX-1154, FIX-1258, FIX-1260, FIX-1269 under epic FIX-1157, plus the FIX-1158 lodger (#1444,
+merged earlier). **Four implementation PRs merged**, two spec PRs closed unmerged (BP-037), one
+epic PR closed unmerged at the wrap. ~154 review threads across `chatgpt-codex-connector[bot]`,
+`cursor[bot]`, `greptile-apps[bot]`, `github-code-quality[bot]` and the implementing agents.
+
+**All four impl PRs merged, so escapes are scoreable for the first time since cycle 5** — cycle 6's
+claim 1 becoming measurable. **This entry did not run the post-merge escape sweep**; the column is
+**unmeasured, not zero**. Do not read it as an improvement.
+
+| PR | Kind | Rounds | Endpoint | Feedback classes | Claims l/s/verdicts | Felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|---|
+| [#1487](https://github.com/fixpoint-labs/flow-state-dev/pull/1487) FIX-1258 | impl | **5** | merge | `missed-edge-case` ×7 · `stale-restatement` ×5 · `docs-miss` ×1 · `nit` ×5 | 1 / 0 / deferred | no | Enumerate every *writer* of the record a new invariant depends on before the first commit — three session-birth sites and a fourth in the test harness were found one at a time across three rounds |
+| [#1488](https://github.com/fixpoint-labs/flow-state-dev/pull/1488) FIX-1269 | impl | **4** | merge | `missed-edge-case` ×3 · `stale-restatement` ×3 · `over-engineered` ×5 (all declined with reasons) · `docs-miss` ×1 · `nit` ×3 | 1 / 1 / **CONFIRMED** | no | When a change adds a verb to a surface, derive the set of surfaces that *enumerate* it once, from code |
+| [#1486](https://github.com/fixpoint-labs/flow-state-dev/pull/1486) FIX-1260 | impl | **5** | merge | `missed-edge-case` ×5 · `stale-restatement` ×6 · `over-engineered` ×2 (both taken) · `docs-miss` ×3 (owed, unlanded) · `nit` ×1 | 1 / 2 / **CONFIRMED** ×2 | no | Correct the **generator** first — the guard's own docstring, which all three doc copies derived from, was corrected a round *after* them |
+| [#1478](https://github.com/fixpoint-labs/flow-state-dev/pull/1478) FIX-1154 | impl | **≈16** | merge | `missed-edge-case` ×24 · `stale-restatement` ×7 instances / 12 copies · `over-engineered` ×5 (4 taken) · `spec-ambiguity` ×1 · `docs-miss` ×1 · `nit` ×1 | 2 / 2 / **CONFIRMED** ×2 | **yes** — "direction right, delivery over-scoped"; 4 files → 20 | BP-035 applied to *sentences*: the 24 edge cases are one shape — a prose guarantee that fails on a second path |
+| [#1365](https://github.com/fixpoint-labs/flow-state-dev/pull/1365) FIX-1157 | **epic** | **≈27** post-gate (gate at 4, a marker) | epic close | `over-engineered` ×14 · `stale-restatement` ×8 · `missed-edge-case` ×8 · `spec-ambiguity` ×3 · `design-off` ×2 | 4 / 3 / **CONFIRMED** ×3 | **yes, twice** | §4 is a projection of the Linear graph; it was used as a status board an agent rewrites on every child event. Six reviewer findings, six regressions — this wants mechanism |
+| [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) FIX-1154 | spec | **35** | approval | `missed-edge-case` ×~14 · `stale-restatement` ×6 · `spec-ambiguity` ×3 · `design-off` ×2 · `over-engineered` ×2 | 5 / 5 / **CONFIRMED** ×4, **REFUTED** ×2 | **yes** — owner reversed the subject mid-review | A spec's factual base gets one executable checker at round 1, not round 20 |
+| [#1479](https://github.com/fixpoint-labs/flow-state-dev/pull/1479) FIX-1269 | spec | **2** | approval | `missed-edge-case` ×3 · `docs-miss` ×1 · `nit` ×5 | 0 / 2 / **REFUTED** ×2 | no | **nothing — this is the control row** |
+
+**Process load sits on direction artifacts: 30 rounds across four impl PRs, 64 across three
+direction artifacts.** The two-round budget held on exactly one of the three — the one that built
+its POC *before* review and had a moderator enforcing the altitude bar.
+
+### Scoring cycle 6's claims
+
+1. **Escapes, now scoreable — not scored.** All four impl PRs merged. Recorded as unmeasured; the
+   next cycle inherits it.
+2. **`wrong-extent` by round-gap — not scored, and deliberately.** Cycle 6's sample was the
+   Conductor subsystem and its deliverables *were* checks that grade a run; this cycle is an
+   unrelated subsystem. Scoring the class across that boundary would measure the subject, not the loop.
+3. **"Whether a reviewer stopped running" — fires, and it is the finding cycle 6 predicted.**
+   **Codex is the only reviewer that re-reviews.** Cursor (both personas), Greptile and
+   github-code-quality each ran **exactly once per PR, on or near the opening head, and never
+   returned** — verified across all seven artifacts. **Consequence: the `over-engineered` /
+   restraint class is measured only against each PR's first revision.** #1488 says so in its own
+   description — *"Cursor approved this at the smaller scope… That approval predates roughly half
+   the diff."* Any reading that restraint improved this cycle is an artifact of when the restraint
+   reviewer looked. **Bots were absent from the merge head on 5 of 5 artifacts** (#1487 merged 3
+   commits past its last bot pass, #1486 and #1478 by 2, #1488 and #1479 by 1).
+
+### The class selected: `stale-restatement`, fourth cycle running — and why the existing fix does not fire
+
+**37 instances.** Named in cycle 2, selected in cycle 4, called "the only class that escapes review"
+in cycle 5. Cycle 4's fix A — *grep the superseded claim's distinctive noun* — landed in `b0fc019`
+and, verified by **branch-head ancestry** (not merge commits, not timestamps), was carried by
+**#1488, #1486 and #1478**.
+
+**The hypothesis this wrap started with was refuted.** The coordinator predicted most instances were
+authored outside `issue-implement`'s reach. They were not: **22 of 37 (59%) were inside the loop
+where the rule can fire.** Two sharper cuts came out of the attribution instead:
+
+1. **The rule converged 22 and prevented 0** — and **fired one round late on the generator twice**
+   (#1486's guard docstring, the source three corrected copies derived from; #1488's internal twin
+   of a published enumeration). Its text points **downstream** at copies: *grep the noun*, *sweep
+   every surface that states the claim more briefly*. Nothing in it says *correct the surface the
+   copies were derived from first*. #1478 names this failure mode in its own description — an agent
+   *"independently reproduced the over-broad framing, having derived it from the docstring, before
+   the correction reached it"* — and reproduced it inside itself.
+2. **All 15 out-of-reach instances are on direction artifacts. Zero on an impl PR.** Eight on the
+   epic PR, seven on spec PRs. **And they are the ones that recurred** — one twice, one class three
+   times across the epic, the epic description through four superseded patch-lists. In-loop
+   instances converged in a round or two because *something closes a round*. **Nothing closes a
+   round on an epic doc or a spec document.**
+
+**Cycle 6's central finding is confirmed first-party, at a new altitude.** Cycle 6: *"writing a rule
+down did not deter the author who had just diagnosed the class."* This cycle the **coordinator**
+named the class ~13 times in its own working notes and then committed it twice — once fixing the
+engine README and leaving its published twin, once authoring a brief whose phrasing put a false
+coupling into the very paragraph written to remove a false constraint. Different altitude, same
+result. **A seventh sentence is still not the fix; a rule pointing the wrong way is a different
+defect, and worth correcting on its own terms.**
+
+### Upstream fixes — landed
+
+| # | Fix | Altitude | Targets | Status |
+|---|---|---|---|---|
+| A | `issue-implement` 10.6's reconciliation now leads with **correct the surface the claim was derived from, before converging the copies** — the two sweeps follow it | skill, PR-feedback | the 22 in-loop instances, and the 2 that fired a round late in particular | **landed** |
+| B | `issue-spec` Step 5 gains **the spec's factual base gets an executable checker before it gets a reviewer** — with a totality assertion and a **run** negative control | skill, spec pre-publish | #1445's 35 rounds; the 7 spec-PR instances | **landed** |
+
+**A is a correction, not an addition.** The rule already existed and pointed only downstream; this
+is the "sharpen the existing entry so it actually catches the class" branch, and the evidence is
+self-reported by two PRs in this cycle.
+
+**B is the mechanism half, and it is modelled on what measurably worked here.** #1445 eventually
+built the checker and it fired immediately; #1479, the only artifact to hold its budget, built its
+evidence first and used it to **refute the premise its issue was written on**. Both properties in the
+rule are learned from failure: the totality assertion, because a checker verifying only the sites it
+knows about cannot report the one nobody listed; and the **run** negative control, because the first
+version of that assertion silently absorbed a planted unclassified file — *the exact failure the
+assertion existed to prevent, reproduced inside it*.
+
+**Neither fix addresses the direction-artifact round-closing gap** (finding 2 above). B reduces the
+rounds; it does not give an epic doc a step at which restatements converge. Recorded as the open
+half rather than papered over.
+
+### Dropped
+
+- **A new BP.** The class has two upstream fixes already; a third sentence is what cycle 6 ruled out.
+- **A tenet sharpening.** Tenets 1 and 5 already cover coherence and fixing at the owning layer. The
+  defect is that a skill rule pointed the wrong way, not that the grounding is silent.
+- **`wrong-extent` carry-over** — cross-subsystem, would measure the sample.
+- **The 12-round cap.** Recorded below as a finding, not fixed: this cycle would be guessing at why
+  it did not fire.
+
+### Findings recorded, not fixed
+
+- **#1478 ran ~16 rounds against a 12-round cap that never fired** — no pause, no reset, no question
+  to the owner, verified across all 31 reviews and 6 issue comments. The cap is prose in
+  `issue-implement` §10.7. `#1445`'s 35 rounds were never in its scope at all: it governs the
+  PR-feedback loop, not spec review.
+- **`settle-claim` was used zero times, while 12 claims were settled.** All 12 went through ad-hoc
+  `spec-poc/` directories, a PR verification section, or a coordinator running a predicate directly.
+  The skill's *outcome* is healthy; its *front door* is unused. Probe proved non-vacuous (the same
+  query returned #1493 for `POC in:title`).
+- **`philosophy-drift` = 0 is "not looked for", not measured.** No reviewer this cycle ran a
+  coherence-against-`philosophy.md` lens.
+- **The epic PR sat open for 3 days past `Done`**, against its own written close condition, with a
+  CI-red head. The wrap predicate is executable and ran; the PR-close step is prose and did not.
+
+### Claim to test next cycle
+
+1. **Fix A's effect is visible in *where* the correction lands, not in the count.** The prediction is
+   that the generator gets corrected in the same round as its copies rather than one round later.
+   **Score the round-gap between generator and copies, not the instance count.**
+2. **Fix B's effect is on the direction-artifact round count.** Baseline to beat: **#1445 at 35
+   rounds against a 2-round budget**, with #1479 at 2 as the control. If a spec with a counted
+   factual base still runs past ten rounds on evidence accuracy, B landed at the wrong altitude.
+3. **Run the escape sweep this cycle deferred**, and score `stale-restatement` escapes to `main`
+   across the four merged PRs before comparing anything to cycle 5.
+4. **Re-check reviewer coverage before reading any restraint trend.** Three of four reviewers ran
+   once per PR at the opening head. Until that changes, `over-engineered` measures first revisions.
+
+---
+
+## Cycle 9 — default-worker-kind epic wrap (FIX-1359) (2026-09-16)
+
+FIX-1360…FIX-1366 plus the epic PR. Fifteen artifacts, ~46 non-`nit` findings
+(`cursor[bot]` ×2 automations, `chatgpt-codex-connector[bot]`, `greptile-apps[bot]`,
+`github-code-quality[bot]`, and the owner's Architect pass). `Rounds` = spent waves.
+
+| PR | Kind | Rounds | Endpoint | Feedback classes | Claims l/s | Felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|---|
+| [#1730](https://github.com/fixpoint-labs/flow-state-dev/pull/1730) epic-spec | epic | **1 to gate** + 5 post-gate correction rounds (no new reviewer pass) | epic close | stale-restatement ×4 · over-engineered ×4 (declined) · spec-ambiguity ×2 · design-off · missed-edge-case · nit | 2 / 1 CONFIRMED | **yes** — the `tools:` fence was ruled on **four times** from this channel | An epic doc's *guarantee sentences* get the same executable check its counted facts get |
+| [#1736](https://github.com/fixpoint-labs/flow-state-dev/pull/1736) FIX-1360 | spec | 1 | approval | missed-edge-case ×3 · over-engineered ×4 · stale-restatement · nit | 0 / 0 | no | — |
+| [#1750](https://github.com/fixpoint-labs/flow-state-dev/pull/1750) FIX-1361 | spec | **3** | approval | stale-restatement ×3 · missed-edge-case ×2 · design-off · over-engineered · nit ×3 | 1 / 1 **REFUTED** | **yes** — C5 walked into Decision 2's own memory fence | Cross-spec review runs *before* a decision is stamped, not after two specs each stamp half |
+| [#1753](https://github.com/fixpoint-labs/flow-state-dev/pull/1753) FIX-1363 | spec | 1 | approval | missed-edge-case ×4 · over-engineered ×3 · design-off · stale-restatement · nit ×3 | 0 / 0 | no | — |
+| [#1765](https://github.com/fixpoint-labs/flow-state-dev/pull/1765) FIX-1366 | spec | 2 | approval | missed-edge-case ×5 · over-engineered ×4 · stale-restatement ×2 · nit | 0 / 0 | no | (2nd round = the epic's fence ruling arriving) |
+| [#1766](https://github.com/fixpoint-labs/flow-state-dev/pull/1766) FIX-1362 | spec | 1 | approval | spec-ambiguity ×2 · missed-edge-case · stale-restatement · over-engineered · nit | 0 / 0 | no | — |
+| [#1768](https://github.com/fixpoint-labs/flow-state-dev/pull/1768) FIX-1364 | spec | 2 | approval | over-engineered ×3 (1 taken: `resources` door dropped) · missed-edge-case ×2 · design-off ×2 · stale-restatement ×2 · nit | 2 / 2 CONFIRMED | **yes** — a ratified seam lost a door after a POC | A composition seam is sized by running what the framework already does, before three doors are ratified |
+| [#1789](https://github.com/fixpoint-labs/flow-state-dev/pull/1789) FIX-1365 | spec | 1 | approval | missed-edge-case ×7 · over-engineered ×4 · nit ×4 | 1 / 1 CONFIRMED (with a correction) | no | **The checker itself gets the negative control** |
+| [#1739](https://github.com/fixpoint-labs/flow-state-dev/pull/1739) FIX-1360 | impl | 1 | merge | over-engineered ×6 · stale-restatement ×3 · missed-edge-case ×2 | 0 / 0 | no | — |
+| [#1751](https://github.com/fixpoint-labs/flow-state-dev/pull/1751) FIX-1361 | impl | 1 | merge | stale-restatement ×2 · over-engineered ×2 · design-off · missed-edge-case · docs-miss · nit ×2 | 0 / 0 | mild | A contract doc doesn't reproduce spec-branch POC output as Evidence (BP-037) |
+| [#1754](https://github.com/fixpoint-labs/flow-state-dev/pull/1754) FIX-1363 | impl | **≈6** | merge | missed-edge-case ×4 · design-off ×2 · over-engineered ×2 · stale-restatement ×2 · docs-miss · nit ×3 | 1 / 1 **REFUTED** ×2 | **yes** — the `tools:` fork; the fold then broke skill `allowed-tools`; the factory renamed **three times** | Decide a guarantee's *enforcement point* at contract time; a public factory's name locks with the contract |
+| [#1776](https://github.com/fixpoint-labs/flow-state-dev/pull/1776) FIX-1362 | impl | 2 | merge | missed-edge-case ×5 · over-engineered ×4 · design-off · docs-miss (retracted) · nit ×3 | 1 / 1 **REFUTED** | no | Enumerate every path that *materializes* a tool, not just the one that resolves seats |
+| [#1785](https://github.com/fixpoint-labs/flow-state-dev/pull/1785) FIX-1366 | impl | 1 (+self-correction) | merge | **docs-miss ×4 (all overclaim)** · missed-edge-case ×2 · over-engineered ×2 · stale-restatement · nit | 0 / 0 | no | Prose stating a guarantee names the mechanism that enforces it, in the same sentence |
+| [#1782](https://github.com/fixpoint-labs/flow-state-dev/pull/1782) FIX-1364 | impl | 2 | merge | docs-miss ×3 · design-off ×2 (fence) · missed-edge-case ×2 · stale-restatement ×2 · nit ×5 | 1 / 1 CONFIRMED | no | The clearest Fix-A-shaped miss in the set — see below |
+| [#1790](https://github.com/fixpoint-labs/flow-state-dev/pull/1790) FIX-1365 | impl | **3** | merge | missed-edge-case ×9 · nit ×3 | 0 / 0 | no | — |
+
+**Load inverted from cycle 8.** 15 rounds across 7 implementation PRs, 11 across 8 direction
+artifacts — against cycle 8's 30 / 64. The direction side held its two-round budget on 6 of 8;
+only #1750 hit a third, and #1730's post-gate activity was cross-spec fallout, not review looping.
+
+### The dominant class — overclaim, ~30% of non-`nit` findings
+
+**A sentence asserting a guarantee, with no named enforcement point.** The `tools:` fence alone
+produced **14 distinct findings across 6 PRs**, every one in the same direction: prose claiming a
+tighter guarantee than the code gives. Twelve reviewer-raised, two self-found. They collapse to
+**four real defects** — seat `tools:` inert · delegation-agent bypass · capability-tools union onto
+`tools: []` · skills-library-contributed tools and a promised build-time check that doesn't exist —
+corrected across **6 commits naming the fence in their subject line**, plus more that fix it without
+the word. The guarantee was ruled on from the epic channel **four separate times**, the last
+explicitly because "the fourth one cannot be defended where the previous three were" (core FIX-1393).
+
+The class is not about the fence. **Every one of the five findings in #1790's second review round
+was the same shape at a different altitude**: a check claiming something `goal.md` already required
+and not enforcing it. And #1789's own checker — the artifact cycle 8's Fix B exists to produce —
+shipped a header claiming "no goal has ever run a model through a hired seat" while inspecting
+`Model:` frontmatter only. **The mechanism meant to stop overclaim produced an overclaim.**
+
+### Scoring cycle 8's fixes — the sample problem dominates both
+
+Cycle 8's fixes landed in `5296afd3f` (09-08) but reached `main` only at `bbf7b7eb5`, **09-16
+01:41Z**. Ancestry tested per branch head, never merge commits, never timestamps:
+
+- **Carried (2):** #1789 `1de00338d`, #1790 `da28e66d7`.
+- **Not carried (13):** every other artifact forked before that merge and never took `main` after.
+  **Out of the sample, not zeroes.**
+
+**Fix A — unscoreable.** Neither carried branch has a generator/copy structure. But the class it
+targets **recurred cleanly out of sample**: #1782 recorded the gap in its Known-gaps list and option
+docstring first and repaired the invariant sentence itself — contract C1's "the fence holds
+regardless of what the skills library contributes" — a round later (`d30d3f9b7`). Generator
+corrected after the copies, exactly the failure mode. No evidence for or against; the class is alive.
+
+**Fix B — baseline beaten, but do not credit the fix.** #1789 closed at 1 round against #1445's 35.
+The six spec PRs that did **not** carry B ran 1, 3, 1, 2, 1, 2 — the same budget — and two built and
+ran POCs anyway. **The tight spec budget is epic-wide and predates the rule reaching any branch.**
+Crediting B would be the definition-drift error cycles 4 and 7 warn about.
+
+### Upstream fixes — proposed (pending review gate)
+
+See the two candidates put to the owner at wrap: a **sharpening of BP-003** to cover guarantee
+sentences, and **one checklist line** making `get_reviews` a required read in the PR-feedback loop.
+Neither is written until approved.
+
+### Findings recorded, not fixed
+
+- **A PR's opening reviews can be lost to a subscription race.** *(Corrected after first writing —
+  see below.)* Reviews posted between PR **creation** and **subscription activation** are never
+  delivered. On #1790 that window ran 02:25:18 → ~02:28:21 and swallowed both `cursor[bot]` reviews
+  (02:27:11, 02:27:15); everything from 02:29:35 on arrived normally. An entire review round exists
+  only because they were found ~1h45m later, by calling `get_reviews` directly.
+
+  **This was first written as "body-only reviews never reach a session", which is wrong** — a
+  body-only cursor review on #1796 delivered normally 25 minutes after subscription. The
+  discriminator is *time relative to subscription*, not review shape. The error is the cycle's own
+  dominant class committed in the instrument that measures it: a mechanism asserted from a
+  correlation nobody had tried to break.
+
+  What remains true and is separately worth knowing: `cursor[bot]`'s restraint automation puts its
+  entire finding set in the **review body with zero inline comments** on **5 of 7** implementation
+  PRs (#1754, #1776, #1782, #1785, #1790), and on #1776 that body carried a substantive restraint
+  finding with a POC PR attached. A reader who scans only inline comments misses it — but that is a
+  reading habit, not a delivery hole.
+- **`settle-claim`'s front door: zero invocations, 8 claims settled.** Cycle 8's finding **re-tests
+  as unchanged**. The outcome stays healthy — 6 of 8 settlements were *run* rather than argued and
+  **3 came back REFUTED** — but every one went through an ad-hoc `spec-poc/` directory, a committed
+  checker, or a coordinator running the predicate directly. Two branches carried text pointing *at*
+  the skill and still didn't call it. Not fixed again this cycle: a second attempt without knowing
+  why the door is skipped would be guessing.
+- **Bots were absent from the merge head on 6 of 7 implementation PRs.** #1754 merged 9 commits past
+  its last automated pass, #1785 by 5, #1790 by 3. Codex ran exactly once per PR across all 15
+  artifacts. Cycle 5's claim 3 and cycle 8's claim 4 still fire: `over-engineered` measures first
+  revisions.
+- **`philosophy-drift` = 0 is "not looked for", not measured.** No reviewer ran a
+  coherence-against-`philosophy.md` lens this cycle.
+- **The 12-round cap never came near firing** — heaviest impl PR was ≈6. Unlike cycle 8, a genuine
+  pass rather than a cap failure.
+- **One public factory renamed three times on #1754** (`defineAgentKind` → `defineWorkerKind` →
+  `createAgentWorkerFlow` → `defineAgentWorkerFlow`), all post-review, none caught by the contract PR
+  that locked the kind.
+- **Escape sweep to `main` not run** (cycle 8's claim 3, deferred a second time). Scoreable now that
+  all 7 impl PRs merged, but needs an adversarial re-read of the unreviewed commit ranges — notably
+  #1754's last 9 commits. **Unmeasured, not zero.**
+
+### Claims to test next cycle
+
+1. **Score the two proposed fixes only on branches that carry them.** Cycle 9 could score neither of
+   cycle 8's because 13 of 15 branches forked first. Before comparing anything, run the ancestry
+   split and state it — a fix scored against work that never saw it reads as a failed fix.
+2. **Does naming the enforcement point inline actually cut the overclaim class?** Baseline to beat:
+   **14 fence findings / ~30% of non-`nit` findings**. If the share holds after the BP sharpening
+   lands, the fix is at the wrong altitude — the class may need a check, not a sentence.
+3. **Does a required `get_reviews` read change the round count?** Predicted effect is narrow and
+   specific: rounds that exist *only* because a PR's opening reviews were missed should go to zero.
+   #1790's third round is the baseline instance. Note the fix survived its own justification being
+   corrected — a subscription race is a *better* reason to read reviews directly than a body-only
+   blind spot, because it is silent and hits the reviews that open a PR.
+4. **Run the escape sweep.** Twice deferred now.
+
+---
+
+## Cycle 10 — W3 file-convention epic, mid-flight (FIX-1351) (2026-09-16)
+
+**Periodic run, not an epic wrap.** FIX-1351 is 5 of 13 done, so every endpoint below
+falls back to **collection time** and the epic row is a **partial**. Nine artifacts, plus
+the FIX-1370 rescue, which is not W3 work but is this cycle's most expensive incident.
+
+| PR | Kind | Rounds | Endpoint | Feedback classes | Claims l/s | Felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|---|
+| [#1718](https://github.com/fixpoint-labs/flow-state-dev/pull/1718) epic-spec | epic | **2 (in flight)** | collection | over-engineered ×2 · nit | 0 / 0 | no | — |
+| [#1711](https://github.com/fixpoint-labs/flow-state-dev/pull/1711) spec FIX-1352 | spec | 2 | approval | missed-edge-case ×3 · over-engineered ×2 · **docs-miss (deferred `apps/docs` page)** · nit ×2 | 0 / 0 | no | A spec may not defer the docs page for a surface a *user writes* |
+| [#1715](https://github.com/fixpoint-labs/flow-state-dev/pull/1715) spec FIX-1354 | spec | 2 | approval | missed-edge-case ×2 · over-engineered ×2 · **docs-miss (same deferral)** · nit | 0 / 0 | no | Same — second instance, same sentence |
+| [#1738](https://github.com/fixpoint-labs/flow-state-dev/pull/1738) spec FIX-1311 | spec | 2 | approval | design-off (identity reshape) · missed-edge-case ×2 · stale-restatement · nit ×2 | 0 / 0 | **yes** — one kind = one instance, settled by owner lock | — |
+| [#1747](https://github.com/fixpoint-labs/flow-state-dev/pull/1747) impl FIX-1311 | impl | 4 | merge | **missed-edge-case ×3 (High: permanent unbindable channel)** · docs-miss ×2 · over-engineered ×2 · nit | 0 / 0 | no | BP-035's interaction clause — both halves were proved correct *separately in the same run* |
+| [#1737](https://github.com/fixpoint-labs/flow-state-dev/pull/1737) impl FIX-1354 | impl | 3 | merge | **docs-miss ×2 (PR body claimed "no `apps/docs` page" — false; and a test count that was unrecoverable, not stale)** · over-engineered ×2 (declined, both correct defects/wrong remedies) · nit | 0 / 0 | no | A PR body's *state claims* carry BP-003's burden |
+| [#1793](https://github.com/fixpoint-labs/flow-state-dev/pull/1793) impl FIX-1352 | impl | 3 | merge | **docs-miss ×5** (Codex P1 no docs-site page · 4 editorial, incl. a section contradicting its own page) · **missed-edge-case ×2 (two tests that could not fail)** · over-engineered ×4 (declined → FIX-1389) · nit ×2 | 0 / 0 | no | — (BP-003's red-state clause caught both vacuous tests; see *What fired*) |
+| [#1797](https://github.com/fixpoint-labs/flow-state-dev/pull/1797) impl FIX-1370 rescue | impl | 3 | merge | **missed-edge-case (Codex P2: unterminated frontmatter silently drops all agent config)** · over-engineered ×4 (declined → FIX-1406) | 0 / 0 | no | — |
+| [#1735](https://github.com/fixpoint-labs/flow-state-dev/pull/1735) impl FIX-1370 (orig) | impl | 4 | merge | — (reviewed and approved; the defect is **where it merged**) | 0 / 0 | no | **Base-branch check at PR open: a PR based on a non-default branch names why** |
+
+### The instrument has a hole this cycle found in itself
+
+**An agent's PR replies are indistinguishable from the owner's in the API.** This session's
+replies post under `jhoffner` (the session's token is the owner's). The API reports 5
+`jhoffner` reviews on #1793 and 5 on #1797 — **all of them mine**. Cycle 9's row header
+counts "the owner's Architect pass" as a reviewer signal, so a collector that trusts the
+author field will read agent replies as independent owner review and inflate both the round
+count and the apparent human-review coverage. The only reliable discriminator is the
+attribution footer in the body. **Any future ledger row must exclude footer-bearing
+`jhoffner` comments from reviewer passes**; the rows above already do.
+
+### Scoring cycle 9's fixes — neither was ever written
+
+Checked on `main` rather than assumed:
+
+- **Fix A (BP-003 sharpened to cover guarantee sentences): absent.** BP-003 carries its
+  hardened red-state clause (landed earlier, `#1693`) and nothing about a guarantee sentence
+  naming its enforcement point.
+- **Fix B (`get_reviews` required in the PR-feedback loop): absent.** `issue-lifecycle`'s
+  `get_reviews` references are the pre-existing *spec-approval* read. Zero hits repo-wide for
+  the subscription-race rationale.
+
+**Third consecutive cycle where the previous cycle's fixes could not be scored** — cycle 8's
+were carried by 2 of 15 branches, cycle 9's were proposed-pending-gate, cycle 10's are
+unwritten. Separately, the one commit that *did* touch `issue-lifecycle` today (`b6fcf355c`,
+18:15Z) is carried by **none** of this cycle's four implementation branches, all of which
+forked earlier. **The loop's fixes keep landing after the work that would test them.** That is
+a structural property of proposing at wrap and gating afterwards, not an accident of any one
+cycle, and it is the finding with the widest blast radius here: an instrument whose
+corrections are never scoreable cannot tell a good fix from a dead one.
+
+### The dominant class — overclaim, third cycle, and it has left prose
+
+Cycle 9 named it in prose: *a sentence asserting a guarantee with no named enforcement point*.
+Cycle 10's instances are the same shape on surfaces cycle 9 didn't sample:
+
+- **A tracking record claiming a state the repo does not have.** FIX-1370 sat **Done** for four
+  days with `agent-prompt-file.ts` absent from `main` — its PR merged into a branch whose own
+  PR had already merged, so the code had no route anywhere. FIX-1344 was **Done by
+  inheritance** off it. GitHub said merged; Linear said Done; both were locally true and
+  jointly false. Cost: one rescue PR, and four days in which anyone extending agent prompt
+  files would have built on a feature that wasn't there.
+- **A PR body claiming a verification state.** #1737 asserted "no `apps/docs` page, per the
+  spec's §11" — false, the page shipped — and a test count that `main` had made
+  *unrecoverable* rather than merely stale.
+- **A spec deferring a user-facing surface on a rule that has now lost twice.** #1715 §11 and
+  #1711 both wrote the docs page off as belonging "with the first consumer". Both were
+  overruled — once by a broken relative link, once by a Codex P1 citing AGENTS.md. **A file
+  convention a user can write is the first consumer.**
+
+Every instance is a claim with no enforcement point. The class did not resist cycle 9's fix;
+**cycle 9's fix was never applied.**
+
+### What fired — BP-003's red-state clause, scored as a win
+
+The one landed fix this cycle can score. On #1793 the implementer removed each of eleven
+guards in turn and required a red state. **Two came back green:** a spec covering a
+*symlinked* `CHANNEL.md` but not an *unreadable* one (deleting that branch fell through to
+"no CHANNEL.md" — a live wrong-answer bug telling an author to write a file already present),
+and an `IGNORED_ENTRIES` spec written against a dropping that was a *file*, where the slot
+rule already skips files, so it discriminated nothing. Both would have shipped as tests
+incapable of failing. **This is BP-003's hardened clause doing exactly what it was sharpened
+for**, on a branch that carried it — the first cleanly scoreable fix success in three cycles.
+
+Worth noting the same discipline caught its own near-miss later: the #1797 guard needed *two*
+specs, because the obvious check ("first line is `---`") would refuse an empty-but-closed
+fence. One red test proves a check catches the bug; the pair proves it catches the bug
+**without over-refusing**.
+
+### Findings recorded, not fixed
+
+- **A restraint lens is the wrong instrument for a missing artefact.** Cursor's Code Snob filed
+  "no docs-site page" under *not re-litigating* on #1793. It hunts excess, not absence. Its
+  silence was briefly read as evidence; it isn't.
+- **Isolation earned its keep twice on one PR.** `docs-writer`, given a surface brief and no
+  diff, repaired a doc the change had silently invalidated (`workers-on-disk.md`'s
+  passed-over-in-silence list, stale the moment a fourth reader existed) — found by running the
+  loader test, not by reading the diff. `docs-editor` then caught the new section telling
+  readers a file can "open a channel" seventy lines above a section explaining that it cannot.
+  Neither was visible to the implementer, three review bots, or the coordinator.
+- **A brief can defeat the isolation it pays for.** The first `docs-editor` dispatch described
+  an implementation seam; the agent declined the framing and judged from the text, and said so.
+  The second carried no implementation facts. Brief the isolated reader on what a reader should
+  come away with, never on the shape of the code.
+- **Codex: ~23 findings across the cycle, zero rejected.** Every one verified real, including
+  two P1s and the P2 above. Cursor's two lenses: both clean or approving on both PRs they ran,
+  with every suggestion correctly non-blocking.
+- **`settle-claim`'s front door: zero invocations again.** Third cycle. No claim looped twice
+  this cycle, so the skill had no trigger — genuinely nothing to fire on, unlike cycles 8 and 9
+  where settlements happened by other means.
+- **Escape sweep still not run.** Three cycles deferred.
+
+### Claims to test next cycle
+
+1. **Land fixes at the gate, not after it.** The single change most likely to make cycle 11
+   scoreable is writing an approved fix *immediately*, before the next epic's branches fork.
+   Baseline: three cycles, zero scoreable corrections.
+2. **Does an enforcement-point clause cut overclaim once it actually exists?** Cycle 9's
+   baseline stands unchallenged at ~30% of non-`nit` findings; cycle 10's share is ~35%
+   (8 of 23 non-`nit`). Neither number has ever been measured against the fix.
+3. **Does a `main`-existence check before Done stop the false-Done class?** Baseline: two
+   false Dones this cycle (FIX-1370, FIX-1344), four days undetected, one rescue PR.
+4. **Exclude footer-bearing `jhoffner` comments from reviewer passes** in every future row, and
+   re-read cycle 9's counts with that filter before comparing them to anything.

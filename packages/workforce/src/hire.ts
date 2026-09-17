@@ -23,19 +23,35 @@ import {
   INSTRUCTIONS_KEY,
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
+  REFUSED_SEAT_SKILLS_KEY_MESSAGE,
+  SEAT_SKILLS_KEY,
   type WorkerManifest
 } from "./manifest";
+import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
 
 /** The two keys the factory itself reads. Everything else is the worker's settings. */
 const RESERVED_KEYS = ["flow", "description"] as const;
+
+/**
+ * The stock `agent` kind, built once for the life of the module.
+ *
+ * Held here rather than exported: an app that wants a different one registers
+ * its own under `agent` (`kinds: { agent: defineAgentWorkerFlow({ ... }) }`), which
+ * merges over this one. Define once, hire many — never per hire or per request.
+ */
+const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType;
 
 export interface HireOptions {
   /**
    * The flows the app defined, by kind — `defineFlow(...)` results, passed
    * directly. A record's `flow` names one, and it is called once per worker to
    * mint that worker's copy.
+   *
+   * Optional: the built-in `agent` kind is always available underneath, so a
+   * roster of records that name no kind needs none of these. Passing a flow
+   * under `agent` replaces the built-in for every seat.
    */
-  kinds: Record<string, AnyFlowType>;
+  kinds?: Record<string, AnyFlowType>;
 }
 
 /** A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere. */
@@ -99,15 +115,25 @@ function messageOf(error: unknown): string {
  * hire would not be a refusal.
  *
  * @param manifests The roster — from the loader, or hand-built.
- * @param options   `kinds`: the flow factories the app defined.
+ * @param options   `kinds`: the flow factories the app defined. Optional — the
+ *                  built-in `agent` kind is always available underneath, and a
+ *                  flow passed under `agent` replaces it for every seat.
  * @returns One `FlowInstance` per record, ordered by id. Register these.
  * @throws If any record cannot be hired; the message names every bad worker.
  */
 export function hireWorkforce(
   manifests: WorkerManifest[],
-  options: HireOptions
+  options: HireOptions = {}
 ): FlowInstance[] {
-  const kindNames = Object.keys(options.kinds);
+  // The built-in sits UNDERNEATH the caller's, so a caller who registers their
+  // own `agent` wins — for every seat, not just the ones that name it. This is
+  // precedence, not extension: configuring the built-in's tools or skills means
+  // replacing the kind (`defineAgentWorkerFlow({ ... })` registered here), never a
+  // second option on this function. A roster hired with `kinds: {}` therefore
+  // carries an empty tool catalog, because nothing ever merges into ours.
+  const kinds: Record<string, AnyFlowType> = { [AGENT_KIND]: builtInAgentWorkerFlow, ...options.kinds };
+
+  const kindNames = Object.keys(kinds);
   const available = kindNames.length > 0 ? kindNames.map((k) => `"${k}"`).join(", ") : "(none)";
 
   const ordered = [...manifests].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -146,6 +172,15 @@ export function hireWorkforce(
       continue;
     }
 
+    // The other imposed key, refused here for the same reason: a hand-built
+    // roster never passes the loader, and a flow whose `configSchema` declares
+    // `seatSkills` would accept an authored one and run with a skill set no
+    // folder backs.
+    if (Object.hasOwn(settings, SEAT_SKILLS_KEY)) {
+      refuse(REFUSED_SEAT_SKILLS_KEY_MESSAGE);
+      continue;
+    }
+
     // A body is instructions; whitespace is not. An empty string handed to a
     // flow that declares `instructions` would be a worse lie than omitting it —
     // and it would turn every thin seat into a failed hire.
@@ -162,16 +197,48 @@ export function hireWorkforce(
       settings[INSTRUCTIONS_KEY] = manifest.body;
     }
 
-    const kind = manifest.declared.flow;
-    if (typeof kind !== "string" || kind.trim().length === 0) {
-      refuse("declares no `flow:`, so there is no flow kind to hire it into");
+    // The refusal that stood here SPLITS; it does not disappear. One condition
+    // used to refuse an absent `flow:` and a whitespace-only one alike. Only
+    // an ABSENT key now resolves to the built-in.
+    //
+    // `hasOwn` rather than a bare read of `.flow`: a `flow:` key parsed from a
+    // file with no value (or `~`, or `null`) arrives as an own property
+    // holding `null` — present, not absent — and reading it as "omitted"
+    // would silently hire the built-in for a file that named the key. Only a
+    // record with no `flow` key at all gets the default.
+    const hasFlowKey = Object.hasOwn(manifest.declared, "flow");
+    const declaredKind = manifest.declared.flow;
+
+    if (hasFlowKey && typeof declaredKind === "string" && declaredKind.trim().length === 0) {
+      // A whitespace-only value keeps refusing, because whitespace is a typo or a
+      // YAML artefact rather than an expression of intent, and reading it as "use
+      // the default" would paper over a mistake in the one step whose whole story
+      // is loud failure. C2 is explicit that adding an implicit default must not
+      // weaken an existing refusal, and this is the one place it could.
+      refuse("declares an empty `flow:`, which names no flow kind. Remove the key to hire the built-in `agent` kind, or name a kind you passed");
       continue;
     }
+
+    if (hasFlowKey && typeof declaredKind !== "string") {
+      // The same class of refusal as the empty-string case above, for a
+      // present `flow:` whose value isn't a string at all — `flow:`/`flow: ~`
+      // /`flow: null` from a file, or `{ flow: 42 }` from a hand-built
+      // manifest. Silently defaulting here is the weakened refusal C2
+      // forbids, worded for what was actually declared instead of a blank.
+      refuse(
+        `declares \`flow:\` as ${JSON.stringify(declaredKind)}, which names no flow kind. ` +
+          "Remove the key to hire the built-in `agent` kind, or name a kind you passed"
+      );
+      continue;
+    }
+
+    // Absent (no `flow` key at all) means the built-in.
+    const kind = hasFlowKey ? (declaredKind as string) : AGENT_KIND;
 
     // `hasOwn` rather than a bare lookup: a record's `flow` is author-supplied,
     // and `kinds["constructor"]` would otherwise resolve off the prototype and
     // hand us something that is not a flow factory at all.
-    const factory = Object.hasOwn(options.kinds, kind) ? options.kinds[kind] : undefined;
+    const factory = Object.hasOwn(kinds, kind) ? kinds[kind] : undefined;
     if (factory === undefined) {
       refuse(`names flow kind "${kind}", which was not passed to hireWorkforce. Kinds passed: ${available}`);
       continue;
@@ -187,6 +254,30 @@ export function hireWorkforce(
           `this seat would run a different worker's graph. Pass each flow under its own kind.`
       );
       continue;
+    }
+
+    // The seat's own skills — imposed **only on a kind that declares the key**,
+    // which is why this sits here, after the kind is resolved, rather than up
+    // with the body.
+    //
+    // A worker's body is imposed unconditionally because a worker AUTHOR writes
+    // the body: a custom kind that does not declare `instructions` is a file its
+    // author can fix. A seat's skills are not like that. They come from folders
+    // somebody else added — one `org/skills/` folder makes `manifest.skills`
+    // non-empty for EVERY worker on the roster — so imposing them
+    // unconditionally would make a shared skills folder break every custom kind
+    // on that roster at once, for a setting those kinds never asked for and
+    // their authors never saw.
+    //
+    // "Declares the key" is read off the kind's own probed default config, which
+    // is the same schema that would refuse the bag a moment later. A kind that
+    // declares it opts in by declaring it; every kind written before this
+    // existed is left exactly as it was.
+    if (manifest.skills !== undefined && manifest.skills.length > 0) {
+      const declared = (factory as { config?: Record<string, unknown> }).config;
+      if (declared !== undefined && Object.hasOwn(declared, SEAT_SKILLS_KEY)) {
+        settings[SEAT_SKILLS_KEY] = manifest.skills;
+      }
     }
 
     try {

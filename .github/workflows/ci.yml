@@ -76,7 +76,7 @@ jobs:
           node-version: 22
 
       # A spec PR (branch `spec/<ISSUE-ID>`) and an epic PR (branch
-      # `epic/<name>`, carrying `spec/_epics/<name>.md`) hold the in-flight spec
+      # `epic/<name>`, carrying `spec/_epics/<name>/`) hold the in-flight spec
       # by design and are never merged, so they are exempt. Keyed on the BRANCH,
       # not the `spec` label: the label is applied after the PR is created, and
       # `labeled` is not a default `pull_request` event type — a label-keyed
@@ -204,3 +204,31 @@ jobs:
 
       - name: Build Storybook
         run: pnpm --filter @flow-state-dev/ui storybook:build
+
+  docs:
+    name: Docs Site Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # No `packages:build` and no Turborepo cache, unlike the jobs above:
+      # `apps/docs` declares no workspace dependency, and `docs:build` runs
+      # `docusaurus build` directly rather than through turbo, so neither would
+      # do anything but add minutes.
+      #
+      # Unfiltered by path, like every other job here. Docusaurus resolves links
+      # across the whole site, so a page this PR never touched can break when
+      # another one moves or is deleted — a `paths:` filter keyed on
+      # `apps/docs/**` would skip exactly the run that catches it.
+      - name: Build docs site
+        run: pnpm docs:build

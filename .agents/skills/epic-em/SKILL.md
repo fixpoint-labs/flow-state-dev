@@ -47,19 +47,19 @@ Sending an architecturally-critical fork up puts the user in the engineer's chai
 ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) → "When
 engineering detail is genuinely the ask").
 
-## The explainer is on by default here
+## Every gate you surface links the picture
 
 Absorbing the engineering decisions means the user stops reading specs — that is the whole
 point, and it is also how a product owner ends up ratifying gates on a body of work they can
-no longer picture. So under this posture the epic's
-[explainer](../epic-explainer/SKILL.md) defaults to **on**: set `explainer: on` at epic setup
-without asking, and every gate you surface carries its link.
+no longer picture. So under this posture every gate you surface carries the link to the
+epic-spec's `SPEC.md` — the box figure, the set table and the dependency graph — and, for a
+spec-approval gate, that spec's own `SPEC.md`. The wake keeps the epic set current on every
+phase transition (`epic-lifecycle` → the loop), so the link is to a live picture, not a
+forecast.
 
-This adds no state and moves no gate — `explainer` is `epic-lifecycle`'s field and the
-explainer gates nothing. The delta is only the default, and the user can turn it off in a
-word. Two things it is not: it does **not** replace the six-part ask (a diagram shows the
-shape, it doesn't price the decision), and it is **not** a reason to absorb one more fork
-than the tests above allow.
+This adds no state and moves no gate. Two things it is not: it does **not** replace the
+six-part ask (a picture shows the shape, it doesn't price the decision), and it is **not** a
+reason to absorb one more fork than the tests above allow.
 
 ## Absorbing the judgment doesn't shorten the path to it
 
@@ -81,7 +81,7 @@ Three **lines**, not three sections, above `epic-lifecycle`'s per-issue lines:
 | | The line |
 |---|---|
 | **Account** | What the last report said would happen, and whether it did. Name the misses plainly — this is the only line in the report that can be *wrong*, which is the entire reason it is first. **The first report of a session has no prior Plan to check** (nothing durable stores one, and this posture adds no state): say *"first report this session — no prior Plan"* and move on. Inventing one is the failure this line exists to prevent |
-| **Review** | **Lead with the lead measure — §1's, if it names one; otherwise name the issues whose goal is proven and those still to go.** A list, not a ratio: exempt, cancelled and dropped rows are said as what they are instead of silently distorting a denominator, and a reader learns *which* work is proven. Say *goal-proven then merged* — a single-PR row reaches `DONE` on the merge, so a later feedback round isn't re-proven. Then what the epic can now do that it couldn't, what's at risk, what's waiting on you. Never phases |
+| **Review** | **Lead with the lead measure — `SPEC.md`'s, if it names one; otherwise name the issues whose goal is proven and those still to go.** A list, not a ratio: exempt, cancelled and dropped rows are said as what they are instead of silently distorting a denominator, and a reader learns *which* work is proven. Say *goal-proven then merged* — a single-PR row reaches `DONE` on the merge, so a later feedback round isn't re-proven. Then what the epic can now do that it couldn't, what's at risk, what's waiting on you. Never phases |
 | **Plan** | The one or two things that will move the lead measure before the next report. Not a list of every dispatchable row — the point is a commitment the next Account can be checked against |
 
 **No Account = a status update**: nothing in it can be false, so nothing gets checked.

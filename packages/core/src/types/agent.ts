@@ -4,8 +4,15 @@
  * Declared in `@flow-state-dev/core` so multiple packages can refer to a
  * single source of truth without forming a circular import. The Skills
  * package consumes `AgentRegistry` to thread an `agent-ref` worker
- * resolution path through pattern skills. `@flow-state-dev/workforce`
- * supplies the concrete implementation.
+ * resolution path through pattern skills.
+ *
+ * These are extension points, not a description of shipped code: no package
+ * here implements `AgentRegistry` or `MaterializeAgentFn`. An app that staffs
+ * a seat with `agent-ref` writes both and passes them to
+ * `createSkillsLibrary`, which refuses to bind such a skill when either is
+ * missing. Everything below that reads as a promise — a validation, a
+ * resolution — is what an implementation owes its callers, not something this
+ * repo performs on its behalf.
  */
 
 import type { ZodTypeAny } from "zod";
@@ -16,8 +23,9 @@ import type { DefinedCapability } from "../capability";
 import type { ToolCatalog } from "./skill";
 
 /**
- * How an agent's system prompt is sourced. Resolved by @flow-state-dev/workforce
- * over FIX-699's resource-template primitives (renderResourceTemplate / readContent).
+ * How an agent's system prompt is sourced. Nothing here resolves one — the
+ * forms below say what an implementation is expected to do with each, over
+ * core's resource-template primitives (renderResourceTemplate / readContent).
  * - string: bare system prompt, used verbatim — the minimal, single-use form.
  * - PersonaInlineConfig: an inline template + state, rendered via renderResourceTemplate.
  * - { path }: a declared resource OR collection instance, addressed by path and rendered
@@ -76,11 +84,13 @@ export interface Agent {
    *  task, not returned inline to the coordinator.
    *
    *  Subject to the same BP-016 OpenAI-strict requirement as any generator
-   *  output, and to two rules the declaration itself carries: the root must be a
-   *  bare `z.string()` or an object, and no field may parse to a value JSON
-   *  cannot carry (a transform, a `Date`, a `BigInt`), since a durable board
-   *  round-trips a task result through `JSON.stringify`. A shape breaking either
-   *  is refused by name at materialization, before any job runs. */
+   *  output, which core enforces wherever the schema reaches a generator. Two
+   *  further rules are the materializer's to enforce, and none ships here: the
+   *  root must be a bare `z.string()` or an object, and no field may parse to a
+   *  value JSON cannot carry (a transform, a `Date`, a `BigInt`), since a
+   *  durable board round-trips a task result through `JSON.stringify`. A
+   *  materializer that skips them gets a shape back from a resume that is not
+   *  the one it declared. */
   outputSchema?: ZodTypeAny;
   /** Tool-catalog keys this agent may reference. */
   allowedTools?: string[];
@@ -89,7 +99,8 @@ export interface Agent {
    *  capability reference used as-is — including `someCapability.presets({ ... })`,
    *  which keeps full preset typing (mirrors how `generator({ uses })` consumes
    *  capabilities today). A string key declared with NO catalog to resolve it
-   *  against is refused at materialization rather than dropped. */
+   *  against should be refused rather than dropped — the materializer's call to
+   *  make, since none ships here. */
   usesCapabilities?: Array<string | DefinedCapability>;
   /** RESERVED — not resolved by FIX-702. */
   usesSkills?: string[];
@@ -98,10 +109,10 @@ export interface Agent {
 }
 
 /**
- * Structural interface for an agent catalog. Implementations are owned
- * by `@flow-state-dev/workforce`; this declaration exists so consumers
- * can type an optional `agentRegistry?` slot without depending on that
- * package.
+ * Structural interface for an agent catalog. No implementation ships in this
+ * repo — an app that uses `agent-ref` writes one and injects it. This
+ * declaration exists so consumers can type an optional `agentRegistry?` slot
+ * without depending on whoever implements it.
  */
 export interface AgentRegistry {
   /** Resolve an agent by name. Returns `undefined` when unknown. */
@@ -112,8 +123,8 @@ export interface AgentRegistry {
 
 /**
  * Options for materializing an Agent into a worker-shaped or standalone generator.
- * Defined in core (not workforce) so `@flow-state-dev/orchestration` can type the
- * injected `materializeAgent` dep without importing `@flow-state-dev/workforce`.
+ * Defined in core so `@flow-state-dev/orchestration` can type the injected
+ * `materializeAgent` dep without depending on whoever implements it.
  */
 export interface MaterializeAgentOptions {
   catalog: ToolCatalog;

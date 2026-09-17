@@ -20,22 +20,33 @@ const scan = (text: string, path = "packages/core/src/fixture.ts"): Result =>
  * both are pinned here rather than discovered by a red CI run on someone's PR.
  */
 describe("spec citations — concrete paths are dangling, placeholders are not", () => {
-  it("flags an issue spec cited by repo path", () => {
-    const { hits } = scan("// see spec/FIX-123.md for the rationale");
-    expect(hits.map((h) => h.text)).toEqual(["spec/FIX-123.md"]);
+  it("flags a document in an issue spec's directory cited by repo path", () => {
+    const { hits } = scan("// see spec/FIX-123/SPEC.md for the rationale");
+    expect(hits.map((h) => h.text)).toEqual(["spec/FIX-123/SPEC.md"]);
   });
 
-  it("flags an epic spec cited by repo path — an epic PR never merges either", () => {
-    const { hits } = scan("// see spec/_epics/task-substrate.md");
-    expect(hits.map((h) => h.text)).toEqual(["spec/_epics/task-substrate.md"]);
+  it("flags a figure in an issue spec's directory — it dies with the branch like the prose", () => {
+    const { hits } = scan("![drawers](spec/FIX-123/figures/drawers.svg)");
+    expect(hits.map((h) => h.text)).toEqual(["spec/FIX-123/figures/drawers.svg"]);
+  });
+
+  it("flags a document in an epic spec's directory — an epic PR never merges either", () => {
+    const { hits } = scan("// see spec/_epics/task-substrate/PLAN.md");
+    expect(hits.map((h) => h.text)).toEqual(["spec/_epics/task-substrate/PLAN.md"]);
+  });
+
+  it("still flags the pre-directory shape, which is just as dangling", () => {
+    const { hits } = scan("// see spec/FIX-123.md and spec/_epics/task-substrate.md");
+    expect(hits.map((h) => h.text)).toEqual(["spec/FIX-123.md", "spec/_epics/task-substrate.md"]);
   });
 
   it("ignores the issue-spec placeholder that every process doc writes", () => {
-    expect(scan("specs live at spec/<ISSUE-ID>.md on their branch").hits).toEqual([]);
+    expect(scan("specs live at spec/<ISSUE-ID>/SPEC.md on their branch").hits).toEqual([]);
+    expect(scan("figures at spec/<ISSUE-ID>/figures/<name>.svg").hits).toEqual([]);
   });
 
   it("ignores the epic-spec placeholder", () => {
-    expect(scan("the doc lives at spec/_epics/<name>.md on that branch").hits).toEqual([]);
+    expect(scan("the set lives at spec/_epics/<name>/SPEC.md on that branch").hits).toEqual([]);
   });
 
   it("does not double-report a retired docs/specs/ path as a spec citation", () => {
@@ -58,18 +69,18 @@ describe("spec citations — concrete paths are dangling, placeholders are not",
 describe("exempt lists — narrow, because placeholders need no exemption", () => {
   it("does NOT exempt docs/contributing/ — a concrete path there is dangling too", () => {
     expect(
-      scan("write it to spec/FIX-123.md", "docs/contributing/orchestration.md").hits,
+      scan("write it to spec/FIX-123/SPEC.md", "docs/contributing/orchestration.md").hits,
     ).toHaveLength(1);
   });
 
   it("does NOT exempt .agents/ — a skill citing a real spec path is a dead link", () => {
-    expect(scan("see spec/FIX-999.md", ".agents/skills/issue-spec/SKILL.md").hits).toHaveLength(1);
+    expect(scan("see spec/FIX-999/PLAN.md", ".agents/skills/issue-spec/SKILL.md").hits).toHaveLength(1);
   });
 
   it("still lets docs/contributing/ write the placeholder form", () => {
-    expect(scan("write it to spec/<ISSUE-ID>.md", "docs/contributing/orchestration.md").hits).toEqual(
-      [],
-    );
+    expect(
+      scan("write it to spec/<ISSUE-ID>/SPEC.md", "docs/contributing/orchestration.md").hits,
+    ).toEqual([]);
   });
 
   it("lets docs/internal/ keep the historical docs/specs/ record", () => {
@@ -79,11 +90,11 @@ describe("exempt lists — narrow, because placeholders need no exemption", () =
   });
 
   it("does NOT exempt a root doc — AGENTS.md is a maintained surface, not a carve-out", () => {
-    expect(scan("see spec/FIX-123.md", "AGENTS.md").hits).toHaveLength(1);
+    expect(scan("see spec/FIX-123/SPEC.md", "AGENTS.md").hits).toHaveLength(1);
   });
 
   it("does not exempt package source", () => {
-    expect(scan("see spec/FIX-123.md", "packages/engine/src/run.ts").hits).toHaveLength(1);
+    expect(scan("see spec/FIX-123/DECISIONS.md", "packages/engine/src/run.ts").hits).toHaveLength(1);
   });
 });
 

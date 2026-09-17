@@ -1,6 +1,6 @@
 ---
 description: Owns the launch calendar and the words that go out with it.
-flow: worker-agent
+flow: custom-agent
 model: openai/gpt-5.4-mini
 tools: [calendar]
 ---

@@ -1,0 +1,24 @@
+{
+  "userId": "u_goal_builtin_hire",
+  "question": "Who are you, and which desk is this?",
+  "workers": [
+    {
+      "id": "engineering.desk",
+      "description": "Answers questions for the engineering desk.",
+      "token": "HALYARD-6182",
+      "body": "You are the engineering desk at a small software company.\nAnswer in one short sentence.\nEnd every reply with the exact token HALYARD-6182."
+    },
+    {
+      "id": "marketing.desk",
+      "description": "Answers questions for the marketing desk.",
+      "token": "KESTREL-3390",
+      "body": "You are the marketing desk at a small software company.\nAnswer in one short sentence.\nEnd every reply with the exact token KESTREL-3390."
+    }
+  ],
+  "mixedRoster": {
+    "validId": "engineering.desk",
+    "invalidId": "engineering.scribe",
+    "invalidKind": "reviewer",
+    "builtInKind": "agent"
+  }
+}

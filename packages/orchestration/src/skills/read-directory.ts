@@ -7,8 +7,18 @@
  * directories — the format is the same.
  *
  * Symlinks are explicitly NOT followed: a malicious skill bundle could
- * symlink to `/etc` or escape the root via `..`. The walker rejects
- * symlinks with a warning and skips the entry.
+ * symlink to `/etc` or escape the root via `..`. Every entry the walker
+ * touches below the root — the skill folder, its `SKILL.md`, and every
+ * supporting file — is lstat'd first; a symlink is recorded as an error or
+ * skipped, never read. The `root` argument itself is the caller's own path
+ * and is taken as given.
+ *
+ * Containment stops at the symlink. A hardlink is an ordinary file and is read
+ * as one, and each check is an lstat followed by a read rather than a held
+ * handle, so a path swapped between the two is read as whatever it became.
+ * Both are accepted: this runs at startup over a tree the app author controls,
+ * and closing either means following a path and verifying it, which is the
+ * opposite of the rule above.
  */
 
 import fs from "node:fs/promises";
@@ -91,10 +101,35 @@ async function readOneSkillFolder(
   ignore: Set<string>,
 ): Promise<InitialSkill> {
   const manifestPath = path.join(folderPath, "SKILL.md");
+
+  // A real folder says nothing about the manifest inside it: a symlinked
+  // SKILL.md reaches outside the root exactly as a symlinked folder would.
+  // lstat before the read so the link is seen rather than followed.
+  let manifestStat;
+  try {
+    manifestStat = await fs.lstat(manifestPath);
+  } catch (err) {
+    // Only a genuinely absent file is "missing". Anything else — a permission
+    // denial, an I/O failure — is a file the author can see, so reporting it
+    // as absent sends them looking for something that is already there.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new Error(`SKILL.md in "${name}/" could not be read: ${(err as Error).message}`);
+    }
+    throw new Error(`Missing SKILL.md in "${name}/"`);
+  }
+  if (manifestStat.isSymbolicLink()) {
+    throw new Error(`Symlinked SKILL.md in "${name}/" — ignored for safety`);
+  }
+
   let skillMd: string;
   try {
     skillMd = await fs.readFile(manifestPath, "utf8");
-  } catch {
+  } catch (err) {
+    // Reachable for a directory named SKILL.md, and for anything that changes
+    // under us between the lstat above and this read.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new Error(`SKILL.md in "${name}/" could not be read: ${(err as Error).message}`);
+    }
     throw new Error(`Missing SKILL.md in "${name}/"`);
   }
 

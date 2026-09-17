@@ -44,7 +44,7 @@ describe("materializeWorker — prompt-driven branches", () => {
     expect(JSON.stringify(promptSlot)).toContain("ACME Corp");
   });
 
-  it("reads prompt-ref content from the skill collection and strips frontmatter", async () => {
+  it("reads prompt-ref content from the skill collection and hydrates body", async () => {
     const collection = createMockSkillsCollection();
     await collection.create(skillFileKey("demo", "reference/market.md"), {});
     const ref = collection.getOptional(skillFileKey("demo", "reference/market.md"));
@@ -59,6 +59,54 @@ describe("materializeWorker — prompt-driven branches", () => {
     );
     const promptSlot = (block as { config?: { prompt?: unknown } }).config?.prompt;
     expect(JSON.stringify(promptSlot)).toContain("You are a market analyst.");
+  });
+
+  it("loads tools and model from the prompt-file frontmatter", async () => {
+    const collection = createMockSkillsCollection();
+    await collection.create(skillFileKey("demo", "reference/analyze.md"), {});
+    const ref = collection.getOptional(skillFileKey("demo", "reference/analyze.md"));
+    await (ref as unknown as { writeContent: (s: string) => Promise<void> }).writeContent(
+      [
+        "---",
+        "description: Analyzes one competitor.",
+        "tools: [search, fetch]",
+        "model: openai/gpt-5.4-mini",
+        "---",
+        "",
+        "You analyze one competitor.",
+      ].join("\n"),
+    );
+    const search = { config: { name: "search" } } as never;
+    const fetch = { config: { name: "fetch" } } as never;
+    const block = await materializeWorker(
+      "analyzer",
+      { promptRef: "reference/analyze.md" },
+      deps({
+        skillCollection: collection,
+        catalog: { search, fetch },
+      }),
+    );
+    const cfg = block as {
+      config?: { model?: string; tools?: { config?: { name?: string } }[] };
+    };
+    expect(cfg.config?.model).toBe("openai/gpt-5.4-mini");
+    expect(cfg.config?.tools?.map((t) => t.config?.name)).toEqual(["search", "fetch"]);
+  });
+
+  it("rejects a programmatic prompt-ref spec that still carries skill-entry tuning", async () => {
+    const collection = createMockSkillsCollection();
+    await collection.create(skillFileKey("demo", "reference/analyze.md"), {});
+    const ref = collection.getOptional(skillFileKey("demo", "reference/analyze.md"));
+    await (ref as unknown as { writeContent: (s: string) => Promise<void> }).writeContent(
+      "You analyze one competitor.",
+    );
+    await expect(
+      materializeWorker(
+        "analyzer",
+        { promptRef: "reference/analyze.md", tools: ["search"] },
+        deps({ skillCollection: collection }),
+      ),
+    ).rejects.toThrow(/can't be set alongside `prompt-ref`|prompt file/);
   });
 
   it("throws a clear error when prompt-ref points at a missing file", async () => {

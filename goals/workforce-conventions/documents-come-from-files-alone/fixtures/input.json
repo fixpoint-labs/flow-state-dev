@@ -1,0 +1,32 @@
+{
+  "note": "Held out from the implementation: nothing in the loader knows these refs, tokens or settings. Swap the tree and this file together for another valid pair and a correct loader still passes.",
+  "root": "workforce",
+  "expect": [
+    {
+      "ref": "code-of-conduct",
+      "marker": "LANTERN-2208",
+      "declared": {
+        "description": "How everyone at the company is expected to treat each other.",
+        "llmReadable": true
+      }
+    },
+    {
+      "ref": "teams/engineering/handbook",
+      "marker": "THISTLE-6194",
+      "declared": {
+        "description": "How the engineering team works — on-call, review, escalation.",
+        "llmReadable": true
+      }
+    },
+    {
+      "ref": "teams/marketing/handbook",
+      "marker": "QUARRY-3157",
+      "declared": {
+        "description": "How the marketing team works — calendar, approvals, embargoes.",
+        "llmReadable": true
+      }
+    }
+  ],
+  "expectErrorPaths": ["teams/marketing/resources/glossary"],
+  "silentPaths": ["teams/engineering/resources/notes.txt"]
+}

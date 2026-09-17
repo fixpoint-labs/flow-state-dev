@@ -7,10 +7,8 @@ argument-hint: <product, company, or market>
 agents:
   discoverer:
     prompt-ref: ./reference/discover.md
-    tools: [search, taskTools]
   analyzer:
     prompt-ref: ./reference/analyze.md
-    tools: [search, fetch]
   comparison-synthesizer:
     prompt-ref: ./reference/synthesize.md
 ---
