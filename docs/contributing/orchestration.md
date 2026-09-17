@@ -21,6 +21,9 @@ There are exactly **two lifecycles**, one per altitude: an issue has a lifecycle
 set of related issues has one too. Nothing coordinates a *bag* of unrelated issues —
 parallelism is a property of an epic, not a mode of its own.
 
+There are **three artifact altitudes**, which is one more than the lifecycles: the third,
+the project-spec, deliberately has no lifecycle of its own (see below).
+
 - **Epic lifecycle** — the coordinator. One thin, event-driven session that drives an
   **epic** and the issues under it in parallel, holds a compact status table, owns
   subscriptions, and dispatches worker sub-agents. It **does none of the work itself** — not
@@ -37,6 +40,11 @@ parallelism is a property of an epic, not a mode of its own.
   parallel always happens under an epic** — that's what makes them a set rather than a
   batch, and it's what gives their shared decisions somewhere to live. A single issue on
   its own needs no epic (`issue-lifecycle` runs standalone). See "The epic-spec" below.
+- **Project** — the altitude above the epic: a **Linear project**, holding several epics. Its
+  artifact is the **project-spec**, authored by the `project-agent` on a never-merged
+  `project/<slug>` PR. It has **no lifecycle and no gate** — it is maintained by whichever epic
+  lifecycle is running, and stays true in between because its status is derived from Linear
+  rather than accumulated. See "The project-spec" below.
 - **Worker sub-agents** — token-isolated agents the coordinator/lifecycle dispatch so heavy
   work happens in *their* context and only a compact summary returns:
   - `issue-worker` (worktree) — advances one issue by one lifecycle step.
@@ -219,6 +227,64 @@ exactly as `spec-template.md` is for an issue spec.
   artifact, so "Spec review: the bar and the convergence rule" below governs its PR too.
   Feedback that doesn't change the epic's objective or a cross-cutting decision belongs to
   the issues under it, not to the epic-spec.
+
+## The project-spec (canonical artifact)
+
+A **project-spec** is the standing artifact for one **Linear project** — the container an epic
+belongs to. It is one altitude above the epic-spec and obeys the same law: the epics under it
+*reference and align* to it, they do not derive from it.
+
+**Discovery is native.** An epic's project is its **epic issue's `project`** — no registry, no
+free-text parsing, exactly as a work issue's epic is its `parent`. Every epic carries one.
+
+**Contents and shape:
+[`project-spec-template.md`](project-spec-template.md)** — the same four documents at project
+altitude (`SPEC.md` with the outcome, the territory figure and the live epics table ·
+`DECISIONS.md` with the calls that bind more than one epic · `BUSINESS-RULES.md` with the rules
+every epic obeys and who owns each · `PLAN.md` with the arc), plus the figures
+([`spec-figures.md`](spec-figures.md)). Read the template; it is the single source of truth.
+
+**Conventions:**
+
+- **Branch `project/<slug>`**; the set lives at `spec/_projects/<slug>/` on that branch.
+- **Never-merged project PR** — the reviewable, commentable, always-current surface. It stays open
+  for the life of the *project* and is never deleted.
+- **Mirrored to the Linear project's `content`** — not a separate document. On first build the
+  agent **absorbs** the project's existing hand-written content rather than overwriting it; that
+  overwrite is unrecoverable through the API and is the one destructive action at this altitude.
+- **Authored/maintained by the [`project-agent`](../../.agents/subagents/project-agent.md)**,
+  dispatched by whichever `epic-lifecycle` is running, or by the
+  [`project-spec`](../../.agents/skills/project-spec/SKILL.md) skill standalone.
+- **Not every project gets one.** Dozens exist and most are dormant. One is stood up the first time
+  an epic runs beneath its project.
+
+**There is no project-lifecycle and no project gate.** An epic has a shape that ends — a gate, a
+set, a wrap — and that is what `epic-lifecycle` drives. A project has none of it: it runs for
+months and outlives every session that touches it, so a loop for it would be a session that has to
+stay alive for a quarter. The epic objective gate remains the **only** gate; a change to the
+project outcome is an ask, carried to the user by whichever epic-lifecycle is running.
+
+### What refreshes it — epic-level transitions only
+
+`epic-lifecycle` dispatches `project-agent` when an epic is **created** under the project, its
+**objective is approved**, or it **wraps**. Full table in the template.
+
+**Issue churn is never a trigger.** An issue opening, merging, or stalling moves the *epic* PR. A
+project-spec refreshing on issue events would spend a worktree per transition and tell a reader
+nothing the epic PR does not already say.
+
+### Two epics under one project: skip, don't queue
+
+The cap allows two active epics, and both may serve the same project — with five epics under
+`Workforce: Layer 2 Abstraction` alone, that is routine rather than exotic. They collide on
+`project/<slug>`, so the second dispatch **skips**; it does not queue and it does not wait.
+
+That is safe because **every status field in a project-spec is derived from Linear at read time**,
+never accumulated: one query on the project returns its epics and their states, and each dispatch
+re-derives the whole table from source. A refresh that is skipped, raced, or lost costs nothing,
+because the next one is correct regardless of how many were dropped. The artifact therefore needs
+no lock, no lease, and no lifecycle — which is the same property that lets it stay true in the long
+gaps when no session is running at all.
 
 ## How many epics run at once (the cap is two)
 
