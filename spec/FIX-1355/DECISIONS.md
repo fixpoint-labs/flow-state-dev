@@ -89,21 +89,36 @@ own worker kind is a finding, filed as a follow-up.
 <a name="settled"></a>
 ## Settled
 
-Read off merged code on `main`, not run — this worktree carries no install. The limit is stated,
-not papered over, and it is not free.
-**Round 1 re-read these and found the bare-router premise false** — corrected above.
-Treat a false one as a spec defect, not a detail.
+**Round 1 re-read these and found the bare-router premise false** — corrected above. Treat a
+false one as a spec defect, not a detail.
 
-- **A dispatcher can address one hired seat** — **CONFIRMED**: an exact instance id through the
-  registry (`core/src/blocks/dispatcher.ts`, `engine/src/context/create-request-host.ts`).
-- **The built-in `agent` kind cannot be dispatched into** — **CONFIRMED**: `actions: { run }`, no
-  `internal` map (`workforce/src/agent-worker-flow.ts`). D3.
-- **A seat's skills reach a custom kind that declares the key** — **CONFIRMED**: `hireWorkforce`
-  imposes `seatSkills` on any kind whose probed config declares it (`workforce/src/hire.ts`). The
-  lab does not wait on FIX-1367 and stays valid once it lands.
+Round 1 also **ran the two that move the shape.** The draft settled everything by reading merged
+code because this worktree carried no install; review pushed back, the install turned out to cost
+seven seconds, and the excuse did not survive the attempt. Both are now characterization checks
+in `spec-poc/FIX-1355-runtime-premises/`, each carrying the control that makes it able to go red
+([PLAN → Sketch](PLAN.md) has the commands). The rest are still read — the ladder stops where the
+cost of being wrong stops, and that boundary is stated below rather than left to be noticed.
+
+- **A dispatcher can address one hired seat** — **CONFIRMED, read**: an exact instance id through
+  the registry (`core/src/blocks/dispatcher.ts`, `engine/src/context/create-request-host.ts`).
+- **The built-in `agent` kind cannot be dispatched into** — **CONFIRMED, run**
+  (`check-agent-kind-has-no-internal-entry.mts`): the kind declares `actions: { run }` and no
+  `internal` map, so an `internal` dispatch resolves nothing under `run` or any other name, and
+  `resolveEntry` does not fall through from `internal` to a public action of the same name. The
+  run's controls show the probe resolving both a public entry and a real internal one, so the
+  green is the absent map and not a blind check. D3.
+- **A seat's skills reach a custom kind that declares the key** — **CONFIRMED, read**:
+  `hireWorkforce` imposes `seatSkills` on any kind whose probed config declares it
+  (`workforce/src/hire.ts`). The lab does not wait on FIX-1367 and stays valid once it lands.
 - **A delivery never crosses an org boundary, and a file-declared document is org-scoped** —
-  **CONFIRMED**: `resolveExistingSession` refuses a mismatch by name, `resourcesFromDocs` sets
-  `scope: "org"` — which is what forces the client wrap.
+  **CONFIRMED, read**: `resolveExistingSession` refuses a mismatch by name, `resourcesFromDocs`
+  sets `scope: "org"` — which is what forces the client wrap.
+- **`openChannels` has nowhere to put an `orgId`** — **CONFIRMED, run**
+  (`check-no-org-door.sh`). An absent field is not observable at runtime, so the evidence is a
+  compile that must fail: a probe passing `orgId` to `openChannels` and to its `createSession`
+  is refused at both doors with `TS2353`, and the check asserts those two diagnostics
+  specifically rather than accepting any red `tsc`. This is what makes the client wrap
+  load-bearing rather than cargo, and it is why ER-14 is filed.
 - **The lab needs no durable intake DM** — **SETTLED; it closes the epic's open question.** A DM
   is a one-participant channel under epic D2, and one participant cannot show a fan-out — the
   thing being proved. The lab opens a declared team channel, which `openChannels` opens and names.
@@ -115,7 +130,8 @@ Treat a false one as a spec defect, not a detail.
 
 - **Draft** — a goal family over one shared lab, every premise read off merged code first.
 - **Round 1** — no decision changed; one false premise corrected, the session target pinned,
-  duplicated narrative cut to one home each.
+  duplicated narrative cut to one home each. The two shape-moving premises were then **run**
+  rather than read (`spec-poc/FIX-1355-runtime-premises/`); both held.
 - **Owner expand** — a tool leg folded into the model-backed check: a seat calls a block its
   `tools:` names, graded on the call, not the setting. No decision changed; D1–D3 stand. Where the
   block's file lives is a soft sequence, in [PLAN → At implement time](PLAN.md).

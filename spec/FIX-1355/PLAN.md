@@ -104,7 +104,16 @@ the seat kind's `brief` entry:
     post the answer back into the channel the delivery named, author = its own id
 ```
 
-**POC:** none built. Every premise, how it was settled and the one round 1 found false are in
+**POC:** `spec-poc/FIX-1355-runtime-premises/` — the two premises where being wrong moves the
+shape, now **run** rather than read. Both CONFIRMED, both carrying the control that makes them
+able to go red:
+
+```bash
+node_modules/.bin/tsx spec-poc/FIX-1355-runtime-premises/check-agent-kind-has-no-internal-entry.mts
+bash spec-poc/FIX-1355-runtime-premises/check-no-org-door.sh
+```
+
+Every premise, how it was settled and the one round 1 found false are in
 [DECISIONS → Settled](DECISIONS.md#settled).
 
 ## At implement time
