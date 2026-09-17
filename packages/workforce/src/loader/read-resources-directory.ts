@@ -217,15 +217,19 @@ async function walkWorkers(
   for (const workerName of slots.entries) {
     if (IGNORED_ENTRIES.has(workerName)) continue;
 
-    // The one name at this level that is not a worker. `workers/resources/` is
-    // a sibling of the worker folders — an author writing one level too high —
-    // and treating it as a worker id would mint `.../workers/resources/<name>`
-    // for a worker nobody named, reading it out of
-    // `.../workers/resources/resources/`. Passed over rather than reported: it
-    // is a slot this convention does not claim, and the documents convention
-    // has no opinion about what else lives at the roster's level.
-    if (workerName === RESOURCES_SLOT) continue;
-
+    // No name is special at this level — including `resources`. A folder here
+    // is judged by the slot it occupies, not by what it looks like, which is
+    // this module's second rule and the rule the other two readers already
+    // apply: `readWorkforceDirectory` hires `teams/<t>/workers/resources/` off
+    // its `WORKER.md`, and `readSeatSkills` reads that seat's own `skills/`.
+    // Skipping the name here would leave exactly one seat in the tree whose
+    // documents are read by nothing and reported by nothing — the silent drop
+    // this convention exists to remove, reintroduced one level down.
+    //
+    // It would also buy nothing. The author who writes a document one level too
+    // high, at `workers/resources/stray.md`, is not rescued by a skip: that file
+    // sits beside a `resources/` slot rather than in one, so the walk passes it
+    // over either way. What the skip cost was a real seat's documents.
     const workerDir = path.join(parentDir, WORKERS_LEVEL, workerName);
     const entryPath = `${workersPath}/${workerName}`;
     const slot = await classify(workerDir);

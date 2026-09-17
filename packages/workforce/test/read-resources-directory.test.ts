@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fsp from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readResourcesDirectory } from "../src/loader";
+import { readResourcesDirectory, readWorkforceDirectory } from "../src/loader";
 import { DERIVED_KEY_CASES } from "./derived-key-cases";
 
 const roots: string[] = [];
@@ -572,21 +572,47 @@ body
       );
     });
 
-    // V3 · BR-6 — THE TRAP. `resources` is a sibling of the worker folders at
-    // the `workers/` level, never a worker id. Descending into it would read
-    // `.../workers/resources/resources/` and mint a ref from a folder nobody
-    // named a worker. Asserted under both parents, because the walk is one
-    // function called twice and a guard in one caller would not be in the other.
-    it("never reads a `resources` folder sitting beside the worker folders as a worker", async () => {
+    // V3 · BR-6 — the slot is decided by POSITION, not by spelling, and
+    // `resources` gets no exception at the `workers/` level. `validateSegment`
+    // reserves only `_meta`, so `teams/<t>/workers/resources/` is a legal seat:
+    // the roster reader hires it and `readSeatSkills` reads its skills. A name
+    // check here would leave exactly one seat in the tree whose documents are
+    // read by nothing and reported by nothing.
+    //
+    // Asserted under both parents, because the walk is one function called
+    // twice and an exception in one caller would not be in the other.
+    it("reads a worker legitimately named `resources` like any other worker", async () => {
       const { documents, errors } = await readResourcesDirectory(
         tree({
           ...HEALTHY_WORKER,
-          // A document one level too high, under both parents.
+          "teams/engineering/workers/resources/WORKER.md": WORKER_MD,
+          "teams/engineering/workers/resources/resources/deeper.md": HANDBOOK,
+          "org/workers/resources/WORKER.md": WORKER_MD,
+          "org/workers/resources/resources/deeper.md": HANDBOOK,
+        }),
+      );
+
+      expect(errors).toEqual([]);
+      expect(documents.map((d) => d.ref).sort()).toEqual([
+        "teams/engineering/workers/recon/runbook",
+        "teams/engineering/workers/resources/deeper",
+        "workers/resources/deeper",
+      ]);
+    });
+
+    // V3 · BR-6 — the other half, and the reason a name check looked appealing:
+    // an author writing a document one level too high, at
+    // `workers/resources/stray.md`. That file is passed over — but by the rule
+    // that was always doing the work, not by its name: it sits BESIDE a
+    // `resources/` slot rather than in one, exactly as `workers/README.md`
+    // does. Pinned in the same tree as a healthy worker so the silence is
+    // isolation and not an empty walk.
+    it("passes over a document written one level too high, beside the worker folders", async () => {
+      const { documents, errors } = await readResourcesDirectory(
+        tree({
+          ...HEALTHY_WORKER,
           "teams/engineering/workers/resources/stray.md": HANDBOOK,
           "org/workers/resources/stray.md": HANDBOOK,
-          // And the shape the walk would reach if it descended anyway.
-          "teams/engineering/workers/resources/resources/deeper.md": HANDBOOK,
-          "org/workers/resources/resources/deeper.md": HANDBOOK,
         }),
       );
 
@@ -594,6 +620,33 @@ body
       expect(documents.map((d) => d.ref)).toEqual([
         "teams/engineering/workers/recon/runbook",
       ]);
+    });
+
+    // V3 · BR-6 — the invariant a per-reader fix would satisfy and still leave
+    // broken: the two readers must agree about which folders are seats. Written
+    // as a comparison rather than as two literal lists, because what is under
+    // test is the AGREEMENT — pinning one reader's expected output would go
+    // green again if someone made the other reader refuse the name instead.
+    it("reads a document root for every seat the roster hires, `resources` included", async () => {
+      const root = tree({
+        "teams/engineering/workers/recon/WORKER.md": WORKER_MD,
+        "teams/engineering/workers/recon/resources/runbook.md": HANDBOOK,
+        "teams/engineering/workers/resources/WORKER.md": WORKER_MD,
+        "teams/engineering/workers/resources/resources/runbook.md": HANDBOOK,
+      });
+
+      const roster = await readWorkforceDirectory(root);
+      const { documents, errors } = await readResourcesDirectory(root);
+
+      expect(roster.errors).toEqual([]);
+      expect(errors).toEqual([]);
+
+      // Every hired seat's `runbook` is addressable under that seat's ref.
+      const hired = roster.workers.map((w) => w.id).sort();
+      expect(hired).toEqual(["engineering.recon", "engineering.resources"]);
+      expect(documents.map((d) => d.ref).sort()).toEqual(
+        hired.map((id) => `teams/${id.replace(".", "/workers/")}/runbook`),
+      );
     });
 
     // V4 · BR-7 — a directory where a document belongs. Asserted by comparing
