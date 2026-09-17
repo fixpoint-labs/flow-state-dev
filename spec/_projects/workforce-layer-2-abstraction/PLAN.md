@@ -31,8 +31,9 @@ delay to the others, it is that the client door stays shut.
   Starting W4 early buys nothing and risks renaming twice (PD-4).
 - **W3's lab is the proof for PR-3**, so any epic that ships a convention before the lab exists is
   asserting the rule rather than checking it.
-- **The rooms question in [Decisions](DECISIONS.md) → Open binds W3 and W4 both.** It should be
-  answered on whichever reaches it first, and recorded there, not answered twice.
+- **The `org/channels/` door in [Decisions](DECISIONS.md) → Open binds W3 and W4 both.** It is
+  declared in the tree and read by nothing, and no issue owns closing it. Whichever epic reaches it
+  first answers it and records it there, so it is not answered twice.
 
 ## What is deliberately not next
 

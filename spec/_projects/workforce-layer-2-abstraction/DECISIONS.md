@@ -67,6 +67,10 @@ Pattern → **Strategy** · Pattern-skill → *a Skill that carries a Strategy* 
 Prompt template → **Instructions** (concept) + `.md` + frontmatter (format) · `agentType` → **stream
 visibility** · Actor → kept out of the primary vocabulary; Agent owns the slot.
 
+**Room → Channel.** W3 folded the rooms / L2-channels dual into one file type on Sep 11. A channel
+is declared as `CHANNEL.md` at team scope and is **L2 opinion — a replaceable flow kind, not a new
+L1 type** (W3 D1). *Room* is a dead noun and may not appear in a new surface.
+
 **Costs** code still carries old names until the propagation pass runs, so the tree and the
 vocabulary disagree in the meantime. That gap is expected, not a defect to file.
 
@@ -82,14 +86,13 @@ Answers settled at project altitude, so no later epic reopens them.
 | Who owns the claim system? | Layer 1, `orchestration` (PD-2) | Same |
 | Is an Agent decomposable by its consumer? | No (PD-3) | Same |
 | Does the propagation pass run before the vocabulary locks? | No (PD-4) | Same |
+| Is a channel an L1 type, and is *room* a second thing? | No to both — a channel is L2 opinion, a replaceable flow kind (W3 D1), and it replaced room | W3's objective and floor recut, Sep 11 |
 
 ## Open
 
-**Rooms have no declaration surface at all, and two documents disagree about it.** W3's
-`FIX-1352` describes rooms as "written in code" in one section and reports zero matches for any
-room declaration API in another. Verified: `RoomManifest`, `createRoom`, `roomRegistry` and
-`defineRoom` return **no matches** across `packages/`. Whether the file convention is therefore
-introducing rooms or *replacing* a code surface changes what W3 ships and what its docs claim.
+**`org/channels/` is locked open, read by nothing, and owned by no issue.** W3 ships channels at
+**team** scope (FIX-1352, done); the `org/` door is declared and unread — the open half of its
+D3/D7. It binds W3 and W4, so it is named here rather than left inside one epic.
 
-This is recorded as an ask rather than answered here, because it is a product call about what we
-tell people rooms are — and it binds W3 and W4 both. It belongs on whichever epic reaches it first.
+*An earlier version asked whether rooms had a declaration surface. The zero it found was the
+`room` → `channel` fold (PD-5) working, not a gap.*

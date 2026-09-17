@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The territory: Workforce owns the Layer 2 conventions — Agent, Persona, Skill, Strategy, Role, Archetype, Team, Plan, Memory. Below the fence is the Layer 1 substrate it assembles but does not own: blocks, scope state, resources, the task board, dispatch, instructions. To the right, outside the project, sit the implementations of Tasks, Skills internals and Memory, which live in their own projects. The fence is one test: is there exactly one of it?">
+     aria-label="The territory: Workforce owns the Layer 2 conventions — Agent, Persona, Skill, Memory, and as conventions Channel, Strategy, Role, Archetype, Team and Plan. Below the fence is the Layer 1 substrate it assembles but does not own: blocks, scope state, resources, the task board, dispatch, instructions. To the right, outside the project, sit the implementations of Tasks, Skills internals and Memory, which live in their own projects. The fence is one test: is there exactly one of it?">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -26,8 +26,8 @@
     <text class="t-lbl" x="32" y="36">THIS PROJECT · LAYER 2 CONVENTIONS</text>
     <text class="t-b"  x="32" y="60">Agent · Persona · Skill · Memory</text>
     <text class="t-s"  x="32" y="80">the canonical nouns — one of each, assembled for you</text>
-    <text class="t-b"  x="32" y="104">Strategy · Role · Archetype · Team · Plan</text>
-    <text class="t-s"  x="32" y="122">conventions — one opinionated assembly among several valid ones</text>
+    <text class="t-b"  x="32" y="104">Channel · Strategy · Role · Archetype · Team · Plan</text>
+    <text class="t-s"  x="32" y="122">conventions — several valid assemblies; a channel is a flow kind, not an L1 type</text>
   </g>
 
   <g id="not-here">

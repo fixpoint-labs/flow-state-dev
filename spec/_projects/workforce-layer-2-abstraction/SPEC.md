@@ -11,7 +11,7 @@ epics that establish it.
 
 | | |
 |---|---|
-| **Winning when** | Someone stands up a working team of agents from files alone — no TypeScript to declare a room, a resource, or a skill — and Layer 1 stays fully available to anyone who wants past the conventions |
+| **Winning when** | Someone stands up a working team of agents from files alone — no TypeScript to declare a channel, a resource, or a skill — and Layer 1 stays fully available to anyone who wants past the conventions |
 | **The read** | Layer 2 nouns that still require code to declare. Five at the start, and the count only moves when a convention ships with a reader and a proof |
 | **Now** | 2 epics done · 1 in flight · 2 not started. 65 work issues, of which **32 still sit under no epic** — the vocabulary era this project began in, before the epic structure existed |
 | **Kill line** | If real apps turn out to want to assemble Layer 2 themselves, this project is mis-shaped rather than unfinished: what changes is that the conventions become examples, not the remaining epic list |
