@@ -22,7 +22,7 @@ Packages are all `0.x.y`. Changesets has no built-in pre-1.0 mode — a `major` 
 pnpm changeset
 ```
 
-The picker shows publishable `@flow-state-dev/*` packages plus `@thought-fabric/core`; `config.json` sets `privatePackages: { version: false }`, so every `private: true` package is filtered out. Pick the ones this PR actually affects, choose `patch` or `minor`, and write a single user-facing sentence. The CLI saves `.changeset/<random>.md`. Commit it with the PR.
+The picker shows the publishable `@flow-state-dev/*` packages; `config.json` sets `privatePackages: { version: false }`, so every `private: true` package is filtered out. Pick the ones this PR actually affects, choose `patch` or `minor`, and write a single user-facing sentence. The CLI saves `.changeset/<random>.md`. Commit it with the PR.
 
 Fragment format:
 
