@@ -89,9 +89,9 @@ Each record is plain data:
 lowercase letters, digits and single hyphens, at most 64 characters.
 
 The reader builds nothing: no flow, no agent, no registry entry. It throws only when `root` itself
-cannot be read — a folder that produces no worker lands in `errors`, keyed by its path, and every
-other worker still loads. Treat a non-empty `errors` as fatal at startup unless you have a reason
-to run a short roster.
+cannot be read or is a symlink — a folder that produces no worker lands in `errors`, keyed by its
+path, and every other worker still loads. Treat a non-empty `errors` as fatal at startup unless you
+have a reason to run a short roster.
 
 The subpath is separate because the reader imports `node:fs`; the package root stays isomorphic.
 
@@ -175,7 +175,9 @@ message text when you want to tolerate one class (a malformed skill folder, say)
 another.
 
 A `root` that cannot be read throws instead:
-`Failed to read workforce directory "./workforce": ENOENT ...`.
+`Failed to read workforce directory "./workforce": ENOENT ...`. So does a `root` that is a symlink:
+`Symlinked workforce directory "./workforce" — refused for safety`, with a trailing slash or
+without. If you run a linked root deliberately, pass the path it resolves to.
 
 Symlinks are never followed, and that holds for the folders on the way to a level as much as
 for the level itself — `org`, `teams`, a team's folder, its `workers`, and the worker's own.
@@ -512,10 +514,10 @@ Document and team folder names follow the same rules as worker folders: lowercas
 single hyphens, at most 64 characters. A non-`.md` file in the slot is passed over in silence. An
 absent `org/` root or `resources/` folder is not an error — a team may have no documents.
 
-`readResourcesDirectory` throws only when `root` itself cannot be read. Everything else lands in
-`errors`, one entry per thing that should have produced a document and did not. Each entry is
-`{ kind, path, error }`, keyed by a path relative to the root, with `kind` naming the condition (see
-[Error Semantics](#error-semantics)):
+`readResourcesDirectory` throws only when `root` itself cannot be read or is a symlink. Everything
+else lands in `errors`, one entry per thing that should have produced a document and did not. Each
+entry is `{ kind, path, error }`, keyed by a path relative to the root, with `kind` naming the
+condition (see [Error Semantics](#error-semantics)):
 
 ```ts
 errors;
@@ -706,7 +708,7 @@ leaves an empty session there, and re-running binds it.
 | `readWorkforce(root)` | Read the tree into records that already carry their own skills — `readWorkforceDirectory` joined with `readSeatSkills` per seat. What most apps want. Ships from the `./loader` subpath (Node only). |
 | `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker, without their skills. Ships from the `./loader` subpath (Node only). |
 | `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Ships from the `./loader` subpath (Node only). |
-| `openRoot(root)` / `walkTeams(root, report)` | The walk every reader above shares: open the configured root (throwing on a symlinked or unreadable one, however the path is spelled), then enumerate `teams/`, reporting a team folder that is refused or unreadable and yielding the rest. `report` may be `async` and is awaited before the walk moves on. What a reader does *inside* a team stays its own. Ships from the `./loader` subpath (Node only). |
+| `openRoot(root)` / `walkTeams(root, report)` | The walk every reader above shares: open the configured root (throwing on a symlinked or unreadable one, with or without a trailing separator; a `.` segment and anything above the root are not checked), then enumerate `teams/`, reporting a team folder that is refused or unreadable and yielding the rest. `report` may be `async` and is awaited before the walk moves on. What a reader does *inside* a team stays its own. Ships from the `./loader` subpath (Node only). |
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
@@ -733,10 +735,10 @@ leaves an empty session there, and re-running binds it.
 |-------|------|
 | Duplicate agent name | `createWorkforceCapability` construction |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
-| Workforce root unreadable | `readWorkforceDirectory` and `readWorkforce` throw |
+| Workforce root unreadable or symlinked | `readWorkforceDirectory` and `readWorkforce` throw — the root is never followed through a link |
 | One seat's skills failed to load | Collected in `readWorkforce`'s `skillErrors`, one entry per affected seat, each carrying that seat's id and `readSeatSkills`' own error list |
 | Bad `team` or `worker` name | `readSeatSkills` throws |
-| Skills root unreadable | `readSeatSkills` throws |
+| Skills root unreadable or symlinked | `readSeatSkills` throws — the root is never followed through a link |
 | Skills level unreadable | Collected in `readSeatSkills`'s `errors` as `kind: "unlistable-level"`, keyed by the level's path — an absent level is empty instead |
 | Skill folder fails to load | Collected in `readSeatSkills`'s `errors` as `kind: "skill-load-failed"`, keyed by `<level>/<folder>` |
 | Symlinked folder on the way to a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-ancestor"`, keyed by that folder's path — never followed |
