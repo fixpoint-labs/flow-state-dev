@@ -37,16 +37,17 @@ check(
   `resolveEntry(agent, "internal", "run") = ${internalRun === undefined ? "undefined" : "an entry"}`,
 );
 
-// Every name a fan-out could plausibly address, not just "run" — so the green
-// above is about the absent map, not about one lucky spelling.
-const anyInternal = ["run", "brief", "notify", "onPosted", "answer"]
-  .map((name) => [name, resolveEntry(instance, "internal", name)] as const)
-  .filter(([, entry]) => entry !== undefined)
-  .map(([name]) => name);
+// The map ITSELF, not a list of guessed names. An earlier draft probed five
+// spellings, which would have stayed green if the kind gained an internal entry
+// called `wake` — the premise false and every assertion passing. Review caught
+// it. This asserts the declaration, so ANY entry added under ANY name goes red.
+const internalNames = Object.keys(instance.internal?.actions ?? {});
 check(
-  "no internal entry under ANY name a fan-out might address",
-  anyInternal.length === 0,
-  anyInternal.length === 0 ? "none resolved" : `resolved: ${anyInternal.join(", ")}`,
+  "the kind declares NO internal actions at all — asserted on the map, not on guesses",
+  instance.internal === undefined || internalNames.length === 0,
+  internalNames.length === 0
+    ? `internal.actions = ${JSON.stringify(instance.internal?.actions ?? null)} (no entries under any name)`
+    : `internal.actions declares: ${internalNames.join(", ")} — a fan-out CAN reach this kind`,
 );
 
 // 2 — the reach control. The flow really does declare `run` publicly, so

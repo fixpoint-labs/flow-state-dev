@@ -15,7 +15,7 @@ what the BP says. So all of them now run.
 | Premise | Load-bearing for | Check |
 |---|---|---|
 | A channel fan-out cannot wake the built-in `agent` kind | D3 | `check-agent-kind-has-no-internal-entry.mts` |
-| `openChannels` has nowhere to put an `orgId` | S4, ER-14 | `check-no-org-door.sh` |
+| `openChannels` cannot thread an `orgId` through — though the client API has one | S4, ER-14 | `check-no-org-door.sh` |
 | A `{ key }` delivery creates the seat session and inherits the sender's org | S3 | `check-key-child-created-and-inherits-org.mts` |
 | A dispatcher addresses one hired seat by its exact instance id | S3 | same file |
 | A delivery never crosses an org boundary | the client wrap | `check-org-boundary-refusal.mts` |
@@ -39,7 +39,13 @@ pnpm --filter @flow-state-dev/testing build
 pnpm --filter @flow-state-dev/workforce build
 ```
 
-Sixteen assertions, all green on current `main`. Every one of them has a control.
+Eighteen assertions plus a two-half compile check, all green on current `main`. Every one has a
+control.
+
+**Round 2 found three of these checks passing without discriminating** — the same defect they
+exist to catch, in the checks themselves. All three are fixed, and each fix is described below.
+Worth stating plainly: the probes were wrong in ways that made the evidence weaker than it looked,
+and one of them was hiding a claim in the spec that was simply false.
 
 ## What makes each one fail
 
@@ -47,16 +53,30 @@ A check nobody can make fail has verified nothing, so each carries its red state
 rather than in a claim about the run. That discipline caught two false greens while these were
 being written, which is the argument for it.
 
-**The agent kind.** Asserts an `internal` dispatch resolves nothing on the built-in kind, under
-`run` and under every other name a fan-out might address. Three controls: the probe *does* resolve
-that kind's public `run`; it *does* resolve a real internal entry on a flow that declares one; and
-`internal` does not fall through to a public action of the same name. Add an `internal.actions`
-entry to `agent-worker-flow.ts` and it goes red.
+**The agent kind.** Asserts `instance.internal.actions` **directly** — the declaration itself, so
+an entry added under *any* name goes red. Round 2 caught the earlier version probing five guessed
+spellings (`run`, `brief`, `notify`, `onPosted`, `answer`): a kind gaining an internal action
+called `wake` would have left D3's premise false and every assertion green. Three controls remain:
+the probe *does* resolve that kind's public `run`; it *does* resolve a real internal entry on a
+flow that declares one; and `internal` does not fall through to a public action of the same name.
 
-**The org door.** An **absent field**, so nothing observes it at runtime — the evidence is a
-compile that must fail. The probe passes `orgId` at both doors; the script asserts the *exact* two
-`TS2353` diagnostics and no others. A bare non-zero `tsc` would have been a neighbour-of-the-claim
-pass: any unrelated type error would have read as proof.
+**The org door — and the claim it corrected.** Round 2 found the spec wrong here, not just the
+probe. The draft said an `orgId` was refused "at both doors". It is not:
+`CreateSessionOptions` (`client/src/session-client/sessions.ts`) **declares `orgId?: string`**.
+The old probe redeclared a local input type instead of deriving from `OpenChannelsOptions`, so its
+second `TS2353` was an artefact of the redeclaration rather than a fact about the surface.
+
+The true, narrower premise is that **`openChannels` cannot thread an org through** — its options
+are `{ client, userId }` and the `createSession` it declares carries no `orgId`. That is *why the
+wrap works*: the client can carry an org, the binder just won't, so a wrapper that injects one is
+enough. The check now runs **both halves**, because either alone misleads — `no-org-door.probe.ts`
+must **fail** to compile (derived from `OpenChannelsOptions`, so it reacts if that gains the
+field), and `org-door-exists.probe.ts` must **compile** (the client does have one). The failing
+half asserts its two exact `TS2353` diagnostics; a bare non-zero `tsc` would have been a
+neighbour-of-the-claim pass.
+
+This narrowed **ER-14** too: the ask is *thread the org through `openChannels`*, not *give the
+client an org door*, which it already has.
 
 **The `{ key }` child.** This is the premise round 1's own P1 fix rests on, which is why it gets
 the most. It runs a real channel fan-out over two declared members and asserts each seat ran, in
@@ -75,12 +95,24 @@ dispatching at all. Asserting the reason is what caught it.
 an existing session must **land**, and a cross-org one must be refused as
 `session-not-addressable`. A blanket refusal would otherwise read as a pass.
 
-**Seat skills.** The claim is *conditional* — imposed on a kind that declares `seatSkills`, and
-only on such a kind — so both halves are asserted. A kind that declares the key receives the
-union; a kind that does not is left alone and still hires. Without the second half the check would
-stay green if `hireWorkforce` began imposing the key unconditionally, which is the specific
-regression the conditional exists to prevent (one shared `org/skills/` folder would otherwise
-break every custom kind on the roster at once).
+**Seat skills.** Round 2 caught this one testing a shape no real kind has. `WorkerManifest.skills`
+is `InitialSkill[]` — records of `{ name, skillMd, files? }` — and the earlier draft declared
+`z.array(z.string())` and passed bare names, so its green said nothing about whether a realistic
+kind receives the real union. It now uses loader-shaped records and the same `.strict()` object
+schema the built-in kind declares, and asserts the **bodies** as well as the names, since BR-3
+turns on two `port-scan` folders that differ only in body.
+
+Three controls, because the claim is *conditional* — imposed on a kind that declares `seatSkills`
+and only on such a kind. A kind that declares the key receives the union; a kind that does not is
+left alone and still hires (without this, the check would stay green if `hireWorkforce` began
+imposing the key unconditionally — one shared `org/skills/` folder would then break every custom
+kind on a roster at once). And a kind declaring `seatSkills` as bare **names** is refused the real
+union, which is the control that would have caught this file's own earlier draft:
+
+```
+worker "pentest.recon" — Flow "names-only" instance "pentest.recon" has an invalid
+config bag: "seatSkills.0": Expected object, received string
+```
 
 ## Scope
 

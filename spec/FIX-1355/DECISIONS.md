@@ -61,10 +61,13 @@ own worker kind is a finding, filed as a follow-up.
 
 - **Three seats, not two.** Two are members; the third sits in another team holding a skill of the
   same name and must stay silent. A two-seat lab cannot fail the isolation checks.
-- **The lab wraps its session client to bind an org.** `openChannels` has nowhere to put an
-  `orgId`, and every file-declared document is org-scoped — so an unwrapped lab opens a channel
-  its own seats are refused delivery into. Two lines; reported up as
-  [ER-14](https://github.com/fixpoint-labs/flow-state-dev/pull/1718).
+- **The lab wraps its session client to bind an org.** `openChannels` takes `{ client, userId }`
+  and declares a `createSession` carrying no `orgId`, so it cannot thread one through — while
+  `CreateSessionOptions` itself accepts one. Every file-declared document is org-scoped, so an
+  unwrapped lab opens a channel its own seats are refused delivery into. The wrap injects what
+  the binder won't pass: two lines. Reported up as
+  [ER-14](https://github.com/fixpoint-labs/flow-state-dev/pull/1718) — *thread the org through
+  `openChannels`*, not *add an org door*.
 - **Each delivery targets a child session, not an existing one.** `session: { id }` is *never*
   created, so an address to a seat that has no session yet refuses `session-not-found`; a `key`
   child is derived, created on first delivery, and inherits the sender's `orgId`
@@ -128,12 +131,19 @@ and grants no exemption for a cheap one. So the cost boundary is gone, not resta
   the record persisted with it. The control runs the same wiring with `session: { id }` — the
   shape this plan carried before round 1 — and is refused `session-not-found` by name. This is the
   premise S3 rests on, and the one round 1's own P1 fix turned on, so it is checked hardest.
-- **`openChannels` has nowhere to put an `orgId`** — **CONFIRMED, run**
-  (`check-no-org-door.sh`). An absent field is not observable at runtime, so the evidence is a
-  compile that must fail: a probe passing `orgId` to `openChannels` and to its `createSession`
-  is refused at both doors with `TS2353`, and the check asserts those two diagnostics
-  specifically rather than accepting any red `tsc`. This is what makes the client wrap
-  load-bearing rather than cargo, and it is why ER-14 is filed.
+- **`openChannels` cannot thread an `orgId` through — though the client API has one** —
+  **CONFIRMED, run** (`check-no-org-door.sh`). Round 2 narrowed this: the draft said an `orgId`
+  was refused "at both doors", which was false. `CreateSessionOptions` **does** declare
+  `orgId?: string` (`client/src/session-client/sessions.ts`). What has no door is `openChannels`
+  itself — its options are `{ client, userId }`, and the `createSession` signature it declares
+  carries no `orgId`, so it cannot pass one on. **That is precisely why the wrap works**: the
+  client can carry an org, the binder just won't, so injecting it in a wrapper is enough. The
+  check runs both halves, because either alone misleads — a probe that must **fail** to compile
+  (`openChannels` has no door) and one that must **compile** (the client does). An absent field
+  is not observable at runtime, so the evidence is a compile either way, and the failing half
+  asserts its two `TS2353` diagnostics specifically rather than accepting any red `tsc`. This is
+  what makes the client wrap load-bearing rather than cargo — and it narrows **ER-14** to *thread
+  the org through `openChannels`*, not *give the client an org door*, which it already has.
 - **The lab needs no durable intake DM** — **SETTLED; it closes the epic's open question.** A DM
   is a one-participant channel under epic D2, and one participant cannot show a fan-out — the
   thing being proved. The lab opens a declared team channel, which `openChannels` opens and names.

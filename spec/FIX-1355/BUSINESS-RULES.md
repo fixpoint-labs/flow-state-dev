@@ -21,7 +21,7 @@ plan turns each row into a leg.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-6 | An operator posts one line, no `author` | It is appended, and the framework's fan-out wakes **exactly** the two declared members | G |
-| BR-7 | A woken seat posts back under its own id | Accepted — that id is a declared member — and stored `authorVerified: false` | G · M |
+| BR-7 | A woken seat posts back under its own id | Accepted — that id is a declared member — and stored `authorVerified: false` | G |
 | BR-8 | A seat's own line reaches the router | Nobody is dispatched. The transcript settles at three lines and stays there | G |
 | BR-9 | A declared member has no address in the lab's router | Recorded and skipped. The other still runs; membership is unchanged | G |
 | BR-10 | A `CHANNEL.md` names a member that is no hired seat | The channel still opens: membership is a declared list, not a roster check. Lands on BR-9 | G |
@@ -74,6 +74,9 @@ ER-21 in one run.
 
 The model-backed check (M) is the same claim with a model in the answering slot — plus the tool
 leg (BR-21), which is M's alone because a tool slot is a generator's and the gate's answering block
-is a handler. It is what ER-19 asks for ([the epic's rules](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)).
+is a handler. **Every rule marked M is graded by M**, not just the document one: a real model can
+answer plausibly while omitting its own instructions or leaking its sibling's, so BR-2 and BR-12
+are asserted on the model's own lines — the sibling's tokens as **absent**, which is the failure a
+handler cannot produce and a generator can. It is what ER-19 asks for ([the epic's rules](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)).
 **Required at completion, not optional** — a red BR-20 is this issue unfinished, and only an
 unavailable inference credential is recorded **blocked** ([D2](DECISIONS.md#d2), `goals/README.md`).

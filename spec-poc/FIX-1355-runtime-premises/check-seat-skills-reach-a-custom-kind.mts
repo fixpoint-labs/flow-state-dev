@@ -21,7 +21,35 @@ import { defineFlow } from "../../packages/core/dist/index.js";
 import { hireWorkforce } from "../../packages/workforce/dist/index.js";
 import { z } from "zod";
 
-const SKILLS = ["report-format", "port-scan", "sweep"];
+/**
+ * Loader-shaped skills. `WorkerManifest.skills` is `InitialSkill[]` — records
+ * of `{ name, skillMd, files? }` (`core/src/types/skill.ts`), NOT bare names.
+ * An earlier draft of this file declared `z.array(z.string())` and passed
+ * names, which made the probe green against a schema no real kind would have;
+ * review caught it. Each token below is what BR-3 would hold out per folder.
+ */
+const SKILLS = [
+  { name: "report-format", skillMd: "---\ndescription: Org format.\n---\nTOKEN-ORG-FMT" },
+  { name: "port-scan", skillMd: "---\ndescription: Team scan.\n---\nTOKEN-PENTEST-SCAN" },
+  { name: "sweep", skillMd: "---\ndescription: Own sweep.\n---\nTOKEN-RECON-SWEEP" },
+];
+
+const SKILL_NAMES = SKILLS.map((s) => s.name);
+
+/**
+ * The same shape the built-in kind declares (`seatSkillSchema` in
+ * `agent-worker-flow.ts`): an object schema, `.strict()`. A custom kind that
+ * wants the union declares this, and that is what the claim is about.
+ */
+const seatSkillSchema = z
+  .object({
+    name: z.string().min(1),
+    skillMd: z.string(),
+    files: z
+      .array(z.object({ path: z.string().min(1), content: z.string() }).strict())
+      .optional(),
+  })
+  .strict();
 
 let failures = 0;
 const check = (label: string, ok: boolean, saw: string) => {
@@ -35,7 +63,7 @@ const declaresKey = defineFlow({
   cardinality: "collection",
   configSchema: z.object({
     instructions: z.string().optional(),
-    seatSkills: z.array(z.string()).optional().default([]),
+    seatSkills: z.array(seatSkillSchema).default([]),
   }),
   actions: {},
 } as never);
@@ -63,11 +91,24 @@ const [probeSeat] = hireWorkforce([manifest("pentest.recon", "probe")] as never,
 } as never);
 const probeConfig = configOf(probeSeat);
 
+const received = Array.isArray(probeConfig.seatSkills)
+  ? (probeConfig.seatSkills as Array<{ name?: string; skillMd?: string }>)
+  : [];
+
 check(
-  "a kind that DECLARES seatSkills receives the seat's skill union",
-  Array.isArray(probeConfig.seatSkills) &&
-    JSON.stringify(probeConfig.seatSkills) === JSON.stringify(SKILLS),
-  `seatSkills = ${JSON.stringify(probeConfig.seatSkills)} (expected ${JSON.stringify(SKILLS)})`,
+  "a kind that DECLARES seatSkills receives the seat's skill union, as records",
+  received.length === SKILLS.length &&
+    received.map((s) => s.name).join(",") === SKILL_NAMES.join(","),
+  `names = ${JSON.stringify(received.map((s) => s.name))} (expected ${JSON.stringify(SKILL_NAMES)})`,
+);
+
+// The bodies, not just the names — BR-3 asserts each seat holds its OWN team's
+// folder, and two `port-scan` folders in different teams differ only in body.
+check(
+  "each record arrived with its folder's body intact, not just its name",
+  received.length === SKILLS.length &&
+    received.every((s, i) => s.skillMd === SKILLS[i].skillMd),
+  received.map((s) => `${s.name}: ${JSON.stringify((s.skillMd ?? "").slice(-16))}`).join(" | "),
 );
 
 check(
@@ -89,6 +130,38 @@ check(
   legacySeat === undefined
     ? "the hire REFUSED — a shared skills folder would break every custom kind on the roster"
     : `seatSkills = ${JSON.stringify(legacyConfig.seatSkills)} (expected undefined); the seat still hired`,
+);
+
+// 3 — the shape itself is load-bearing. A kind that declares `seatSkills` as
+// bare NAMES cannot take the loader's union: `hireWorkforce` hands over the
+// records and the hire refuses. This is the control that would have caught this
+// file's own earlier draft, which declared exactly that and passed.
+const namesOnly = defineFlow({
+  kind: "names-only",
+  cardinality: "collection",
+  configSchema: z.object({
+    instructions: z.string().optional(),
+    seatSkills: z.array(z.string()).default([]),
+  }),
+  actions: {},
+} as never);
+
+let nameOnlyRefusal = "";
+try {
+  const [seat] = hireWorkforce([manifest("pentest.recon", "names-only")] as never, {
+    kinds: { "names-only": namesOnly },
+  } as never);
+  nameOnlyRefusal = seat === undefined ? "(hire returned no seat)" : "";
+} catch (error) {
+  nameOnlyRefusal = error instanceof Error ? error.message : String(error);
+}
+
+check(
+  "CONTROL · a kind declaring seatSkills as bare NAMES is refused the real union",
+  nameOnlyRefusal.length > 0,
+  nameOnlyRefusal.length > 0
+    ? `refused: ${nameOnlyRefusal.slice(0, 180)}`
+    : "the hire SUCCEEDED — the record shape is not load-bearing and this check proves nothing",
 );
 
 console.log(`\n${failures === 0 ? "CONFIRMED" : "REFUTED"} — ${failures} failing assertion(s)`);

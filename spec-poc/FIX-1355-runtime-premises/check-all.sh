@@ -31,7 +31,7 @@ run() {
 run "the built-in agent kind cannot be dispatched into (D3)" \
   $TSX "$DIR/check-agent-kind-has-no-internal-entry.mts"
 
-run "openChannels has no org door (S4, ER-14)" \
+run "openChannels cannot thread an orgId through, though the client API has one (S4, ER-14)" \
   bash "$DIR/check-no-org-door.sh"
 
 run "a { key } delivery creates the seat session and inherits the org (S3)" \
