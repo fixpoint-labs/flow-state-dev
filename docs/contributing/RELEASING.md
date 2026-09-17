@@ -34,9 +34,10 @@ Every release path builds through `release:build`, which is `packages:build` plu
 The two stay separate because `packages:build` is also the editor/typecheck input and the Vercel build step for `packages/ui` and `apps/kitchen-sink`, none of which want an app build. Publishing is the only caller that needs the assets, so publishing is what pays for them.
 
 ```bash
-# What the tarball actually contains
-pnpm --filter @flow-state-dev/core pack
-tar xzOf flow-state-dev-core-*.tgz package/package.json | grep '"main"'   # ./dist/index.js
+# What the tarball actually contains. `pnpm pack` takes no filter — `--filter` puts pnpm
+# in recursive mode, which pack rejects with "Unknown option: 'recursive'". Use --dir.
+pnpm --dir packages/core pack --pack-destination /tmp
+tar xzOf /tmp/flow-state-dev-core-*.tgz package/package.json | grep '"main"'   # ./dist/index.js
 ```
 
 ## Sourcemaps
