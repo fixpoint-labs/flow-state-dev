@@ -1,0 +1,80 @@
+<svg viewBox="0 0 940 280" role="img"
+     aria-label="Today: a goal check runs against the implementation and prints PASS, and whether that PASS certifies the claim is unknown; the static shape rules C1 to C4 only inspect the fixture. After: the same goal is run twice, once against the implementation and once against it with a catalogued regression applied; a run that goes red is KILLED and the coverage is proved, a run that stays green is SURVIVED and the goal is named as not covering its claim."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-mut  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .n-kill { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-surv { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .n-soft { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; stroke-dasharray:4 3; }
+    .fence  { stroke:var(--rule); stroke-width:1.2; stroke-dasharray:6 5; }
+    .arrow  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .ah     { fill:var(--ink-3); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-kill { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:700; font-size:11px; }
+    .t-surv { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:700; font-size:11px; }
+  </style>
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · ONE RUN</text>
+    <rect class="n-box" x="16" y="36" width="150" height="52" rx="5"/>
+    <text class="t-b" x="30" y="58">implementation</text>
+    <text class="t-s" x="30" y="74">packages/*/src</text>
+    <path class="arrow" d="M166 62 H199"/><path class="ah" d="M199 58.5 L206 62 L199 65.5 z"/>
+    <rect class="n-box" x="206" y="36" width="120" height="52" rx="5"/>
+    <text class="t-b" x="220" y="58">goal check</text>
+    <text class="t-s" x="220" y="74">run.mts</text>
+    <path class="arrow" d="M326 62 H359"/><path class="ah" d="M359 58.5 L366 62 L359 65.5 z"/>
+    <rect class="n-box" x="366" y="36" width="72" height="52" rx="5"/>
+    <text class="t-b" x="386" y="67">PASS</text>
+
+    <rect class="n-soft" x="206" y="110" width="232" height="46" rx="5"/>
+    <text class="t-s" x="220" y="129">C1-C4 read the fixture's shape</text>
+    <text class="t-s" x="220" y="143">the claim-to-cause gap stays open</text>
+
+    <text class="t-surv" x="16" y="196">Does that PASS certify the claim?</text>
+    <text class="t-s" x="16" y="212">Answered by a human reading the fixture. Three times</text>
+    <text class="t-s" x="16" y="226">on FIX-1367 the answer was no, and the run was green.</text>
+  </g>
+
+  <line class="fence" x1="470" y1="16" x2="470" y2="268"/>
+
+  <g id="after">
+    <text class="t-lbl" x="500" y="24">AFTER · THE SAME GOAL, RUN TWICE</text>
+    <rect class="n-box" x="500" y="36" width="150" height="52" rx="5"/>
+    <text class="t-b" x="514" y="58">implementation</text>
+    <text class="t-s" x="514" y="74">unmutated · must be green</text>
+    <rect class="n-mut" x="500" y="104" width="150" height="52" rx="5"/>
+    <text class="t-b" x="514" y="126">+ one mutation</text>
+    <text class="t-s" x="514" y="142">a catalogued regression</text>
+
+    <path class="arrow" d="M650 62 H683"/><path class="ah" d="M683 58.5 L690 62 L683 65.5 z"/>
+    <path class="arrow" d="M650 130 H683"/><path class="ah" d="M683 126.5 L690 130 L683 133.5 z"/>
+    <rect class="n-box" x="690" y="70" width="104" height="52" rx="5"/>
+    <text class="t-b" x="704" y="92">the goals</text>
+    <text class="t-s" x="704" y="108">it claims</text>
+
+    <path class="arrow" d="M794 88 H827"/><path class="ah" d="M827 84.5 L834 88 L827 91.5 z"/>
+    <rect class="n-kill" x="834" y="62" width="92" height="48" rx="5"/>
+    <text class="t-kill" x="848" y="82">RED</text>
+    <text class="t-s" x="848" y="98">KILLED</text>
+    <path class="arrow" d="M794 104 H820 V150 H827"/><path class="ah" d="M827 146.5 L834 150 L827 153.5 z"/>
+    <rect class="n-surv" x="834" y="126" width="92" height="48" rx="5"/>
+    <text class="t-surv" x="848" y="146">GREEN</text>
+    <text class="t-s" x="848" y="162">SURVIVED</text>
+
+    <text class="t-b" x="500" y="196">A survivor is the finding.</text>
+    <text class="t-s" x="500" y="212">The goal claims the behaviour and did not notice it break,</text>
+    <text class="t-s" x="500" y="226">so it is named — no fixture is read, and none is mutated.</text>
+    <text class="t-s" x="500" y="248">Catalogue coverage is partial by construction: a behaviour</text>
+    <text class="t-s" x="500" y="262">with no entry gets no verdict, and the report says which.</text>
+  </g>
+</svg>
