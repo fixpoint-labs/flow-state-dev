@@ -17,7 +17,7 @@ issue identifiers; anything under `apps/docs/` is published and may not.
 ## Contents
 
 - `conductor.html` — encyclopedia of the old Conductor run. D-12 retired the
-  product name; DevForce is the Lab on Workforce. Product lock lives on the
+  product name; DevForce and Pentest Lab are sibling Labs on Workforce. Product lock lives on the
   Workforce atlas.
 - `framework.html` — the framework architecture atlas: every package and
   system in `@flow-state-dev`, how they compose, and the open refactor
