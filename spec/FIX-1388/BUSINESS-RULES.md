@@ -16,7 +16,8 @@ work.
 | BR-4 | A `.md` and a `.ts` in one folder share a basename | Refused, naming both files. They would mint one ref between them, and a silent winner is the failure this issue is about | CI |
 | BR-5 | Any other file sits in the folder — a note, an image | Passed over without a word, as today | CI |
 | BR-6 | The tree has changed and the generated module has not | `fsdev gen --check` exits non-zero and says which files disagree | CI |
-| BR-20 | A `.ts` capability sits inside one worker's own `resources/` folder | Found and installed like any other, under that worker's own ref. The folder is an address, not a private scope, and it gives that worker's file no power to install | CI |
+| BR-20 | A `.ts` **resource** sits inside one worker's own `resources/` folder | Found and installed like any other, under that worker's own ref — the same as a document at that root | CI |
+| BR-21 | A `.ts` **capability** sits inside one worker's own `resources/` folder | **Refused by name**, saying capabilities live at the organisation or team level. Never installed kind-wide from there, and never skipped in silence | CI |
 
 ## Installing what was found
 
@@ -69,6 +70,14 @@ hired stops boot and names every bad seat in one message, which is the bargain `
 already makes. Everything else degrades: a folder that cannot be read is collected and reported
 with its path, and the app decides whether that is fatal. Nothing retries, and nothing is
 discovered while a request is in flight.
+
+## Why a capability at the worker root is refused rather than installed
+
+Every seat of a kind shares that kind's capabilities, so a capability found in one worker's folder
+would reach every other seat of the same kind. That is one person's folder quietly changing
+everyone's behaviour. Giving one seat behaviour nobody else has needs a per-seat install, which D2
+rules out on purpose. Until that is designed, the honest answer is to say so at the file — the one
+thing this issue refuses is silence, and silently kind-wide is a worse silence than a refusal.
 
 ## Acceptance criteria this issue owns
 

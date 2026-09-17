@@ -80,7 +80,7 @@ The file is read at build time and imported at run time, which is why the same t
 - **Door A.** A `.md` file in `resources/` is still a read-only document, read by the same walk, with the same refusals. No Markdown file changes meaning, and no frontmatter key gains one.
 - **The tools fence.** A seat may call exactly the catalog keys its `tools:` names. A capability a seat selects contributes context and tools like any other, and the tool half is still cut down to that list (FIX-1393).
 - **The install seam.** Capabilities reach a kind through the `uses` option that already exists. No new option, and no capability registry beside it.
-- **Who decides the roster's capabilities.** The app does, at the one place it builds its kinds. A seat's file picks among them; it never adds one — and that stays true of a capability sitting inside a worker's own folder, which is an address, not an authority.
+- **Who decides the roster's capabilities.** The app does, at the one place it builds its kinds. A seat's file picks among them; it never adds one — and a capability found inside one worker's own folder is refused by name rather than installed, because every seat of a kind shares that kind's capabilities.
 
 ## Sign off
 

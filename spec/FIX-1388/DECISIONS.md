@@ -59,10 +59,12 @@ a cost or a privacy reason, not a preference. Then the fork is real and worth it
 |---|---|
 | **Instead of** | The two roots the issue named when it was cut |
 | **Because** | The third one shipped since (FIX-1368, done 2026-09-17), so a Markdown document works in all three today. A TypeScript door that read only two would give the silence this issue exists to remove, in the one folder where the file beside it works — and "it works for documents but not for capabilities, in that one folder" is a rule people remember badly |
-| **Locks in** | One folder means one thing whatever file is in it, which is the convention's whole claim. It does **not** loosen who installs: a worker's folder is an address, not an authority, and D2 still stands — a seat's file picks presets and installs nothing |
+| **Locks in** | One folder means one thing whatever file is in it, which is the convention's whole claim. It does **not** loosen who installs. A **resource** at the worker root works like a document there. A **capability** at the worker root is **refused by name**, because every seat of a kind shares that kind's capabilities, so installing one from a single worker's folder would quietly change every other seat. Reading the root is what makes that a refusal instead of a silence |
 
 Decided on the Architect's coherence pass, 2026-09-17, on the ground that the asymmetry was an
-accident of sequencing rather than a call anyone made. Not a fork for the product owner.
+accident of sequencing rather than a call anyone made. Not a fork for the product owner. Seat-scoped
+capability install stays out of scope (D2); when a concrete seat has to carry behaviour its kind
+does not, that is its own issue, and the refusal above is what makes the gap visible until then.
 
 ## Decided, not asked
 
@@ -84,7 +86,7 @@ accident of sequencing rather than a call anyone made. Not a fork for the produc
 | Teaching the Markdown reader to also read `.ts` | One reader holding two conventions, and it widens Door A while Door A is held closed |
 | Declaring capabilities in `.md` frontmatter | Frontmatter cannot author a schema. Ruled out when Door A was cut |
 | A capability registry the seat looks names up in | A second place a capability can exist, to keep in step with the kind's `uses`. The generated map already is the list |
-| Shipping Discover alone | A command that finds files and drops them. The three layers are one story |
+| Shipping the issue as Discover alone | A command that finds files and drops them is not usable. The three layers are one story — which is about **scope**, not about the PR split: the plan ships Discover as its own PR on purpose |
 
 ## How it got here
 
@@ -92,6 +94,8 @@ accident of sequencing rather than a call anyone made. Not a fork for the produc
   build-step discovery convention rather than adding a second one; installs through the `uses` seam
   that already exists, so the only new authoring surface is one key in a worker's file.
 - **Review** — the open question about which folders the new door reads closed as D3, all three,
-  because the worker-level root has since shipped on the Markdown door.
+  because the worker-level root has since shipped on the Markdown door. A capability found at that
+  root is refused by name rather than installed kind-wide, because a review caught that installing
+  it would quietly change every other seat.
 
 **Open: none.**

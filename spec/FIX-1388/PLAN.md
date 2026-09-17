@@ -10,7 +10,7 @@ Install and Select.
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the code-convention walk | A fourth family beside the three locked code folders: **all three** scoped `resources/` roots — the organisation's, a team's and a worker's own (D3) — TypeScript entries only, refs minted the way the document walk mints them. A separate adapter over the shared walk primitives, consuming what FIX-1389 published rather than growing a parallel walk | BR-1 BR-2 BR-3 BR-5 BR-20 |
+| S1 | `workforce` · the code-convention walk | A fourth family beside the three locked code folders: **all three** scoped `resources/` roots — the organisation's, a team's and a worker's own (D3) — TypeScript entries only, refs minted the way the document walk mints them. A separate adapter over the shared walk primitives, consuming what FIX-1389 published rather than growing a parallel walk | BR-1 BR-2 BR-3 BR-5 BR-20 BR-21 |
 | S2 | `workforce` · the code-convention render | A fourth exported map on the generated module, keyed by ref, typed so a module exporting the wrong shape fails the app's own typecheck rather than the walk | BR-9 |
 | S3 | `workforce` · the one place both doors' refs are known | Refuse a basename claimed by both a document and a module. The convergence point for ref uniqueness — where both lists exist, not in either walk | BR-4 BR-10 |
 | S4 | `cli` · the generate command | Count and print the new family in the summary; `--check` covers it with no special case | BR-6 |
@@ -54,7 +54,7 @@ its own. P2 makes the map usable. P3 is the seat's half, and the only one touchi
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S1 | BR-1, BR-2, BR-3, BR-5, BR-20 over a fixture tree covering all three roots. Refusals collect — one run names every bad entry |
+| V1 | S1 | BR-1, BR-2, BR-3, BR-5, BR-20, BR-21 over a fixture tree covering all three roots. BR-21's refusal is planted and seen red before it is trusted. Refusals collect — one run names every bad entry |
 | V2 | S2 | BR-9: a fixture module exporting the wrong shape fails to compile, naming its file |
 | V3 | S3 | BR-4 and BR-10 refuse, naming both files. The negative control: remove the rule and watch the fixture pass silently |
 | V4 | S4 | BR-6: `--check` red on a changed tree, green after regenerating |
@@ -145,6 +145,13 @@ published walk primitives. Nothing here is a claim nobody has checked.
   absent from the Next build, already recorded against the code-convention goal. Shape VG on the
   real hire-and-answer path, and do not take that blocker on here.
 
+## Notes from review
+
+- "Soft preference: fold P1+P2 if one EM wants a shorter path (Install is thin); three PRs OK if
+  P1's checks are real." — FSD Architect ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/1858#issuecomment-5720663182))
+
+An input, not an instruction. Adopt, adapt or discard; you owe no justification for discarding one.
+
 ## Follow-ups
 
 - The reference app's workforce subtree demonstrates the convention and is executed by nothing.
@@ -152,3 +159,5 @@ published walk primitives. Nothing here is a claim nobody has checked.
   it more visible, and it wants its own issue.
 - Two `validateSegment` functions in two packages enforce overlapping rules and cannot see each
   other. Recorded on the same goal; out of scope here.
+- Seat-scoped capability install — giving one seat behaviour its kind does not carry. BR-21 refuses
+  it loudly rather than guessing. File when a concrete seat needs it.
