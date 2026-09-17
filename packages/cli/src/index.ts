@@ -21,6 +21,8 @@ export {
 } from "./exit-codes";
 export type { BlockExecResult } from "./commands/block";
 export { registerDevCommand, executeDevCommand } from "./commands/dev";
+export { registerGenCommand, executeGenCommand } from "./commands/gen";
+export type { GenCommandOptions, GenResult } from "./commands/gen";
 export type { FlowRunResult, FlowEvent } from "./commands/run";
 export { registerServeCommand, executeServeCommand } from "./commands/serve";
 export { registerChatCommand, executeChatCommand } from "./commands/chat";

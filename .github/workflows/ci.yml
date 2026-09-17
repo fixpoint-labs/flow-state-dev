@@ -52,6 +52,13 @@ jobs:
       - name: Build packages
         run: pnpm packages:build
 
+      # Its OWN step, deliberately not folded into a build script: a script that
+      # ran `fsdev gen` before building would regenerate the file and pass,
+      # which is the one thing a staleness gate must not do. This fails when an
+      # author adds a kind or a block and does not commit the regenerated module.
+      - name: Generated workforce module is current
+        run: pnpm --filter @flow-state-dev/kitchen-sink run fsdev gen --check
+
       - name: Typecheck
         run: pnpm typecheck
 

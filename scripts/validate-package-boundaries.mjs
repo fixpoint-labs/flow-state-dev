@@ -38,8 +38,13 @@ const packageRules = {
     typeOnly: new Set([]),
     deny: new Set(["client", "react"])
   },
+  // A leaf consumer of published surfaces: the terminal interface reaches for
+  // whatever a command needs to drive. Nothing imports `cli`, so this list has
+  // no cycle to create and no layer to invert — it is an enumeration of what
+  // the CLI ships, and it grows as commands do. Contrast the entries above and
+  // below, whose `deny` sets encode a refusal; this one encodes none.
   cli: {
-    allow: new Set(["contracts", "core", "engine", "testing", "store-sqlite"]),
+    allow: new Set(["contracts", "core", "engine", "testing", "store-sqlite", "workforce"]),
     typeOnly: new Set([])
   },
   "store-sqlite": {

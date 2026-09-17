@@ -240,6 +240,36 @@ Output is a JSON object with execution results, schema validation status, and ti
 }
 ```
 
+### `fsdev gen` — Register an app's kinds and blocks from its files
+
+Walks `workforce/flows/workers/`, `workforce/flows/channels/` and `workforce/blocks/`, and writes
+`workforce/workforce.gen.ts` beside them. The generated module exports `kinds`, `channelKinds` and
+`blocks`: the maps `hireWorkforce`, `channelInstances` and a task board already take. Each discovered
+file registers under its basename.
+
+```bash
+# Write the module from the tree
+fsdev gen
+
+# Fail instead of writing when the committed file is out of date
+fsdev gen --check
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | The workforce directory (default: `workforce`) |
+| `--check` | Compare against the committed file and exit non-zero on a difference |
+
+Loads no app code — not your `fsdev.config.ts`, and not one file it walked. It reads the tree, so the
+names it can refuse are the ones a walker can see: an illegal basename, a directory inside one of the
+three folders, one basename claimed by both flow folders, and a folder that is present and
+unreadable. Every refusal is collected, so one run names all of them and nothing is written.
+
+Commit the generated file and run `fsdev gen` in front of your build. Give `--check` its own CI step:
+inside a build script it would regenerate the file first and always pass.
+
 ### `fsdev benchmark` — Compare coordination patterns
 
 Loads a `defineBenchmark(...)` file, runs each pattern (plus a single-generator baseline) against the same task suite on the same model, and prints a comparative scorecard. One independent variable: the coordination shape. A blinded judge (a distinct model) scores every output against each task's locked rubric.
