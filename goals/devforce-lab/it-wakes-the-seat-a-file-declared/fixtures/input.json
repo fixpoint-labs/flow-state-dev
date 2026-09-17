@@ -1,0 +1,51 @@
+{
+  "row": {
+    "issue": "greeting-module",
+    "phase": "implement",
+    "taskId": "greeting-module--implement",
+    "goal": "Add a greeting module to the repository."
+  },
+  "assignedSeat": "eng.coder",
+  "silentSeat": "eng.reviewer",
+  "coordinatorSeat": "eng.em",
+  "unknownSeat": "no-such-seat-instance",
+  "seats": {
+    "eng.em": {
+      "kind": "em",
+      "document": "engineering-handbook",
+      "skills": ["commit-style"],
+      "instructionsToken": "EM-INSTRUCTIONS-A17C3"
+    },
+    "eng.coder": {
+      "kind": "coder",
+      "document": "teams/eng/feature-brief",
+      "skills": ["commit-style", "branch-naming"],
+      "instructionsToken": "CODER-INSTRUCTIONS-B42D9"
+    },
+    "eng.reviewer": {
+      "kind": "coder",
+      "document": "teams/eng/feature-brief",
+      "skills": ["commit-style"],
+      "instructionsToken": "REVIEWER-INSTRUCTIONS-C93E1"
+    }
+  },
+  "documents": ["engineering-handbook", "teams/eng/feature-brief"],
+  "channels": ["eng.feature"],
+  "promptTokens": [
+    "CODER-INSTRUCTIONS-B42D9",
+    "FEATURE-BRIEF-E61B8",
+    "COMMIT-STYLE-F70C4",
+    "BRANCH-NAMING-1B9E7"
+  ],
+  "tokenHomes": {
+    "EM-INSTRUCTIONS-A17C3": "teams/eng/workers/em/WORKER.md",
+    "CODER-INSTRUCTIONS-B42D9": "teams/eng/workers/coder/WORKER.md",
+    "REVIEWER-INSTRUCTIONS-C93E1": "teams/eng/workers/reviewer/WORKER.md",
+    "HANDBOOK-DOC-D5A02": "org/resources/engineering-handbook.md",
+    "FEATURE-BRIEF-E61B8": "teams/eng/resources/feature-brief.md",
+    "COMMIT-STYLE-F70C4": "teams/eng/skills/commit-style/SKILL.md",
+    "BRANCH-NAMING-1B9E7": "teams/eng/workers/coder/skills/branch-naming/SKILL.md",
+    "FEATURE-CHARTER-0A8D6": "teams/eng/channels/feature/CHANNEL.md"
+  },
+  "wait": { "timeoutMs": 60000, "pollMs": 100 }
+}
