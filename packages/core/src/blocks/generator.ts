@@ -2742,6 +2742,9 @@ export function generator<
   // -- Tools: single async resolver combining user tools + static caps + dynamic caps
   if (hasStaticTools || hasDynamic) {
     const userTools = normalizedConfig.tools;
+    // `tools: []` and omitting `tools:` both yield empty `base` — only the
+    // declaration itself is the fence. When it is up, capability tools do not add.
+    const declaresTools = userTools !== undefined;
 
     (normalizedConfig as any).tools = async (input: unknown, ctx: BlockContext) => {
       // 1. User-declared tools (static array or function of input+ctx)
@@ -2768,6 +2771,7 @@ export function generator<
         }
       }
 
+      if (declaresTools) return base;
       return [...base, ...staticTools, ...dynTools];
     };
   }
