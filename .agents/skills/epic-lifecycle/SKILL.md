@@ -33,10 +33,10 @@ ends the turn:
 
 | Phase | What happens | Ends when |
 |---|---|---|
-| **EPIC_SETUP** | Resolve the set; discover or create the epic issue; `epic-agent` writes the epic-spec and opens the never-merged epic PR | Epic PR is open → AWAITING_OBJECTIVE |
+| **EPIC_SETUP** | Resolve the set; discover or create the epic issue; `epic-agent` writes the epic-spec and opens the never-merged epic PR; `project-agent` stands up or refreshes its Linear project's project-spec | Epic PR is open → AWAITING_OBJECTIVE |
 | **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold before their first action. Epic-PR review runs on the same two-round budget as a spec PR | An approving human comment or review lands on the epic PR |
 | **RUNNING** | Each sub-issue advances through its own `issue-lifecycle` in its own worktree, in parallel up to the cap. Per-issue spec-approval gates surface as they arrive; epic feedback fans down | Every sub-issue is merged, closed, or dropped |
-| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); **retire the epic's mailbox handle** per [`agent-mailbox`](../agent-mailbox/SKILL.md) → *Retiring a handle* — note it **merges** when it carries decisions, inverting our usual rule, and that retiring nothing leaves a dead inbox reading as live; dispatch `distill-lessons` and `polish-docs` as draft PRs; dispatch `epic-agent` for the final refresh of the set table and the path | **Lessons always surfaces a draft PR** — the ledger rows are factual and must land; a clean epic gets a rows-only PR rather than no PR, since its row is the one the trend most needs. Only the *grounding proposal* inside it is skippable. **Docs-polish may be skipped entirely** (no docs touched), and "skipped, and why" is then a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
+| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); **retire the epic's mailbox handle** per [`agent-mailbox`](../agent-mailbox/SKILL.md) → *Retiring a handle* — note it **merges** when it carries decisions, inverting our usual rule, and that retiring nothing leaves a dead inbox reading as live; dispatch `distill-lessons` and `polish-docs` as draft PRs; dispatch `epic-agent` for the final refresh of the set table and the path, then `project-agent` so the project's epics table, arc and *decided once* carry the wrap | **Lessons always surfaces a draft PR** — the ledger rows are factual and must land; a clean epic gets a rows-only PR rather than no PR, since its row is the one the trend most needs. Only the *grounding proposal* inside it is skippable. **Docs-polish may be skipped entirely** (no docs touched), and "skipped, and why" is then a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
 
 ## How it stays safe and cheap
 
@@ -633,6 +633,28 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   [`docs/objectives.md`](../../../docs/objectives.md): which objective, and how much of its gap
   this closes. An epic serving none of them is worth surfacing *before* the gate — a product
   decision you should make knowingly, not one discovered at the wrap.
+- **Stand up or refresh the project-spec.** The epic's Linear **project** is its epic issue's
+  `project`. Dispatch [`project-agent`](../../subagents/project-agent.md) — **create** if that
+  project has no `project/<slug>` PR yet, **refresh** if it does — so the project's epics table
+  carries this epic from the day it exists. One line in the dispatch: the project, the action, and
+  this epic's id and title. Canonically:
+  [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The project-spec".
+
+  **It takes no slot from the epic branch** — `project-agent` works on `project/<slug>`, a
+  different branch from `epic/<name>`, so it never races `epic-agent`. It *can* race a **second
+  epic under the same project**: that collision resolves by **skipping**, never queueing, because
+  project status is re-derived from Linear every dispatch.
+
+  **A skipped refresh loses no correctness — but it is not free.** The dispatch still spends a
+  sub-agent and a worktree before it discovers the branch is busy, and with the cap at two epics
+  on one project that collision is routine rather than rare. Two things keep it cheap, and both
+  are yours, not the agent's: **carry `project_slug` and `project_pr` in the epic record** beside
+  the epic handles, so a resume never re-discovers whether the project PR exists; and **don't
+  dispatch when you have nothing for it** — an epic-level transition is the trigger, so a wake
+  that saw none skips the dispatch itself rather than paying for the agent to report `nothing`.
+  The agent's own test for a busy branch is a non-fast-forward push: it exits `skipped: branch
+  busy` rather than retrying.
+
 - **Consider an end-state POC — before the objective gate, not after.** The objective gate is the
   **last moment the division into issues is cheap to change**, and whether the assembled surface
   is right is the one question only this altitude can ask. When that's genuinely unclear, dispatch
@@ -664,6 +686,10 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   unapproved while its children implement. **It does
   not touch the `epic approved` label**, which is the owner's own signal: a coordinator-written
   label would outlive the review it recorded and keep the gate open past a later push.
+
+  **Then dispatch `project-agent` for a refresh** — the epic's row in its project moves from
+  *spec* to *in flight* and its arc bar starts. Same non-blocking terms as every project refresh:
+  different branch, skips on collision, costs nothing if dropped.
 - **Own the subscription; fan feedback down.** Only the coordinator can subscribe to the epic
   PR (sub-agents can't), so epic-PR feedback arrives here. The **folding** is the wake's:
   it dispatches `epic-agent` to triage against the bar, fold above-the-bar items into the
@@ -752,6 +778,17 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   line and pins, and the last *How it got here* line. It pushes to the epic branch, which
   stays after the epic PR closes unmerged, so the record survives the epic. Put the link to
   `SPEC.md` in the wrap report.
+
+  **Then dispatch [`project-agent`](../../subagents/project-agent.md) with the `update` action** —
+  **not `refresh`**, which is forbidden from writing decisions and would silently drop the half
+  that matters. This epic's row goes to done, its arc bar closes, the now line moves, and anything
+  the epic settled that binds a *sibling* epic is recorded in the project's `DECISIONS.md` →
+  *decided once* so the next epic under that project reads the answer instead of re-litigating it.
+  Wrap is the one moment that reliably produces cross-epic knowledge, so it is the one dispatch
+  that is **not** allowed to be dropped on a busy branch: the agent retries it, and returns
+  `blocked: wrap update undelivered` if it still cannot land — **re-dispatch it on the next wake
+  rather than letting the epic close over it.** The status half would self-heal (a closed epic PR
+  is derivable); the decisions half is derivable from nothing, which is why this one waits. Put the project PR link in the wrap report beside `SPEC.md`'s.
 
 ## Intake — filing & queueing discovered issues
 

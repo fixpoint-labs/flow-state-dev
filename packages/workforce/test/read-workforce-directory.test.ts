@@ -19,7 +19,7 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import fsp from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readWorkforceDirectory } from "../src/loader";
@@ -169,6 +169,40 @@ Body.
     ).rejects.toThrow(/Failed to read workforce directory/);
   });
 
+  it("refuses a symlinked root without following it", async () => {
+    // The root is the one level a bare `readdir` would follow. Every nested
+    // structural folder is classified first, so `teams -> /outside` is refused;
+    // a root that is itself a link has to be refused the same way, or the whole
+    // roster comes from somewhere the caller never configured.
+    const root = tree({ "real/teams/engineering/workers/lead/WORKER.md": LEAD_MD });
+    symlinkSync(join(root, "real"), join(root, "linked"));
+
+    // Control: the tree behind the link loads perfectly, so the refusal below
+    // is the symlink and not a broken fixture.
+    const direct = await readWorkforceDirectory(join(root, "real"));
+    expect(direct.workers.map((w) => w.id)).toEqual(["engineering.lead"]);
+
+    await expect(readWorkforceDirectory(join(root, "linked"))).rejects.toThrow(/Symlinked/);
+  });
+
+  it("refuses a symlinked root spelled with a trailing separator", async () => {
+    // `lstat` resolves the final symlink when the path ends in a separator, so
+    // `<root>/` classifies as a directory where `<root>` classifies as a link.
+    // The trailing form is the ordinary way a directory gets written down, so
+    // without it the refusal above is one character from being bypassed and the
+    // whole roster comes from behind the link after all.
+    const root = tree({ "real/teams/engineering/workers/lead/WORKER.md": LEAD_MD });
+    symlinkSync(join(root, "real"), join(root, "linked"));
+
+    await expect(readWorkforceDirectory(`${join(root, "linked")}${sep}`)).rejects.toThrow(
+      /^Symlinked workforce directory ".+" — refused for safety$/,
+    );
+
+    // And an ordinary root written the same way still loads.
+    const direct = await readWorkforceDirectory(`${join(root, "real")}${sep}`);
+    expect(direct.workers.map((w) => w.id)).toEqual(["engineering.lead"]);
+  });
+
   describe("a slot that cannot produce a manifest is reported, and the healthy worker still loads", () => {
     it("reports a worker folder with no WORKER.md", async () => {
       const root = tree(HEALTHY);
@@ -297,6 +331,30 @@ Body.
       );
       expect(refused.workers).toEqual([]);
       expect(refused.errors).toHaveLength(1);
+    });
+
+    // The third contract key, refused at this door for the reason the other two
+    // are: a hand-built roster never passes the loader, and a file that reaches
+    // a caller carrying this key is a file whose seat runs on team
+    // instructions its team never wrote. Two doors, one wording.
+    it("refuses a worker file that declares the team-instructions key", async () => {
+      const { workers, errors } = await readWorkforceDirectory(
+        tree({
+          "teams/engineering/workers/intake/WORKER.md":
+            "---\ndescription: The front door.\nteamInstructions: We answer within the hour.\n---\nBody.\n",
+        }),
+      );
+
+      expect(workers).toEqual([]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/engineering/workers/intake");
+
+      const { message } = errors[0]!.error;
+      expect(message).toContain("WORKER.md");
+      expect(message).toContain("intake/");
+      expect(message).toContain("teamInstructions");
+      expect(message).toContain("not a setting a worker declares");
+      expect(message).toContain("belong to its team");
     });
 
     it("reports a worker segment breaking the name rules, with the rule in the message", async () => {

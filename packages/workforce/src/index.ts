@@ -35,5 +35,6 @@ export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { hireWorkforce, type HireOptions } from "./hire";
 export { resourcesFromDocs } from "./resources-from-docs";
+export { workerConfigSchema, seatSkillSchema, type WorkerConfig } from "./worker-config";
 export type { WorkerManifest, ResourceDoc } from "./manifest";
 export * from "./channel";

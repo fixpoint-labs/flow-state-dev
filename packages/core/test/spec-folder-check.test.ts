@@ -35,6 +35,11 @@ describe("spec citations — concrete paths are dangling, placeholders are not",
     expect(hits.map((h) => h.text)).toEqual(["spec/_epics/task-substrate/PLAN.md"]);
   });
 
+  it("flags a document in a project spec's directory — a project PR never merges either", () => {
+    const { hits } = scan("// see spec/_projects/streaming/BUSINESS-RULES.md");
+    expect(hits.map((h) => h.text)).toEqual(["spec/_projects/streaming/BUSINESS-RULES.md"]);
+  });
+
   it("still flags the pre-directory shape, which is just as dangling", () => {
     const { hits } = scan("// see spec/FIX-123.md and spec/_epics/task-substrate.md");
     expect(hits.map((h) => h.text)).toEqual(["spec/FIX-123.md", "spec/_epics/task-substrate.md"]);
@@ -47,6 +52,11 @@ describe("spec citations — concrete paths are dangling, placeholders are not",
 
   it("ignores the epic-spec placeholder", () => {
     expect(scan("the set lives at spec/_epics/<name>/SPEC.md on that branch").hits).toEqual([]);
+  });
+
+  it("ignores the project-spec placeholder", () => {
+    expect(scan("the set lives at spec/_projects/<slug>/SPEC.md on that branch").hits).toEqual([]);
+    expect(scan("pinned at <sha>/spec/_projects/<slug>/figures/arc.svg").hits).toEqual([]);
   });
 
   it("does not double-report a retired docs/specs/ path as a spec citation", () => {

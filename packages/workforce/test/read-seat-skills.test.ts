@@ -361,6 +361,27 @@ describe("readSeatSkills — the configured root", () => {
     ).rejects.toThrow(/Failed to read workforce directory/);
   });
 
+  it("refuses a symlinked root without following it", async () => {
+    // This reader jumps to each level rather than walking down to it, and its
+    // ancestor check starts below the root — so the root is the one link
+    // nothing else here would catch, and a seat would draw its whole skill set
+    // from wherever the link points.
+    await writeSkill("real/org/skills", "triage", body("org triage"));
+    await fs.symlink(path.join(root, "real"), path.join(root, "linked"));
+
+    // Control: the tree behind the link reads perfectly, so the refusal below
+    // is the symlink and not a broken fixture.
+    const direct = await readSeatSkills(path.join(root, "real"), {
+      team: "pentest",
+      worker: "recon",
+    });
+    expect(names(direct.skills)).toEqual(["triage"]);
+
+    await expect(
+      readSeatSkills(path.join(root, "linked"), { team: "pentest", worker: "recon" }),
+    ).rejects.toThrow(/Symlinked/);
+  });
+
   it("stays silent for a root that is there with none of the levels present", async () => {
     const { skills, errors } = await readSeatSkills(root, {
       team: "pentest",
