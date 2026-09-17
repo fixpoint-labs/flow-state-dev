@@ -21,13 +21,16 @@
  * that pointed at the importing file itself — a silent circular no-op export.
  * Rewriting only what already starts with `./` or `../` is what makes this safe.
  *
- * A specifier that resolves to no file on disk is left alone and reported, since
- * guessing at it would trade a loud failure for a quiet one.
+ * A specifier that resolves to no file on disk is left exactly as written,
+ * since guessing at it would trade a loud failure for a quiet one.
  *
- * Exits non-zero if nothing could be rewritten in a directory that has output,
- * which is the shape a silently-skipped build step takes.
+ * Write mode is not a verifier: a specifier it cannot resolve is left as it is
+ * and it still exits 0, so a build script keeps going. It fails only when a
+ * directory it was pointed at holds no output at all, which is the shape a
+ * silently-skipped build step takes.
  *
- * `--check` rewrites nothing and fails if any specifier still needs extending.
+ * `--check` is the verifier. It rewrites nothing and exits non-zero if any
+ * specifier still needs extending.
  * CI runs it over every publishable `dist` after the build, so dropping this
  * step from a package's `build` script is a red check rather than another
  * broken release. No dependencies.
