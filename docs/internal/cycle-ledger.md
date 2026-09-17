@@ -1645,7 +1645,7 @@ review submissions of all kinds. Four numbers for one PR, none wrong for its own
 |---|---|---|---|---|---|---|---|---|---|
 | [#1419](https://github.com/fixpoint-labs/flow-state-dev/pull/1419) FIX-1234 spec | spec | **12** | **8** | **8** | design-off ×4 · missed-edge-case ×3 · docs-miss ×3 · stale-restatement ×2 · nit ×4 | overclaim ×2 | 1 / 1 / **REFUTED** (the detached-recapture premise, settled by reading the code) | no | Budget 2 rounds. Spent 8 — see *the fold loop* |
 | [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) FIX-1234 | impl | **11** | **9** | **13** | missed-edge-case ×7 (**5 convergence**) · docs-miss ×3 · over-engineered ×2 · stale-restatement ×1 · nit ×5 | overclaim ×3 | 2 / 2 (settled by **running** the example, not by POC) | no | Same convergence arithmetic tenet 5 has named since cycle 1 |
-| [#1461](https://github.com/fixpoint-labs/flow-state-dev/pull/1461) FIX-1244 spec | spec | **29** | **24** | **30** | **The worst overrun in this ledger.** design-off ×5 · over-engineered ×4 · docs-miss ×3 · stale-restatement ×3 · spec-ambiguity ×3 · nit ×43 | overclaim ×6 | 2 / 0 (both settled by **re-measurement**; the author's round-21 refutation of a reviewer was itself wrong) | **yes** — but the owner found it, not the review: *"resumeFromReview and unparkAndDrain. Why do we need both? … Is the wall of text in the spec really necessary?"* | **A hard stop after round 2.** BP-040 was in force and did not bind — see *scoring* |
+| [#1461](https://github.com/fixpoint-labs/flow-state-dev/pull/1461) FIX-1244 spec | spec | **29** | **24** | **30** | **The worst overrun in this epic.** design-off ×5 · over-engineered ×4 · docs-miss ×3 · stale-restatement ×3 · spec-ambiguity ×3 · nit ×43 | overclaim ×6 | 2 / 0 (both settled by **re-measurement**; the author's round-21 refutation of a reviewer was itself wrong) | **yes** — but the owner found it, not the review: *"resumeFromReview and unparkAndDrain. Why do we need both? … Is the wall of text in the spec really necessary?"* | **A hard stop after round 2.** BP-040 was in force and did not bind — see *scoring* |
 | [#1571](https://github.com/fixpoint-labs/flow-state-dev/pull/1571) FIX-1244 | impl | **3** | **2** | **2** | missed-edge-case ×2 | — | 0 / 0 | no | — a clean implementation off a 30-fold spec |
 | [#1513](https://github.com/fixpoint-labs/flow-state-dev/pull/1513) FIX-1245 | impl | **3** (14 with `greptile`, `github-code-quality` and the owner) | **1** | **3** (see note) | missed-edge-case ×4 — **all convergence, and the dual-read shipped missing three of its four readers** · docs-miss ×2 · stale-restatement ×1 · nit ×2 | overclaim ×1 | 0 / 0 | no | BP-030's dual-read is only as strong as its least-guarded **reader** — the enforcement/verification split of cycle 1's class, on the read side |
 | [#1673](https://github.com/fixpoint-labs/flow-state-dev/pull/1673) FIX-1238 spec | spec | **2** | **1** | **2** | **2 findings, both above the bar, both from one reviewer.** docs-miss ×1 · missed-edge-case ×1 | overclaim ×1 · vacuous-assertion ×1 | 1 / 1 / **REFUTED** (the reviewer re-ran the spec's own POC with `unknownOut` and got silence where the spec predicted an error) | **yes** — the guarantee narrowed from "conditional inserts" to "conditional inserts that declare an output", and §3.4 got stronger | **Inside the two-round budget** — one of two spec PRs in the epic that were |
@@ -1738,8 +1738,14 @@ it. Both figures were wrong; the rows total 198. An eight-fold spec row (#994) w
 from the overrun count. **The wide honesty reading was 45**, adding all 19 `stale-restatement`
 observations to the 26 when six of them are the same observations — the exact double-count this
 file's header forbids, committed by the entry that argued for the fence, and caught on review of
-the re-cut. It is 39. Every figure above now traces to a table in this entry, which is the
-standard the entry sets for everything else.
+the re-cut. It is 39. **#1461's 24 rounds were also called the worst overrun "in this ledger"**,
+true of the file this entry was collected against, which ended at cycle 7. Cycle 8 has since landed
+carrying #1445 at **35** rounds against the same budget — under a unit this entry's Method block
+does not reconcile with its own, so neither row can be ranked against the other without
+reconstructing #1445. Both claims are now qualified to this epic; the argument they serve does not
+rest on the superlative, only on BP-040 permitting a 24-round spec on a branch that carried it.
+Every figure above now traces to a table in this entry, which is the standard the entry sets for
+everything else.
 
 ### The dominant class: the fold loop feeds itself, and what it feeds on is false claims
 
@@ -1896,7 +1902,7 @@ green, different mechanism, and the existing sentence does not reach it.
   (`d37dc8bcd`), #1673 (`bc07d3a44`); the other ten forked before it (verified: `1c69f65fe` is not
   an ancestor of #1048's head `954a293c6`). **The rule was in force and did not bind on two of the
   three.** Post-BP-040 spent rounds are **8, 24 and 1** against a pre-BP-040 median of **5**. The
-  worst spec overrun in this ledger's history happened **17 days after** BP-040 landed, on a branch
+  worst spec overrun **in this epic** happened **17 days after** BP-040 landed, on a branch
   carrying it, by an author who quoted the convergence rule at fold 5 and folded 25 more times.
   **n=3 is not a trend**, and one of the three (#1673) held at a single round — so the carriage
   evidence on its own is two overruns and one success. What it does establish is that the rule was
