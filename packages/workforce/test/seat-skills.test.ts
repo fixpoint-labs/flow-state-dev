@@ -157,7 +157,7 @@ describe("a seat's skills at the mint", () => {
     expect(seat!.config).toMatchObject({ seatSkills: [] });
   });
 
-  // The arm this issue removes. A custom kind that never composed the contract
+  // The arm this issue removes. A custom kind whose schema cannot take the bag
   // used to hire on a roster with skills and be handed NOTHING — silently, so
   // an author who dropped a folder in `org/skills/` had no way to find out
   // their seat was running short. The bag goes to every kind now, so the same

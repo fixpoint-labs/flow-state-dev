@@ -333,7 +333,7 @@ Body.
       expect(refused.errors).toHaveLength(1);
     });
 
-    // The third imposed key, refused at this door for the reason the other two
+    // The third contract key, refused at this door for the reason the other two
     // are: a hand-built roster never passes the loader, and a file that reaches
     // a caller carrying this key is a file whose seat runs on team
     // instructions its team never wrote. Two doors, one wording.

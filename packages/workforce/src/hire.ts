@@ -260,7 +260,7 @@ export function hireWorkforce(
       continue;
     }
 
-    // The third imposed key, refused for the sharper version of the same
+    // The third contract key, refused for the sharper version of the same
     // reason. Every hireable kind now DECLARES `teamInstructions` by composing
     // the contract, so an authored one would not be caught by the closed
     // schema the way an undeclared key is — it would be accepted, and the seat

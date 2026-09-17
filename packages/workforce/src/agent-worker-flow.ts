@@ -242,8 +242,8 @@ export interface AgentWorkerFlowOptions {
  * What one worker of this kind configures, in its file.
  *
  * **Composed from the admission contract rather than written beside it.** The
- * three settings the seat factory imposes — a worker's own instructions, its
- * team's, and the skills its folders resolved — come from
+ * three settings a seat's bag may carry — a worker's own instructions, its
+ * team's (reserved), and the skills its folders resolved — come from
  * `workerConfigSchema()`, and this kind's own settings are extended on at the
  * top level. That is the move every hireable kind makes, so the one kind that
  * ships with the framework teaches the rule rather than standing outside it.

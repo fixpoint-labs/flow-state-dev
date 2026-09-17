@@ -56,7 +56,7 @@ const intakeFlow = defineFlow({
 });
 
 /**
- * The kind that never composed the contract — **kept uncomposed on purpose.**
+ * The kind whose schema cannot accept the imposed bag — **kept that way on purpose.**
  *
  * It declares no settings at all, which is the thinnest a kind can be and the
  * furthest thing from an opt-in. A bag reaches it like every other kind, so it
@@ -234,7 +234,7 @@ describe("hireWorkforce", () => {
   // which case 4 above pins — and no longer a property a kind enforces.
   //
   // What survives is the refusal that now carries that weight: a body, or
-  // anything else, handed to a kind that never composed the contract at all.
+  // anything else, handed to a kind whose schema will not take the imposed bag.
   it("hires a bodied record into any composed kind, and refuses one whose kind has no door", () => {
     const greeter = hireOne(record({ ...intake, body: "You greet people." }));
     expect(greeter.config).toMatchObject({ instructions: "You greet people." });
@@ -429,7 +429,7 @@ describe("hireWorkforce", () => {
     expect(message).not.toContain("two sources");
   });
 
-  // The third imposed key, and the sharper case of the two refused ones: every
+  // The third contract key, and the sharper case of the two refused ones: every
   // composed kind DECLARES `teamInstructions`, so the closed schema would take
   // an authored one happily and the seat would run on team instructions its
   // team never wrote. The control below is what makes that concrete.
