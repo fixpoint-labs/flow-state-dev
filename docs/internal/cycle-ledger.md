@@ -2043,7 +2043,12 @@ implementation PRs. The epic PR #1718 is still open and FIX-1351 is still `In De
 it is not re-scored here.
 
 **Method — rounds.** `Rounds` = **spent waves**: distinct commits drawing at least one
-automated pass, followed by a push. Counted from `/pulls/N/reviews` **and** `/issues/N/comments`,
+automated pass, followed by a push — **plus a terminal clean pass, which this entry counts and
+prior cycles did not.** Definition change, fenced here: a pass that finds nothing still costs a
+review cycle, and excluding it makes a converging PR look cheaper than one that stopped while
+still red. It affects exactly one row (#1834, `a97cdead8f`). **The figure comparable to cycles
+1–11 is 23 implementation rounds, not 24.** Counted from `/pulls/N/reviews` **and**
+`/issues/N/comments`,
 because **a zero-finding Codex pass posts as an issue comment, not a review** (#1834's
 converging round, `a97cdead8f`, 18:06Z). A reviews-only collector cannot see a clean round, so
 it systematically reports the last *finding* as the last look. Checked against cycle 9's three
@@ -2053,22 +2058,41 @@ of them, so **cycle 9's finding stands** — but every future row must read both
 **Agent replies still post under `jhoffner`** (cycle 10's instrument hole). All `jhoffner`
 reviews in this sample are the implementing agents' thread replies and are excluded from waves.
 
+**Method — classes.** Per the file header, `vacuous-assertion` is a **reading label**, not a
+class, and must never be summed into a class distribution. Every observation carrying it is
+counted under exactly one closed-set class in the column below; the reading label is named in
+parentheses beside it. **Fold rule used:** a `vacuous-assertion` observation counts as
+`missed-edge-case` unless the row names another class for it — the same fold cycle 7 applied
+(`vacuous-assertion` ×3 → `missed-edge-case` ×3). **The reading-label counts are a floor, not a
+census:** they were applied where the epic's narrative named the shape, not by re-reading every
+thread, so an artifact without one is *not* evidence the shape was absent. The first draft of
+this entry summed the label into the class totals; that is corrected here.
+
+**Claims (per direction artifact).** `claims-settled` = **0 across all six spec PRs and the epic
+PR** — `settle-claim` was not invoked this cycle. `claims-looped` = **0** for #1804, #1807,
+#1810, #1814 (single-round: a claim argued in two or more rounds is impossible), and **0
+verified** for #1819 (every finding raised in round 1 and folded in one reply pass). **#1809 and
+the epic PR #1718: not collected** — a real gap, since the cycle's headline direction finding
+rests on #1809. Distinguishing a zero from an uncollected value is the reason both are written
+down; collect them for #1809 next cycle.
+
 | PR | Kind | Rounds | Endpoint | Feedback classes | Felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|---|
 | [#1804](https://github.com/fixpoint-labs/flow-state-dev/pull/1804) spec FIX-1357 | spec | **1** | approval | missed-edge-case ×3 (D1 design holes) · design-off | no | — a spec-level error (D4, contradicting the epic) that **no reviewer caught**; found in the fold |
 | [#1807](https://github.com/fixpoint-labs/flow-state-dev/pull/1807) spec FIX-1367 | spec | **1** | approval | missed-edge-case ×3 · design-off (`params` re-gated, then cut by the owner) | no | — |
-| [#1809](https://github.com/fixpoint-labs/flow-state-dev/pull/1809) spec FIX-1355 | spec | **6** | approval | **vacuous-assertion ×5** (controls red/green for the wrong reason, inside the spec's own POC) · missed-edge-case ×4 · nit | no | **BP-040 did not bind: five rounds moved zero decisions.** Fresh instance for cycle 11's fix A |
+| [#1809](https://github.com/fixpoint-labs/flow-state-dev/pull/1809) spec FIX-1355 | spec | **6** | approval | missed-edge-case ×9 (*five vacuous-assertion*: controls red/green for the wrong reason, inside the spec's own POC) · nit | no | **BP-040 did not bind: five rounds moved zero decisions.** Fresh instance for cycle 11's fix A |
 | [#1810](https://github.com/fixpoint-labs/flow-state-dev/pull/1810) spec FIX-1389 | spec | **1** | approval | missed-edge-case ×2 · docs-miss | no | — **measured its parity premise instead of asserting it** (issue-spec Step 5 firing) |
 | [#1814](https://github.com/fixpoint-labs/flow-state-dev/pull/1814) spec FIX-1368 | spec | **1** | approval | missed-edge-case ×2 · design-off (D2 fence) | no | — |
 | [#1819](https://github.com/fixpoint-labs/flow-state-dev/pull/1819) spec FIX-1377 | spec | **2** | approval | missed-edge-case ×2 · nit | no | — |
 | [#1824](https://github.com/fixpoint-labs/flow-state-dev/pull/1824) impl FIX-1389 | impl | **3** | merge | missed-edge-case ×3 · docs-miss | no | — |
 | [#1826](https://github.com/fixpoint-labs/flow-state-dev/pull/1826) impl FIX-1389 | impl | **3** | merge | missed-edge-case ×2 · nit | no | — |
-| [#1832](https://github.com/fixpoint-labs/flow-state-dev/pull/1832) impl FIX-1368 | impl | **1** | merge | **vacuous-assertion ×1** — a new silent drop introduced *inside* the PR fixing the old silent drop | no | merged past its only automated pass |
-| [#1835](https://github.com/fixpoint-labs/flow-state-dev/pull/1835) impl FIX-1355 | impl | **2** | merge | **vacuous-assertion ×7** (charter unasserted · BR-15 comparing two fields · a timeout returning a count · a retry rerunning the mechanism · two controls red for the wrong reason · first-channel-vs-set) | no | **A control's blast radius is the upper bound on what it can discriminate** |
-| [#1833](https://github.com/fixpoint-labs/flow-state-dev/pull/1833) impl FIX-1367 | impl | **8** | merge | **vacuous-assertion ×6** · docs-miss ×4 (overclaim) · missed-edge-case ×3 | no | **A guard's stated coverage is a claim and was never executed** — see below |
-| [#1834](https://github.com/fixpoint-labs/flow-state-dev/pull/1834) impl FIX-1357 | impl | **7** (6 finding + 1 clean) | merge | docs-miss ×5 (one showing generator output the generator abandoned) · missed-edge-case ×4 (incl. an over-refusal `com0`) · vacuous-assertion ×1 | no | **A prose copy of generated output is a second authority for one rule** |
+| [#1832](https://github.com/fixpoint-labs/flow-state-dev/pull/1832) impl FIX-1368 | impl | **1** | merge | missed-edge-case ×1 (*vacuous-assertion*) — a new silent drop introduced *inside* the PR fixing the old silent drop | no | merged past its only automated pass |
+| [#1835](https://github.com/fixpoint-labs/flow-state-dev/pull/1835) impl FIX-1355 | impl | **2** | merge | missed-edge-case ×7 (*all seven vacuous-assertion*) (charter unasserted · BR-15 comparing two fields · a timeout returning a count · a retry rerunning the mechanism · two controls red for the wrong reason · first-channel-vs-set) | no | **A control's blast radius is the upper bound on what it can discriminate** |
+| [#1833](https://github.com/fixpoint-labs/flow-state-dev/pull/1833) impl FIX-1367 | impl | **8** | merge | missed-edge-case ×9 (*six vacuous-assertion*) · docs-miss ×4 (*overclaim*) | no | **A guard's stated coverage is a claim and was never executed** — see below |
+| [#1834](https://github.com/fixpoint-labs/flow-state-dev/pull/1834) impl FIX-1357 | impl | **7** (6 finding + 1 clean) | merge | docs-miss ×5 (one showing generator output the generator abandoned) · missed-edge-case ×5 (incl. an over-refusal `com0`; one *vacuous-assertion*) | no | **A prose copy of generated output is a second authority for one rule** |
 
-**Load: 24 rounds across six implementation PRs, 12 across six direction artifacts** — and the
+**Load: 24 rounds across six implementation PRs (23 on the prior cycles' definition — see
+*Method — rounds*), 12 across six direction artifacts** — and the
 direction side held BP-040's two-round budget on **five of six**. The whole direction overrun is
 one artifact (#1809 at 6), and its own coordinator diagnosed it correctly in the moment: *"four
 rounds moved zero decisions… review converged on direction long ago and has been doing the
@@ -2077,13 +2101,25 @@ implementer's job since."* Both long implementation PRs converged on a round tha
 
 ### The first fully-carried sample in four cycles
 
-**Every commit on all six merged implementation branches descends from `bbf7b7eb5`** (the merge
-that put cycle 7's grounding on `main`, 09-16 01:41Z). Verified by ancestry on the branch heads
-(`<merge>^2`), not timestamps: `git merge-base <head> bbf7b7eb5` returns `bbf7b7eb5` itself for
-#1824, #1826, #1832, #1833, #1834 and #1835, so the fixes were in the tree from each branch's
-first commit. (Named individually because the first draft of this entry said "four" — the epic's
-four — while the sample is six; the two FIX-1389 branches were checked after review caught it.)
-Cycles 8, 9 and 10 could score nothing; this one can.
+**Every commit authored on the six merged implementation branches descends from `bbf7b7eb5`**
+(the merge that put cycle 7's grounding on `main`, 09-16 01:41Z) — with one bounded exception,
+named below. Derived per commit, not per head: for each branch, `git rev-list <head> --not
+bbf7b7eb5` enumerates its commits and `git merge-base --is-ancestor bbf7b7eb5 <c>` is run on
+every one. A head-only `merge-base` check, which is what the first draft of this entry ran,
+proves the *head* carries the grounding and says nothing about the commits under it — the check
+whose stated scope is wider than its real one, in an entry whose subject is that shape.
+
+**The exception, and why it does not weaken the sample.** The per-commit scan returns the **same
+13 commits** on all six branches — dated 09-11 to 09-14, all `FIX-1354` / `FIX-1370` work
+inherited from the epic branch, already scored in **cycle 10** (#1735 and its neighbours) and not
+re-scored here. Every other commit on every branch descends from `bbf7b7eb5`: 35 of 48 on #1824,
+44 of 57 on #1826, 52 of 65 on #1832, 77 of 90 on #1833, 91 of 104 on #1834, 52 of 65 on #1835.
+So the work this cycle scores was authored with the grounding in the tree, which is the inference
+the sample needs.
+
+(The count was also wrong: the first draft said "four" — the epic's four — while the sample is
+six. Both FIX-1389 branches were checked after review caught it.) Cycles 8, 9 and 10 could score
+nothing; this one can.
 
 - **BP-003's red-state clause — second clean win, and the pattern of its escapes is the finding.**
   It fired repeatedly and visibly: red states produced before the fix on the symlink findings
@@ -2102,21 +2138,32 @@ Cycles 8, 9 and 10 could score nothing; this one can.
   nobody correcting anything, so no sweep was triggered. 10.6 fires when you correct a claim; this
   claim was never touched.
 
-### The dominant class on implementation — `vacuous-assertion`, 20 of 62 non-`nit` findings
+### The shape worth reading — `vacuous-assertion` on 20 of 62 non-`nit` findings
 
-Counted off the table above: **62 non-`nit` findings** — `missed-edge-case` 28, `vacuous-assertion`
-20, `docs-miss` 11, `design-off` 3. So `vacuous-assertion` is **not** the largest class overall;
-`missed-edge-case` is, and it is spread thinly across every artifact including the specs.
+**Classes (closed set), 62 non-`nit` findings:** `missed-edge-case` 48 · `docs-miss` 11 ·
+`design-off` 3. Restricted to the six implementation PRs: 37 — `missed-edge-case` 27,
+`docs-miss` 10.
 
-**Restricted to the six implementation PRs it is the largest**: 15 of 37, against `missed-edge-case`
-12 and `docs-miss` 10. That is the honest form of the claim, and it is the one to score next cycle.
+**Reading label, counted separately and never added to the above:** `vacuous-assertion` on **20
+of those 62** findings, **15 of the 37** on implementation PRs. It is the larger of the two
+reading labels and it concentrates on implementation. It is **not** a class and not "the dominant
+class" — under the closed set that is `missed-edge-case`, which is where the fold puts these
+findings anyway.
 
-(An earlier draft of this entry said "~20 of ~45" and "the largest class by a wide margin". Both
-were wrong, and a wrong baseline is worse than none, because the next cycle scores against it.
+**Prevalence, stated to what the table supports:** it is labelled on **4 of the 7 artifacts that
+ran more than one round** (#1809, #1833, #1834, #1835) — not all of them. And because the labels
+are a floor rather than a census (see *Method — classes*), 4-of-7 is itself a lower bound: #1819's
+own P1 finding was a check that could not fail on what it claimed, which is the shape, and the row
+does not carry the label.
+
+(An earlier draft said "~20 of ~45", "the largest class by a wide margin", and "every artifact
+that ran more than one round". All three were wrong: the first two summed a reading label into
+the class distribution, which the file's header forbids; the third was a universal the table
+contradicts. A wrong baseline is worse than none, because the next cycle scores against it.
 Caught in review of the PR that lands this entry — a report is a claim.)
 
-Cycle 11 proposed minting it; it appears on **every** artifact in the sample that ran more than one
-round. The epic's own statement of it:
+Cycle 11 proposed minting it as a class; it is still a reading label until the owner rules.
+The epic's own statement of it:
 
 > **A check that is green for the wrong reason — or red for the wrong reason.**
 
@@ -2179,10 +2226,13 @@ Cycle 11's **fix A** (the frozen-spec gate) remains unwritten and is not part of
 
 ### Claims to test next cycle
 
-1. **Does the consolidated BP-003 edit cut `vacuous-assertion`?** Baseline: **20 of 62** non-`nit`
-   findings overall, **15 of 37** on implementation PRs, on a fully-carried sample. Score it only on
-   branches that carry the edit, and against the implementation figure — that is where the class
-   concentrates.
+1. **Does the consolidated BP-003 edit cut `vacuous-assertion`?** Baseline: the reading label on
+   **20 of 62** non-`nit` findings overall, **15 of 37** on implementation PRs, on a
+   fully-carried sample. Score it only on branches that carry the edit, and against the
+   implementation figure — that is where the shape concentrates. Score it as a *reading label
+   rate*, never against a class total. Both baselines are floors: collect the labels by
+   re-reading threads next cycle rather than from the narrative, or the trend measures
+   collection effort instead of the shape.
 2. **Does deriving a check's scope beat stating it?** Baseline: 11 found by one derived scan vs 4
    by six rounds of review, same population.
 3. **Does a freeze hold?** Cycle 11's fix A now has a second instance: #1809, five rounds moving
