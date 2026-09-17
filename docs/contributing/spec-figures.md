@@ -226,7 +226,19 @@ one reason to render PNGs for a body. Default to the SVG.
 
 **Some tooling refuses to write an image into a body.** The GitHub tool this repo's cloud agents
 write PR bodies with wraps every absolute image URL in backticks on write — SVG or PNG, markdown or
-`<img>`, reference-style or bare — so the body arrives with the image defanged into code. Two
+`<img>`, reference-style or bare — so the body arrives with the image defanged into code.
+
+**Three things about it, measured on a real PR rather than assumed** (#1818):
+
+- **It is deterministic, not sporadic.** The same URL defangs on every write, so a retry is not a
+  fix and "it worked last time" is not evidence.
+- **It keys on the URL, not the link text.** Renaming a link changed nothing; changing what the URL
+  pointed at fixed it. A `.md` filename can trigger it too, not only an image — so a *link* can
+  arrive defanged while the images beside it survive.
+- **Creating a PR does not defang; updating one does.** Images written by `create_pull_request`
+  render; the first `update_pull_request` kills them. So the safe pattern is **get the body right
+  on the first write**, and treat every later edit as unable to carry an image — which is the real
+  reason the never-rewrite rule below is not merely about politeness to a human's paste. Two
 rules follow. **If the image line comes back as code, don't fight it**: leave a link to the spec's
 blob view (which renders every figure) where the image would have been, and hand the person the
 exact `<img>` line to paste — a person pasting it into the description works. **A body a person
