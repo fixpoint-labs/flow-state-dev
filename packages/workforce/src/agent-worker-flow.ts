@@ -51,13 +51,12 @@
  * is the seat's, not the skill's: a seat with `tools: []` reaches nothing,
  * including through a worker it delegated to.
  *
- * The one place that fence is upheld by convention rather than by the
- * framework is {@link AgentWorkerFlowOptions.uses}: the resolver unions a
- * capability's tools onto the generator's list instead of intersecting it
- * with the seat's, so an app passing a capability with default-on tools must
- * turn them off at the preset. FIX-1393 moves the intersection into
- * `@flow-state-dev/core`, at which point the convention stops mattering. The
- * rule itself does not change either way.
+ * {@link AgentWorkerFlowOptions.uses} is fenced by the framework too
+ * (FIX-1393): core drops a capability's catalog-granted tools when the block
+ * declares `tools:`, and this kind declares it on every seat. An app passing a
+ * capability with default-on tools no longer has to turn them off to keep a
+ * seat's list honest. What the fence does not touch is a capability's
+ * `controlTools` — see the paragraph above.
  */
 
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
@@ -200,13 +199,13 @@ export interface AgentWorkerFlowOptions {
    * somewhere (see `UsesEntry` in `@flow-state-dev/core`). Pass a capability
    * dynamically and its stores are *not* installed by that entry alone.
    *
-   * **Tool-carrying presets are not fenced here.** The framework's resolver
-   * unions a capability's tools onto the generator's own list rather than
-   * intersecting it, so a preset that ships a tool reaches a worker whose
-   * `tools:` is empty. FIX-1393 lands that intersection in
-   * `@flow-state-dev/core`; until it does, an app passing a capability with
-   * default-on tools turns them off at the preset, as the README's memory
-   * recipe does with `recall` and `connect`.
+   * **Tool-carrying presets ARE fenced** (FIX-1393). Core drops a capability's
+   * catalog-granted tools when the consuming block declares `tools:`, and this
+   * kind declares it on every seat — so a preset that ships a tool does not
+   * reach a worker whose `tools:` is empty. Turning such presets off at the
+   * preset (as the README's memory recipe does with `recall` and `connect`) is
+   * still reasonable on cost grounds, but it is no longer what keeps the seat's
+   * list honest. A capability's `controlTools` are exempt by design.
    */
   uses?: UsesSlot;
   /**
