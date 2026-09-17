@@ -15,7 +15,7 @@ Documents live in the same tree as [workers](./workers-on-disk.md) and [skills](
 
 ## The tree
 
-Two `resources/` folders are read: one for the organization, one per team.
+A `resources/` folder is read wherever the tree puts one: at the organization level, in a team, and inside a single worker's own folder.
 
 ```
 workforce/
@@ -26,12 +26,19 @@ workforce/
     engineering/
       resources/
         handbook.md
+      workers/
+        on-call/
+          WORKER.md
+          resources/
+            runbook.md
     support/
       resources/
         escalation.md
 ```
 
-Three documents, one shared across the organization and two belonging to a team. Every example below reads this tree.
+Four documents: one shared across the organization, two belonging to a team, and one belonging to a single seat. Every example below reads this tree.
+
+A worker's own folder is what lets two seats each have a `runbook` without their authors agreeing on a name. Organization-level workers, under `org/workers/`, are read the same way.
 
 A document is a **file**, not a folder. A worker and a skill are each a folder with a fixed file inside it; a document is `<name>.md` sitting directly in `resources/`. A directory in a `resources/` folder is reported rather than passed over, so `resources/handbook/RESOURCE.md` is an error and not a document that quietly went missing.
 
@@ -64,14 +71,16 @@ Everything outside that set arrives at the resource exactly as written, so `llmR
 
 ## A document's ref
 
-A document's ref is its identity. At the organization level it is the bare file name. Under a team it is the team folder and the file name, joined with a slash:
+A document's ref is its identity. It is built from the folders above the file, joined with slashes. At the organization level it is the bare file name:
 
 | Path | Ref |
 |------|-----|
 | `<root>/org/resources/code-of-conduct.md` | `code-of-conduct` |
 | `<root>/teams/engineering/resources/handbook.md` | `teams/engineering/handbook` |
+| `<root>/teams/engineering/workers/on-call/resources/runbook.md` | `teams/engineering/workers/on-call/runbook` |
+| `<root>/org/workers/build/resources/runbook.md` | `workers/build/runbook` |
 
-The team qualifier means every team can have a `handbook` without checking what the other teams called theirs.
+Each qualifier means a name only has to be unique where it sits. Every team can have a `handbook`, and every seat a `runbook`, without checking what anyone else called theirs.
 
 The ref is also the key the document is installed under, and a resource's [accessor key](/docs/resources/overview#block-level-resource-declarations) is what a block reads on `ctx.resources`:
 
@@ -79,7 +88,9 @@ The ref is also the key the document is installed under, and a resource's [acces
 const handbook = await ctx.resources["teams/engineering/handbook"].readContent();
 ```
 
-Document and team folder names must be lowercase letters, digits, and single hyphens, at most 64 characters each. So `on-call.md` is fine. `On Call.md` and `on.call.md` are reported when the tree is read, with the rule in the message.
+Document, team and worker folder names must be lowercase letters, digits, and single hyphens, at most 64 characters each. So `on-call.md` is fine. `On Call.md` and `on.call.md` are reported when the tree is read, with the rule in the message.
+
+A worker folder's documents load whether or not the folder holds a `WORKER.md`. This reader is answering a question about a file; whether the folder also describes a seat is [the roster reader's](./workers-on-disk.md) question, and it reports a folder missing its `WORKER.md` separately.
 
 ## Reading the tree
 
@@ -196,7 +207,7 @@ await ctx.resources.get("teams/engineering/handbook").readContent();
 
 Put `requireOrg: true` on the blocks that read a document, as the example in the next section does. The flow then turns away a request with no org up front, instead of running it and coming up empty. How a request carries its org is covered in [the client reference](/docs/configuration/client).
 
-### The team folder is a namespace, not a visibility boundary
+### A folder is a namespace, not a visibility boundary
 
 Every file-declared document is org-scoped, and a generator's resource tools reach every installed document marked `llmReadable`, with no per-team filter. Install a whole tree on one flow and every team's documents are reachable from it.
 
@@ -207,6 +218,23 @@ const engineering = resourcesFromDocs(
   documents.filter((doc) => doc.ref.startsWith("teams/engineering/")),
 );
 ```
+
+The same is true one level down, and it is worth being plain about. Putting a document under `workers/on-call/` addresses it to that seat. It does not keep it from the others. Seats hired into one kind share that kind's flow definition, so by default every one of them reads the same row.
+
+### Giving one seat a document of its own
+
+A document whose frontmatter carries `flowIsolation: true` gets one row per seat:
+
+```md
+---
+description: This seat's own working notes.
+flowIsolation: true
+---
+```
+
+The seat that writes it reads it back. A sibling seat asking for the same document gets its own empty copy, not an error and not the first seat's copy.
+
+That line is the boundary, not the folder it sits in. A document in a worker's folder without it is shared across every seat of the kind, the same as a team's handbook.
 
 ### Letting a model read a document
 
@@ -239,4 +267,5 @@ A document that needs a state schema of its own, a `render` function, [reactive 
 - It does not watch the tree. Read it once, at startup.
 - It does not follow symlinks, at any level of the walk.
 - It does not install anything. `readResourcesDirectory` hands back records, `resourcesFromDocs` hands back a map, and you put the map on your flow.
-- It does not read a team's `workers/` or `skills/` folders. Those are [Workers on disk](./workers-on-disk.md) and [Skills](../skills/overview.md).
+- It does not read `WORKER.md` or any `skills/` folder. Those are [Workers on disk](./workers-on-disk.md) and [Skills](../skills/overview.md). It reads a worker folder only to find a `resources/` folder inside it.
+- It does not decide which seat may read which document. `flowIsolation` in a document gives each seat its own copy; nothing here refuses a read.
