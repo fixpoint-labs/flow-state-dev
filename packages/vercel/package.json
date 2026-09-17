@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/vercel",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Vercel deployment adapter for flow-state-dev.",
   "keywords": [
     "ai",

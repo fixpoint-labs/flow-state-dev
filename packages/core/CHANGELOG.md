@@ -1,5 +1,13 @@
 # @flow-state-dev/core
 
+## 0.1.2
+
+### Patch Changes
+
+- b56e7d1: Every package can be imported again: 0.1.1 shipped JavaScript whose relative imports were missing the file extensions Node's ESM resolver requires, so importing any 0.1.1 package failed with `ERR_MODULE_NOT_FOUND` (FIX-1431).
+- Updated dependencies [b56e7d1]
+  - @flow-state-dev/contracts@0.1.1
+
 ## 0.1.1
 
 ### Patch Changes
