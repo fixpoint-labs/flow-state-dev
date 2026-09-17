@@ -91,7 +91,7 @@
     "vitest": "latest"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run --root .",
     "test:watch": "vitest --root ."

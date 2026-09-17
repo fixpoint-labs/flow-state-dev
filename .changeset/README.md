@@ -31,9 +31,10 @@ Fragment format:
 "@flow-state-dev/<package>": patch
 ---
 
-One-sentence user-facing description (FIX-123). Multi-paragraph or
-migration notes are fine when warranted.
+One user-facing sentence (FIX-123).
 ```
+
+One sentence, not a summary of the work: the body becomes that package's `CHANGELOG.md` entry, so implementation rationale, decision lineage and file paths belong in the PR instead. [`release-notes-workflow.md`](../docs/contributing/release-notes-workflow.md) is authoritative here.
 
 Don't hand-write one that names a private package: a fragment mixing a skipped package with a publishable one fails the entire release run, not just that fragment.
 

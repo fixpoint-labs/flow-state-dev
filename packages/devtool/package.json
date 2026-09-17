@@ -98,7 +98,7 @@
     "vitest": "^3.2.4"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-styles.mjs",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist && node scripts/copy-styles.mjs",
     "build:assets": "node scripts/build-assets.mjs",
     "prepublishOnly": "node scripts/check-assets.mjs",
     "typecheck": "node ../../scripts/typecheck.mjs",
