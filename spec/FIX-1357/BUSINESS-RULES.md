@@ -25,6 +25,7 @@ Fatal when `fsdev gen` runs, never at boot, and **collected** so one run names a
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-8 | A basename is not a legal segment (uppercase, dots, underscores, over-long) | Refused, naming the file and the rule. The basename becomes a kind name and a flow instance id, so it obeys the rule every other segment in this tree obeys | CI |
+| BR-19 | A basename is one Windows reserves for a device (`con`, `prn`, `aux`, `nul`, `com1`-`com9`, `lpt1`-`lpt9`) | Refused, naming the file and the reason. These satisfy BR-8's grammar, and Windows refuses them **with any extension**, so a tree holding one generates cleanly on POSIX and then cannot be checked out on Windows at all. Enforced in `validateSegment` for **every** label, not only `Kind`/`Block` — `Team`, `Worker`, `Channel` and `Document` had the same hole, and two authorities for one rule is worse than the gap. `com0` and `lpt0` are **not** reserved and stay legal; the over-refusal is pinned by its own case | CI |
 | BR-11 | `flows/workers/x.ts` and `flows/channels/x.ts` both exist | Refused. The two maps are separate (D4), so nothing downstream collides — it is refused because one basename meaning two kinds is the ambiguity this convention removes | CI |
 | BR-12 | A locked folder is present but unreadable | Refused, naming the path. Never folded into "absent": absent means no custom code, unreadable means code we failed to see | CI |
 
