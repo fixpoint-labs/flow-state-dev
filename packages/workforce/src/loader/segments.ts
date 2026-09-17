@@ -35,6 +35,29 @@ const MAX_SEGMENT_LENGTH = 64;
 const RESERVED_SEGMENTS = new Set(["_meta"]);
 
 /**
+ * Names Windows reserves for DOS devices, which it refuses **with any
+ * extension** — `con.ts` and `nul.md` are as unopenable as `con`.
+ *
+ * They pass `SEGMENT_PATTERN` (they are lowercase letters and digits), so
+ * without this a tree authored on macOS or Linux generates and commits
+ * cleanly, and the repository then cannot be checked out on Windows at all.
+ * The failure lands on someone who did not write the file and reads as a
+ * broken clone rather than as a naming mistake.
+ *
+ * Checked in lowercase only, which is sufficient because the pattern above
+ * already refuses every other casing. `clock$` needs no entry — `$` is not in
+ * the allowlist.
+ */
+const DOS_DEVICE_SEGMENTS: ReadonlySet<string> = new Set([
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  ...Array.from({ length: 10 }, (_, n) => `com${n}`),
+  ...Array.from({ length: 10 }, (_, n) => `lpt${n}`),
+]);
+
+/**
  * What a segment names, for the error to say.
  *
  * `Team` and `Worker` are the two halves of a seat's address, and `Channel` is
@@ -68,6 +91,12 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
   }
   if (RESERVED_SEGMENTS.has(segment)) {
     throw new Error(`${what} "${segment}" is reserved`);
+  }
+  if (DOS_DEVICE_SEGMENTS.has(segment)) {
+    throw new Error(
+      `${what} "${segment}" is a reserved device name on Windows — a tree ` +
+        `containing it cannot be checked out there, whatever the extension`,
+    );
   }
   if (!SEGMENT_PATTERN.test(segment)) {
     const identity =

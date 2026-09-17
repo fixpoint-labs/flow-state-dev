@@ -30,15 +30,25 @@ import {
 /** Which locked folder a discovered file came from. */
 export type CodeSlotId = "worker" | "channel" | "block";
 
-/** One locked folder, and what a file in it becomes. */
+/**
+ * One locked folder, and what a file in it becomes.
+ *
+ * Every field is `readonly`, and each descriptor is frozen where it is
+ * declared. `CODE_SLOTS` is a published export, and `dir` is joined onto the
+ * workforce root to decide what the walk reads: a caller who could assign
+ * `CODE_SLOTS[0].dir = "../outside"` would send the walk out of the validated
+ * root and put `./../outside/...` in the generated module. Freezing the array
+ * alone does not stop that — `Object.freeze` is shallow, and `as const` is a
+ * type-level assertion that does not survive the declared `CodeSlot` type.
+ */
 export interface CodeSlot {
-  id: CodeSlotId;
+  readonly id: CodeSlotId;
   /** Path under the workforce root, POSIX, relative. Owner-locked. */
-  dir: string;
+  readonly dir: string;
   /** The map this slot's files are rendered onto. Public: an app imports it. */
-  exportName: "kinds" | "channelKinds" | "blocks";
+  readonly exportName: "kinds" | "channelKinds" | "blocks";
   /** What a basename here names, for a refusal to say. */
-  label: SegmentLabel;
+  readonly label: SegmentLabel;
 }
 
 /**
@@ -49,9 +59,9 @@ export interface CodeSlot {
  * rather than a kinds-only one the blocks half would later have to match.
  */
 export const CODE_SLOTS: readonly CodeSlot[] = Object.freeze([
-  { id: "worker", dir: "flows/workers", exportName: "kinds", label: "Kind" },
-  { id: "channel", dir: "flows/channels", exportName: "channelKinds", label: "Kind" },
-  { id: "block", dir: "blocks", exportName: "blocks", label: "Block" },
+  Object.freeze({ id: "worker", dir: "flows/workers", exportName: "kinds", label: "Kind" }),
+  Object.freeze({ id: "channel", dir: "flows/channels", exportName: "channelKinds", label: "Kind" }),
+  Object.freeze({ id: "block", dir: "blocks", exportName: "blocks", label: "Block" }),
 ] as const);
 
 /**

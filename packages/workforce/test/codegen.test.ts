@@ -16,6 +16,7 @@ import { join } from "node:path";
 import fsp from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CODE_SLOTS,
   WorkforceCodeError,
   discoverWorkforceCode,
   renderWorkforceCode,
@@ -245,6 +246,33 @@ describe("what the walk refuses", () => {
     expect(problems[0]).toContain("lowercase letters, digits, and single hyphens");
   });
 
+  it("refuses a basename Windows reserves for a device, whatever the extension", async () => {
+    const root = tree({
+      "flows/workers/con.ts": "export default {};",
+      "blocks/nul.ts": "export default {};",
+      "flows/channels/com1.ts": "export default {};",
+    });
+
+    const problems = await refusalsOf(root);
+
+    // These pass the lowercase-and-hyphens rule, so without a refusal the tree
+    // generates and commits cleanly on macOS or Linux and the repository then
+    // cannot be checked out on Windows at all. The person it breaks is not the
+    // one who added the file, and it reads as a broken clone rather than as a
+    // naming mistake — so it is caught in the walk, where the name is chosen.
+    // Refusals come back in slot order (worker, channel, block) — the order
+    // `CODE_SLOTS` declares — which is not the path order the *files* render
+    // in. Both are deliberate and they are not the same list.
+    expect(problems).toEqual([
+      expect.stringContaining('"flows/workers/con.ts"'),
+      expect.stringContaining('"flows/channels/com1.ts"'),
+      expect.stringContaining('"blocks/nul.ts"'),
+    ]);
+    for (const problem of problems) {
+      expect(problem).toContain("reserved device name on Windows");
+    }
+  });
+
   it("refuses one basename claimed by both flow folders", async () => {
     const root = tree({
       "flows/workers/standup.ts": "export default {};",
@@ -344,6 +372,30 @@ describe("staying in step", () => {
       "./flows/workers/analyst",
       "./flows/workers/researcher",
     ]);
+  });
+});
+
+describe("the locked folders themselves", () => {
+  it("refuses a slot descriptor edit, so the walk cannot be steered out of the root", () => {
+    // `CODE_SLOTS` is published, and `dir` is joined onto the workforce root to
+    // decide what the walk reads. A mutable descriptor is a way to send the
+    // walk outside the validated root and get `./../outside/...` into the
+    // generated module — a path no refusal would ever see, because the walk
+    // would have been pointed there rather than having wandered.
+    //
+    // `Object.freeze` on the array alone does not stop it: freeze is shallow,
+    // and `as const` is a type-level assertion that does not survive the
+    // declared `readonly CodeSlot[]` type. Both halves are pinned here.
+    const slot = CODE_SLOTS[0];
+
+    // @ts-expect-error — `dir` is readonly; this must not typecheck.
+    expect(() => void (slot.dir = "../outside")).toThrow(TypeError);
+    expect(slot.dir).toBe("flows/workers");
+
+    for (const each of CODE_SLOTS) {
+      expect(Object.isFrozen(each)).toBe(true);
+    }
+    expect(Object.isFrozen(CODE_SLOTS)).toBe(true);
   });
 });
 
