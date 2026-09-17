@@ -13,6 +13,13 @@
  * returns one `ChannelManifest` per channel. All five stop there — nothing here
  * builds a flow, an agent, a resource, a channel instance or a registry.
  *
+ * Under all of them sit the walk primitives the readers share, published for
+ * the next convention to build on rather than copy: `openRoot` opens the
+ * configured root, `walkTeams` enumerates `teams/`, `openStructuralDirectory`
+ * and `classify` answer for one path, `refusedSymlink` and `unreadable` are the
+ * one wording for each refusal, and `IGNORED_ENTRIES` is the one list of names
+ * that never denote anything. What a reader does inside a team is its own.
+ *
  * Kept behind a subpath so importing the package root does not pull a consumer
  * onto `node:fs`.
  */
@@ -25,6 +32,8 @@ export {
 export {
   readWorkforceDirectory,
   type ReadWorkforceDirectoryResult,
+  type WorkerManifestError,
+  type WorkerManifestErrorKind,
 } from "./read-workforce-directory";
 
 export {
@@ -49,6 +58,19 @@ export {
   type ReadChannelsDirectoryResult,
 } from "./read-channels-directory";
 
-export type { PathReport } from "./structural-directory";
+export {
+  IGNORED_ENTRIES,
+  classify,
+  openRoot,
+  openStructuralDirectory,
+  refusedSymlink,
+  unreadable,
+  walkTeams,
+  type Entry,
+  type EntryKind,
+  type OpenedDirectory,
+  type PathReport,
+  type WalkedTeam,
+} from "./structural-directory";
 
 export type { WorkerManifest, ResourceDoc, ChannelManifest } from "../manifest";

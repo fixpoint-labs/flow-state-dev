@@ -33,6 +33,15 @@ the **position** of an element means. If the thing is a graph, mermaid wins on e
 | Epic | **How the issues flow into each other** — the dependency graph, with what each hands the next | mermaid `flowchart LR`, edited in place as issues are filed and finish | `SPEC.md` beside the set table | No (linked) |
 | Epic | **Who owns what** — rule × issue, each rule with exactly one owner | SVG (a matrix) | `DECISIONS.md` | **Yes** |
 | Epic | **The path** — one lane per issue against time, done and in-flight bars, a now line, the critical path | SVG (lanes against time), **redrawn as the set moves** | `PLAN.md` | **Yes** |
+| Project | **The territory** — owned here · the substrate assembled but owned elsewhere · outside the project, with the fence that separates them | SVG (containment and a fence) | `SPEC.md` | **Yes** |
+| Project | **How the epics flow into each other** — the dependency graph, edited in place as epics are filed and wrap | mermaid `flowchart LR` | `SPEC.md` beside the epics table | No (linked) |
+| Project | **The arc** — one lane per epic against time, a now line, **redrawn as the project moves** | SVG (lanes against time) | `PLAN.md` | **Yes** |
+| Project | **Who owns what** — rule × epic | SVG (a matrix) | `DECISIONS.md` | Only once `BUSINESS-RULES.md` carries **three or more** rules |
+
+**The arc is the path one altitude up**, and it is drawn the same way for the same reason: lanes
+against time, redrawn every refresh. A project whose epics have no bars yet gets lane labels and no
+rectangles — an epic that has not started is not a zero-width bar, and a dashed placeholder box
+reads as duration to everyone who is not its author.
 
 **The plan carries no figures at issue altitude.** It is written for the implementing agent, which
 reads tables and a DAG faster than a picture. At epic altitude the plan's one figure is the path,
@@ -176,7 +185,10 @@ A figure nobody rendered is how a wrong one ships. Headless Chromium is on every
 renders both themes in a second:
 
 ```bash
-S=spec/<ISSUE-ID>/figures/<name>.svg; H=$(grep -oE 'viewBox="0 0 940 [0-9]+' "$S" | grep -oE '[0-9]+$')
+# S is the figure: spec/<ISSUE-ID>/figures/…, spec/_epics/<name>/figures/…, or
+# spec/_projects/<slug>/figures/… — the rest of the block is altitude-independent.
+S=spec/<ISSUE-ID>/figures/<name>.svg
+H=$(grep -oE 'viewBox="0 0 940 [0-9]+' "$S" | grep -oE '[0-9]+$')
 CH=/opt/pw-browsers/chromium-*/chrome-linux/chrome
 printf '<html><body style="margin:0;background:#FCFCFA"><img src="%s" width="940"></body></html>' "$(realpath "$S")" > /tmp/light.html
 sed 's/@media (prefers-color-scheme: dark) {/@media all {/' "$S" > /tmp/dark.svg
@@ -217,7 +229,19 @@ one reason to render PNGs for a body. Default to the SVG.
 
 **Some tooling refuses to write an image into a body.** The GitHub tool this repo's cloud agents
 write PR bodies with wraps every absolute image URL in backticks on write — SVG or PNG, markdown or
-`<img>`, reference-style or bare — so the body arrives with the image defanged into code. Two
+`<img>`, reference-style or bare — so the body arrives with the image defanged into code.
+
+**Three things about it, measured on a real PR rather than assumed** (#1818):
+
+- **It is deterministic, not sporadic.** The same URL defangs on every write, so a retry is not a
+  fix and "it worked last time" is not evidence.
+- **It keys on the URL, not the link text.** Renaming a link changed nothing; changing what the URL
+  pointed at fixed it. A `.md` filename can trigger it too, not only an image — so a *link* can
+  arrive defanged while the images beside it survive.
+- **Creating a PR does not defang; updating one does.** Images written by `create_pull_request`
+  render; the first `update_pull_request` kills them. So the safe pattern is **get the body right
+  on the first write**, and treat every later edit as unable to carry an image — which is the real
+  reason the never-rewrite rule below is not merely about politeness to a human's paste. Two
 rules follow. **If the image line comes back as code, don't fight it**: leave a link to the spec's
 blob view (which renders every figure) where the image would have been, and hand the person the
 exact `<img>` line to paste — a person pasting it into the description works. **A body a person

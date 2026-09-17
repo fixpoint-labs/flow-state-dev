@@ -672,7 +672,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 356" role="img" aria-label="What a team of agents needs, mapped to the layer that supplies it: seven capabilities are built — identity, tool surface, a place for work, a planning member, a shared workspace, per-member memory, and outliving the turn. Two Agent fields are reserved or not honored. The team itself is not a first-class Layer 1 object: it is Layer 2: a roster of seats plus shared rooms plus dispatch.">
+      <svg viewBox="0 0 940 356" role="img" aria-label="What a team of agents needs, mapped to the layer that supplies it: seven capabilities are built — identity, tool surface, a place for work, a planning member, a shared workspace, per-member memory, and outliving the turn. Two Agent fields are reserved or not honored. The team itself is not a first-class Layer 1 object: it is Layer 2: a roster of seats plus shared channels plus dispatch.">
         <text class="t-lbl" x="24" y="20">What a team of agents needs</text>
         <text class="t-lbl" x="330" y="20">The layer that supplies it</text>
         <text class="t-lbl" x="782" y="20">Status</text>
@@ -731,7 +731,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="855" y="332" text-anchor="middle">LOCKED</text>
       </svg>
     </div>
-    <figcaption><b>Seven built, two reserved, the team row closed.</b> <code>usesSkills</code> and <code>contextMode: "fork"</code> are declared on <code>Agent</code> and warn at materialization — deferred, not undecided. The team itself is not a first-class Layer&nbsp;1 object. A roster is the seat-list; a team is that roster plus shared rooms plus dispatch as Layer&nbsp;2. Workforce story: <a href="workforce.html#fence">Workforce atlas</a>.</figcaption>
+    <figcaption><b>Seven built, two reserved, the team row closed.</b> <code>usesSkills</code> and <code>contextMode: "fork"</code> are declared on <code>Agent</code> and warn at materialization — deferred, not undecided. The team itself is not a first-class Layer&nbsp;1 object. A roster is the seat-list; a team is that roster plus shared channels plus dispatch as Layer&nbsp;2. Workforce story: <a href="workforce.html#fence">Workforce atlas</a>.</figcaption>
   </figure>
 
   <h3>What "a team" would mean, given what already exists</h3>
@@ -746,7 +746,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <h5>Closed: a team is not a Layer 1 type</h5>
     <p>Everything below workforce got built because a running system needed it. Workforce is the one layer specified top-down — the <code>Agent</code> type carries two fields nothing resolves, and its capability factory returns a name and a TODO. That is the shape tenet 3 warns about: a contract taken on before there was a caller.</p>
     <p>The generous reading is that it is a placeholder held deliberately while the layers underneath matured — and they did mature; seven of the ten needs above are now met by systems that did not exist when <code>Agent</code> was first written.</p>
-    <p>Closed: a team is <strong>not</strong> a first-class Layer&nbsp;1 primitive. A roster is the seat-list; a team is that roster plus shared rooms plus dispatch as Layer&nbsp;2. A seat is a flow instance, not an Agent catalog row. Product Agent is later Layer&nbsp;2. <code>Agent</code> / <code>AgentRegistry</code> are the old surface &#8212; honesty lives on the <a href="workforce.html#fence">Workforce atlas &#167;04</a>. Workforce is the product; Conductor is a config on it &#8212; <a href="workforce.html#conductor">Workforce atlas &#167;16</a>. Readiness gaps live on that page &#8212; <a href="workforce.html#gaps">&#167;19</a> &#8212; not as new Layer&nbsp;1 nouns.</p>
+    <p>Closed: a team is <strong>not</strong> a first-class Layer&nbsp;1 primitive. A roster is the seat-list; a team is that roster plus shared channels plus dispatch as Layer&nbsp;2. A seat is a flow instance, not an Agent catalog row. Product Agent is later Layer&nbsp;2. <code>Agent</code> / <code>AgentRegistry</code> are the old surface &#8212; honesty lives on the <a href="workforce.html#fence">Workforce atlas &#167;04</a>. Workforce is the product; DevForce is a Lab on it &#8212; <a href="workforce.html#conductor">Workforce atlas &#167;16</a>. Readiness gaps live on that page &#8212; <a href="workforce.html#gaps">&#167;19</a> &#8212; not as new Layer&nbsp;1 nouns.</p>
   </div>
 </section>
 
@@ -765,7 +765,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>patterns</code></td><td>Composition</td><td class="num">8,058</td><td class="num">54</td><td>Eight named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
       <tr><td><code>memory</code></td><td>Composition</td><td class="num">7,825</td><td class="num">32</td><td>Four memory tiers (working / episodic / semantic / digest), consolidation, hygiene janitor, recall tools, one composed capability.</td><td>core</td></tr>
       <tr><td><code>tools</code></td><td>Composition</td><td class="num">7,170</td><td class="num">53</td><td>Search (7 providers), fetch (3), crawl (2), sandboxed bash (5 adapters), MCP client manager.</td><td>core</td></tr>
-      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">397</td><td class="num">8</td><td>Named agents: registry, persona definition and resolution, materialization into a block. The L2 product (teams / seats / rooms) is convention, not this package yet &mdash; see &sect;04 and the <a href="workforce.html">Workforce atlas</a>.</td><td>core, orchestration</td></tr>
+      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">397</td><td class="num">8</td><td>Named agents: registry, persona definition and resolution, materialization into a block. The L2 product (teams / seats / channels) is convention, not this package yet &mdash; see &sect;04 and the <a href="workforce.html">Workforce atlas</a>.</td><td>core, orchestration</td></tr>
       <tr><td><code>@thought-fabric/core</code></td><td>Composition</td><td class="num">3,931</td><td class="num">17</td><td>Cognitive primitives: attention (salience, relevance), identity (constitution, perspective), metacognition (bias detection).</td><td>core</td></tr>
       <tr><td><code>ui</code></td><td>Composition</td><td class="num">387</td><td class="num">10</td><td>Generative component registry — link-card, info-card.</td><td>contracts, core</td></tr>
       <tr><td><code>store-sqlite</code></td><td>Persistence</td><td class="num">3,301</td><td class="num">16</td><td>SQLite-backed implementation of the store registry.</td><td>core, engine</td></tr>
@@ -1735,7 +1735,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <h3>Workforce</h3>
   <p>The smallest composition package in the repo at 397 lines across 8 files, plus hire / loader that landed after that pin. Six old-surface exports: <code>defineAgent</code>, <code>definePersona</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code>, <code>agentBlock</code>, <code>createWorkforceCapability</code>. That catalog path is the old surface. The teach &#8212; workers as generators/flows with instructions + model + tools; seats as flow instances &#8212; is the <a href="workforce.html#fence">Workforce atlas</a>.</p>
-  <p>What the package does and does not yet do is <a href="#workforce-layer">&sect;04</a>. The product lock &#8212; Workforce as the Layer&nbsp;2 surface, Conductor as a team config on it &#8212; is the <a href="workforce.html">Workforce atlas</a>, not this inventory.</p>
+  <p>What the package does and does not yet do is <a href="#workforce-layer">&sect;04</a>. The product lock &#8212; Workforce as the Layer&nbsp;2 surface, DevForce as a Lab on it &#8212; is the <a href="workforce.html">Workforce atlas</a>, not this inventory.</p>
 
   <h3>Thought fabric</h3>
   <p><code>@thought-fabric/core</code> is a separate namespace for cognitive-architecture primitives built on FSD rather than part of it: <strong>attention</strong> (salience scoring, relevance filtering), <strong>identity</strong> (constitution, perspective system with its own capability), and <strong>metacognition</strong> (bias detection). Its naming convention encodes category by word order — <code>perspectiveObserve</code> is a block, <code>addPerspective</code> is a helper — so the inversion signals the kind without documentation.</p>
@@ -2117,7 +2117,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 <section id="lenses">
   <div class="sec-head"><span class="sec-num">27</span><h2>Refactor lenses</h2></div>
   <p class="lede">Nine tensions the inventory surfaces. None of these is a bug report — each is a place where the code and the stated grounding pull in slightly different directions, and where a decision would be worth more than another patch.</p>
-    <p>Two of them now have an owner's decision attached and live in <a href="#ledger">&sect;26</a> instead: the superseded paths, and the packages proposed for extraction, splitting, or merge. A tenth sat in <a href="#workforce-layer">&sect;04</a> and is closed: a team is not a first-class Layer&nbsp;1 primitive — a roster is the seat-list; a team is that roster plus shared rooms plus dispatch as Layer&nbsp;2. Workforce story: <a href="workforce.html#fence">Workforce atlas</a>.</p>
+    <p>Two of them now have an owner's decision attached and live in <a href="#ledger">&sect;26</a> instead: the superseded paths, and the packages proposed for extraction, splitting, or merge. A tenth sat in <a href="#workforce-layer">&sect;04</a> and is closed: a team is not a first-class Layer&nbsp;1 primitive — a roster is the seat-list; a team is that roster plus shared channels plus dispatch as Layer&nbsp;2. Workforce story: <a href="workforce.html#fence">Workforce atlas</a>.</p>
 
   <div class="tension">
     <h5>1 · The two mega-packages</h5>

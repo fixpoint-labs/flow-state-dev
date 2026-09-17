@@ -6,7 +6,8 @@
  *    throwaway POC backing it. Neither ever lands on `main` — the spec PR closes
  *    unmerged at approval and its branch is kept as a frozen record — so both
  *    must be empty (README only) everywhere else. Spec and epic PRs carry them,
- *    so CI skips this script for them by BRANCH name (`spec/*`, `epic/*` — see
+ *    so CI skips this script for them by BRANCH name (`spec/*`, `epic/*`,
+ *    `project/*` — see
  *    `.github/workflows/ci.yml`, which explains why the `spec` label can't be
  *    the key); every other PR and `main` itself is checked.
  * 2. Source and docs must not cite a spec by repo path. No spec file exists on
@@ -92,7 +93,7 @@ const RETIRED_EXEMPT = [
 // holds (spec-figures.md admits no other asset into `figures/`), and a path with
 // no extension names a directory, which is a location, not a link that dangles.
 const SPEC_CITATION =
-  /(?<!docs\/)\bspec\/(?:[A-Z]{2,6}-\d+(?:[^\s`"')]*)?|_epics\/[^\s<>`"')]+)\.(?:md|svg)/g;
+  /(?<!docs\/)\bspec\/(?:[A-Z]{2,6}-\d+(?:[^\s`"')]*)?|_(?:epics|projects)\/[^\s<>`"')]+)\.(?:md|svg)/g;
 const CITATION_EXEMPT = [
   "docs/internal/",
   "scripts/validate-spec-folder.mjs",
@@ -201,7 +202,8 @@ function main() {
     for (const name of stray) console.error(`    ${name}`);
     console.error(
       `\n  A spec and its POC live on the spec PR and in Linear — never on main.` +
-        `\n  CI skips this check on a spec branch (spec/*) or an epic branch (epic/*).` +
+        `\n  CI skips this check on a spec branch (spec/*), an epic branch (epic/*),` +
+        `\n  or a project branch (project/*).` +
         `\n  Adding the "spec" label will NOT skip it — the exemption is the branch name.` +
         `\n  Otherwise remove the file; the Linear document is the durable copy.\n`,
     );

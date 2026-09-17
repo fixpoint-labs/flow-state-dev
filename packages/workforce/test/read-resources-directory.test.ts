@@ -204,6 +204,61 @@ describe("readResourcesDirectory", () => {
       expect(errors[0]!.error.message).toMatch(/Symlinked/);
     });
 
+    it("refuses a symlinked team folder instead of dropping its documents", async () => {
+      // One level above the `resources/` case, and the level the shared team
+      // walk has to carry the refusal at: a symlinked team reads a whole team's
+      // documents from outside the configured root.
+      const root = tree({
+        ...HEALTHY,
+        "outside/marketing/resources/handbook.md": HANDBOOK,
+      });
+      symlinkSync(join(root, "outside/marketing"), join(root, "teams/marketing"));
+
+      const { documents, errors } = await readResourcesDirectory(root);
+
+      expect(documents.map((d) => d.ref)).toEqual(["teams/engineering/handbook"]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/marketing");
+      expect(errors[0]!.kind).toBe("unreadable-slot");
+      expect(errors[0]!.error.message).toBe(
+        'Symlinked team folder "marketing" — refused for safety',
+      );
+    });
+
+    it("reports a team folder it cannot stat rather than dropping its documents", async () => {
+      // `absent` and `unreadable` stay apart at the team level for the reason
+      // they do at the file level: folded together, a team we cannot stat is
+      // skipped in silence and every document under it disappears with `errors`
+      // empty for the caller's fatal check to look at.
+      //
+      // Injected rather than provoked because the suite runs as root, where a
+      // permission bit denies us nothing. The real route is a `teams/` that is
+      // readable but not searchable (`r--` rather than `r-x`): `readdir` lists
+      // the team fine, then `lstat` on it fails with EACCES.
+      const root = tree({
+        ...HEALTHY,
+        "teams/marketing/resources/handbook.md": HANDBOOK,
+      });
+      const locked = join(root, "teams/marketing");
+      const real = fsp.lstat.bind(fsp);
+      vi.spyOn(fsp, "lstat").mockImplementation(((target: Parameters<typeof real>[0]) => {
+        if (String(target) === locked) {
+          const err = new Error(`EACCES: permission denied, lstat '${locked}'`);
+          (err as NodeJS.ErrnoException).code = "EACCES";
+          return Promise.reject(err);
+        }
+        return real(target);
+      }) as unknown as typeof fsp.lstat);
+
+      const { documents, errors } = await readResourcesDirectory(root);
+
+      expect(documents.map((d) => d.ref)).toEqual(["teams/engineering/handbook"]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/marketing");
+      expect(errors[0]!.kind).toBe("unreadable-slot");
+      expect(errors[0]!.error.message).toMatch(/^Team folder "marketing" could not be read: /);
+    });
+
     it("reports a structural folder that exists and cannot be listed, under its own path", async () => {
       // Only genuine absence may read as empty. Every other `readdir` failure
       // has to stay visible, or a whole team's documents drop out with the

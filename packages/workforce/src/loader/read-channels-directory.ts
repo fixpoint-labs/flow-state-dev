@@ -39,15 +39,15 @@ import {
 } from "../manifest";
 import { validateSegment } from "./segments";
 import {
+  IGNORED_ENTRIES,
   type PathReport,
   classify,
+  openRoot,
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
+  walkTeams,
 } from "./structural-directory";
-
-/** Filenames that are never a channel folder — editor and OS droppings. */
-const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
 
 /** The slot a channel folder sits in, under a team. */
 const CHANNELS_SLOT = "channels";
@@ -118,56 +118,17 @@ export async function readChannelsDirectory(
   const channels: ChannelManifest[] = [];
   const errors: ChannelManifestError[] = [];
 
-  // The root is classified before it is listed, for the reason every nested
-  // structural folder is: a bare `readdir` follows a symlink, and a symlinked
-  // root would load the whole tree from somewhere the caller never configured.
-  // It throws rather than landing in `errors` because the root is the one level
-  // whose failure is a wiring mistake, not a channel-shaped one.
-  if ((await classify(root)).kind === "symlink") {
-    throw refusedSymlink("workforce directory", root);
-  }
+  await openRoot(root);
 
-  try {
-    await fs.readdir(root);
-  } catch (err) {
-    throw new Error(
-      `Failed to read workforce directory "${root}": ${(err as Error).message}`,
-    );
-  }
+  /** File a structural refusal the shared walk met on the way to a team. */
+  const report = (at: string, error: Error): void => {
+    errors.push({ path: at, error, kind: "unreadable-slot" });
+  };
 
-  const teams = await openStructuralDirectory(path.join(root, "teams"), "teams");
-  if (teams.refusal !== undefined) {
-    errors.push({ path: "teams", error: teams.refusal.error, kind: "unreadable-slot" });
-  }
-  if (teams.entries === undefined) return { channels, errors };
-
-  for (const teamId of teams.entries) {
-    if (IGNORED_ENTRIES.has(teamId)) continue;
-
-    const teamDir = path.join(root, "teams", teamId);
-    const teamPath = `teams/${teamId}`;
-    const team = await classify(teamDir);
-    if (team.kind === "symlink") {
-      errors.push({
-        path: teamPath,
-        error: refusedSymlink("team folder", teamId),
-        kind: "unreadable-slot",
-      });
-      continue;
-    }
-    if (team.kind === "unreadable") {
-      errors.push({
-        path: teamPath,
-        error: unreadable("Team folder", teamId, team.error),
-        kind: "unreadable-slot",
-      });
-      continue;
-    }
-    if (team.kind !== "directory") continue;
-
-    const slotPath = `${teamPath}/${CHANNELS_SLOT}`;
+  for await (const team of walkTeams(root, report)) {
+    const slotPath = `${team.path}/${CHANNELS_SLOT}`;
     const slot = await openStructuralDirectory(
-      path.join(teamDir, CHANNELS_SLOT),
+      path.join(team.dir, CHANNELS_SLOT),
       slotPath,
     );
     if (slot.refusal !== undefined) {
@@ -178,7 +139,7 @@ export async function readChannelsDirectory(
     for (const channelName of slot.entries) {
       if (IGNORED_ENTRIES.has(channelName)) continue;
 
-      const channelDir = path.join(teamDir, CHANNELS_SLOT, channelName);
+      const channelDir = path.join(team.dir, CHANNELS_SLOT, channelName);
       const entryPath = `${slotPath}/${channelName}`;
       const entry = await classify(channelDir);
       // A file under `channels/` does not occupy a channel slot — a slot is a
@@ -194,7 +155,7 @@ export async function readChannelsDirectory(
         if (entry.kind === "unreadable") {
           throw unreadable("Channel folder", channelName, entry.error);
         }
-        loaded = await readChannelSlot(teamId, channelName, channelDir);
+        loaded = await readChannelSlot(team.id, channelName, channelDir);
       } catch (err) {
         errors.push({ path: entryPath, error: err as Error, kind: "channel-load-failed" });
         continue;

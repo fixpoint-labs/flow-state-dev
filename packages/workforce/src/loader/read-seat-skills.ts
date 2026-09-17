@@ -20,7 +20,6 @@
  * `./loader` subpath rather than the package root.
  */
 
-import fs from "node:fs/promises";
 import path from "node:path";
 import type { InitialSkill } from "@flow-state-dev/core";
 import {
@@ -37,6 +36,7 @@ import { validateSegment } from "./segments";
 import {
   type PathReport,
   classify,
+  openRoot,
   openStructuralDirectory,
   refusedSymlink,
 } from "./structural-directory";
@@ -141,11 +141,15 @@ export interface ReadSeatSkillsResult {
  * A level that is absent is not an error: an app may keep no org skills, and a
  * seat may have none of its own. A level that exists and cannot be listed is.
  *
- * Throws only when `root` itself cannot be read — a configured root that does
- * not exist is a wiring mistake, not a per-level one, and reading it as three
- * absent levels would hand back an empty set with an empty `errors`, which is
- * the shape of a seat that has no skills on purpose. Matches the sibling
- * reader, which answered this question first.
+ * Throws only when `root` itself is refused — a symlink, or a path that cannot
+ * be read at all. Either is a wiring mistake rather than a per-level one, and
+ * reading it as three absent levels would hand back an empty set with an empty
+ * `errors`, which is the shape of a seat that has no skills on purpose. A
+ * symlinked root is refused whether or not the path carries a trailing
+ * separator. It is not refused through a `.` segment, and nothing above the
+ * root is checked — an operator running a symlink deliberately should pass the
+ * path it resolves to. Matches the sibling readers, which answered this
+ * question first.
  *
  * @example
  * const { skills, errors } = await readSeatSkills("./workforce", {
@@ -165,15 +169,11 @@ export async function readSeatSkills(
   validateSegment(worker, "Worker");
 
   // The levels below are each allowed to be absent, so nothing further down
-  // can tell a missing root from a tree that simply keeps no skills. Checked
-  // here, once, in the sibling reader's words.
-  try {
-    await fs.readdir(root);
-  } catch (err) {
-    throw new Error(
-      `Failed to read workforce directory "${root}": ${(err as Error).message}`,
-    );
-  }
+  // can tell a missing root from a tree that simply keeps no skills. Opened
+  // here, once, through the shared primitive — which is also what refuses a
+  // symlinked root, the one level this reader's own ancestor check never
+  // reaches.
+  await openRoot(root);
 
   const errors: SeatSkillError[] = [];
   // Structural folders already refused, so a shared one — `teams`, the team's
