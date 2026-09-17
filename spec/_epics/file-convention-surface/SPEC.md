@@ -65,7 +65,7 @@ the proof.
 
 | Issue | What it is | Why it is not a deliverable |
 |---|---|---|
-| FIX-1412 | `openChannels` gives a channel session no org identity, so channel-woken seats can't read org-scoped docs | A defect found while building the set. Carried, not scoped in |
+| FIX-1412 | `openChannels` cannot **thread** an org through — its options are `{ client, userId }` and the `createSession` it declares carries no `orgId`, so channel-woken seats can't read org-scoped docs. The client API itself already has the door | A defect found while building the set. Carried, not scoped in. **Narrowed in review** — a missing parameter, not a missing capability ([below](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)) |
 | FIX-1414 | Org-level workers declared in the tree but unhireable — no seat, no id | An **unowned gap with two undecided directions**. Closing it is bigger than any ticket in this epic |
 | FIX-1416 | *Explore:* custom tools authoring — blocks scan + a `tools:` fence, optionally worker-colocated discovery | An **exploration**, not a commitment. It states its own invent-kill (no parallel `tools/` convention; capabilities and `uses` stay Door B's) and carries relations to FIX-1355 and FIX-1357 — the boundary the owner set on [#1809](https://github.com/fixpoint-labs/flow-state-dev/pull/1809) |
 

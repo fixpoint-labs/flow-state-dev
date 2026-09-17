@@ -215,6 +215,28 @@ has not moved — FIX-1367 still defines and builds it. The column goes in when 
   claim, not the decision. Correcting the sentence is honesty about today — it does not
   invent-kill org channels, and no child may read it that way.
 
+- **FIX-1412 is a missing *parameter*, not a missing capability — and it is a smaller ask than the
+  epic had filed.** The ticket was written on the premise that the **client** cannot carry an
+  `orgId`. It can: `CreateSessionOptions` declares `orgId?: string`
+  (`packages/client/src/session-client/sessions.ts`) and forwards it. What cannot carry one is
+  `openChannels` itself — its options are `{ client, userId }`, and the `createSession` signature
+  it *structurally* declares (deliberately narrow, so `workforce` takes no dependency on
+  `client`) has no `orgId`, so it cannot thread one through whatever the real client supports.
+  **Corrected in round 2 of FIX-1355's spec review**, and run rather than read: a two-half compile
+  check on that branch (`spec-poc/FIX-1355-runtime-premises/`, `check-no-org-door.sh`) where
+  `no-org-door.probe.ts` must **fail** to compile and `org-door-exists.probe.ts` must **compile**.
+  Either half alone misleads — the first draft asserted an `orgId` was refused "at both doors",
+  which was an artefact of a redeclared local type. This is what makes FIX-1355's two-line client
+  wrap load-bearing rather than cargo: it injects the argument the binder won't pass, so it is a
+  workaround for a missing **parameter**, not for absent framework support. The ask narrows to
+  *thread the org through `openChannels`*. **Nothing in the set resizes:** FIX-1412 is carried
+  along, has no node in the graph and no lane in the path, and gates no deliverable — so the
+  correction changes how it is sized when someone picks it up, not the epic's shape.
+  **On the name:** FIX-1355's spec and its probes report this up as "ER-14". The epic's
+  [ER-14](BUSINESS-RULES.md) is the *comment-up* rule the finding was raised **under**, not a name
+  for the finding; no epic rule is numbered for the org thread. The ask lives here and on
+  FIX-1412, and no child should cite "ER-14" for it.
+
 **No end-state POC was built** — the set's shape was settled by owner stamps on this PR, and five
 issues have since shipped, so the division is evidenced by what landed rather than by a throwaway.
 
