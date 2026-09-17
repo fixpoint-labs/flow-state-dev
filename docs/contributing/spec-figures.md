@@ -185,7 +185,10 @@ A figure nobody rendered is how a wrong one ships. Headless Chromium is on every
 renders both themes in a second:
 
 ```bash
-S=spec/<ISSUE-ID>/figures/<name>.svg   # or spec/_epics/<name>/… or spec/_projects/<slug>/…; H=$(grep -oE 'viewBox="0 0 940 [0-9]+' "$S" | grep -oE '[0-9]+$')
+# S is the figure: spec/<ISSUE-ID>/figures/…, spec/_epics/<name>/figures/…, or
+# spec/_projects/<slug>/figures/… — the rest of the block is altitude-independent.
+S=spec/<ISSUE-ID>/figures/<name>.svg
+H=$(grep -oE 'viewBox="0 0 940 [0-9]+' "$S" | grep -oE '[0-9]+$')
 CH=/opt/pw-browsers/chromium-*/chrome-linux/chrome
 printf '<html><body style="margin:0;background:#FCFCFA"><img src="%s" width="940"></body></html>' "$(realpath "$S")" > /tmp/light.html
 sed 's/@media (prefers-color-scheme: dark) {/@media all {/' "$S" > /tmp/dark.svg
