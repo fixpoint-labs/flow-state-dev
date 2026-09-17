@@ -127,8 +127,24 @@ await runGoal(async () => {
     for (const id of [support.id, billing.id]) {
       const res = await act(router, id, sessions[id]!);
       const body = (await res.json()) as { request?: { id: string } };
-      if (res.status !== 202) failures.push(`${id}: expected 202 from its own address, got ${res.status}`);
-      const status = await settled(stores, body.request?.id ?? "");
+
+      // One failure per thing that actually went wrong. A rejected action has
+      // no request to wait on, so polling anyway would spend five seconds
+      // looking up an empty id and then report `request ended undefined` — a
+      // second failure naming a state that never happened, beside the real
+      // one. A check that invents a failure is worse than a check that misses
+      // one: whoever reads the output is told two things broke when one did.
+      if (res.status !== 202) {
+        failures.push(`${id}: expected 202 from its own address, got ${res.status}`);
+        continue;
+      }
+      const requestId = body.request?.id;
+      if (requestId === undefined) {
+        failures.push(`${id}: accepted with 202 but the response carried no request id`);
+        continue;
+      }
+
+      const status = await settled(stores, requestId);
       if (status !== "completed") failures.push(`${id}: request ended ${String(status)}`);
     }
     evidence.push("both seats ran an action to completion through the real HTTP route, with no model call");

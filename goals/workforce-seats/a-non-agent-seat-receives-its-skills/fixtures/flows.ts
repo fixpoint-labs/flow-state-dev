@@ -37,14 +37,19 @@ const needsSeatSkills = z.object({
   desk: z.string()
 });
 
-/** The root. Reads no config at all, so it cannot mask a nested failure. */
+/**
+ * Counts the turn, and reads no config at all — so a pass here cannot mask a
+ * nested failure.
+ *
+ * State-only, so it declares no `outputSchema`, returns nothing, and is chained
+ * with `.tap()` (BP-012 / BP-014). The mutation is already observable in the
+ * state-change log; echoing the input back would only pad the items log.
+ */
 const start = handler({
   name: "triage-start",
   inputSchema,
-  outputSchema: inputSchema,
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.incState({ runs: 1 });
-    return input;
   }
 });
 
@@ -82,7 +87,7 @@ const clientView = {
 const actions = {
   run: {
     inputSchema,
-    block: sequencer({ name: "triage-work", inputSchema }).step(start).tap(recordSkills)
+    block: sequencer({ name: "triage-work", inputSchema }).tap(start).tap(recordSkills)
   }
 };
 
