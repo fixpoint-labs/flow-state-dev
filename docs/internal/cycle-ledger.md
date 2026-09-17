@@ -1568,8 +1568,9 @@ fence. One red test proves a check catches the bug; the pair proves it catches t
 
 ### Claims to test next cycle
 
-1. **Land fixes at the gate, not after it.** The single change most likely to make cycle 11
+1. **Land fixes at the gate, not after it.** The single change most likely to make cycle 12
    scoreable is writing an approved fix *immediately*, before the next epic's branches fork.
+   (Renumbered: this named *cycle 11* before the back-dated FIX-980 entry took that number.)
    Baseline: three cycles, zero scoreable corrections.
 2. **Does an enforcement-point clause cut overclaim once it actually exists?** Cycle 9's
    baseline stands unchallenged at ~30% of non-`nit` findings; cycle 10's share is ~35%
@@ -1589,7 +1590,8 @@ reordered — cycle 8's own note sets that precedent. Everything below was compu
 **cycles 1–7**: the samples for cycles 8, 9 and 10 are three different epics and none of their
 PRs are in this one. That is why this entry scores cycle 7's fixes rather than cycle 10's, and
 why its *Claims to test next cycle* are for **cycle 12** — the next cycle collected after this
-lands. Cycle 10's forward reference to "cycle 11" means that same forward cycle, not this entry.
+lands. Cycle 10's claim 1 pointed at "cycle 11" for the same forward cycle; taking that number
+broke the pointer, so it is repaired in place and marked, rather than left to this note.
 
 The epic's whole life, six weeks: **28 PRs** under epic
 [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983), across two tracks — Track 1
@@ -1725,14 +1727,18 @@ not a seventh class and are already inside the table above, assigned like this:
 Strictly — a claim that is false, or an assertion that cannot fail — it is **26, the third-largest
 family**, behind `missed-edge-case` (89) and `design-off` (32). Read wider, with
 `stale-restatement`'s 19 included on the grounds that a superseded claim still standing is also a
-claim that is not true, it is **45 and the second-largest.** The thesis holds on either reading;
-the entry no longer depends on which.
+claim that is not true, it is **39 and the second-largest** — 26 + (19 − 6), because six of
+`overclaim`'s 23 *are* `stale-restatement` observations, as the decomposition above says, and a
+union counts them once. The thesis holds on either reading; the entry no longer depends on which.
 
 **Corrections to this entry's own arithmetic, recorded rather than quietly fixed.** Earlier drafts
 reported two different denominators for one corpus — "~195 classified findings" in one place and
 "~145" in another — and read `overclaim`'s 23 as a share of a closed taxonomy that did not contain
 it. Both figures were wrong; the rows total 198. An eight-fold spec row (#994) was also missing
-from the overrun count. Every figure above now traces to a table in this entry, which is the
+from the overrun count. **The wide honesty reading was 45**, adding all 19 `stale-restatement`
+observations to the 26 when six of them are the same observations — the exact double-count this
+file's header forbids, committed by the entry that argued for the fence, and caught on review of
+the re-cut. It is 39. Every figure above now traces to a table in this entry, which is the
 standard the entry sets for everything else.
 
 ### The dominant class: the fold loop feeds itself, and what it feeds on is false claims
