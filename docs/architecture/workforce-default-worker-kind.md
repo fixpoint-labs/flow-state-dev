@@ -63,6 +63,27 @@ file's body arriving as one setting — the hire step already imposes that key
 (`packages/workforce/src/manifest.ts`, `INSTRUCTIONS_KEY`) and already refuses `persona` by
 name (`REFUSED_PERSONA_KEY`, same file).
 
+**The first three of those are not this kind's — they are the admission contract, and this kind
+composes it like any other.** `workerConfigSchema()`
+(`packages/workforce/src/worker-config.ts`) declares `instructions?`, `teamInstructions?` and
+`seatSkills`, and the default kind's schema is `workerConfigSchema().extend({ model, tools, skills
+})`. `model`, `tools` and the switches are this kind's own, at the top level, which is where a
+kind's known settings go — the framework closes the set there and an undeclared key refuses by
+name. There is no nested bag for a kind's own settings; open-ended data gets one declared key whose
+schema is a record.
+
+The contract is what makes a kind hireable, and the hire step hands its bag to **every** kind
+rather than probing which ones declared a matching key. A kind that has not composed it refuses at
+the mint, for the whole roster, at boot. That replaces a branch whose other arm was silence: a seat
+whose folders declared skills used to mint, run, and hold none, with nothing said anywhere. Two of
+the three keys are framework-imposed and never authored — `seatSkills` and `teamInstructions` are
+refused by name at the worker loader and at the hire, from the shared constants in `manifest.ts`,
+which every door references rather than re-spelling.
+
+`teamInstructions` is a declared door with nothing coming through it until the team-level file
+lands; the point of declaring it here is that a kind composes the contract once and does not change
+again when that layer arrives.
+
 Generator slots stay `prompt` / `context` / `history` / `user`. Instructions compose as
 `prompt: [default, instructions]`.
 

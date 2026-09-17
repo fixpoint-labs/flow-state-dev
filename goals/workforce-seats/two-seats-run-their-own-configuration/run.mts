@@ -21,7 +21,14 @@ import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { hireWorkforce, type HireOptions, type WorkerManifest } from "@flow-state-dev/workforce";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { fixtureDir, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { INTAKE_KIND, CUSTOM_AGENT_KIND, intakeFlow, customAgentFlow } from "./fixtures/flows";
+import {
+  INTAKE_KIND,
+  CUSTOM_AGENT_KIND,
+  NO_CONTRACT_KIND,
+  intakeFlow,
+  customAgentFlow,
+  noContractFlow
+} from "./fixtures/flows";
 
 type LeadFixture = {
   id: string;
@@ -48,8 +55,15 @@ type Fixture = {
   refusals: {
     unknownKind: RefusalFixture;
     undeclaredSetting: RefusalFixture;
-    thinWithBody: RefusalFixture;
+    noContract: RefusalFixture;
   };
+  /**
+   * The thin seat's own record with a body added. No longer a refusal: every
+   * hireable kind composes the admission contract, so `instructions` is a door
+   * every kind has. It is the second half of the thinness pair instead — the
+   * same record, hiring, carrying the body its file wrote.
+   */
+  thinWithBody: RefusalFixture;
 };
 
 stripIntentOverrides();
@@ -59,7 +73,10 @@ const { lead, intake } = fixture.roster;
 
 const kinds: HireOptions["kinds"] = {
   [CUSTOM_AGENT_KIND]: customAgentFlow,
-  [INTAKE_KIND]: intakeFlow
+  [INTAKE_KIND]: intakeFlow,
+  // Passed so the refusal it earns is about the contract it never composed,
+  // and not about a kind the app forgot to register — two different failures.
+  [NO_CONTRACT_KIND]: noContractFlow
 };
 
 // ---------------------------------------------------------------------------
@@ -132,14 +149,24 @@ const handBuiltRosters: Record<string, WorkerManifest[]> = {
       body: fixture.refusals.undeclaredSetting.body
     })
   ],
-  [fixture.refusals.thinWithBody.dir]: [
+  [fixture.refusals.noContract.dir]: [
     handBuilt({
-      id: fixture.refusals.thinWithBody.id,
+      id: fixture.refusals.noContract.id,
       declared: {
-        description: fixture.refusals.thinWithBody.description,
-        flow: fixture.refusals.thinWithBody.flow
+        description: fixture.refusals.noContract.description,
+        flow: fixture.refusals.noContract.flow
       },
-      body: fixture.refusals.thinWithBody.body
+      body: fixture.refusals.noContract.body
+    })
+  ],
+  [fixture.thinWithBody.dir]: [
+    handBuilt({
+      id: fixture.thinWithBody.id,
+      declared: {
+        description: fixture.thinWithBody.description,
+        flow: fixture.thinWithBody.flow
+      },
+      body: fixture.thinWithBody.body
     })
   ]
 };
@@ -283,7 +310,8 @@ await runGoal(async () => {
 
   // ---- (0) the two roster sources still say the same thing ---------------
   {
-    const { unknownKind, undeclaredSetting, thinWithBody } = fixture.refusals;
+    const { unknownKind, undeclaredSetting, noContract } = fixture.refusals;
+    const { thinWithBody } = fixture;
     failures.push(
       ...declares(
         "teams",
@@ -312,6 +340,12 @@ await runGoal(async () => {
           [undeclaredSetting.key!]: undeclaredSetting.value!
         },
         undeclaredSetting.body
+      ),
+      ...declares(
+        noContract.dir,
+        noContract.id,
+        { description: noContract.description, flow: noContract.flow },
+        noContract.body
       ),
       ...declares(
         thinWithBody.dir,
@@ -419,14 +453,16 @@ await runGoal(async () => {
         names: [fixture.refusals.undeclaredSetting.id, fixture.refusals.undeclaredSetting.key!]
       },
       {
-        what: "a body handed to a flow kind that never declared one",
-        // The SAME thin record, with a body added: thinness is a property the
-        // framework enforces, so this is the enforcement being graded.
+        what: "a record whose flow kind never composed the admission contract",
+        // The refusal that replaces "a body handed to a kind that never
+        // declared one". No kind is in that position any more — `instructions`
+        // is one of the three settings every hireable kind admits — so what is
+        // graded here is the kind that never opened the door at all.
         records: [
           records.find((r) => r.id === lead.id)!,
-          ...(await roster(fixture.refusals.thinWithBody.dir))
+          ...(await roster(fixture.refusals.noContract.dir))
         ],
-        names: [fixture.refusals.thinWithBody.id, "instructions"]
+        names: [fixture.refusals.noContract.id, "workerConfigSchema()"]
       }
     ];
 
@@ -456,7 +492,51 @@ await runGoal(async () => {
       }
     }
     evidence.push(
-      "an unknown kind, an undeclared setting and a body handed to a thin kind each refuse at the hire, naming the worker, with nothing hired and nothing registered"
+      "an unknown kind, an undeclared setting and a kind that never composed the admission contract each refuse at the hire, naming the worker, with nothing hired and nothing registered"
+    );
+  }
+
+  // ---- (e) thinness is the RECORD's, not the seat's absence ---------------
+  //
+  // The other half of the pair. Leg (b) showed the thin seat running with no
+  // instructions; on its own that is equally true of a worker never hired. So
+  // the same record, with a body added, must hire and carry that body — which
+  // pins the absence on the record rather than on the seat being missing.
+  //
+  // Graded at the mint: the claim here is what was ADMITTED. That a value
+  // admitted this way reaches a running block is leg (b)'s claim, proved there
+  // through `/state` on the lead.
+  {
+    const bodied = await roster(fixture.thinWithBody.dir);
+    let hired: FlowInstance[] | undefined;
+    let refusal = "";
+    try {
+      hired = hireWorkforce(bodied, { kinds });
+    } catch (error) {
+      refusal = messageOf(error);
+    }
+    if (hired === undefined) {
+      failures.push(`the thin record with a body added refused instead of hiring: ${refusal}`);
+    } else {
+      const seat = hired.find((s) => s.id === fixture.thinWithBody.id);
+      if (seat === undefined) {
+        failures.push(`the thin record with a body added hired no seat at ${fixture.thinWithBody.id}`);
+      } else {
+        const carried = (seat.config as { instructions?: string }).instructions ?? "";
+        if (carried.trim() !== fixture.thinWithBody.body.trim()) {
+          failures.push(
+            `the thin record's added body did not reach its bag: ${JSON.stringify(carried)}`
+          );
+        }
+        // And the seat's skills door is open on it too — present and empty,
+        // which is what a roster with no skills folders resolves to.
+        if (!Object.hasOwn(seat.config, "seatSkills")) {
+          failures.push(`${fixture.thinWithBody.id}: hired with no seatSkills key in its bag`);
+        }
+      }
+    }
+    evidence.push(
+      "the thin seat's own record with a body added hires and carries that body as its instructions, so its emptiness in (b) is its record's and not a missing seat"
     );
   }
 

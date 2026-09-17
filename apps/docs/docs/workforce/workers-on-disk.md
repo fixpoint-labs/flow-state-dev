@@ -171,14 +171,17 @@ Pass `defineFlow(...)` results directly as `kinds`. The call reads no files and 
 
 ### The flow decides what a worker may declare
 
-A flow kind declares its settings with `configSchema`:
+A flow kind declares its settings with `configSchema`. A kind you want to hire workers into starts
+from `workerConfigSchema()` and extends it:
 
 ```ts
+import { workerConfigSchema } from "@flow-state-dev/workforce";
+
 export const customAgentFlow = defineFlow({
   kind: "custom-agent",
   cardinality: "collection",
-  configSchema: z.object({
-    instructions: z.string(),
+  configSchema: workerConfigSchema().extend({
+    instructions: z.string(), // the contract's own is optional; this kind requires one
     model: z.string().default("openai/gpt-5.4-mini"),
     tools: z.array(z.string()).default([]),
   }),
@@ -188,10 +191,20 @@ export const customAgentFlow = defineFlow({
 export const intakeFlow = defineFlow({
   kind: "intake",
   cardinality: "collection",
-  configSchema: z.object({ desk: z.string().default("front") }),
+  configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
   actions: { run: { inputSchema, block: greet } },
 });
 ```
+
+`workerConfigSchema()` is the set of settings hiring hands over for every seat, whatever kind it is:
+the worker's own instructions, its team's, and the skills its folders resolved. Your kind's settings
+go on top with `.extend()`, at the same level, and the schema stays closed around all of them.
+
+You do not have to read any of it. A kind that composes the contract and never looks at the skills
+runs exactly as it would otherwise. But a kind that has not composed it stops hiring: the seat
+factory hands every worker the same settings, and a kind with nowhere to put them refuses at
+startup, naming the worker and the line to add. The alternative was a seat that hired, ran, and
+quietly held none of what its author's folders declared.
 
 `cardinality: "collection"` is what lets one definition have many copies. A roster is exactly that: one copy per worker, each with its own id and its own settings. [Copies that differ by settings](../fundamentals/flows.md#copies-that-differ-by-settings) covers how a copy is configured, and [how an instance is addressed](../fundamentals/flows.md#how-an-instance-is-addressed) covers the URL each one answers on.
 

@@ -19,6 +19,7 @@ import { executeBlock } from "@flow-state-dev/engine";
 import { hireWorkforce, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { workerConfigSchema } from "../src/worker-config";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -156,11 +157,16 @@ describe("a seat's skills at the mint", () => {
     expect(seat!.config).toMatchObject({ seatSkills: [] });
   });
 
-  // A custom kind never declared `seatSkills` and its config schema is closed,
-  // so imposing the key on one would refuse the hire. The breaking case is not
-  // the roster with NO skills — it is the roster with a shared `org/skills/`
-  // folder, which makes every worker's set non-empty, custom-kind ones included.
-  it("hires a custom kind that does not declare the key, on a roster that has skills", () => {
+  // The arm this issue removes. A custom kind that never composed the contract
+  // used to hire on a roster with skills and be handed NOTHING — silently, so
+  // an author who dropped a folder in `org/skills/` had no way to find out
+  // their seat was running short. The bag goes to every kind now, so the same
+  // roster refuses, for the whole roster, naming the kind's missing door.
+  //
+  // The cost is stated rather than hidden: a shared `org/skills/` folder does
+  // break every custom kind on that roster at once. That is the upgrade, paid
+  // once per kind, and it is the trade the silence was not worth.
+  it("refuses a custom kind that never composed the contract, on a roster that has skills", () => {
     const triage = defineFlow({
       kind: "request-triage",
       cardinality: "collection",
@@ -178,9 +184,51 @@ describe("a seat's skills at the mint", () => {
       },
     });
 
-    const seats = hire(
+    const message = refusalOf(
       [
         // Both read the same org-level folder, so both records carry it.
+        record({ id: "qa.tester", body: "You test.", skills: [houseStyle] }),
+        record({
+          id: "ops.router",
+          declared: { flow: "request-triage" },
+          body: "",
+          skills: [houseStyle],
+        }),
+      ],
+      { "request-triage": triage as never },
+    );
+
+    // Named: which worker, and the door its kind has to open.
+    expect(message).toContain('worker "ops.router"');
+    expect(message).toContain("workerConfigSchema()");
+    // Nothing was hired — not even the seat whose own kind was fine. A refusal
+    // that hired half a roster would leave an app half-configured at boot.
+    expect(message).toContain("nothing was hired");
+  });
+
+  // The other half of the same rule, and the one that keeps the refusal above
+  // from reading as "custom kinds cannot be hired": compose the contract and
+  // the identical roster hires, with each seat handed its own folder's skills.
+  it("hires that same custom kind once it composes the contract", () => {
+    const triage = defineFlow({
+      kind: "request-triage",
+      cardinality: "collection",
+      configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
+      actions: {
+        run: {
+          inputSchema: z.object({ message: z.string() }),
+          block: handler({
+            name: "triage",
+            inputSchema: z.object({ message: z.string() }),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: () => ({ ok: true }),
+          }),
+        },
+      },
+    });
+
+    const seats = hire(
+      [
         record({ id: "qa.tester", body: "You test.", skills: [houseStyle] }),
         record({
           id: "ops.router",
@@ -195,9 +243,11 @@ describe("a seat's skills at the mint", () => {
     const router = seats.find((s) => s.id === "ops.router")!;
     const tester = seats.find((s) => s.id === "qa.tester")!;
 
-    // The custom kind hires and is handed nothing it never asked for...
-    expect(Object.hasOwn(router.config, "seatSkills")).toBe(false);
-    // ...while the built-in, which declares the key, still gets its skills.
+    // The custom kind gets the folder's skills, and keeps its own setting.
+    expect(router.config).toMatchObject({
+      seatSkills: [{ name: "house-style" }],
+      desk: "front",
+    });
     expect(tester.config).toMatchObject({ seatSkills: [{ name: "house-style" }] });
   });
 

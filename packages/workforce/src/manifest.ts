@@ -128,6 +128,43 @@ export const REFUSED_PERSONA_KEY = "persona";
 export const SEAT_SKILLS_KEY = "seatSkills";
 
 /**
+ * The third setting name the seat factory imposes: where a seat's TEAM-level
+ * instructions arrive in its flow's settings bag.
+ *
+ * Declared here, beside {@link INSTRUCTIONS_KEY} and {@link SEAT_SKILLS_KEY},
+ * because it is the same sort of thing as both — a value the framework derives
+ * from where a file sits and hands over, never one a file declares — and for
+ * the same reason they are here: every door that imposes or refuses it reads
+ * one spelling from one place.
+ *
+ * **Referenced, never re-spelled.** The doors that refuse an authored one must
+ * name this constant rather than a literal, so a rename moves every refusal
+ * with it instead of leaving a door open with nothing said.
+ *
+ * The contract declares the key ({@link workerConfigSchema}) and the doors
+ * refuse an authored one from today. What FILLS it is a team's own file, which
+ * FIX-1377 reads — so until that lands the key is a declared door with nothing
+ * coming through it, which is the point: a kind composes the contract once and
+ * does not change again when the layer arrives.
+ */
+export const TEAM_INSTRUCTIONS_KEY = "teamInstructions";
+
+/**
+ * The one wording for {@link TEAM_INSTRUCTIONS_KEY}, shared by every door that
+ * refuses an authored one. Names no subject — the caller supplies what it can
+ * name.
+ *
+ * Refused for the reason `seatSkills` is, and it is the sharper case of the
+ * two: a flow whose `configSchema` composes the contract declares this key and
+ * would take an authored one happily, so a seat could run on team instructions
+ * its team never wrote — and only that seat, silently. A team's instructions
+ * are its team's to write.
+ */
+export const REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE =
+  `declares \`${TEAM_INSTRUCTIONS_KEY}:\`, which is not a setting a worker declares. ` +
+  `A seat's team-level instructions belong to its team, and reading them is the loader's job.`;
+
+/**
  * The one wording for {@link SEAT_SKILLS_KEY}, shared by the loader and the
  * seat factory. Names no subject — the caller supplies what it can name.
  *
@@ -205,10 +242,18 @@ export const duplicateSkillNameMessage = (
  */
 export interface ResourceDoc {
   /**
-   * Storage-key namespace and accessor key — a bare `<name>` at the org level,
-   * `teams/<teamId>/<name>` for a team's. Path-joined, not dot-joined: this is
-   * the key the atlas fixes for a team document, and unlike a worker id it
-   * never routes, so a `/` in it is safe. Minted by the loader, in one helper.
+   * Storage-key namespace and accessor key.
+   *
+   * **The rule, rather than a list of the shapes it currently produces:** the
+   * ref is the document's path under the workforce root with the `resources/`
+   * segment removed and a leading `org/` removed. So a bare `<name>` at the org
+   * level, `teams/<teamId>/<name>` for a team's — and a level added later gets
+   * its ref from the same rule rather than from a new case. Written this way
+   * because the enumeration has gone stale before; the rule does not.
+   *
+   * Path-joined, not dot-joined: this is the key the atlas fixes for a team
+   * document, and unlike a worker id it never routes, so a `/` in it is safe.
+   * Minted by the loader, in one helper.
    */
   ref: string;
   /** Frontmatter exactly as written — keys as the file spelled them, values uninterpreted. */

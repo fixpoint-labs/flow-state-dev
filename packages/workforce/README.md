@@ -249,6 +249,46 @@ label. Everything else is that worker's settings, handed to the flow
 verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
 declared is refused by name at the hire.
 
+### What a hireable kind must admit
+
+A worker kind is an ordinary flow. What makes it *hireable* is that its `configSchema` composes
+`workerConfigSchema()`, which declares the three settings the factory hands over for every seat:
+
+| Setting | What it holds |
+| --- | --- |
+| `instructions?` | The worker's own instructions — its file body, or the frontmatter key. Absent when it has none. |
+| `teamInstructions?` | The instructions its team carries, for every seat on that team. Absent when the team wrote none. |
+| `seatSkills` | The skills its folders resolved for it, in level order. Present and empty when there are none. |
+
+Add your kind's own settings on top, at the same level:
+
+```ts
+import { workerConfigSchema } from "@flow-state-dev/workforce";
+
+const triage = defineFlow({
+  kind: "request-triage",
+  cardinality: "collection",
+  configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
+  actions: { run: { inputSchema, block: triageWork } },
+});
+```
+
+`desk` sits at the top level beside the three, where the schema closes it: a worker file that writes
+a key your kind never declared is still refused by name. If your kind genuinely holds open-ended
+data, give it one declared key whose own schema is a record, rather than a nested bag of keys you
+did name.
+
+Reading any of it is optional. A kind that composes the contract and never looks at `seatSkills`
+runs exactly as it did before — ignoring the bag is not an error. What is not optional is the door:
+the factory hands every seat a bag, so a kind that has not composed the contract refuses at the
+hire, for the whole roster, with a message naming the worker and the fix. That is a one-line change
+per kind, and it is what replaces a seat that used to hire, run, and silently hold none of what its
+author's files declared.
+
+Two of the three are never authored. A worker file that writes `seatSkills:` or `teamInstructions:`
+is refused by name, at the loader and at the hire: a seat's skills are the folders it can see, and
+a team's instructions are its team's.
+
 **A record that leaves `flow:` out is hired into the built-in `agent` kind** — it talks, its body
 arrives as its instructions, and it reads the skills its own folders hold plus any the app seeded
 through `defineAgentWorkerFlow({ skills })`. It has no memory: nothing it is told survives the

@@ -13,6 +13,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { hireWorkforce, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
+import { workerConfigSchema } from "../src/worker-config";
 
 const inputSchema = z.object({ note: z.string() });
 
@@ -23,11 +24,19 @@ const work = handler({
   execute: (input) => input
 });
 
-/** The opinionated kind: it declares that it takes instructions. */
+/**
+ * The opinionated kind: it composes the contract and makes `instructions`
+ * REQUIRED, which is the kind's own call to make — the contract's own
+ * `instructions` is optional.
+ *
+ * Deliberately the fixture an empty bag cannot satisfy, so the one case the
+ * refusal wording is admittedly partial in is exercised by a real kind rather
+ * than described.
+ */
 const customAgentFlow = defineFlow({
   kind: "custom-agent",
   cardinality: "collection",
-  configSchema: z.object({
+  configSchema: workerConfigSchema().extend({
     instructions: z.string(),
     model: z.string().default("openai/gpt-5.4-mini"),
     tools: z.array(z.string()).default([])
@@ -35,15 +44,25 @@ const customAgentFlow = defineFlow({
   actions: { run: { inputSchema, block: work } }
 });
 
-/** The thin kind: it declares settings, and `instructions` is not one of them. */
+/**
+ * The thin kind: it composes the contract and adds one setting of its own, and
+ * `instructions` is not among the ones it requires.
+ */
 const intakeFlow = defineFlow({
   kind: "intake",
   cardinality: "collection",
-  configSchema: z.object({ desk: z.string().default("front") }),
+  configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
   actions: { run: { inputSchema, block: work } }
 });
 
-/** A thin kind that declares no settings at all — the bagless case. */
+/**
+ * The kind that never composed the contract — **kept uncomposed on purpose.**
+ *
+ * It declares no settings at all, which is the thinnest a kind can be and the
+ * furthest thing from an opt-in. A bag reaches it like every other kind, so it
+ * refuses, and its author is told which door to open. This is the upgrade cost
+ * the design accepts, and the fixture that pins it.
+ */
 const doorFlow = defineFlow({
   kind: "door",
   cardinality: "collection",
@@ -60,7 +79,7 @@ const doorFlow = defineFlow({
 const staleDeskFlow = defineFlow({
   kind: "stale-desk",
   cardinality: "collection",
-  configSchema: z.object({
+  configSchema: workerConfigSchema().extend({
     desk: z.string().default("front"),
     persona: z.string().optional()
   }),
@@ -133,15 +152,19 @@ describe("hireWorkforce", () => {
     // The sibling's setting is absent, not merely different — one shared bag
     // is always right for somebody.
     expect(Object.hasOwn(opinionated.config, "desk")).toBe(false);
-    expect(thin.config).toEqual({ desk: "front" });
+    expect(thin.config).toEqual({ desk: "front", seatSkills: [] });
     expect(Object.hasOwn(thin.config, "model")).toBe(false);
   });
 
   // 3
   it("hands a record's body to its flow as `instructions`, verbatim, beside its declared settings", () => {
     const seat = hireOne(lead);
+    // Whole-bag equality, not a subset: `seatSkills` is listed because the bag
+    // now genuinely carries it for every seat, and a `toMatchObject` here would
+    // stop noticing a key the factory started adding by accident.
     expect(seat.config).toEqual({
       instructions: LEAD_BODY,
+      seatSkills: [],
       model: "openai/gpt-5.4-mini",
       tools: ["board", "search"]
     });
@@ -182,18 +205,45 @@ describe("hireWorkforce", () => {
     expect(seat.config).toMatchObject({ instructions: padded });
   });
 
-  // 4 (continued) — a kind that declares no settings at all still hires a thin
-  // seat: a record that declared nothing is handed no bag.
-  it("hires a thin seat into a flow kind that declares no settings", () => {
-    const seat = hireOne(record({ id: "engineering.door", declared: { flow: "door" } }));
-    expect(seat.config).toEqual({});
+  // 4 (continued) — the thinnest record there is still meets the kind's schema.
+  //
+  // The positive half: nothing about a record declaring no settings and
+  // carrying no body lets it skip admission. It hires, and the bag it was
+  // admitted with holds the seat's skills, present and empty.
+  it("hires the thinnest possible record into a composed kind, bag and all", () => {
+    const seat = hireOne(record({ id: "engineering.intake", declared: { flow: "intake" } }));
+    expect(seat.config).toMatchObject({ seatSkills: [], desk: "front" });
   });
 
-  // 5
-  it("refuses a body handed to a flow kind that never declared instructions, naming both", () => {
-    const message = refusalOf([record({ ...intake, body: "You greet people." })]);
-    expect(message).toContain('worker "engineering.intake"');
-    expect(message).toContain("instructions");
+  // ...and the refusal half, which is the one that fails on the old code. A
+  // kind declaring no settings at all used to hire this record by being handed
+  // no bag — admission skipped rather than passed. There is no such record now.
+  it("refuses the thinnest possible record on a kind that never composed the contract", () => {
+    const message = refusalOf([record({ id: "engineering.door", declared: { flow: "door" } })]);
+    expect(message).toContain('worker "engineering.door"');
+    expect(message).toContain("workerConfigSchema()");
+  });
+
+  // 5 — **this rule changed with the contract, and the change is the point.**
+  //
+  // A body handed to a kind that did not declare `instructions` used to refuse.
+  // No hireable kind is in that position any more: `instructions` is one of the
+  // three settings the contract declares, so every composed kind has a door for
+  // a worker's body and a bodied record hires into any of them. "Thin" is a
+  // property of a SEAT — a record with no body carries no `instructions` key,
+  // which case 4 above pins — and no longer a property a kind enforces.
+  //
+  // What survives is the refusal that now carries that weight: a body, or
+  // anything else, handed to a kind that never composed the contract at all.
+  it("hires a bodied record into any composed kind, and refuses one whose kind has no door", () => {
+    const greeter = hireOne(record({ ...intake, body: "You greet people." }));
+    expect(greeter.config).toMatchObject({ instructions: "You greet people." });
+
+    const message = refusalOf([
+      record({ id: "engineering.door", declared: { flow: "door" }, body: "You greet people." })
+    ]);
+    expect(message).toContain('worker "engineering.door"');
+    expect(message).toContain("workerConfigSchema()");
   });
 
   // 6
@@ -377,6 +427,37 @@ describe("hireWorkforce", () => {
     ]);
     expect(message).toContain("not a setting a worker declares");
     expect(message).not.toContain("two sources");
+  });
+
+  // The third imposed key, and the sharper case of the two refused ones: every
+  // composed kind DECLARES `teamInstructions`, so the closed schema would take
+  // an authored one happily and the seat would run on team instructions its
+  // team never wrote. The control below is what makes that concrete.
+  it("refuses a worker that declares `teamInstructions:` itself, by name", () => {
+    // Control: the same kind, same record shape, a key it does declare — hires.
+    const control = hireOne(record({ ...lead, declared: { ...lead.declared, model: "openai/gpt-5.4" } }));
+    expect(control.config).toMatchObject({ model: "openai/gpt-5.4" });
+
+    const message = refusalOf([
+      record({ ...lead, declared: { ...lead.declared, teamInstructions: "We answer within the hour." } })
+    ]);
+    expect(message).toContain('worker "engineering.lead"');
+    expect(message).toContain("teamInstructions");
+    expect(message).toContain("not a setting a worker declares");
+    expect(message).toContain("belong to its team");
+  });
+
+  // BR-2's other half: a kind with no contract is a ROSTER problem, collected
+  // alongside the others so one run names all of them, not thrown on its own.
+  it("reports a missing contract alongside the roster's other problems", () => {
+    const message = refusalOf([
+      record({ id: "engineering.door", declared: { flow: "door" } }),
+      record({ id: "engineering.scribe", declared: { flow: "note-taker" } })
+    ]);
+    expect(message).toContain("refused 2 of 2 workers");
+    expect(message).toContain('worker "engineering.door"');
+    expect(message).toContain("workerConfigSchema()");
+    expect(message).toContain('worker "engineering.scribe"');
   });
 
   it("reads `description` for nothing, and keeps it out of the settings bag", () => {

@@ -17,6 +17,7 @@ import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
 import { hireWorkforce, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
+import { workerConfigSchema } from "../src/worker-config";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 
 function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest {
@@ -349,7 +350,9 @@ describe("replacing the built-in agent kind", () => {
   const replacement = defineFlow({
     kind: AGENT_KIND,
     cardinality: "collection",
-    configSchema: z.object({ instructions: z.string().optional(), desk: z.string().default("front") }),
+    // A caller's own `agent` is a hireable kind like any other, so it composes
+    // the contract too — replacing the built-in does not exempt it.
+    configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
     actions: {
       run: {
         inputSchema: z.object({ message: z.string() }),
