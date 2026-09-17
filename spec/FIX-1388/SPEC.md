@@ -8,13 +8,13 @@ Feature · `workforce` + `cli` · large · 3 PRs · no epic parent (relates to F
 
 | Someone who… | Today | After |
 |---|---|---|
-| **drops a `.ts` capability into a team's — or one worker's own — `resources/` folder** | Nothing happens. The file is passed over without a word — no document, no error, no seat that can use it | The file is found, the capability lands on the team's worker kind, and every seat of that kind can reach it |
+| **drops a `.ts` capability into a team's `resources/` folder** | Nothing happens. The file is passed over without a word — no document, no error, no seat that can use it | The file is found, the capability lands on the team's worker kind, and every seat of that kind can reach it |
 | **wants one seat to research and another not to** | Impossible from the files. A capability is on the whole kind or on none of it | The seat's own file names what it wants. A seat that names nothing carries the capability's own defaults |
 | **wires a capability by hand in the app's TypeScript today** | Adds an import and an entry per capability, in a file the person who writes the team's folders usually can't edit | Adds a file to the folder and runs one command. The app's own source names no capability |
 | **deploys the same tree to Vercel** | The Markdown half works. There is no TypeScript half to break | Both halves work, and behave the same as they do locally |
 | **writes `tools: []` on a seat** | No tool reaches the model | Unchanged. Picking a capability's presets never widens what a seat may call |
 
-A sixth: someone who only writes `.md` documents sees today's behaviour, byte for byte.
+A sixth: someone who only writes `.md` documents sees today's behaviour, byte for byte. A seventh puts a capability inside one worker's own folder and is told, by name, that capabilities live a level up — because every seat of a kind shares that kind's capabilities ([D3](DECISIONS.md#d3)).
 
 The silent skip is the part that hurts most. A team can write a perfectly good capability, put it exactly where the convention says team things go, and get no signal at all — not a document, not a refusal, not a log line. Everything else here follows from closing that.
 
