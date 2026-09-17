@@ -35,6 +35,11 @@ assets, so `fsdev dev` throws `pre-built assets not found` for anyone who instal
 `packages:build` alone is what CI and the Vercel builds run, and that is correct for them. Only the
 release path needs the extra step.
 
+The devtool package guards this itself. Its `prepublishOnly` runs
+`scripts/check-assets.mjs`, which fails the publish if `dist-client/index.html` is missing, so a
+release script that loses `build:assets` aborts instead of shipping an empty package. `pnpm publish`
+runs that hook, and `changeset publish` calls `pnpm publish`.
+
 ## Routine release (CI-driven)
 
 This is the normal path. No manual steps beyond merging PRs.
