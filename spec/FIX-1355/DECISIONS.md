@@ -66,8 +66,10 @@ own worker kind is a finding, filed as a follow-up.
   `CreateSessionOptions` itself accepts one. Every file-declared document is org-scoped, so an
   unwrapped lab opens a channel its own seats are refused delivery into. The wrap injects what
   the binder won't pass: two lines. Reported up as
-  [ER-14](https://github.com/fixpoint-labs/flow-state-dev/pull/1718) — *thread the org through
-  `openChannels`*, not *add an org door*.
+  [FIX-1412](https://github.com/fixpoint-labs/flow-state-dev/pull/1718) — *thread the org through
+  `openChannels`*, not *add an org door*. Raised **under** the epic's ER-14 (the comment-up rule)
+  and **tracked as** FIX-1412; earlier drafts of this spec cited it as "ER-14", which is a
+  different thing — ER-14 is the process rule, not this ask.
 - **Each delivery targets a child session, not an existing one.** `session: { id }` is *never*
   created, so an address to a seat that has no session yet refuses `session-not-found`; a `key`
   child is derived, created on first delivery, and inherits the sender's `orgId`
@@ -142,7 +144,7 @@ and grants no exemption for a cheap one. So the cost boundary is gone, not resta
   (`openChannels` has no door) and one that must **compile** (the client does). An absent field
   is not observable at runtime, so the evidence is a compile either way, and the failing half
   asserts its two `TS2353` diagnostics specifically rather than accepting any red `tsc`. This is
-  what makes the client wrap load-bearing rather than cargo — and it narrows **ER-14** to *thread
+  what makes the client wrap load-bearing rather than cargo — and it narrows **FIX-1412** to *thread
   the org through `openChannels`*, not *give the client an org door*, which it already has.
 - **The lab needs no durable intake DM** — **SETTLED; it closes the epic's open question.** A DM
   is a one-participant channel under epic D2, and one participant cannot show a fan-out — the

@@ -9,7 +9,7 @@
  *   - this file compiling  → the client CAN carry an org;
  *   - `no-org-door.probe.ts` failing → `openChannels` cannot pass one.
  *
- * Which is exactly why wrapping the client works, and why ER-14 is a narrow
+ * Which is exactly why wrapping the client works, and why FIX-1412 is a narrow
  * "thread the org through `openChannels`" rather than "add an org door".
  *
  * Driven by `check-no-org-door.sh`.

@@ -15,7 +15,7 @@ what the BP says. So all of them now run.
 | Premise | Load-bearing for | Check |
 |---|---|---|
 | A channel fan-out cannot wake the built-in `agent` kind | D3 | `check-agent-kind-has-no-internal-entry.mts` |
-| `openChannels` cannot thread an `orgId` through — though the client API has one | S4, ER-14 | `check-no-org-door.sh` |
+| `openChannels` cannot thread an `orgId` through — though the client API has one | S4, FIX-1412 | `check-no-org-door.sh` |
 | A `{ key }` delivery creates the seat session and inherits the sender's org | S3 | `check-key-child-created-and-inherits-org.mts` |
 | A dispatcher addresses one hired seat by its exact instance id | S3 | same file |
 | A delivery never crosses an org boundary | the client wrap | `check-org-boundary-refusal.mts` |
@@ -75,7 +75,7 @@ field), and `org-door-exists.probe.ts` must **compile** (the client does have on
 half asserts its two exact `TS2353` diagnostics; a bare non-zero `tsc` would have been a
 neighbour-of-the-claim pass.
 
-This narrowed **ER-14** too: the ask is *thread the org through `openChannels`*, not *give the
+This narrowed **FIX-1412** too: the ask is *thread the org through `openChannels`*, not *give the
 client an org door*, which it already has.
 
 **The `{ key }` child.** This is the premise round 1's own P1 fix rests on, which is why it gets
