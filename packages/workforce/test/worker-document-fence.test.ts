@@ -33,6 +33,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { readResourcesDirectory } from "../src/loader";
 import { hireWorkforce } from "../src/hire";
+import { workerConfigSchema } from "../src/worker-config";
 import { resourcesFromDocs } from "../src/resources-from-docs";
 import { DERIVED_RESOURCE_KEYS, type WorkerManifest } from "../src/manifest";
 
@@ -105,6 +106,12 @@ async function hireTwoSeatsOver(root: string) {
     kind: "recon",
     cardinality: "collection",
     actions: { run: { inputSchema: z.string(), block: noop } },
+    // Admission, not decoration: a hireable kind declares where a seat's
+    // instructions and resolved skills arrive, or `hireWorkforce` refuses the
+    // whole roster. This kind adds no settings of its own, so it composes the
+    // bag bare. It changes nothing the fence measures — the documents and the
+    // per-seat instance ids are minted the same either way.
+    configSchema: workerConfigSchema(),
     resources,
   });
 
