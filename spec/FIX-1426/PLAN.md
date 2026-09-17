@@ -58,7 +58,7 @@ constraint on, and everything downstream assumes it.
 direct call to the seat. A check that reaches the seat without going through the board proves the
 seat works and says nothing about D1.
 
-## Pinned names · the only three
+## Pinned names · the only two
 
 | Where | Name | Why pinned |
 |---|---|---|
