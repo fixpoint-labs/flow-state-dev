@@ -34,15 +34,15 @@ import {
 import { refusedDeclarationMessage, type ResourceDoc } from "../manifest";
 import { validateSegment } from "./segments";
 import {
+  IGNORED_ENTRIES,
   type PathReport,
   classify,
+  openRoot,
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
+  walkTeams,
 } from "./structural-directory";
-
-/** Filenames that are never a document — editor and OS droppings. */
-const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
 
 /** The slot a document sits in, under either root. */
 const RESOURCES_SLOT = "resources";
@@ -121,28 +121,21 @@ export async function readResourcesDirectory(
   const documents: ResourceDoc[] = [];
   const errors: ResourceDocError[] = [];
 
-  // The root is classified before it is listed, for the reason every nested
-  // structural folder is: a bare `readdir` follows a symlink, and a symlinked
-  // root would load the whole tree from somewhere the caller never configured.
-  // It throws rather than landing in `errors` because the root is the one level
-  // whose failure is a wiring mistake, not a document-shaped one.
-  if ((await classify(root)).kind === "symlink") {
-    throw refusedSymlink("workforce directory", root);
-  }
+  await openRoot(root);
 
-  try {
-    await fs.readdir(root);
-  } catch (err) {
-    throw new Error(
-      `Failed to read workforce directory "${root}": ${(err as Error).message}`,
-    );
-  }
+  /** File a structural refusal met on the way to a slot, at either root. */
+  const report = (at: string, error: Error): void => {
+    errors.push({ path: at, error, kind: "unreadable-slot" });
+  };
 
   // The org root. Opened structurally rather than merely classified, so a
-  // symlinked or unreadable `org/` is reported the way `teams/` is.
+  // symlinked or unreadable `org/` is reported the way `teams/` is. It stays
+  // here rather than moving into the shared walk: it has one caller, and a
+  // shared open would hand the channels reader an `org/` scope it is not
+  // allowed to use.
   const org = await openStructuralDirectory(path.join(root, "org"), "org");
   if (org.refusal !== undefined) {
-    errors.push({ path: "org", error: org.refusal.error, kind: "unreadable-slot" });
+    report("org", org.refusal.error);
   }
   if (org.entries !== undefined) {
     await readSlot(path.join(root, "org", RESOURCES_SLOT), `org/${RESOURCES_SLOT}`, {
@@ -152,40 +145,11 @@ export async function readResourcesDirectory(
     });
   }
 
-  const teams = await openStructuralDirectory(path.join(root, "teams"), "teams");
-  if (teams.refusal !== undefined) {
-    errors.push({ path: "teams", error: teams.refusal.error, kind: "unreadable-slot" });
-  }
-  if (teams.entries === undefined) return { documents, errors };
-
-  for (const teamId of teams.entries) {
-    if (IGNORED_ENTRIES.has(teamId)) continue;
-
-    const teamDir = path.join(root, "teams", teamId);
-    const teamPath = `teams/${teamId}`;
-    const team = await classify(teamDir);
-    if (team.kind === "symlink") {
-      errors.push({
-        path: teamPath,
-        error: refusedSymlink("team folder", teamId),
-        kind: "unreadable-slot",
-      });
-      continue;
-    }
-    if (team.kind === "unreadable") {
-      errors.push({
-        path: teamPath,
-        error: unreadable("Team folder", teamId, team.error),
-        kind: "unreadable-slot",
-      });
-      continue;
-    }
-    if (team.kind !== "directory") continue;
-
-    await readSlot(path.join(teamDir, RESOURCES_SLOT), `${teamPath}/${RESOURCES_SLOT}`, {
+  for await (const team of walkTeams(root, report)) {
+    await readSlot(path.join(team.dir, RESOURCES_SLOT), `${team.path}/${RESOURCES_SLOT}`, {
       documents,
       errors,
-      mintRef: (name) => mintResourceRef(teamId, name),
+      mintRef: (name) => mintResourceRef(team.id, name),
     });
   }
 

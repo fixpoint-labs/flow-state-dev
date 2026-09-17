@@ -20,7 +20,6 @@
  * `./loader` subpath rather than the package root.
  */
 
-import fs from "node:fs/promises";
 import path from "node:path";
 import type { InitialSkill } from "@flow-state-dev/core";
 import {
@@ -37,6 +36,7 @@ import { validateSegment } from "./segments";
 import {
   type PathReport,
   classify,
+  openRoot,
   openStructuralDirectory,
   refusedSymlink,
 } from "./structural-directory";
@@ -165,15 +165,11 @@ export async function readSeatSkills(
   validateSegment(worker, "Worker");
 
   // The levels below are each allowed to be absent, so nothing further down
-  // can tell a missing root from a tree that simply keeps no skills. Checked
-  // here, once, in the sibling reader's words.
-  try {
-    await fs.readdir(root);
-  } catch (err) {
-    throw new Error(
-      `Failed to read workforce directory "${root}": ${(err as Error).message}`,
-    );
-  }
+  // can tell a missing root from a tree that simply keeps no skills. Opened
+  // here, once, through the shared primitive — which is also what refuses a
+  // symlinked root, the one level this reader's own ancestor check never
+  // reaches.
+  await openRoot(root);
 
   const errors: SeatSkillError[] = [];
   // Structural folders already refused, so a shared one — `teams`, the team's

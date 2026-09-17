@@ -19,7 +19,7 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import fsp from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readWorkforceDirectory } from "../src/loader";
@@ -167,6 +167,40 @@ Body.
     await expect(
       readWorkforceDirectory(join(tmpdir(), "fsd-workforce-does-not-exist-9e1c")),
     ).rejects.toThrow(/Failed to read workforce directory/);
+  });
+
+  it("refuses a symlinked root without following it", async () => {
+    // The root is the one level a bare `readdir` would follow. Every nested
+    // structural folder is classified first, so `teams -> /outside` is refused;
+    // a root that is itself a link has to be refused the same way, or the whole
+    // roster comes from somewhere the caller never configured.
+    const root = tree({ "real/teams/engineering/workers/lead/WORKER.md": LEAD_MD });
+    symlinkSync(join(root, "real"), join(root, "linked"));
+
+    // Control: the tree behind the link loads perfectly, so the refusal below
+    // is the symlink and not a broken fixture.
+    const direct = await readWorkforceDirectory(join(root, "real"));
+    expect(direct.workers.map((w) => w.id)).toEqual(["engineering.lead"]);
+
+    await expect(readWorkforceDirectory(join(root, "linked"))).rejects.toThrow(/Symlinked/);
+  });
+
+  it("refuses a symlinked root spelled with a trailing separator", async () => {
+    // `lstat` resolves the final symlink when the path ends in a separator, so
+    // `<root>/` classifies as a directory where `<root>` classifies as a link.
+    // The trailing form is the ordinary way a directory gets written down, so
+    // without it the refusal above is one character from being bypassed and the
+    // whole roster comes from behind the link after all.
+    const root = tree({ "real/teams/engineering/workers/lead/WORKER.md": LEAD_MD });
+    symlinkSync(join(root, "real"), join(root, "linked"));
+
+    await expect(readWorkforceDirectory(`${join(root, "linked")}${sep}`)).rejects.toThrow(
+      /^Symlinked workforce directory ".+" — refused for safety$/,
+    );
+
+    // And an ordinary root written the same way still loads.
+    const direct = await readWorkforceDirectory(`${join(root, "real")}${sep}`);
+    expect(direct.workers.map((w) => w.id)).toEqual(["engineering.lead"]);
   });
 
   describe("a slot that cannot produce a manifest is reported, and the healthy worker still loads", () => {

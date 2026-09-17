@@ -125,7 +125,7 @@ What lands in `errors`:
 - a symlink where a folder or a worker file belongs, refused rather than read;
 - a directory that exists but cannot be listed, reported under its own path (`teams`, `teams/<team>`, or `teams/<team>/workers`) so the seats beneath it are not lost silently.
 
-`readWorkforceDirectory` throws in exactly one case: the root you passed cannot be read at all. A root that exists but has no `teams/` folder comes back as `{ workers: [], errors: [] }`.
+`readWorkforceDirectory` throws in two cases, and both are a wiring mistake rather than a bad folder: the root you passed cannot be read at all, or it is a symlink. A link is refused rather than followed, whichever way the path is written — with a trailing slash or without — because a roster loaded from wherever a link happens to point is not the one you configured. If your root is deliberately a link, pass the path it resolves to. A root that exists but has no `teams/` folder comes back as `{ workers: [], errors: [] }`.
 
 #### Treat a non-empty `errors` as fatal
 
@@ -327,7 +327,7 @@ const seats = hireWorkforce(workers, {
 
 - Reading the tree does not resolve tool or capability names. `tools: [board, search]` comes off the file as two strings; whether anything backs those names is checked at the hire, by the kind the worker runs on. The built-in checks them [against its catalog](./built-in-worker.md#tools). A kind you write decides for itself.
 - It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the three skills folders each worker draws from ([Skills](./built-in-worker.md#skills)). A team's `resources/` folder is read by a separate walk, [`readResourcesDirectory`](./documents-on-disk.md). A team's `tools/` folder is layout, not input.
-- It does not follow symlinks, at any level of the walk.
+- It does not follow symlinks, at any level of the walk, including the root you hand it.
 - It does not watch the tree. Read it once, at startup.
 - It does not staff a [task board](../orchestration/task-board.md). A hired seat is an address you open a session against; a board's workers are in-process and claim tasks from a collection. A board calls its registry entries seats too. Same idea, different mechanism.
 - It does not describe a channel. A `WORKER.md` mints one flow copy per record; a channel is a session on a shared kind, which is a different binding with a different reason. See [Channels](./channels.md).
