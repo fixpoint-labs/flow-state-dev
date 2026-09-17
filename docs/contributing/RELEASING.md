@@ -27,6 +27,12 @@ Every package sets `main` / `types` / `exports` to `src/*.ts` for local developm
 
 `changeset publish` detects the workspace's package manager and spawns `pnpm publish` here, so the normal path is already correct. Do not reach for `npm publish` as a workaround.
 
+## `release:build`, not `packages:build`
+
+Every release path builds through `release:build`, which is `packages:build` plus `build:assets`. The extra step copies the DevTool app's output into `packages/devtool/dist-client/`, which `@flow-state-dev/devtool` lists in `files` and resolves at runtime to serve `fsdev dev`. `packages:build` alone does not produce it: `build:assets` is not a turbo task, and it cannot become one — `apps/devtool` depends on the `@flow-state-dev/devtool` package, so folding the asset build into that package's own `build` would close a cycle.
+
+The two stay separate because `packages:build` is also the editor/typecheck input and the Vercel build step for `packages/ui` and `apps/kitchen-sink`, none of which want an app build. Publishing is the only caller that needs the assets, so publishing is what pays for them.
+
 ```bash
 # What the tarball actually contains
 pnpm --filter @flow-state-dev/core pack
@@ -77,8 +83,8 @@ Note: `changeset publish` does not guarantee topological order. For strict order
 Run before any publish (automated or manual):
 
 ```bash
-# Verify tarball contents per package (pnpm, not npm — see "The publish must go through pnpm")
-pnpm -r exec pnpm pack --pack-destination /tmp/fsd-packs
+# Walk the real publish set — exactly the 28 publishable packages, private ones skipped
+pnpm publish -r --dry-run --no-git-checks
 
 # Check exports and types resolution
 npx publint ./packages/<name>
@@ -109,7 +115,7 @@ The token must be a **granular access token scoped to all packages in both organ
 1. Confirm both npm orgs exist and the publishing account has publish rights on each: `flow-state-dev`, `thought-fabric`.
 2. Add the `NPM_TOKEN` repository secret.
 3. Review the open **Version Packages** PR. Note that the accumulated changesets have already moved past the 0.1.0 launch baseline — most packages publish as `0.1.1`, `orchestration` and `workforce` as `0.2.0`, `codex` and `cursor` as `0.0.2`. That is legal and harmless; fighting changesets to force a clean 0.1.0 means hand-editing 76 generated files.
-4. Merge it. `release.yml` runs `release:ci` → `packages:build` → `changeset publish --provenance`.
+4. Merge it. `release.yml` runs `release:ci` → `release:build` → `changeset publish --provenance`.
 5. Smoke test from a fresh directory:
    ```bash
    mkdir /tmp/fsd-smoke && cd /tmp/fsd-smoke
