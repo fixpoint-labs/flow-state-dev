@@ -1,0 +1,83 @@
+<svg viewBox="0 0 940 340" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Today: two proven halves side by side with a gap between them. On the left the pentest lab, where a channel post reaches seats declared in Markdown and each answers with a line of text. On the right conductor, where a board row becomes a supervised coding run that ends in a commit, but the thing the row reaches is hand-written TypeScript. Nothing crosses the gap. After: one band, where a filed board row reaches a seat declared in Markdown and that seat's answer is the supervised run.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-done { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-new  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:5 4; fill:none; }
+    .flow   { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .flow-n { stroke:var(--accent); stroke-width:1.8; fill:none; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+
+  <g id="today-label">
+    <text class="t-lbl" x="16" y="22">TODAY · TWO PROVEN HALVES</text>
+  </g>
+
+  <g id="pentest">
+    <rect class="n-done" x="16" y="34" width="420" height="104" rx="5"/>
+    <text class="t-lbl" x="32" y="54">goals/pentest-lab · MERGED</text>
+    <text class="t-b"   x="32" y="76">a post reaches seats declared in Markdown</text>
+    <text class="t-s"   x="32" y="96">WORKER.md · SKILL.md · CHANNEL.md · resources</text>
+    <text class="t-s"   x="32" y="122">the seat's answer is A LINE OF TEXT</text>
+  </g>
+
+  <g id="the-gap">
+    <path class="fence" d="M468 30 L468 142"/>
+    <text class="t-gone" x="468" y="158" text-anchor="middle">never crossed</text>
+  </g>
+
+  <g id="conductor">
+    <rect class="n-done" x="500" y="34" width="424" height="104" rx="5"/>
+    <text class="t-lbl" x="516" y="54">labs/conductor + harness-manager · SHIPS</text>
+    <text class="t-b"   x="516" y="76">a board row becomes a supervised run</text>
+    <text class="t-s"   x="516" y="96">own checkout · verdict read before the row settles</text>
+    <text class="t-s"   x="516" y="122">but the row reaches HAND-WRITTEN TYPESCRIPT</text>
+  </g>
+
+  <g id="after-label">
+    <text class="t-lbl" x="16" y="208">AFTER · ONE ROW, END TO END</text>
+  </g>
+
+  <g id="after">
+    <rect class="n-new" x="16" y="220" width="200" height="72" rx="5"/>
+    <text class="t-lbl" x="30" y="240">EM SEAT · NO HARNESS</text>
+    <text class="t-b"   x="30" y="262">files the row</text>
+    <text class="t-s"   x="30" y="280">WORKER.md</text>
+
+    <path class="flow-n" d="M216 256 L268 256"/>
+    <path class="flow-n" d="M262 251 L268 256 L262 261"/>
+
+    <rect class="n-box" x="272" y="220" width="178" height="72" rx="5"/>
+    <text class="t-lbl" x="286" y="240">FEATURE BOARD</text>
+    <text class="t-b"   x="286" y="262">claims, settles</text>
+    <text class="t-s"   x="286" y="280">declared in code</text>
+
+    <path class="flow-n" d="M450 256 L502 256"/>
+    <path class="flow-n" d="M496 251 L502 256 L496 261"/>
+
+    <rect class="n-new" x="506" y="220" width="200" height="72" rx="5"/>
+    <text class="t-lbl" x="520" y="240">CODER SEAT · NAMES ONE</text>
+    <text class="t-b"   x="520" y="262">claims the row</text>
+    <text class="t-s"   x="520" y="280">WORKER.md · flow: coder</text>
+
+    <path class="flow-n" d="M706 256 L758 256"/>
+    <path class="flow-n" d="M752 251 L758 256 L752 261"/>
+
+    <rect class="n-box" x="762" y="220" width="162" height="72" rx="5"/>
+    <text class="t-lbl" x="776" y="240">SUPERVISED RUN</text>
+    <text class="t-b"   x="776" y="262">a commit</text>
+    <text class="t-s"   x="776" y="280">own checkout</text>
+  </g>
+</svg>

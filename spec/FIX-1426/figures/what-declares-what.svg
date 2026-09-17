@@ -1,0 +1,60 @@
+<svg viewBox="0 0 940 290" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A dashed vertical fence separates what the file tree declares from what app code declares. On the left, seats, skills, documents and a channel are written as Markdown and cross the fence into hireWorkforce. On the right, the feature board and the two kind modules are written as code and reach hireWorkforce without crossing. Below on the left, a boards slash folder written in the tree does not cross at all: it is accepted by the tree and read by nobody.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-tree { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-code { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-dead { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:5 4; fill:none; }
+    .flow   { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .flow-x { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; fill:none; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+
+  <g id="fence">
+    <path class="fence" d="M470 20 L470 270"/>
+    <text class="t-lbl" x="150" y="32" text-anchor="middle">WRITTEN AS MARKDOWN</text>
+    <text class="t-lbl" x="740" y="32" text-anchor="middle">WRITTEN AS CODE</text>
+  </g>
+
+  <g id="tree-side">
+    <rect class="n-tree" x="16" y="48" width="270" height="64" rx="5"/>
+    <text class="t-b" x="32" y="74">seats · skills · documents · a channel</text>
+    <text class="t-s" x="32" y="96">WORKER.md · SKILL.md · CHANNEL.md</text>
+    <path class="flow" d="M286 80 L592 80"/>
+    <path class="flow" d="M586 75 L592 80 L586 85"/>
+  </g>
+
+  <g id="hire">
+    <rect class="n-box" x="596" y="48" width="240" height="64" rx="5"/>
+    <text class="t-lbl" x="612" y="70">THE ROSTER</text>
+    <text class="t-b"   x="612" y="94">hireWorkforce</text>
+  </g>
+
+  <g id="code-side">
+    <rect class="n-code" x="596" y="150" width="328" height="64" rx="5"/>
+    <text class="t-b" x="612" y="176">the feature board · the two kinds</text>
+    <text class="t-s" x="612" y="198">declared in code · flows/workers/*.ts</text>
+    <path class="flow" d="M700 150 L700 118"/>
+    <path class="flow" d="M695 124 L700 118 L705 124"/>
+  </g>
+
+  <g id="never-crosses">
+    <rect class="n-dead" x="16" y="186" width="270" height="64" rx="5"/>
+    <text class="t-lbl" x="32" y="210">A boards/ FOLDER</text>
+    <text class="t-s"   x="32" y="234">accepted by the tree, read by nobody</text>
+    <path class="flow-x" d="M286 218 L438 218"/>
+    <text class="t-gone" x="362" y="208" text-anchor="middle">BR-16 · never crosses</text>
+  </g>
+</svg>
