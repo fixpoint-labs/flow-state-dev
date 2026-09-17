@@ -14,7 +14,13 @@
  * has one: a `ResourceModules` map can be written by hand or left stale, and
  * the typed generated map is only a check on the file that was generated.
  */
-import { defineCapability, defineFlow, defineResource, generator } from "@flow-state-dev/core";
+import {
+  defineCapability,
+  defineFlow,
+  defineResource,
+  defineResourceCollection,
+  generator,
+} from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { resourcesFromDocs } from "../src/resources-from-docs";
@@ -43,6 +49,13 @@ const glossary = defineResource({
   scope: "org",
   stateSchema: z.object({}).passthrough(),
   default: {},
+});
+
+/** A collection — the other thing BR-8 says a module's resource half may be. */
+const notes = defineResourceCollection({
+  pattern: "teams/engineering/notes/*",
+  scope: "org",
+  stateSchema: z.object({}).passthrough(),
 });
 
 /** One document record, as the Markdown door would have handed it back. */
@@ -111,6 +124,19 @@ describe("splitResourceModules", () => {
       "teams/engineering/glossary",
       "teams/engineering/handbook",
     ]);
+  });
+
+  // BR-8's second half — "a resource **or a collection**". A collection carries
+  // a brand of its own (`"ResourceCollection"`), so the capability test has to
+  // compare the brand rather than ask whether there is one: presence alone puts
+  // a collection in `uses`, where core keys it by an undefined `name`.
+  it("merges a resource collection into the map, not into `uses`", () => {
+    const { capabilities, resources } = splitResourceModules({
+      "teams/engineering/notes": notes,
+    });
+
+    expect(capabilities).toEqual([]);
+    expect(resources["teams/engineering/notes"]).toBe(notes);
   });
 
   it("splits a folder holding both, in one call", () => {

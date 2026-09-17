@@ -20,9 +20,10 @@ A capability's own declared resources reach the flow through `uses`, the same as
 hand. Nothing is installed for you: the two maps are spread at your own call site, so what a flow
 carries stays readable in your source.
 
-An entry that is neither — a module whose default export went missing, or a hand-written map holding
-a bare value — is refused by name rather than filed into the resource map. What a module exports is
-still your own `tsc`'s to check against the generated map's types; this is the second door, for a map
-that was hand-written or has drifted from the tree.
+An entry that cannot be either half — a module whose default export went missing, or a hand-written
+map holding a bare value — is refused by name rather than filed into the resource map. What a module
+exports is still your own `tsc`'s to check against the generated map's types; this is the second
+door, for a map that was hand-written or has drifted from the tree, and it refuses what cannot be
+either half rather than re-judging which half a thing belongs in.
 
 A seat cannot yet pick which of an installed capability's presets it wants; that is the next change.

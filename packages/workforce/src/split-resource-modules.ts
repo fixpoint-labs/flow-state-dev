@@ -22,6 +22,14 @@
  * function is the second door on that check rather than the first — a
  * `ResourceModules` map can be written by hand or left stale, and a value that
  * is not an object at all cannot be either half.
+ *
+ * **Where that second door stops.** It refuses what cannot be either half; it
+ * does not re-judge which half a thing belongs in. An *object* that is neither
+ * lands in the resource map and is refused, by ref, by `defineFlow` for having
+ * no intrinsic scope. And a capability written in one worker's own folder is
+ * the generated map's per-entry type to refuse, because saying so here would
+ * mean re-deriving the ref grammar that `./loader/resource-convention` owns —
+ * a second spelling of the one rule that names everything in this tree.
  */
 
 import type { DeclaredResources, DefinedCapability } from "@flow-state-dev/core";
@@ -105,14 +113,21 @@ export function splitResourceModules(modules: ResourceModules): ResourceModuleHa
  * Whether a module's export is a capability rather than a resource.
  *
  * Read off the brand `defineCapability` stamps, and read **through the
- * prototype chain** on purpose: `.presets()` and `.config()` return a clone
- * made with `Object.create(base)`, so a capability an author configured before
- * exporting it carries the brand on its prototype and not as an own property.
- * An own-property check would file such a capability as a resource, and the
- * resource map would then hold a thing with no `ref` and no `stateSchema`.
+ * prototype chain** on purpose: `.presets()`, `.config()` and `.with()` each
+ * return a clone made with `Object.create(base)`, so a capability an author
+ * configured before exporting it carries the brand on its prototype and not as
+ * an own property. An own-property check would file such a capability as a
+ * resource, and the resource map would then hold a thing with no `ref` and no
+ * `stateSchema`.
  *
- * A resource has no brand of its own to test for — `defineResource` returns the
- * config it was given — so the capability side has to be the positive case.
+ * Compared for **equality** rather than tested for presence, because a resource
+ * collection carries a brand too (`"ResourceCollection"`) and belongs on the
+ * resource side. `"__brand" in value` would put one in `uses`, where it would
+ * be keyed by an undefined `name`.
+ *
+ * A plain resource has no brand of its own to test for — `defineResource`
+ * returns the config it was given — so the capability side has to be the
+ * positive case.
  */
 function isCapability(value: object): value is DefinedCapability {
   return (value as { __brand?: unknown }).__brand === CAPABILITY_BRAND;
