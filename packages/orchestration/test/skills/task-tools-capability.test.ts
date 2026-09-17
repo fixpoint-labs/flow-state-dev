@@ -50,12 +50,18 @@ function buildCtx(opts?: Parameters<typeof buildDelegationCtx>[0]) {
   return buildDelegationCtx({ ...opts, self: false });
 }
 
-/** Look up a tool by name from the capability's preset surface. */
+/**
+ * Look up a tool by name from the capability's preset surface.
+ *
+ * These live under `controlTools`, not `tools` (FIX-1393): the delegation board
+ * is a framework control a block holds because it asked for a board, so a
+ * consuming block's `tools:` fence must not cut it off.
+ */
 function findTool(name: string): GeneratorTool {
   const presetDefs = (taskTools as unknown as {
-    __presetDefs?: { tools?: { tools?: GeneratorTool[] } };
+    __presetDefs?: { tools?: { controlTools?: GeneratorTool[] } };
   }).__presetDefs;
-  const tool = presetDefs?.tools?.tools?.find((t) => t.config?.name === name);
+  const tool = presetDefs?.tools?.controlTools?.find((t) => t.config?.name === name);
   if (!tool) throw new Error(`tool not found: ${name}`);
   return tool;
 }
@@ -63,9 +69,9 @@ function findTool(name: string): GeneratorTool {
 describe("taskTools capability", () => {
   it("registers eight tools under the default preset", () => {
     const presetDefs = (taskTools as unknown as {
-      __presetDefs?: { tools?: { tools?: GeneratorTool[] } };
+      __presetDefs?: { tools?: { controlTools?: GeneratorTool[] } };
     }).__presetDefs;
-    const names = presetDefs?.tools?.tools?.map((t) => t.config?.name).sort();
+    const names = presetDefs?.tools?.controlTools?.map((t) => t.config?.name).sort();
     expect(names).toEqual([
       "addTask",
       "assignTask",

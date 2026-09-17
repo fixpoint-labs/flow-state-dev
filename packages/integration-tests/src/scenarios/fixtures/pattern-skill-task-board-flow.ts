@@ -9,18 +9,21 @@
  * not a skill-mode test (skill pattern/fork modes were removed in FIX-918); the
  * board is wired directly.
  */
-import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/orchestration/task-board";
 import { taskTools } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
 const inputSchema = z.object({ message: z.string() });
 
-// No `tools:` here on purpose (FIX-1393). Declaring the slot fences the
-// capability's tools to what it names, and this worker's whole job is to call
-// `addTask` — a tool `taskTools` contributes. It previously declared a decorative
-// `search` handler alongside `uses: [taskTools]` and relied on the two being
-// unioned; under the fence that declaration would have cut `addTask` out.
+const searchTool = handler({
+  name: "search",
+  description: "Search the web for information.",
+  inputSchema: z.object({ query: z.string() }),
+  outputSchema: z.object({ results: z.array(z.string()) }),
+  execute: async (input) => ({ results: [`Result for: ${input.query}`] })
+});
+
 const discoverer = generator({
   name: "tb-discoverer",
   model: "intent/chat",
@@ -37,6 +40,7 @@ const discoverer = generator({
   }),
   user: (input) => `Task: ${input.goal}`,
   outputSchema: z.string(),
+  tools: [searchTool],
   uses: [taskTools],
   itemVisibility: { client: true, history: false },
   maxIterations: 12

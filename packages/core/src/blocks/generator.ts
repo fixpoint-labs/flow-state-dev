@@ -111,6 +111,8 @@ const DEFAULT_REPAIR_ATTEMPTS = 1;
 interface DynamicCapSurface {
   contextEntries: Array<unknown>;
   tools: GeneratorTool[];
+  /** Fence-exempt controls (FIX-1393) — see `PresetDef.controlTools`. */
+  controlTools: GeneratorTool[];
 }
 
 /**
@@ -139,6 +141,7 @@ async function resolveDynamicCapSurface(
 
   const contextEntries: Array<unknown> = [];
   const tools: GeneratorTool[] = [];
+  const controlTools: GeneratorTool[] = [];
 
   // Walk nested static uses
   if (cap.uses) {
@@ -149,6 +152,7 @@ async function resolveDynamicCapSurface(
       const nestedSurface = await resolveDynamicCapSurface(nested, ctx);
       contextEntries.push(...nestedSurface.contextEntries);
       tools.push(...nestedSurface.tools);
+      controlTools.push(...nestedSurface.controlTools);
     }
   }
 
@@ -164,9 +168,18 @@ async function resolveDynamicCapSurface(
         tools.push(...(await preset.tools(ctx)));
       }
     }
+    // Fence-exempt controls travel the same path but stay in their own bucket
+    // so the generator's fence can tell them apart (FIX-1393).
+    if (preset.controlTools) {
+      if (Array.isArray(preset.controlTools)) {
+        controlTools.push(...preset.controlTools);
+      } else {
+        controlTools.push(...(await preset.controlTools(ctx)));
+      }
+    }
   }
 
-  return { contextEntries, tools };
+  return { contextEntries, tools, controlTools };
 }
 
 type MaybePromise<TValue> = TValue | Promise<TValue>;
@@ -2674,8 +2687,10 @@ export function generator<
 
   const staticContextEntries = mergedSurface?.contextEntries ?? [];
   const staticToolEntries = mergedSurface?.toolEntries ?? [];
+  const staticControlToolEntries = mergedSurface?.controlToolEntries ?? [];
   const hasStaticContext = staticContextEntries.length > 0;
   const hasStaticTools = staticToolEntries.length > 0;
+  const hasStaticControlTools = staticControlToolEntries.length > 0;
   const hasDynamic = dynamicUses.length > 0;
 
   // -- Singletons (model, providerOptions, caching): block-level wins over
@@ -2740,14 +2755,14 @@ export function generator<
   }
 
   // -- Tools: single async resolver combining user tools + static caps + dynamic caps
-  if (hasStaticTools || hasDynamic) {
+  if (hasStaticTools || hasStaticControlTools || hasDynamic) {
     const userTools = normalizedConfig.tools;
-    // Declaring `tools:` at all is what raises the fence — NOT the list being
-    // non-empty (FIX-1393). `tools: []` says "no tools", while omitting the
-    // slot says nothing about tools, which is how every tool-bearing
-    // capability reaches a block that never mentions tools. Both produce an
-    // empty `base` below, so the two cases can only be told apart here, from
-    // the declaration itself.
+    // THE FENCE (FIX-1393). Declaring `tools:` at all is what raises it — NOT
+    // the list being non-empty. `tools: []` says "no tools"; omitting the slot
+    // says nothing about tools, which is how every tool-bearing capability
+    // reaches a block that never mentions tools. Both produce an empty `base`
+    // below, so the two cases can only be told apart here, from the
+    // declaration itself.
     const declaresTools = userTools !== undefined;
 
     (normalizedConfig as any).tools = async (input: unknown, ctx: BlockContext) => {
@@ -2756,39 +2771,49 @@ export function generator<
         ? Array.isArray(userTools) ? userTools : await (userTools as any)(input, ctx)
         : [];
 
-      // The fence: when the block declared `tools:`, capability-contributed
-      // tools are INTERSECTED with that declaration rather than unioned onto
-      // it, so a capability can never hand the model a tool the block did not
-      // name — and `tools: []` reaches the model with nothing at all. Keyed by
-      // tool name because the name is what the model calls. Resolved per
-      // invocation, so a `tools:` function fences against the list it returned
-      // for THIS input.
-      const fence = (tools: GeneratorTool[]): GeneratorTool[] => {
-        if (!declaresTools) return tools;
-        const declared = new Set(base.map((t) => t.name));
-        return tools.filter((t) => declared.has(t.name));
-      };
+      // 2. Capability CONTROL tools — never fenced. The block composing the
+      // capability IS the declaration, and a control is typically built inside
+      // the capability and never exported, so there is no name a `tools:` list
+      // could use to let it back in. See `PresetDef.controlTools`.
+      const staticControlTools: GeneratorTool[] = hasStaticControlTools
+        ? (await Promise.all(
+            staticControlToolEntries.map((f) => Array.isArray(f) ? f : f(ctx))
+          )).flat()
+        : [];
 
-      // 2. Static capability preset tools
-      const staticTools: GeneratorTool[] = hasStaticTools
+      // 3. Capability CATALOG tools — fenced. When the block declared `tools:`,
+      // these are dropped rather than name-intersected with it. Intersecting
+      // would be dead code: a capability tool the block also named arrives
+      // through `base` already (that is what naming it means), so the filtered
+      // remainder is either an identical instance the later identity dedupe
+      // strips, or a same-name different instance that `assertUniqueToolNames`
+      // rejects. Dropping says the same thing without turning that second case
+      // into a throw. Credit to #1855 for showing the intersection was inert.
+      const staticTools: GeneratorTool[] = (!declaresTools && hasStaticTools)
         ? (await Promise.all(
             staticToolEntries.map((f) => Array.isArray(f) ? f : f(ctx))
           )).flat()
         : [];
 
-      // 3. Dynamic capability tools (single-pass via resolveDynamicCapSurface)
+      // 4. Dynamic capability tools (single-pass via resolveDynamicCapSurface).
+      // Controls always; catalog tools only behind an unraised fence. Both
+      // buckets are collected in the same traversal — a dynamic resolver may
+      // contribute either kind, and skipping the walk entirely would also skip
+      // the controls.
       const dynTools: GeneratorTool[] = [];
+      const dynControlTools: GeneratorTool[] = [];
       if (hasDynamic) {
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
             if (!capabilityMatchesAgent(cap, blockItemVisibility)) continue;
             const surface = await resolveDynamicCapSurface(cap, ctx);
-            dynTools.push(...surface.tools);
+            dynControlTools.push(...surface.controlTools);
+            if (!declaresTools) dynTools.push(...surface.tools);
           }
         }
       }
 
-      return [...base, ...fence(staticTools), ...fence(dynTools)];
+      return [...base, ...staticControlTools, ...dynControlTools, ...staticTools, ...dynTools];
     };
   }
 

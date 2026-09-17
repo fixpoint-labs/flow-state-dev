@@ -25,7 +25,15 @@
  *
  * **A worker's `tools:` is a hard runtime fence**, not a hint: a seat may call
  * exactly the catalog keys it names, and an empty list means none, regardless
- * of what else the app's catalog carries. The skills library is handed the
+ * of what else the app's catalog carries — and, since FIX-1393, regardless of
+ * what a capability attached through `uses` would otherwise contribute. Core
+ * enforces that half; see `docs/architecture/capabilities.md` → *The tools
+ * fence*. What the fence deliberately does NOT hold back is a framework
+ * **control** a capability declares through `controlTools` — the skill loader
+ * this seat switched on, the delegation board a skill it holds asked for. A
+ * seat only holds those because its own config asked, and they are built
+ * inside their capability and never exported, so no `tools:` list could name
+ * one back in. The skills library is handed the
  * app's catalog with registration turned off (`registerCatalogTools: false`),
  * so a bound skill's `allowed-tools` are still validated against it — a typo
  * or a tool the app never registered still fails loud at build time — but the
