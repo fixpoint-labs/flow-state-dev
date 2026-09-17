@@ -1,6 +1,7 @@
 {
   "name": "@thought-fabric/core",
   "version": "0.1.0",
+  "private": true,
   "description": "Cognitive architecture primitives built on flow-state-dev.",
   "keywords": [
     "ai",
