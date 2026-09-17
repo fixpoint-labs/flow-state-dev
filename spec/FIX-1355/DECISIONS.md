@@ -116,3 +116,6 @@ Treat a false one as a spec defect, not a detail.
 - **Draft** — a goal family over one shared lab, every premise read off merged code first.
 - **Round 1** — no decision changed; one false premise corrected, the session target pinned,
   duplicated narrative cut to one home each.
+- **Owner expand** — a tool leg folded into the model-backed check: a seat calls a block its
+  `tools:` names, graded on the call, not the setting. No decision changed; D1–D3 stand. Where the
+  block's file lives is a soft sequence, in [PLAN → At implement time](PLAN.md).

@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 400" role="img"
-     aria-label="Left: the workforce folder tree, ten Markdown files across an org level and two teams. A dashed seam separates it from the three things the lab writes in code: the probe seat kind, the notify router and the host with its org wrap. Right: the run, top to bottom — an operator post with no author, the open channel session with its two declared members, the fan-out waking both seats, each reading its own document, and one transcript of three lines. Bottom left, outside everything, a third hired seat in another team that is never woken. A fenced strip along the bottom names what the lab does not touch: org slash channels, which nothing reads, MCP, and the Collab roster."
+     aria-label="Left: the workforce folder tree, ten Markdown files across an org level and two teams. A dashed seam separates it from the four things the lab writes in code: the probe seat kind, the notify router, the host with its org wrap, and one custom block that one seat names in its tools: fence. Right: the run, top to bottom — an operator post with no author, the open channel session with its two declared members, the fan-out waking both seats, each reading its own document while one of them also calls the block its file named, and one transcript of three lines. Bottom left, outside everything, a third hired seat in another team that is never woken. A fenced strip along the bottom names what the lab does not touch: org slash channels, which nothing reads, MCP, and the Collab roster."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -33,7 +33,7 @@
     <text class="t-s" x="32" y="126">teams/pentest/resources/scope.md</text>
     <text class="t-s" x="32" y="144">teams/pentest/skills/port-scan/</text>
     <text class="t-s" x="32" y="162">teams/pentest/channels/findings/</text>
-    <text class="t-s" x="32" y="180">teams/pentest/workers/recon/</text>
+    <text class="t-s" x="32" y="180">teams/pentest/workers/recon/ · tools:</text>
     <text class="t-s" x="32" y="198">teams/pentest/workers/triage/</text>
     <text class="t-s" x="32" y="222">teams/audit/workers/scribe/</text>
     <text class="t-s" x="32" y="240">teams/audit/skills/port-scan/</text>
@@ -46,7 +46,7 @@
   </g>
 
   <g id="seam">
-    <path class="seam" d="M292,20 L292,330"/>
+    <path class="seam" d="M292,20 L292,344"/>
     <text class="t-lbl" x="306" y="26">THE LAB'S OWN CODE</text>
 
     <rect class="n-box" x="306" y="36" width="150" height="58" rx="5"/>
@@ -61,8 +61,12 @@
     <text class="t-b" x="320" y="198">host · org wrap</text>
     <text class="t-s" x="320" y="218">createFlowState</text>
 
-    <text class="t-lbl" x="306" y="256">EVERYTHING ELSE IS</text>
-    <text class="t-lbl" x="306" y="270">THE FRAMEWORK'S</text>
+    <rect class="n-box" x="306" y="246" width="150" height="58" rx="5"/>
+    <text class="t-b" x="320" y="268">scope-check</text>
+    <text class="t-s" x="320" y="288">fenced by tools:</text>
+
+    <text class="t-lbl" x="306" y="322">EVERYTHING ELSE IS</text>
+    <text class="t-lbl" x="306" y="336">THE FRAMEWORK'S</text>
   </g>
 
   <g id="run">
@@ -87,7 +91,7 @@
 
     <rect class="n-code" x="480" y="196" width="200" height="56" rx="5"/>
     <text class="t-b" x="494" y="218">pentest.recon</text>
-    <text class="t-s" x="494" y="238">teams/pentest/scope.md</text>
+    <text class="t-s" x="494" y="238">scope.md · calls scope-check</text>
 
     <rect class="n-code" x="700" y="196" width="200" height="56" rx="5"/>
     <text class="t-b" x="714" y="218">pentest.triage</text>

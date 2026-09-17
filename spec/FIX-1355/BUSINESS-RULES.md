@@ -48,7 +48,7 @@ post takes to get here is [SPEC.md](SPEC.md#how-a-post-reaches-a-seat).
 |---|---|---|---|
 | BR-16 | A request carries no org | Refused at the door by the reading block's `requireOrg`, not arriving with every document missing | G |
 | BR-17 | A post claims an `author` the channel's roster does not hold | Refused `author-not-a-member`; nothing is written | G |
-| BR-18 | A `WORKER.md` names a kind the lab never passed | The whole hire refuses, naming the worker. The run reports it and stops rather than running a short roster | G |
+| BR-18 | A `WORKER.md` names a kind the lab never passed, or a `tools:` key its kind's catalog does not carry | The whole hire refuses at the mint, naming the worker. The run reports it and stops rather than running a short roster, or a seat whose declared tool reaches nothing | G |
 | BR-19 | The fan-out does not complete inside the run's bound | The run fails loudly, naming how many lines it saw. Delivery is best-effort, so a short transcript must never read as a pass | G · M |
 
 ## With a real model
@@ -56,6 +56,7 @@ post takes to get here is [SPEC.md](SPEC.md#how-a-post-reaches-a-seat).
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-20 | The same tree runs with a generator in the answering slot | Each member's answer names something only its own document says, and both land in the one transcript by the same path | M |
+| BR-21 | The seat whose `tools:` names the lab's block answers | Its line carries the value that block mints at call time — minted in the lab's code, written in no file and in no prompt the seat is given, so only a real call can put it there. The sibling seat, which names no tool, carries none. That a seat's config *lists* the tool is never what is graded | M |
 
 ## Failure taxonomy
 
@@ -71,7 +72,8 @@ each answered a post using the document, skills and instructions their own folde
 a third seat silent — read back after a restart. That is the gate (G): the epic's ER-19, ER-20 and
 ER-21 in one run.
 
-The model-backed check (M) is the same claim with a model in the answering slot, which is what
-ER-19 asks for ([the epic's rules](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)).
+The model-backed check (M) is the same claim with a model in the answering slot — plus the tool
+leg (BR-21), which is M's alone because a tool slot is a generator's and the gate's answering block
+is a handler. It is what ER-19 asks for ([the epic's rules](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)).
 **Required at completion, not optional** — a red BR-20 is this issue unfinished, and only an
 unavailable inference credential is recorded **blocked** ([D2](DECISIONS.md#d2), `goals/README.md`).
