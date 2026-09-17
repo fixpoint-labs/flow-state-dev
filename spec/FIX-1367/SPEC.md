@@ -4,13 +4,12 @@
 
 Feature · `workforce` · small · 1 PR · epic [FIX-1351](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)
 
-## Four people, before and after
+## Three people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
 | **drops a skill folder in `org/skills/` and hires a team of custom seats** | Every custom seat silently gets nothing. The folder loaded, the seat minted, and no message says the two never met | Every seat is handed the folder's skills. A kind that can't take them says so at boot, by name |
 | **writes their own worker kind** | Has to know an undocumented key name to receive anything, and gets no error for guessing wrong | Composes one published contract and receives the seat's skills, its instructions and its own settings |
-| **wants their kind to take a setting of its own** | Adds a top-level key, and collides the day the framework adds one with that name | Declares it inside the kind's own bag, where nothing the framework adds later can reach it |
 | **runs the built-in `agent` kind** | Works | Works. Every worker file keeps its current spelling, byte for byte |
 
 **Why now.** The skills convention shipped: a folder tree resolves per seat, and the record carries it. What hire does with it is hand it over *only to a kind that already happened to declare a matching key*, and to say nothing to any other. So "the seat works" is true and "the seat got what its files declared" is not, and there is no way for an author to find out which. The epic's rule is that a seat that mints and is handed nothing it declared is what makes *a seat works* dishonest ([ER-7](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)).
@@ -27,22 +26,14 @@ The top row is today: a question in the middle of the path, and one of its two a
   const triage = defineFlow({
     kind: "request-triage",
 -   configSchema: z.object({ desk: z.string().default("front") }),
-+   // Admits the seat's skills and its instructions; `desk` is this kind's own.
-+   configSchema: workerConfigSchema(z.object({ desk: z.string().default("front") })),
++   // Admits the seat's skills and its instructions; `desk` stays this kind's own.
++   configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
     actions: { run: { inputSchema, block: triageWork } }
   })
 ```
 
-**And the worker file that configures it:**
-
-```diff
-  ---
-  description: The front door.
-  flow: request-triage
-+ params:
-+   desk: back
-  ---
-```
+**And the worker file that configures it does not change at all** — `desk: back` sits where it
+always sat, at the top level, closed by this kind's own schema.
 
 Nothing names the seat's skills in either file. They come from the folders the seat can see, and hire puts them in the bag whether or not this kind reads them.
 
@@ -52,7 +43,7 @@ Nothing names the seat's skills in either file. They come from the folders the s
 flowchart LR
   F["skills folders · org, team, own"] -->|"the resolved set"| L["the loader"]
   L -->|"on the record"| H["hire"]
-  W["WORKER.md · body and params"] --> H
+  W["WORKER.md · body and settings"] --> H
   H -->|"one bag, always"| S["the kind's own closed schema"]
   S -->|"parsed and frozen"| B["a running block · ctx.flow.config"]
 ```
@@ -68,11 +59,12 @@ Hire composes one bag and hands it over. The kind's schema is the only thing tha
 
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · Hire hands the bag to every kind, and a kind that has not composed the contract stops hiring — the whole roster refuses, at boot.** If wrong: anyone running a custom worker kind has a startup failure on upgrade and an edit to make. The alternative is keeping a silence we already know misleads.
-2. **[D2](DECISIONS.md#d2) · A kind's own settings live inside one `params` bag the kind closes, not at the top level beside ours.** If wrong: we ship a door nothing walks through yet, and authors learn the nesting for a collision that hasn't happened.
+**Approved as amended.** The second decision — a `params` bag holding a kind's own settings — was
+**cut in review**. The contract ships as `instructions?` and `seatSkills`, and that is the whole
+bag: a kind declares its own settings at the top level, where the framework closes them and an
+undeclared key refuses by name ([D2](DECISIONS.md#d2)). Nothing else changed. What lost and why:
+[DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-**Open: number 2.** A restraint review argues `params` should wait for the first kind that actually
-needs it, and no filed issue is the contract's next key — so the placeholder would ship with
-nothing using it. Number 1 is the line that costs anybody an edit, and the alternative to it is a
-silence we already know misleads. What lost and why: [DECISIONS.md](DECISIONS.md). The cases:
-[BUSINESS-RULES.md](BUSINESS-RULES.md).
+What was signed:
+
+1. **[D1](DECISIONS.md#d1) · Hire hands the bag to every kind, and a kind that has not composed the contract stops hiring — the whole roster refuses, at boot.** If wrong: anyone running a custom worker kind has a startup failure on upgrade and an edit to make. The alternative is keeping a silence we already know misleads.

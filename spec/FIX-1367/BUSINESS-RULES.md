@@ -18,29 +18,13 @@ work.
 | BR-6 | A record was hand-built and never read for, declares no settings and carries no body | `seatSkills` is present and empty too, and a bag still goes. **Every** record is hired through the kind's schema — no record is thin enough to mint without meeting it — so a kind that never composed the contract refuses here exactly as in BR-2. The bag still cannot distinguish *never read* from *read and empty*; that lives on the record and stays there | CI, on the thinnest record |
 | BR-7 | A `WORKER.md` declares `seatSkills:` itself | Refused by name, at the loader and at hire, unchanged from today | Existing suite |
 | BR-8 | A skill name reaches a seat from both the app's own skills and its folders | Refused at the mint, unchanged from today | Existing suite |
-
-## The kind's own bag
-
-| # | When | Then | Proved by |
-|---|---|---|---|
-| BR-9 | A kind declares a `params` schema and a worker file writes a key it declared | The value reaches `ctx.flow.config.params`, parsed against the kind's schema | CI |
-| BR-10 | A worker file writes a key **inside** `params` the kind did not declare | Refused at the mint, by name. The framework closes the kind's bag as well as the outer set, since closing only the outer one lets an undeclared nested key through — and it refuses a `params` schema it *cannot* close, meaning one carrying a catchall. That is `defineFlow`'s existing catchall refusal, at the nested door | CI, with a planted key as the red state and a second case against a catchall |
-| BR-11 | A kind declares no `params` schema and a worker file writes a key inside `params:` anyway | Refused by name. The default placeholder is an empty closed bag, so there is nothing to put in it. A bare `params: {}` is not refused — it declares nothing and reads exactly as omitting the key | CI |
-| BR-12 | Nobody writes `params:` at all | Present and empty, when the kind's own bag is satisfiable empty. When the kind declared a setting it *requires*, the hire refuses and names the missing key: omitting the bag is not a way around the schema. That is the rule the outer bag already applies, not a second one | CI, both arms |
+| BR-12 | A kind declares a setting it *requires* and no worker file writes one | The hire refuses and names the missing key. Omitting a key is not a way around the kind's schema — the rule the bag already applies, not a second one | CI |
 | BR-13 | A worker file writes a top-level key the kind did not declare | Refused at the mint, unchanged from today | Existing suite |
 
-![One hireable kind's config bag: the thin contract on the left; the kind's own bag nested inside params on the right. The kind names the keys in its own bag; the framework closes both sets.](figures/the-bag.svg)
-
-Two sets, not one — which is what BR-10 and BR-13 are each testing. The kind names the keys in its
-own set; the framework closes both, since closing only the outer one lets a nested typo through.
-The mermaid below is the same two boundaries by name, for a reader who wants them listed.
-
-```mermaid
-flowchart LR
-  A["a top-level key nobody declared"] -->|"the framework's set"| R1["refused · BR-13"]
-  B["a key inside params the kind didn't declare"] -->|"the kind's set, closed for it"| R2["refused · BR-10"]
-  C["params written against a kind that declares none"] -->|"the default bag is empty and closed"| R3["refused · BR-11"]
-```
+**BR-9 to BR-11 are deliberately absent.** They described the nested `params` bag, which was cut
+([D2](DECISIONS.md#d2)). BR-12 kept its number because its rule was never about the bag — a kind's
+required key is required wherever the key sits — and the gap stands rather than a renumber, so a
+rule cited elsewhere still means what it meant.
 
 ## The built-in kind, unchanged
 
