@@ -2,7 +2,7 @@
 "@flow-state-dev/workforce": patch
 ---
 
-Read a worker's own `resources/` folder as a third document root.
+Read a worker's own `resources/` folder as a third document root (FIX-1368).
 
 `readResourcesDirectory` now walks `workers/<name>/resources/` under both `org/` and every team,
 alongside the org and team roots it already read. A document there is addressed by the folders above
