@@ -9,21 +9,21 @@ Feature · `goals/` only — no package changes · medium · 1 PR · epic [FIX-1
 | Someone who… | Today | After |
 |---|---|---|
 | **asks whether a team really is describable in files** | Four conventions, four green suites, nothing that runs them together. The claim is an argument | One run turns a folder tree into a hired roster, an open channel and a transcript two seats wrote |
-| **asks whether a post reaches a channel's members** | The binder proves one instance and one named session. Nothing has ever woken a seat from a post | Both declared members are woken by the framework's own fan-out, answer, and land in the one transcript |
-| **wonders whether two seats interfere** | Nothing has run two file-declared seats at once. A shared settings bag, a leaked skill, a dropped line — none of it is visible to a single-seat run | Two seats answer one post at once. Each line carries its own document, skills and instructions, and a third seat in another team stays silent |
-| **changes a convention next month** | Each convention's own tests pass while the seam between them breaks quietly | This check fails. It is the only one crossing all four |
+| **asks whether a post reaches a channel's members** | The binder proves one instance and one named session. Nothing has woken a seat from a post | Both declared members are woken by the framework's own fan-out, answer, and land in one transcript |
+| **wonders whether two seats interfere** | Nothing has run two file-declared seats at once, so a shared settings bag, a leaked skill or a dropped line is invisible | Two seats answer one post at once. Each line carries its own document, skills and instructions, and a third seat in another team stays silent |
+| **changes a convention next month** | Each convention's tests pass while the seam between them breaks quietly | This check fails. It is the only one crossing all four |
 | **wants the epic closed** | ER-19, ER-20 and ER-21 have no runnable evidence | Two commands and a verdict log, re-runnable a year from now |
 
-Every convention shipped ahead of its consumer. This is the consumer, and it is deliberately not a
+Every convention shipped ahead of its consumer. This is the consumer, and deliberately not a
 product: three seats, one channel, one post.
 
 ## What changes
 
-![Left: the workforce folder tree with an org level and two teams, holding a channel, two documents, five skill folders and three worker files. A dashed seam marks what is declared in files from what the lab writes in code: one worker kind, one notify router and a host. Right: the run — one operator post into the open channel session, the framework's fan-out waking both declared members, each seat reading its own document and posting back, and one transcript of three lines. Below, a fenced strip of what the lab does not touch: org slash channels, which nothing reads, MCP, and the Collab roster.](figures/what-changes.svg)
+![Left: the workforce folder tree — an org level and two teams holding a channel, two documents, five skill folders and three worker files. A dashed seam separates what files declare from what the lab writes in code: one worker kind, one notify router, one host. Right: the run — one operator post into the open channel session, the framework's fan-out waking both declared members, each seat reading its own document and posting back, one transcript of three lines. Below, a fenced strip of what the lab does not touch: org slash channels, which nothing reads, MCP, and the Collab roster.](figures/what-changes.svg)
 
 The seam is the point. Left of it is what somebody wrote; right of it is the framework's own path,
-unchanged. The three boxes on the seam are the lab's whole code, and each is there because the
-framework has no opinion at that spot, not because a convention was missing.
+unchanged. The three boxes on the seam are the lab's whole code, each there because the framework
+has no opinion at that spot — not because a convention was missing.
 
 **What an author writes, and nothing else:**
 
@@ -62,35 +62,36 @@ flowchart LR
   NF -.->|"a seat's own line wakes nobody"| X["no dispatch"]
 ```
 
-The fan-out is the framework's; the addresses are the lab's, because the dispatch seam will not
-take a target out of stored data. A seat's own post is not routed on ([D3](DECISIONS.md#d3)) —
-without that the two seats answer each other forever.
+The fan-out is the framework's — `defineChannelFlow`'s `notify` slot, run once per declared
+member. Only the addresses are the lab's, because the dispatch seam will not take a target out of
+stored data. A seat's own post is not routed on ([D3](DECISIONS.md#d3)) — without that the two
+seats answer each other forever.
 
 ## What stays as it is
 
 - **Every package.** The lab consumes shipped surfaces and changes none. What it cannot do is
   reported up, not patched here.
 - **`org/channels/`.** Declarable and unread ([epic D3](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)).
-  The lab declares at **team** scope and waits on no unbuilt reader.
+  The lab declares at **team** scope, waiting on no unbuilt reader.
 - **The built-in `agent` kind.** Already proved from a file alone, and it carries no internal
-  entry, so a fan-out cannot reach it ([D3](DECISIONS.md#d3)).
+  entry, so no fan-out can reach it ([D3](DECISIONS.md#d3)).
 - **MCP, the Collab roster, brief / housekeeper / retirement.** Named out by the epic.
 
 ## Sign off
 
 1. **[D1](DECISIONS.md#d1) · The lab lives in the goal library, not in `examples/` or `labs/`.**
-   If wrong: the only consumer of the conventions is something an author never opens, and the
-   epic's headline claim is proved where nobody reads it.
+   If wrong: the conventions' only consumer is something an author never opens, and the epic's
+   headline claim is proved where nobody reads it.
 2. **[D2](DECISIONS.md#d2) · Two checks: a model-free one is the contract gate, a model-backed
-   one is the honesty check.** If wrong: the gate we actually run is either flaky or hollow.
-3. **[D3](DECISIONS.md#d3) · The lab's seats run on a kind the lab defines, and a seat's own post
-   wakes nobody.** If wrong: the lab proves a shape no built-in kind has, and the cycle it breaks
-   by rule is a trap the next author walks into.
+   one is the honesty check, required at completion.** If wrong: the gate we run is flaky or
+   hollow.
+3. **[D3](DECISIONS.md#d3) · The seats run on a kind the lab defines, and a seat's own post wakes
+   nobody.** If wrong: the lab proves a shape no built-in kind has, and the cycle it breaks by
+   rule is a trap the next author walks into.
 
-**The epic's open question is answered here, and closes: the lab needs no durable intake DM.** It
-opens with a declared team channel, which `openChannels` already opens and names; a DM would be a
-one-participant channel, and one participant cannot show a fan-out. Nobody needs to own the DM
-opener for this lab to run ([Settled](DECISIONS.md#settled)).
+**The epic's open question closes here: the lab needs no durable intake DM.** One participant
+cannot show a fan-out, and a declared team channel can — the argument, and what stays unowned, is
+[Settled](DECISIONS.md#settled).
 
 **Open: none.** Number 1 is the one to weigh. What lost, and why: [DECISIONS.md](DECISIONS.md).
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
