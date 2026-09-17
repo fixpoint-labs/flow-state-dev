@@ -26,6 +26,32 @@ import path from "node:path";
 /** The backing list. Private: see {@link IGNORED_ENTRIES} for why. */
 const ignored = new Set([".DS_Store", "Thumbs.db"]);
 
+/** On Windows both separate; on POSIX a backslash is an ordinary filename character. */
+const isSeparator = (character: string): boolean =>
+  character === "/" || (path.sep === "\\" && character === "\\");
+
+/**
+ * A path with its trailing separators removed, and nothing else changed.
+ *
+ * Deliberately not `path.resolve`, and deliberately not `path.normalize`. See
+ * {@link classify} for why this is the only reshaping that is safe here: a
+ * trailing separator is the one part of a path's spelling that cannot change
+ * which entry the path denotes, so removing it is the whole of what the
+ * `lstat`-follows-the-final-link problem needs. Anything that touches
+ * *segments* — collapsing `..` above all — can move the path to a different
+ * entry than the one the caller named.
+ *
+ * Never strips into the root, so `/` stays `/` and `C:\` stays `C:\` rather
+ * than becoming `""` or `C:` (which names the current directory on that drive,
+ * a different place). `.` and `..` are segments, so they are left alone.
+ */
+function withoutTrailingSeparators(target: string): string {
+  const rootLength = path.parse(target).root.length;
+  let end = target.length;
+  while (end > rootLength && isSeparator(target.charAt(end - 1))) end--;
+  return target.slice(0, end);
+}
+
 /**
  * Names that never denote a thing in the tree — editor and OS droppings, which
  * appear at every enumerated level and are skipped before they are read as a
@@ -91,17 +117,34 @@ export interface Entry {
  * workforce tree can come from anywhere, and one could escape the root or point
  * at something sensitive.
  *
- * Classified through `path.resolve` rather than as written, because `lstat`
- * resolves the *final* symlink when a path ends in a separator: `<link>` is a
- * link, `<link>/` is the directory behind it. The trailing form is the ordinary
- * way a directory gets written down — it falls out of config, environment
- * variables and hand-joined paths — so classifying the string as given would
- * leave the no-follow answer one character from being wrong, here and in
- * everything built on it. `path.resolve` is string math and follows no link
- * itself; it only strips the trailing separators, `.` segments and doubled
- * separators that would make `lstat` follow one. It normalizes the path's
- * *spelling*, not its symlinks — a link in an ancestor component survives it
- * untouched, and this answer is about the final entry only.
+ * Classified with its trailing separators removed, because `lstat` resolves the
+ * *final* symlink when a path ends in one: `<link>` is a link, `<link>/` is the
+ * directory behind it. The trailing form is the ordinary way a directory gets
+ * written down — it falls out of config, environment variables and hand-joined
+ * paths — so classifying the string exactly as given would leave the no-follow
+ * answer one character from being wrong, here and in everything built on it.
+ *
+ * That removal and **nothing else**, which is the part worth guarding. A
+ * trailing separator is the only piece of a path's spelling that cannot change
+ * which entry the path denotes; every other normalization can. `path.resolve`
+ * and `path.normalize` both collapse `..` *lexically*, while the kernel applies
+ * it *after* traversing a symlinked component, so the two disagree exactly when
+ * a link is involved:
+ *
+ * ```
+ * spelled           <base>/a/../c     with `a` a link to <base>/sub/b
+ * collapsed         <base>/c          an ordinary directory
+ * what lstat sees   <base>/sub/c      a symlink to somewhere else entirely
+ * ```
+ *
+ * Classifying the collapsed form would answer `directory` about a path whose
+ * `readdir` follows a link — the caller is told the coast is clear and then
+ * opens the linked tree. So the classification has to be about the entry the
+ * caller actually named. Whoever tidies this later: that is why this is a
+ * hand-rolled suffix strip and not a one-liner from `node:path`.
+ *
+ * Only the *final* entry is answered for. A symlink in an ancestor component is
+ * followed by `lstat`, here as everywhere, and is not this function's question.
  *
  * Only a missing path is `absent`. Every other failure is `unreadable` and
  * stays distinct, for the same reason {@link openStructuralDirectory} keeps
@@ -112,7 +155,7 @@ export interface Entry {
  */
 export async function classify(target: string): Promise<Entry> {
   try {
-    const stat = await fs.lstat(path.resolve(target));
+    const stat = await fs.lstat(withoutTrailingSeparators(target));
     if (stat.isSymbolicLink()) return { kind: "symlink" };
     if (stat.isDirectory()) return { kind: "directory" };
     if (stat.isFile()) return { kind: "file" };

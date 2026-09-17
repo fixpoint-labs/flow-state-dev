@@ -142,8 +142,7 @@ export interface ReadSeatSkillsResult {
  * seat may have none of its own. A level that exists and cannot be listed is.
  *
  * Throws only when `root` itself is refused — a symlink, or a path that cannot
- * be read at all. A configured root that does not exist, or that would take the
- * read somewhere else entirely, is a wiring mistake, not a per-level one, and
+ * be read at all. Either is a wiring mistake rather than a per-level one, and
  * reading it as three absent levels would hand back an empty set with an empty
  * `errors`, which is the shape of a seat that has no skills on purpose. A
  * symlinked root is refused however the path is spelled; an operator running

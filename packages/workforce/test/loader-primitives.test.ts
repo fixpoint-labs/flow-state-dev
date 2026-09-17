@@ -46,6 +46,21 @@ function linkedRoot(): { real: string; linked: string } {
   return { real, linked };
 }
 
+/**
+ * Ways of writing one path that all name the same entry, so every primitive
+ * must answer for them identically.
+ *
+ * Only trailing separators, because those are the only part of a spelling that
+ * provably cannot change which entry is denoted — which is exactly why the
+ * refusal normalizes them and nothing else. `<path>/./` is **not** here: see
+ * "a trailing `.` segment is a known gap" below.
+ */
+const sameEntrySpellings = (target: string): string[] => [
+  target,
+  `${target}${sep}`,
+  `${target}${sep}${sep}`,
+];
+
 describe("IGNORED_ENTRIES", () => {
   it("cannot be mutated, so a consumer cannot make every reader skip a real team", async () => {
     // The published value is consulted by `walkTeams` and by all four readers'
@@ -89,13 +104,7 @@ describe("openRoot", () => {
     // Control: the tree behind the link opens, so the refusals below are the link.
     await expect(openRoot(real)).resolves.toBeUndefined();
 
-    const spellings = [
-      linked,
-      `${linked}${sep}`,
-      `${linked}${sep}${sep}`,
-      `${linked}${sep}.${sep}`,
-    ];
-    for (const spelling of spellings) {
+    for (const spelling of sameEntrySpellings(linked)) {
       await expect(openRoot(spelling)).rejects.toThrow(
         /^Symlinked workforce directory ".+" — refused for safety$/,
       );
@@ -147,20 +156,18 @@ describe("walkTeams reporting", () => {
 
 describe("classify and openStructuralDirectory", () => {
   it("refuse a symlink however the caller spelled the path", async () => {
-    // The same bypass `openRoot` was fixed for, reachable through the two
-    // primitives this subpath publishes for the next convention's author:
-    // `lstat` resolves the *final* symlink when a path ends in a separator, so
-    // `<link>/` reports the directory behind the link. These two are the
-    // surface the README promises operates without following symlinks, and the
-    // trailing form is the ordinary way a directory gets written down, so the
-    // promise has to hold for it as much as for the bare spelling.
+    // Same bypass `openRoot` was fixed for, reachable through the primitives
+    // this subpath publishes. See `classify`'s JSDoc for the filesystem
+    // semantics; this test is about spellings and expectations.
     const { real, linked } = linkedRoot();
 
-    const spellings = [linked, `${linked}${sep}`, `${linked}${sep}${sep}`, `${linked}${sep}.${sep}`];
-    for (const spelling of spellings) {
+    for (const spelling of sameEntrySpellings(linked)) {
       expect(await classify(spelling)).toEqual({ kind: "symlink" });
 
-      const opened = await openStructuralDirectory(spelling, "teams");
+      // `reportAs` is only the label a refusal is filed under, so "root" is
+      // what these paths actually are — the structural helper is being used
+      // here as a stand-in for any path classified the same way.
+      const opened = await openStructuralDirectory(spelling, "root");
       expect(opened.entries).toBeUndefined();
       expect(opened.refusal?.reason).toBe("symlink");
     }
@@ -169,6 +176,50 @@ describe("classify and openStructuralDirectory", () => {
     // refusals above are the link and not the trailing separator.
     expect(await classify(real)).toEqual({ kind: "directory" });
     expect(await classify(`${real}${sep}`)).toEqual({ kind: "directory" });
-    expect((await openStructuralDirectory(`${real}${sep}`, "teams")).entries).toEqual(["teams"]);
+    expect((await openStructuralDirectory(`${real}${sep}`, "root")).entries).toEqual(["teams"]);
+  });
+
+  it("classify the entry that openStructuralDirectory will open, even across `..`", async () => {
+    // The normalization must not reshape *segments*. `path.resolve` and
+    // `path.normalize` collapse `..` lexically; the kernel applies it after
+    // traversing a symlinked component, so the two disagree precisely when a
+    // link is involved. Classifying the collapsed form answers about one entry
+    // while `readdir` opens another — and the gap fails *open*: the caller is
+    // told the path is an ordinary directory and then lists the linked tree.
+    //
+    // `a` -> sub/b, so the kernel's `..` from `a` lands in `sub`, not in `dir`.
+    const dir = base();
+    mkdirSync(join(dir, "outside", "teams"), { recursive: true });
+    mkdirSync(join(dir, "sub", "b"), { recursive: true });
+    symlinkSync(join("sub", "b"), join(dir, "a"));
+    symlinkSync(join("..", "outside"), join(dir, "sub", "c"));
+    // Where a lexical collapse of `a/../c` would land: an ordinary directory.
+    mkdirSync(join(dir, "c", "decoy"), { recursive: true });
+
+    // Built as a raw string on purpose — `path.join` would collapse `..` before
+    // the path ever reached the filesystem, hiding the whole question.
+    const spelled = `${dir}${sep}a${sep}..${sep}c`;
+
+    expect(await classify(spelled)).toEqual({ kind: "symlink" });
+
+    const opened = await openStructuralDirectory(spelled, "teams");
+    expect(opened.refusal?.reason).toBe("symlink");
+    // The point of the test: without this, `entries` came back as the outside
+    // tree's `["teams"]` — read through the link, past the no-follow contract.
+    expect(opened.entries).toBeUndefined();
+  });
+
+  it("does not refuse a trailing `.` segment — a known gap, not a guarantee", async () => {
+    // `<link>/.` still reaches the directory behind the link, because `.` is a
+    // segment and the normalization deliberately touches none. Covering it
+    // would mean reshaping segments, which is what made the `..` case above
+    // fail open, so the narrow rule is kept and the gap is pinned here instead
+    // of being silently absent.
+    //
+    // Failing open on this spelling and on a symlinked ancestor are the same
+    // open question, and it is a product decision rather than a review one.
+    const { linked } = linkedRoot();
+
+    expect(await classify(`${linked}${sep}.${sep}`)).toEqual({ kind: "directory" });
   });
 });

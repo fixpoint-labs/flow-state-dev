@@ -176,8 +176,8 @@ another.
 
 A `root` that cannot be read throws instead:
 `Failed to read workforce directory "./workforce": ENOENT ...`. So does a `root` that is a symlink:
-`Symlinked workforce directory "./workforce" — refused for safety`, whichever way the path is
-written. If you run a linked root deliberately, pass the path it resolves to.
+`Symlinked workforce directory "./workforce" — refused for safety`, with a trailing slash or
+without. If you run a linked root deliberately, pass the path it resolves to.
 
 Symlinks are never followed, and that holds for the folders on the way to a level as much as
 for the level itself — `org`, `teams`, a team's folder, its `workers`, and the worker's own.
