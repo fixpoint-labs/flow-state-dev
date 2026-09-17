@@ -82,9 +82,46 @@ Then the two checks specific to this altitude:
 
 ```bash
 S=spec/_projects/<slug>
-# 1. Status is derived, not stale: every epic row's state matches Linear right now.
-#    Re-run the project query and diff the identifiers + states against SPEC.md's table.
-grep -oE 'FIX-[0-9]+|LAB-[0-9]+|FIX-XXX' "$S/SPEC.md" | sort -u
+# 1. Status is derived, not stale — this must COMPARE, not just list. A table with every
+#    epic wrongly marked "in flight" passes a check that only prints identifiers.
+#    Derive from BOTH sources (Linear state, and the epic PR — wrapping moves no Linear state)
+#    and diff against the committed table. Any line of output is a failure.
+python3 - "$S/SPEC.md" <<'EOF'
+import json, os, re, subprocess, sys
+
+doc = open(sys.argv[1]).read()
+QUERY = """query { project(id: "<project-id>") {
+  issues(first: 100, filter: { labels: { name: { eq: "Epic" } } }) {
+    nodes { identifier state { type } }
+  } } }"""
+r = subprocess.run(
+    ["curl", "-sS", "https://api.linear.app/graphql",
+     "-H", "Authorization: " + os.environ["LINEAR_API_KEY"],
+     "-H", "Content-Type: application/json",
+     "-d", json.dumps({"query": QUERY})],
+    capture_output=True, text=True)
+
+# done := Linear completed OR the epic PR is closed. Wrapping moves no Linear
+# state, so fold the PR half in here before comparing - Linear alone under-reports.
+CLOSED_EPIC_PRS = set()          # fill from the epic PRs you just read
+live = {}
+for n in json.loads(r.stdout)["data"]["project"]["issues"]["nodes"]:
+    t = n["state"]["type"]
+    ident = n["identifier"]
+    live[ident] = ("done" if t == "completed" or ident in CLOSED_EPIC_PRS
+                   else "in flight" if t == "started" else "not started")
+
+for ident, state in sorted(live.items()):
+    row = next((l for l in doc.splitlines() if ident in l and l.startswith("|")), None)
+    if row is None:
+        print("MISSING ROW: %s (%s)" % (ident, state))
+    elif state not in row.lower():
+        print("STATE MISMATCH: %s is %s; row says: %s" % (ident, state, row.strip()[:100]))
+
+for ident in set(re.findall(r"\b(?:FIX|LAB)-\d+", doc)):
+    if ident not in live:
+        print("ROW FOR A NON-EPIC OR STALE ID: %s" % ident)
+EOF
 
 # 2. No epic-altitude content leaked down. Every rule must name an owner epic;
 #    a PR-n row with an empty owner cell is the seam this altitude exists to prevent.

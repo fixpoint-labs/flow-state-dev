@@ -784,8 +784,11 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   that matters. This epic's row goes to done, its arc bar closes, the now line moves, and anything
   the epic settled that binds a *sibling* epic is recorded in the project's `DECISIONS.md` →
   *decided once* so the next epic under that project reads the answer instead of re-litigating it.
-  Wrap is the one moment that reliably produces cross-epic knowledge, so it is the one refresh not
-  to skip. Put the project PR link in the wrap report beside `SPEC.md`'s.
+  Wrap is the one moment that reliably produces cross-epic knowledge, so it is the one dispatch
+  that is **not** allowed to be dropped on a busy branch: the agent retries it, and returns
+  `blocked: wrap update undelivered` if it still cannot land — **re-dispatch it on the next wake
+  rather than letting the epic close over it.** The status half would self-heal (a closed epic PR
+  is derivable); the decisions half is derivable from nothing, which is why this one waits. Put the project PR link in the wrap report beside `SPEC.md`'s.
 
 ## Intake — filing & queueing discovered issues
 

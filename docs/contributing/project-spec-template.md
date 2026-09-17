@@ -264,10 +264,15 @@ a worktree per issue transition and tell a reader nothing the epic PR does not a
 
 ### Why a dropped refresh is safe
 
-Every status field here is **derived from Linear at read time** — the epics and their states come
-from one query on the project, not from a counter this artifact increments. So a refresh that is
-skipped, raced, or lost costs nothing: the next one recomputes the whole table from source and is
-correct. That property is what lets two concurrent epics under one project **skip rather than
+Every status field here is **derived at read time** — from one query on the project **and the epic
+PRs' states**, not from a counter this artifact increments. Both halves are required: an epic wraps
+by closing its epic PR unmerged and its Linear state is untouched, so a Linear-only derivation
+would regress every wrapped epic to *in flight*. Given both, a refresh that is skipped, raced, or
+lost costs nothing: the next one recomputes the whole table from source and is correct.
+
+**One dispatch is exempt, and it is the one that carries more than status.** An epic's wrap Update
+also records the cross-epic decisions that epic settled, which are derivable from nothing and have
+no guaranteed later dispatch to carry them. It retries rather than skipping. That property is what lets two concurrent epics under one project **skip rather than
 queue** when they collide on the branch ([`orchestration.md`](orchestration.md) → "The
 project-spec"), and it is why this artifact needs no lock, no lease, and no lifecycle.
 
