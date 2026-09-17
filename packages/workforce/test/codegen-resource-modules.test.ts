@@ -17,7 +17,8 @@
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import fsp from "node:fs/promises";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   WorkforceCodeError,
   discoverWorkforceCode,
@@ -29,6 +30,7 @@ import { readResourcesDirectory } from "../src/loader";
 const roots: string[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -332,6 +334,61 @@ describe("what the walk refuses", () => {
 
     expect(problems).toEqual([
       `Symlinked worker folder "teams/engineering/workers/lead" — refused for safety`,
+    ]);
+  });
+
+  it("refuses a resources/ folder that is present and unreadable, never folding it into absent", async () => {
+    // The other half of BR-3, and the half a symlink test cannot reach.
+    // Injected rather than provoked because the suite runs as root, where a
+    // permission bit denies us nothing. The real route is a folder that exists
+    // and whose `readdir` fails — a mode of `r--` rather than `r-x`.
+    //
+    // Absent and unreadable must stay apart: absent is a team with no
+    // resources, unreadable is a team's resources we failed to see, and folding
+    // them together generates a short module and reports nothing.
+    const root = tree({
+      "teams/engineering/resources/research.ts": MODULE,
+      "teams/design/resources/palette.ts": MODULE,
+    });
+    const locked = join(root, "teams/engineering/resources");
+    const real = fsp.readdir.bind(fsp);
+    vi.spyOn(fsp, "readdir").mockImplementation(((target: Parameters<typeof real>[0]) => {
+      if (String(target) === locked) {
+        const err = new Error(`EACCES: permission denied, scandir '${locked}'`);
+        (err as NodeJS.ErrnoException).code = "EACCES";
+        return Promise.reject(err);
+      }
+      return real(target);
+    }) as unknown as typeof fsp.readdir);
+
+    const problems = await refusalsOf(root);
+
+    expect(problems).toEqual([
+      `"teams/engineering/resources" could not be read: EACCES: permission denied, ` +
+        `scandir '${locked}'`,
+    ]);
+  });
+
+  it("refuses a worker folder that is present and unreadable", async () => {
+    // The same distinction one level up, where a whole seat's resources are
+    // behind the folder we cannot list.
+    const root = tree({ "teams/engineering/workers/lead/resources/notes.ts": MODULE });
+    const locked = join(root, "teams/engineering/workers/lead");
+    const real = fsp.lstat.bind(fsp);
+    vi.spyOn(fsp, "lstat").mockImplementation(((target: Parameters<typeof real>[0]) => {
+      if (String(target) === locked) {
+        const err = new Error(`EACCES: permission denied, lstat '${locked}'`);
+        (err as NodeJS.ErrnoException).code = "EACCES";
+        return Promise.reject(err);
+      }
+      return real(target);
+    }) as unknown as typeof fsp.lstat);
+
+    const problems = await refusalsOf(root);
+
+    expect(problems).toEqual([
+      `Worker folder "teams/engineering/workers/lead" could not be read: EACCES: ` +
+        `permission denied, lstat '${locked}'`,
     ]);
   });
 

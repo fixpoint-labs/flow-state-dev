@@ -31,6 +31,6 @@ export {
   type DiscoveryResult,
 } from "./discover";
 
-export { RESOURCE_SLOT_PATTERNS, type DiscoveredResourceModule } from "./discover-resource-modules";
+export { type DiscoveredResourceModule } from "./discover-resource-modules";
 
 export { GENERATED_FILE_NAME, renderWorkforceCode } from "./render";
