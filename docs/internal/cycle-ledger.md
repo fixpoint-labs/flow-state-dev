@@ -2031,6 +2031,8 @@ trend. A is proposed on the systematic overrun; the carriage split is corroborat
 5. **Does the round/fold gap stay small?** `folds ≥ rounds` everywhere this cycle, with the gap
    zero on eight of thirteen spec PRs and concentrated in five. If the gap widens, folds stop being
    a usable proxy for anything and the fold column should be retired rather than reinterpreted.
+---
+
 ## Cycle 12 — W3 file-convention epic wrap (FIX-1351) (2026-09-17)
 
 **Second collection on the same epic.** Cycle 10 sampled FIX-1351 mid-flight (#1718, #1711,
@@ -2147,12 +2149,20 @@ consecutive cycle with that result.
   workaround), FIX-1428 (one canonical reserved-name list), FIX-1429 (kitchen-sink's demo is
   unwired).
 
-### Upstream fixes — proposed, not written
+### Upstream fix — landed
 
-See the proposal put to the owner at wrap: **one consolidated sharpening of BP-003**, folding
-cycle 11's pending fix C (a) and (b) together with one new neighbour from this cycle — a check
-whose *stated scope* is wider than its real one. **No new BP, no tenet change.** Nothing is written
-until the owner rules.
+**One consolidated sharpening of BP-003**, folding cycle 11's pending fix C (a) and (b) together
+with one new neighbour from this cycle — a check whose *stated scope* is wider than its real one.
+**No new BP, no tenet change.** Proposed at wrap, approved by the owner, and written the same day
+in PR #1857 — `docs/contributing/best-practices.md` plus the `CLAUDE.md` mirror.
+
+That same-day landing is the point rather than a detail. Cycles 9 and 10 each proposed two fixes
+and wrote none; cycle 11's fix C is half of what this cycle rediscovered independently. Four
+cycles of the instrument's own corrections decayed with nothing pointing at them — the defect this
+entry's own headline describes, committed by the thing that measures it. The rule that came out of
+it is **land an approved fix the day it is approved**, and this is the first cycle to obey it.
+
+Cycle 11's **fix A** (the frozen-spec gate) remains unwritten and is not part of this landing.
 
 ### Claims to test next cycle
 
@@ -2162,5 +2172,7 @@ until the owner rules.
    by six rounds of review, same population.
 3. **Does a freeze hold?** Cycle 11's fix A now has a second instance: #1809, five rounds moving
    zero decisions, on a branch carrying BP-040. Five of six specs held the budget without it.
-4. **Are the loop's fixes being landed at the gate?** Four proposals across cycles 9, 10 and 11 are
-   still unwritten. This is cycle 10's claim 1, unscored.
+4. **Are the loop's fixes being landed at the gate?** Cycle 12 is the first `yes`: fix C (a) and
+   (b) plus this cycle's new neighbour were written the day they were approved, in #1857. Cycle
+   11's fix A is still unwritten, so the baseline is now **one of four landed**, not zero of four.
+   Score the next cycle on whether same-day landing holds or this was a single exception.
