@@ -210,9 +210,16 @@ human, it goes in the body as an ask in full six-part form
 ([`asking-for-decisions.md`](asking-for-decisions.md)) and the epic-lifecycle running at the time
 carries it to them.
 
+**The image line is raw HTML, and it is fragile in one specific way.** Write it exactly as
+[`spec-figures.md`](spec-figures.md) → "In the PR body" specifies — plain double quotes around each
+attribute, **no backticks anywhere in or around the line, and never inside a code fence.** The
+GitHub tool cloud agents write bodies with wraps absolute image URLs in backticks on write, which
+defangs the image into code; that section is canonical for what to do when it happens, and this
+rule does not get a second home here.
+
 **Pin every image to the commit SHA** and use the raw-content URL — a branch URL is cached stale by
 GitHub's image proxy and a blob URL does not render. Never rewrite a body a person has pasted an
-image into; return the new pins instead.
+image into, or hand-fixed: the rewrite defangs what they fixed. Return the new pins instead.
 
 ---
 

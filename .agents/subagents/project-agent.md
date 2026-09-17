@@ -118,6 +118,12 @@ Commit and push; **never merge, never delete the branch**.
   business decision behind it is your job, not theirs.
 - **Never clobber the Linear project's `content`.** Absorb on first build. This is the one action
   here that is unrecoverable through the API.
+- **An `<img>` line you write into a PR body carries no backticks and sits in no code fence** —
+  plain double quotes, raw HTML, per
+  [`spec-figures.md`](../../docs/contributing/spec-figures.md) → "In the PR body". If the tool
+  defangs it into code anyway, don't fight it: leave a link to `SPEC.md`'s blob view and return the
+  exact lines in `pins:` for a person to paste. **A body a person has pasted into or hand-fixed is
+  never rewritten** — re-pinning there is a line they change, and your report says so.
 - **Refresh on epic-level transitions only.** An issue opening or merging is never your trigger. If
   a dispatch hands you issue churn, refresh nothing and say so — the epic PR already carries it.
 - **One worktree at a time on `project/<slug>`.** Two epics may run under one project, and both may
