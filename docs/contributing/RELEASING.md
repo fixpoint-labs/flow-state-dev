@@ -7,7 +7,7 @@ How we publish the `@flow-state-dev` packages to npm. For how to write changeset
 - All packages start at 0.x (currently 0.1.0 baseline).
 - Pre-1.0 discipline: `patch` for compatible changes, `minor` for breaking changes. Never file a `major` changeset while pre-1.0. Changesets will jump the package straight to 1.0.0. [release-notes-workflow.md](./release-notes-workflow.md#pre-10-discipline-current-state) is the authoritative wording.
 - Graduate to 1.0 only by explicit decision, not by accident.
-- Only publishable packages are versioned. `.changeset/config.json` sets `privatePackages: { version: false }`, so every `private: true` package — `labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `plugins/*`, `goals` — is skipped by both `pnpm changeset` and `pnpm version-packages`.
+- Only publishable packages are versioned. `.changeset/config.json` sets `privatePackages: { version: false }`, so every `private: true` package — `labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `packages/thought-fabric-core`, `plugins/*`, `goals` — is skipped by both `pnpm changeset` and `pnpm version-packages`.
 
 ## Tag scheme
 
