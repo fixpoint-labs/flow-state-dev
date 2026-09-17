@@ -151,5 +151,10 @@ export function registerGenCommand(program: Command): void {
           ? `${shown} unchanged (${countBySlot(result.files)}).`
           : `Wrote ${shown} (${countBySlot(result.files)}).`,
       );
+      // Set on success as well, and for the same reason the `--check` success
+      // branch does: a code already on the process outlives a run that printed
+      // success, so the host would exit as a failure after a command that
+      // worked. Two branches doing one job have to agree.
+      process.exitCode = EXIT_SUCCESS;
     });
 }

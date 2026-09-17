@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { executeGenCommand, registerGenCommand } from "../src/commands/gen";
-import { EXIT_EXECUTION_ERROR } from "../src/exit-codes";
+import { EXIT_EXECUTION_ERROR, EXIT_SUCCESS } from "../src/exit-codes";
 
 const roots: string[] = [];
 let cwd: string;
@@ -116,6 +116,22 @@ describe("the file the command writes", () => {
     await program.parseAsync(["node", "fsdev", "gen", "--check"]);
 
     expect(process.exitCode).toBe(EXIT_EXECUTION_ERROR);
+  });
+
+  it("clears a previously-set failure code on the ordinary success path", async () => {
+    // The `--check` success branch resets the code and the plain one did not,
+    // so a host that had already set a failure code saw `gen` print success
+    // and still exit non-zero. Two branches doing the same job have to agree;
+    // the asymmetry is the bug, not the value.
+    const dir = app();
+    process.exitCode = EXIT_EXECUTION_ERROR;
+
+    const program = new Command();
+    registerGenCommand(program);
+    await program.parseAsync(["node", "fsdev", "gen"]);
+
+    expect(process.exitCode).toBe(EXIT_SUCCESS);
+    expect(readFileSync(join(dir, "workforce/workforce.gen.ts"), "utf-8")).toContain("triage");
   });
 
   it("still reports a genuinely stale file", async () => {

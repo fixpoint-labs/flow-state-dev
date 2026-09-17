@@ -7,15 +7,15 @@
 
 import type { BlockDefinition } from "@flow-state-dev/core";
 import type { HireOptions } from "@flow-state-dev/workforce";
-import blockDeskNote from "./blocks/desk-note";
-import workerDeskClerk from "./flows/workers/desk-clerk";
+import block_desk_note from "./blocks/desk-note";
+import worker_desk_clerk from "./flows/workers/desk-clerk";
 
 export const kinds = {
-  "desk-clerk": workerDeskClerk,
+  "desk-clerk": worker_desk_clerk,
 } satisfies NonNullable<HireOptions["kinds"]>;
 
 export const channelKinds = {};
 
 export const blocks = {
-  "desk-note": blockDeskNote,
+  "desk-note": block_desk_note,
 } satisfies Record<string, BlockDefinition>;

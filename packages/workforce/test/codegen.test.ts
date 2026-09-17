@@ -74,7 +74,7 @@ describe("the generator reads the tree, never the modules in it", () => {
     const result = await discoverWorkforceCode(root);
 
     expect(found(result.files)).toEqual(["block:triage", "channel:standup", "worker:researcher"]);
-    expect(renderWorkforceCode(result.files)).toContain(`"researcher": workerResearcher`);
+    expect(renderWorkforceCode(result.files)).toContain(`"researcher": worker_researcher`);
   });
 });
 
@@ -359,14 +359,32 @@ describe("the rendered module", () => {
 
     // Static imports are why a bundled deploy behaves like a local one, and the
     // types are what make the app's own typecheck read every discovered file.
-    expect(rendered).toContain(`import workerCodeReviewer from "./flows/workers/code-reviewer";`);
-    expect(rendered).toContain(`"code-reviewer": workerCodeReviewer`);
+    expect(rendered).toContain(`import worker_code_reviewer from "./flows/workers/code-reviewer";`);
+    expect(rendered).toContain(`"code-reviewer": worker_code_reviewer`);
     expect(rendered).toContain(`satisfies NonNullable<HireOptions["kinds"]>`);
     expect(rendered).toContain(`satisfies NonNullable<ChannelInstancesOptions["kinds"]>`);
     expect(rendered).toContain(`satisfies Record<string, BlockDefinition>`);
     expect(rendered).toContain("Do not edit");
     // Nothing dynamic: a lazy import here would put the walk back at run time.
     expect(rendered).not.toContain("import(");
+  });
+
+  it("gives two basenames that differ only in a hyphen two different identifiers", async () => {
+    // `a0` and `a-0` are distinct kinds, and both are legal segments, so the
+    // walk accepts them. Capitalising the first character of each hyphen part
+    // is a no-op on a digit, so they used to render one binding imported twice
+    // and a map pointing both keys at it — a module `fsdev gen` reported
+    // writing successfully and no bundler could compile.
+    const root = tree({
+      "flows/workers/a0.ts": "export default {};",
+      "flows/workers/a-0.ts": "export default {};",
+    });
+
+    const rendered = renderWorkforceCode((await discoverWorkforceCode(root)).files);
+
+    const bindings = [...rendered.matchAll(/^import (\w+) from/gm)].map((match) => match[1]);
+    expect(new Set(bindings).size).toBe(bindings.length);
+    expect(bindings).toHaveLength(2);
   });
 
   it("renders an empty map with no type import when a folder holds nothing", async () => {

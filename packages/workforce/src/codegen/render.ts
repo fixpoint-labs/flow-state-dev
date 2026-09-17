@@ -57,15 +57,20 @@ const SLOT_TYPES: Record<CodeSlotId, { imported: string; from: string; expressio
  * The local identifier one discovered file is imported under.
  *
  * Prefixed by slot because a worker kind and a block may legitimately share a
- * basename, and hyphens become camel humps because a basename is a path segment
+ * basename, and hyphens become underscores because a basename is a path segment
  * and an identifier is not.
+ *
+ * Underscores rather than camel humps, because the mapping has to be
+ * **injective** and capitalising is not: a basename is `[a-z0-9]+` joined by
+ * single hyphens, so upper-casing the first character of each part is a no-op
+ * on a digit and `a0` and `a-0` both came out as `a0`. Two distinct kinds then
+ * shared one binding, and the module was emitted — reported as written — with a
+ * duplicate import that no bundler could compile. `_` cannot appear in a
+ * validated segment, so swapping it for `-` is reversible by construction and
+ * no two basenames can meet.
  */
 function localName(file: DiscoveredFile): string {
-  const camel = file.name
-    .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join("");
-  return `${file.slot}${camel}`;
+  return `${file.slot}_${file.name.replace(/-/g, "_")}`;
 }
 
 /**
