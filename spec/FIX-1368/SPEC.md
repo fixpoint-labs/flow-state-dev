@@ -13,6 +13,7 @@ Feature · `workforce` · small · 1 PR · epic [FIX-1351](https://github.com/fi
 | **reads "worker-level" as "private to that worker"** | n/a | **Still not that.** The address says whose the document is; nothing stops another seat on the same kind reading it ([D2](DECISIONS.md#d2)) |
 | **has a worker folder with a typo and no `WORKER.md`** | The roster read reports the slot as a seat the app does not have | Same report, unchanged. Its documents still load, under an address no seat is hired at ([D3](DECISIONS.md#d3)) |
 | **keeps documents at org and team level only** | Today's behaviour | Today's behaviour, byte for byte |
+| **runs a shared-infra worker under `org/workers/`** | Same silence, one level up | Its documents load too, as `workers/<w>/<name>` ([D4](DECISIONS.md#d4)) — though no seat can be hired there yet |
 
 The resources convention shipped two roots and stopped. The third one was cut for scope, not
 rejected — and a cut root in a tree that teaches "path level is scope" is worse than a missing
@@ -72,11 +73,12 @@ of one flow definition and a flow's documents are declared on that definition.
 
 ## Sign off
 
-1. **[D2](DECISIONS.md#d2) · This ships the address, not the fence — a worker's document is
-   named as that worker's and is readable by its siblings.** If wrong: we teach a folder whose
-   name promises privacy and does not deliver it, and an author puts something in it that should
-   not have been shared. **This is the one that is not settled — it is a live fork, written out
-   in full on the card.**
+1. **[D2](DECISIONS.md#d2) · The address, the fence, or neither.** My recommendation is the
+   address — a worker's document is named as that worker's and is readable by its siblings. If
+   wrong: we teach a folder whose name promises privacy and does not deliver it, and an author
+   puts something in it that should not have been shared. **Not settled, and the reviewers do not
+   agree**: two back the address, one says the architecture's stamped "named gap" forbids it until
+   isolation is proved. A third, cheaper arm — report the folder, mint nothing — is on the card.
 2. **[D1](DECISIONS.md#d1) · The same reader grows a third root; the ref is
    `teams/<team>/workers/<worker>/<name>`.** If wrong: the ref is a public storage key we would
    be changing after apps have rows under it.
