@@ -37,12 +37,19 @@
       "value": "0.2",
       "body": "You read the numbers and say what changed."
     },
-    "thinWithBody": {
-      "dir": "thin-with-body",
-      "id": "engineering.intake",
-      "flow": "intake",
-      "description": "The front door. Routes an incoming request to whoever should hold it.",
-      "body": "You greet whoever arrives and pass them on to the right desk."
+    "noContract": {
+      "dir": "no-contract",
+      "id": "engineering.legacy",
+      "flow": "legacy-desk",
+      "description": "An older desk, still on a flow kind that predates the admission contract.",
+      "body": "You hold the older desk and pass anything you cannot place to the front door."
     }
+  },
+  "thinWithBody": {
+    "dir": "thin-with-body",
+    "id": "engineering.intake",
+    "flow": "intake",
+    "description": "The front door. Routes an incoming request to whoever should hold it.",
+    "body": "You greet whoever arrives and pass them on to the right desk."
   }
 }

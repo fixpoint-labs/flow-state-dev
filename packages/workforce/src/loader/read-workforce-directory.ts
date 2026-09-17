@@ -29,7 +29,9 @@ import {
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
   REFUSED_SEAT_SKILLS_KEY_MESSAGE,
+  REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
   SEAT_SKILLS_KEY,
+  TEAM_INSTRUCTIONS_KEY,
   type WorkerManifest,
 } from "../manifest";
 import { validateSegment } from "./segments";
@@ -278,6 +280,13 @@ function refusedDeclaration(
   // The second imposed key, refused at this door for the reason the first is.
   if (Object.hasOwn(declared, SEAT_SKILLS_KEY)) {
     return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_SKILLS_KEY_MESSAGE}`);
+  }
+
+  // The third. Refused from the shared constant, never a literal spelled in
+  // here, so a rename moves this door with the others instead of leaving one
+  // of them open with nothing said.
+  if (Object.hasOwn(declared, TEAM_INSTRUCTIONS_KEY)) {
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE}`);
   }
 
   return undefined;

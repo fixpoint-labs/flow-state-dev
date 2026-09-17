@@ -82,7 +82,7 @@ Each record is plain data:
 | Field | Description |
 |-------|-------------|
 | `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. |
-| `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and a refused `persona:` and `seatSkills:`. |
+| `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and three refused ones: `persona:`, `seatSkills:` and `teamInstructions:`. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
 
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
@@ -219,10 +219,10 @@ the hire step the way a body is imposed as `instructions`. A `WORKER.md` declari
 itself is refused by name at both the loader and the hire step — where a skill folder sits is
 what decides who can see it.
 
-**A custom kind only receives it if its own `configSchema` declares `seatSkills`.** It is the one
-imposed setting that works that way: a body is written by the worker's author, but a worker's
-skills come from folders somebody else added, and one `org/skills/` folder makes every worker's
-set non-empty. Declare the key to opt in.
+**Every hireable kind receives it**, because every hireable kind composes `workerConfigSchema()`,
+which declares the key. There is no opting in and no opting out: hiring hands the same settings to
+every seat, and a kind whose schema cannot take them refuses the whole roster at startup. Reading
+them is still optional — a kind that ignores `seatSkills` runs exactly as it did before.
 
 ## Hiring a workforce
 
@@ -251,6 +251,55 @@ label. Everything else is that worker's settings, handed to the flow
 verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
 declared is refused by name at the hire.
 
+### What a hireable kind must admit
+
+A worker kind is an ordinary flow. What makes it *hireable* is that its `configSchema` composes
+`workerConfigSchema()`, which declares the three settings a seat's bag may carry:
+
+| Setting | What it holds |
+| --- | --- |
+| `instructions?` | The worker's own instructions — its file body, or the frontmatter key. Imposed when the body is not empty, absent when it has none. |
+| `teamInstructions?` | **Reserved: nothing populates it yet.** It is here so a kind composes the contract once and does not change again when the team-level layer arrives. Always absent today. |
+| `seatSkills` | The skills its folders resolved for it, in level order. Imposed on every seat, present and empty when there are none. |
+
+So hiring imposes `instructions` and `seatSkills` today. `teamInstructions` is a declared door with
+nothing coming through it, and a kind that reads it gets `undefined` regardless of what any team has
+written.
+
+Add your kind's own settings on top, at the same level:
+
+```ts
+import { workerConfigSchema } from "@flow-state-dev/workforce";
+
+const triage = defineFlow({
+  kind: "request-triage",
+  cardinality: "collection",
+  configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
+  actions: { run: { inputSchema, block: triageWork } },
+});
+```
+
+`desk` sits at the top level beside the three, where the schema closes it: a worker file that writes
+a key your kind never declared is still refused by name. If your kind genuinely holds open-ended
+data, give it one declared key whose own schema is a record, rather than a nested bag of keys you
+did name.
+
+Reading any of it is optional. A kind that composes the contract and never looks at `seatSkills`
+runs exactly as it did before — ignoring the bag is not an error. What is not optional is the door:
+the factory hands every seat a bag, so a kind whose schema cannot take it refuses at the hire, for
+the whole roster, with a message naming the worker and the fix. That is a one-line change per kind,
+and it is what replaces a seat that used to hire, run, and silently hold none of what its author's
+files declared.
+
+What is checked is what your schema accepts, not which function built it — so a kind that declares
+these keys by hand hires just the same. Composing is what keeps it current: when a key is added to
+the contract, a composed kind picks it up, and a hand-rolled one refuses at boot naming the new key
+until you add it.
+
+Two of the three are never authored. A worker file that writes `seatSkills:` or `teamInstructions:`
+is refused by name, at the loader and at the hire: a seat's skills are the folders it can see, and
+a team's instructions are its team's.
+
 **A record that leaves `flow:` out is hired into the built-in `agent` kind** — it talks, its body
 arrives as its instructions, and it reads the skills its own folders hold plus any the app seeded
 through `defineAgentWorkerFlow({ skills })`. It has no memory: nothing it is told survives the
@@ -268,10 +317,12 @@ A worker record declares data: a description, the kind it runs, and that kind's 
 lives in the flow the kind names, so a worker that has to do something none of your kinds do is a
 flow you define in your app and pass in `kinds`, named by that worker's `flow:`.
 
-A record's **`body` reaches its flow as one setting, `instructions`**. A flow kind that takes
-instructions declares `instructions` in its `configSchema`. A kind that doesn't will refuse a body by
-name, so no worker flow has to check for one. Declaring the key makes the instructions available at
-`config.instructions`; what the flow does with them is the flow's business.
+A record's **`body` reaches its flow as one setting, `instructions`**. Every hireable kind declares
+that setting by composing `workerConfigSchema()`, so a body always has somewhere to arrive and no
+worker flow has to check for one; the instructions are available at `config.instructions`, and what
+the flow does with them is the flow's business. A kind that wants instructions to be mandatory makes
+the key required when it extends the contract — `workerConfigSchema().extend({ instructions:
+z.string() })` — and a worker of that kind with no body is then a failed hire.
 
 A body that is empty or only whitespace contributes no `instructions` key at all; a body with content
 is handed over verbatim, leading and trailing whitespace included. A record that declares
@@ -697,6 +748,9 @@ leaves an empty session there, and re-running binds it.
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
+| `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?` (reserved) and `seatSkills`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
+| `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
+| `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
 | `readResourcesDirectory(root)` | Read every `resources/` folder in the tree — org, team, and each worker's own — into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
 | `resourcesFromDocs(documents)` | Turn document records into the flow resource map, keyed by each document's ref. Spread it into your own `resources`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body, skills? }`. |
@@ -727,7 +781,7 @@ leaves an empty session there, and re-running binds it.
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
-| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name the built-in's catalog does not carry, a skill name reaching one seat from both the app's `skills` and its own folders, `instructions` given both in the frontmatter and as a body, or a `persona:` or `seatSkills:` key. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name the built-in's catalog does not carry, a skill name reaching one seat from both the app's `skills` and its own folders, `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:` or `teamInstructions:` key. Collected: one error names every bad worker |
 | A `resources/` slot, `org/`, `teams/`, a team folder, a `workers/` level or a worker folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
 | Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |

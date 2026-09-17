@@ -111,8 +111,8 @@ export const INSTRUCTIONS_KEY = "instructions";
 export const REFUSED_PERSONA_KEY = "persona";
 
 /**
- * The second setting name the seat factory imposes: where a seat's resolved
- * skill set arrives in its flow's settings bag.
+ * `seatSkills` — imposed by the seat factory on every record, and where a
+ * seat's resolved skill set arrives in its flow's settings bag.
  *
  * Spelled `seatSkills` rather than `skills` because the built-in kind's bag
  * already carries an author-written `skills` object (the always-on list and the
@@ -126,6 +126,48 @@ export const REFUSED_PERSONA_KEY = "persona";
  * spellings is the bug this constant prevents.
  */
 export const SEAT_SKILLS_KEY = "seatSkills";
+
+/**
+ * `teamInstructions` — where a seat's TEAM-level instructions will arrive in
+ * its flow's settings bag.
+ *
+ * **Nothing imposes it yet.** The factory imposes `instructions` and
+ * `seatSkills`; this key is declared by the contract and reserved, so a kind
+ * reading it today gets `undefined` however many instructions a team has
+ * written. What fills it is the team-level file, which FIX-1377 reads.
+ *
+ * Declared here, beside {@link INSTRUCTIONS_KEY} and {@link SEAT_SKILLS_KEY},
+ * because it is the same sort of thing as both — a value the framework will
+ * derive from where a file sits, never one a file declares — and for
+ * the same reason they are here: every door that imposes or refuses it reads
+ * one spelling from one place.
+ *
+ * **Referenced, never re-spelled.** The doors that refuse an authored one must
+ * name this constant rather than a literal, so a rename moves every refusal
+ * with it instead of leaving a door open with nothing said.
+ *
+ * The contract declares the key ({@link workerConfigSchema}) and the doors
+ * refuse an authored one from today. What FILLS it is a team's own file, which
+ * FIX-1377 reads — so until that lands the key is a declared door with nothing
+ * coming through it, which is the point: a kind composes the contract once and
+ * does not change again when the layer arrives.
+ */
+export const TEAM_INSTRUCTIONS_KEY = "teamInstructions";
+
+/**
+ * The one wording for {@link TEAM_INSTRUCTIONS_KEY}, shared by every door that
+ * refuses an authored one. Names no subject — the caller supplies what it can
+ * name.
+ *
+ * Refused for the reason `seatSkills` is, and it is the sharper case of the
+ * two: a flow whose `configSchema` composes the contract declares this key and
+ * would take an authored one happily, so a seat could run on team instructions
+ * its team never wrote — and only that seat, silently. A team's instructions
+ * are its team's to write.
+ */
+export const REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE =
+  `declares \`${TEAM_INSTRUCTIONS_KEY}:\`, which is not a setting a worker declares. ` +
+  `A seat's team-level instructions belong to its team, and reading them is the loader's job.`;
 
 /**
  * The one wording for {@link SEAT_SKILLS_KEY}, shared by the loader and the
@@ -205,10 +247,25 @@ export const duplicateSkillNameMessage = (
  */
 export interface ResourceDoc {
   /**
-   * Storage-key namespace and accessor key — a bare `<name>` at the org level,
-   * `teams/<teamId>/<name>` for a team's. Path-joined, not dot-joined: this is
-   * the key the atlas fixes for a team document, and unlike a worker id it
-   * never routes, so a `/` in it is safe. Minted by the loader, in one helper.
+   * Storage-key namespace and accessor key.
+   *
+   * **The rule:** the ref is the document's path under the workforce root with
+   * the `resources/` segment removed and a leading `org/` removed. The four
+   * forms it currently produces, one per place a `resources/` slot can sit:
+   *
+   * - `org/resources/<name>.md` → `<name>`
+   * - `teams/<teamId>/resources/<name>.md` → `teams/<teamId>/<name>`
+   * - `org/workers/<worker>/resources/<name>.md` → `workers/<worker>/<name>`
+   * - `teams/<teamId>/workers/<worker>/resources/<name>.md` →
+   *   `teams/<teamId>/workers/<worker>/<name>`
+   *
+   * The rule leads and the list follows it on purpose: a level added later gets
+   * its ref from the same rule rather than from a new case, so a stale list
+   * costs a reader nothing the rule above it has not already told them.
+   *
+   * Path-joined, not dot-joined: this is the key the atlas fixes for a team
+   * document, and unlike a worker id it never routes, so a `/` in it is safe.
+   * Minted by the loader, in one helper.
    */
   ref: string;
   /** Frontmatter exactly as written — keys as the file spelled them, values uninterpreted. */

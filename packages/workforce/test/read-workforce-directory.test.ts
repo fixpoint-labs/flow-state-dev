@@ -333,6 +333,30 @@ Body.
       expect(refused.errors).toHaveLength(1);
     });
 
+    // The third contract key, refused at this door for the reason the other two
+    // are: a hand-built roster never passes the loader, and a file that reaches
+    // a caller carrying this key is a file whose seat runs on team
+    // instructions its team never wrote. Two doors, one wording.
+    it("refuses a worker file that declares the team-instructions key", async () => {
+      const { workers, errors } = await readWorkforceDirectory(
+        tree({
+          "teams/engineering/workers/intake/WORKER.md":
+            "---\ndescription: The front door.\nteamInstructions: We answer within the hour.\n---\nBody.\n",
+        }),
+      );
+
+      expect(workers).toEqual([]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/engineering/workers/intake");
+
+      const { message } = errors[0]!.error;
+      expect(message).toContain("WORKER.md");
+      expect(message).toContain("intake/");
+      expect(message).toContain("teamInstructions");
+      expect(message).toContain("not a setting a worker declares");
+      expect(message).toContain("belong to its team");
+    });
+
     it("reports a worker segment breaking the name rules, with the rule in the message", async () => {
       const { workers, errors } = await readWorkforceDirectory(
         tree({ ...HEALTHY, "teams/engineering/workers/Platform_Eng/WORKER.md": LEAD_MD }),

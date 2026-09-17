@@ -70,6 +70,7 @@ import {
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { SEAT_SKILLS_KEY } from "./manifest";
+import { seatSkillSchema, workerConfigSchema } from "./worker-config";
 
 /**
  * The kind name the hire step resolves a record to when it names none, and the
@@ -238,34 +239,25 @@ export interface AgentWorkerFlowOptions {
 }
 
 /**
- * One skill as it rides into the bag. Structural, not a second parser: the
- * loader has already parsed every `SKILL.md` that reaches here, so this checks
- * the SHAPE arrived intact (a hand-built roster is the case it catches) and
- * leaves the contents to the seeder, which parses them again where a parse
- * failure can be reported per skill.
+ * What one worker of this kind configures, in its file.
+ *
+ * **Composed from the admission contract rather than written beside it.** The
+ * three settings a seat's bag may carry — a worker's own instructions, its
+ * team's (reserved), and the skills its folders resolved — come from
+ * `workerConfigSchema()`, and this kind's own settings are extended on at the
+ * top level. That is the move every hireable kind makes, so the one kind that
+ * ships with the framework teaches the rule rather than standing outside it.
+ *
+ * `seatSkills` is re-declared below rather than inherited untouched: the SHAPE
+ * stays the contract's (`seatSkillSchema`), and the refinement on top of it is
+ * this kind's, because only this kind holds the app's own skill names to
+ * collide a seat's against.
  */
-const seatSkillSchema = z
-  .object({
-    name: z.string().min(1),
-    skillMd: z.string(),
-    files: z
-      .array(z.object({ path: z.string().min(1), content: z.string() }).strict())
-      .optional()
-  })
-  .strict();
-
-/** What one worker of this kind configures, in its file. */
 function settingsSchema(options: AgentWorkerFlowOptions) {
   const catalog = options.catalog ?? {};
   const appSkillNames = new Set((options.skills ?? []).map((skill) => skill.name));
 
-  return z.object({
-    /**
-     * The worker's instructions — its file body, or the frontmatter key.
-     * Optional: a bodyless worker is a weak seat, not a failed hire.
-     */
-    instructions: z.string().optional(),
-
+  return workerConfigSchema().extend({
     model: z.string().default(options.model ?? DEFAULT_MODEL),
 
     /**
@@ -294,15 +286,14 @@ function settingsSchema(options: AgentWorkerFlowOptions) {
       }),
 
     /**
-     * The seat's own skills — **imposed by the hire step, never authored.**
+     * The seat's own skills — the contract's key, re-declared here to add ONE
+     * refinement this kind alone can make.
      *
-     * The loader resolves the org ∪ team ∪ own-folder union per seat and hands
-     * it over on the worker's record, exactly as a worker's body is handed over
-     * as `instructions`. A `seatSkills:` in a worker file is refused by name at
-     * both doors; see `manifest.ts`.
-     *
-     * Spelled `seatSkills` rather than `skills` because the bag already carries
-     * an author-written `skills` object below.
+     * The shape and the story are `workerConfigSchema()`'s: imposed by the hire
+     * step, never authored, present even when empty. What is added below is the
+     * collision check against `defineAgentWorkerFlow({ skills })`, which needs
+     * the app's own skill names and so cannot live on a contract every kind
+     * shares.
      */
     [SEAT_SKILLS_KEY]: z
       .array(seatSkillSchema)
