@@ -82,12 +82,11 @@ seats answer each other forever.
 1. **[D1](DECISIONS.md#d1) · The lab lives in the goal library, not in `examples/` or `labs/`.**
    If wrong: the conventions' only consumer is something an author never opens, and the epic's
    headline claim is proved where nobody reads it.
-2. **[D2](DECISIONS.md#d2) · Two checks: a model-free one is the contract gate, a model-backed
-   one is the honesty check, required at completion.** If wrong: the gate we run is flaky or
-   hollow.
-3. **[D3](DECISIONS.md#d3) · The seats run on a kind the lab defines, and a seat's own post wakes
-   nobody.** If wrong: the lab proves a shape no built-in kind has, and the cycle it breaks by
-   rule is a trap the next author walks into.
+2. **[D2](DECISIONS.md#d2) · Two checks — a model-free contract gate, and a model-backed honesty check required at completion.**
+   If wrong: the gate we run is flaky or hollow.
+3. **[D3](DECISIONS.md#d3) · The seats run on a kind the lab defines, and a seat's own post wakes nobody.**
+   If wrong: the lab proves a shape no built-in kind has, and the cycle it breaks by rule is a
+   trap the next author walks into.
 
 **The epic's open question closes here: the lab needs no durable intake DM.** One participant
 cannot show a fan-out, and a declared team channel can — the argument, and what stays unowned, is

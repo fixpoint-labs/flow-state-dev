@@ -52,7 +52,7 @@ runs differ by one block and nothing else.
 | **Because** | It is not available: a dispatch resolves `flow.internal.actions[action]` and never falls through to a public one, and the built-in kind declares `actions.run` with no internal map, so a delivery refuses `no-entry`. And a fan-out routing **every** post routes a seat's answer too — two seats replying to each other without end |
 | **Locks in** | The lab proves the *convention* surface on a kind it wrote, and **not** the built-in kind under fan-out, because no such path exists. The cycle break is the lab's own rule, so anyone copying the wiring copies the rule |
 
-The router the lab writes is `defineChannelFlow`'s **`notify` slot** — one block, run once per
+The router the lab writes is the **notify slot** of `defineChannelFlow` — one block, run once per
 declared member. The member walk stays in `channel-flow.ts`; the lab supplies addresses and the
 author gate ([PLAN → S3](PLAN.md)). That a channel can wake anything **except** the framework's
 own worker kind is a finding, filed as a follow-up.
@@ -90,8 +90,9 @@ own worker kind is a finding, filed as a follow-up.
 ## Settled
 
 Read off merged code on `main`, not run — this worktree carries no install. The limit is stated,
-not papered over, and it is not free: **round 1 re-read these and found the bare-router premise
-false**, corrected above. Treat a false one as a spec defect, not a detail.
+not papered over, and it is not free.
+**Round 1 re-read these and found the bare-router premise false** — corrected above.
+Treat a false one as a spec defect, not a detail.
 
 - **A dispatcher can address one hired seat** — **CONFIRMED**: an exact instance id through the
   registry (`core/src/blocks/dispatcher.ts`, `engine/src/context/create-request-host.ts`).
