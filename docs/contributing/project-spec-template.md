@@ -39,7 +39,7 @@ specs beneath it has stopped coordinating and started designing.
 | `DECISIONS.md` | Cross-cutting calls across issues · ownership matrix | Calls that bind **more than one epic** · what was **decided once** so no epic reopens it | ~900 |
 | `BUSINESS-RULES.md` | ER-n: rules every issue obeys | **PR-n: rules every epic obeys**, with owner and where each is checked · what no epic may do | ~600 |
 | `PLAN.md` | The path: issues against time | **The arc**: epics against time · what each epic consumes and releases · what is deliberately not next | ~700 |
-| `figures/` | Three the PR body carries | **Two** the PR body carries: the territory, the arc. A third — the rule × epic matrix — only once `BUSINESS-RULES.md` carries three or more rules | — |
+| `figures/` | Three the PR body carries | **Two** the PR body carries: the territory, and the arc once there are two epics. A third — the rule × epic matrix — only once `BUSINESS-RULES.md` carries three or more rules | — |
 
 **The nav line is the same at every altitude.** Line 3 of every document is
 `[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)` with
@@ -52,6 +52,29 @@ rules — which every file-convention epic obeys — survived only inside one is
 set living inside a document it governs, where a sibling epic could not find it and a correction to
 two of the rules ended up as a comment on a Linear issue. That is what a missing altitude looks
 like. If a rule binds one epic it is that epic's; if it binds two it is the project's.
+
+### The bootstrap shape — what the first stand-up actually contains
+
+A project-spec is stood up when the *first* epic runs under it, so the common first case is **one
+epic and no cross-epic anything**. Writing four full documents then would be mostly scaffolding,
+and scaffolding is what teaches people the artifact is busywork.
+
+So the first stand-up is deliberately thin, and the documents earn their content:
+
+| Document | At one epic | Earns its content when |
+|---|---|---|
+| `SPEC.md` | **Full** — the outcome, the territory, the epics table. This is the whole value on day one | — |
+| `DECISIONS.md` | The heading and *decided once*, empty | The first call binds a **second** epic |
+| `BUSINESS-RULES.md` | The heading, empty | A rule binds two epics — which is the trigger, not a count of rules |
+| `PLAN.md` | The arc with one lane, and *what is deliberately not next* | A second epic gives the arc an order to show |
+| `figures/` | The territory only | The arc becomes a figure at two epics; the matrix at three rules |
+
+**An empty section with its heading in place is correct, not unfinished.** It says the question was
+asked and the answer is currently *none* — which is what stops the next epic from inventing a
+private answer. A document that is missing says nothing at all.
+
+The one thing never deferred is `SPEC.md`'s outcome. A project whose outcome is written down only
+once it has two epics has already made the decision that needed writing down.
 
 ### What does *not* go in
 
