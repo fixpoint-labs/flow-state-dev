@@ -74,9 +74,11 @@ ER-21 in one run.
 
 The model-backed check (M) is the same claim with a model in the answering slot — plus the tool
 leg (BR-21), which is M's alone because a tool slot is a generator's and the gate's answering block
-is a handler. **Every rule marked M is graded by M**, not just the document one: a real model can
-answer plausibly while omitting its own instructions or leaking its sibling's, so BR-2 and BR-12
-are asserted on the model's own lines — the sibling's tokens as **absent**, which is the failure a
-handler cannot produce and a generator can. It is what ER-19 asks for ([the epic's rules](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)).
+is a handler. **Every rule marked M is graded by M, on both halves.** A real model can answer
+plausibly while omitting its own instructions or leaking its sibling's, so the rule is: *wherever
+a rule's text says a value must be absent, the check asserts the absent half.* That covers BR-2,
+BR-12 and BR-20's tokens and **BR-21's minted tool value** — the sibling seat declaring no tool
+must carry none of it. Presence-only grading passes a seat that carries both, which is precisely
+the failure a handler cannot produce and a generator can. It is what ER-19 asks for ([the epic's rules](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)).
 **Required at completion, not optional** — a red BR-20 is this issue unfinished, and only an
 unavailable inference credential is recorded **blocked** ([D2](DECISIONS.md#d2), `goals/README.md`).
