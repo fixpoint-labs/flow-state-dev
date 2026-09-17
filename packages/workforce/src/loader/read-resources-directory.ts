@@ -15,6 +15,12 @@
  * **Symlinks are never followed**, at any level. And a path is judged by the
  * slot it occupies, not by what it looks like.
  *
+ * **This reader is one of two over the same folder.** A `resources/` folder
+ * takes Markdown documents and TypeScript modules side by side; the `.ts` files
+ * are the module walk's (`../codegen/discover-resource-modules`), which mints
+ * their refs by the same rule this one does. So a non-`.md` entry is passed
+ * over here because it is not a document, not because nobody meant it.
+ *
  * **A resource is a file, not a folder** — which inverts the worker reader's
  * skip rule, deliberately. There, a *file* in the `workers/` slot does not
  * occupy a slot and is passed over in silence. Here a *directory* in the
@@ -327,8 +333,13 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
       continue;
     }
 
-    // A stray `notes.txt` or an image is not a document anyone declared. Unlike
-    // a directory, it carries no sign that someone meant it to be one.
+    // Not a document, so not this reader's. The skip is deliberate and stays a
+    // skip, but it no longer means "nobody meant this file": a `.ts` beside the
+    // Markdown is a resource module, read by the other door
+    // (`../codegen/discover-resource-modules`) and refused by name there when
+    // it cannot be one. Passing it over here is how the two doors stay two
+    // readers over one folder. A stray `notes.txt` or an image belongs to
+    // neither, and is the one thing this branch still drops in silence.
     if (!entryName.endsWith(DOCUMENT_EXTENSION)) continue;
 
     let loaded: { ref: string; declared: Record<string, unknown>; body: string };

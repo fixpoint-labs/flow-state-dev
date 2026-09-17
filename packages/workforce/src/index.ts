@@ -10,7 +10,12 @@
  *
  * The same split covers file-declared documents: `ResourceDoc` is the record,
  * `./loader` reads it off disk, and `resourcesFromDocs` here turns records into
- * the resource map an app spreads into its flow.
+ * the resource map an app spreads into its flow. A `resources/` folder takes
+ * TypeScript beside the Markdown, and that half lands the same way:
+ * `./codegen` finds the modules, `fsdev gen` renders them onto a
+ * `resourceModules` map, and `splitResourceModules` here separates the
+ * capabilities a worker kind `uses` from the resources that merge into the
+ * same one map the documents fill.
  *
  * A worker is a flow kind plus its instructions; there is no Agent class here,
  * only the flow a kind resolves to. A record that names no kind is hired into
@@ -35,6 +40,7 @@ export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { hireWorkforce, type HireOptions } from "./hire";
 export { resourcesFromDocs } from "./resources-from-docs";
+export { splitResourceModules, type ResourceModuleHalves } from "./split-resource-modules";
 export type {
   ResourceModuleExport,
   ResourceModules,

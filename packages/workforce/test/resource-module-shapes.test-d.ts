@@ -1,5 +1,6 @@
 /**
- * Compile-time half of Door B: what a discovered module is allowed to export.
+ * Compile-time half of Door B: what a discovered module is allowed to export,
+ * and where the two halves it splits into are allowed to go.
  *
  * Neither walk opens a module, so nothing at runtime can tell a capability from
  * a resource, or either from a file that exports neither. The generated map is
@@ -18,7 +19,9 @@
  * where a generated file reaches these names.
  */
 import { defineCapability, defineResource } from "@flow-state-dev/core";
+import type { DeclaredResources, UsesSlot } from "@flow-state-dev/core";
 import { z } from "zod";
+import { resourcesFromDocs, splitResourceModules } from "../src";
 import type { ResourceModuleExport, WorkerResourceModuleExport } from "../src";
 
 /** A capability, written the way an author always writes one. */
@@ -61,3 +64,22 @@ export const exportsNeither: ResourceModuleExport = { hello: "world" };
 
 // @ts-expect-error a module whose default export is a bare value.
 export const exportsAString: ResourceModuleExport = "not a declaration";
+
+/**
+ * The install half's promise, which is a type promise as much as a runtime one:
+ * what `splitResourceModules` hands back has to drop into the two slots an app
+ * already has, with no cast at the call site.
+ *
+ * Pinned here because vitest strips types — the runtime specs next door would
+ * pass just as well against a return type nobody could assign anywhere.
+ */
+const halves = splitResourceModules({ "teams/engineering/research": research });
+
+/** The capabilities go to a block's `uses` slot, which is how they reach a worker kind. */
+export const usesSlot: UsesSlot = halves.capabilities;
+
+/** The resources merge into the flow's own map, beside what the documents filled. */
+export const flowResources: DeclaredResources = {
+  ...resourcesFromDocs([]),
+  ...halves.resources,
+};

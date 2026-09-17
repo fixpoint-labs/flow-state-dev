@@ -482,6 +482,27 @@ one **worker's own** `resources/` folder to — a resource, never a capability, 
 kind shares that kind's capabilities and one installed from a single worker's folder would change
 every other seat. The generated file carries that sentence beside the entries it applies to.
 
+### Installing what was found
+
+The two kinds of module have two destinations, so `splitResourceModules` separates them and your app
+writes the two lines:
+
+```ts
+import { resourcesFromDocs, splitResourceModules } from "@flow-state-dev/workforce";
+import { resourceModules } from "./workforce/workforce.gen";
+
+const { capabilities, resources } = splitResourceModules(resourceModules);
+
+const agent = defineAgentWorkerFlow({ uses: capabilities, /* ... */ });
+const flowResources = { ...resourcesFromDocs(documents), ...resources };
+```
+
+A capability goes to the worker kind's `uses`, which is the same option you pass one by hand, and the
+resources it declares for itself reach the flow from there. A plain resource module merges into the
+one resource map, under its own ref, beside the documents. Nothing is installed on your behalf —
+returning both and letting you spread them keeps the wiring in your own source, the same way
+`resourcesFromDocs` does.
+
 ## Reading documents from files
 
 A team's shared documents — a handbook, a glossary, an escalation procedure — can be Markdown files
