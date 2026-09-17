@@ -103,9 +103,19 @@ npx @arethetypeswrong/cli --pack ./packages/<name>
 
 # The one that catches an unimportable package: install and import for real.
 # publint and the dry run both pass on output Node cannot load.
-pnpm --dir packages/<name> pack --pack-destination /tmp
-cd "$(mktemp -d)" && npm init -y >/dev/null && npm install /tmp/*.tgz
-node --input-type=module -e 'import "@flow-state-dev/core"'
+# Import the package you packed — importing a different one proves nothing
+# about it, and it may well load as somebody else's dependency.
+PKG=<name>                      # workspace directory under packages/
+NAME=$(node -p "require('./packages/$PKG/package.json').name")
+OUT=$(mktemp -d)
+pnpm --dir "packages/$PKG" pack --pack-destination "$OUT"
+cd "$(mktemp -d)" && npm init -y >/dev/null && npm install "$OUT"/*.tgz
+node --input-type=module -e "import '$NAME'"
+
+# npm supplies the workspace dependencies of whatever you pack, so this reads
+# the LAST PUBLISHED version of them, not your branch. To prove a fix before it
+# is released, pack the package together with the dependencies it needs and
+# install them in one npm install.
 
 # Ensure no stray debug code in dist
 grep -r 'console\.log\|debugger' packages/*/dist/ --include='*.js'
