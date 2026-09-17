@@ -41,6 +41,18 @@ const research = defineCapability({
   }
 });
 
+/**
+ * Composes `research` and turns one of its presets on. Installed BESIDE the
+ * capability it composes, which is the one shape where core's depth-first walk
+ * of `uses` and a top-level-only reading of that array disagree about which ref
+ * won.
+ */
+const desk = defineCapability({
+  name: "desk",
+  uses: [research.presets({ briefing: true })],
+  presets: { default: [] }
+});
+
 /** One preset on by default and one off — what BR-22 needs to be visible. */
 const houseStyle = defineCapability({
   name: "house-style",
@@ -214,6 +226,24 @@ describe("a seat picks presets from what its kind carries", () => {
 
     expect(said.error).toBeUndefined();
     expect(occurrences(said.prompt, TONE)).toBe(1);
+  });
+
+  // The same doubling, reached the other way: core flattens `uses` depth-first,
+  // so `desk`'s nested `research` ref is recorded BEFORE the top-level
+  // `research` beside it, and the top-level one is then skipped as a diamond.
+  // A catalogue that reads the top-level array alone sees the bare ref, thinks
+  // `briefing` is off, and adds it again on the seat's path.
+  it("carries a preset a composing capability already turned on exactly once", async () => {
+    const kind = defineAgentWorkerFlow({ uses: [desk, research] });
+    const seat = hire(
+      [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
+      { [AGENT_KIND]: kind }
+    );
+
+    const said = await turn(seat("engineering.lead"));
+
+    expect(said.error).toBeUndefined();
+    expect(occurrences(said.prompt, BRIEFING)).toBe(1);
   });
 
   // The additive half of the same capability: naming the default preset AND

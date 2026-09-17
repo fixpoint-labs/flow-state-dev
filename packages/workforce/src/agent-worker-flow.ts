@@ -561,10 +561,6 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   } as never);
 
   /**
-   * The answering generator. Identity is all that varies between the two copies
-   * — the binding and the name — so this is a factory, not a helper (BP-024).
-   */
-  /**
    * What THIS seat's own file added on top of the kind's capabilities — the
    * presets it named that the kind does not already carry.
    *

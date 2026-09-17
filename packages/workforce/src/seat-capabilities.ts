@@ -48,7 +48,11 @@
  */
 
 import type { CapabilityRef, PresetDef, UsesSlot } from "@flow-state-dev/core";
-import { getBaseCapability, resolveActivePresets } from "@flow-state-dev/core/capability";
+import {
+  flattenCapabilities,
+  getBaseCapability,
+  resolveActivePresets
+} from "@flow-state-dev/core/capability";
 
 /**
  * What a worker file's `capabilities:` key parses to — capability name to the
@@ -178,6 +182,15 @@ export type SeatCapabilityCatalog = ReadonlyMap<string, SelectableCapability>;
  * kind. Both are passed over, so a seat naming one is refused by
  * {@link seatCapabilityProblems} the same way a typo is.
  *
+ * **Which ref is read is the framework's answer, not this array's order.**
+ * `flattenCapabilities` walks depth-first, so a capability reached through an
+ * earlier entry's own `uses` is recorded before the same capability appearing
+ * later at the top level, and that later one is then skipped as a diamond. The
+ * block therefore runs off the nested ref. Reading the array directly would
+ * describe a seat's options against a ref that never resolved — and, worse,
+ * would call a preset the winning ref already turned on inactive, so a seat
+ * naming it would be handed it a second time on the dynamic path.
+ *
  * @param uses The kind's `uses` slot, as the app passed it.
  * @returns The catalogue, keyed by capability name. Empty when the kind
  *   installs no capabilities — in which case the kind grows no per-seat entry
@@ -187,14 +200,16 @@ export function catalogSeatCapabilities(uses: UsesSlot | undefined): SeatCapabil
   const catalog = new Map<string, SelectableCapability>();
   if (!uses) return catalog;
 
-  for (const entry of uses) {
-    if (typeof entry === "function") continue;
+  const topLevel = uses.filter(
+    (entry): entry is CapabilityRef => typeof entry !== "function"
+  );
+  // What the app itself put on the kind. The flatten below also returns
+  // capabilities reached only through another's `uses`, which stay unselectable.
+  const selectable = new Set(topLevel.map((entry) => getBaseCapability(entry).name));
+
+  for (const entry of flattenCapabilities(topLevel)) {
     const base = getBaseCapability(entry);
-    // First entry wins, which is the rule the framework itself applies when it
-    // merges a `uses` array: a later ref for a name it has already seen is
-    // skipped, so the block runs off the FIRST one. Overwriting here would
-    // describe a seat's options against a ref the block never resolved.
-    if (catalog.has(base.name)) continue;
+    if (!selectable.has(base.name)) continue;
     const presetDefs = (base.__presetDefs ?? {}) as Record<string, PresetDef>;
     const declared = Object.keys(presetDefs).filter((key) => key !== "default");
 

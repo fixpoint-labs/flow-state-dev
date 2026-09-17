@@ -71,10 +71,19 @@ const modelResolver = createModelResolver({
  */
 function eachSeatOnItsOwnFile(replies: Record<string, string>): boolean {
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+  // A seat that named nothing is judged against the OTHER seats' facts. Against
+  // its own `null` it could only be judged against the empty string, which every
+  // reply contains — the branch would never pass and the early exit would never
+  // fire, so the loop would always pay for all three attempts.
+  const knownFacts = Object.values(KNOWS)
+    .filter((fact): fact is string => fact !== null)
+    .map(norm);
   return Object.entries(KNOWS).every(([id, fact]) => {
     const reply = norm(replies[id] ?? "");
     if (reply === "") return false;
-    return fact === null ? !reply.includes(norm(fact ?? "")) : reply.includes(norm(fact));
+    return fact === null
+      ? knownFacts.every((known) => !reply.includes(known))
+      : reply.includes(norm(fact));
   });
 }
 
