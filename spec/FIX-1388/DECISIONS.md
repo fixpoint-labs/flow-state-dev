@@ -88,6 +88,20 @@ does not, that is its own issue, and the refusal above is what makes the gap vis
 | A capability registry the seat looks names up in | A second place a capability can exist, to keep in step with the kind's `uses`. The generated map already is the list |
 | Shipping the issue as Discover alone | A command that finds files and drops them is not usable. The three layers are one story — which is about **scope**, not about the PR split: the plan ships Discover as its own PR on purpose |
 
+## Settled
+
+- **Core hands the model the union of a block's declared tools and its capabilities', not the
+  intersection** — **CONFIRMED** against `main`: the generator's tool resolver returns
+  `[...declared, ...staticCapTools, ...dynamicCapTools]`. So the tools fence is FIX-1393's to close,
+  and the Select work asserts it only once that lands.
+- **Static and dynamic `uses` entries are resolved independently, with no dedupe across the two**
+  — **CONFIRMED** against `main`: the dynamic path resolves a capability's active presets on its
+  own and appends to the same lists the static merge already filled. A capability on both paths
+  contributes twice, which is why the plan pins one path per seat.
+- **A capability declaring open config throws when reached through a dynamic resolver** —
+  **CONFIRMED** against `main`. A discovered capability written as a factory cannot have its
+  behaviour resolved on that path.
+
 ## How it got here
 
 - **Draft** — framed on the silent skip a `.ts` file gets in `resources/` today; joins the existing
@@ -97,5 +111,9 @@ does not, that is its own issue, and the refusal above is what makes the gap vis
   because the worker-level root has since shipped on the Markdown door. A capability found at that
   root is refused by name rather than installed kind-wide, because a review caught that installing
   it would quietly change every other seat.
+- **Review** — the Select work's tools rules became conditional on FIX-1393 rather than asserted
+  against today's core, because reading the code showed today's behaviour is the hole those rules
+  describe; and the plan gained a pinned one-resolution-path constraint, because core does not
+  dedupe a capability that appears on both the static and the dynamic path.
 
 **Open: none.**

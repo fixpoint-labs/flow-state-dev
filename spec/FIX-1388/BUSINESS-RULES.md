@@ -37,13 +37,20 @@ work.
 | BR-13 | A worker names a capability its kind does not carry | Refused when the roster is hired, by name, listing what the kind does carry | CI |
 | BR-14 | A worker names a preset the capability does not declare | Refused when the roster is hired, by name — **not** when the seat next answers. A typo in a file must not surface as a failed turn in front of a user | CI |
 | BR-15 | Two seats of one kind name different selections | Each carries its own. Neither sees the other's | CI · goal check |
+| BR-22 | A seat names a preset that is already on by default | It is carried **once**. Naming what you already have is not a way to get it twice | CI |
 
 ## The fence over what a seat may call
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-16 | A seat selects a preset that carries a tool, and the seat's `tools:` does not name it | The model cannot call it. Selecting a capability is not a way to widen the fence | CI |
-| BR-17 | A seat declares `tools: []` and selects any capability at all | Zero tools reach the model | CI |
+| BR-16 | A seat selects a preset that carries a tool, and the seat's `tools:` does not name it | The model cannot call it. Selecting a capability is not a way to widen the fence | CI, **once the core fence lands** |
+| BR-17 | A seat declares `tools: []` and selects any capability at all | Zero tools reach the model | CI, **once the core fence lands** |
+
+**These two are FIX-1393's behaviour, not this issue's.** Core today hands the model the union of a
+block's declared tools and its capabilities', so neither rule holds yet and nothing in this issue
+can make them hold without building a second fence. If that change has not landed when the Select
+work starts, these two rules and their check leave that PR's scope and are stated as not yet true —
+they are never restated as something weaker that happens to pass.
 
 ```mermaid
 flowchart LR

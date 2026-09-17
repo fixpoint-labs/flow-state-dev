@@ -60,6 +60,8 @@ export default defineCapability({
 
 The generated module is written by `fsdev gen`, which already writes the kinds and blocks maps beside it. Nothing in the app names `research`.
 
+A TypeScript file may be a plain resource rather than a capability, and that is deliberate: the code door covers everything the Markdown door covers and more, so a team never has to ask which of two doors a piece of reference material goes through.
+
 ## How it reaches the seat
 
 ```mermaid
