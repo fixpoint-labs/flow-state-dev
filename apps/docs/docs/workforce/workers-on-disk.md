@@ -196,9 +196,10 @@ export const intakeFlow = defineFlow({
 });
 ```
 
-`workerConfigSchema()` is the set of settings hiring hands over for every seat, whatever kind it is:
-the worker's own instructions, its team's, and the skills its folders resolved. Your kind's settings
-go on top with `.extend()`, at the same level, and the schema stays closed around all of them.
+`workerConfigSchema()` is the set of settings every seat's bag may carry, whatever kind it is: the
+worker's own instructions, the skills its folders resolved, and a reserved `teamInstructions` that
+nothing populates yet. Your kind's settings go on top with `.extend()`, at the same level, and the
+schema stays closed around all of them.
 
 You do not have to read any of it. A kind that composes the contract and never looks at the skills
 runs exactly as it would otherwise. But a kind with nowhere to put them stops hiring: the seat

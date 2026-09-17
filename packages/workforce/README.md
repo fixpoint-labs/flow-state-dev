@@ -252,13 +252,16 @@ declared is refused by name at the hire.
 ### What a hireable kind must admit
 
 A worker kind is an ordinary flow. What makes it *hireable* is that its `configSchema` composes
-`workerConfigSchema()`, which declares the three settings the factory hands over for every seat:
+`workerConfigSchema()`, which declares the three settings a seat's bag may carry:
 
 | Setting | What it holds |
 | --- | --- |
-| `instructions?` | The worker's own instructions — its file body, or the frontmatter key. Absent when it has none. |
-| `teamInstructions?` | The instructions its team carries, for every seat on that team. Absent when the team wrote none. |
-| `seatSkills` | The skills its folders resolved for it, in level order. Present and empty when there are none. |
+| `instructions?` | The worker's own instructions — its file body, or the frontmatter key. Imposed when the body is not empty, absent when it has none. |
+| `teamInstructions?` | **Reserved: nothing populates it yet.** It is here so a kind composes the contract once and does not change again when the team-level layer arrives. Always absent today. |
+| `seatSkills` | The skills its folders resolved for it, in level order. Imposed on every seat, present and empty when there are none. |
+
+So hiring imposes two of the three today. The third is a declared door with nothing coming through
+it, and a kind that reads it gets `undefined` regardless of what any team has written.
 
 Add your kind's own settings on top, at the same level:
 
@@ -716,6 +719,9 @@ leaves an empty session there, and re-running binds it.
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
+| `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?` (reserved) and `seatSkills`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
+| `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
+| `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
 | `readResourcesDirectory(root)` | Read `org/resources/` and `teams/<id>/resources/` into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
 | `resourcesFromDocs(documents)` | Turn document records into the flow resource map, keyed by each document's ref. Spread it into your own `resources`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body, skills? }`. |
