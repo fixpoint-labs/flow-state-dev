@@ -427,6 +427,7 @@ Put it in front of your build, and commit the file it writes:
 The generator reads the tree. It never opens the files it finds, so what it can refuse is what a walker can see:
 
 - A basename that is not lowercase letters, digits and single hyphens. The name becomes a kind name and part of a flow instance id.
+- A basename Windows reserves for a device: `con`, `prn`, `aux`, `nul`, `com1` through `com9`, `lpt1` through `lpt9`. Windows refuses these whatever the extension, so a committed tree holding one cannot be checked out there.
 - A directory inside one of the three folders. Refused by name rather than skipped, so a folder you meant as a kind cannot be passed over in silence.
 - One basename in both `flows/workers/` and `flows/channels/`.
 - A folder that is there and cannot be read. A folder that is simply absent is fine, and means you have no custom code of that kind.
