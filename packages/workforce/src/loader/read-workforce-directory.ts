@@ -34,14 +34,14 @@ import {
 } from "../manifest";
 import { validateSegment } from "./segments";
 import {
+  IGNORED_ENTRIES,
   classify,
+  openRoot,
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
+  walkTeams,
 } from "./structural-directory";
-
-/** Filenames that are never a worker folder — editor and OS droppings. */
-const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
 
 /** The document that describes a worker. */
 const WORKER_MD = "WORKER.md";
@@ -75,8 +75,11 @@ export interface ReadWorkforceDirectoryResult {
  * Read every `<root>/teams/<teamId>/workers/<name>/` and return one neutral
  * manifest per worker.
  *
- * Throws only when `root` itself cannot be read — a configured root that does
- * not exist is a wiring mistake, not a per-worker one. A root with no `teams/`
+ * Throws only when `root` itself is refused — a symlink, or a path that cannot
+ * be read at all. A configured root that does not exist, or that would take the
+ * walk somewhere else entirely, is a wiring mistake, not a per-worker one.
+ *
+ * A root with no `teams/`
  * is an empty result: an app may declare no workers in files. Everything else
  * that goes wrong lands in `errors`, so one bad folder never costs an app its
  * other workers.
@@ -87,39 +90,17 @@ export async function readWorkforceDirectory(
   const workers: WorkerManifest[] = [];
   const errors: ReadWorkforceDirectoryResult["errors"] = [];
 
-  try {
-    await fs.readdir(root);
-  } catch (err) {
-    throw new Error(
-      `Failed to read workforce directory "${root}": ${(err as Error).message}`,
-    );
-  }
+  await openRoot(root);
 
-  const teams = await openStructuralDirectory(path.join(root, "teams"), "teams");
-  if (teams.refusal !== undefined) {
-    errors.push({ path: "teams", error: teams.refusal.error });
-  }
-  if (teams.entries === undefined) return { workers, errors };
+  /** File a structural refusal the shared walk met on the way to a team. */
+  const report = (at: string, error: Error): void => {
+    errors.push({ path: at, error });
+  };
 
-  for (const teamId of teams.entries) {
-    if (IGNORED_ENTRIES.has(teamId)) continue;
-
-    const teamDir = path.join(root, "teams", teamId);
-    const teamPath = `teams/${teamId}`;
-    const team = await classify(teamDir);
-    if (team.kind === "symlink") {
-      errors.push({ path: teamPath, error: refusedSymlink("team folder", teamId) });
-      continue;
-    }
-    if (team.kind === "unreadable") {
-      errors.push({ path: teamPath, error: unreadable("Team folder", teamId, team.error) });
-      continue;
-    }
-    if (team.kind !== "directory") continue;
-
-    const workersPath = `${teamPath}/workers`;
+  for await (const team of walkTeams(root, report)) {
+    const workersPath = `${team.path}/workers`;
     const workerSlots = await openStructuralDirectory(
-      path.join(teamDir, "workers"),
+      path.join(team.dir, "workers"),
       workersPath,
     );
     if (workerSlots.refusal !== undefined) {
@@ -130,7 +111,7 @@ export async function readWorkforceDirectory(
     for (const workerName of workerSlots.entries) {
       if (IGNORED_ENTRIES.has(workerName)) continue;
 
-      const workerDir = path.join(teamDir, "workers", workerName);
+      const workerDir = path.join(team.dir, "workers", workerName);
       const slot = await classify(workerDir);
       // A file under `workers/` does not occupy a worker slot — a slot is a
       // directory — so it is skipped rather than reported.
@@ -141,7 +122,7 @@ export async function readWorkforceDirectory(
         if (slot.kind === "unreadable") {
           throw unreadable("Worker folder", workerName, slot.error);
         }
-        workers.push(await readWorkerSlot(teamId, workerName, workerDir));
+        workers.push(await readWorkerSlot(team.id, workerName, workerDir));
       } catch (err) {
         errors.push({ path: `${workersPath}/${workerName}`, error: err as Error });
       }

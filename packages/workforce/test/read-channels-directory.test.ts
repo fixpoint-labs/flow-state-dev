@@ -275,6 +275,61 @@ describe("readChannelsDirectory", () => {
       expect(errors[0]!.error.message).toMatch(/Symlinked/);
     });
 
+    it("refuses a symlinked team folder instead of dropping its channels", async () => {
+      // One level below the `teams/` case above, and the level the shared team
+      // walk has to carry the refusal at: a symlinked team reads a whole team's
+      // channels from outside the configured root.
+      const root = tree({
+        ...HEALTHY,
+        "outside/marketing/channels/standup/CHANNEL.md": STANDUP,
+      });
+      symlinkSync(join(root, "outside/marketing"), join(root, "teams/marketing"));
+
+      const { channels, errors } = await readChannelsDirectory(root);
+
+      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/marketing");
+      expect(errors[0]!.kind).toBe("unreadable-slot");
+      expect(errors[0]!.error.message).toBe(
+        'Symlinked team folder "marketing" — refused for safety',
+      );
+    });
+
+    it("reports a team folder it cannot stat rather than dropping its channels", async () => {
+      // `absent` and `unreadable` stay apart at the team level for the reason
+      // they do at the slot level: folded together, a team we cannot stat is
+      // skipped in silence and every channel under it disappears with `errors`
+      // empty for the caller's fatal check to look at.
+      //
+      // Injected rather than provoked because the suite runs as root, where a
+      // permission bit denies us nothing. The real route is a `teams/` that is
+      // readable but not searchable (`r--` rather than `r-x`): `readdir` lists
+      // the team fine, then `lstat` on it fails with EACCES.
+      const root = tree({
+        ...HEALTHY,
+        "teams/marketing/channels/standup/CHANNEL.md": STANDUP,
+      });
+      const locked = join(root, "teams/marketing");
+      const real = fsp.lstat.bind(fsp);
+      vi.spyOn(fsp, "lstat").mockImplementation(((target: Parameters<typeof real>[0]) => {
+        if (String(target) === locked) {
+          const err = new Error(`EACCES: permission denied, lstat '${locked}'`);
+          (err as NodeJS.ErrnoException).code = "EACCES";
+          return Promise.reject(err);
+        }
+        return real(target);
+      }) as unknown as typeof fsp.lstat);
+
+      const { channels, errors } = await readChannelsDirectory(root);
+
+      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/marketing");
+      expect(errors[0]!.kind).toBe("unreadable-slot");
+      expect(errors[0]!.error.message).toMatch(/^Team folder "marketing" could not be read: /);
+    });
+
     it("refuses a symlinked channels slot without following it", async () => {
       const root = tree({ ...HEALTHY, "outside/standup/CHANNEL.md": STANDUP });
       dir(root, "teams/marketing");
