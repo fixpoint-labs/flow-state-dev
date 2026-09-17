@@ -203,7 +203,6 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <a href="#what">01 &middot; What Workforce is</a>
     <a href="#layers">02 &middot; Layer 1 vs Layer 2</a>
     <a href="#vision">03 &middot; Build-out</a>
-    <a href="#lab">03 &middot; DevForce Lab</a>
     <a href="#fence">04 &middot; Seats, kinds, blocks</a>
     <a class="grp">The convention</a>
     <a href="#contract">05 &middot; The worker contract</a>
@@ -219,7 +218,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <a href="#collab">14 &middot; Collaboration</a>
     <a href="#mcp">15 &middot; Workforce MCP</a>
     <a class="grp">The consumer</a>
-    <a href="#devforce">16 &middot; DevForce Lab</a>
+    <a href="#conductor">16 &middot; DevForce Lab</a>
     <a class="grp">The ground</a>
     <a href="#exists">17 &middot; What exists today</a>
     <a href="#api">18 &middot; API surface</a>
@@ -239,7 +238,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <span><i class="sw-dash"></i> proposed &#8212; named, not built</span>
     <span><i class="sw" style="background: var(--prose-soft); border: 1.2px solid var(--prose)"></i> later / cut &#8212; not foundation</span>
   </div>
-  <p class="sib">Pinned to <code>origin/main</code> at <code>fe4c9f76a</code> (2026-09-17). D-12 (2026-09-16): the product name Conductor is <strong>retired</strong>; <strong>DevForce</strong> is a Lab on Workforce &#8212; design only, not a sibling and not a parallel Proof. North-star #10 is the usage gate that Lab is meant to serve. The old lock &#8212; separate tracks, later triangulation &#8212; is <strong>superseded</strong>. Chat-sdk is gone (<a href="https://linear.app/fixpoint-labs/issue/FIX-1330">FIX-1330</a>). Cross-flow dispatch exists on this pin (<code>dispatcher({ flowKind })</code>; #1600 landed as <code>7843f23f7</code>). Hire-id, dynamic addresses, and multi-hire still wait on instances (<a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a>). <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code> <strong>exists</strong>. <code>readWorkforceDirectory</code> and <code>hireWorkforce</code> <strong>exist</strong> (#1689 / #1687). Owner fence (Jake + Architect, 2026-09-10): workers are generators/flows with <code>instructions</code> + model + tools; seats stay flow instances; kill <code>materializeAgent</code>; <code>defineAgent</code> is an invent-kill candidate &#8212; do not teach it as a block factory. Persona is later persona-builder only. Hire / <code>WORKER.md</code> body key is <code>instructions</code> (maps to generator <code>prompt</code>). Default system prompt for all workers is proposed: compose into the prompt slot (array). Softens the 2026-09-09 &#8220;<code>defineAgent</code> = block factory&#8221; teach. Owner park: rooms are L2 &#8212; one roster, system + helper-minted; <a href="#collab">Collab later</a>, not W2. Room lock (Jake / Cycle PM / Architect / Systems Thinker, 2026-09-10): W2 stays the landed foundation except the FIX-1342 rewrite &#8212; do not stuff the next surface into done W2. New epic <strong>W3 &#8212; file-convention surface</strong>: channels (ChannelFlow copies; sessions / dispatch, not Channel L1), resources, and skills declared in the tree at the level they belong; kinds + blocks file scan is the <em>code</em> door; seats stay document-first. Kill <code>worker.ts</code> as WorkerManifest / default-export config / app-compose-a-record. Kill framework runtime-import of seat <code>worker.ts</code> (bundled hosts). Custom kinds / singletons are <strong>flow factories</strong> on the worker contract &#8212; same boot scan as coming block conventions; built-ins mix in; seat <code>flow:</code> only names a registered kind. Atlas matches the #1702 brief; it does not invent another door. W3 grows the tree scan without shipping Collab RC. DevForce Lab is the proposed showcase after conventions &#8212; design only (D-12). MCP held until the lab runs. GTM timing stays Strategy.</p>
+  <p class="sib">Pinned to <code>origin/main</code> at <code>fe4c9f76a</code> (2026-09-17). D-12 (2026-09-16): the product name Conductor is <strong>retired</strong>; <strong>DevForce</strong> is a Lab on Workforce &#8212; design only, not a sibling and not a parallel Proof. The usage-gate north star is what that Lab is meant to serve. The old lock &#8212; separate tracks, later triangulation &#8212; is <strong>superseded</strong>. Chat-sdk is gone (<a href="https://linear.app/fixpoint-labs/issue/FIX-1330">FIX-1330</a>). Cross-flow dispatch exists on this pin (<code>dispatcher({ flowKind })</code>; #1600 landed as <code>7843f23f7</code>). Hire-id, dynamic addresses, and multi-hire still wait on instances (<a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a>). <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code> <strong>exists</strong>. <code>readWorkforceDirectory</code> and <code>hireWorkforce</code> <strong>exist</strong> (#1689 / #1687). Owner fence (Jake + Architect, 2026-09-10): workers are generators/flows with <code>instructions</code> + model + tools; seats stay flow instances; kill <code>materializeAgent</code>; <code>defineAgent</code> is an invent-kill candidate &#8212; do not teach it as a block factory. Persona is later persona-builder only. Hire / <code>WORKER.md</code> body key is <code>instructions</code> (maps to generator <code>prompt</code>). Default system prompt for all workers is proposed: compose into the prompt slot (array). Softens the 2026-09-09 &#8220;<code>defineAgent</code> = block factory&#8221; teach. Owner park: rooms are L2 &#8212; one roster, system + helper-minted; <a href="#collab">Collab later</a>, not W2. Room lock (Jake / Cycle PM / Architect / Systems Thinker, 2026-09-10): W2 stays the landed foundation except the FIX-1342 rewrite &#8212; do not stuff the next surface into done W2. New epic <strong>W3 &#8212; file-convention surface</strong>: channels (ChannelFlow copies; sessions / dispatch, not Channel L1), resources, and skills declared in the tree at the level they belong; kinds + blocks file scan is the <em>code</em> door; seats stay document-first. Kill <code>worker.ts</code> as WorkerManifest / default-export config / app-compose-a-record. Kill framework runtime-import of seat <code>worker.ts</code> (bundled hosts). Custom kinds / singletons are <strong>flow factories</strong> on the worker contract &#8212; same boot scan as coming block conventions; built-ins mix in; seat <code>flow:</code> only names a registered kind. Atlas matches the #1702 brief; it does not invent another door. W3 grows the tree scan without shipping Collab RC. DevForce Lab is the proposed showcase after conventions &#8212; design only (D-12). MCP held until the lab runs. GTM timing stays Strategy.</p>
 </header>
 
 <section id="what">
@@ -283,8 +282,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
         <rect class="n-box" x="34" y="124" width="420" height="74" rx="4"/>
         <text class="t-b" x="48" y="148">DevForce Lab</text>
-        <text class="t-xs" x="48" y="166">ONE LAB CONFIG &#183; ENG TEAM FIRST</text>
-        <text class="t-xs" x="48" y="184">DESIGN ONLY &#183; NOT A BUILD. D-12</text>
+        <text class="t-xs" x="48" y="166">ONE LAB CONFIG &#183; DESIGN ONLY</text>
+        <text class="t-xs" x="48" y="184">NOT A BUILD. NOT A SIBLING</text>
 
         <rect class="n-prop" x="470" y="124" width="434" height="74" rx="4"/>
         <text class="t-b f-accent" x="484" y="148">other Workforce teams</text>
@@ -301,7 +300,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-prop" x="16" y="16" width="292" height="188" rx="5"/>
         <text class="t-lbl" x="34" y="38">THE PRODUCT</text>
         <text class="t-b f-accent" x="34" y="68">Workforce</text>
-        <text class="t-s" x="34" y="96">roster + seats + rooms</text>
+        <text class="t-s" x="34" y="96">roster + seats + channels</text>
         <text class="t-xs" x="34" y="120">CLIENT TEAMS &#183; PERSONAL / ORG</text>
         <text class="t-xs" x="34" y="138">ONSECURITY = GTM NAME</text>
         <text class="t-xs" x="34" y="156">NOT AN IMPLEMENTATION CLAIM</text>
@@ -311,8 +310,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-lbl" x="342" y="38">ONE CONSUMER LAB</text>
         <text class="t-b" x="342" y="68">DevForce</text>
         <text class="t-s" x="342" y="96">Workforce opinions. Design only.</text>
-        <text class="t-xs" x="342" y="120">ENG TEAM. EM HAS NO HARNESS</text>
-        <text class="t-xs" x="342" y="138">WORKERS MAY NAME A HARNESS</text>
+        <text class="t-xs" x="342" y="120">WORKFORCE OPINIONS</text>
+        <text class="t-xs" x="342" y="138">NOT A SIBLING PRODUCT</text>
         <text class="t-xs" x="342" y="156">NOT HOSTED. DO NOT CLAIM IT RUNS</text>
         <text class="t-b" x="342" y="184">not a sibling ship</text>
 
@@ -337,12 +336,12 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 420" role="img" aria-label="A stack. Top dashed band: Conductor as one Workforce team config, wiring proposed, lab still on Layer 1. Middle band: Layer 2 product, Workforce, thin package that exists plus the proposed factory, team, channels, and plan convention. Bottom solid band: Layer 1 primitives that already exist. Do not invent here. Do not fold Workforce into core.">
+      <svg viewBox="0 0 940 420" role="img" aria-label="A stack. Top dashed band: DevForce as one Workforce Lab, design only, not a sibling. Middle band: Layer 2 product, Workforce, thin package that exists plus the proposed factory, team, channels, and plan convention. Bottom solid band: Layer 1 primitives that already exist. Do not invent here. Do not fold Workforce into core.">
         <rect class="n-prop" x="16" y="16" width="908" height="100" rx="5"/>
-        <text class="t-lbl" x="34" y="38">CONSUMER CONFIG &#8212; NOT A SIBLING PRODUCT</text>
+        <text class="t-lbl" x="34" y="38">CONSUMER LAB &#8212; NOT A SIBLING PRODUCT</text>
         <rect class="n-box" x="34" y="52" width="420" height="48" rx="4"/>
-        <text class="t-b" x="48" y="72">Conductor</text>
-        <text class="t-xs" x="48" y="88">ONE WORKFORCE TEAM &#183; CODING-HARNESS SEATS &#183; WIRING PROPOSED</text>
+        <text class="t-b" x="48" y="72">DevForce</text>
+        <text class="t-xs" x="48" y="88">ONE LAB &#183; DESIGN ONLY &#183; NOT HOSTED</text>
         <rect class="n-prop" x="470" y="52" width="434" height="48" rx="4"/>
         <text class="t-b f-accent" x="484" y="72">same product, other teams</text>
         <text class="t-xs" x="484" y="88">CLIENT / PERSONAL / ORG &#183; NOT A SECOND SHIP</text>
@@ -381,7 +380,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <table>
       <thead><tr><th></th><th>Layer 1</th><th>Layer 2</th></tr></thead>
       <tbody>
-        <tr><td>What it is</td><td>Substrate. Composable primitives with almost no product opinion.</td><td>The product. Roster / teams + seats + rooms + thin helpers over the substrate.</td></tr>
+        <tr><td>What it is</td><td>Substrate. Composable primitives with almost no product opinion.</td><td>The product. Roster / teams + seats + channels + thin helpers over the substrate.</td></tr>
         <tr><td>Who it is for</td><td>Authors who will compose their own harness.</td><td>Clients and personal/org workforces. DevForce is the proposed Lab consumer on this layer &#8212; design only.</td></tr>
         <tr><td>What it must not do</td><td>Absorb one product&#8217;s knowledge. That is tenet&nbsp;4. Do not mint Team / Channel / MessageBoard here.</td><td>Invent a primitive the substrate does not have. Compose, or file a Layer&nbsp;1 gap. Do not fold this layer into core.</td></tr>
         <tr><td>Phased implement</td><td>In flight: <a href="https://linear.app/fixpoint-labs/issue/FIX-1320">FIX-1320</a> INST-1..3 for hire-id / multi-hire. <a href="https://linear.app/fixpoint-labs/issue/FIX-1331">FIX-1331</a> <code>ctx.flow.config</code> exists. Cross-flow exists (<code>dispatcher({ flowKind })</code>). W2 mints a flow instance per seat from <code>WORKER.md</code>. It does not scan seats into <code>AgentRegistry</code>. Hire already takes <code>{ kinds }</code>. One hire per kind is enough for the lab.</td><td><strong>W2</strong> foundation is mostly done except the FIX-1342 rewrite. <strong>W3</strong> (file-convention surface) is next. <strong>DevForce Lab</strong> is the proposed showcase after conventions &#8212; design only; not claiming it runs. <strong>W1</strong> MCP is held until the lab runs. Collab RC later (INST as needed for multi-hire). See <a href="#vision">&#167;03</a>.</td></tr>
@@ -594,25 +593,6 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <figcaption><b>Questions and decisions are channels. Philosophy is a resource.</b> Do not invent a philosophy flow. The decisions channel writes an evolving org resource so a later similar call may not need the user. Soft resource + <code>reactTo</code> can watch that write; it is not the conversation. Product team is later &#8212; do not seat it to make the Lab look finished.</figcaption>
   </figure>
-
-  <h3>DevForce honesty &#8212; exists vs proposed</h3>
-  <p>The demo narrative stays honest only if every noun keeps its tag. Do not demo a dashed box as if it shipped.</p>
-  <div class="tw">
-    <table>
-      <thead><tr><th>Noun</th><th>Status</th><th>What it actually is</th></tr></thead>
-      <tbody>
-        <tr><td>Org project / feature board</td><td><span class="tag t-real">exists as L1</span></td><td><code>taskBoard</code> + <code>readContent()</code>. The org-project + feature-row convention is the opinion.</td></tr>
-        <tr><td>EM seat (harness-free coordinator)</td><td><span class="tag t-prop">proposed</span></td><td>Same worker contract. Thin sequencer. Does not name a harness. Not a new member kind.</td></tr>
-        <tr><td>Workers (design / architect / dev / reviewer / QA)</td><td><span class="tag t-prop">proposed roster</span></td><td>Generators / flows with instructions + model + tools. Seats = <code>WORKER.md</code> flow instances. Hire + loader exist; this roster is the Lab opinion.</td></tr>
-        <tr><td>Seat &#8594; harness bind</td><td><span class="tag t-prop">proposed</span></td><td><code>@flow-state-dev/harness-manager</code> exists. The seat field does not. EM never uses it.</td></tr>
-        <tr><td>Feature / questions / decisions channel</td><td><span class="tag t-prop">proposed</span></td><td>Named sessions on one ChannelFlow instance. Kind &#8594; one instance; omit <code>flow:</code> for the one shipped kind. Custom kinds rare. Not Channel L1. Not a Message Board.</td></tr>
-        <tr><td>Philosophy</td><td><span class="tag t-real">exists as the move</span> <span class="tag t-prop">Lab write proposed</span></td><td>Evolving org resource + <code>readContent()</code>, written from the decisions channel. Not a philosophy flow kind.</td></tr>
-        <tr><td>Soft resource + <code>reactTo</code></td><td><span class="tag t-real">exists</span></td><td>Non-conversation only (#1627). Not the ChannelFlow model.</td></tr>
-        <tr><td>Product team</td><td><span class="tag t-gone">later</span></td><td>Requirements / prioritization / release readiness. Not in the eng-first Lab roster.</td></tr>
-        <tr><td>DevForce Lab host</td><td><span class="tag t-prop">proposed · after W3</span></td><td>Design only. Do not claim the package or Lab runs. Mailbox <code>fsd/devforce</code> is the living handle &#8212; this page does not invent comments there.</td></tr>
-      </tbody>
-    </table>
-  </div>
 
   <div class="tw">
     <table>
@@ -2114,7 +2094,7 @@ const board = <b>taskBoard</b>({
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 280" role="img" aria-label="A Workforce team seat names which harness the worker runs on, and inherits that harness's subscriptions when those exist. One harness-manager stack exists as a package. Conductor is a consumer team config. omp can fill a coding seat and is proposed. A cut box refuses a second Conductor-only harness path, a new Layer 1 harness type, and the parked 1612 console half.">
+      <svg viewBox="0 0 940 280" role="img" aria-label="A Workforce team seat names which harness the worker runs on, and inherits that harness's subscriptions when those exist. One harness-manager stack exists as a package. DevForce is a consumer Lab. omp can fill a coding seat and is proposed. A cut box refuses a second Conductor-only harness path, a new Layer 1 harness type, and the parked 1612 console half.">
         <rect class="n-prop" x="16" y="16" width="292" height="176" rx="5"/>
         <text class="t-lbl" x="34" y="38">TEAM SEAT &#183; PROPOSED</text>
         <text class="t-b f-accent" x="34" y="64">names a harness</text>
@@ -2129,7 +2109,7 @@ const board = <b>taskBoard</b>({
         <text class="t-b f-code" x="342" y="64">harness-manager</text>
         <text class="t-s" x="342" y="92">the package on main</text>
         <text class="t-xs" x="342" y="114">WORKFORCE SEAT NAMES THE FILLER</text>
-        <text class="t-xs" x="342" y="132">CONDUCTOR CONSUMES. IT DOES NOT FORK.</text>
+        <text class="t-xs" x="342" y="132">DEVFORCE CONSUMES. IT DOES NOT FORK.</text>
         <text class="t-xs" x="342" y="158">ONE PRODUCT. ONE STACK.</text>
         <text class="t-xs" x="342" y="176">SEAT WIRING STILL PROPOSED</text>
 
@@ -2190,7 +2170,7 @@ const team = <b>defineResourceCollection</b>({
 
 <section id="intake">
   <div class="sec-head"><span class="sec-num">11</span><h2>Team intake</h2></div>
-  <p class="lede">Address-the-team without picking a person. That is a <strong>capability</strong>, not a new flow kind. Every keyed team has a <strong>team intake</strong> seat &#8212; a coordinator or a thin sequencer &#8212; with a static DM. &#8220;Talk to eng&#8221; is that session. The <a href="#lab">lab Proof</a> starts here: intake is the first of three seats. The intake worker routes with claim, ordered replies, or fan-out. The team board stays for broadcast. Still one flow per worker. The intake <em>is</em> a worker.</p>
+  <p class="lede">Address-the-team without picking a person. That is a <strong>capability</strong>, not a new flow kind. Every keyed team has a <strong>team intake</strong> seat &#8212; a coordinator or a thin sequencer &#8212; with a static DM. &#8220;Talk to eng&#8221; is that session. Intake is a keyed-team capability, not the Lab identity &#8212; the DevForce roster lives in <a href="#lab">&#167;03</a>. The intake worker routes with claim, ordered replies, or fan-out. The team board stays for broadcast. Still one flow per worker. The intake <em>is</em> a worker.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--accent)">
@@ -2515,7 +2495,7 @@ const replyToSender = <b>dispatcher</b>({
 
 <section id="mcp">
   <div class="sec-head"><span class="sec-num">15</span><h2>Workforce MCP &#8212; a client door, not a control plane</h2></div>
-  <p class="lede">This is <strong>W1</strong>. <strong>Held</strong> until W3 conventions exist and the <a href="#lab">lab Proof</a> runs. The persistent core Workforce runs in the background. A user who already has Claude or ChatGPT still needs to send work or manage focus. That is a <strong>proposed Layer&nbsp;2 door</strong> onto intake, boards, and <code>dispatcher()</code>. Not a second control plane. Not a second Agent inbox. Not a chat-sdk revival. Cross-flow dispatch exists (<code>dispatcher({ flowKind })</code>). Later MCP &#8212; hire-by-id and a dynamic MCP address &#8212; waits on INST (FIX-1320), not on #1600. That is not the v1 door. W3 is next; this door is after the lab. See <a href="#vision">&#167;03</a>.</p>
+  <p class="lede">This is <strong>W1</strong>. <strong>Held</strong> until W3 conventions exist and the <a href="#lab">DevForce Lab</a> can run. The persistent core Workforce runs in the background. A user who already has Claude or ChatGPT still needs to send work or manage focus. That is a <strong>proposed Layer&nbsp;2 door</strong> onto intake, boards, and <code>dispatcher()</code>. Not a second control plane. Not a second Agent inbox. Not a chat-sdk revival. Cross-flow dispatch exists (<code>dispatcher({ flowKind })</code>). Later MCP &#8212; hire-by-id and a dynamic MCP address &#8212; waits on INST (FIX-1320), not on #1600. That is not the v1 door. W3 is next; this door is after the lab. See <a href="#vision">&#167;03</a>.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--accent)">
@@ -2600,13 +2580,13 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note">
     <span class="lbl">W1 is held. Do not file from this page.</span>
-    <p>W1 is this door after the W2 package and the lab Proof exist. Do not POC it on today&#8217;s doors first. Later MCP (hire-by-id, dynamic address) waits on INST. Collab RC is after foundation + lab and is not nested here. FIX-1330 already landed. Name those on <a href="#vision">&#167;03</a>; do not open Linear from the atlas pass.</p>
+    <p>W1 is this door after the W2 package and the DevForce Lab can run. Do not POC it on today&#8217;s doors first. Later MCP (hire-by-id, dynamic address) waits on INST. Collab RC is after foundation + lab and is not nested here. FIX-1330 already landed. Name those on <a href="#vision">&#167;03</a>; do not open Linear from the atlas pass.</p>
   </div>
 </section>
 
 <section id="conductor">
-  <div id="devforce" class="sec-head"><span class="sec-num">16</span><h2>DevForce is a Workforce Lab</h2></div>
-  <p class="lede">D-12: the product name <strong>Conductor is retired</strong>. <strong>DevForce</strong> is a Lab built completely on Workforce &#8212; not a sibling, not a thin shell. The lock: <strong>Workforce is the product. DevForce is consumer config / Lab Proof shape on it.</strong> Design only until Workforce can host it. Demo nouns, honesty tags, and the tree live in <a href="#lab">&#167;03</a>. One harness-manager stack. The roster names the harness; the EM seat names none. <code>omp</code> can fill a coding seat &#8212; proposed, not integrated. Do not grow a Conductor-only or DevForce-only path beside Workforce. The old lock &#8212; separate tracks, later triangulation, Conductor-as-L3 &#8212; is <strong>superseded</strong>. The <a href="conductor.html">Conductor atlas</a> stays the encyclopedia of the old run. GTM timing is Strategy. North-star #10 is the usage gate this Lab is meant to serve.</p>
+  <div class="sec-head"><span class="sec-num">16</span><h2>DevForce is a Workforce Lab</h2></div>
+  <p class="lede">The product name <strong>Conductor is retired</strong>. <strong>DevForce</strong> is a Lab on Workforce &#8212; not a sibling, not a thin shell. Design only until Workforce can host it. Demo nouns, honesty tags, and the tree live in <a href="#lab">&#167;03</a>. One harness-manager stack. Do not grow a Conductor-only or DevForce-only path beside Workforce. The old lock &#8212; separate tracks, later triangulation &#8212; is <strong>superseded</strong>. The <a href="conductor.html">Conductor atlas</a> stays the encyclopedia of the old run. GTM timing is Strategy.</p>
 
   <div class="tw">
     <table>
@@ -2661,7 +2641,7 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td>New seat = add a WORKER.md</td><td><span class="tag t-prop">proposed</span></td><td>A new team seat is a document on the same path bootstrap would scan. Custom kinds are flow factories on the <code>{ kinds }</code> map &#8212; W3 file scan, not a <code>worker.ts</code> seat record. Not a runtime join API. Hot-dynamic flow kinds after boot are a named gap. Architect: load-time file + scan.</td></tr>
         <tr><td><code>projects/</code> code tree / <code>Project</code> L1 type</td><td><span class="tag t-gone">cut</span></td><td>Does not exist. Projects are resources / boards / sessions / content. Same pattern as plan = board + <code>readContent()</code>. No folder beside <code>teams/</code>.</td></tr>
         <tr><td>Keyed teams + harness on the seat</td><td><span class="tag t-prop">proposed</span></td><td>A seat is <code>teamId</code> + row. It can name a harness and inherit that harness&#8217;s subscriptions when they exist. One team in the map is fine. A singleton with no key is not. The stack is <code>@flow-state-dev/harness-manager</code>. DevForce is a consumer Lab. The EM seat names none. No second manager. No Team type. Seat field not on main.</td></tr>
-        <tr><td>DevForce Lab</td><td><span class="tag t-real">lock</span> <span class="tag t-prop">design only</span></td><td>D-12: product name Conductor retired. DevForce is consumer config / Lab shape on Workforce, not a sibling. Design only until Workforce can host it. Showcase nouns: eng team + EM (no harness) + workers who do harness work + feature / questions / decisions channels + boards. Philosophy = org resource from the decisions channel. Product team later. Seat&#8594;harness bind and <code>omp</code> in a coding seat are proposed. Thin-pentest Lab identity superseded. Not claiming it runs. See <a href="#lab">&#167;03</a> / <a href="#devforce">&#167;16</a>.</td></tr>
+        <tr><td>DevForce Lab</td><td><span class="tag t-real">lock</span> <span class="tag t-prop">design only</span></td><td>Product name Conductor retired. DevForce is a Lab on Workforce, not a sibling. Design only until Workforce can host it. Not claiming it runs. Demo nouns and honesty tags: <a href="#lab">&#167;03</a>. Retired-name claims: <a href="#conductor">&#167;16</a>.</td></tr>
         <tr><td><code>@flow-state-dev/harness-manager</code></td><td><span class="tag t-real">exists</span></td><td>The one supervised-run stack. Slot takes a harness factory. Claude Code and Codex fill it today. No <code>omp</code> package on this pin.</td></tr>
         <tr><td><code>omp</code> (opinionated Pi harness)</td><td><span class="tag t-prop">proposed</span></td><td>A named harness that can fill a coding seat. Not in tree. Do not claim integration.</td></tr>
         <tr><td>#1612 operator-console half (PI-1..3)</td><td><span class="tag t-gone">cut / park</span></td><td>Conductor-only surface that does not ride Workforce. Park it. Do not grow a second product face from it.</td></tr>
@@ -2935,7 +2915,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>The lab is not OnSecurity. The lab is not a second product</h5>
-    <p>DevForce Lab is a proposed showcase of Workforce opinions: eng team, harness-free EM, workers who do harness work, channels, boards. Design only. Not a client impl. Not a sibling Conductor stack. Not MCP. Not claiming it runs. See <a href="#lab">&#167;03</a>.</p>
+    <p>DevForce Lab is a proposed showcase on Workforce, not a client impl and not a sibling product. Design only. Demo nouns live in <a href="#lab">&#167;03</a>.</p>
   </div>
 
   <div class="tension">
