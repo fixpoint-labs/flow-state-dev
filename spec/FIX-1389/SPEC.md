@@ -36,7 +36,7 @@ straight to three known folders ([D1](DECISIONS.md#d1)).
 **What the next convention's author writes instead of copying:**
 
 ```diff
-- const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
+- const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);   // the definition only
 - try { await fs.readdir(root); } catch (err) { throw new Error(`Failed to read …`); }
 - const teams = await openStructuralDirectory(path.join(root, "teams"), "teams");
 - for (const teamId of teams.entries) { /* ~25 lines of classify-and-report */ }
@@ -45,6 +45,10 @@ straight to three known folders ([D1](DECISIONS.md#d1)).
 +   // only the part that is actually this convention's
 + }
 ```
+
+Only the ignore list's *definition* moves: leaf loops still skip those names, importing the one
+list. **The rest is illustrative** — `openRoot` and the tag `kind` are pinned because two specs
+name them; the enumerator's name and shape are the implementer's ([Plan](PLAN.md)).
 
 ## What stays as it is
 
@@ -57,19 +61,21 @@ straight to three known folders ([D1](DECISIONS.md#d1)).
   deliberately unowned ([Open 5](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)).
 - **The skills reader outside the root.** It keeps its own level list, its ancestor-symlink
   check and its duplicate-name refusal.
-- **The older skills-folder reader in `orchestration`.** It has a fourth copy of the ignore list.
-  It sits *below* this package, so it cannot reach these primitives without inverting the
-  dependency. Named, not fixed ([Considered and dropped](DECISIONS.md#considered-and-dropped)).
+- **The older skills-folder reader in `orchestration`.** A fourth copy of the ignore list and
+  the same unguarded root, sitting *below* this package — it cannot reach these primitives
+  without inverting the dependency. Named, not fixed
+  ([Considered and dropped](DECISIONS.md#considered-and-dropped)).
 
 ## Sign off
 
 1. **[D1](DECISIONS.md#d1) · The shared piece stops at the team folder — it enumerates teams, it
    does not read slots.** If wrong: the next two conventions each hand-roll the team loop again,
    and we have bought three copies' worth of churn for nothing.
-2. **[D2](DECISIONS.md#d2) · The symlinked-root refusal lands here, and
-   [FIX-1375](https://linear.app/fixpoint-labs/issue/FIX-1375) closes with it.** If wrong: an
+2. **[D2](DECISIONS.md#d2) · The symlinked-root refusal lands here, closing
+   [FIX-1375](https://linear.app/fixpoint-labs/issue/FIX-1375)'s workforce half.** If wrong: an
    operator who has a symlinked root today gets a thrown error where they used to get a loaded
-   roster — the one behaviour this change alters.
+   roster — the one behaviour this change alters. FIX-1375's third reader, in `orchestration`,
+   still follows a symlinked root and stays that issue's.
 
 **Open: none.** Number 2 is the one to weigh: it is the only line that is not pure movement. What
 was rejected and why: [DECISIONS.md](DECISIONS.md). The cases, and what proves each:
