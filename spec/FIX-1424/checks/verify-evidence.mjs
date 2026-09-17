@@ -48,6 +48,10 @@ facts.push(`F1  ${srcPkgs.length}/${pkgDirs.length} packages resolve exports["."
 // run-all.mts uses. D2 scopes the sweep to the model-free set, so an
 // unclassifiable goal.md is a hole in that scope, not a detail.
 const GOALS = join(ROOT, "goals");
+// The F2 plant targets a named goal, not whichever one the walk happens to yield
+// first, because the exact planted-violation count asserted at the bottom rests
+// on this plant firing.
+const NEG_PLANT_GOAL = join(GOALS, "capability-config", "resolver-reaches-generator");
 const goals = [];
 (function walk(dir) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -70,7 +74,7 @@ const unclassified = [];
 const runnableFree = [];
 for (const dir of goals) {
   let spec = readFileSync(join(dir, "goal.md"), "utf8");
-  if (neg && dir === goals[0]) spec = spec.replace(/^\*\*Model[:.]\*\*.*$/m, "Model — mocked");  // planted
+  if (neg && dir === NEG_PLANT_GOAL) spec = spec.replace(/^\*\*Model[:.]\*\*.*$/m, "Model — mocked");  // planted
   const kind = classify(spec);
   if (kind === "UNCLASSIFIED") unclassified.push(dir.slice(ROOT.length + 1));
   else if (kind === "model-free") { modelFree += 1; try { if (statSync(join(dir, "run.mts")).isFile()) runnableFree.push(dir); } catch {} }
@@ -99,19 +103,20 @@ check(JSON.stringify(ruleIds) === JSON.stringify([1, 2, 3, 4]), `F3: validate-co
 facts.push(`F3  goals/scripts/validate-control-shape.mts names rules C${ruleIds.join(", C")}; it runs inside the root typecheck chain`);
 
 // ---------------------------------------------------------------- F4
-// The two seed mutations are anchored on real text that occurs EXACTLY ONCE.
-// An anchor matching zero or many times is the staleness failure S4 guards.
+// Both seed entries share ONE `find` text (they differ only in `replace`), so
+// there is a single anchor to verify. It must occur EXACTLY ONCE; an anchor
+// matching zero or many times is the staleness failure S4 guards.
 const hirePath = join(ROOT, "packages/workforce/src/hire.ts");
 let hire = readFileSync(hirePath, "utf8");
 if (neg) hire += "\n    settings[SEAT_SKILLS_KEY] = manifest.skills ?? [];\n";  // planted duplicate
 const ANCHORS = [
-  { id: "M1/M2 anchor", text: "settings[SEAT_SKILLS_KEY] = manifest.skills ?? [];" },
+  { id: "shared seed anchor (both entries)", text: "settings[SEAT_SKILLS_KEY] = manifest.skills ?? [];" },
 ];
 for (const a of ANCHORS) {
   const n = hire.split(a.text).length - 1;
   check(n === 1, `F4: ${a.id} matches ${n} times in packages/workforce/src/hire.ts, wanted exactly 1`);
 }
-facts.push(`F4  the seed mutations' anchor occurs exactly once in packages/workforce/src/hire.ts`);
+facts.push(`F4  the seed entries' shared \`find\` text occurs exactly once in packages/workforce/src/hire.ts (both entries use it; only \`replace\` differs)`);
 
 // ---------------------------------------------------------------- F5
 // The two goals the seed mutations claim exist, are model-free, and have runners.
@@ -130,14 +135,15 @@ facts.push(`F5  both goals the seed mutations claim exist, are model-free, and s
 // ---------------------------------------------------------------- report
 for (const f of facts) console.log(f);
 if (neg) {
-  const expected = 4;  // one planted violation per fact family F2, F3, F4 (+F2 totality)
-  if (failures.length === 0) {
-    console.error("\nNEGATIVE CONTROL FAILED — planted violations were not caught.");
+  const expected = 3;  // one plant each: F2 totality, F3, F4
+  if (failures.length !== expected) {
+    console.error(`\nNEGATIVE CONTROL FAILED — ${failures.length} planted violation(s) caught, wanted exactly ${expected}:`);
+    for (const f of failures) console.error(`  - ${f}`);
     process.exit(1);
   }
-  console.log(`\nNEGATIVE CONTROL OK — ${failures.length} planted violation(s) caught (wanted >= 3, of ${expected} plants):`);
+  console.log(`\nNEGATIVE CONTROL OK — all ${expected} planted violations caught:`);
   for (const f of failures) console.log(`  - ${f}`);
-  process.exit(failures.length >= 3 ? 0 : 1);
+  process.exit(0);
 }
 if (failures.length > 0) {
   console.error(`\nFAIL — ${failures.length} fact(s) no longer hold:`);

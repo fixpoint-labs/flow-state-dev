@@ -2,14 +2,14 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md)
 
-The cases, written as rules. Each says what a person or the sweep does and what happens. The *proved by* column is the check the plan runs. A human reviews this page; the plan turns it into work.
+The cases, written as rules. Each says what a person or the sweep does and what happens. The *proved by* column is the check the plan runs. **It names the check, not when it runs**: whether the full sweep gates every pull request or runs off the PR path is an [open decision](DECISIONS.md#open--cadence-run-the-sweep-in-ci-on-every-pr-or-as-a-periodic-sweep-off-the-pr-path), and no rule here presumes an answer. "CI" below means the fast, goal-free checks that already run on every PR. A human reviews this page; the plan turns it into work.
 
 ## Grading one entry
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | An entry is applied and every goal it claims goes red | **KILLED.** The report names the entry, the goals, and that the coverage is proved | CI · the two seed entries, run for real |
-| BR-2 | An entry is applied and any goal it claims stays green | **SURVIVED.** The report names the entry and each surviving goal, the sweep continues, and the run exits non-zero | CI · an inert mutation must land here (the negative control) |
+| BR-1 | An entry is applied and every goal it claims goes red | **KILLED.** The report names the entry, the goals, and that the coverage is proved | The sweep, over the two seed entries, run for real ([cadence is open](DECISIONS.md#open--cadence-run-the-sweep-in-ci-on-every-pr-or-as-a-periodic-sweep-off-the-pr-path)) |
+| BR-2 | An entry is applied and any goal it claims stays green | **SURVIVED.** The report names the entry and each surviving goal, the sweep continues, and the run exits non-zero | The sweep, with an inert mutation that must land here — the negative control ([cadence is open](DECISIONS.md#open--cadence-run-the-sweep-in-ci-on-every-pr-or-as-a-periodic-sweep-off-the-pr-path)) |
 | BR-3 | A goal an entry claims is already red before the mutation is applied | **INVALID**, never KILLED. The report says the baseline failed, and the entry's verdict is withheld | CI |
 | BR-4 | An entry's `find` text does not match its target file exactly once — zero times, or more than once | **STALE.** Nothing is applied for that entry, the run exits non-zero, and the message names the file and the match count | CI · plant a broken anchor, then remove it |
 | BR-5 | Two entries target the same file | Each is applied and reverted on its own. Two mutations are never live at once | CI |

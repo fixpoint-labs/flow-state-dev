@@ -36,7 +36,20 @@ Left is one run and a question nobody answers mechanically. Right is the same go
 +     "workforce-seats/two-seats-run-their-own-configuration"
 +   ]
 + },
++ {
++   id: "hire-supplies-an-empty-bag",
++   regression: "hire hard-codes an empty skill bag onto every seat",
++   file: "packages/workforce/src/hire.ts",
++   find: "settings[SEAT_SKILLS_KEY] = manifest.skills ?? [];",
++   replace: "settings[SEAT_SKILLS_KEY] = [];",
++   claimedBy: [
++     "workforce-seats/a-non-agent-seat-receives-its-skills",
++     "workforce-seats/two-seats-run-their-own-configuration"
++   ]
++ },
 ```
+
+Both seed entries anchor on the **same** `find` text and differ only in `replace` — one line of the implementation, broken two ways. Entries are not required to share an anchor; these two do.
 
 **And how it is run:**
 

@@ -89,13 +89,23 @@ for each selected entry:
 print the table, the uncovered count, and exit non-zero unless every entry KILLED
 ```
 
-**No POC.** The one premise worth checking — a source edit is live with no build step — was verified statically instead: [`checks/verify-evidence.mjs`](checks/verify-evidence.mjs) re-derives it (28 of 30 packages resolve `exports["."]` to `./src/index.ts`, `workforce` among them), plus the model-free corpus (28 of 52 goals, 27 with a runner), that the static guard stops at C4, and that both seed anchors match exactly once. The premise held. Its `--negative-control` mode plants a violation of each and was watched go red.
+**No POC.** The one premise worth checking — a source edit is live with no build step — was verified statically instead: [`checks/verify-evidence.mjs`](checks/verify-evidence.mjs) re-derives it (28 of 30 packages resolve `exports["."]` to `./src/index.ts`, `workforce` among them), plus the model-free corpus (28 of 52 goals, 27 with a runner), that the static guard stops at C4, and that the seed entries' **shared** `find` text matches `packages/workforce/src/hire.ts` exactly once — the two entries differ only in `replace`, so there is one anchor to verify, not two. The premise held. Its `--negative-control` mode plants a violation of F2, F3 and F4 and all three were watched go red.
 
 ## At implement time
 
 - **Wall-clock is unmeasured.** No `node_modules` was installed when this spec was written, so no goal was timed. Measure the two seed entries first and put the number in the PR — the open cadence fork is priced on it.
 - Re-check `goals/scripts/run-all.mts` before extracting: it may have gained flags. Preserve them.
-- Re-check that both seed anchors still match exactly once; if `hire.ts` moved, re-anchor rather than widening the `find` text.
+- Re-check that the seed entries' shared anchor still matches exactly once; if `hire.ts` moved, re-anchor rather than widening the `find` text.
+
+## Notes from review
+
+Recorded for the implementer, not folded into the design. Verbatim where quoted.
+
+- **Reuse at implement time** (Cursor): "Mirror `validate-control-shape.mts` `PAIRS` for catalogue data; register `guard:mutation-anchors` like `guard:control-shape`; extract discovery/classify/spawn once in S1 so guard + mutate + list do not triple-walk `goals/`."
+- **Thin the spec-phase evidence check** (Cursor): "If you keep it, plan to delete or thin it once S4 + V6 exist so facts are not maintained in two places." `checks/verify-evidence.mjs` lives on this branch only; once S4 and V6 exist, the facts have one home.
+- **Guardrail against re-litigating Stryker** (Cursor): "worth one line in PLAN guardrails that implementers should **not** revisit 'just use Stryker on goals' without a new decision; the catalogue + claimed-goals model is the simplification vs generic mutation scores."
+- **Keep the BR-2 / V6 inert-mutation negative control** (FSD Architect): it is load-bearing — without it, a SURVIVED verdict has never been seen to happen.
+- **One shared spine, not a fork** (FSD Architect): extract a single shared spine out of `run-all.mts` rather than forking it, and do not redesign the goals runner under this ticket.
 
 ## Follow-ups
 
