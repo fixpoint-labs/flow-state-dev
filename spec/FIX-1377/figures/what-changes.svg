@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 250" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two columns. Today, each seat is given one undifferentiated block of instructions, and the team's shared paragraph sits copied inside every one of them. After, one TEAM.md at the team folder feeds a named team layer into every seat's prompt, above that seat's own instructions, with a dashed framework-default slot above both that is not built.">
+     aria-label="Two columns. Today, each seat is given one undifferentiated block of instructions, and the team's shared paragraph sits copied inside every one of them. After, one TEAM.md at the team folder feeds a named team layer into every seat's prompt, ahead of that seat's own instructions in a fixed order, with a dashed framework-default slot above both that is not built.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -61,7 +61,7 @@
     <rect class="n-box" x="730" y="152" width="190" height="26" rx="5"/>
     <text class="t-s" x="742" y="169">scout · WORKER.md body</text>
 
-    <text class="t-s" x="500" y="200">One source, two seats. The seat's own lines come last,</text>
-    <text class="t-s" x="500" y="214">so they win an ordinary conflict. The dashed slot is not built.</text>
+    <text class="t-s" x="500" y="200">One source, two seats, in a fixed order — the seat's own</text>
+    <text class="t-s" x="500" y="214">lines always last. The dashed slot is not built.</text>
   </g>
 </svg>

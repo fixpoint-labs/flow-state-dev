@@ -16,8 +16,9 @@ column is the check the plan runs. A human reviews this page; the plan turns it 
 | BR-5 | `TEAM.md` is a symlink | One failure under `teams/<id>/TEAM.md`, in the shared refusal wording. Symlinks are never followed at any level. The team's workers still load | CI |
 | BR-6 | `TEAM.md` is there and cannot be read | One failure under `teams/<id>/TEAM.md`, in the shared unreadable wording. Distinct from absent (BR-1): a file that exists and will not open is instructions the app has lost | CI |
 | BR-7 | `TEAM.md` is a directory | Reported, naming the file to write instead — the resources convention's existing `folder-where-file-belongs` condition, reused rather than respelled. A directory with that name is a mistake, and reading it as *absent* would lose it | CI |
-| BR-8 | `TEAM.md` declares a key this convention **derives** — the team's id — or one that would read it as a seat declaration (`flow:`, `instructions:`) | Refused by name, as a set, per [ER-4](https://github.com/fixpoint-labs/flow-state-dev/pull/1718). `flow:` is refused because `TEAM.md` is not a second seat door; `instructions:` because the body is the instructions and two sources for one value have no precedence rule | CI, one case per refused key |
-| BR-9 | `TEAM.md` declares any other key | Carried verbatim on the team record, uninterpreted, as every record in this dialect carries its frontmatter | CI |
+| BR-8 | `TEAM.md` declares a key this convention **derives** — the team's id — or one that would read it as a seat declaration (`flow:`), or the thing the body already is (`instructions:`) | Refused by name, as a set, per [ER-4](https://github.com/fixpoint-labs/flow-state-dev/pull/1718), at the **loader**, in the wording `persona` and `seatSkills` already use: the message reads as *the framework owns this key*, not as a misspelt setting. `flow:` because `TEAM.md` is not a second seat door; `instructions:` because the body is the instructions and two sources for one value have no precedence rule | CI, one case per refused key |
+| BR-8a | `TEAM.md` declares **the key hire imposes for the team layer** | Refused, in the same wording — and refused **by the shared constant, never by a literal spelled into this reader.** The reader references the same exported constant `WORKER.md` and hire refuse, the way `SEAT_SKILLS_KEY` is referenced rather than re-spelled. That is the rule, because **the spelling is not locked** ([PLAN](PLAN.md) leaves it to the implementer): a literal here would keep refusing a name the framework had since renamed, and the door would be open again with nothing said | CI · the planted key as the red state · plus a check that renaming the constant moves all three refusals together |
+| BR-9 | `TEAM.md` declares any other key | Carried verbatim on the team record, uninterpreted, as every record in this dialect carries its frontmatter. **The imposed key is not "any other key"** — BR-8a refuses it, which is what keeps this row safe to promise. Left to fall through, an author's shared text would sit in the frontmatter as metadata while a file with an empty body (BR-4) produced no layer at all: read by nothing, reported by nothing. That is the silence this epic keeps shipping, in the file that looks most like the right place to write it | CI · the planted key as the red state |
 | BR-10 | A file named `TEAM.md` sits at `org/`, or anywhere outside a team folder | Read by nothing, reported by nothing. There is no `ORG.md` and no org-level instruction layer | CI · a planted file is invisible |
 
 ## Reaching the seat
@@ -29,13 +30,13 @@ column is the check the plan runs. A human reviews this page; the plan turns it 
 | BR-13 | Two teams each carry a `TEAM.md` | Each team's seats get their own team's instructions and not the other's — the same isolation the skills register already proves per seat | Goal check · CI |
 | BR-14 | A kind on the roster has **not** composed the `WorkerConfig` contract | The whole roster refuses at hire, unchanged from [FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367)'s BR-2. This issue adds no second refusal door and no conditional imposition | Existing suite, once FIX-1367 lands |
 | BR-15 | A record was hand-built and never passed the loader | No team layer. `teamInstructions` is absent, exactly as `skills` is absent on such a record — *nobody read for it* and *it has none* are the same value in the bag and stay distinguishable only on the record | CI, on the thinnest record |
-| BR-16 | A `WORKER.md` declares `teamInstructions:` itself | Refused by name, at the loader and at hire, from the same constant. A seat may not author the layer its team owns | CI, both doors |
+| BR-16 | A `WORKER.md` declares the imposed key itself | Refused by name, at the loader and at hire, from the same shared constant `TEAM.md`'s refusal uses (BR-8a). **Three doors, one constant, one wording.** A seat may not author the layer its team owns, and no file may author what hire imposes | CI, all three doors |
 
 ## The prompt
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-17 | A seat of the built-in `agent` kind has both a team layer and its own body | Its prompt carries the team's text first and the seat's own second, joined. The seat's is last, so a role-specific line wins an ordinary conflict with a team-wide one | CI, on the seam |
+| BR-17 | A seat of the built-in `agent` kind has both a team layer and its own body | Its prompt carries the team's text first and the seat's own second, joined, **in that order every time**. That is the whole promise: a deterministic position, not a precedence rule — see the note below | CI, on the seam: assert the order, byte for byte |
 | BR-18 | A seat of the built-in kind has a team layer and **no** body | Its prompt is the team's text alone — not an empty line, not a stray separator | CI |
 | BR-19 | A seat of the built-in kind has a body and **no** team layer | Its prompt is byte-for-byte what it is today | CI · existing suite, unchanged |
 | BR-20 | A kind composes the contract and reads `teamInstructions` nowhere | It mints and runs exactly as before. Ignoring the layer is not an error | CI |
@@ -44,11 +45,22 @@ column is the check the plan runs. A human reviews this page; the plan turns it 
 flowchart LR
   A["the framework default"] -.->|"not built · FIX-1344"| P["the seat's prompt"]
   B["the team's TEAM.md body"] -->|"second"| P
-  C["the seat's WORKER.md body"] -->|"last, so it wins"| P
+  C["the seat's WORKER.md body"] -->|"last, every time"| P
 ```
 
 The dashed edge is the slot this issue leaves room for and does not fill. The order is the
 architect's lock, and BR-17 is what proves it.
+
+**What "last" does and does not buy — read this before writing BR-17's test.** Prompt assembly in
+`@flow-state-dev/core` is plain concatenation: the parts are filtered and joined with newlines,
+and there is **no override, precedence or conflict-resolution mechanism anywhere in that path.**
+So placing the seat's text last gives it a fixed, checkable *position* — and nothing more. If a
+team says *never touch production* and a seat says *restart the production queue*, what happens is
+whatever the **model** does with two contradictory sentences. The framework does not adjudicate
+that, this issue does not make it, and no test here can prove it: a check on the composed string
+proves order, which is a neighbour of precedence, not precedence (BP-003). Making the seat's line
+genuinely win would mean resolving contradictions before the prompt is sent — a different and much
+larger feature, and not this one.
 
 ## Failure taxonomy
 

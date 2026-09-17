@@ -33,6 +33,10 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 kind that wants one merges in a line, while nothing recovers a split from a value merged before it
 arrived.
 
+**What separate layers do not buy: precedence.** They buy a fixed, checkable position and the
+ability for a kind to read one without the other. Nothing in the prompt path adjudicates a
+contradiction between them ([BR-17](BUSINESS-RULES.md)).
+
 <a name="d2"></a>
 ## D2 · `TEAM.md` gets its own reader, on FIX-1389's team enumerator
 
@@ -48,6 +52,11 @@ teams, does not read slots") and is exactly the *part that is actually this conv
 the enumerator loop. Two coordination notes, neither a blocker: FIX-1389 leaves its enumerator's
 name and shape to its implementer, so nothing here may pin them; and its failure `kind` union is
 per-reader, so this reader brings its own conditions rather than borrowing another's.
+
+**"Mirrors the skills join" means the orchestration, not the I/O.** `readWorkforce` joins and
+readers walk — that transfers. *Where the read happens* does not: a seat's skills are read inside
+the worker loop because they are per seat, and a team's instructions are one value per team. The
+read happens once, into a map ([PLAN](PLAN.md) S3, its guardrail and V9).
 
 **What would change my mind:** FIX-1389 stalling. If the extract is still unbuilt when this is
 scheduled, widening the worker reader is the honest fallback — recorded so it is a fallback rather
@@ -74,9 +83,15 @@ than a rediscovery.
   asked for.
 - **The team record carries its frontmatter verbatim**, like every record in this dialect. That is
   the loader's standing promise, not a feature this issue adds.
-- **A `teamInstructions:` in a `WORKER.md` is refused by name at both doors** — loader and hire —
-  exactly as `seatSkills:` is, and from the same constants file. Two doors refusing one spelling
-  is the bug that constant exists to prevent.
+- **The loader's result surfaces a `teams` aggregate — dialect consistency, not speculative
+  surface.** The join builds the records anyway; returning them is one field, it matches how every
+  other convention hands back what it read, and it is what stops `description` being a value we
+  validate and throw away. Attaching to worker records and returning nothing else saves a field now
+  and costs a re-specification the day anything wants the description.
+- **The imposed key is refused at all three doors — `TEAM.md`, `WORKER.md`, hire — through one
+  exported constant**, exactly as `seatSkills` is, and never by a literal spelled into a reader.
+  Its spelling is the implementer's, which is precisely why: a literal would keep refusing a name
+  the framework had since renamed, and the door would be open again with nothing said.
 - **Size reads *small*.** One optional file, one small reader, one join, one key, one seam edit.
 
 ## Considered and dropped
@@ -87,16 +102,17 @@ than a rediscovery.
 | Concatenate at the loader, so hire never sees two values | The cheapest possible change, and it throws the layering away at the one point it is still recoverable. Also the architect's explicit invent-kill |
 | A `TeamManifest` that hire takes as a second argument | A second door onto hire, for a value every record can carry. The record is where the loader already puts per-seat findings (`skills`), and hire reads records |
 | Ship the team layer only for the built-in `agent` kind | Needs no contract key and no FIX-1367 dependency — and it makes "a team's instructions reach its seats" true only for the kind that needed it least, which is the dishonesty ER-7 was written against |
-| Make the team layer dominate the worker's on conflict | Team-policy-dominates-seat is an explicit reopen per the architect's lock, not this ticket. The seat's charter comes last and wins |
+| Make the team layer dominate the worker's on conflict | Team-policy-dominates-seat is an explicit reopen per the architect's lock, not this ticket. Note what the chosen order does *not* buy: position, not precedence — nothing in the prompt path adjudicates a contradiction ([BR-17](BUSINESS-RULES.md)) |
 
 <a name="open"></a>
 ## Open
 
-**One**, and it is flagged **up to the epic**
+**One live fork, and the contingency it carries.** Both are flagged **up to the epic**
 ([ER-14](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)) rather than answered here,
-because it lands on [FIX-1368](https://linear.app/fixpoint-labs/issue/FIX-1368)'s own live fork.
+because they land on [FIX-1368](https://linear.app/fixpoint-labs/issue/FIX-1368)'s own live fork.
+One ask, two parts: answer the fork, and know what the second part commits you to.
 
-**After this change, the team folder tells two stories about who can see what.**
+### The fork · after this change, the team folder tells two stories about who can see what
 
 - *The fork.* Ship the team instruction layer now, beside team documents that scope differently —
   or hold it until the team folder has one answer about visibility?
@@ -113,11 +129,28 @@ because it lands on [FIX-1368](https://linear.app/fixpoint-labs/issue/FIX-1368)'
   one rule would be a false simplification; and holding a wanted layer for a teaching problem
   costs more than the paragraph that fixes it.
 - *What would change my mind.* If the owner intends `teams/<id>/` to become a real visibility
-  boundary — that is, FIX-1368's D2 resolves toward fencing — then this should be specified
-  against that answer rather than ahead of it, and the two taught as one rule.
+  boundary, this should be specified against that answer rather than ahead of it. That is the
+  contingency below, and it is not hypothetical.
 - *If wrong.* A docs correction, and possibly an author who put something in a resources folder
   expecting it to stay with the team. Nothing on disk moves, no storage ref changes, no
   configuration key changes. Cheap to reverse.
+
+### The contingency · this spec is bound to FIX-1368's D2, and is re-written if that lands on the fence
+
+**This spec ships on the *address* reading of a folder** — a folder names whose something is, and
+does not limit who can read it. That is the reading FIX-1368's D2 proposes, and **D2 is not
+resolved**: its own sign-off still reads *Open: one*. Stating the binding plainly, because a
+conditional rewrite is not the same as "may need revisiting":
+
+| If D2 resolves to… | Then FIX-1377… |
+|---|---|
+| **address** — a folder names, it does not fence (the proposed reading) | ships exactly as written, and the docs obligation in [PLAN](PLAN.md) S9 stands: the atlas teaches both rules out loud |
+| **fence** — a team or worker folder really does limit who can read | is **re-spec'd against one folder rule.** Team instructions and team documents would then scope the same way, taught once instead of twice, and the Open above dissolves rather than being answered. The cases in [BUSINESS-RULES.md](BUSINESS-RULES.md) survive; the teaching and the docs plan do not |
+| **report-only** — the folder is reported rather than loaded, and scoping stays undecided | ships as written, and the docs obligation **still stands**, because team documents keep behaving as they do today. Nothing about team-level visibility is settled by that arm |
+
+Same class as D2's own FIX-1389 contingency: a named, priced re-decision recorded before it is
+needed, rather than a surprise at implement time. The owner keeps this one — it is their call on
+FIX-1368, not a second call here.
 
 ## How it got here
 
@@ -127,3 +160,18 @@ because it lands on [FIX-1368](https://linear.app/fixpoint-labs/issue/FIX-1368)'
   wait on unbuilt work, which is cheap here because nothing in the set waits on this issue. The
   scoping divergence against the shipped documents teaching was found while checking FIX-1368,
   and is flagged rather than resolved.
+- **Review round 1 (Sep 17)** — direction ratified; **no decision changed.** D1, D2 and the
+  absent-versus-empty rules were all confirmed, and the Open question was checked against the cited
+  page and found accurate. Five folds, none of them a pivot.
+  **One narrowed a promise:** BR-17 said the seat's text, being last, *wins* a conflict. It does
+  not — prompt assembly in `@flow-state-dev/core` is plain concatenation with no precedence path
+  anywhere, so the rule now promises deterministic **order** and says outright that resolving a
+  contradiction is the model's, not the framework's. The old wording had a check that could not
+  fail on the thing it claimed (BP-003), which is the worse half of the defect.
+  **The rest:** the plan's *"follow the skills join"* was corrected — that join is per **seat**,
+  this one is per **team**, so the read happens once into a map (a guardrail and V9 hold it); the
+  imposed key became refused in `TEAM.md` too, **through the shared constant rather than a
+  literal**, since its spelling is not locked and a stale literal would re-open the door in silence
+  (BR-8a); `docs/architecture/workforce-default-worker-kind.md` joined the docs plan by name, as it
+  states the two-element compose order this change makes three; and the FIX-1368 binding above was
+  written out as a conditional rewrite across all three of that fork's arms.

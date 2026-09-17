@@ -10,7 +10,7 @@ Feature · `workforce` · small · 1 PR · epic [FIX-1351](https://github.com/fi
 |---|---|---|
 | **runs five seats under one house rule** | Pastes the same paragraph into five worker files, and edits five files when it changes. One that drifts is invisible | Writes it once in the team's `TEAM.md`. Every seat on that team is told it, and no seat's own file repeats it |
 | **opens a team folder and asks what this team is** | The folder name, and nothing else. A team is the one thing in the tree that cannot describe itself | The team carries its own one-line description, loaded with the roster |
-| **reads a seat's prompt and asks where a line came from** | Nothing to ask — there is one layer, because there was nowhere to put shared text but the seat's own body | The team's text and the seat's own reach the seat as two named settings. The seat's comes last, so it wins an ordinary conflict |
+| **reads a seat's prompt and asks where a line came from** | Nothing to ask — there is one layer, because there was nowhere to put shared text but the seat's own body | The team's text and the seat's own reach the seat as two named settings, composed in a fixed order with the seat's last. Which line a model follows when the two contradict is still the model's call ([BR-17](BUSINESS-RULES.md)) |
 | **has no `TEAM.md`** | Today's behaviour | Today's behaviour, byte for byte. The file is optional, and its absence adds no layer and no empty placeholder |
 
 **Why now.** The tree already teaches that a level is a scope — `teams/<id>/skills/` and
@@ -21,7 +21,7 @@ slot is marked in the code as an insertion point waiting for exactly this.
 
 ## What changes
 
-![Two columns. Today, each seat is given one undifferentiated block of instructions, and the team's shared paragraph sits copied inside every one of them. After, one TEAM.md at the team folder feeds a named team layer into every seat's prompt, above that seat's own instructions, with a dashed framework-default slot above both that is not built.](figures/what-changes.svg)
+![Two columns. Today, each seat is given one undifferentiated block of instructions, and the team's shared paragraph sits copied inside every one of them. After, one TEAM.md at the team folder feeds a named team layer into every seat's prompt, ahead of that seat's own instructions in a fixed order, with a dashed framework-default slot above both that is not built.](figures/what-changes.svg)
 
 Read the right column's stacks. The team layer is one source reaching two seats, and it sits
 **above** each seat's own lines rather than inside them — which is the whole difference between
@@ -101,7 +101,10 @@ mint rather than silently dropping the layer ([D1](DECISIONS.md#d1)).
    true, for different reasons, and after this change they sit in one folder. Flagged up to the
    epic ([ER-14](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)) rather than decided
    here, because it touches [FIX-1368](https://linear.app/fixpoint-labs/issue/FIX-1368)'s own
-   live fork.
+   live fork. **The contingency that rides with it:** this spec ships on the *address* reading of
+   a folder. If that fork resolves to the **fence**, FIX-1377 is re-spec'd against one folder
+   rule rather than adjusted — the [three arms and what each costs](DECISIONS.md#open) are
+   written out.
 
 Number 3 is the one to weigh; 1 and 2 are sequencing with a consequence each. What lost and why:
 [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md). The build:
