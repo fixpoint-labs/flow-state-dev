@@ -1,6 +1,13 @@
 /**
- * The admission contract: what every hireable worker kind accepts, and what
- * the seat factory therefore always hands over.
+ * The admission contract: the three settings every hireable worker kind
+ * accepts.
+ *
+ * Declared and imposed are different sets, and this file is where they are
+ * easiest to confuse. The contract DECLARES three keys. The seat factory
+ * IMPOSES two of them — `instructions` when the record has a body, and
+ * `seatSkills` on every record. `teamInstructions` is reserved: nothing
+ * populates it until the team-level layer lands, so a kind that reads it today
+ * gets `undefined` however many instructions a team has written.
  *
  * A worker kind is an ordinary flow. What makes it *hireable* is that its
  * `configSchema` accepts what the factory imposes, and composing this contract

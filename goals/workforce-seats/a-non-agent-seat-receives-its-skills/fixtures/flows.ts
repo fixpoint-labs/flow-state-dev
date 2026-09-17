@@ -15,6 +15,7 @@ import { z } from "zod";
 
 export const TRIAGE_KIND = "request-triage";
 export const NO_CONTRACT_KIND = "request-triage-legacy";
+export const HAND_ROLLED_KIND = "request-triage-handrolled";
 
 const inputSchema = z.object({ note: z.string() });
 
@@ -101,14 +102,46 @@ export const triageFlow = defineFlow({
 });
 
 /**
- * The control. Identical but for the missing contract, which is the one line
- * under test — so a refusal here cannot be blamed on anything else about the
- * kind.
+ * The control: a schema that **cannot accept the bag hire imposes**, because it
+ * omits `seatSkills`.
+ *
+ * Deliberately not "the same kind with `workerConfigSchema()` removed". That
+ * version refuses too, but removing the helper also removes every contract key,
+ * so the refusal is equally consistent with hire checking whether the helper
+ * was CALLED — which it does not and cannot. A control that conflates two
+ * causes certifies whichever one the reader already believes. This one declares
+ * two of the three contract keys and omits the one that makes the bag
+ * unacceptable, so only the structural cause is left.
  */
 export const noContractFlow = defineFlow({
   kind: NO_CONTRACT_KIND,
   cardinality: "collection",
-  configSchema: z.object({ desk: z.string().default("front") }),
+  configSchema: z.object({
+    instructions: z.string().optional(),
+    teamInstructions: z.string().optional(),
+    // `seatSkills` omitted — the single reason the imposed bag is refused.
+    desk: z.string().default("front")
+  }),
+  actions,
+  session: { stateSchema: seatState, client: clientView }
+});
+
+/**
+ * The positive half of the same rule: a hand-written schema that accepts
+ * everything hire imposes, without ever calling `workerConfigSchema()`.
+ *
+ * It hires. Without it, the refusal above would still be consistent with a
+ * nominal check, and this goal would certify a rule the implementation rejects.
+ */
+export const handRolledFlow = defineFlow({
+  kind: HAND_ROLLED_KIND,
+  cardinality: "collection",
+  configSchema: z.object({
+    instructions: z.string().optional(),
+    teamInstructions: z.string().optional(),
+    seatSkills: z.array(z.object({ name: z.string(), skillMd: z.string() }).passthrough()).default([]),
+    desk: z.string().default("front")
+  }),
   actions,
   session: { stateSchema: seatState, client: clientView }
 });

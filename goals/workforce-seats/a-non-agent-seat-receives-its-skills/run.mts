@@ -25,8 +25,10 @@ import { fixtureDir, loadFixture, runGoal, silentLogger, stripIntentOverrides } 
 import {
   TRIAGE_KIND,
   NO_CONTRACT_KIND,
+  HAND_ROLLED_KIND,
   triageFlow,
-  noContractFlow
+  noContractFlow,
+  handRolledFlow
 } from "./fixtures/flows";
 
 type SeatFixture = {
@@ -53,7 +55,9 @@ const kinds: HireOptions["kinds"] = {
   [TRIAGE_KIND]: triageFlow as never,
   // Registered so the control's refusal is about the contract it never
   // composed, not about a kind the app forgot to pass.
-  [NO_CONTRACT_KIND]: noContractFlow as never
+  [NO_CONTRACT_KIND]: noContractFlow as never,
+  // The positive half of the same rule: hand-written, accepts the bag, hires.
+  [HAND_ROLLED_KIND]: handRolledFlow as never
 };
 
 const tree = (name: string): string => join(fixtureDir(import.meta.url), name);
@@ -221,7 +225,7 @@ await runGoal(async () => {
       if (hired !== undefined) {
         failures.push(`the kind with no contract hired ${hired.length} seat(s) instead of refusing`);
       } else {
-        for (const name of [fixture.control.id, "workerConfigSchema()"]) {
+        for (const name of [fixture.control.id, "seatSkills"]) {
           if (!refusal.includes(name)) {
             failures.push(`the refusal does not name "${name}": ${refusal}`);
           }
@@ -235,7 +239,45 @@ await runGoal(async () => {
         }
       }
       evidence.push(
-        "with the contract stripped from the kind, the whole roster refuses at the hire, the message names the worker and the fix, and nothing is registered"
+        "a kind whose schema omits seatSkills refuses the whole roster at the hire, naming the worker and the missing key, and nothing is registered"
+      );
+    }
+
+    // ---- (e) control: admission is structural, not nominal ----------------
+    //
+    // (d) shows a refusal. On its own it is equally consistent with hire
+    // checking whether `workerConfigSchema()` was CALLED — it does not and
+    // cannot. So a hand-written schema that never calls the helper, but accepts
+    // everything hire imposes, must hire exactly like a composed kind.
+    {
+      let hired: FlowInstance[] | undefined;
+      let refusal = "";
+      try {
+        hired = hireWorkforce(
+          [
+            ...workers,
+            {
+              id: "support.handrolled",
+              declared: { description: "Hand-rolled, never composed.", flow: HAND_ROLLED_KIND },
+              body: "You hold the hand-rolled desk."
+            }
+          ],
+          { kinds }
+        );
+      } catch (error) {
+        refusal = messageOf(error);
+      }
+      if (hired === undefined) {
+        failures.push(`a hand-written schema that accepts the imposed bag was refused: ${refusal}`);
+      } else {
+        const seat = hired.find((s) => s.id === "support.handrolled");
+        if (seat === undefined) failures.push("the hand-rolled kind hired no seat");
+        else if (!Object.hasOwn(seat.config, "seatSkills")) {
+          failures.push("the hand-rolled seat hired without the imposed seatSkills key");
+        }
+      }
+      evidence.push(
+        "a hand-written schema that never calls workerConfigSchema() but accepts the imposed bag hires exactly like a composed kind, so (d)'s refusal is about what the schema takes and not about which helper built it"
       );
     }
   }
