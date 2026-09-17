@@ -26,7 +26,7 @@ import {
   renderWorkforceCode,
   type DiscoveredFile,
 } from "@flow-state-dev/workforce/codegen";
-import { classify, openRoot, refusedSymlink } from "@flow-state-dev/workforce/loader";
+import { classify, refusedSymlink } from "@flow-state-dev/workforce/loader";
 import { EXIT_SUCCESS, EXIT_CONFIG_ERROR, EXIT_EXECUTION_ERROR } from "../exit-codes";
 
 /** Default location of an app's workforce tree, relative to where the command runs. */
@@ -71,11 +71,9 @@ function countBySlot(files: DiscoveredFile[]): string {
  */
 export async function executeGenCommand(options: GenCommandOptions): Promise<GenResult> {
   const root = resolve(process.cwd(), options.root);
-  // A root that is not there is a wiring mistake rather than an app with no
-  // custom code — and `openRoot` is also what refuses a symlinked one, which
-  // would otherwise read a whole tree from outside the configured path.
-  await openRoot(root);
-
+  // The root's own refusals — symlinked, missing, unreadable — belong to the
+  // walk and are made there, so every caller of it gets them and not just this
+  // command.
   const { files, searched } = await discoverWorkforceCode(root);
   const rendered = renderWorkforceCode(files);
   const file = join(root, GENERATED_FILE_NAME);
@@ -109,16 +107,20 @@ export function registerGenCommand(program: Command): void {
     .option("--root <dir>", "The workforce directory", DEFAULT_ROOT)
     .option("--check", "Fail instead of writing when the generated file is out of date")
     .action(async (options: GenCommandOptions) => {
+      // Every branch sets `process.exitCode` and returns rather than calling
+      // `process.exit()`, as the rest of the CLI's commands do — the only
+      // `process.exit()` calls left in this package are the two servers'
+      // signal handlers, where the process genuinely has to be forced down.
+      // `process.exit()` terminates before a piped stdout/stderr has flushed,
+      // and CI gives it a pipe, so the status would survive while the
+      // explanation beneath it was truncated or lost.
       let result: GenResult;
       try {
         result = await executeGenCommand(options);
       } catch (error) {
-        if (error instanceof WorkforceCodeError) {
-          console.error(error.message);
-          process.exit(EXIT_EXECUTION_ERROR);
-        }
         console.error((error as Error).message);
-        process.exit(EXIT_CONFIG_ERROR);
+        process.exitCode =
+          error instanceof WorkforceCodeError ? EXIT_EXECUTION_ERROR : EXIT_CONFIG_ERROR;
         return;
       }
 
@@ -127,16 +129,19 @@ export function registerGenCommand(program: Command): void {
       if (options.check === true) {
         if (result.upToDate) {
           console.log(`${shown} is up to date (${countBySlot(result.files)}).`);
-          process.exit(EXIT_SUCCESS);
+          process.exitCode = EXIT_SUCCESS;
+          return;
         }
         // Names what it expected rather than only that something differs, so a
         // CI log is enough to see whether a file was added or a name changed.
+        // Which is also why this report must outlive the exit.
         console.error(
           `${shown} is out of date. Run \`fsdev gen\` and commit the result.\n` +
             `The tree holds ${countBySlot(result.files)}:\n` +
             result.files.map((file) => `  - ${file.path}`).join("\n"),
         );
-        process.exit(EXIT_EXECUTION_ERROR);
+        process.exitCode = EXIT_EXECUTION_ERROR;
+        return;
       }
 
       console.log(`Looked in: ${result.searched.join(", ")}`);

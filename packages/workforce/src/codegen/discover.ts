@@ -19,6 +19,7 @@ import path from "node:path";
 import {
   IGNORED_ENTRIES,
   classify,
+  openRoot,
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
@@ -127,11 +128,22 @@ function pathInTo(dir: string): string[] {
  * refused by name rather than skipped, because a folder an author created and
  * the tool ignored is the silence this convention exists to remove.
  *
+ * The root is opened here rather than left to the caller, so the no-follow
+ * promise belongs to this function and not to whoever happens to call it: a
+ * symlinked root would put the whole walk outside the configured tree, and a
+ * root that is not there would return empty maps for a path nobody configured.
+ *
  * @param root Path to the app's `workforce/` directory.
  * @returns Every discovered file, ordered by path, plus the folders looked in.
- * @throws {WorkforceCodeError} If anything was refused; the message names all of them.
+ * @throws If the root is symlinked, missing or unreadable.
+ * @throws {WorkforceCodeError} If anything under it was refused; the message names all of them.
  */
 export async function discoverWorkforceCode(root: string): Promise<DiscoveryResult> {
+  // Before anything below it is opened. Absent FOLDERS are silent, because an
+  // app may have no custom code of that kind; an absent ROOT is a wiring
+  // mistake, and the two must not read the same.
+  await openRoot(root);
+
   const files: DiscoveredFile[] = [];
   const searched: string[] = [];
   const problems: string[] = [];

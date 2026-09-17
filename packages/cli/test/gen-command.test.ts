@@ -13,17 +13,22 @@
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { executeGenCommand } from "../src/commands/gen";
+import { executeGenCommand, registerGenCommand } from "../src/commands/gen";
+import { EXIT_EXECUTION_ERROR } from "../src/exit-codes";
 
 const roots: string[] = [];
 let cwd: string;
+let exitCode: number | string | undefined;
 
 beforeEach(() => {
   cwd = process.cwd();
+  exitCode = process.exitCode;
 });
 
 afterEach(() => {
+  process.exitCode = exitCode;
   process.chdir(cwd);
   for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -92,6 +97,25 @@ describe("the file the command writes", () => {
     rmSync(file);
     await executeGenCommand({ root: "workforce" });
     expect(readFileSync(file, "utf-8")).not.toContain("\r\n");
+  });
+
+  it("sets an exit code and returns, so the stale report is not cut off", async () => {
+    // `process.exit()` terminates before pending stderr writes flush when the
+    // stream is a pipe, which is exactly what CI gives it — so the exit status
+    // survives and the list of what changed does not. Someone then sees a
+    // failed `--check` with no reason in the log.
+    //
+    // The assertion is that control comes BACK from the action: with the exit
+    // call in place, this command would take the test runner down with it.
+    const dir = app();
+    await executeGenCommand({ root: "workforce" });
+    writeFileSync(join(dir, "workforce/blocks/second.ts"), "export default {};");
+
+    const program = new Command();
+    registerGenCommand(program);
+    await program.parseAsync(["node", "fsdev", "gen", "--check"]);
+
+    expect(process.exitCode).toBe(EXIT_EXECUTION_ERROR);
   });
 
   it("still reports a genuinely stale file", async () => {

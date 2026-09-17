@@ -78,6 +78,43 @@ describe("the generator reads the tree, never the modules in it", () => {
   });
 });
 
+describe("the root the caller configured", () => {
+  // These belong to the exported function rather than to the command that
+  // happens to call it. The walk is public now, and a caller who follows its
+  // documentation gets no root validation unless it lives here — which would
+  // make the no-follow promise the CLI's to keep, not this function's.
+
+  it("refuses a symlinked root rather than walking what it points at", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "fsd-codegen-outside-"));
+    roots.push(outside);
+    mkdirSync(join(outside, "flows/workers"), { recursive: true });
+    writeFileSync(join(outside, "flows/workers/smuggled.ts"), "export default {};");
+
+    const holder = mkdtempSync(join(tmpdir(), "fsd-codegen-holder-"));
+    roots.push(holder);
+    const linked = join(holder, "workforce");
+    symlinkSync(outside, linked);
+
+    // A root link is the widest version of the refusal: everything under it is
+    // outside the tree the caller configured.
+    await expect(discoverWorkforceCode(linked)).rejects.toThrow(
+      /Symlinked workforce directory .* refused for safety/,
+    );
+  });
+
+  it("refuses a root that is not there, rather than returning empty maps", async () => {
+    const holder = mkdtempSync(join(tmpdir(), "fsd-codegen-holder-"));
+    roots.push(holder);
+
+    // Absent FOLDERS are silent, because an app may have no custom code of
+    // that kind. An absent ROOT is a wiring mistake, and reading it as "no
+    // custom code" would hand back empty maps for a path nobody configured.
+    await expect(discoverWorkforceCode(join(holder, "does-not-exist"))).rejects.toThrow(
+      /Failed to read workforce directory/,
+    );
+  });
+});
+
 describe("what the walk finds", () => {
   it("registers a worker kind, a channel kind and a block under their basenames", async () => {
     const root = tree({
