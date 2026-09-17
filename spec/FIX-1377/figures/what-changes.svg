@@ -1,0 +1,67 @@
+<svg viewBox="0 0 940 250" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two columns. Today, each seat is given one undifferentiated block of instructions, and the team's shared paragraph sits copied inside every one of them. After, one TEAM.md at the team folder feeds a named team layer into every seat's prompt, above that seat's own instructions, with a dashed framework-default slot above both that is not built.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-team { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-todo { fill:none; stroke:var(--ink-3); stroke-width:1.1; stroke-dasharray:4 3; }
+    .rule   { stroke:var(--rule); stroke-width:1; }
+    .feed   { stroke:var(--code); stroke-width:1.2; fill:none; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-code { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+
+  <g id="today">
+    <text class="t-lbl" x="20" y="22">TODAY · ONE UNDIFFERENTIATED LAYER</text>
+    <text class="t-s" x="20" y="76">recon's prompt</text>
+    <rect class="n-box" x="20" y="84" width="190" height="90" rx="5"/>
+    <text class="t-gone" x="32" y="112">the team paragraph</text>
+    <text class="t-gone" x="32" y="126">— copied in</text>
+    <text class="t-s" x="32" y="156">recon's own lines</text>
+    <text class="t-s" x="228" y="76">scout's prompt</text>
+    <rect class="n-box" x="228" y="84" width="190" height="90" rx="5"/>
+    <text class="t-gone" x="240" y="112">the team paragraph</text>
+    <text class="t-gone" x="240" y="126">— copied in</text>
+    <text class="t-s" x="240" y="156">scout's own lines</text>
+    <text class="t-s" x="20" y="200">Nowhere to say it once, so it is said per seat —</text>
+    <text class="t-s" x="20" y="214">and edited per seat.</text>
+  </g>
+
+  <path class="rule" d="M462 16 L462 234"/>
+
+  <g id="after">
+    <text class="t-lbl" x="500" y="22">AFTER · NAMED LAYERS, COMPOSED AT HIRE</text>
+    <rect class="n-team" x="500" y="32" width="420" height="26" rx="5"/>
+    <text class="t-code" x="512" y="49">teams/pentest/TEAM.md · description + team instructions</text>
+    <path class="feed" d="M700 58 L700 131 L690 131"/>
+    <path class="feed" d="M720 58 L720 131 L730 131"/>
+
+    <text class="t-s" x="500" y="76">recon's prompt</text>
+    <rect class="n-todo" x="500" y="84" width="190" height="26" rx="5"/>
+    <text class="t-lbl" x="512" y="101">FRAMEWORK DEFAULT</text>
+    <rect class="n-team" x="500" y="118" width="190" height="26" rx="5"/>
+    <text class="t-code" x="512" y="135">team · TEAM.md body</text>
+    <rect class="n-box" x="500" y="152" width="190" height="26" rx="5"/>
+    <text class="t-s" x="512" y="169">recon · WORKER.md body</text>
+
+    <text class="t-s" x="730" y="76">scout's prompt</text>
+    <rect class="n-todo" x="730" y="84" width="190" height="26" rx="5"/>
+    <text class="t-lbl" x="742" y="101">FRAMEWORK DEFAULT</text>
+    <rect class="n-team" x="730" y="118" width="190" height="26" rx="5"/>
+    <text class="t-code" x="742" y="135">team · TEAM.md body</text>
+    <rect class="n-box" x="730" y="152" width="190" height="26" rx="5"/>
+    <text class="t-s" x="742" y="169">scout · WORKER.md body</text>
+
+    <text class="t-s" x="500" y="200">One source, two seats. The seat's own lines come last,</text>
+    <text class="t-s" x="500" y="214">so they win an ordinary conflict. The dashed slot is not built.</text>
+  </g>
+</svg>
