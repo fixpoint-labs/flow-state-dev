@@ -145,9 +145,11 @@ export interface ReadSeatSkillsResult {
  * be read at all. Either is a wiring mistake rather than a per-level one, and
  * reading it as three absent levels would hand back an empty set with an empty
  * `errors`, which is the shape of a seat that has no skills on purpose. A
- * symlinked root is refused however the path is spelled; an operator running
- * one deliberately should pass the path it resolves to. Matches the sibling
- * readers, which answered this question first.
+ * symlinked root is refused whether or not the path carries a trailing
+ * separator. It is not refused through a `.` segment, and nothing above the
+ * root is checked — an operator running a symlink deliberately should pass the
+ * path it resolves to. Matches the sibling readers, which answered this
+ * question first.
  *
  * @example
  * const { skills, errors } = await readSeatSkills("./workforce", {
