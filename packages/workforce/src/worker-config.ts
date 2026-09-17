@@ -3,10 +3,19 @@
  * the seat factory therefore always hands over.
  *
  * A worker kind is an ordinary flow. What makes it *hireable* is that its
- * `configSchema` composes this contract — `workerConfigSchema().extend({ ... })`
- * — so the settings the factory imposes have a declared door to arrive at. A
- * kind that has not composed it refuses at the mint, by name, rather than
+ * `configSchema` accepts what the factory imposes, and composing this contract
+ * — `workerConfigSchema().extend({ ... })` — is how a kind does that. A kind
+ * whose schema cannot take the bag refuses at the mint, by name, rather than
  * hiring and quietly running short of what its author's files declared.
+ *
+ * **Admission is what the schema accepts, not which function built it.** There
+ * is no marker to check and deliberately so: the closed schema every mint
+ * already passes is the single enforcement point, and a second "did you call
+ * us" gate would be a second authority over one rule. A kind that hand-declares
+ * these keys therefore hires exactly as a composed one does, which is a
+ * feature. What it gives up is staying current: when a key is added here, a
+ * composed kind gets it for free, and a hand-rolled one refuses — loudly, at
+ * boot, naming the key — until its author adds it too.
  *
  * **Three keys, and that is the whole bag.** A kind's own settings sit at the
  * TOP LEVEL beside them, where the framework closes the set and an undeclared

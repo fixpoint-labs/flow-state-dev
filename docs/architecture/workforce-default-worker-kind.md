@@ -73,8 +73,17 @@ name. There is no nested bag for a kind's own settings; open-ended data gets one
 schema is a record.
 
 The contract is what makes a kind hireable, and the hire step hands its bag to **every** kind
-rather than probing which ones declared a matching key. A kind that has not composed it refuses at
-the mint, for the whole roster, at boot. That replaces a branch whose other arm was silence: a seat
+rather than probing which ones declared a matching key. A kind whose schema cannot take that bag
+refuses at the mint, for the whole roster, at boot.
+
+**Admission is structural, not nominal, and that is D1 rather than an oversight.** Nothing checks
+that a kind called `workerConfigSchema()`; what is checked is whether its closed schema accepts
+what hire imposes, which is the single enforcement point D1 settled on. A kind hand-declaring the
+same keys is therefore admitted identically — verified, not assumed. The cost is that such a kind
+does not track the contract: when a key is added, a composed kind receives it and a hand-rolled one
+refuses at boot naming the unrecognised key. That failure is loud and collected with the rest of
+the roster's problems, never silent, which is why the trade is acceptable and a second nominal gate
+is not worth the second authority it would create. That replaces a branch whose other arm was silence: a seat
 whose folders declared skills used to mint, run, and hold none, with nothing said anywhere. Two of
 the three keys are framework-imposed and never authored — `seatSkills` and `teamInstructions` are
 refused by name at the worker loader and at the hire, from the shared constants in `manifest.ts`,

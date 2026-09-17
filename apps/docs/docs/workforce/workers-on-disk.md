@@ -201,10 +201,14 @@ the worker's own instructions, its team's, and the skills its folders resolved. 
 go on top with `.extend()`, at the same level, and the schema stays closed around all of them.
 
 You do not have to read any of it. A kind that composes the contract and never looks at the skills
-runs exactly as it would otherwise. But a kind that has not composed it stops hiring: the seat
-factory hands every worker the same settings, and a kind with nowhere to put them refuses at
+runs exactly as it would otherwise. But a kind with nowhere to put them stops hiring: the seat
+factory hands every worker the same settings, and a schema that cannot take them refuses at
 startup, naming the worker and the line to add. The alternative was a seat that hired, ran, and
 quietly held none of what its author's folders declared.
+
+What hiring checks is what your schema accepts, not which function built it. Declaring those keys
+by hand works too — composing is how you stay current, since a key added to the contract reaches a
+composed kind for free and makes a hand-rolled one refuse at startup until you add it as well.
 
 `cardinality: "collection"` is what lets one definition have many copies. A roster is exactly that: one copy per worker, each with its own id and its own settings. [Copies that differ by settings](../fundamentals/flows.md#copies-that-differ-by-settings) covers how a copy is configured, and [how an instance is addressed](../fundamentals/flows.md#how-an-instance-is-addressed) covers the URL each one answers on.
 
@@ -241,15 +245,19 @@ Settings are spelled the way the flow declares them.
 
 A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. That is the only setting name the hire imposes.
 
-A flow kind that takes instructions declares `instructions` in its `configSchema`. A kind that doesn't will refuse a body by name, the same way it refuses any other undeclared setting, so no worker flow has to check for one:
+Every hireable kind has that setting, because `workerConfigSchema()` declares it — so a worker's body always has somewhere to arrive, and no worker flow has to check for one. A kind that never composed the contract is the one that refuses, and it refuses every record on the roster rather than just the ones with a body:
 
 ```
 hireWorkforce refused 1 of 3 workers; nothing was hired:
   - worker "support.intake" — Flow "intake" instance "support.intake"
-    has an invalid config bag: "instructions" is not a declared setting.
+    has an invalid config bag: "seatSkills" is not a declared setting.
+    This flow kind has not composed `workerConfigSchema()`, so it declares
+    nowhere for a seat's skills and instructions to arrive.
 ```
 
-Declaring the key is what makes the instructions available, at `config.instructions`. What the flow does with them is the flow's business: a worker flow usually hands them to its generator as the system prompt. A flow that declares `instructions` and never reads it hires cleanly and ignores what the file said.
+The instructions are available at `config.instructions`. What the flow does with them is the flow's business: a worker flow usually hands them to its generator as the system prompt. A flow that never reads them hires cleanly and ignores what the file said.
+
+A kind that wants instructions to be mandatory says so itself, by making the key required when it extends the contract — `workerConfigSchema().extend({ instructions: z.string() })`. Then a worker of that kind with no body is a failed hire.
 
 A worker with no body is still fully addressable. It just carries no instructions: a body that is empty, or only whitespace, contributes no `instructions` key at all. A body that has content reaches the flow verbatim, leading and trailing whitespace included.
 
@@ -266,9 +274,9 @@ A record is refused when it:
 - declares a `flow` that is present but empty, or only whitespace — that names no kind. Leave the key out entirely to get the built-in `agent` kind;
 - names a kind that was not passed in `kinds`; the message lists the kinds that were, including `agent`;
 - declares a setting its flow never declared, or omits one its flow requires;
-- carries a body for a flow kind that declares no `instructions`;
+- names a flow kind that never composed `workerConfigSchema()`, which leaves it nowhere to receive a seat's skills and instructions. That one refuses the whole roster, not just this record;
 - declares `instructions:` and carries a body;
-- declares `persona:` or `seatSkills:`, neither of which is a setting a worker declares;
+- declares `persona:`, `seatSkills:` or `teamInstructions:`, none of which is a setting a worker declares;
 - shares an id with another record in the same call, which is two workers claiming one address.
 
 `kinds` itself is checked too. A flow passed under a key that is not its own `kind` is refused. The copy would otherwise come back carrying the right worker's id, and run the other kind's graph once you registered it.
@@ -281,6 +289,7 @@ Say the engineering team wants a worker that routes an incoming request in code,
 
 ```ts
 import { defineFlow, router } from "@flow-state-dev/core";
+import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { answer, escalate } from "./triage-blocks";
 
@@ -302,7 +311,7 @@ const triage = router({
 export const requestTriageFlow = defineFlow({
   kind: "request-triage",
   cardinality: "collection",
-  configSchema: z.object({
+  configSchema: workerConfigSchema().extend({
     instructions: z.string(),
     model: z.string().default("openai/gpt-5.4-mini"),
     escalateAbove: z.number().default(3),

@@ -11,8 +11,9 @@
  * There is no probe of what a kind happens to declare and no thin record that
  * mints without being admitted, because the one silent branch a probe has —
  * *this kind did not declare the key, so say nothing* — is exactly the failure
- * this step exists to remove. A kind that has not composed
- * `workerConfigSchema()` refuses, loudly, for the whole roster, at boot.
+ * this step exists to remove. A kind whose schema cannot take that bag refuses,
+ * loudly, for the whole roster, at boot — and composing `workerConfigSchema()`
+ * is how a kind makes sure it can.
  *
  * What the kind's probed shape is still read for is the WORDING of that
  * refusal, and nothing else. See {@link admissionHint}.

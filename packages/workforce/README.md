@@ -280,10 +280,15 @@ did name.
 
 Reading any of it is optional. A kind that composes the contract and never looks at `seatSkills`
 runs exactly as it did before — ignoring the bag is not an error. What is not optional is the door:
-the factory hands every seat a bag, so a kind that has not composed the contract refuses at the
-hire, for the whole roster, with a message naming the worker and the fix. That is a one-line change
-per kind, and it is what replaces a seat that used to hire, run, and silently hold none of what its
-author's files declared.
+the factory hands every seat a bag, so a kind whose schema cannot take it refuses at the hire, for
+the whole roster, with a message naming the worker and the fix. That is a one-line change per kind,
+and it is what replaces a seat that used to hire, run, and silently hold none of what its author's
+files declared.
+
+What is checked is what your schema accepts, not which function built it — so a kind that declares
+these keys by hand hires just the same. Composing is what keeps it current: when a key is added to
+the contract, a composed kind picks it up, and a hand-rolled one refuses at boot naming the new key
+until you add it.
 
 Two of the three are never authored. A worker file that writes `seatSkills:` or `teamInstructions:`
 is refused by name, at the loader and at the hire: a seat's skills are the folders it can see, and
@@ -306,10 +311,12 @@ A worker record declares data: a description, the kind it runs, and that kind's 
 lives in the flow the kind names, so a worker that has to do something none of your kinds do is a
 flow you define in your app and pass in `kinds`, named by that worker's `flow:`.
 
-A record's **`body` reaches its flow as one setting, `instructions`**. A flow kind that takes
-instructions declares `instructions` in its `configSchema`. A kind that doesn't will refuse a body by
-name, so no worker flow has to check for one. Declaring the key makes the instructions available at
-`config.instructions`; what the flow does with them is the flow's business.
+A record's **`body` reaches its flow as one setting, `instructions`**. Every hireable kind declares
+that setting by composing `workerConfigSchema()`, so a body always has somewhere to arrive and no
+worker flow has to check for one; the instructions are available at `config.instructions`, and what
+the flow does with them is the flow's business. A kind that wants instructions to be mandatory makes
+the key required when it extends the contract — `workerConfigSchema().extend({ instructions:
+z.string() })` — and a worker of that kind with no body is then a failed hire.
 
 A body that is empty or only whitespace contributes no `instructions` key at all; a body with content
 is handed over verbatim, leading and trailing whitespace included. A record that declares
