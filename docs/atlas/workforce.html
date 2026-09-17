@@ -203,7 +203,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <a href="#what">01 &middot; What Workforce is</a>
     <a href="#layers">02 &middot; Layer 1 vs Layer 2</a>
     <a href="#vision">03 &middot; Build-out</a>
-    <a href="#lab">03 &middot; Labs</a>
+    <a href="#lab">03 &middot; Labs &#8212; DevForce</a>
+    <a href="#pentest">03 &middot; Labs &#8212; Pentest</a>
     <a href="#fence">04 &middot; Seats, kinds, blocks</a>
     <a class="grp">The convention</a>
     <a href="#contract">05 &middot; The worker contract</a>
@@ -634,7 +635,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div id="pentest">
   <h3>Pentest Lab &#8212; sibling consumer (FIX-1355)</h3>
-  <p><a href="https://linear.app/fixpoint-labs/issue/FIX-1355">FIX-1355</a> is the thin pentest lab Proof for W3 file conventions &#8212; seats plus rooms / channels / resources / skills under pressure. Not a full product. Not MCP. The <strong>proof exists and runs</strong> &#8212; <code>goals/pentest-lab/</code>, two goals over one real tree. The hosted Lab does not; that is still after W3. The landed shape is <strong>recon / triage</strong> on <code>teams/pentest/</code> plus the cross-team <code>audit.scribe</code> probe &#8212; three seats, kinds / opinions, not Agent L1. No intake seat and no board; the Proof is the file conventions, not a roster. Same Workforce nouns as DevForce: a team, seats, ChannelFlow named sessions, an org/project board (<code>TaskCollection</code>). Different opinions: no EM/feature/philosophy stack, and no claim that software-eng roles belong here. Do not grow Layer&nbsp;2 around only this shape either.</p>
+  <p><a href="https://linear.app/fixpoint-labs/issue/FIX-1355">FIX-1355</a> is the thin pentest lab Proof for W3 file conventions &#8212; seats plus rooms / channels / resources / skills under pressure. Not a full product. Not MCP. The <strong>proof exists and runs</strong> &#8212; <code>goals/pentest-lab/</code>, two goals over one real tree. The hosted Lab does not; that is still after W3. The landed shape is <strong>recon / triage</strong> on <code>teams/pentest/</code> plus the cross-team <code>audit.scribe</code> probe &#8212; three seats, kinds / opinions, not Agent L1. No intake seat and no board; the Proof is the file conventions, not a roster. Same Workforce nouns as DevForce where it uses them: a team, seats, ChannelFlow named sessions, and resources / skills declared in the tree. No org/project board &#8212; that is a DevForce v0 noun, not one this Proof exercises. Different opinions: no EM/feature/philosophy stack, and no claim that software-eng roles belong here. Do not grow Layer&nbsp;2 around only this shape either.</p>
   </div>
 
   <figure>
@@ -642,11 +643,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <svg viewBox="0 0 940 280" role="img" aria-label="Pentest Lab sibling consumer. Left: FIX-1355 thin Proof, landed and runnable as goals slash pentest-lab; the hosted Lab does not run. Centre: recon and triage plus the cross-team audit scribe probe, as kinds and opinions, not Agent L1. Right: same Workforce nouns — team, seats, ChannelFlow, TaskCollection. Cut: do not supersede this Lab identity, do not overfit Layer 2 to pentest or to software eng, no MCP, no Channel Layer 1.">
         <rect class="n-prop" x="16" y="16" width="292" height="176" rx="5"/>
         <text class="t-lbl" x="32" y="38">FIX-1355 &#183; THIN PROOF</text>
-        <text class="t-b f-accent" x="32" y="64">in spec review</text>
+        <text class="t-b f-accent" x="32" y="64">proof runs &#183; host proposed</text>
         <text class="t-xs" x="32" y="90">W3 CONVENTIONS UNDER PRESSURE</text>
         <text class="t-xs" x="32" y="108">SEATS + CHANNELS + RESOURCES</text>
         <text class="t-xs" x="32" y="126">+ SKILLS. NOT A FULL PRODUCT</text>
-        <text class="t-xs" x="32" y="152">LAB DOES NOT RUN. DO NOT CLAIM IT.</text>
+        <text class="t-xs" x="32" y="152">PROOF RE-RUNS. HOSTED LAB DOES NOT.</text>
         <text class="t-s" x="32" y="176">sibling consumer. not superseded.</text>
 
         <rect class="n-prop" x="324" y="16" width="292" height="176" rx="5"/>
@@ -662,8 +663,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-lbl f-code" x="648" y="38">SAME NOUNS</text>
         <text class="t-b" x="648" y="64">Workforce, not a fork</text>
         <text class="t-xs" x="648" y="90">TEAM + SEATS + ChannelFlow</text>
-        <text class="t-xs" x="648" y="108">ORG / PROJECT BOARD</text>
-        <text class="t-xs" x="648" y="126">TaskCollection. NOT A TYPE</text>
+        <text class="t-xs" x="648" y="108">RESOURCES + SKILLS IN TREE</text>
+        <text class="t-xs" x="648" y="126">NO BOARD IN THIS PROOF</text>
         <text class="t-xs" x="648" y="152">NO MCP IN LAB V1</text>
         <text class="t-s" x="648" y="176">one product. two Labs.</text>
       </svg>
@@ -2248,7 +2249,7 @@ const team = <b>defineResourceCollection</b>({
 
 <section id="intake">
   <div class="sec-head"><span class="sec-num">11</span><h2>Team intake</h2></div>
-  <p class="lede">Address-the-team without picking a person. That is a <strong>capability</strong>, not a new flow kind. Every keyed team has a <strong>team intake</strong> seat &#8212; a coordinator or a thin sequencer &#8212; with a static DM. &#8220;Talk to eng&#8221; is that session. Both Labs use this noun. <a href="#pentest">Pentest Lab</a>&#8217;s first three seats are intake / recon / triage; DevForce starts on the EM seat. The intake worker routes with claim, ordered replies, or fan-out. The team board stays for broadcast. Still one flow per worker. The intake <em>is</em> a worker.</p>
+  <p class="lede">Address-the-team without picking a person. That is a <strong>capability</strong>, not a new flow kind. Every keyed team has a <strong>team intake</strong> seat &#8212; a coordinator or a thin sequencer &#8212; with a static DM. &#8220;Talk to eng&#8221; is that session. Both Labs are meant to use this noun. DevForce starts on the EM seat; the landed <a href="#pentest">pentest Proof</a> declares no intake seat. The intake worker routes with claim, ordered replies, or fan-out. The team board stays for broadcast. Still one flow per worker. The intake <em>is</em> a worker.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--accent)">
