@@ -138,7 +138,7 @@ The whole selection is checked when the roster is hired, so a mistake is a refus
 | a capability the kind does not carry | The refusal lists what the kind does carry. |
 | a preset the capability does not declare | The refusal lists the presets it declares. |
 | a preset the app turned off where it installed the capability | A worker adds to what its kind carries and never widens past it. |
-| a preset on a capability configured with `.config()` | Such a capability is resolved once, where you install it, so its presets are yours to set. |
+| a preset on a capability that takes config | A capability declared with a `config` block is resolved once, where you install it, so its presets are yours to set. |
 | a preset that declares `resources`, a state schema, `model`, `providerOptions` or `caching` | Those have to exist before a request runs, so the preset is yours to turn on for the whole kind. |
 
 Every bad selection on a worker is reported, not just the first.

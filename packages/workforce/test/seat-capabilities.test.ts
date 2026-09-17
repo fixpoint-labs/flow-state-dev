@@ -29,6 +29,7 @@ const BRIEFING = "BRIEFING-4471";
 const LEDGER = "LEDGER-8830";
 const TONE = "TONE-2216";
 const EXTRA = "EXTRA-9074";
+const SHARED = "SHARED-3308";
 
 /** Nothing on by default — the shape a discovered `research.ts` has. */
 const research = defineCapability({
@@ -281,6 +282,75 @@ describe("a seat picks presets from what its kind carries", () => {
     expect(said.prompt).not.toContain(EXTRA);
   });
 
+  // A capability that COMPOSES another. The nested one is already installed by
+  // the static entry — the framework flattens a capability's own `uses` at
+  // build time — so the per-seat entry must contribute the top-level
+  // capability's named presets and nothing below them. Graded on the nested
+  // marker's COUNT: a per-seat entry that re-walked the subtree hands this seat
+  // SHARED twice, and `toContain` would call that a pass.
+  it("adds only the named capability's own presets, not the surface of what it composes", async () => {
+    const shared = defineCapability({
+      name: "shared-voice",
+      presets: { house: { context: [SHARED] } }
+    });
+    const composing = defineCapability({
+      name: "research",
+      uses: [shared],
+      presets: { briefing: { context: [BRIEFING] }, default: [] }
+    });
+    const kind = defineAgentWorkerFlow({ uses: [composing] });
+    const seat = hire(
+      [
+        record({ id: "engineering.ghost" }),
+        record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })
+      ],
+      { [AGENT_KIND]: kind }
+    );
+
+    // The control: a seat that named nothing gets the nested surface once, from
+    // the static entry. Without it, "once" for the selecting seat could mean
+    // the nested capability simply never arrived.
+    const quiet = await turn(seat("engineering.ghost"));
+    expect(quiet.error).toBeUndefined();
+    expect(occurrences(quiet.prompt, SHARED)).toBe(1);
+
+    const said = await turn(seat("engineering.lead"));
+    expect(said.error).toBeUndefined();
+    expect(occurrences(said.prompt, BRIEFING)).toBe(1);
+    expect(occurrences(said.prompt, SHARED)).toBe(1);
+  });
+
+  // The same axis, and the sharper failure. The framework refuses a
+  // config-declaring capability on the per-seat path outright, so a per-seat
+  // entry that reached into what the named capability composes would take a
+  // seat that hired cleanly and break every turn it ever runs — the mid-turn
+  // failure this key's mint-time checks exist to rule out.
+  it("hires and answers when the named capability composes one that declares open config", async () => {
+    const tuned = defineCapability({
+      name: "tuned",
+      presets: { house: { context: [SHARED] } },
+      config: {
+        schema: z.object({ endpoint: z.string() }).default({ endpoint: "local" }),
+        resolve: () => ({})
+      }
+    });
+    const composing = defineCapability({
+      name: "research",
+      uses: [tuned],
+      presets: { briefing: { context: [BRIEFING] }, default: [] }
+    });
+    const kind = defineAgentWorkerFlow({ uses: [composing] });
+    const seat = hire(
+      [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
+      { [AGENT_KIND]: kind }
+    );
+
+    const said = await turn(seat("engineering.lead"));
+
+    expect(said.error).toBeUndefined();
+    expect(occurrences(said.prompt, BRIEFING)).toBe(1);
+  });
+
   // The app's own `.presets()` is not lost when a seat adds to the capability:
   // the seat's ref is cloned from the app's, so a preset the app left on stays
   // on for the seat that named a different one.
@@ -390,7 +460,7 @@ describe("a seat's capability selection is refused at the hire, never mid-turn",
     );
 
     expect(message).toContain('"summary"');
-    expect(message).toContain("open config");
+    expect(message).toContain("takes config");
   });
 
   // A preset whose surface has to exist before a request runs cannot be half
@@ -437,5 +507,21 @@ describe("a seat's capability selection is refused at the hire, never mid-turn",
     );
 
     expect(seat("engineering.lead").kind).toBe(AGENT_KIND);
+  });
+
+  // Same capability listed twice — which the framework resolves off the FIRST
+  // ref, skipping the later one. So a seat's options have to be read off the
+  // first ref too, or a file would be allowed a preset the block never
+  // resolves.
+  it("reads a repeated capability off the first entry, as the framework does", () => {
+    const kind = defineAgentWorkerFlow({
+      uses: [research.presets({ briefing: false }), research]
+    });
+    const message = refusalOf(
+      [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
+      { [AGENT_KIND]: kind }
+    );
+
+    expect(message).toContain("turned off");
   });
 });

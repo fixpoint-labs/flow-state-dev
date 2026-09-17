@@ -77,7 +77,9 @@ export type SeatCapabilitySelection = Record<string, readonly string[]>;
  *
  * Listed rather than derived by negation from `context`/`tools` on purpose — a
  * key added to `PresetDef` later must be classified deliberately, and being
- * absent from this list is the claim that the dynamic path carries it.
+ * absent from this list is the claim that the dynamic path carries it. The
+ * assertion under {@link DYNAMIC_KEYS} makes "deliberately" real: a new key
+ * that neither list names fails to compile here.
  */
 const BUILD_TIME_ONLY_KEYS = [
   "resources",
@@ -92,6 +94,24 @@ const BUILD_TIME_ONLY_KEYS = [
   "providerOptions",
   "caching"
 ] as const satisfies readonly (keyof PresetDef)[];
+
+/**
+ * The surface keys the dynamic path DOES carry, as the framework resolves it.
+ *
+ * Kept only so the two lists can be checked against `PresetDef` together.
+ */
+const DYNAMIC_KEYS = ["context", "tools"] as const satisfies readonly (keyof PresetDef)[];
+
+/**
+ * Compile-time proof that every `PresetDef` key is classified as one or the
+ * other. A key added to `PresetDef` upstream lands in neither list, so
+ * `Exclude` stops being `never` and this alias fails to compile — the whole
+ * point of listing the build-time keys instead of deriving them by negation.
+ */
+type _EveryPresetKeyIsClassified = AssertNever<
+  Exclude<keyof PresetDef, (typeof BUILD_TIME_ONLY_KEYS)[number] | (typeof DYNAMIC_KEYS)[number]>
+>;
+type AssertNever<T extends never> = T;
 
 /** Which build-time-only keys this preset declares, in the order listed above. */
 function buildTimeOnlySurface(preset: PresetDef): string[] {
@@ -170,6 +190,11 @@ export function catalogSeatCapabilities(uses: UsesSlot | undefined): SeatCapabil
   for (const entry of uses) {
     if (typeof entry === "function") continue;
     const base = getBaseCapability(entry);
+    // First entry wins, which is the rule the framework itself applies when it
+    // merges a `uses` array: a later ref for a name it has already seen is
+    // skipped, so the block runs off the FIRST one. Overwriting here would
+    // describe a seat's options against a ref the block never resolved.
+    if (catalog.has(base.name)) continue;
     const presetDefs = (base.__presetDefs ?? {}) as Record<string, PresetDef>;
     const declared = Object.keys(presetDefs).filter((key) => key !== "default");
 
@@ -265,9 +290,9 @@ export function seatCapabilityProblems(
 
       if (capability.hasOpenConfig) {
         problems.push(
-          `names preset "${preset}" on capability "${name}", which declares open config. ` +
-            `A capability configured with \`.config()\` is resolved once, where the app installs ` +
-            `it, so its presets cannot be picked per seat — set them at ` +
+          `names preset "${preset}" on capability "${name}", which takes config ` +
+            `(\`defineCapability({ config })\`). Such a capability is resolved once, where the ` +
+            `app installs it, so its presets cannot be picked per seat — set them at ` +
             `\`defineAgentWorkerFlow({ uses })\`.`
         );
         continue;
@@ -327,7 +352,27 @@ export function resolveSeatCapabilities(
     for (const preset of capability.declared) {
       overrides[preset] = additions.includes(preset);
     }
-    refs.push((capability.ref as { presets(overrides: unknown): CapabilityRef }).presets(overrides));
+    const ref = (capability.ref as { presets(overrides: unknown): CapabilityRef }).presets(
+      overrides
+    );
+    // Cut the clone loose from what this capability COMPOSES, which the static
+    // entry has already delivered in full.
+    //
+    // `.presets()` returns `Object.create(base)`, so the clone inherits the
+    // capability's own `uses` — and the per-seat path walks that subtree rather
+    // than stopping at the entry it was handed. Left on, a capability that
+    // composes another would hand this seat the nested surface a second time,
+    // and a nested capability declaring open config would take a seat that
+    // hired cleanly and fail every turn it runs, since that path refuses open
+    // config outright. Both break along the same axis the delta is here to
+    // hold: one path per contribution, per seat.
+    //
+    // An OWN `undefined` shadowing the prototype's, rather than a walk of our
+    // own: whatever the subtree holds stays the static entry's business, and
+    // `getBaseCapability` still recovers the base through the prototype, so
+    // nothing downstream loses the capability's identity.
+    (ref as { uses?: unknown }).uses = undefined;
+    refs.push(ref);
   }
 
   return refs;
