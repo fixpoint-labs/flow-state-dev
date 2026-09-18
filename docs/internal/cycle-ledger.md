@@ -2526,6 +2526,79 @@ available and it should land then.
 - **`claims-looped` 0 on both direction artifacts.** #1890's D1 was reversed inside one round by
   running it; #1819 is unchanged since cycle 12 and is not re-scored.
 
+### Observed after collection — fenced, and no count moves
+
+Three observations self-reported by the FIX-1377 implementation, **after this cycle's collection
+closed**. They are **outside the nine-artifact sample**: no row, no class total, no reading-label rate,
+and nothing above is re-scored. Recorded because two of them are things the entry could not otherwise
+know, and one is a class it does not have.
+
+#### A fabricated citation — a different class from everything above
+
+The agent updated the atlas tags that name the PR which landed each reader, and wrote **`#1888`** —
+**before the PR existed.** Corrected to `#1911` once it did. Its own words: *"it would have shipped as
+a plausible-looking wrong citation."*
+
+**Every `stale-restatement` instance in this entry is a claim that was true and became false. This one
+was never true.** That is not a shading; it decides which instrument can catch it, and the answer is
+none of the ones this entry spends its length on:
+
+| Instrument | Verdict on `#1888` |
+|---|---|
+| #1886's `cited-paths` checker (every cited repo path resolves) | **passes** — no path involved |
+| #1886's `cited-symbols` checker (every cited identifier exists) | **passes** — no identifier involved |
+| A hypothetical "every cited PR exists" checker | **passes** — see below |
+| The figure's three representations agreeing with the prose | **passes** — all three said `#1888` |
+| The surface sweep this cycle landed | **passes** — enumerate the tags, each resolves cleanly |
+
+**The middle row is the finding, and it is verified rather than argued: `#1888` is a real PR** —
+`spec(FIX-1440)`, a different issue entirely. The citation was not malformed and not dangling. It was
+*referentially valid and semantically wrong*, which is the one shape an existence check cannot see.
+Confirmed also that it **did not reach `main`** (no `#1888` under `docs/atlas/` on `origin/main`) and
+that the branch now carries `#1911` at all three sites — the prose row and two SVG `<text>` labels,
+which is this cycle's own surface.
+
+**Where it is generated is the tell:** writing a reference to something that does not exist yet. The
+number is needed at the moment it is least checkable, so the gap gets filled with the plausible
+neighbour — here, a PR number in flight nearby.
+
+**Proposed as a new class, not minted.** Following the precedent this file set for `vacuous-assertion`
+(cycle 11, still a reading label until the owner rules), it is recorded as a proposal:
+**`invented-reference` — a citation that was never true, as distinct from one that went stale.** The
+closed set is not changed here. Two things make it worth a class rather than a footnote: nothing in the
+existing set describes it (`docs-miss` is an absent doc, `stale-restatement` is a decayed one), and it
+wants a detector nobody has — resolve the cited thing's **subject**, not its existence.
+
+#### A control script destroyed uncommitted work
+
+A simulated-regression script ended with `git checkout -- packages/workforce/src/hire.ts` to undo its
+plant. Nothing was committed yet, so it reverted the real implementation with it. Caught only because
+the "restored" run stayed red.
+
+**Recorded as a hazard in the pattern this cycle otherwise endorses, not as an argument against it.**
+Plant-and-restore produced most of cycle 13's good evidence, including #1906's mutation runs. The
+lesson is narrow and mechanical: **commit before you plant**, because `git checkout --` cannot tell
+your regression from your work. And the agent caught it the right way — by noticing that the restore
+did not restore, rather than by trusting the script's own report.
+
+#### The counter-evidence, and it is weak
+
+Two authors, unprompted, applied the reading-contract discipline to their own work **the day it
+landed**: FIX-1377 wrote its contract as tests against a deliberately empty reader first and found
+**4 of 19 went green against a reader that does nothing** — every one a "nothing happened" assertion —
+and made them differential before review saw them. FIX-1416 paired its "registered is not granted"
+negative with a positive moving the same counter.
+
+**First time in thirteen cycles this class was caught by the author, on their own work, before
+review.** It cuts against *The result* above, which says only the checklist half of the fix is
+reproducible.
+
+**Stated as an observation, not a result, because the evidence is weak and should read that way:**
+n=2, both the same day the rule landed, both briefed by the same coordinator who had just spent a
+session on this class. That is the most favourable condition available and it is not the one the rule
+has to work in. **Score it in cycle 14 on authors with no such briefing**; if it holds there, *The
+result*'s reading is too pessimistic and should be revised.
+
 ### Upstream fix — one checklist line, in `issue-implement` 10.6
 
 **No BP change, no tenet change, and deliberately not a mechanical check.** All three alternatives
@@ -2635,3 +2708,10 @@ remains unwritten and is not part of this landing.
    the instances are the ones the entry must name as evidence anyway, and a cycle that cannot name them
    does not have a grounded fix to land. **Score it in cycle 14 on whether it catches a reachability
    defect *before* review does, on a rule that would otherwise have shipped.**
+7. **Is `invented-reference` a real class?** Proposed, not minted — see *Observed after collection*.
+   Baseline: **one instance, outside the sample**, caught by its author before it reached `main`. It
+   defeats every instrument this entry discusses, including both checkers it praises, because the cited
+   thing *existed* and was about something else. Collect deliberately next cycle rather than waiting
+   for a self-report: grep a sample of atlas and spec citations and resolve each one's **subject**, not
+   its existence. If a second instance appears, it needs a detector and a place in the closed set; if
+   none does, drop the proposal rather than leaving it standing.
