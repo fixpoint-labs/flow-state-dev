@@ -2600,9 +2600,38 @@ remains unwritten and is not part of this landing.
    (`epic-wake`) that already computes the disagreement. Second cycle recorded, nothing built.
 5. **Are the loop's fixes landed at the gate?** Cycle 12 was the first `yes`. This cycle is the second.
    The baseline is **two of five landed same-day**; score whether it holds.
-6. **Is a loop fix's *reachability* the thing that fails?** New, and not acted on this cycle. Baseline:
-   **four defects in one sitting, on one rule** — hook (satisfiable without the obligation), gate
-   (excluded its own motivating cases), unit (resolved a label's opening subject, not its claims), plus
-   a stale restatement inside the paragraph explaining stale restatements. Each found by a different
-   reviewer. If a second cycle reproduces this, land the reachability check in `distill-lessons`: name a
-   proposed rule's trigger, gate and unit, and show it fires on the instances it came from.
+6. **Is a loop fix's *reachability* the thing that fails?** Baseline: **four defects in one sitting, on
+   one rule** — hook (satisfiable without the obligation), gate (excluded its own motivating cases),
+   unit (resolved a label's opening subject, not its claims), plus a stale restatement inside the
+   paragraph explaining stale restatements. Each found by a different reviewer, none overlapping.
+
+   **Candidate fix, held for cycle 14 and deliberately not landed here — a reachability step in
+   `distill-lessons` itself.** Before a cycle lands a rule as its upstream fix: take the instances the
+   rule was derived from and, for each, walk **trigger → obligation → report** and say which link it
+   falls out of. Name the gate the rule sits under, the hook that reports it, and the unit it operates
+   on. If an instance escapes, the rule is not the fix yet.
+
+   **It clears the Step-3 gate.** *Generalizable* — every cycle proposes a rule. *Grounded* — four
+   named instances on this PR, all verifiable. *Not already covered* — BP-003 demands a red state for a
+   **check in code**, and this is the one artifact class the project exempts from its own evidence
+   standard; Step 3 asks generalizable / grounded / duplicate / altitude and never asks *would it
+   fire*. *Altitude* — a step in one skill's own output, not another line agents read mid-implementation,
+   so it does not grow `issue-implement` 10.6 a fourth time.
+
+   **The serious objection, tested: is "would it fire here" decidable for prose?** The mechanical
+   figure check was rejected two sections above for exactly this, so the candidate has to clear the
+   same bar or it is that idea in a hat. It clears it, and the reason is the distinction the whole
+   cycle turns on. The figure check had to decide **semantic agreement between two statements over an
+   unbounded corpus** — not decidable. This walks **a bounded, already-enumerated instance set** and
+   asks a concrete question of each. All three of this round's findings answer cleanly: *is the new
+   obligation named in the reporting line?* (no — the hook said "two sweeps"); *does instance #1886
+   satisfy the enclosing trigger?* (no — it changed no behavior); *did enumerating catch L1499?* (no,
+   and that is measured, not predicted — the 22-tag sweep ran and it still came back wrong). **It is
+   the cycle's own landed method — enumerate the bounded set instead of reasoning about the words —
+   turned on the cycle's own output.**
+
+   **The failure mode to watch**, because it is how this becomes ceremony: if a cycle's instance set is
+   large, "show it fires on each" gets expensive and gets faked. The mitigation is already in Step 3 —
+   the instances are the ones the entry must name as evidence anyway, and a cycle that cannot name them
+   does not have a grounded fix to land. **Score it in cycle 14 on whether it catches a reachability
+   defect *before* review does, on a rule that would otherwise have shipped.**
