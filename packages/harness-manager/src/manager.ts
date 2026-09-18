@@ -176,13 +176,21 @@ export interface CompletionRunContext extends PhaseRunContext {
    * bookkeeping (`running` / `succeeded` / `failed`) and is never what a
    * phase reads. Two fields, two enums; the names are kept apart on purpose.
    *
-   * **The word crosses as reported.** `string` widens
-   * {@link HarnessRunOutcome} deliberately: a vendor subtype this framework
-   * version does not define must arrive as itself, because silently reading it
-   * as `finished` is the same silent partial success in a new place. `null`
-   * means no terminal result was reported at all — a distinct fact from
-   * `"finished"`, and a check that cannot tell them apart is the
-   * sometimes-absent shape this contract already refuses.
+   * **The word crosses as reported**, which is why `string` widens
+   * {@link HarnessRunOutcome} here rather than the closed union being reused.
+   *
+   * A *conforming* harness can only report the three words:
+   * `harnessRunHandleSchema` is a `z.enum`, so the union is the whole
+   * vocabulary the contract offers. But this manager does not read a handle
+   * through that schema — `decide` declares `outcome: z.string().nullable()`,
+   * deliberately loose, so a harness that reports something else is seen
+   * rather than rejected at the door. This type says what can actually arrive
+   * at this seam. Narrowing it would not make the value narrower; it would
+   * only stop a phase being able to notice, which is the silent partial
+   * success this field exists to prevent, one layer down. `null` means no
+   * terminal result was reported at all — a distinct fact from `"finished"`,
+   * and a check that cannot tell them apart is the sometimes-absent shape
+   * this contract already refuses.
    *
    * **No settlement decision is made on it here.** The manager's one read of
    * the same value is arm 3's failure text, chosen after the arm already was.
@@ -1579,9 +1587,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               attempt: identity.attempt,
               workspacePath: state.workspacePath!,
               branch: state.branch!,
-              // **Crossed as reported, and compared on by nothing here.** The
-              // input schema widens it to a plain string deliberately, so a
-              // vendor subtype this version does not define arrives intact;
+              // **Crossed as reported, and compared on by nothing here.** This
+              // block's own input schema reads `outcome` as a plain string
+              // deliberately, so a harness that reports outside the contract's
+              // three words is seen here rather than refused at the door;
               // narrowing it or defaulting it to `finished` would put the
               // silent partial success back, one layer down. `null` stays
               // `null`: "reported nothing" is its own fact.

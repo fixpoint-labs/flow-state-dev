@@ -54,11 +54,10 @@ describe("the contract permits the combination this exists for", () => {
 
 describe("the stop report crosses as reported", () => {
   it("is handed to the completion check as the handle's own value", () => {
-    // Not narrowed to a boolean, not defaulted, not re-read from the row. A
-    // vendor subtype this version does not define has to arrive intact, because
-    // quietly reading it as `finished` is the same silent partial success one
-    // layer down — and `null` has to stay `null`, since "reported nothing" is
-    // a different fact from "reported finished".
+    // Not narrowed to a boolean, not defaulted, not re-read from the row.
+    // Quietly reading the word as `finished` would be the same silent partial
+    // success one layer down, and `null` has to stay `null`, since "reported
+    // nothing" is a different fact from "reported finished".
     expect(MANAGER).toContain("stopReport: handle.outcome,");
 
     // Nothing between the handle and the check. `??`, a cast, a ternary or a
@@ -123,8 +122,21 @@ describe("the prompt side and the completion side stay apart", () => {
     expect(leaked).toBeNull();
   });
 
-  it("accepts a word this framework version does not define, and the absent case", () => {
+  it("accepts a word outside the contract's three, and the absent case", () => {
     // Both at the type level, which is where a narrowing would be introduced.
+    //
+    // A *conforming* harness reports only the three words — `harnessRunHandle`
+    // is a closed union. The widening is not about what the contract offers,
+    // it is about what this manager can actually be handed: `decide` reads the
+    // handle's `outcome` as `z.string().nullable()`, so a harness that reports
+    // something else arrives here rather than being refused at the door. The
+    // guard below pins that the loose read and this type stay in agreement.
+    //
+    // Anchored to a line the schema owns, not merely to the text: the first
+    // draft of this guard matched the doc comment three hundred lines above
+    // that quotes the same declaration, so tightening the schema left it green.
+    expect(MANAGER).toMatch(/^\s+outcome: z\.string\(\)\.nullable\(\),$/m);
+
     const unknown: Pick<CompletionRunContext, "stopReport"> = {
       stopReport: "error_context_window_exhausted",
     };
