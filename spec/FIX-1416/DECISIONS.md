@@ -3,7 +3,8 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
 What was considered, what was chosen, and what each locks in. Two decisions are the sign-off
-surface; one fork is still open and needs an answer before the second PR is built.
+surface. The fork that stood open here is **closed** — not by being answered, but because [D2](#d2)
+was decided in a way that dissolved it; see [Open](#open).
 
 ## The tree
 
@@ -11,9 +12,10 @@ surface; one fork is still open and needs an answer before the second PR is buil
 flowchart TD
   I["FIX-1416"] --> D1["D1 · wiring, guards, docs<br/>plus one built thing: registration"]
   D1 -.->|"rejected"| X1["a tools registry beside the blocks scan<br/>a second map naming the same files"]
-  I --> D2["D2 · a colocated tool JOINS the seat's declaration"]
+  I --> D2["D2 · a folder REGISTERS a name<br/>the seat's tools: still grants its use"]
   D2 -.->|"rejected"| X2["deliver it as a capability controlTool<br/>says the opposite of what a control is,<br/>and leaks to every seat of the kind"]
-  I --> Q["OPEN · which folder levels are ambient"]
+  D2 -.->|"rejected"| X3["ambient — the folder grants use by itself<br/>costs tools: its status as the one place to look"]
+  D2 --> Q["the levels fork · DISSOLVED by the ruling<br/>all three register; none grants"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -53,19 +55,35 @@ architect called primary has never been written down, wired, or proved — which
 documentation and proof deliverable, and one small build.
 
 <a name="d2"></a>
-## D2 · A worker-colocated tool is ambient by joining the seat's own declaration, not by being exempted from the fence
+## D2 · A `blocks/` folder REGISTERS a name for the seats that can see it. The seat's `tools:` is what grants its use
+
+**Decided by the owner, in their own words, after this document was approved.** The paragraph below
+the table records what was *proposed* and why; this table records what was *decided*. Implemented on
+[#1909](https://github.com/fixpoint-labs/flow-state-dev/pull/1909).
+
+> `blocks/` is a way of registering a block by name that can be used… if a skill uses a block, it has
+> the block registered so that it can add it to its tools list, **but it must add it**. Same for task
+> board workers. It's just a way of registering what a name refers to.
 
 | | |
 |---|---|
-| **Instead of** | Delivering it through a capability's `controlTools`, the one shipped exemption the fence has |
-| **Because** | The fence governs what a **capability** contributes to a block that declared `tools:`. A block sitting beside a worker is not a capability contribution — the kind builds that seat's declared list (`agent-worker-flow.ts:615`), so "ambient" means the list it builds is *named plus colocated*. Core is untouched and the fence's guarantee stays literally true. The exemption route would say the opposite of what a control is: core's own doc reserves `controlTools` for a tool "whose presence is already implied by the block's own configuration" and sends anything granting new reach to `tools` (`packages/core/src/capability/types.ts:106`). It would also leak — a capability is installed on the **kind**, so one worker's folder would hand its tool to every seat of that kind, which is exactly the failure the resource walk already refuses by name (`codegen/discover-resource-modules.ts:80`) |
-| **Locks in** | `tools:` in a worker file stops being the complete answer to *what can this seat call*. A seat with `tools: []` and a `blocks/` folder reaches those blocks, and the built-in kind's own documentation — "a seat with `tools: []` reaches nothing, delegated or not" (`agent-worker-flow.ts:51`) — becomes true only of the catalog half. Anyone auditing a seat reads the file **and** the folder. That is the cost of the ruling, and it is not recoverable later without breaking trees that relied on it |
+| **Instead of** | (a) Delivering it through a capability's `controlTools`, the one shipped exemption the fence has. (b) **Ambient** — the folder grants use by itself, which is what this document proposed and what the paragraph below argues for |
+| **Because** | Registering a name and granting its use are two different things, and only the second is a permissions question. A folder answers *what does this name refer to, for this seat*; the seat's `tools:` answers *what may this seat call*. So a block in `workers/<name>/blocks/` becomes **resolvable by that seat** and is not callable until the seat names it. `tools:` therefore stays the complete and exclusive answer, the fence does not move, nothing is exempted from it, and core is untouched. Precedence for resolving a name is **worker → team → org**, first match wins — name resolution, not set merging. Skills union because they are all active; blocks resolve because they are *named*. The `controlTools` route stays rejected for its own reasons: core's doc reserves `controlTools` for a tool "whose presence is already implied by the block's own configuration" and sends anything granting new reach to `tools` (`packages/core/src/capability/types.ts:106`), and a capability is installed on the **kind**, so one worker's folder would hand its tool to every seat of that kind (`codegen/discover-resource-modules.ts:80`) |
+| **Locks in** | A file appearing in a folder never widens what an agent can do. `tools:` keeps its status as the one place to look, so the built-in kind's own documentation — "a seat with `tools: []` reaches nothing, delegated or not" (`agent-worker-flow.ts:51`) — stays literally true of both halves. The cost moves to the other side of the ledger: a block an author drops beside a worker does nothing until they also add a line, which is one line of churn per seat per tool and is the audit trail. What this does **not** lock in is a precedence story at run time: a name resolves to exactly one block at build time, and the shadowed one is not also registered |
 
-**This is the ruling's real price and it should be paid knowingly.** The ruling — a tool in the
-worker's folder is ambient "because why else would it be in that folder" — is the same argument
-that makes that seat's `skills/` folder ambient, and it is a good argument. It just costs the
-`tools:` list its status as a single place to look. A `fsdev` command that prints a seat's full
-model-visible toolset is the obvious mitigation and is a follow-up, not this issue.
+**What was proposed here, and why it lost.** The proposal was that a tool in the worker's folder is
+ambient — "because why else would it be in that folder" — which is the same argument that makes that
+seat's `skills/` folder ambient. It is a good argument and it is why this document carried it. Its
+price was written down honestly at the time: `tools:` stops being the complete answer to *what can
+this seat call*, a seat with `tools: []` and a `blocks/` folder reaches those blocks, and anyone
+auditing a seat has to read the file **and** the folder — not recoverable later without breaking
+trees that relied on it. The owner's ruling declines to pay that price, and the argument it declines
+it with is that the skills analogy does not hold: a skill is text in a prompt and a tool is running
+code with side effects, so "it is here, therefore it is yours" is a different proposition for each.
+
+**Two things this refunds.** The follow-up D2 called for — a `fsdev` command printing a seat's full
+model-visible toolset — was the mitigation for a cost that no longer exists, so it is no longer owed
+*for this reason*. And the fork below dissolves rather than being answered.
 
 <a name="d3"></a>
 ## Decided, not asked
@@ -119,11 +137,14 @@ model-visible toolset is the obvious mitigation and is a follow-up, not this iss
   — the seat's `tools:` list, the model's prompt and trace, and a skill's `allowed-tools`
   validation. The guard goes at the kind's door rather than at the scan, so it also covers a
   hand-built catalog and leaves a block used only as a flow action alone.
-  <br/>**Both maps, because the colocated map is filename-keyed too** and would otherwise rebuild
-  the ambiguity on the second surface. Once the rule holds on both, the collision check (BR-8) is
-  stated over **resolved tool names** rather than keys — which is what closes the sharper case: a
-  colocated block named `bar` colliding with a catalog tool `bar` is invisible to a key-based
-  check and would fail on the first turn instead of at hire.
+  <br/>**Both maps, because the seat's own map is filename-keyed too** and would otherwise rebuild
+  the ambiguity on the second surface. The one-name rule itself is unchanged by the decided
+  [D2](#d2); what the decision changed is its neighbour. The collision check (BR-8) was a
+  **refusal** when a name could reach a seat from two places at once with no answer between them.
+  Under the ruling there is always an answer — worker → team → org, first match wins — so a seat's
+  own `bar` shadowing a catalog `bar` is resolved rather than refused, and it is resolved at build
+  time, once, with the shadowed entry not also registered. There is no precedence story at run time
+  and nothing fails on a first turn.
   **What it binds:** a file's basename is now a tool name a model sees, so tool names inherit the
   segment rules — lowercase, digits, single hyphens, and **no dot**, because a dot is the joiner a
   worker id is split on (`packages/workforce/src/loader/segments.ts:29`). A namespace prefix like
@@ -131,10 +152,12 @@ model-visible toolset is the obvious mitigation and is a follow-up, not this iss
   [FIX-1434](https://linear.app/fixpoint-labs/issue/FIX-1434) needs to know that before it picks a
   spelling.
 - **A colocated tool does not travel to a worker the seat delegates to.** The delegation fence
-  narrows a board worker to the delegating seat's own `tools:` list
-  (`agent-worker-flow.ts:521`), and ambient tools join the *generator's* declared list rather than
-  that list — so that line keeps its exact current meaning. A delegated worker is its own seat with
-  its own folder and its own ambient set, which is coherent and needs no new rule.
+  narrows a board worker to the delegating seat's own `tools:` list (`agent-worker-flow.ts:521`),
+  so that line keeps its exact current meaning. Under the decided [D2](#d2) this falls out of
+  **where the name landed** rather than from a rule of its own: a name that resolved to the seat's
+  own folder is carried as a resolved block on the seat's bag, and the names that stayed on `tools`
+  are the catalog half the fence reads. A delegated worker is its own seat, with its own folder and
+  its own list, which is coherent and needs no new rule.
 - **The colocated folder is called `blocks/`, not `tools/`.** The architect fence forbids a parallel
   `tools/` tree, `resources/` already demonstrates one folder name repeated at every level, and the
   tree docs currently describe a `tools/` folder as "layout, not input"
@@ -156,12 +179,24 @@ model-visible toolset is the obvious mitigation and is a follow-up, not this iss
 | A second option on `defineAgentWorkerFlow` for the per-seat map | Hire already carries every other per-seat bag, and the one thing the factory route could have bought — statically installed colocated resources — is closed by the kind-wide resource model regardless. See "Decided, not asked" |
 | Collecting a colocated block's resource declarations onto the kind | More useful than refusing, and it installs one seat's store for every seat of that kind. Impossible on the hire path anyway. Refusal named at the door leaves the same case open through one extra line |
 | **Limiting D1 instead of registering** — a catalog tool that declares resources is out of the recipe, and the author declares the store on the kind or mounts the block as a flow action | Honest, and it makes the primary recipe worse at the one thing it exists for. The catalog is already kind-wide, so registering costs nothing the kind was not already paying, and it makes D1's claim true rather than true-for-resource-free-blocks. Rejected on those grounds, not because it was unworkable |
-| **Holding PR2 until the levels fork is answered** | Dropped during review. `BR-10` already encodes worker-only and refuses the other levels with a fix message, so PR2 has a rule to build against. Widening later is additive and changes no file that exists, so the fork stays open without blocking |
+| **Holding PR2 until the levels fork is answered** | Dropped during review, and vindicated: the fork never needed answering. `BR-10` gave PR2 a rule to build against, and when [D2](#d2) was decided the fork dissolved and `BR-10` widened — additively, changing no file that already existed, exactly as the reasoning for not holding predicted |
 
 <a name="open"></a>
-## Open
+## Closed · the fork that stood here
 
 ### Tools sitting in a folder: only the worker's own, or the team's and the org's too?
+
+**Dissolved by [D2](#d2), not answered.** The question only exists while a folder GRANTS use. Once a
+folder merely registers a name, "how far up the tree does *automatically* go" stops being a
+permissions question and becomes a name-resolution one, which the owner's ruling answers outright:
+**worker → team → org, first match wins.** All three levels register; none of them grants. So the
+built recipe reads every level, and `BR-10`'s refusal moved from "the team and org levels" to the
+levels that have no seats under them at all — `org/` and `org/workers/<worker>/`, where a `blocks/`
+folder can reach nobody however it is read.
+
+The argument below is kept because it is the reasoning that was weighed, and because the thing that
+dissolved it is worth seeing: **the entire case for worker-only was blast radius**, and the declared
+rule sets the blast radius to zero. Read it as the record of a fork, not as an open one.
 
 **Plain terms.** A worker gets a folder on disk. Anything in it is already theirs automatically —
 their instructions, their skills. The ruling adds tools to that list. The question is how far up the
@@ -175,7 +210,7 @@ seats can do, with nothing in any of their own files recording it — and a tool
 side effects, where a skill is text in a prompt. Naming it per seat costs a line of churn per seat
 per tool, and the line is the audit trail.
 
-**My recommendation: the worker's own folder only, for now.** A team-wide custom tool goes in
+**The recommendation at the time — superseded by the ruling above: the worker's own folder only, for now.** A team-wide custom tool goes in
 `workforce/blocks/` and each seat names it. The blast radius of "one file, ten seats, no record"
 is the wrong default for code the model can execute, and this is the direction that is cheap to
 change later: a folder that is currently refused can start being read without altering the meaning
@@ -193,6 +228,11 @@ widen it. Wrong in the other direction is a permissions surface we can't narrow 
 trees. That asymmetry is most of my argument; if you have the usage picture I don't, it outweighs
 it.
 
+**What actually happened:** the line per seat per tool is what shipped — for every level, not just
+the team one — because under the declared rule that line is the grant. The asymmetry that made this
+fork worth asking about is gone with it: widening a level now only changes which names a seat can
+resolve, never what it may call.
+
 ## How it got here
 
 - **Draft** — framed from the shipped fence and the shipped scan rather than from the ticket's
@@ -204,6 +244,17 @@ it.
   advertised to the model and finds no handle, silently, so declaring one is now refused by name.
   The one-name rule was extended to the colocated map and its collision check restated over
   resolved tool names. PR2 stopped waiting on the levels fork, which remains open and unanswered.
+- **Decided after approval** — the owner ruled D2 in their own words: a `blocks/` folder registers a
+  name, and the seat's `tools:` grants its use. The decision is amended into [D2](#d2) in place, with
+  what was proposed kept beside it. The levels fork dissolved rather than being answered, and the
+  `fsdev`-command follow-up D2 asked for is no longer owed for D2's reason. Implemented on
+  [#1909](https://github.com/fixpoint-labs/flow-state-dev/pull/1909), which also carries the fix for
+  the resource gap below on **both** paths: a catalog block's declarations are registered on the kind,
+  and a colocated block that declares one is refused by name. The symptom this document predicted for
+  that gap is **wrong** and #1909 does not repeat it — it does not reliably throw
+  `Resource "<accessor>" is not registered`. Colocated with a guarded read there is no throw at all;
+  through the catalog with a real read it is a `TypeError`. In both cases **the turn reports
+  success**, and that silent success is the danger.
 - **Review round 2** — the resource gap turned out to be wider than the colocated half: a block
   reached through `catalog:` is outside the same walk, so D1's "already works" was overstated. The
   POC reproduced it on that path (test 7) and D1 now carries one built thing — the kind registers
