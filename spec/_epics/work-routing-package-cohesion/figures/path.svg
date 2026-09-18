@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 320" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path: a ship-fence band under the axis saying the W3 floor is open with four children and no W4 ship PR merges until they close. Below it, nine lanes against time with a now line at September 18. Two input lanes from W3, TEAM.md and the tools fence, carry bars that stop at the now line and read spec approved and unbuilt. FIX-1408 carries the only done bar, done by decision. The three first-cut lanes — runtime inventory, channel boards and package cohesion — are empty lanes ahead of the now line and read spec and POC may start now. The two phase-2 lanes, catalog manifests and channel-admin, are empty and read off the exit gate. The last lane, the manager-queue lab, is empty and reads the proof, unadopted. The critical path is drawn in the gutter through the inventory, the boards and the lab.">
+     aria-label="The path: a ship-fence band under the axis saying the W3 floor is open with four children and no W4 ship PR merges until every W3 child carrying an implementation is merged to main. Below it, nine lanes against time with a now line at September 18. Two input lanes from W3, TEAM.md and the tools fence, carry bars that stop at the now line and read spec approved and unbuilt. FIX-1408 carries the only done bar, done by decision. The three first-cut lanes — runtime inventory, channel boards and package cohesion — are empty lanes ahead of the now line and read spec and POC may start now. The two phase-2 lanes, catalog manifests and channel-admin, are empty and read off the gate but holding the wrap. The last lane, the manager-queue lab, is empty and reads the proof, unadopted. The critical path is drawn in the gutter through the inventory, the boards and the lab.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -37,7 +37,7 @@
   <g id="ship-fence">
     <text class="t-fen" x="16" y="62">SHIP FENCE</text>
     <rect class="fence" x="200" y="50" width="724" height="16" rx="2"/>
-    <text class="t-fen" x="212" y="62">W3 floor open — FIX-1377 · FIX-1416 · FIX-1435 · FIX-1441 — no W4 ship PR merges until they close</text>
+    <text class="t-fen" x="212" y="62">W3 open, 4 children — no W4 ship PR merges until every W3 child carrying an implementation is merged to main</text>
   </g>
 
   <path class="now" d="M298 74 L298 276"/>
@@ -74,19 +74,19 @@
 
     <text class="t-ln" x="16" y="204">FIX-1394 package cohesion</text>
     <path class="lane" d="M304 199 L548 199"/>
-    <text class="t-s" x="560" y="204">POC matrix first · ship tickets after ratify</text>
+    <text class="t-s" x="560" y="204">POC matrix &#8594; ratify · the proof consumes the contract</text>
 
     <text class="t-ln" x="16" y="226">FIX-817 catalog manifests</text>
     <path class="lane" d="M304 221 L548 221"/>
-    <text class="t-s" x="560" y="226">phase-2 · off the gate · waits on inventory</text>
+    <text class="t-s" x="560" y="226">phase-2 · holds the wrap · after 1405's contract</text>
 
     <text class="t-ln" x="16" y="248">FIX-1415 channel-admin</text>
     <path class="lane" d="M304 243 L548 243"/>
-    <text class="t-s" x="560" y="248">phase-2 · off the gate · design only</text>
+    <text class="t-s" x="560" y="248">phase-2 · holds the wrap · design only</text>
 
     <text class="t-ln" x="16" y="270">FIX-1430 manager-queue lab</text>
     <path class="lane" d="M304 265 L548 265"/>
-    <text class="t-s" x="560" y="270">the proof — unadopted. The epic ends here</text>
+    <text class="t-s" x="560" y="270">the proof — unadopted. The exit gate ends here</text>
   </g>
 
   <g id="legend">
