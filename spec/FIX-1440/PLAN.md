@@ -134,6 +134,27 @@ the assertion no longer meant anything.
 
 ## Notes from review
 
+**Round 4 — owner + FSD Architect, 2026-09-18.** The owner specified the DevTool
+([UX note](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5732752729),
+[wireframes ask](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5732758311)):
+parentage as a **label** on the session row, same-flow runs **indented under** the parent, a **link
+back to the parent** from the run's own view, and — new — the run's block activity loadable
+**inline in the parent's block tree, opt-in and not by default**. Folded as S5, S12 and D5, with
+three wireframes.
+
+> **Implementer, read this before S5.** "Indented under the parent" is **not** the recursive
+> Children tab returning under a new name, and the Architect asked for that to be said in as many
+> words. Indentation, the parent label and the opt-in inline load are **provenance chrome** over a
+> list the flow already returns. The nest-as-org-chart teaching — a recursive Children view that is
+> the *only* door to the work — is still what this change kills. The fence is the guardrail above:
+> one level, no recursive fetch, no breadcrumb.
+
+The Architect also asked that D1's **API default** not be settled by implication from a note about
+presentation. Agreed and corrected: `DECISIONS.md → D1` now records the direction as settled and
+the **wire default as open**, with the spec drafting against opt-in, and `BUSINESS-RULES`' rule
+that a listing *without* the include returns today's set byte-identical **stays as written** until
+the owner answers.
+
 **Round 3 — owner amendment, 2026-09-18.** Direction changed from removal to first-class
 addressability before implementation began. Checking the premise showed the gap is one missing
 opt-in on `GET /sessions`; every other route already serves these sessions by id. The rounds below

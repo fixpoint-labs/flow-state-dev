@@ -1,0 +1,54 @@
+<svg viewBox="0 0 940 236" width="940" height="236" role="img" aria-label="A wireframe of a dispatch run opened as its own session in the DevTool. A banner across the top states that this session was dispatched, names the session that spawned it, and links back to that parent. Below the banner the run's own block tree reads exactly like any other session's."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .pane  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .row   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .band  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .lbl   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .hd    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .sm    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .keep  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9px; letter-spacing:.09em; }
+    .link  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .note  { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .noteh { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+    .edge  { stroke:var(--ink-3); stroke-width:1; fill:none; }
+  </style>
+
+  <text class="lbl" x="20" y="24">DEVTOOL · THE RUN OPENED ON ITS OWN</text>
+  <rect class="pane" x="16" y="34" width="556" height="186" rx="6"/>
+
+  <text class="hd" x="36" y="58">summarize-report</text>
+
+  <rect class="band" x="36" y="68" width="500" height="40" rx="5"/>
+  <text class="keep" x="52" y="86">DISPATCHED RUN · SPAWNED BY</text>
+  <text class="sm" x="52" y="101">Weekly report chat</text>
+  <text class="link" x="424" y="101">↑ open parent</text>
+
+  <rect class="row" x="36" y="120" width="500" height="28" rx="5"/>
+  <text class="sm" x="52" y="138">read the figures resource</text>
+  <rect class="row" x="36" y="154" width="500" height="28" rx="5"/>
+  <text class="sm" x="52" y="172">draft the summary</text>
+  <rect class="row" x="36" y="188" width="500" height="28" rx="5"/>
+  <text class="sm" x="52" y="206">settle the board row</text>
+
+  <path class="edge" d="M540 88 L596 88"/>
+  <text class="noteh" x="604" y="80">It says what it is, and points home</text>
+  <text class="note" x="604" y="96">A run opened on its own states that it was</text>
+  <text class="note" x="604" y="110">dispatched and links to the session that</text>
+  <text class="note" x="604" y="124">spawned it. That link is the same provenance</text>
+  <text class="note" x="604" y="138">edge the list row carries, on the other surface.</text>
+
+  <text class="noteh" x="604" y="168">One session, three ways in</text>
+  <text class="note" x="604" y="184">The flow's list, the parent's block tree, or a</text>
+  <text class="note" x="604" y="198">direct link. None of them is privileged, and</text>
+  <text class="note" x="604" y="212">none of them is the only door.</text>
+</svg>

@@ -24,10 +24,13 @@ away and the sessions are still second-class, just harder to find.
 
 ## D1 — Make dispatch-run sessions first-class on their flow {#d1}
 
-**Status: SETTLED.** Direction from the owner amendment of 2026-09-18
-([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5724121456));
-the sub-question below was answered by the owner on 2026-09-18
+**Status: direction SETTLED; the wire default is still OPEN.** Direction from the owner amendment of
+2026-09-18 ([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5724121456)),
+and the **presentation** specified on 2026-09-18
 ([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5732752729)).
+What the owner has not answered is whether `GET /sessions` itself should default to including
+dispatch runs. This spec drafts against **opt-in** and says below why; nothing in it blocks on the
+answer, because opt-in is the shape either way and only the default would move.
 
 **Instead of** deleting the browsable Children surface, give a dispatch-run session the same
 standing on its flow as any other session: listable and openable on the flow's ordinary session
@@ -64,8 +67,9 @@ This direction adds surface, which tenet 3 makes us justify rather than assume: 
 is that the surface being added is the one that makes an existing surface honest, and the DevTool
 Children *tree* — the recursive descent that most strongly taught the nest — still goes.
 
-**The sub-question, answered.** It was: do dispatch runs appear in the **default** session listing,
-or behind an opt-in? The owner's answer describes the *view*, not the wire:
+**The sub-question, half answered.** It was: do dispatch runs appear in the **default** session
+listing, or behind an opt-in? The owner's answer describes the *view*, and says nothing directly
+about the wire:
 
 > Every session is now top level in the sense that you could go to that flow and see all sessions.
 > However those sessions can still be spawned/parented by another, in which we would show a label
@@ -77,14 +81,20 @@ So the listing shows three things a flat list cannot: a **label** saying this se
 (or re-used) by a dispatcher, **indentation** under the session that spawned it, and a **link from
 the run back to its parent**. That is the shape; see the wireframe in `SPEC.md`.
 
-**The reading taken, and it is a reading.** "Top level in the sense that you *could* go to that
-flow and see all sessions" is a statement about reachability, so the **API keeps the opt-in** and
-**the DevTool opts in by default** and renders the hierarchy above. That delivers every element
-the owner described, and a third-party consumer of `GET /sessions` still sees exactly what it sees
-today — the FIX-1009 protection survives where it was aimed, at callers who never asked for
-machine sessions. Making the *wire* default-on instead is a one-line change to S1 and a `minor`
-with a behaviour-change note; **say so if that was the intent.** Everything else in this spec is
-unaffected either way.
+**The reading taken, and it stays a reading until the owner says otherwise.** "Top level in the
+sense that you *could* go to that flow and see all sessions" is a statement about reachability, so
+this spec drafts against the **API keeping the opt-in** while **the DevTool opts in by default**
+and renders the hierarchy above. That delivers every element the owner described, and a
+third-party consumer of `GET /sessions` still sees exactly what it sees today — the FIX-1009
+protection survives where it was aimed, at callers who never asked for machine sessions.
+
+It is deliberately **not** recorded as the owner settling the wire default, because he did not
+address it. Two different costs hang on it: the view question costs nothing, and the wire question
+changes the result set for every existing consumer. Folding the second into an answer about the
+first would be inferring a decision from silence. If the wire default should flip, it is a
+one-line change to S1 plus an announced behaviour-change line in the changeset, and the
+`BUSINESS-RULES` "byte-identical without the include" rule inverts with it — that rule stays as
+written until then.
 
 **Indentation is a view, not a tree.** It is worth being explicit, because the thing this issue
 objects to is a nest: the list stays one flat, ordinary session list that happens to indent a row
@@ -232,10 +242,14 @@ close with the substrate. Four of five stay open, because four of five describe 
 
 ## Open
 
-**D4 only** — what replaces the descendant-chain liveness check. D1 is settled in direction and in
-its default, D5 is settled, and D2 and D3 were never forks for the product owner. D4 is the one
-question left, and it is the one with a security cost rather than a navigation cost, which is why
-it is not being inherited from D1.
+- **D4** — what replaces the descendant-chain liveness check. The one with a security cost rather
+  than a navigation cost, which is why it is not being inherited from D1. Blocks S6 and nothing else.
+- **D1's wire default** — whether `GET /sessions` itself defaults to including dispatch runs. The
+  spec drafts against opt-in and is implementable that way, so this blocks nothing; it is listed
+  here because it was inferred rather than answered, and an inference should not sit in the record
+  looking like a decision.
+
+D5 is settled. D2 and D3 were never forks for the product owner.
 
 ## Settled
 

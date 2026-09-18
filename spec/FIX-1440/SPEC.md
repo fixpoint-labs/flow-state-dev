@@ -6,7 +6,7 @@ Under [FIX-1208](https://linear.app/fixpoint-labs/issue/FIX-1208) (Remove supers
 |---|---|---|
 | runs background work and wants to see it | Can only reach it by opening the conversation and descending into its children. The work exists, but not as something the flow lists | Finds it on the flow's own session list, like any other session, and opens it directly |
 | reads our docs to learn how background work is organised | Learns a session tree: a parent, its children, and children under those | Learns that dispatched work runs in its own session on the same flow, and that the parent is recorded as provenance rather than as an owner |
-| opens the DevTool on a conversation | Sees a **Children** tab and descends, getting another Children tab at each level | Sees dispatch runs in the flow's session list, indented one level under the session that spawned them, each labelled and linking back to its parent. No tree to walk down |
+| opens the DevTool on a conversation | Sees a **Children** tab and descends, getting another Children tab at each level | Sees dispatch runs in the flow's session list, indented one level under the session that spawned them, each labelled and linking back to its parent. The hierarchy is shown, not navigated — nothing to drill into |
 | is reading one conversation and wants to know what the work it kicked off actually did | Opens the run's own session and reads it there, then goes back | Pulls the run's activity into the conversation's own block tree, on demand. Marked as a separate session, and collapsed until asked for |
 | asks the framework whether a background request is still alive | Gets an answer only if that work hangs beneath the asking session | Gets an answer for their own work on that flow — see D4, which is open |
 | already dispatches work today (`dispatcher()`, task hand-off) | Works | Works, unchanged. Same derived session, same ids |
@@ -34,6 +34,12 @@ separate session; the reader chooses to pull its activity in. That default is th
 preference — a dispatcher draining fifty rows would otherwise pour fifty sessions into one block
 tree, which is the same unreadability the flat session list was protecting against, moved one
 surface over.
+
+![A dispatch run opened as its own session](figures/devtool-run-session.svg)
+
+And opened on its own, the run says what it is and points home. The parent link is the same
+provenance edge the list row carries, on the surface where a reader who arrived by direct link
+needs it.
 
 ## The surface, as a developer sees it
 
@@ -93,7 +99,7 @@ the invitation to descend does not.
 
 1. **What replaces the descendant-chain liveness check — the one still open, and the one with a security cost.** Today a caller may ask whether a request is alive only if it hangs beneath them. That is the "nest-only authorization" the amendment names, but the same walk also re-checks principal, tenant and flow at every hop. Recommend keeping the walk and adding a same-flow-same-principal arm beside it, rather than replacing it outright. *If wrong:* replacing it widens a liveness answer from "my subtree" to "anything of mine on this flow." → [D4](DECISIONS.md#d4)
 
-2. **Dispatch runs become first-class on their flow — SETTLED.** Amended 2026-09-18, then specified: they list on the flow, indent one level under the session that spawned them, carry a spawned-or-re-used label, and link back to their parent. One reading was taken rather than asked: the **API keeps the opt-in and the DevTool opts in by default**, so a third-party caller of `GET /sessions` sees exactly what it sees today. *If wrong:* say so and the wire default flips — it is a one-line change plus a behaviour-change note in the changeset. → [D1](DECISIONS.md#d1)
+2. **Should `GET /sessions` itself start including dispatch runs, or stay opt-in? — OPEN, and small.** The direction is settled and the DevTool shape is specified; what is not answered is the wire default. Drafting against **opt-in**: the DevTool passes the include, so you see every session on the flow, while a third-party caller of `GET /sessions` still gets exactly what it gets today. *If wrong:* one line in S1, plus an announced behaviour-change note, and the "byte-identical without the include" rule inverts. Nothing blocks on it either way. → [D1](DECISIONS.md#d1)
 
 3. **A run's activity reads inside its parent, loaded on demand — SETTLED, and it is new scope.** The block tree gains a node for a dispatched run that the reader can expand in place, so following one causal chain does not mean bouncing between two sessions. Collapsed by default. This is the one part of the change that adds a surface rather than re-pointing one, which tenet 3 makes us say out loud. *If wrong:* the cheapest cut in this spec — drop it and the rest still stands. → [D5](DECISIONS.md#d5)
 
