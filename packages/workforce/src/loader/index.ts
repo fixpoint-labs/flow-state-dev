@@ -21,18 +21,12 @@
  * that never denote anything, and `validateSegment` is the one rule for what a
  * name in this tree may be. What a reader does inside a team is its own.
  *
- * **One rule binds every reader here, and the next one added beside them.** A
- * tree entry the published convention tells an author they may write is either
- * consumed or refused loudly, naming the path. It is never passed over in
- * silence — an author who followed the docs and got no seat, no channel and no
- * error has no way left to find out. The rule covers what the convention
- * publishes, not only where a file sits: a ref is an address, so a published
- * ref that names a worker must name one a reader accounts for.
- *
- * `discoverWorkforceCode` states the same rule for the code folders;
- * `test/published-tree-surface.test.ts` checks it for the whole tree, against
- * what the published pages declare, and is where anything still silent is
- * recorded with the issue that owns it.
+ * **One rule binds every reader here, and the next one added beside them.**
+ * Anything the published convention tells an author they may write is either
+ * consumed or refused loudly, naming it — never passed over in silence, because
+ * an author who followed the docs and got no seat and no error has no way left
+ * to find out. `test/published-tree-surface.test.ts` enforces it and carries the
+ * reasoning, the exclusions, and whatever is still silent.
  *
  * Kept behind a subpath so importing the package root does not pull a consumer
  * onto `node:fs`.
