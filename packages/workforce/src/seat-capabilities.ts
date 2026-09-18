@@ -102,9 +102,22 @@ const BUILD_TIME_ONLY_KEYS = [
 /**
  * The surface keys the dynamic path DOES carry, as the framework resolves it.
  *
+ * `controlTools` is here for the same reason `tools` is — the framework walks
+ * a dynamic entry for both in one pass — but it behaves differently once it
+ * arrives: a control is never fenced by the block's `tools:`, while a catalog
+ * tool is. So a seat that selects a control-bearing preset can call that
+ * control even though its own `tools:` list is empty. That is the framework's
+ * rule, not this module's: the capability is the declaration, and a control is
+ * usually built inside it and never exported, so there is no name a `tools:`
+ * list could use to let it back in.
+ *
  * Kept only so the two lists can be checked against `PresetDef` together.
  */
-const DYNAMIC_KEYS = ["context", "tools"] as const satisfies readonly (keyof PresetDef)[];
+const DYNAMIC_KEYS = [
+  "context",
+  "tools",
+  "controlTools"
+] as const satisfies readonly (keyof PresetDef)[];
 
 /**
  * Compile-time proof that every `PresetDef` key is classified as one or the
