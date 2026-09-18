@@ -19,6 +19,7 @@
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 
@@ -92,77 +93,98 @@ function walk(dir, out = []) {
   return out;
 }
 
-const hits = [];
-for (const base of ROOTS) {
-  for (const file of walk(join(ROOT, base))) {
-    const rel = relative(ROOT, file);
-    if (EXCLUDE.some((rx) => rx.test(rel))) continue;
-    const lines = readFileSync(file, "utf8").split("\n");
-    lines.forEach((line, i) => {
-      if (!KEYING.test(line) || !KIND.test(line) || !STORAGE_SUBJECT.test(line)) return;
-      if (ALLOW.some((rx) => rx.test(line))) return;
-      hits.push({ file: rel, line: i + 1, text: line.trim().slice(0, 240) });
-    });
-  }
+/**
+ * The two scanners, exported as pure functions over text so the guard's own
+ * boundaries are testable. A guard that cannot be shown to fail is not a
+ * guard; the negative controls live in
+ * `packages/core/test/isolation-coordinate-check.test.ts`.
+ */
+export function scanLines(text) {
+  const out = [];
+  text.split("\n").forEach((line, i) => {
+    if (!KEYING.test(line) || !KIND.test(line) || !STORAGE_SUBJECT.test(line)) return;
+    if (ALLOW.some((rx) => rx.test(line))) return;
+    out.push({ line: i + 1, text: line.trim().slice(0, 240) });
+  });
+  return out;
 }
 
-/**
- * Second check: a figure's `aria-label` must not drift from its own visible
- * text.
- *
- * The token check above cannot see this class at all, and that is measured,
- * not assumed: with the stale label in place it still printed OK. The label
- * read "keyed by member identity" — naming neither the kind nor the instance,
- * so no co-occurrence rule matches it — while the diagram beside it said
- * "PER SEAT". An `aria-label` is what a screen-reader user and a scraping
- * agent actually receive, so a figure that argues with itself ships the wrong
- * claim to exactly the readers least able to check it.
- *
- * The rule is narrow on purpose: only for figures whose VISIBLE text commits
- * to a storage coordinate, the label has to commit to the same one.
- */
 const COORDINATE = /\bseats?\b|\binstances?\b/i;
 const VISIBLE_COMMITS = /per seat|per-seat|flow instance id|instance id,/i;
 
-const drift = [];
-for (const base of ROOTS) {
-  for (const file of walk(join(ROOT, base))) {
-    const rel = relative(ROOT, file);
-    if (EXCLUDE.some((rx) => rx.test(rel))) continue;
-    const src = readFileSync(file, "utf8");
-    for (const svg of src.matchAll(/<svg\b[^>]*aria-label="([^"]*)"[^>]*>([\s\S]*?)<\/svg>/g)) {
-      const label = svg[1];
-      const visible = [...svg[2].matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)]
-        .map((m) => m[1])
-        .join(" ");
-      // Only figures that are actually about stored rows. "ONE CHILD PER
-      // SEAT" on a dispatch diagram commits to no storage coordinate.
-      if (!/flowisolation|isolat|resource|stored at|keyed/i.test(visible + label)) continue;
-      if (!VISIBLE_COMMITS.test(visible)) continue;
-      if (COORDINATE.test(label)) continue;
-      const line = src.slice(0, svg.index).split("\n").length;
-      drift.push({ file: rel, line, label: label.slice(0, 160) });
+/**
+ * A figure's `aria-label` must not drift from its own visible text. The token
+ * scan above cannot see this class at all, and that is measured rather than
+ * assumed: with the stale label in place it still printed OK. The label read
+ * "keyed by member identity" — naming neither the kind nor the instance, so no
+ * co-occurrence rule matches it — while the diagram beside it said "PER SEAT".
+ * An `aria-label` is what a screen-reader user and a scraping agent actually
+ * receive, so a figure that argues with itself ships the wrong claim to exactly
+ * the readers least able to check it.
+ *
+ * Narrow on purpose: only for figures whose VISIBLE text commits to a storage
+ * coordinate does the label have to commit to the same one.
+ */
+export function scanFigureDrift(src) {
+  const out = [];
+  for (const svg of src.matchAll(/<svg\b[^>]*aria-label="([^"]*)"[^>]*>([\s\S]*?)<\/svg>/g)) {
+    const label = svg[1];
+    const visible = [...svg[2].matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)]
+      .map((m) => m[1])
+      .join(" ");
+    // Only figures actually about stored rows. "ONE CHILD PER SEAT" on a
+    // dispatch diagram commits to no storage coordinate.
+    if (!/flowisolation|isolat|resource|stored at|keyed/i.test(visible + label)) continue;
+    if (!VISIBLE_COMMITS.test(visible)) continue;
+    if (COORDINATE.test(label)) continue;
+    out.push({ line: src.slice(0, svg.index).split("\n").length, label: label.slice(0, 160) });
+  }
+  return out;
+}
+
+/** Every in-scope file in the docs corpus, as {rel, src}. */
+export function corpusFiles() {
+  const files = [];
+  for (const base of ROOTS) {
+    for (const file of walk(join(ROOT, base))) {
+      const rel = relative(ROOT, file);
+      if (EXCLUDE.some((rx) => rx.test(rel))) continue;
+      files.push({ rel, src: readFileSync(file, "utf8") });
     }
   }
+  return files;
 }
 
-if (hits.length > 0 || drift.length > 0) {
-  if (hits.length > 0) {
-    console.error(
-      `\n[isolation-coordinate] ${hits.length} line(s) may still teach per-KIND isolation.\n` +
-        `Since FIX-1323 the coordinate is the flow INSTANCE id; hireWorkforce mints one per seat.\n`
-    );
-    for (const h of hits) console.error(`  ${h.file}:${h.line}\n    ${h.text}\n`);
+function main() {
+  const hits = [];
+  const drift = [];
+  for (const { rel, src } of corpusFiles()) {
+    for (const h of scanLines(src)) hits.push({ file: rel, ...h });
+    for (const d of scanFigureDrift(src)) drift.push({ file: rel, ...d });
   }
-  if (drift.length > 0) {
-    console.error(
-      `\n[isolation-coordinate] ${drift.length} figure(s) whose aria-label does not name the\n` +
-        `coordinate their visible text commits to. The label is the copy agents and screen\n` +
-        `readers get — fix it with the diagram, not after it.\n`
-    );
-    for (const d of drift) console.error(`  ${d.file}:${d.line}\n    aria-label: ${d.label}…\n`);
+
+  if (hits.length > 0 || drift.length > 0) {
+    if (hits.length > 0) {
+      console.error(
+        `\n[isolation-coordinate] ${hits.length} line(s) may still teach per-KIND isolation.\n` +
+          `Since FIX-1323 the coordinate is the flow INSTANCE id; hireWorkforce mints one per seat.\n`
+      );
+      for (const h of hits) console.error(`  ${h.file}:${h.line}\n    ${h.text}\n`);
+    }
+    if (drift.length > 0) {
+      console.error(
+        `\n[isolation-coordinate] ${drift.length} figure(s) whose aria-label does not name the\n` +
+          `coordinate their visible text commits to. The label is the copy agents and screen\n` +
+          `readers get — fix it with the diagram, not after it.\n`
+      );
+      for (const d of drift) console.error(`  ${d.file}:${d.line}\n    aria-label: ${d.label}…\n`);
+    }
+    process.exit(1);
   }
-  process.exit(1);
+
+  console.log("[isolation-coordinate] OK — no doc teaches per-kind flowIsolation, no aria-label drift.");
 }
 
-console.log("[isolation-coordinate] OK — no doc teaches per-kind flowIsolation, no aria-label drift.");
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
