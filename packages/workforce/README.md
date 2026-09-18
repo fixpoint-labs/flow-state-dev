@@ -358,7 +358,9 @@ machinery rather than a tool from the app's catalog, switched on by the worker's
 - the **skill loader**, when a worker sets `skills.activateTool: true` — it pulls a skill the worker
   already holds into the turn;
 - the **delegation surface**, when a skill the worker holds declares `agents:`, which puts the task
-  board's eight tools plus `runBoard` on the worker.
+  board's eight tools plus `runBoard` on the worker;
+- the **controls a capability preset declares**, when the worker selects that preset in its
+  `capabilities:` key — a preset's `controlTools` reach the worker, its `tools` do not.
 
 #### The memory recipe
 

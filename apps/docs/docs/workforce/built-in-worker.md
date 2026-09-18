@@ -54,6 +54,7 @@ A worker's own settings can still put a **control** on it. A control is a piece 
 
 - **The skill loader**, when the worker sets [`skills.activateTool`](#using-them). It lets the model pull a skill the worker holds into the turn as it runs.
 - **The delegation controls**, when a skill the worker holds declares `agents:`. Activating that skill puts the task board's eight tools and `runBoard` on the worker, so it can create tasks and run them.
+- **The controls a capability preset declares**, when the worker selects that preset in its [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool) key. A preset's `controlTools` reach the worker; its `tools` do not.
 
 A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's `tools:`, so a worker with `tools: []` reaches no catalog tool through a delegate — it can command the board, but the workers it commands are fenced.
 
