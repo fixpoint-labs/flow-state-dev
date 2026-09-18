@@ -9,6 +9,12 @@
  * with its basename is caught by `hireWorkforce`, which already names both when
  * a factory sits under someone else's key.
  *
+ * `discoverWorkforceCode` is also where the two walks the command generates from
+ * meet: it runs Door B's module walk (`./discover-resource-modules`) over the
+ * same root and returns both lists. The walks stay separate readers — this one
+ * knows nothing about a `resources/` folder — and what is shared is the throw:
+ * one run names every refusal from either.
+ *
  * Every refusal is collected rather than thrown where it is found, so one run
  * names all of them — the same bargain `hireWorkforce` makes with a bad roster.
  * Node-only: it walks a directory, so it sits behind a subpath rather than on
@@ -26,6 +32,11 @@ import {
   validateSegment,
   type SegmentLabel,
 } from "../loader";
+import {
+  RESOURCE_SLOT_PATTERNS,
+  discoverResourceModules,
+  type DiscoveredResourceModule,
+} from "./discover-resource-modules";
 
 /** Which locked folder a discovered file came from. */
 export type CodeSlotId = "worker" | "channel" | "block";
@@ -83,9 +94,11 @@ export interface DiscoveredFile {
 
 /** What one walk produced. */
 export interface DiscoveryResult {
-  /** Every file found, ordered by {@link DiscoveredFile.path}. */
+  /** Every file found in the three locked code folders, ordered by {@link DiscoveredFile.path}. */
   files: DiscoveredFile[];
-  /** The folders looked in — all three, whether or not they exist, so the command can say where it looked. */
+  /** Every module found in a `resources/` folder, ordered by path. Door B's half. */
+  resourceModules: DiscoveredResourceModule[];
+  /** Where it looked — the locked folders, then the `resources/` slot patterns, so the command can say. */
   searched: string[];
 }
 
@@ -132,7 +145,9 @@ function pathInTo(dir: string): string[] {
 }
 
 /**
- * Walk the three locked folders under `root` and return what they hold.
+ * Walk everything the convention reads under `root` — the three locked code
+ * folders, and every `resources/` folder Door B's module walk covers — and
+ * return what they hold.
  *
  * One level only, one file per entry — a directory inside a locked folder is
  * refused by name rather than skipped, because a folder an author created and
@@ -144,7 +159,7 @@ function pathInTo(dir: string): string[] {
  * root that is not there would return empty maps for a path nobody configured.
  *
  * @param root Path to the app's `workforce/` directory.
- * @returns Every discovered file, ordered by path, plus the folders looked in.
+ * @returns Every discovered file and resource module, ordered by path, plus where it looked.
  * @throws If the root is symlinked, missing or unreadable.
  * @throws {WorkforceCodeError} If anything under it was refused; the message names all of them.
  */
@@ -259,10 +274,18 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
     }
   }
 
+  // Door B, over the same root. Run before anything is thrown, so an author
+  // holding a bad block file AND a bad resource module sees both in one run —
+  // the bargain this walk already makes within the locked folders, kept across
+  // the two conventions the command generates from.
+  const doorB = await discoverResourceModules(root);
+  problems.push(...doorB.problems);
+  searched.push(...RESOURCE_SLOT_PATTERNS);
+
   if (problems.length > 0) throw new WorkforceCodeError(problems);
 
   // Ordered by path rather than by the order a directory listed, so a tree that
   // has not changed renders byte-identically on any machine.
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { files, searched };
+  return { files, resourceModules: doorB.modules, searched };
 }

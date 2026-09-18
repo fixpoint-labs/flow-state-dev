@@ -16,6 +16,7 @@
 
 import { defineResource, type DeclaredResources } from "@flow-state-dev/core";
 import { z } from "zod";
+import { emptyMap } from "./empty-map";
 import {
   DERIVED_RESOURCE_KEYS,
   refusedDeclarationMessage,
@@ -35,21 +36,6 @@ const DOCUMENT_STATE_SCHEMA = z.object({}).passthrough();
  * which stays an ordered array because the refusal message reads it in order.
  */
 const DERIVED_KEYS = new Set<string>(DERIVED_RESOURCE_KEYS);
-
-/**
- * An empty map with no prototype, for the two places a key here is a name
- * somebody else chose — a document's ref, and a frontmatter key.
- *
- * On an ordinary object, `map["__proto__"] = value` reaches the legacy
- * prototype setter instead of creating a property: with an object value it
- * REPLACES the map's prototype, so the entry never appears in `Object.keys`,
- * never survives a spread, and the document disappears without a word. The
- * engine's own resource registries are null-prototype for exactly this reason
- * (`createExecutionContext`), and nothing built here needs `Object.prototype`.
- */
-function emptyMap<T>(): Record<string, T> {
-  return Object.create(null) as Record<string, T>;
-}
 
 /**
  * Build the resource map from document records, keyed by each document's ref.

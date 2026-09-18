@@ -76,4 +76,11 @@ export {
 
 export { validateSegment, type SegmentLabel } from "./segments";
 
+export {
+  DOCUMENT_EXTENSION,
+  RESOURCES_SLOT,
+  WORKERS_LEVEL,
+  mintResourceRef,
+} from "./resource-convention";
+
 export type { WorkerManifest, ResourceDoc, ChannelManifest } from "../manifest";

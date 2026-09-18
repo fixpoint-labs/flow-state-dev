@@ -1,6 +1,6 @@
 /**
  * `fsdev gen` command — write the module that registers an app's custom flow
- * kinds and blocks, from the files that already declare them.
+ * kinds, blocks and resource modules, from the files that already declare them.
  *
  * Thin by design: it resolves the workforce root, calls the convention in
  * `@flow-state-dev/workforce/codegen`, writes the file and prints what it
@@ -25,6 +25,7 @@ import {
   discoverWorkforceCode,
   renderWorkforceCode,
   type DiscoveredFile,
+  type DiscoveredResourceModule,
 } from "@flow-state-dev/workforce/codegen";
 import { classify, refusedSymlink } from "@flow-state-dev/workforce/loader";
 import { EXIT_SUCCESS, EXIT_CONFIG_ERROR, EXIT_EXECUTION_ERROR } from "../exit-codes";
@@ -46,17 +47,27 @@ export interface GenResult {
   file: string;
   /** Every discovered file, ordered by path. */
   files: DiscoveredFile[];
+  /** Every discovered resource module, ordered by path. */
+  resourceModules: DiscoveredResourceModule[];
   /** The folders looked in. */
   searched: string[];
   /** True when the file on disk already matched — always true for a write that changed nothing. */
   upToDate: boolean;
 }
 
-/** Group the discovered files by the map each one lands on, for the summary line. */
-function countBySlot(files: DiscoveredFile[]): string {
+/** Group what was discovered by the map each one lands on, for the summary line. */
+function countBySlot(result: Pick<GenResult, "files" | "resourceModules">): string {
   const counts = { worker: 0, channel: 0, block: 0 };
-  for (const file of files) counts[file.slot] += 1;
-  return `${counts.worker} worker kind(s), ${counts.channel} channel kind(s), ${counts.block} block(s)`;
+  for (const file of result.files) counts[file.slot] += 1;
+  return (
+    `${counts.worker} worker kind(s), ${counts.channel} channel kind(s), ` +
+    `${counts.block} block(s), ${result.resourceModules.length} resource module(s)`
+  );
+}
+
+/** Every discovered path, in one list, for the report that names what disagreed. */
+function discoveredPaths(result: Pick<GenResult, "files" | "resourceModules">): string[] {
+  return [...result.files, ...result.resourceModules].map((found) => found.path);
 }
 
 /**
@@ -74,8 +85,8 @@ export async function executeGenCommand(options: GenCommandOptions): Promise<Gen
   // The root's own refusals — symlinked, missing, unreadable — belong to the
   // walk and are made there, so every caller of it gets them and not just this
   // command.
-  const { files, searched } = await discoverWorkforceCode(root);
-  const rendered = renderWorkforceCode(files);
+  const { files, resourceModules, searched } = await discoverWorkforceCode(root);
+  const rendered = renderWorkforceCode(files, resourceModules);
   const file = join(root, GENERATED_FILE_NAME);
 
   // The no-follow promise covers what we WRITE as well as what we read. Both
@@ -97,13 +108,15 @@ export async function executeGenCommand(options: GenCommandOptions): Promise<Gen
 
   if (options.check !== true && !upToDate) await writeFile(file, rendered, "utf-8");
 
-  return { file, files, searched, upToDate };
+  return { file, files, resourceModules, searched, upToDate };
 }
 
 export function registerGenCommand(program: Command): void {
   program
     .command("gen")
-    .description("Generate the module registering an app's custom flow kinds and blocks")
+    .description(
+      "Generate the module registering an app's custom flow kinds, blocks and resource modules",
+    )
     .option("--root <dir>", "The workforce directory", DEFAULT_ROOT)
     .option("--check", "Fail instead of writing when the generated file is out of date")
     .action(async (options: GenCommandOptions) => {
@@ -128,7 +141,7 @@ export function registerGenCommand(program: Command): void {
 
       if (options.check === true) {
         if (result.upToDate) {
-          console.log(`${shown} is up to date (${countBySlot(result.files)}).`);
+          console.log(`${shown} is up to date (${countBySlot(result)}).`);
           process.exitCode = EXIT_SUCCESS;
           return;
         }
@@ -137,8 +150,10 @@ export function registerGenCommand(program: Command): void {
         // Which is also why this report must outlive the exit.
         console.error(
           `${shown} is out of date. Run \`fsdev gen\` and commit the result.\n` +
-            `The tree holds ${countBySlot(result.files)}:\n` +
-            result.files.map((file) => `  - ${file.path}`).join("\n"),
+            `The tree holds ${countBySlot(result)}:\n` +
+            discoveredPaths(result)
+              .map((path) => `  - ${path}`)
+              .join("\n"),
         );
         process.exitCode = EXIT_EXECUTION_ERROR;
         return;
@@ -146,10 +161,13 @@ export function registerGenCommand(program: Command): void {
 
       console.log(`Looked in: ${result.searched.join(", ")}`);
       for (const file of result.files) console.log(`  ${file.path} -> ${file.name}`);
+      for (const module of result.resourceModules) {
+        console.log(`  ${module.path} -> ${module.ref}`);
+      }
       console.log(
         result.upToDate
-          ? `${shown} unchanged (${countBySlot(result.files)}).`
-          : `Wrote ${shown} (${countBySlot(result.files)}).`,
+          ? `${shown} unchanged (${countBySlot(result)}).`
+          : `Wrote ${shown} (${countBySlot(result)}).`,
       );
       // Set on success as well, and for the same reason the `--check` success
       // branch does: a code already on the process outlives a run that printed

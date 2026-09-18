@@ -458,6 +458,55 @@ whose `kind` disagrees with its basename is refused at the hire.
 Passing `kinds` by hand keeps working, unchanged, and composes with a generated map with no
 precedence rule.
 
+### Resource modules from files
+
+The same command walks every `resources/` folder the convention reads and exports a fourth map,
+`resourceModules`, keyed by the same ref a document of that name in that folder would get (the table
+under [Reading documents from files](#reading-documents-from-files)). A `resources/` folder takes
+Markdown documents and TypeScript modules side by side: a `.md` file is a document, and a `.ts` file
+default-exports a capability or a resource.
+
+```
+workforce/teams/engineering/resources/
+  handbook.md      ← a document, unchanged
+  research.ts      ← default-exports a capability or a resource
+```
+
+```ts
+import { resourceModules } from "./workforce/workforce.gen";
+```
+
+One ref has one owner: a `.md` and a `.ts` of one name in one folder are refused by name at
+generation, rather than one of them quietly winning.
+
+What a module exports is checked by your own `tsc` against the generated map's types, because the
+walk never opens a module. `ResourceModuleExport` is what a module in the organisation's or a team's
+folder may be; `WorkerResourceModuleExport` is the narrower type the generated map holds a module in
+one **worker's own** `resources/` folder to — a resource, never a capability, because every seat of a
+kind shares that kind's capabilities and one installed from a single worker's folder would change
+every other seat. The generated file carries that sentence beside the entries it applies to.
+
+### Installing what was found
+
+The two kinds of module have two destinations, so `splitResourceModules` separates them and your app
+writes the two lines:
+
+```ts
+import { resourcesFromDocs, splitResourceModules } from "@flow-state-dev/workforce";
+import { resourceModules } from "./workforce/workforce.gen";
+
+const { capabilities, resources } = splitResourceModules(resourceModules);
+
+const agent = defineAgentWorkerFlow({ uses: capabilities, /* ... */ });
+const flowResources = { ...resourcesFromDocs(documents), ...resources };
+```
+
+A capability goes to the worker kind's `uses`, which is the same option you pass one by hand, and the
+resources it declares for itself reach the flow from there. A plain resource module merges into the
+one resource map, under its own ref, beside the documents. Nothing is installed on your behalf —
+returning both and letting you spread them keeps the wiring in your own source, the same way
+`resourcesFromDocs` does.
+
 ## Reading documents from files
 
 A team's shared documents — a handbook, a glossary, an escalation procedure — can be Markdown files
@@ -793,16 +842,20 @@ leaves an empty session there, and re-running binds it.
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
-| `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep and return what they hold, ordered by path. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
-| `renderWorkforceCode(files)` | Render those files as a module of static imports exporting `kinds`, `channelKinds` and `blocks`. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
+| `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, and every `resources/` folder the convention reads, returning what they hold on `files` and `resourceModules`, each ordered by path. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
+| `renderWorkforceCode(files, modules)` | Render a discovery's `files` and its `resourceModules` as a module of static imports exporting `kinds`, `channelKinds`, `blocks` and `resourceModules`. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
 | `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?` (reserved) and `seatSkills`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
 | `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
 | `readResourcesDirectory(root)` | Read every `resources/` folder in the tree — org, team, and each worker's own — into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
 | `resourcesFromDocs(documents)` | Turn document records into the flow resource map, keyed by each document's ref. Spread it into your own `resources`. |
+| `splitResourceModules(resourceModules)` | Split the generated map into `{ capabilities, resources }` — the capabilities a worker kind installs through `uses`, and the resources that merge into the one resource map. Installs nothing: you pass both on, at your own call site. Throws naming the ref when an entry can be neither. |
 | `WorkerManifest` | One worker record: `{ id, declared, body, skills? }`. |
 | `ResourceDoc` | One document record: `{ ref, declared, body }`. |
+| `mintResourceRef(teamId, workerName, name)` | The one rule that names a resource, whichever door read it — the ref a document or a module called `name` in that folder gets. Throws naming the segment that breaks the rules. Ships from the `./loader` subpath (Node only). |
+| `ResourceModules` | The generated `resourceModules` map: one entry per discovered module, keyed by its ref. |
+| `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Register these. |

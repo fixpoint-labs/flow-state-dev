@@ -146,3 +146,60 @@ describe("the file the command writes", () => {
     });
   });
 });
+
+describe("a resource module the tree gained", () => {
+  // `--check` is the whole guard on the two-step bargain: a team that writes a
+  // file and forgets the command gets a seat that is quietly short, and this is
+  // the only thing that catches it. So the rule the command owns is that the
+  // new family is covered by the same check, with no special case.
+
+  it("is caught by --check, and green again once the command has run", async () => {
+    const dir = app();
+    await executeGenCommand({ root: "workforce" });
+
+    mkdirSync(join(dir, "workforce/teams/engineering/resources"), { recursive: true });
+    writeFileSync(
+      join(dir, "workforce/teams/engineering/resources/research.ts"),
+      "export default {};",
+    );
+
+    // Red on the tree as it stands — the committed file knows nothing about
+    // the module — and the report names the file that disagrees, not just that
+    // something does.
+    const stale = await executeGenCommand({ root: "workforce", check: true });
+    expect(stale.upToDate).toBe(false);
+    expect(stale.resourceModules.map((module) => module.path)).toEqual([
+      "teams/engineering/resources/research.ts",
+    ]);
+
+    await executeGenCommand({ root: "workforce" });
+
+    expect(await executeGenCommand({ root: "workforce", check: true })).toMatchObject({
+      upToDate: true,
+    });
+    expect(readFileSync(join(dir, "workforce/workforce.gen.ts"), "utf-8")).toContain(
+      `"teams/engineering/research": resource_teams__engineering__research,`,
+    );
+  });
+
+  it("stops the command from writing anything when the tree is refused", async () => {
+    // Nothing is generated when the walk refuses, so a tree is never left half
+    // registered — and the refusal an author sees comes from the convention,
+    // with this command adding only the exit code.
+    const dir = app();
+    await executeGenCommand({ root: "workforce" });
+    const before = readFileSync(join(dir, "workforce/workforce.gen.ts"), "utf-8");
+
+    mkdirSync(join(dir, "workforce/teams/engineering/resources"), { recursive: true });
+    writeFileSync(join(dir, "workforce/teams/engineering/resources/research.md"), "---\n---\n");
+    writeFileSync(
+      join(dir, "workforce/teams/engineering/resources/research.ts"),
+      "export default {};",
+    );
+
+    await expect(executeGenCommand({ root: "workforce" })).rejects.toThrow(
+      /a document and a module cannot share a ref/,
+    );
+    expect(readFileSync(join(dir, "workforce/workforce.gen.ts"), "utf-8")).toBe(before);
+  });
+});
