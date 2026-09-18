@@ -3,8 +3,8 @@
  * from the factory or the input — never a free-text prompt.
  */
 import { describe, expect, it } from "vitest";
+import { FlowError } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { TypeSafeError } from "../src/errors";
 import { typesafeEvaluate, jevDecide } from "../src/evaluate";
 import { choice, noul } from "../src/schemas";
 import { BILLING_RESULT, scriptedClient } from "./scripted-client";
@@ -72,8 +72,9 @@ describe("typesafeEvaluate", () => {
       input: { state: "hello" },
     });
 
-    expect(result.error).toBeInstanceOf(TypeSafeError);
-    expect((result.error as TypeSafeError).code).toBe("missing_questions");
+    expect(result.error).toBeInstanceOf(FlowError);
+    expect((result.error as FlowError).code).toBe("missing_questions");
+    expect(String(result.error)).toContain("questions map");
   });
 
   it("does not read an apiKey smuggled on action input", async () => {
@@ -107,8 +108,9 @@ describe("typesafeEvaluate", () => {
       const result = await testBlock(block, {
         input: { state: "hello" },
       });
-      expect(result.error).toBeInstanceOf(TypeSafeError);
-      expect((result.error as TypeSafeError).code).toBe("missing_api_key");
+      expect(result.error).toBeInstanceOf(FlowError);
+      expect((result.error as FlowError).code).toBe("missing_api_key");
+      expect(String(result.error)).toContain("OPENROUTER_API_KEY");
     } finally {
       if (previous !== undefined) process.env.OPENROUTER_API_KEY = previous;
     }

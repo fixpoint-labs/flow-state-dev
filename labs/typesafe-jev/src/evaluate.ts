@@ -96,11 +96,12 @@ export function typesafeEvaluate<Q extends TypeSafeQuestions = TypeSafeQuestions
           model,
         });
 
-      return client.evaluate({
+      const result = await client.evaluate({
         state: input.state,
         questions,
         model,
-      }) as TypeSafeEvaluateOutput & { answers: AnswersFor<Q> };
+      });
+      return result as TypeSafeEvaluateOutput & { answers: AnswersFor<Q> };
     },
   }) as TypeSafeEvaluateBlock<Q>;
 }

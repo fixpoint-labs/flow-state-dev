@@ -90,32 +90,34 @@ function buildTriagePipeline(options: TicketTriageOptions) {
       (ticket: TicketInput) => ({ state: ticket }),
       classify,
     )
-    .step(handler, {
-      name: "decide-route",
-      inputSchema: evaluateOutputSchema,
-      outputSchema: triageOutputSchema,
-      execute: (evaluated) => {
-        const department = evaluated.answers.department;
-        const urgent = evaluated.answers.is_urgent;
-        if (!isChoiceAnswer(department)) {
-          throw new Error("department answer was not a choice.");
-        }
-        if (!isNoulAnswer(urgent)) {
-          throw new Error("is_urgent answer was not a noul.");
-        }
-        const decision = routeByChoice({
-          choice: department,
-          minConfidence: 0.55,
-          escalateIf: { noul: urgent, whenAbove: 0.8, andChoice: "billing" },
-        });
-        return {
-          destination: decision.destination,
-          reason: decision.reason,
-          model: evaluated.model,
-          answers: evaluated.answers,
-        };
-      },
-    })
+    .step(
+      handler({
+        name: "decide-route",
+        inputSchema: evaluateOutputSchema,
+        outputSchema: triageOutputSchema,
+        execute: (evaluated) => {
+          const department = evaluated.answers.department;
+          const urgent = evaluated.answers.is_urgent;
+          if (!isChoiceAnswer(department)) {
+            throw new Error("department answer was not a choice.");
+          }
+          if (!isNoulAnswer(urgent)) {
+            throw new Error("is_urgent answer was not a noul.");
+          }
+          const decision = routeByChoice({
+            choice: department,
+            minConfidence: 0.55,
+            escalateIf: { noul: urgent, whenAbove: 0.8, andChoice: "billing" },
+          });
+          return {
+            destination: decision.destination,
+            reason: decision.reason,
+            model: evaluated.model,
+            answers: evaluated.answers,
+          };
+        },
+      }),
+    )
     .step(dispatch);
 }
 
