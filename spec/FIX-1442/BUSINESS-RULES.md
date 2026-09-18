@@ -35,11 +35,19 @@
 
 | ID | When | Then | Proved by |
 |---|---|---|---|
-| BR-14 | A persisted session/request/job has missing org | Decode for diagnosis, exclude from ordinary lists/streams, and refuse addressed execution or access with migration guidance; do not expose content or rewrite it, including autonomous startup/recovery scans | C5 |
-| BR-15 | An operator migrates legacy data | Stop writers and drain external queues, back up, run the supplied recipe to preview/apply/verify an authoritative session/request/child mapping, reject inconsistencies, then reopen. Unattributed data stays unavailable | C5 |
+| BR-14 | A persisted session/request/job or dynamic schedule has missing org | Decode for diagnosis, exclude from ordinary lists/streams and scheduler dispatch/index scans, and refuse addressed execution or access with migration guidance; do not expose content or rewrite it, including autonomous startup/recovery scans | C5 |
+| BR-15 | An operator migrates legacy data | Follow the [upgrade contract](PLAN.md#upgrade-contract), including authoritative schedule attribution and index rebuild. Reject inconsistencies; unattributed data stays unavailable | C5 |
 | BR-16 | An existing bound org differs from supplied trusted identity | Preserve immutable-binding refusal; no mutable session-org endpoint or first-access repair | C2, C5 |
 | BR-17 | An adopter supplies an old org requirement config flag | Fail at definition/config validation with guidance that org is unconditional; remove redundant computed flags and aggregations | C6 |
 | BR-18 | A typed consumer reads a successful session or execution identity | Org is required. Nullable legacy storage shapes never masquerade as admitted canonical records | C6 |
+
+## Cutover cases
+
+| ID | When | Then | Proved by |
+|---|---|---|---|
+| BR-19 | A resource-backed dynamic schedule is created, changed or fired | Persist the creating execution's verified org with its target user before accepting/indexing the schedule. Caller state cannot choose or rewrite that binding; mutation requires the bound user/org before effects. Dispatch validates and uses the stored target org, never the gateway org or the user's current org. User storage stays globally keyed; legacy rows follow BR-14/15 | C2, C5 |
+| BR-20 | Two first sessions initialize the same shared org record | Create once or adopt and reload the winner; a delayed initializer cannot replace committed state or resources. Applies to the default and authenticated organizations | C2 |
+| BR-21 | Upgrade preflight finds a historical organization using the new reserved default ID | Stop cutover before default-mode reads/writes. Explicitly rename the complete organization offline to an unused nonreserved ID, updating auth mapping, sessions/requests/children/schedules, org records and resource addresses while preserving versions and deletion markers; verify before reopening. Never merge it into development data | C5 |
 
 | Failure class | Public behavior | Effects |
 |---|---|---|

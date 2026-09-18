@@ -25,7 +25,9 @@ Solid paths are the recommendations at the approval gate; dashed paths show the 
 
 **Plain terms and trade-off:** old conversations remain recoverable, but some installations need a maintenance window. The alternative is a smoother upgrade that can put old history in the wrong organization.
 
-**Recommendation:** stop writers, back up, inventory affected sessions and their requests/jobs/children, run the supplied offline recipe with an authoritative organization mapping, verify the complete set, then reopen. The recipe has preview/apply/verify modes over the public store adapters. Drain external queues before upgrading; unmappable jobs stay stopped or are explicitly retired by the operator, never replayed with guessed identity. Known single-organization development data can be explicitly mapped to the default. Ambiguous records remain quarantined; no online first-reader claim, lazy backfill, or automatic NULL-to-default migration.
+**Recommendation:** stop writers, back up, inventory affected sessions, requests, children and dynamic schedule rows, run the supplied offline recipe with an authoritative organization mapping, verify the complete set, then reopen. Drain external queues before upgrading; unmappable jobs stay stopped or are explicitly retired by the operator. Known single-organization development data can be explicitly mapped to the default. Ambiguous records remain quarantined; no online first-reader claim, lazy backfill, or automatic NULL-to-default migration. [PLAN's upgrade contract](PLAN.md#upgrade-contract) owns the recipe's safety and verification requirements.
+
+The existing [flow-instance attribution runbook](../../apps/docs/docs/persistence/overview.md) is the starting pattern. This cutover also changes who may access data and joins session/request attribution to scheduler impersonation; a partially applied mapping can select another organization's work. That earns a tested, one-shot recipe across shipped adapters, rather than leaving each adopter to reproduce those consistency checks. It earns neither a maintained migration framework nor a new public API.
 
 **What would change my mind:** durable origin metadata proving every unassigned record in the affected installation was created for the default organization. No such provenance exists in the inspected generic record contract.
 
@@ -59,14 +61,14 @@ The large change has one PR-plan node because its type, producer, guard and docu
 | **Because** | A stable identity makes the existing org scope work without app wrappers; a reserved namespace avoids accidental overlap with authenticated organizations. This follows [tenets 2 and 4](../../docs/philosophy.md) |
 | **Locks in** | `DEFAULT_ORG_ID = "__fsd_default_org__"` becomes a stored identity; changing it later requires a migration |
 
-Recommend this spelling, exported as a runtime value from `@flow-state-dev/core`. It denotes development single-organization operation, not a security boundary. A configured resolver returning it is refused. Direct trusted callers and framework development helpers may deliberately use it. Evidence of existing customer data under this exact value would change the spelling before release.
+Recommend this spelling, exported as a runtime value from `@flow-state-dev/core`. It denotes development single-organization operation, not a security boundary. A configured resolver returning it is refused. Direct trusted callers and framework development helpers may deliberately use it. Preflight must inventory existing use of this exact ID before enabling the new default: it must not silently become development data. Evidence of a collision before release changes the proposed spelling; a deployed adopter with a collision keeps traffic stopped until an explicit offline rename moves the organization's complete data and identity-provider mapping to an unused nonreserved ID (BR-21). This adds upgrade work only for a colliding installation; no online rebinding exception is introduced.
 
 ## Decided, not asked
 
 - Build as scoped: resolver configuration alone cannot cover record admission, management reads, queued recovery or client contract cleanup. This is a framework invariant change, not a new auth product.
 - Preserve user-scope and `tenantId` storage semantics. The same globally stable user may share personal state across organizations; organization resources and sessions still enforce their own owner.
 - Remove redundant opt-in organization requirement machinery; explicit old config keys are rejected with migration guidance rather than silently ignored.
-- Trusted schedules, webhooks and queued work carry organization identity too. Keep `defaultUserId` only when a resolver supplies a valid org; null no longer succeeds. System resolvers return `{ orgId }` with configured `defaultUserId`, or a complete machine principal. No new `defaultOrgId` knob.
+- Trusted schedules, webhooks and queued work carry organization identity too. Dynamic schedules persist the creating execution's organization as an immutable trusted binding and dispatch from that binding, not the scheduler gateway's organization (BR-19). Keep `defaultUserId` only when a resolver supplies a valid org; null no longer succeeds. System resolvers return `{ orgId }` with configured `defaultUserId`, or a complete machine principal. No new `defaultOrgId` knob.
 
 ## Considered and dropped
 
@@ -78,10 +80,11 @@ Recommend this spelling, exported as a runtime value from `@flow-state-dev/core`
 
 ## Research and settled facts
 
-The [source inventory](evidence/org-inventory.json) and [checker](evidence/check-org-inventory.mjs) record the researched base. It is a lexical drift detector, not proof that every authorization path is safe.
+The [source inventory](evidence/org-inventory.json) and [checker](evidence/check-org-inventory.mjs) are a lexical map at base SHA `4da75ad76`, not proof that every authorization path is safe. This spec-only evidence never lands on main.
 
 [The AWS identity/isolation guidance](https://docs.aws.amazon.com/whitepapers/latest/saas-tenant-isolation-strategies/identity-and-isolation.html) supports carrying verified tenant context downstream; [Auth0 organization token guidance](https://auth0.com/docs/manage-users/organizations/using-tokens) supports validating organization identity when accessing resources. Neither dictates our default string or migration policy.
 
 ## How it got here
 
 - **Draft** — Turn optional org into a mandatory resolved identity, retain immutable session ownership, and propose one coordinated cutover with attributable historical migration.
+- **Review** — Add trusted dynamic-schedule attribution, non-destructive shared-org initialization, and reserved-ID collision preflight because the original rules left these cutover cases unproved; keep the migration recipe and full boundary coverage.
