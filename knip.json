@@ -55,6 +55,9 @@
     "labs/conductor": {
       "entry": ["fsdev.config.ts", "test/**/*.spec.ts", "test/harness.ts"]
     },
+    "labs/typesafe-jev": {
+      "entry": ["src/index.ts", "fsdev.config.ts", "test/**/*.spec.ts", "scripts/**/*.ts"]
+    },
     "plugins/flow-state-dev": {
       "entry": ["test/**/*.test.mjs", "skills/install-fsd/detect/detect.mjs"],
       "project": ["test/**/*.mjs", "skills/**/*.mjs"]
