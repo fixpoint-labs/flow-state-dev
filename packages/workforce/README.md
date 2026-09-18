@@ -82,7 +82,7 @@ Each record is plain data:
 | Field | Description |
 |-------|-------------|
 | `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. |
-| `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and three refused ones: `persona:`, `seatSkills:` and `teamInstructions:`. |
+| `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and four refused ones: `persona:`, `seatSkills:`, `seatTools:` and `teamInstructions:`. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
 
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
@@ -254,17 +254,18 @@ declared is refused by name at the hire.
 ### What a hireable kind must admit
 
 A worker kind is an ordinary flow. What makes it *hireable* is that its `configSchema` composes
-`workerConfigSchema()`, which declares the three settings a seat's bag may carry:
+`workerConfigSchema()`, which declares the four settings a seat's bag may carry:
 
 | Setting | What it holds |
 | --- | --- |
 | `instructions?` | The worker's own instructions — its file body, or the frontmatter key. Imposed when the body is not empty, absent when it has none. |
 | `teamInstructions?` | **Reserved: nothing populates it yet.** It is here so a kind composes the contract once and does not change again when the team-level layer arrives. Always absent today. |
 | `seatSkills` | The skills its folders resolved for it, in level order. Imposed on every seat, present and empty when there are none. |
+| `seatTools` | The blocks this seat's `tools:` resolved to from its own folders, already resolved. Imposed on every seat, present and empty when there are none. Live blocks, not names — names that resolved to the kind's catalog stay on the kind's own `tools` setting. |
 
-So hiring imposes `instructions` and `seatSkills` today. `teamInstructions` is a declared door with
-nothing coming through it, and a kind that reads it gets `undefined` regardless of what any team has
-written.
+So hiring imposes `instructions`, `seatSkills` and `seatTools` today. `teamInstructions` is a
+declared door with nothing coming through it, and a kind that reads it gets `undefined` regardless
+of what any team has written.
 
 Add your kind's own settings on top, at the same level:
 
@@ -296,9 +297,9 @@ these keys by hand hires just the same. Composing is what keeps it current: when
 the contract, a composed kind picks it up, and a hand-rolled one refuses at boot naming the new key
 until you add it.
 
-Two of the three are never authored. A worker file that writes `seatSkills:` or `teamInstructions:`
-is refused by name, at the loader and at the hire: a seat's skills are the folders it can see, and
-a team's instructions are its team's.
+Three of the four are never authored. A worker file that writes `seatSkills:`, `seatTools:` or
+`teamInstructions:` is refused by name: a seat's skills and its own blocks are the folders it can
+see, and a team's instructions are its team's.
 
 **A record that leaves `flow:` out is hired into the built-in `agent` kind** — it talks, its body
 arrives as its instructions, and it reads the skills its own folders hold plus any the app seeded
@@ -429,21 +430,31 @@ registers under.
 ```
 workforce/
   flows/
-    workers/request-triage.ts     ← default-exports a flow, cardinality: "collection"
-    channels/standup.ts           ← default-exports a flow, singleton (the default)
-  blocks/triage.ts                ← default-exports a BlockDefinition
+    workers/request-triage.ts                        ← default-exports a flow, cardinality: "collection"
+    channels/standup.ts                              ← default-exports a flow, singleton (the default)
+  blocks/triage.ts                                   ← a block any worker may name
+  teams/engineering/blocks/build-status.ts           ← a block this team's workers may name
+  teams/engineering/workers/triage/blocks/page.ts    ← a block this one worker may name
 ```
 
-`fsdev gen` walks those three folders and writes `workforce/workforce.gen.ts` beside them, exporting
-`kinds`, `channelKinds` and `blocks` — the three parameters `hireWorkforce`, `channelInstances` and a
-task board already take.
+`fsdev gen` walks those folders and writes `workforce/workforce.gen.ts` beside them, exporting
+`kinds`, `channelKinds`, `blocks` and `seatBlocks` — four parameters `hireWorkforce`,
+`channelInstances`, a task board and a worker kind's tool catalog already take.
 
 ```ts
-import { hireWorkforce } from "@flow-state-dev/workforce";
-import { kinds } from "./workforce/workforce.gen";
+import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { blocks, kinds, seatBlocks } from "./workforce/workforce.gen";
 
-const seats = hireWorkforce(workers, { kinds });
+const agent = defineAgentWorkerFlow({ catalog: blocks });
+const seats = hireWorkforce(workers, { kinds: { ...kinds, agent }, seatBlocks });
 ```
+
+A `blocks/` folder **registers** a name: `workforce/blocks/` for every worker, a team's for that
+team's workers, a worker's own for that worker. It does not grant use — a worker still names the
+block in its `tools:`, and a name resolves nearest first (its own folder, its team's, the catalog).
+Two rules are checked before any worker runs: the file's basename, the map key and the block's own
+`name` must agree, and a block in a worker's own folder may read a store the kind installed but may
+not declare one of its own.
 
 Discovery is a **build step**, not something this package does while your app runs. A walk at startup
 works on a Node host and finds nothing on a bundled one, because after a Next or Vercel build those
@@ -889,8 +900,8 @@ leaves an empty session there, and re-running binds it.
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
 | `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, and every `resources/` folder the convention reads, returning what they hold on `files` and `resourceModules`, each ordered by path. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules)` | Render a discovery's `files` and its `resourceModules` as a module of static imports exporting `kinds`, `channelKinds`, `blocks` and `resourceModules`. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
-| `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
-| `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?` (reserved) and `seatSkills`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
+| `hireWorkforce(manifests, { kinds, seatBlocks })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, and `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`. |
+| `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?` (reserved), `seatSkills` and `seatTools`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
 | `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
 | `readResourcesDirectory(root)` | Read every `resources/` folder in the tree — org, team, and each worker's own — into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
@@ -928,7 +939,7 @@ leaves an empty session there, and re-running binds it.
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
-| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name the built-in's catalog does not carry, a skill name reaching one seat from both the app's `skills` and its own folders, `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:` or `teamInstructions:` key. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource, a `seatBlocks` entry for a worker the roster has no record of, a skill name reaching one seat from both the app's `skills` and its own folders, `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:` key. Collected: one error names every bad worker |
 | A `resources/` slot, `org/`, `teams/`, a team folder, a `workers/` level or a worker folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
 | Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |

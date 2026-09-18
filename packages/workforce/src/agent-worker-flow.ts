@@ -63,6 +63,7 @@ import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core"
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
   BlockDefinition,
+  DeclaredResources,
   GeneratorTool,
   InitialSkill,
   ToolCatalog,
@@ -76,7 +77,7 @@ import {
   pushActiveSkill
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
-import { SEAT_SKILLS_KEY } from "./manifest";
+import { SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
   catalogSeatCapabilities,
   resolveSeatCapabilities,
@@ -302,9 +303,12 @@ function settingsSchema(
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message:
-              `names tool "${name}", which the app's tool catalog does not carry. ` +
-              `Known tools: ${known.length > 0 ? known.map((k) => `"${k}"`).join(", ") : "(none — no catalog was passed to defineAgentWorkerFlow)"}. ` +
-              `Pass it as \`defineAgentWorkerFlow({ catalog: { "${name}": <tool> } })\`, or drop it from this worker.`
+              `names tool "${name}", which nothing registers for this seat — neither its own ` +
+              `\`blocks/\` folder nor the app's tool catalog. ` +
+              `Known catalog tools: ${known.length > 0 ? known.map((k) => `"${k}"`).join(", ") : "(none — no catalog was passed to defineAgentWorkerFlow)"}. ` +
+              `Put the block in this worker's own \`blocks/\` folder and re-run \`fsdev gen\`, ` +
+              `pass it as \`defineAgentWorkerFlow({ catalog: { "${name}": <tool> } })\`, or drop ` +
+              `it from this worker.`
           });
         }
       }),
@@ -451,6 +455,82 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
 }
 
 /**
+ * The one-name rule over the app's catalog, at the kind's construction door.
+ *
+ * Checked here and not at the scan because the catalog is a **kind-construction
+ * argument**: it covers a hand-built map exactly as it covers a generated one,
+ * and it leaves a block used only as a flow action alone. Thrown rather than
+ * collected — a kind is built once, at module scope, so there is no roster to
+ * report against and nothing else this call could usefully go on to do.
+ *
+ * Every mismatch is named in one message, for the reason `hireWorkforce`
+ * collects: an author fixing a catalog should see the whole list in one run.
+ */
+function assertOneNamePerCatalogEntry(catalog: ToolCatalog): void {
+  const problems: string[] = [];
+  for (const [key, tool] of Object.entries(catalog)) {
+    const blockName = (tool as { name?: unknown }).name;
+    if (typeof blockName !== "string" || blockName === key) continue;
+    problems.push(oneNameMessage(key, blockName, "The app's tool catalog"));
+  }
+  if (problems.length === 0) return;
+  throw new Error(
+    `defineAgentWorkerFlow refused ${problems.length} catalog ` +
+      `entr${problems.length === 1 ? "y" : "ies"}:\n  - ${problems.join("\n  - ")}`
+  );
+}
+
+/**
+ * What the app's catalog declares, merged into one set for the answer
+ * generators to declare as their own.
+ *
+ * **The gap this closes, and why it is not obvious.** A seat reaches its tools
+ * through the `tools:` slot below, which is a resolver that runs per turn off
+ * `ctx.flow.config`. `defineFlow` collects `declaredResources` by a STATIC walk
+ * over the flow's action blocks (`defineFlow.ts`), and nothing a runtime
+ * resolver returns was ever an action block — so a catalog tool that declares a
+ * store was hired, advertised to the model, called, and found no handle, while
+ * the turn reported success. Declaring them on the generator puts them back
+ * inside the walk that installs them, as BLOCK-level declarations on the very
+ * block that calls the tools, which keeps each one's own prefetch mode intact.
+ *
+ * Kind-wide by construction, and deliberately: the catalog is the kind's, so
+ * its stores belong to every seat of it — including seats whose `tools:` never
+ * name the tool. That is the same bill `uses` already presents, and it is why
+ * this is safe where collecting a SEAT's declarations would not be.
+ */
+function catalogDeclaredResources(catalog: ToolCatalog): DeclaredResources | undefined {
+  const merged: DeclaredResources = {};
+  /** Accessor key → the catalog key that claimed it, so a clash can name both. */
+  const claimedBy: Record<string, string> = {};
+
+  for (const [key, tool] of Object.entries(catalog)) {
+    const declared = (tool as { declaredResources?: DeclaredResources }).declaredResources;
+    if (declared === undefined) continue;
+    for (const [accessor, resource] of Object.entries(declared)) {
+      const held = merged[accessor];
+      // Same accessor, same `defineResource()` reference is one resource two
+      // tools share. A DIFFERENT reference is two resources one accessor —
+      // refused here, by both catalog keys, rather than silently taking the
+      // last: core refuses the same pair at the same level, and a last-wins
+      // merge is exactly the silent wrong answer this registration exists to
+      // remove.
+      if (held !== undefined && held !== resource) {
+        throw new Error(
+          `defineAgentWorkerFlow: catalog tools "${claimedBy[accessor]}" and "${key}" both ` +
+            `declare resource "${accessor}" with different defineResource() references. Use the ` +
+            `same reference across blocks, or pick distinct accessor keys.`
+        );
+      }
+      merged[accessor] = resource;
+      claimedBy[accessor] ??= key;
+    }
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+/**
  * Build a worker kind.
  *
  * Called with no arguments this returns the built-in — the kind a worker file
@@ -466,6 +546,14 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
  */
 export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   const catalog = options.catalog ?? {};
+  // Before anything is built from it. A catalog key that disagrees with its
+  // block's own name would hand the model a tool no seat's `tools:` can
+  // authorize, and the kind is the door that holds the map.
+  assertOneNamePerCatalogEntry(catalog);
+  // What the catalog's own blocks need, so the flow installs it. See the
+  // function's note: without this a catalog tool that declares a store is
+  // advertised with nothing behind it.
+  const catalogResources = catalogDeclaredResources(catalog);
   // Read once, here: it is what a seat's `capabilities:` is validated against
   // at the mint AND what the per-seat entry below resolves through, and two
   // readings of one `uses` array is how the two halves drift apart.
@@ -598,6 +686,11 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       inputSchema,
       flowConfigSchema: settings,
       itemVisibility: { client: true, history: true },
+      // What the app's catalog tools declare, declared here so `defineFlow`'s
+      // static walk installs it — see `catalogDeclaredResources`. Omitted
+      // entirely when the catalog declares nothing, so a kind built without one
+      // is byte-for-byte the block it was before this existed.
+      ...(catalogResources !== undefined ? { resources: catalogResources } : {}),
       // The skills binding stays FIRST and is never displaced: an app's own
       // capabilities compose beside it. That is what the `uses` option is for.
       uses: [binding, ...usesEntries],
@@ -612,8 +705,20 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       // re-decided rather than widened.
       prompt: (_input, ctx) => composeWorkerPrompt(ctx.flow.config),
       model: (_input, ctx) => ctx.flow.config.model,
-      tools: (_input, ctx): GeneratorTool[] =>
-        ctx.flow.config.tools.map((toolName) => catalog[toolName] as GeneratorTool),
+      // The seat's declared tools, both halves. `tools` holds the names that
+      // resolved to the app's CATALOG; `seatTools` holds the blocks that
+      // resolved to this seat's own folders, already resolved at the hire step
+      // so this slot stays an O(1) read — it runs before every step of every
+      // turn. The generator's fence sees ONE declared list and cannot tell
+      // which half a tool came from, which is the point: a colocated block is
+      // not an exemption from the fence, it joins the declaration.
+      tools: (_input, ctx): GeneratorTool[] => {
+        const named = ctx.flow.config.tools.map((toolName) => catalog[toolName] as GeneratorTool);
+        const own = ctx.flow.config[SEAT_TOOLS_KEY] as GeneratorTool[] | undefined;
+        // Materialized only when the seat has both, which is the uncommon case.
+        if (own === undefined || own.length === 0) return named;
+        return named.length === 0 ? own : [...named, ...own];
+      },
       user: (input) => input.message
     });
 

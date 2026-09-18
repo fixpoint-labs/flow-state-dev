@@ -72,6 +72,15 @@ Canonical test: `packages/core/test/generator-tools-fence.test.ts`, which
 observes the list the *model* receives rather than an intermediate resolver
 result — the fence's whole claim is about what the model can call.
 
+**A worker-colocated tool is not an exemption from this fence.** `workforce`
+lets a block sit in one seat's own `blocks/` folder, and that registers the name
+for that seat — it does not grant its use. The seat still names the block in its
+`tools:`, and the hire step resolves that name to the block before the kind
+builds the seat's declaration, so what reaches the generator is one declared
+list whose halves it cannot tell apart. Nothing crosses the fence that the seat
+did not declare, and core is untouched: registration is a `workforce` concern,
+and the fence stays exactly as literal as it reads above.
+
 ## Generator singletons (model, providerOptions, caching)
 
 Three generator-only singleton slots can be contributed by capability presets:

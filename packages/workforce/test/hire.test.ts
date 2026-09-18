@@ -152,7 +152,7 @@ describe("hireWorkforce", () => {
     // The sibling's setting is absent, not merely different — one shared bag
     // is always right for somebody.
     expect(Object.hasOwn(opinionated.config, "desk")).toBe(false);
-    expect(thin.config).toEqual({ desk: "front", seatSkills: [] });
+    expect(thin.config).toEqual({ desk: "front", seatSkills: [], seatTools: [] });
     expect(Object.hasOwn(thin.config, "model")).toBe(false);
   });
 
@@ -165,6 +165,7 @@ describe("hireWorkforce", () => {
     expect(seat.config).toEqual({
       instructions: LEAD_BODY,
       seatSkills: [],
+      seatTools: [],
       model: "openai/gpt-5.4-mini",
       tools: ["board", "search"]
     });
@@ -460,6 +461,11 @@ describe("hireWorkforce", () => {
         instructions: z.string().optional(),
         teamInstructions: z.string().optional(),
         seatSkills: z.array(z.object({ name: z.string(), skillMd: z.string() })).optional(),
+        // Hand-declared alongside the other three: this kind's point is that it
+        // accepts the whole imposed bag while probing to a bag without
+        // `seatSkills`, so it has to keep accepting every key the factory
+        // imposes as the contract grows.
+        seatTools: z.array(z.any()).optional(),
         retries: z.number().default(3)
       }),
       actions: { run: { inputSchema, block: work } }

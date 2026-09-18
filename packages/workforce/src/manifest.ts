@@ -238,6 +238,79 @@ export const duplicateSkillNameMessage = (
   `${paths.join(" and ")}. Remove one: there is no precedence rule.`;
 
 /**
+ * `seatTools` — imposed by the seat factory on every record, and where the
+ * blocks a seat's `tools:` resolved to **from its own levels** arrive in its
+ * flow's settings bag.
+ *
+ * The fourth contract key, and the one that carries live blocks rather than
+ * strings. A tool name in a `WORKER.md` resolves worker folder → team folder →
+ * the app's catalog, first match wins; the first two resolve to a block the
+ * hire step already holds, and they ride here, already resolved. The names that
+ * fell through to the app's catalog stay in `tools:`, which is what the kind
+ * checks its catalog against and what the delegation fence narrows a board
+ * worker to.
+ *
+ * Spelled `seatTools` rather than `seatBlocks` because the two are different
+ * things and one name for both is the collision this package refuses rather
+ * than resolves: `seatBlocks` is the generated map of what a seat's folders
+ * REGISTER, and this is the subset the seat's file DECLARED out of it.
+ * Registration makes a name resolvable; declaration grants use.
+ *
+ * Declared here for the reason {@link SEAT_SKILLS_KEY} is: the factory imposes
+ * it, every door refuses an authored one, and two spellings of one key is the
+ * bug.
+ */
+export const SEAT_TOOLS_KEY = "seatTools";
+
+/**
+ * The one wording for {@link SEAT_TOOLS_KEY}, shared by every door that refuses
+ * an authored one. Names no subject — the caller supplies what it can name.
+ *
+ * Refused for the reason `seatSkills` is: a kind composing the contract
+ * declares this key and would take an authored one happily, so a seat could run
+ * carrying tools no folder of its backs — and only that seat, silently.
+ */
+export const REFUSED_SEAT_TOOLS_KEY_MESSAGE =
+  `declares \`${SEAT_TOOLS_KEY}:\`, which is not a setting a worker declares. ` +
+  `A seat names its tools in \`tools:\`, and resolving each name against the blocks its ` +
+  `folders register is the loader's job.`;
+
+/**
+ * The one wording for a block registered under a name its own `name` does not
+ * match — the one-name rule, on either map.
+ *
+ * A function rather than a string because the useful part is the two spellings
+ * and which of them the model would have been advertised: a seat authorizes by
+ * the map's key and the generator advertises the block's own `name`, so a
+ * disagreement is a seat authorizing one tool and a model calling another. The
+ * caller names the map, because the two maps are refused at different doors —
+ * the app's catalog when the kind is built, a seat's own when it is hired.
+ */
+export const oneNameMessage = (key: string, blockName: string, whichMap: string): string =>
+  `${whichMap} registers "${key}", and the block under that key calls itself "${blockName}". ` +
+  `One tool has one name: the file's, the map key's and the block's own must agree. ` +
+  `The model would be advertised "${blockName}", so a seat authorizing "${key}" would never ` +
+  `reach it. Rename the block to "${key}", or rename the file to "${blockName}".`;
+
+/**
+ * The one wording for a block that arrives on a seat's own map and declares its
+ * own resources.
+ *
+ * A seat's folder is ONE seat's and a store is the kind's, so there is nowhere
+ * to install it that does not also install it for every sibling seat of that
+ * kind. Refused by name at the door, with both fixes, because the alternative
+ * is the defect this epic exists to kill: the tool is hired, advertised to the
+ * model, called, and its handle is simply not there.
+ */
+export const colocatedResourceMessage = (key: string, accessors: string[]): string =>
+  `registers block "${key}" in its own folder, and that block declares ` +
+  `${accessors.map((a) => `"${a}"`).join(", ")}. A seat's own folder is one seat's and a store ` +
+  `is the kind's, so there is nowhere to install it that would not also install it for every ` +
+  `other seat of this kind. Either declare the store on the kind ` +
+  `(\`defineAgentWorkerFlow({ uses })\`), or move the block to \`workforce/blocks/\` and name ` +
+  `it in this worker's \`tools:\`.`;
+
+/**
  * One file-declared document, as read off disk or hand-built. The resources
  * convention's record, mirroring {@link WorkerManifest}'s three fields.
  *

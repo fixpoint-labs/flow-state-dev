@@ -21,6 +21,7 @@
 
 import type {
   ActionConfig,
+  BlockDefinition,
   DeclaredResourceEntry,
   FlowInstance,
   FlowType,
@@ -35,9 +36,13 @@ import {
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
   REFUSED_SEAT_SKILLS_KEY_MESSAGE,
+  REFUSED_SEAT_TOOLS_KEY_MESSAGE,
   REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
   SEAT_SKILLS_KEY,
+  SEAT_TOOLS_KEY,
   TEAM_INSTRUCTIONS_KEY,
+  colocatedResourceMessage,
+  oneNameMessage,
   type WorkerManifest
 } from "./manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
@@ -65,6 +70,27 @@ export interface HireOptions {
    * under `agent` replaces the built-in for every seat.
    */
   kinds?: Record<string, AnyFlowType>;
+
+  /**
+   * The blocks each seat's own folders REGISTER, keyed by worker id and then by
+   * block name — `fsdev gen`'s `seatBlocks` export, passed straight through.
+   *
+   * **Registration, not a grant.** An entry here makes that name resolvable by
+   * that seat; the seat's `tools:` is still what decides whether it may call
+   * it, and a registered block the file never names is not on the model's
+   * toolset. A name resolves worker folder → team folder → the app's catalog,
+   * first match wins; the first two arrive here already collapsed by the
+   * generated map, and this step is where the last hop happens.
+   *
+   * Per seat and never installed on the kind: a kind's capabilities and
+   * resources are shared by every seat of it, so one worker's folder installed
+   * there would change every sibling. That is why a block here may USE a store
+   * the kind has and may not DECLARE one — see
+   * {@link colocatedResourceMessage}.
+   *
+   * Optional. Omitted, every seat hires exactly as it did before this existed.
+   */
+  seatBlocks?: Record<string, Record<string, BlockDefinition<any, any>>>;
 }
 
 /** A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere. */
@@ -186,6 +212,66 @@ function admissionHint(refusal: string): string | undefined {
 }
 
 /**
+ * Why one seat's own block registry cannot be used as written — every reason,
+ * or an empty list.
+ *
+ * Checked against the REGISTRY rather than against the names the seat declared,
+ * on purpose: registering a name is a promise that the name resolves to
+ * something callable, so a registry the framework cannot keep that promise over
+ * is broken whether or not this particular seat happens to name it. Waiting
+ * until it is named would make the same tree pass or fail depending on one line
+ * of a Markdown file.
+ *
+ * Collected, not thrown, so one run names every problem — the bargain the rest
+ * of this step makes.
+ */
+function seatBlockProblems(registry: Record<string, BlockDefinition<any, any>>): string[] {
+  const problems: string[] = [];
+  for (const [key, block] of Object.entries(registry)) {
+    const blockName = (block as { name?: unknown }).name;
+    if (typeof blockName === "string" && blockName !== key) {
+      problems.push(oneNameMessage(key, blockName, "This worker's own folder"));
+    }
+    const declared = (block as { declaredResources?: Record<string, unknown> }).declaredResources;
+    const accessors = declared === undefined ? [] : Object.keys(declared);
+    if (accessors.length > 0) problems.push(colocatedResourceMessage(key, accessors));
+  }
+  return problems;
+}
+
+/**
+ * Split a seat's declared tool names by where each one resolved.
+ *
+ * The seat's own registry is nearer than the app's catalog, so it answers first
+ * — the worker → team → org precedence, with the first two already collapsed
+ * onto the registry. What resolved there becomes a live block on
+ * {@link SEAT_TOOLS_KEY}; what did not stays a NAME on `tools`, which is what
+ * the kind checks its catalog against and what the delegation fence narrows a
+ * board worker to. A colocated tool therefore does not travel through a
+ * delegation, and that falls out of where the name landed rather than from a
+ * second rule.
+ *
+ * A `tools:` that is not an array of strings is left exactly as the author
+ * wrote it: the kind's own schema is what refuses a malformed setting, and
+ * guessing here would refuse it twice, differently.
+ */
+function resolveDeclaredTools(
+  declared: unknown,
+  registry: Record<string, BlockDefinition<any, any>>
+): { catalogNames: unknown; seatTools: Array<BlockDefinition<any, any>> } {
+  if (!Array.isArray(declared) || declared.some((name) => typeof name !== "string")) {
+    return { catalogNames: declared, seatTools: [] };
+  }
+  const catalogNames: string[] = [];
+  const seatTools: Array<BlockDefinition<any, any>> = [];
+  for (const name of declared as string[]) {
+    if (Object.hasOwn(registry, name)) seatTools.push(registry[name]!);
+    else catalogNames.push(name);
+  }
+  return { catalogNames, seatTools };
+}
+
+/**
  * Turn worker records into one configured flow copy each, ordered by id.
  *
  * Every problem is a startup misconfiguration, so every problem throws — but
@@ -219,6 +305,9 @@ export function hireWorkforce(
   const seats: FlowInstance[] = [];
   const problems: string[] = [];
   const seen = new Set<string>();
+  const seatBlocks = options.seatBlocks ?? {};
+  /** Every id on the roster, so a `seatBlocks` entry addressed to nobody can be named. */
+  const rosterIds = new Set(ordered.map((manifest) => manifest.id));
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
@@ -268,6 +357,15 @@ export function hireWorkforce(
     // instructions belong to its team.
     if (Object.hasOwn(settings, TEAM_INSTRUCTIONS_KEY)) {
       refuse(REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE);
+      continue;
+    }
+
+    // The fourth contract key, refused for the reason the other two imposed
+    // keys are: a kind composing the contract declares it, so an authored one
+    // would be accepted and the seat would run carrying tools no folder of its
+    // backs — silently, and only for that seat.
+    if (Object.hasOwn(settings, SEAT_TOOLS_KEY)) {
+      refuse(REFUSED_SEAT_TOOLS_KEY_MESSAGE);
       continue;
     }
 
@@ -360,6 +458,20 @@ export function hireWorkforce(
     // that distinction stays on the record, where it belongs.
     settings[SEAT_SKILLS_KEY] = manifest.skills ?? [];
 
+    // The seat's own block registry, and the names its file resolved out of it.
+    // Imposed on EVERY record for the reason `seatSkills` is: present-and-empty
+    // is the answer for *nothing registered*, and the bag is handed over all
+    // the same.
+    const registry = seatBlocks[manifest.id] ?? {};
+    const registryProblems = seatBlockProblems(registry);
+    if (registryProblems.length > 0) {
+      for (const problem of registryProblems) refuse(problem);
+      continue;
+    }
+    const { catalogNames, seatTools } = resolveDeclaredTools(settings["tools"], registry);
+    if (Object.hasOwn(settings, "tools")) settings["tools"] = catalogNames;
+    settings[SEAT_TOOLS_KEY] = seatTools;
+
     try {
       // Always a bag, so always admitted. The branch that stood here passed no
       // bag at all for a record that declared nothing — which is admission
@@ -375,6 +487,21 @@ export function hireWorkforce(
       const hint = admissionHint(message);
       refuse(hint === undefined ? message : `${message} ${hint}`);
     }
+  }
+
+  // A `seatBlocks` entry addressed to a worker the roster does not carry.
+  // Reported rather than passed over: the generated map cannot make this
+  // mistake, but a hand-built one and a stale generated file both can, and the
+  // symptom otherwise is a seat that cannot reach a block sitting in its folder
+  // with nothing said anywhere. Named after the per-worker problems so the
+  // roster's own failures read first.
+  for (const id of Object.keys(seatBlocks).sort()) {
+    if (rosterIds.has(id)) continue;
+    problems.push(
+      `\`seatBlocks\` carries an entry for "${id}", which this roster has no worker for. ` +
+        `Re-run \`fsdev gen\`, or drop the entry: a seat's own blocks are registered for one ` +
+        `worker id, and an entry nothing reads is a block nobody can call.`
+    );
   }
 
   if (problems.length > 0) {

@@ -44,7 +44,9 @@ The request has to resolve to an org. An app on the default principal resolver d
 
 ## Tools
 
-A worker names its tools by key in `tools:`, and the keys come from the kind's **catalog**: a map from key to tool that your app passes when it builds the kind, since a file on disk can only carry a name. Naming a key the catalog does not carry is refused at the hire, by name. An empty `tools:`, or none at all, means no catalog tools, whatever else the catalog holds.
+A worker names its tools by key in `tools:`, and each key is resolved against what is registered for that worker: its own `blocks/` folder first, then its team's, then the kind's **catalog** — a map from key to tool that your app passes when it builds the kind, since a file on disk can only carry a name. The first match wins. A key nothing registers is refused at the hire, by name, and the refusal names both doors. An empty `tools:`, or none at all, means no tools, whatever is registered.
+
+**Registering a name is not granting it.** Dropping a block into a worker's own folder makes the name resolvable for that worker and nothing more; until the file lists it, the model is never handed it. [Blocks a worker can call](./workers-on-disk.md#blocks-a-worker-can-call) covers where a folder may sit and the two rules that keep a registered name honest.
 
 That list is the whole of what a worker can call. A capability you attach through [`defineAgentWorkerFlow`'s `uses`](#configuring-the-kind) can carry tools of its own, and they do not reach a worker: the model is handed the worker's own list and nothing else. Memory is the case you meet first. Its `recall` and `connect` presets are on by default, and a worker that named no tools still reaches the model with no tools. To give a worker one of them, put it in the catalog and let the worker name it, like any other tool.
 
@@ -56,7 +58,7 @@ A worker's own settings can still put a **control** on it. A control is a piece 
 - **The delegation controls**, when a skill the worker holds declares `agents:`. Activating that skill puts the task board's eight tools and `runBoard` on the worker, so it can create tasks and run them.
 - **The controls a capability preset declares**, when the worker selects that preset in its [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool) key. A preset's `controlTools` reach the worker; its `tools` do not.
 
-A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's `tools:`, so a worker with `tools: []` reaches no catalog tool through a delegate — it can command the board, but the workers it commands are fenced.
+A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's catalog tools, so a worker with `tools: []` reaches nothing through a delegate — it can command the board, but the workers it commands are fenced. A block from a worker's own folder does not travel that way either: a delegated worker is its own seat, with its own folder and its own list.
 
 Checking `tools:` against a catalog is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so whether a `tools:` name is checked against anything is that kind's business.
 
@@ -86,7 +88,7 @@ const seats = hireWorkforce(workers, {
 
 | Option | What it does |
 | --- | --- |
-| `catalog` | The tools workers may name in `tools:`, by key. Left out, the built-in has no tools at all. |
+| `catalog` | The tools every worker of this kind may name in `tools:`, by key — `workforce.gen.ts`'s `blocks` export goes straight in. Left out, the only names a worker can resolve are the ones its own folders register. Whatever a catalog tool declares as a resource is installed on the kind, for every worker of it. |
 | `skills` | Skills every worker of this kind holds, on top of the ones its own folders hold. A name that collides with a skill a worker already holds is refused at the hire. |
 | `model` | The model a worker uses when its own file names none. |
 | `classifierModel` | The model behind `skills.enableLlmClassifier`, an optional per-turn check that decides whether a skill applies. [Using them](#using-them) covers what it costs. |

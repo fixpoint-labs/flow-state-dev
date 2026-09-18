@@ -163,6 +163,10 @@ export const handRolledFlow = defineFlow({
     instructions: z.string().optional(),
     teamInstructions: z.string().optional(),
     seatSkills: z.array(z.object({ name: z.string(), skillMd: z.string() }).passthrough()).default([]),
+    // The fourth contract key. A hand-rolled schema has to add each one as the
+    // contract grows — which is the cost this fixture exists to show, not a
+    // reason to stop hand-rolling.
+    seatTools: z.array(z.any()).default([]),
     desk: z.string().default("front")
   }),
   actions: {
