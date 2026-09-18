@@ -1,0 +1,35 @@
+<svg viewBox="0 0 940 240" role="img" aria-label="Aligned before and after rows: a missing document is admitted by the schema today and refused after the cleanup; a supplied document is admitted in both." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --ink:#191C21; --muted:#4C535B; --rule:#D5D4CB; --yes:#2C7C69; --no:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --ink:#E6E8E5; --muted:#A4ACB1; --rule:#42494F; --yes:#5DBBA1; --no:#DE8A84; }
+    }
+    .bg { fill:var(--surface); }
+    .line { stroke:var(--rule); stroke-width:1; }
+    text { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:20px; }
+    .head { font-size:22px; font-weight:650; }
+    .note { fill:var(--muted); font-size:16px; }
+    .yes { fill:var(--yes); }
+    .no { fill:var(--no); }
+  </style>
+  <rect class="bg" width="940" height="240" rx="8"/>
+  <g id="headers">
+    <text class="head" x="32" y="42">Worker setting</text>
+    <text class="head" x="380" y="42">Today</text>
+    <text class="head" x="682" y="42">After cleanup</text>
+    <path class="line" d="M32 62 H908 M32 137 H908"/>
+  </g>
+  <g id="missing">
+    <text x="32" y="102">Document omitted</text>
+    <text x="380" y="102">Schema admits it</text>
+    <text class="no" x="682" y="102">Hiring refuses it</text>
+  </g>
+  <g id="supplied">
+    <text x="32" y="177">Valid document supplied</text>
+    <text class="yes" x="380" y="177">Hiring succeeds</text>
+    <text class="yes" x="682" y="177">Hiring succeeds</text>
+  </g>
+  <g id="footer">
+    <text class="note" x="32" y="220">The declaration catches omission before a worker starts.</text>
+  </g>
+</svg>
