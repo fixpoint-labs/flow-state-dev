@@ -15,6 +15,12 @@
  * that passes no org still gets, and the one this change must leave exactly as
  * it was: a channel with no org identity, which is correct for an app that has
  * no orgs.
+ *
+ * These drive the DEFAULT resolver, which reads the request body. An app that
+ * authenticates its callers binds the session to the verified principal's org
+ * instead, and a caller-supplied one is ignored there (BP-031) — engine's own
+ * `management-route-auth.test.ts` pins that, and repeating it here would be
+ * asserting engine's rule through this package.
  */
 import { describe, expect, it } from "vitest";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
@@ -73,6 +79,9 @@ function hostedClient() {
         flowKind: session.flowKind,
         flowId: session.flowId,
         userId: session.userId,
+        // Carried because a real `SessionDetail` carries it, and the binder
+        // reads it to refuse a channel already open outside the org asked for.
+        orgId: session.orgId,
         state: session.state
       };
     },

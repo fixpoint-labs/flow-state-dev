@@ -105,6 +105,14 @@ export interface OpenChannelsOptions {
       /** Absent on a session written before instance ownership existed (BP-030). */
       flowId?: string;
       userId: string;
+      /**
+       * The org the occupant is bound to, read only when this run passed an
+       * `orgId` — a channel already open under a different org (or under none)
+       * is refused rather than resolved over, because re-opening cannot move
+       * it. A real `SessionDetail` carries this; a hand-written client that
+       * omits it reads as "no org", and the refusal says so.
+       */
+      orgId?: string;
       state?: Record<string, unknown>;
     }>;
     /**
@@ -132,9 +140,18 @@ export interface OpenChannelsOptions {
    * lookup is matched against the org the session was opened with — so a
    * channel opened without one wakes seats that resolve every declared
    * document as unregistered. A session's org is fixed at creation, so this is
-   * the only moment it can be set — and an already-open channel is left exactly
-   * as it is, its org included, for the same reason an edited `CHANNEL.md` does
-   * not reach one. Re-opening is not a migration.
+   * the only moment it can be set. Re-opening is not a migration and cannot
+   * move an open channel into an org, so a channel already open under a
+   * different org — or under none, which is every channel opened before this
+   * option existed — is refused by name rather than reported as opened.
+   *
+   * **What the binder hands the client, not a claim about where the session
+   * ends up.** On a host that authenticates its callers, the session takes the
+   * verified principal's org and a caller-supplied one is ignored — BP-031,
+   * pinned by `management-route-auth.test.ts`'s "takes orgId from the
+   * principal, not body.orgId". Such an app opens its channels as a principal
+   * whose identity already carries the org; this option is what reaches the
+   * default resolver, which reads the request body.
    */
   orgId?: string;
 }
@@ -373,7 +390,8 @@ function stateFor(manifest: ChannelManifest): ChannelSessionState {
  * Three answers, because only one of the three is safe to tear down:
  *
  * - `"open"` — this kind's own bound channel, for this principal. Left exactly
- *   as it is.
+ *   as it is, unless this run asked for an org the channel is not in, which is
+ *   a `problem`: re-opening cannot move it.
  * - `"empty"` — this kind's own session for this principal carrying no state at
  *   all, which is precisely what the action path's create-or-get leaves behind.
  *   The only case the id is released in.
@@ -388,7 +406,8 @@ async function occupantOf(
   client: OpenChannelsOptions["client"],
   sessionId: string,
   kind: string,
-  userId: string
+  userId: string,
+  orgId: string | undefined
 ): Promise<ChannelOccupant> {
   const session = await client.getSession(sessionId);
 
@@ -420,7 +439,25 @@ async function occupantOf(
   }
 
   const state = session.state;
-  if (state !== undefined && boundChannel(state) !== undefined) return { status: "open" };
+  if (state !== undefined && boundChannel(state) !== undefined) {
+    // Asked for an org, and the channel already open there is not in it. Left
+    // alone this reports success and the app finds out at its first post, when
+    // the delivery is refused for crossing an org boundary. The common way to
+    // arrive here is an upgrade: channels opened before anyone passed an
+    // `orgId` are bound to no org, and re-opening cannot move them.
+    if (orgId !== undefined && session.orgId !== orgId) {
+      return {
+        problem:
+          `a channel is already open there under ` +
+          `${session.orgId === undefined ? "no org" : `org "${session.orgId}"`}, but this run ` +
+          `asked for org "${orgId}". A session's org is fixed at creation, so re-opening cannot ` +
+          `move it: delete that session to have this run open the channel under the new org, or ` +
+          `drop the \`orgId\`. If your client's \`getSession\` does not return \`orgId\`, return ` +
+          `it — this check reads it, and a channel that omits it reads as having no org.`
+      };
+    }
+    return { status: "open" };
+  }
   if (state === undefined || Object.keys(state).length === 0) return { status: "empty" };
 
   return {
@@ -455,7 +492,10 @@ const REPAIR_ATTEMPTS = 3;
  * - **A bound channel** is left exactly as it is. That is what keeps re-running
  *   over an unchanged roster a no-op — and, for the same reason, an edited
  *   `CHANNEL.md` does not reach a channel that is already open. Re-opening is
- *   not a migration.
+ *   not a migration. The one thing that is not silently left behind is an
+ *   `orgId` this run asked for that the open channel is not in: the same
+ *   reasoning makes that unfixable here, so it refuses rather than reporting
+ *   the channel opened.
  * - **This kind's own empty session** — one the action path minted when
  *   something posted to or read the id before this ran — is adopted: the id is
  *   released and re-created carrying the channel's state. Such a session holds
@@ -520,7 +560,8 @@ export async function openChannels(
             options.client,
             manifest.id,
             selected.kind,
-            options.userId
+            options.userId,
+            options.orgId
           );
         } catch (readError) {
           throw failed(readError);

@@ -732,9 +732,14 @@ when the server is built, and a session can only be opened once it is running. `
 a `userId` because a session belongs to one user, as *What a transcript proves* below explains.
 
 Pass `orgId` as well if your app has orgs. It is the org each channel session is opened under, and
-resources stored at org scope resolve inside it. File-declared documents are all org-scoped, so a
-channel opened without an org cannot read one. Adding `orgId` later does not move a channel that is
-already open.
+resources stored at org scope resolve inside it. The argument decides the org only on an app that
+has not configured [authentication](https://flow-state.dev/docs/server/authentication); where a
+`resolvePrincipal` is in place, each session takes the org of the verified caller, so open your
+channels as a caller whose identity already carries the org you want. File-declared documents are
+all org-scoped, so a channel opened without an org cannot read one. Re-opening cannot move a
+session between orgs. If you pass an `orgId` and a channel at that id is already open under a
+different org, or under none, `openChannels` names that channel and stops; delete that session so
+the next run opens the channel fresh, or drop the `orgId`.
 
 A record declares four keys and no others: `flow` (which kind, optional), `description`, `members`,
 and `instructions` (or a body, which is the same setting). The list is closed and checked at
