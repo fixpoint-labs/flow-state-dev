@@ -12,7 +12,7 @@ patterns.
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the kind factory (`agent-worker-flow.ts`) | Refuse at construction when a catalog entry's key and its block's `name` disagree, naming both (D3) | BR-3 |
+| S1 | `workforce` · the kind factory (`agent-worker-flow.ts`) | Refuse at construction when a catalog entry's key and its block's `name` disagree, naming both (the one-name rule) | BR-3 |
 | S2 | `workforce` · docs surfaces | The catalog wiring recipe, end to end: scan → `catalog:` → `tools:` → the model. This is the deliverable D1 is mostly made of | BR-1 BR-2 BR-4 BR-5 |
 | S3 | `goals/pentest-lab` · a new goal | A seat calls a custom block it named in `tools:`, on a real model. Soft-expand of FIX-1355. The lab already builds a catalog by hand (`lab/host.mts:279`); the delta is a block under its own `workforce/blocks/` and the scan, so the goal proves the *convention* path rather than the hand-wired one | BR-1 |
 | S4 | `workforce` · the code walk (`codegen/discover.ts`) | A per-seat blocks slot, `teams/*/workers/*/blocks/`, beside the existing `RESOURCE_SLOT_PATTERNS` walk. Refuse a `blocks/` folder at any other level and a `tools/` folder anywhere, each naming the fix | BR-6 BR-10 BR-12 BR-13 |
@@ -60,7 +60,7 @@ flowchart TD
 |---|---|---|
 | The colocated folder | `blocks/` | Public, and the invent-kill. Not `tools/` |
 | Its location | `teams/<team>/workers/<worker>/blocks/` | Public. It is the fork's answer if the fork is answered my way; if it is answered the other way this row gains levels rather than moving |
-| The tool name | the file's basename, which equals the block's `name` | Public — a model sees it, a trace shows it, a `tools:` list writes it (D3) |
+| The tool name | the file's basename, which equals the block's `name` | Public — a model sees it, a trace shows it, a `tools:` list writes it |
 
 The per-seat map's export name, the option name on the kind, and every internal helper are yours.
 
@@ -101,7 +101,7 @@ when the kind builds the seat's tools, per turn:
 at the mint, once per seat:
     refuse if a name appears in both      (BR-8)
 at the kind's construction, once:
-    refuse if any catalog key ≠ its block's own name   (BR-3, D3)
+    refuse if any catalog key ≠ its block's own name   (BR-3 · the one-name rule)
 ```
 
 The generator's fence sees one declared list and cannot tell which half a tool came from. That is
@@ -111,14 +111,14 @@ the point of D2, not an accident of the sketch.
 Run it: `npx vitest run --root spec-poc/FIX-1416-blocks-as-tools`. It pinned four things — the
 generated map is accepted as a catalog with no adapter; a seat naming a scanned block reaches its
 `execute`; `tools: []` fences it; and **the model is advertised the block's own `name`, not the
-scan's key**, which is the finding D3 exists for. The first three held as D1 assumed; the fourth
+scan's key**, which is the finding the one-name rule exists for. The first three held as D1 assumed; the fourth
 did not, and changed the spec.
 
 ## At implement time
 
 - **FIX-1421 is live in `packages/workforce/src/loader/`.** The walk primitives S4 builds on
   (`structural-directory.ts`, `segments.ts`) may have moved. Re-read before adding a slot pattern.
-- **FIX-1434** may have landed a prefix syntax for `tools:`. If so, check it against D3's
+- **FIX-1434** may have landed a prefix syntax for `tools:`. If so, check it against the one-name rule's
   no-dot-in-a-basename constraint before wiring anything — a prefix that cannot come from a file
   name needs a different source, and that is its spec's problem, not this one's.
 - Re-check whether any app has since started passing `catalog:`. If one has, S1's refusal may find
@@ -128,5 +128,5 @@ did not, and changed the spec.
 
 - **A command that prints a seat's full model-visible toolset.** D2's cost is that `tools:` is no
   longer the single place to look; this is the mitigation. Worth filing once D2 is signed.
-- **[FIX-1434](https://linear.app/fixpoint-labs/issue/FIX-1434)** — carry D3's constraint over: a
+- **[FIX-1434](https://linear.app/fixpoint-labs/issue/FIX-1434)** — carry the one-name constraint over: a
   namespace prefix cannot be minted from a file basename, because the segment rules forbid a dot.

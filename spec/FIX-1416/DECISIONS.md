@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
-What was considered, what was chosen, and what each locks in. Three decisions are the sign-off
+What was considered, what was chosen, and what each locks in. Two decisions are the sign-off
 surface; one fork is still open and needs an answer before the second PR is built.
 
 ## The tree
@@ -13,8 +13,7 @@ flowchart TD
   D1 -.->|"rejected"| X1["a tools registry beside the blocks scan<br/>a second map naming the same files"]
   I --> D2["D2 · a colocated tool JOINS the seat's declaration"]
   D2 -.->|"rejected"| X2["deliver it as a capability controlTool<br/>says the opposite of what a control is,<br/>and leaks to every seat of the kind"]
-  I --> D3["D3 · one tool, one name<br/>file = catalog key = block name"]
-  D3 -.->|"rejected"| X3["alias the key onto the tool<br/>two names for one thing, forever"]
+  I --> Q["OPEN · which folder levels are ambient"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -54,16 +53,23 @@ that makes that seat's `skills/` folder ambient, and it is a good argument. It j
 model-visible toolset is the obvious mitigation and is a follow-up, not this issue.
 
 <a name="d3"></a>
-## D3 · One tool has one name — the file's, the catalog key's and the block's own must agree, refused when the workforce is hired
-
-| | |
-|---|---|
-| **Instead of** | Leaving them free to differ, as they are today, or aliasing the key onto the tool |
-| **Because** | The POC found the gap: a seat authorized `lookup-customer` (the file name, and the catalog key) and the model was advertised `lookupCustomer` (the block's own `name`). The call by the authorized name never landed; the call by the other one did. Nothing checks they agree, and three separate readers each use a different one of the two — the seat's `tools:` list, the model's prompt and trace, and a skill's `allowed-tools` validation |
-| **Locks in** | A block file's basename is a tool name a model sees, so renaming the file renames a tool in every prompt and every trace. It also binds tool names to the segment rules: lowercase letters, digits and single hyphens, and **no dot** — because a dot is the joiner a worker id is split on (`packages/workforce/src/loader/segments.ts:29`). A namespace-prefix syntax like `engineering.*` cannot therefore get its prefix from a file name; whoever builds [FIX-1434](https://linear.app/fixpoint-labs/issue/FIX-1434) needs to know that before choosing a spelling |
-
 ## Decided, not asked
 
+- **One tool has one name: the file's, the catalog key's and the block's own must agree, refused
+  when the workforce is hired.** This is the engineer's call, not a fork — the alternative is an
+  ambiguity nobody wants — but it is recorded here because the POC is what found it and because it
+  binds something public. A seat authorized `lookup-customer` (the file name, and the catalog key)
+  and the model was advertised `lookupCustomer` (the block's own `name`); the call by the authorized
+  name never landed and the call by the other one did. Nothing checks they agree, and three readers
+  each use a different one — the seat's `tools:` list, the model's prompt and trace, and a skill's
+  `allowed-tools` validation. The guard goes at the kind's door rather than at the scan, so it also
+  covers a hand-built catalog and leaves a block used only as a flow action alone.
+  **What it binds:** a file's basename is now a tool name a model sees, so tool names inherit the
+  segment rules — lowercase, digits, single hyphens, and **no dot**, because a dot is the joiner a
+  worker id is split on (`packages/workforce/src/loader/segments.ts:29`). A namespace prefix like
+  `engineering.*` therefore cannot be minted from a file name;
+  [FIX-1434](https://linear.app/fixpoint-labs/issue/FIX-1434) needs to know that before it picks a
+  spelling.
 - **A colocated tool does not travel to a worker the seat delegates to.** The delegation fence
   narrows a board worker to the delegating seat's own `tools:` list
   (`agent-worker-flow.ts:521`), and ambient tools join the *generator's* declared list rather than
@@ -85,8 +91,8 @@ model-visible toolset is the obvious mitigation and is a follow-up, not this iss
 |---|---|
 | A `tools/` tree, at any level | Duplicates `blocks/` with a second registry naming the same kind of file. Explicitly fenced by the architect, and the tree already reserves the name as layout |
 | Name-intersecting capability tools with a seat's `tools:` instead of dropping them | Already settled and shipped as *drop* (FIX-1393); re-opening it is out of scope and the core doc explains why the intersection was inert |
-| Let a seat's `tools:` widen itself with a prefix (`engineering.*`) as part of this | [FIX-1434](https://linear.app/fixpoint-labs/issue/FIX-1434). This spec does not depend on it, and D3 constrains it — see the note there |
-| Make every scanned block's `name` equal its basename, at gen time | Broader than the harm. A block used only as a flow action never reaches a model, and kitchen-sink's own block documents that the two names are allowed to differ. D3 puts the guard at the door where the harm is, which also covers a hand-built catalog |
+| Let a seat's `tools:` widen itself with a prefix (`engineering.*`) as part of this | [FIX-1434](https://linear.app/fixpoint-labs/issue/FIX-1434). This spec does not depend on it, and the one-name rule constrains it — see "Decided, not asked" |
+| Make every scanned block's `name` equal its basename, at gen time | Broader than the harm. A block used only as a flow action never reaches a model, and kitchen-sink's own block documents that the two names are allowed to differ. The one-name rule puts the guard at the door where the harm is, which also covers a hand-built catalog |
 | Build the colocated half now and answer the levels fork later | The walk's slot patterns are what the fork decides. Building worker-only and widening later is additive; building all three and narrowing is a breaking change to working trees |
 
 <a name="open"></a>
@@ -127,5 +133,5 @@ it.
 ## How it got here
 
 - **Draft** — framed from the shipped fence and the shipped scan rather than from the ticket's
-  wishlist; a POC ran the primary recipe end to end and found D3's two-names gap, which nothing in
+  wishlist; a POC ran the primary recipe end to end and found the two-names gap, which nothing in
   the repo had asked about.

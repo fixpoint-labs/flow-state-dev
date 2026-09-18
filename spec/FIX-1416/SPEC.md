@@ -94,18 +94,19 @@ while an app runs, so a bundled deploy registers exactly what a local one does.
 
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · The primary recipe ships as a wiring line, a guard and documentation
-   — no new framework surface.** *If wrong:* we have documented a seam as supported and it turns
-   out to need an adapter, so the docs are wrong in public before the code is.
-2. **[D2](DECISIONS.md#d2) · A worker-colocated tool is ambient by joining the seat's own
+1. **[D2](DECISIONS.md#d2) · A worker-colocated tool is ambient by joining the seat's own
    declaration, not by being exempted from the fence.** *If wrong:* `tools:` in a worker file stops
    being the complete answer to "what can this seat call", and anyone auditing a seat has to read
    its folder too. That cost is real and it is the price of the ruling.
-3. **[D3](DECISIONS.md#d3) · One tool has one name: the file's, the catalog key's and the block's
-   own must agree, refused at hire when they don't.** *If wrong:* a rule that bites authors who
-   never meant to name a tool, on blocks that are never used as tools.
+2. **[D1](DECISIONS.md#d1) · The primary recipe ships as a wiring line, a guard and documentation
+   — no new framework surface.** *If wrong:* we have documented a seam as supported and it turns
+   out to need an adapter, so the docs are wrong in public before the code is.
 
-**Open: one.** Number 2 is the one to weigh, and the open fork is its other half — **which folder
+One thing was **decided, not asked**, and is flagged because it binds something public: a tool has
+one name, and the file's, the catalog key's and the block's own must agree
+([Decided, not asked](DECISIONS.md#d3)). The POC is what found it.
+
+**Open: one.** Number 1 is the one to weigh, and the open fork is its other half — **which folder
 levels are ambient**, the worker's own only or its team's and the org's as well. The full ask, my
 recommendation, and what would change my mind are in
 [DECISIONS.md → Open](DECISIONS.md#open). The cases are in
