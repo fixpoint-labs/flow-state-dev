@@ -638,3 +638,74 @@ describe("the board task's identity", () => {
     );
   });
 });
+
+describe("the completion check and the run's stop report", () => {
+  it("refuses a budget stop WITHOUT reaching the pull-request probe", async () => {
+    // The case FIX-1438 is about. A run that opened the pull request early and
+    // then exhausted its turn or spend budget leaves exactly the state this
+    // check otherwise reads as success — so the pull request's existence would
+    // close a row over a half-written branch.
+    //
+    // Asserting on the `gh` log rather than only on the boolean is what makes
+    // the ORDERING real: the refusal is the first thing the check does, so a
+    // later refactor that probes first and filters after cannot pass this.
+    const repo = mkdtempSync(join(tmpdir(), "conductor-stopreport-"));
+    dirs.push(repo);
+    seedRepo(repo);
+    execFileSync("git", ["remote", "set-url", "origin", "https://github.com/validated/repo.git"], {
+      cwd: repo,
+    });
+
+    const { log, restore } = recordingGh();
+    try {
+      const phase = implementPhase();
+      const validated = phase.validate?.({ root: repo, sourceRepo: repo, baseRef: "main" } as never);
+
+      const done = await phase.isDone({
+        ...runContext(repo),
+        validated,
+        stopReport: "stopped-at-limit",
+      } as never);
+
+      expect(done).toBe(false);
+      // No probe ran at all: `gh` was never invoked, so the log does not exist.
+      expect(existsSync(log)).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("still consults the probe on every OTHER stop report, including one it does not know", async () => {
+    // The cost of the rule above, asserted rather than assumed. Only the budget
+    // stop short-circuits; `finished`, a word this framework version does not
+    // define, and "nothing was reported" all reach the probe exactly as they
+    // did before this check learned the field. A check that refused on anything
+    // it did not recognise would trade one silent wrong answer for a noisy one.
+    for (const stopReport of ["finished", "error_context_window_exhausted", null]) {
+      const repo = mkdtempSync(join(tmpdir(), "conductor-stopreport-"));
+      dirs.push(repo);
+      seedRepo(repo);
+      execFileSync("git", ["remote", "set-url", "origin", "https://github.com/validated/repo.git"], {
+        cwd: repo,
+      });
+
+      const { log, restore } = recordingGh();
+      try {
+        const phase = implementPhase();
+        const validated = phase.validate?.({
+          root: repo,
+          sourceRepo: repo,
+          baseRef: "main",
+        } as never);
+
+        // `recordingGh` answers with an empty listing, so the probe's own answer
+        // is `false` — the point here is that it was ASKED.
+        await phase.isDone({ ...runContext(repo), validated, stopReport } as never);
+
+        expect(existsSync(log), `stop report ${String(stopReport)} skipped the probe`).toBe(true);
+      } finally {
+        restore();
+      }
+    }
+  });
+});

@@ -543,24 +543,16 @@ await runGoal(async () => {
         }
       }
 
-      // **BR-12, and the `stopped-at-limit` control's one clause.**
+      // **BR-12 and BR-13, one assertion for every control.**
       //
-      // The rule as this spec words it says a bad outcome inside a normal
-      // finish must not settle the row. The framework reads `status` for
-      // success and then asks the phase's done-condition; the `outcome` word is
-      // recorded and never consulted. So a run that stopped at its limit and
-      // still left a commit settles done — see goal.md → Findings. This clause
-      // is what makes that reproducible rather than an assertion in a document.
-      if (CONTROL === "stopped-at-limit" && row?.status === "completed") {
-        note(
-          `the run reported outcome "stopped-at-limit" and the row settled done anyway — ` +
-            `\`status\` alone decides success and the done-condition decides completion, so a ` +
-            `run that stopped at its budget with a partial commit settles its row`,
-        );
-      }
-
-      // BR-13.
-      if (CONTROL !== "stopped-at-limit" && row?.status !== "completed") {
+      // A bad outcome inside a normal finish must not settle the row, and a
+      // clean finish that did the work must. Both are the same question — did
+      // this row settle done — so the `stopped-at-limit` control is caught
+      // here, by the check that catches every other one, with no clause of its
+      // own. The phase's done-condition is handed the run's stop report now and
+      // refuses a budget stop, so that control goes red through this assertion
+      // rather than through a special case describing why it could not.
+      if (row?.status !== "completed") {
         note(
           `the row settled "${row?.status}" after a run that finished cleanly; wanted ` +
             `"completed"${row?.feedback === undefined ? "" : ` — ${row.feedback}`}`,

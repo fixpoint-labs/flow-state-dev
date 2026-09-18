@@ -574,6 +574,19 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
       return lines.join("\n");
     },
 
-    isDone: (ctx) => prExists(ctx),
+    // **A budget stop is not done, even with a pull request on the branch.**
+    //
+    // Refused before the probe, and the ordering is the point: a run that
+    // opened the pull request early and then ran out of turns leaves exactly
+    // the state this check reads as success. The pull request's existence says
+    // the run got far enough to open one, not that the branch under it is
+    // finished.
+    //
+    // The cost of refusing wrongly is one extra attempt, which resumes the same
+    // coding session, finds the work done and closes the row. The cost of
+    // closing wrongly is a half-written branch marked done, found by a person
+    // downstream. That trade is why this refuses here and not only in the
+    // weaker commit-based checks.
+    isDone: (ctx) => (ctx.stopReport === "stopped-at-limit" ? false : prExists(ctx)),
   };
 }
