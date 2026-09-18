@@ -287,6 +287,28 @@ describe("openChannels", () => {
     });
   });
 
+  it("hands the org on to createSession, so the channel is opened under it", async () => {
+    const { client, created } = sessionClient();
+
+    await openChannels([record("engineering.standup")], {
+      client,
+      userId: OWNER,
+      orgId: "org_acme"
+    });
+
+    // Not decoration: a file-declared document installs at `scope: "org"`, and
+    // a seat woken in a channel session that carries no org resolves every one
+    // of them as unregistered. `channel-org-identity.test.ts` drives the same
+    // thing through the real route.
+    expect(created[0]).toMatchObject({ orgId: "org_acme" });
+  });
+
+  it("sends no org key at all for an app that has none", async () => {
+    const { client, created } = sessionClient();
+    await openChannels([record("engineering.standup")], { client, userId: OWNER });
+    expect(created[0]).not.toHaveProperty("orgId");
+  });
+
   it("opens a custom kind's channel on that kind's own instance", async () => {
     const { client, created } = sessionClient();
     await openChannels([record("eng.a", { flow: "my-channel" })], { client, userId: OWNER });

@@ -157,7 +157,15 @@ flowRegistry.registerMany(channelInstances(channels));
 await openChannels(channels, { client: sessionClient, userId: "u_42" });
 ```
 
-`openChannels` is idempotent: a channel that is already open is left alone, so re-running it over an unchanged roster does nothing. The flip side is that re-opening is not a migration. Add a member or rewrite a charter in the record, and a channel that is already open does not see it. Re-running does repair one thing: a channel whose id was claimed by a post before it was opened. That leaves an empty session, and re-running binds it.
+If your app has orgs, pass one:
+
+```ts
+await openChannels(channels, { client: sessionClient, userId: "u_42", orgId: "org_acme" });
+```
+
+Every channel session is then opened under that org, and resources stored at org scope resolve inside it. [Documents read from the tree](./documents-on-disk.md) are all org-scoped, so in a channel opened without an org, reading one fails with `Resource "…" is not registered`.
+
+`openChannels` is idempotent: a channel that is already open is left alone, so re-running it over an unchanged roster does nothing. The flip side is that re-opening is not a migration. Add a member, rewrite a charter, or pass an `orgId`, and a channel that is already open does not see it. Re-running does repair one thing: a channel whose id was claimed by a post before it was opened. That leaves an empty session, and re-running binds it.
 
 An empty session is the only thing it will clear out of the way. If the id is held by something else — a session belonging to another flow, or to another user, or one carrying state that is not a readable channel — `openChannels` names it and stops. A channel id that collides with a real session is a configuration problem, and the fix is to rename the channel, not to have startup delete somebody's data.
 

@@ -85,6 +85,7 @@ export interface OpenChannelsOptions {
       flowKind: string;
       userId: string;
       sessionId?: string;
+      orgId?: string;
       description?: string;
       state?: Record<string, unknown>;
     }) => Promise<unknown>;
@@ -122,6 +123,20 @@ export interface OpenChannelsOptions {
    * transcript is the same value — see `channel-flow.ts`'s header.
    */
   userId: string;
+  /**
+   * The org every channel session is opened under. Optional, because an app
+   * with no orgs has none to give.
+   *
+   * An app that HAS one needs this, and the failure without it is not a loud
+   * one: file-declared documents install at `scope: "org"`, and an org-scoped
+   * lookup is matched against the org the session was opened with — so a
+   * channel opened without one wakes seats that resolve every declared
+   * document as unregistered. A session's org is fixed at creation, so this is
+   * the only moment it can be set — and an already-open channel is left exactly
+   * as it is, its org included, for the same reason an edited `CHANNEL.md` does
+   * not reach one. Re-opening is not a migration.
+   */
+  orgId?: string;
 }
 
 function messageOf(error: unknown): string {
@@ -458,6 +473,8 @@ const REPAIR_ATTEMPTS = 3;
  *
  * @param manifests The roster — the same records `channelInstances` registered.
  * @param options   `client`: the session API. `userId`: who every channel session belongs to.
+ *                  `orgId`: the org they are opened under, which org-scoped documents are
+ *                  matched against.
  * @throws On any failure that is not a 409, and on a 409 this cannot answer, with the channel named.
  */
 export async function openChannels(
@@ -476,6 +493,10 @@ export async function openChannels(
         flowKind: selected.kind,
         userId: options.userId,
         sessionId: manifest.id,
+        // Spread rather than passed as `orgId: options.orgId`: an app with no
+        // orgs sends no key at all, rather than an explicit `undefined` the
+        // session route would have to read past.
+        ...(options.orgId === undefined ? {} : { orgId: options.orgId }),
         ...(typeof declaredDescription === "string" ? { description: declaredDescription } : {}),
         state: stateFor(manifest)
       });
