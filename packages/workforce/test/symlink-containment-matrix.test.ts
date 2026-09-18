@@ -10,11 +10,21 @@
  * fail the moment one door stops agreeing with the others.
  *
  * The assertion is the same everywhere and it is about content, not wording: a
- * complete second workforce tree sits outside the configured root with a canary
- * string in every file it holds, and no door may return, throw or report
- * anything carrying that string. A door that followed a link would load a
- * worker, channel, document, module or skill from the outside tree, and the
- * canary is what makes that visible without pinning any message text.
+ * complete second workforce tree sits outside the configured root carrying a
+ * canary string, and no door may return, throw or report anything holding it. A
+ * door that followed a link would load a worker, channel, document, module or
+ * skill from the outside tree, and the canary is what makes that visible without
+ * pinning any message text.
+ *
+ * The canary is in the outside tree's **filenames as well as its file contents**,
+ * and that is not belt-and-braces. The two codegen doors never open a file —
+ * they return basenames and paths read off the tree's shape — so a canary that
+ * lived only in contents was invisible to them, and every codegen row here
+ * passed whether or not containment held. It did: with the symlink check removed
+ * entirely, those rows stayed green. `every door can observe the canary at all`
+ * is the control that now stands in front of that, and it is the first test in
+ * the file for that reason — an absence assertion is worth what the thing's
+ * presence is detectable.
  *
  * Real symlinks on a real filesystem, on purpose: what `lstat` does with a link,
  * with a trailing separator, or with a link partway down a path is filesystem
@@ -39,8 +49,16 @@ import { discoverResourceModules } from "../src/codegen/discover-resource-module
 /**
  * Marks every file in the outside tree. Finding it anywhere in a door's output
  * means that door read through a link.
+ *
+ * Lowercase and hyphenated because it has to be legal as a *basename*, not just
+ * as file contents. The two codegen doors never read a file — they return names
+ * and paths derived from the tree's shape — so a canary that lived only in file
+ * contents would be absent from their output whether or not they had walked the
+ * outside tree, and every codegen row here would assert nothing. It goes in the
+ * filenames too, and `every door can observe the canary at all` is the control
+ * that keeps that true.
  */
-const CANARY = "CANARY-OUTSIDE-THE-ROOT";
+const CANARY = "canary-outside-the-root";
 
 const TEAM = "engineering";
 const WORKER = "lead";
@@ -76,9 +94,11 @@ function buildTree(dir: string, tag: string): void {
   mkdirSync(join(dir, `teams/${TEAM}/resources`), { recursive: true });
   writeFileSync(join(dir, `teams/${TEAM}/resources/brief.md`), doc("document"));
   writeFileSync(join(dir, `teams/${TEAM}/resources/store.ts`), module_);
+  writeFileSync(join(dir, `teams/${TEAM}/resources/${tag}-team-store.ts`), module_);
 
   mkdirSync(join(dir, worker, "resources"), { recursive: true });
   writeFileSync(join(dir, worker, "resources/notes.md"), doc("document"));
+  writeFileSync(join(dir, worker, `resources/${tag}-worker-store.ts`), module_);
 
   mkdirSync(join(dir, `teams/${TEAM}/skills/team-skill`), { recursive: true });
   writeFileSync(join(dir, `teams/${TEAM}/skills/team-skill/SKILL.md`), skill("team-skill"));
@@ -91,13 +111,23 @@ function buildTree(dir: string, tag: string): void {
 
   mkdirSync(join(dir, "org/resources"), { recursive: true });
   writeFileSync(join(dir, "org/resources/policy.md"), doc("document"));
+  writeFileSync(join(dir, `org/resources/${tag}-org-store.ts`), module_);
 
+  // Two modules per code folder, and the pairing is deliberate. The fixed name
+  // is what the leaf-file case relinks, which needs the same relative path to
+  // exist in both trees. The `tag`-prefixed one is what makes a codegen result
+  // tell the trees apart at all: those doors return a basename and a path and
+  // never open the file, and both trees' fixed names are identical, so without
+  // this every codegen assertion in this file would pass on an empty claim.
   mkdirSync(join(dir, "blocks"), { recursive: true });
   writeFileSync(join(dir, "blocks/tally.ts"), module_);
+  writeFileSync(join(dir, `blocks/${tag}-block.ts`), module_);
   mkdirSync(join(dir, "flows/workers"), { recursive: true });
   writeFileSync(join(dir, "flows/workers/agent.ts"), module_);
+  writeFileSync(join(dir, `flows/workers/${tag}-worker-flow.ts`), module_);
   mkdirSync(join(dir, "flows/channels"), { recursive: true });
   writeFileSync(join(dir, "flows/channels/room.ts"), module_);
+  writeFileSync(join(dir, `flows/channels/${tag}-channel-flow.ts`), module_);
 }
 
 /** The configured tree and the tree outside it, side by side under `base`. */
@@ -163,6 +193,30 @@ async function expectNoDoorReadsOutside(root: string, what: string): Promise<voi
 }
 
 describe("no door follows a symlink out of the configured root", () => {
+  it("every door can observe the canary at all", async () => {
+    // The control every other test in this file rests on. Each assertion below
+    // is `the canary is absent`, which is worth exactly as much as the canary's
+    // visibility — and for the two codegen doors it was worth nothing until the
+    // outside tree's modules were given canary-bearing *filenames*, because
+    // those doors return names and paths and never read a file. So: point each
+    // door straight at the outside tree, with no symlink involved anywhere, and
+    // require that it comes back carrying the canary.
+    //
+    // Without this, removing containment entirely would leave the codegen rows
+    // green. It is the difference between "no door read the outside tree" and
+    // "no door could have told us either way".
+    const { outside } = scaffold();
+
+    for (const { name, open } of DOORS) {
+      const produced = await everythingProduced(open, outside);
+      expect(
+        produced.includes(CANARY),
+        `${name} cannot see the canary even when pointed directly at the outside ` +
+          `tree, so every assertion about it not seeing the canary proves nothing`,
+      ).toBe(true);
+    }
+  });
+
   it("refuses a symlinked root", async () => {
     const { outside } = scaffold();
     const linked = join(base, "linked-root");
@@ -213,6 +267,25 @@ describe("no door follows a symlink out of the configured root", () => {
     // Spelled by hand: `path.join` would collapse the `..` before any door saw
     // it, which is the whole difference being tested.
     const spelled = `${base}${sep}hop${sep}..${sep}elsewhere`;
+
+    // The refusal is asserted here, and by its own wording, where every other
+    // case in this file asserts content alone. Both halves are needed because
+    // neither covers the other: the canary sweep below is what catches the
+    // guard being gone, but it would stay green if the doors happened to fail
+    // for some unrelated reason before reaching the outside tree — and the
+    // directory the kernel lands on (`<base>/holder/elsewhere`) is a perfectly
+    // real in-tree workforce, so "nothing escaped" is a weaker claim here than
+    // it is anywhere else. Pinned to this refusal's own sentence rather than
+    // the shared "refused for safety" tail, so that a future symlink check
+    // firing on the kernel path instead cannot quietly satisfy it.
+    for (const { name, open } of DOORS) {
+      await expect(
+        open(spelled),
+        `${name} did not refuse a root spelled with a ".." through a link`,
+      ).rejects.toThrow(
+        /^Workforce directory ".+" is spelled with a "\.\." that steps back through an earlier segment/,
+      );
+    }
     await expectNoDoorReadsOutside(spelled, "root (`..` through a link)");
   });
 
