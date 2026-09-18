@@ -244,7 +244,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 280" role="img" aria-label="Three jobs side by side, not two products. Left, solid: Layer 1, the unopinionated framework, releasing, not on the market, other people build on it. Centre, mixed: Workforce, a thin package that exists, opinions so authors get going, not a user product people install. Right, dashed as a product: Conductor, the Layer 2 user-product focus, a software-dev meta-harness, unpublished lab.">
+      <svg viewBox="0 0 940 280" role="img" aria-label="Three jobs side by side, not two products. Left, solid: Layer 1, the unopinionated framework, releasing, not on the market, other people build on it. Centre, mixed: Workforce, a shipped package &#8212; hire workforce, the WORKER.md record and the channel floor &#8212; opinions so authors get going, not a user product people install. Right, dashed as a product: Conductor, the Layer 2 user-product focus, a software-dev meta-harness, unpublished lab.">
         <rect class="n-code" x="16" y="16" width="292" height="248" rx="5"/>
         <text class="t-lbl f-code" x="34" y="40">JOB 1 &#183; EXISTS &#183; RELEASING</text>
         <text class="t-b" x="34" y="72">Layer 1</text>
@@ -259,8 +259,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-prop" x="324" y="16" width="292" height="248" rx="5"/>
         <text class="t-lbl" x="342" y="40">JOB 2 &#183; COMPONENT</text>
         <rect class="n-code" x="342" y="56" width="256" height="44" rx="4"/>
-        <text class="t-s f-code" x="356" y="74">thin package exists</text>
-        <text class="t-xs" x="356" y="90">defineAgent &#183; materializeAgent</text>
+        <text class="t-s f-code" x="356" y="74">package exists</text>
+        <text class="t-xs" x="356" y="90">hireWorkforce &#183; WORKER.md &#183; channels</text>
         <text class="t-b f-accent" x="342" y="128">Workforce</text>
         <text class="t-s" x="342" y="152">opinions on Layer 1</text>
         <text class="t-xs" x="342" y="178">OSS EXTENSION &#183; RELEASABLE</text>
@@ -304,8 +304,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-prop" x="16" y="132" width="908" height="128" rx="5"/>
         <text class="t-lbl" x="34" y="154">OPINIONS &#8212; SHARED FLOOR &#183; NOT AN INSTALL</text>
         <rect class="n-code" x="34" y="168" width="420" height="72" rx="4"/>
-        <text class="t-s f-code" x="48" y="190">exists, thin</text>
-        <text class="t-xs" x="48" y="210">defineAgent &#183; registry &#183; materializeAgent</text>
+        <text class="t-s f-code" x="48" y="190">exists</text>
+        <text class="t-xs" x="48" y="210">hireWorkforce &#183; WORKER.md loader &#183; channels</text>
         <text class="t-xs" x="48" y="226">definePersona &#183; capability stub</text>
         <rect class="n-prop" x="470" y="168" width="434" height="72" rx="4"/>
         <text class="t-s f-accent" x="484" y="190">later maybe</text>
@@ -486,14 +486,14 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <table>
       <thead><tr><th>The piece</th><th>Status</th><th>What the source actually is</th></tr></thead>
       <tbody>
-        <tr><td>Layer&nbsp;1 packages</td><td><span class="tag t-real">exists</span></td><td><code>core</code>, <code>engine</code>, <code>orchestration</code>, and the rest of the published set. Version <code>0.0.0</code>. Releasing. Not on the market.</td></tr>
+        <tr><td>Layer&nbsp;1 packages</td><td><span class="tag t-real">exists</span></td><td><code>core</code>, <code>engine</code>, <code>orchestration</code>, and the rest of the published set. Publishing, pre-1.0 and not in lockstep &#8212; each package's own <code>package.json</code> carries its current version. Releasing. Not on the market.</td></tr>
         <tr><td>Four block kinds, flows, sessions, resources</td><td><span class="tag t-real">exists</span></td><td>The substrate both jobs sit on. A session carries a <code>flowKind</code> and nothing that says who owns it.</td></tr>
-        <tr><td>Task board, skills, dispatch</td><td><span class="tag t-real">exists</span></td><td>A <code>{ key }</code> dispatch makes a <strong>child</strong> of the current flow. Only the <code>{ id }</code> form sends to a session that already exists.</td></tr>
+        <tr><td>Task board, skills, dispatch</td><td><span class="tag t-real">exists</span></td><td>A <code>{ key }</code> dispatch makes a <strong>child</strong> of the current flow. Two forms reach a session that already exists, not one: <code>{ id }</code> names it outright, and <code>{ from: true }</code> delivers into the stamped sender &#8212; the reply direction, which is why a reply needs no id (<code>SessionTarget</code>, <code>packages/core/src/types/dispatch.ts</code>).</td></tr>
         <tr><td><code>waitForSideChain</code></td><td><span class="tag t-real">exists</span></td><td>Waits for background work on the same request. Not a wait on an addressed session.</td></tr>
         <tr><td><code>Agent</code> in core</td><td><span class="tag t-real">exists</span></td><td>A named participant. No <code>resources</code> field. No scope. Not a persistent identity.</td></tr>
-        <tr><td><code>@flow-state-dev/workforce</code></td><td><span class="tag t-real">exists</span> thin</td><td>Public package. <code>defineAgent</code>, registry, <code>materializeAgent</code>, <code>definePersona</code>. Capability factory is a stub. One example seats a skill. Not a user product.</td></tr>
+        <tr><td><code>@flow-state-dev/workforce</code></td><td><span class="tag t-real">exists</span></td><td>Public package, and no longer thin. The seat factory <code>hireWorkforce</code> turns <code>WORKER.md</code> records into one configured flow copy each; beside it sit <code>defineAgentWorkerFlow</code> (the built-in <code>agent</code> kind), <code>definePersona</code>, <code>resourcesFromDocs</code>, the <code>./loader</code> and <code>./codegen</code> subpaths, and the channel floor. Capability factory is still a stub &#8212; a <code>// TODO</code> returning a bare capability. The Agent factory it used to carry is <strong>gone</strong>: FIX-1344 removed <code>defineAgent</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code> and <code>agentBlock</code>, and a test asserts the shipped kind imports none of them (<code>packages/workforce/CHANGELOG.md</code>, <code>packages/workforce/test/agent-worker-flow.test.ts</code>). Still not a user product.</td></tr>
         <tr><td>Conductor</td><td><span class="tag t-real">exists</span> lab</td><td><code>labs/conductor/</code>, <code>private: true</code>. One phase, seed / wake / status / answer. Unpublished. Not a launched product.</td></tr>
-        <tr><td>Relay door</td><td><span class="tag t-real">exists</span>, as <code>dispatcher()</code></td><td>One Layer&nbsp;1 send door: address, send, no fan-out. It shipped under a different name &#8212; a block in <code>core</code>, not a group on <code>FlowDefinition</code> &#8212; so there is still no <code>packages/relay</code> and no <code>relay</code> on <code>FlowDefinition</code>, and those stopped being the test of whether the door exists. Its <code>{ id }</code> form delivers into a session that already exists. The half that has not shipped is the wait.</td></tr>
+        <tr><td>Relay door</td><td><span class="tag t-real">exists</span>, as <code>dispatcher()</code></td><td>One Layer&nbsp;1 send door: address, send, no fan-out. It shipped under a different name &#8212; a block in <code>core</code>, not a group on <code>FlowDefinition</code> &#8212; so there is still no <code>packages/relay</code> and no <code>relay</code> on <code>FlowDefinition</code>, and those stopped being the test of whether the door exists. Two of its <code>SessionTarget</code> forms reach a session that already exists: <code>{ id }</code> names it outright, and <code>{ from: true }</code> delivers into the stamped sender. The half that has not shipped is the wait.</td></tr>
         <tr><td>Address + fire-and-forget</td><td><span class="tag t-real">exists</span></td><td>The first cut of that door, shipped as <code>dispatcher()</code>. Enough to send. Not enough to collaborate.</td></tr>
         <tr><td>Address + wait</td><td><span class="tag t-prop">next</span></td><td>The half collaboration needs. Workforce-facing. Same door. Not a new primitive.</td></tr>
         <tr><td>Workforce user-product</td><td><span class="tag t-prop">later maybe</span></td><td>A peel-off. Opinions stay the shared floor. Not drawn as a second install.</td></tr>
