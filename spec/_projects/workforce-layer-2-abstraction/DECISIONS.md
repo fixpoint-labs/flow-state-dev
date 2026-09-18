@@ -96,3 +96,24 @@ D3/D7. It binds W3 and W4, so it is named here rather than left inside one epic.
 
 *An earlier version asked whether rooms had a declaration surface. The zero it found was the
 `room` → `channel` fold (PD-5) working, not a gap.*
+
+### Is W1 in scope, or held off the path? — needs the owner
+
+**Plain terms.** An external Claude or ChatGPT client has no first-class way to send work into a
+running Workforce, set focus, or read status. W1
+([FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333)) is that door — either the fifth epic
+this project owes, or something L2 finishes without. Evidence: [Spec](SPEC.md) → the epics table.
+
+**The trade-off.** In scope, the project is not done until the door ships. Out, L2 is
+feature-complete with the door shut — right if the two Labs are the proof, a promise quietly
+withdrawn if anyone is waiting on external-client access.
+
+**Recommendation — keep W1 an epic, record the hold on the issue.** The countdown's bar is what the
+Labs need; this project's outcome is the larger claim, and both hold if W1 leaves the near arc and
+stays on the list. Moving FIX-1333 to **On Hold** with a reason ends the ambiguity at its source.
+
+**What would change my mind:** W1 was dropped, not deferred — answered elsewhere, or nobody is
+waiting. Then it leaves the table and the outcome narrows.
+
+**Cost of being wrong:** low and reversible; what is paid today is two surfaces answering a reader
+differently about what this project owes.

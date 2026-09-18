@@ -30,7 +30,7 @@ under this project is checked against.
 | [FIX-1359](https://linear.app/fixpoint-labs/issue/FIX-1359) · **default agent flow** | OOTB replaceable `agent` flow kind | **done** | 7/11 |
 | [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351) · **W3 file surface** | Channels, resources, skills + a thin pentest lab | **in flight** | 16/21 |
 | [FIX-1407](https://linear.app/fixpoint-labs/issue/FIX-1407) · **W4 routing** | Work routing & package cohesion | *spec in progress* | 1/7 |
-| [FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333) · **W1 MCP door** | Client door over intake, boards, dispatcher | *not started* | — |
+| [FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333) · **W1 MCP door** | Client door over intake, boards, dispatcher | *not started* — **scope disputed** | — |
 
 2 done · 1 in flight · 1 standing up its spec · 1 not started.
 
@@ -41,6 +41,15 @@ and leaves its Linear state alone. W2 and the agent flow read *done* that way
 [#1718](https://github.com/fixpoint-labs/flow-state-dev/pull/1718). W4's epic-spec is being written
 on `epic/work-routing-package-cohesion` and **its PR number is not in yet** — the next refresh fills
 that cell rather than guessing it.
+
+**W1's status is derived from the issue; a second surface disagrees with it.** FIX-1333 has sat in
+**Todo** since Sep 8 — one state-history entry, never moved, nothing blocking it, priority still
+**High**. Re-derive it there. The project's
+[delivery countdown](https://linear.app/fixpoint-labs/document/workforce-delivery-countdown-e6b3b230c62d)
+(Sep 18) instead files it under *soft / follow-on*: **"W1 MCP (held) — not on the Workforce
+feature-complete path."** Linear carries no hold — the team has an **On Hold** status and FIX-1333 is
+not in it. *Not started* and *deliberately out of scope* are different answers, so the disagreement
+is left standing as an ask: [Decisions](DECISIONS.md) → Open.
 
 **Two things in that table are worth reading twice.** The numbering is not the order — W1 was filed
 the same day as W2 and has not started, while W2 finished in four days. And **FIX-1359 is marked

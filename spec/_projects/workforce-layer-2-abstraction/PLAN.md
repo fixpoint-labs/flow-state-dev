@@ -24,7 +24,9 @@ a narrow one: W4 is standing up its epic-spec while W3 runs out its last four is
 
 **W1 is the one that unblocks nothing**, which is why it can sit unstarted at the bottom of the arc
 without holding anything up — and also why it is the easiest to keep deferring. Its cost is not
-delay to the others, it is that the client door stays shut.
+delay to the others, it is that the client door stays shut. Whether that deferral has hardened into a
+decision is open — the delivery countdown calls W1 *held* and off the feature-complete path, the
+issue says only *Todo* ([Decisions](DECISIONS.md) → Open).
 
 ## Coordination seams
 
