@@ -68,7 +68,8 @@ const personas = definePersona({
 
 Describe each worker in a folder instead of in code. `readWorkforceDirectory` walks
 `<root>/teams/<teamId>/workers/<workerName>/`, reads each worker's `WORKER.md`, and returns
-one record per worker.
+one record per worker. `readWorkforce` wraps it, joining each seat's resolved skills and its
+team's instructions onto the records it hands back.
 
 ```ts
 import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
@@ -87,6 +88,35 @@ Each record is plain data:
 
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
 lowercase letters, digits and single hyphens, at most 64 characters.
+
+### The optional team file
+
+A team may also carry a `TEAM.md` at `<root>/teams/<teamId>/TEAM.md`: a required `description`,
+and a body holding the instructions every worker on that team is given. The file is optional, and
+a team without one loads exactly as it does without it — no layer, no placeholder, nothing
+reported.
+
+`readTeamsDirectory` reads it on its own; `readWorkforce` reads it once per call and joins the
+result onto that team's worker records.
+
+```ts
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
+
+const { workers, teams, errors, skillErrors, teamErrors } = await readWorkforce("./workforce");
+```
+
+| Field | Description |
+|-------|-------------|
+| `teams` | One `TeamManifest` per team that has a `TEAM.md` — `id`, `description`, `declared`, and `instructions` (absent when the body is empty or whitespace). |
+| `teamErrors` | One entry per `TEAM.md` that failed, keyed by its path. The team's workers still load, without the layer. |
+
+A `TEAM.md` refuses `id:`, `flow:`, `instructions:` and `teamInstructions:` — the first two because
+the convention derives them, the last two because the body is already the instructions.
+
+A hired seat then receives **two** instruction settings, never merged: `instructions` (its own
+body) and `teamInstructions` (its team's). Both are absent rather than empty when there are none.
+The [built-in worker kind](../../docs/architecture/workforce-default-worker-kind.md) composes them
+into its prompt in a fixed order — the team's first, the seat's own last.
 
 The reader builds nothing: no flow, no agent, no registry entry. It throws only when `root` itself
 cannot be read or is a symlink — a folder that produces no worker lands in `errors`, keyed by its
