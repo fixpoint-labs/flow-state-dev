@@ -8,6 +8,9 @@ import { FlowError } from "@flow-state-dev/core";
 export type TypeSafeErrorCode =
   | "missing_api_key"
   | "missing_questions"
+  | "invalid_routes"
+  | "invalid_state"
+  | "unexpected_answer"
   | "http"
   | "invalid_response";
 

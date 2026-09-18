@@ -8,12 +8,9 @@
  */
 
 import { handler, type BlockDefinition } from "@flow-state-dev/core";
-import {
-  createOpenRouterDecisionsClient,
-  resolveOpenRouterApiKey,
-  type TypeSafeDecisionsClient,
-} from "./client";
+import type { TypeSafeDecisionsClient } from "./client";
 import { TypeSafeError } from "./errors";
+import { runTypeSafeDecision } from "./run-decision";
 import {
   DEFAULT_TYPESAFE_MODEL,
   evaluateInputSchema,
@@ -89,17 +86,12 @@ export function typesafeEvaluate<Q extends TypeSafeQuestions = TypeSafeQuestions
         );
       }
 
-      const client =
-        injected ??
-        createOpenRouterDecisionsClient({
-          apiKey: resolveOpenRouterApiKey(config.apiKey),
-          model,
-        });
-
-      const result = await client.evaluate({
+      const result = await runTypeSafeDecision({
         state: input.state,
         questions,
         model,
+        apiKey: config.apiKey,
+        client: injected,
       });
       return result as TypeSafeEvaluateOutput & { answers: AnswersFor<Q> };
     },

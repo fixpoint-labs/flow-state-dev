@@ -9,7 +9,8 @@
 import { createOpenRouterDecisionsClient, resolveOpenRouterApiKey } from "../src/client";
 import { TICKET_QUESTIONS } from "../src/questions";
 import { routeByChoice } from "../src/route";
-import { isChoiceAnswer, isNoulAnswer } from "../src/schemas";
+import { SYSTEM_ONE_ROUTE_QUESTION } from "../src/router";
+import { choice, isChoiceAnswer, isNoulAnswer } from "../src/schemas";
 
 const state = {
   subject: "Duplicate charge",
@@ -37,14 +38,33 @@ const decision = routeByChoice({
   escalateIf: { noul: urgent, whenAbove: 0.8, andChoice: "billing" },
 });
 
+const mode = await client.evaluate({
+  state: { message: "let us plan the launch" },
+  questions: {
+    [SYSTEM_ONE_ROUTE_QUESTION]: choice(
+      "Which route should handle this input? Pick the best match.",
+      {
+        plan: "user is asking to plan something or needs to plan some work",
+        review: "User needs to review work that was just performed",
+      },
+    ),
+  },
+});
+
 console.log(
   JSON.stringify(
     {
-      model: result.model,
-      provider: result.provider,
-      usage: result.usage,
-      answers: result.answers,
-      decision,
+      ticket: {
+        model: result.model,
+        provider: result.provider,
+        usage: result.usage,
+        answers: result.answers,
+        decision,
+      },
+      modeRouterChoice: {
+        model: mode.model,
+        answer: mode.answers[SYSTEM_ONE_ROUTE_QUESTION],
+      },
     },
     null,
     2,

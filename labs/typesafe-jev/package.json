@@ -7,7 +7,7 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "description": "POC lab: a TypeSafe/Jev decision block over OpenRouter. Handler-style — state + typed questions in, structured answers out. Not a generator.",
+  "description": "POC lab incubating the future @flow-state-dev/system-one surface: systemOneRouter + typesafeEvaluate via OpenRouter Decisions. Private / DNM.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root .",
