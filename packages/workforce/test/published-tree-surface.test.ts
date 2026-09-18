@@ -20,12 +20,23 @@
  * starts publishing a new shape, or stops publishing an old one, breaks this
  * suite rather than letting it drift away from what authors are being told.
  *
- * **What this does not cover, deliberately.** Only tree *paths*, and only ones
- * a published page or README declares. Frontmatter keys are a different seam
- * and already have their own loud refusals — the readers' `refusedDeclaration`
- * doors, and the hire's refusal of a setting the kind does not declare. And a
- * shape declared only in an internal tree note is not here: no author can read
- * it, so closing that gap means publishing the shape first.
+ * **The same rule, one level up.** A path is not the only thing the convention
+ * publishes. The ref tables publish *addresses*, and an address that resolves
+ * to nothing is the same defect wearing a different hat — so the second half of
+ * this file checks that a published document ref naming a worker names a worker
+ * the roster reader accounts for. {@link WORKER_REFS_RESOLVE} carries that.
+ *
+ * **What this does not cover, deliberately.** Only what a published page or
+ * README declares. Frontmatter keys are a different seam and already have their
+ * own loud refusals — the readers' `refusedDeclaration` doors, and the hire's
+ * refusal of a setting the kind does not declare.
+ *
+ * A shape declared only in an internal tree note is **not** here, and cannot be
+ * without giving up the guard: nothing in the repo states that lock, so such a
+ * row would carry no quote to re-check and would drift exactly the way this
+ * table is built not to. Keeping the two apart also keeps the assertion
+ * meaningful — mixing promises we made to authors with plans we made to
+ * ourselves would make "we publish this and it does not work" unsayable.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -54,8 +65,8 @@ interface Readout {
   code: string[];
   /** Skill names the `alpha.lead` seat resolved, read directly. */
   teamSeatSkills: string[];
-  /** Skill names each loaded worker's manifest arrived carrying, keyed by worker id. */
-  workerSkills: Record<string, string[]>;
+  /** Document refs that loaded, paired with the worker each one is addressed to. */
+  workerAddressedRefs: Array<{ ref: string; worker: string; folder: string }>;
   /** Every root-relative path any reader reported as a failure. */
   reported: string[];
 }
@@ -81,15 +92,46 @@ interface PublishedShape {
  * it. An entry here is a debt this suite keeps visible, not a permission: the
  * assertion below requires the silent set to *equal* this list, so a gap that
  * gets fixed fails until it is removed, and a new gap fails on arrival.
+ *
+ * Empty, and that is the honest answer rather than a clean bill of health.
+ * Every path the published surface declares is read by something today; what is
+ * broken is one level up, in {@link KNOWN_UNRESOLVABLE_REFS}. The list stays
+ * because the next gap needs somewhere to be recorded the moment it arrives,
+ * and because an empty one is what makes the equality assertion say "none".
  */
-const KNOWN_SILENT_GAPS: ReadonlyArray<{ shape: string; owner: string }> = [
+const KNOWN_SILENT_GAPS: ReadonlyArray<{ shape: string; owner: string }> = [];
+
+/**
+ * Where the convention publishes that a worker's documents get an address
+ * naming that worker. Two unambiguous table rows, checked verbatim the way
+ * {@link PublishedShape.publishedIn} is — a ref table states the promise far
+ * more plainly than any sentence of prose around it does.
+ */
+const WORKER_REFS_RESOLVE: ReadonlyArray<{ file: string; quote: string }> = [
   {
-    shape: "org/workers/<worker>/WORKER.md",
-    owner: "FIX-1414 — org-level workers are declared in the tree but unhireable",
+    file: "apps/docs/docs/workforce/documents-on-disk.md",
+    quote: "| `<root>/org/workers/build/resources/runbook.md` | `workers/build/runbook` |",
   },
   {
-    shape: "org/workers/<worker>/skills/<skill>/SKILL.md",
-    owner: "FIX-1414 — a seat that cannot be hired has no seat to read skills for",
+    file: "packages/workforce/README.md",
+    quote: "| `<root>/org/workers/<worker>/resources/<name>.md` | `workers/<worker>/<name>` |",
+  },
+];
+
+/**
+ * A published document ref that names a worker nothing accounts for, with the
+ * issue that owns closing it.
+ *
+ * Held to the same equality discipline as {@link KNOWN_SILENT_GAPS}: a new
+ * unresolvable ref fails on arrival, and one that starts resolving fails until
+ * its row is struck.
+ */
+const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> = [
+  {
+    worker: "build",
+    owner:
+      "FIX-1414 — an org-level worker has no id to be addressed by, so the ref " +
+      "published for its documents names nothing hireable",
   },
 ];
 
@@ -214,40 +256,6 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.reported.includes("org/workers/build/resources/playbook.md"),
   },
   {
-    // Published as an assertion that org-level workers exist and are read like
-    // team ones. The tree that carries their documents is the same tree that
-    // would carry their `WORKER.md`.
-    shape: "org/workers/<worker>/WORKER.md",
-    publishedIn: {
-      file: "apps/docs/docs/workforce/documents-on-disk.md",
-      quote: "Organization-level workers, under `org/workers/`, are read the same way.",
-    },
-    write: (root) => writeFile(root, "org/workers/build/WORKER.md", doc("Shared infra seat.")),
-    // Whatever id an org seat ends up minting is FIX-1414's call, so this asks
-    // whether *some* seat came back for that folder rather than guessing the
-    // spelling — and a loud refusal naming the folder counts just as well.
-    accountedFor: (out) =>
-      out.workers.some((id) => id === "build" || id.endsWith(".build")) ||
-      out.reported.some((at) => at.startsWith("org/workers/build")),
-  },
-  {
-    // The same sentence, applied to the skills convention's third level: a
-    // worker's own `skills/` folder, for a worker that sits under `org/`.
-    shape: "org/workers/<worker>/skills/<skill>/SKILL.md",
-    publishedIn: {
-      file: "apps/docs/docs/workforce/documents-on-disk.md",
-      quote: "Organization-level workers, under `org/workers/`, are read the same way.",
-    },
-    write: (root) =>
-      writeFile(root, "org/workers/build/skills/deploy/SKILL.md", skillDoc("deploy")),
-    // No API can ask an org seat for its skills today — `readSeatSkills` takes
-    // a team — so the consumed side is read off whatever manifest the seat
-    // would arrive on once it can be hired.
-    accountedFor: (out) =>
-      Object.values(out.workerSkills).some((names) => names.includes("deploy")) ||
-      out.reported.includes("org/workers/build/skills/deploy"),
-  },
-  {
     shape: "teams/<team>/resources/<name>.ts",
     publishedIn: {
       file: "apps/docs/docs/workforce/capabilities-on-disk.md",
@@ -258,6 +266,56 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     accountedFor: (out) =>
       out.resourceModules.includes("teams/alpha/research") ||
       out.reported.includes("teams/alpha/resources/research.ts"),
+  },
+  {
+    shape: "org/resources/<name>.ts",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/capabilities-on-disk.md",
+      quote: "A capability lives at the organization level or in a team.",
+    },
+    write: (root) => writeFile(root, "org/resources/house.ts", "export default {};\n"),
+    accountedFor: (out) =>
+      out.resourceModules.includes("house") ||
+      out.reported.includes("org/resources/house.ts"),
+  },
+  // The two rows below are the same path at the two worker levels, and both
+  // assert only that the module walk SEES the file. That is deliberate, and it
+  // is less than the page says, so it is worth being exact about what is not
+  // covered here.
+  //
+  // The page splits a worker-level `.ts` two ways by what the file *is*: "A
+  // plain resource there is fine", while a capability in the same folder "is
+  // refused by name". The walk cannot tell them apart — it reads names, not
+  // default exports — so it consumes both and flags the position
+  // (`atWorkerRoot`), leaving the capability refusal to the seam that installs
+  // them. These rows therefore cover the plain-resource half, which is the half
+  // this suite is about: a published path that produces nothing and says
+  // nothing. Whether the refusal actually fires for the capability half is a
+  // different check at a different seam, and asserting it from a path alone
+  // would be claiming coverage this fixture cannot have.
+  {
+    shape: "teams/<team>/workers/<worker>/resources/<name>.ts",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/capabilities-on-disk.md",
+      quote: "A plain resource there is fine, and works like a document at that path.",
+    },
+    write: (root) =>
+      writeFile(root, "teams/alpha/workers/lead/resources/helper.ts", "export default {};\n"),
+    accountedFor: (out) =>
+      out.resourceModules.includes("teams/alpha/workers/lead/helper") ||
+      out.reported.includes("teams/alpha/workers/lead/resources/helper.ts"),
+  },
+  {
+    shape: "org/workers/<worker>/resources/<name>.ts",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/capabilities-on-disk.md",
+      quote: "A plain resource there is fine, and works like a document at that path.",
+    },
+    write: (root) =>
+      writeFile(root, "org/workers/build/resources/helper.ts", "export default {};\n"),
+    accountedFor: (out) =>
+      out.resourceModules.includes("workers/build/helper") ||
+      out.reported.includes("org/workers/build/resources/helper.ts"),
   },
   {
     shape: "flows/workers/<kind>.ts",
@@ -341,14 +399,38 @@ async function readEverything(root: string): Promise<Readout> {
     resourceModules,
     code,
     teamSeatSkills: seat.skills.map((skill) => skill.name),
-    workerSkills: Object.fromEntries(
-      workforce.workers.map((worker) => [
-        worker.id,
-        (worker.skills ?? []).map((skill) => skill.name),
-      ]),
-    ),
+    workerAddressedRefs: resources.documents.flatMap((document) => {
+      const addressed = workerFromRef(document.ref);
+      return addressed === undefined ? [] : [{ ref: document.ref, ...addressed }];
+    }),
     reported,
   };
+}
+
+/**
+ * The worker a document ref is addressed to, and the folder that worker would
+ * sit in — or `undefined` when the ref names no worker.
+ *
+ * Read off the ref rule the convention publishes, not off a list of the forms
+ * it currently produces: a ref carries a `workers/` segment exactly when the
+ * document sat in a worker's own folder, and what precedes that segment is the
+ * team, or nothing at the organization level. `ResourceDoc.ref` states the rule
+ * and makes the same point about why the rule leads and the forms follow.
+ */
+function workerFromRef(ref: string): { worker: string; folder: string } | undefined {
+  const segments = ref.split("/");
+  const at = segments.indexOf("workers");
+  if (at === -1) return undefined;
+
+  const name = segments[at + 1];
+  if (name === undefined) return undefined;
+
+  // `teams/<team>/workers/<name>/…` mints `<team>.<name>`; an org-level worker
+  // has no team segment, so the id it would mint is FIX-1414's to decide and
+  // the bare folder name is the most that can be asserted about it.
+  return at === 2 && segments[0] === "teams"
+    ? { worker: `${segments[1]}.${name}`, folder: `teams/${segments[1]}/workers/${name}` }
+    : { worker: name, folder: `org/workers/${name}` };
 }
 
 describe("the published workforce-tree surface", () => {
@@ -394,5 +476,50 @@ describe("the published workforce-tree surface", () => {
         `A shape here that is not a known gap is a new instance of the class: make it work, ` +
         `or refuse it loudly at load time naming the path. A known gap missing here is fixed — delete its row.`,
     ).toEqual([...KNOWN_SILENT_GAPS.map((gap) => gap.shape)].sort());
+  });
+
+  it("publishes a ref for a worker's documents that names a worker", async () => {
+    for (const { file, quote } of WORKER_REFS_RESOLVE) {
+      const contents = await fs.readFile(path.join(REPO_ROOT, file), "utf8");
+      expect(
+        contents.includes(quote),
+        `${file} no longer contains:\n  ${quote}\nThe promise checked below is this row. Re-read the page.`,
+      ).toBe(true);
+    }
+
+    for (const shape of PUBLISHED_SHAPES) await shape.write(root);
+    // A team worker folder holding documents and no `WORKER.md`. The convention
+    // says such a folder's documents load and the missing file is reported
+    // separately, so this is the case that proves the assertion below
+    // discriminates: its ref is unresolved for a reason the author is TOLD, and
+    // it must not read the same as the org-level silence.
+    await writeFile(root, "teams/alpha/workers/ghost/resources/note.md", doc("A note."));
+
+    const out = await readEverything(root);
+
+    // The class policy, applied to an address instead of a path: a ref that
+    // names a worker must name one that loaded, or one whose absence was
+    // reported. Neither is the silence — a document an author can read, whose
+    // address points at nothing and says nothing.
+    const unresolvable = out.workerAddressedRefs
+      .filter(
+        // Exact, never a prefix. The worker slot is what must be reported, and
+        // a prefix would let a failure on a *sibling* under that folder — a
+        // document in its own `resources/`, say — stand in for a worker nobody
+        // said anything about, which is the assertion passing for a reason
+        // unrelated to its claim.
+        ({ worker, folder }) =>
+          !out.workers.includes(worker) && !out.reported.includes(folder),
+      )
+      .map(({ worker }) => worker);
+
+    expect(
+      [...new Set(unresolvable)].sort(),
+      `Published worker-addressed refs and known unresolvable ones disagree.\n` +
+        `Known:\n${KNOWN_UNRESOLVABLE_REFS.map((r) => `  ${r.worker}  (${r.owner})`).join("\n")}\n` +
+        `A worker here that is not known is a new instance: the convention publishes an ` +
+        `address for its documents, so hiring it must work or its folder must be refused ` +
+        `loudly. One missing is fixed — delete its row.`,
+    ).toEqual([...KNOWN_UNRESOLVABLE_REFS.map((known) => known.worker)].sort());
   });
 });
