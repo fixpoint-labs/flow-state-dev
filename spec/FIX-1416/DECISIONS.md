@@ -77,9 +77,12 @@ seat's `skills/` folder ambient. It is a good argument and it is why this docume
 price was written down honestly at the time: `tools:` stops being the complete answer to *what can
 this seat call*, a seat with `tools: []` and a `blocks/` folder reaches those blocks, and anyone
 auditing a seat has to read the file **and** the folder — not recoverable later without breaking
-trees that relied on it. The owner's ruling declines to pay that price, and the argument it declines
-it with is that the skills analogy does not hold: a skill is text in a prompt and a tool is running
-code with side effects, so "it is here, therefore it is yours" is a different proposition for each.
+trees that relied on it. The owner's ruling declines to pay that price. It gives no reason beyond the
+words quoted above, and none is invented here — but the distinction those words draw is the one this
+document had already written down two paragraphs further on, in the fork below: **a skill is text in
+a prompt and a tool is running code with side effects**, so "it is here, therefore it is yours" is a
+different proposition for each. The ruling applies at every level what the fork only considered
+applying at one.
 
 **Two things this refunds.** The follow-up D2 called for — a `fsdev` command printing a seat's full
 model-visible toolset — was the mitigation for a cost that no longer exists, so it is no longer owed
