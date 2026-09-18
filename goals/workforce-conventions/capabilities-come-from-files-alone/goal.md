@@ -1,0 +1,22 @@
+# workforce-conventions › a team's capabilities come from files alone
+
+**Issue:** FIX-1388 (Door B, the Select half; builds on the discovery and install halves in the same issue)
+
+**Outcome:** Someone drops a TypeScript capability into a team's `resources/` folder, runs `fsdev gen`, and two seats of one worker kind — differing only in what their own Markdown files name — answer differently because of it. The seat that named a preset knows what that preset carries; the seat that named nothing answers exactly as it did before the file existed. No capability is named in the app's own source, no seat installs anything, and a preset nobody selected reaches nobody.
+
+**Input:** `fixtures/workforce/` — a `research` capability at `teams/support/resources/research.ts` with two presets and neither on by default, a committed `workforce.gen.ts` written by the real command, and two seats at `teams/support/workers/{iris,otto}/` whose files differ only in an `iris`-only `capabilities:` key. `fixtures/input.json` holds the seat ids, what each one names, and the fact each one should be able to say. Held out: nothing in the package knows any of these values; swap the tree and `input.json` together for another valid pair and a correct implementation still passes.
+
+**Signal:** The generated module carries the capability's ref; the capability reaches the worker kind through `uses`; both seats hire, each carrying the selection its own file declared; and on one attempt `support.iris` answers with `LANTERN-2208` while `support.otto` does not, with neither carrying `THISTLE-6194`. PASS prints the discovered ref, what the kind installed, and both replies; any mismatch is a FAIL.
+
+**Anti-game:** A hollow pass here would assert that the seats' *settings* hold the right selection, or that both seats answered at all — both of which survive a kind that installs every preset for everybody, which is exactly the shape this key replaces. So the check grades the model's own words, as a **pair**: one shared kind and one shared question is always right for somebody, and a seat producing its fact only means something beside a sibling that cannot. Three held-out tokens (`LANTERN-2208`, `THISTLE-6194`) are written in exactly one preset each and nowhere else in the tree — leg 0 refuses to spend a model call unless that is still true, unless the question is free of them, and unless each seat's own file still names what `input.json` says it names and carries no fact directly. `THISTLE-6194` belongs to a preset **no seat selected**, so a kind that installed the whole capability fails even though every seat answered. And leg 0 reads the harness source to confirm it installs from the module the *command* generated rather than importing the capability file, since importing it directly would prove nothing about the build step.
+
+**Model:** `openai/gpt-5.4-mini` through the Vercel AI Gateway (override with `GOAL_MODEL`). The model is what removes the crutch: a mocked generator would hand the assertion the fact it was looking for.
+
+**Run:** `pnpm tsx goals/workforce-conventions/capabilities-come-from-files-alone/run.mts`
+
+**Controls:** `GOAL_CONTROL=install-everything` turns every preset on for the whole kind (both seats then know both facts, and `THISTLE-6194` surfaces); `GOAL_CONTROL=ignore-selection` drops each seat's `capabilities:` before hiring (the seat that named one is then no better off than its sibling). Each perturbs the harness, never the tree, so leg 0 still passes and the failure arrives from reply grading.
+
+## Verdict log
+| Date | Commit | Model | Verdict | Notes |
+|------|--------|-------|---------|-------|
+| 2026-09-17 | fix/FIX-1388-P3 | — | BLOCKED | Run attempted; it reached the model call and stopped there: `No API key found for gateway "vercel". Set AI_GATEWAY_API_KEY environment variable.` Everything before the provider ran on the real path — leg 0 passed, the generated module was imported, the capability landed on the kind through `uses`, both seats hired carrying their own selections, registered, and each turn reached the answering generator. Leg (b) is unrun, so the model has not yet been shown answering from one seat's file and not the other's. That behaviour is covered mock-side by `packages/workforce/test/seat-capabilities.test.ts`, whose duplicate-preset and no-per-seat-resolution controls were both seen red first — a weaker bar than this goal, not a substitute for it. **Re-run this goal in an environment with an inference credential before treating the acceptance criterion as met.** |

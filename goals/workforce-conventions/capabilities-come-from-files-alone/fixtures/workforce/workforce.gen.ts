@@ -6,21 +6,14 @@
 // this file and the tree disagree. Committed on purpose — a fresh clone has to
 // typecheck before anything has been generated.
 
-import type { BlockDefinition } from "@flow-state-dev/core";
-import type { HireOptions, ResourceModules } from "@flow-state-dev/workforce";
-import block_desk_note from "./blocks/desk-note";
-import worker_desk_clerk from "./flows/workers/desk-clerk";
+import type { ResourceModules } from "@flow-state-dev/workforce";
 import resource_teams__support__research from "./teams/support/resources/research";
 
-export const kinds = {
-  "desk-clerk": worker_desk_clerk,
-} satisfies NonNullable<HireOptions["kinds"]>;
+export const kinds = {};
 
 export const channelKinds = {};
 
-export const blocks = {
-  "desk-note": block_desk_note,
-} satisfies Record<string, BlockDefinition>;
+export const blocks = {};
 
 export const resourceModules = {
   "teams/support/research": resource_teams__support__research,

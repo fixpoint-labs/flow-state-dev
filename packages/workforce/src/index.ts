@@ -46,6 +46,7 @@ export type {
   ResourceModules,
   WorkerResourceModuleExport,
 } from "./resource-modules";
+export type { SeatCapabilitySelection } from "./seat-capabilities";
 export { workerConfigSchema, seatSkillSchema, type WorkerConfig } from "./worker-config";
 export type { WorkerManifest, ResourceDoc } from "./manifest";
 export * from "./channel";

@@ -30,7 +30,7 @@ flowRegistry.registerMany(seats);
 
 No `kinds` argument, no flow of your own. The body becomes the worker's instructions and steers its answers; `description` is a label for the roster and never reaches the model.
 
-Its settings are `instructions`, `model`, `tools`, and the `skills` switches below. `flow: agent` names the same kind explicitly, and hires the same way.
+Its settings are `instructions`, `model`, `tools`, the `skills` switches below, and `capabilities` — which picks presets from the capabilities the kind carries, covered in [Capabilities on disk](./capabilities-on-disk.md). `flow: agent` names the same kind explicitly, and hires the same way.
 
 ## A request needs an org
 

@@ -10,13 +10,37 @@
  * Deliberately isolated: this subtree is the whole of the app's Layer 2 usage,
  * and nothing in `flows/` or `app/` reaches into it.
  */
-import { hireWorkforce } from "@flow-state-dev/workforce";
+import {
+  defineAgentWorkerFlow,
+  hireWorkforce,
+  splitResourceModules,
+} from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
-import { kinds } from "./workforce.gen";
+import { kinds, resourceModules } from "./workforce.gen";
+
+/**
+ * What a `.ts` file in a `resources/` folder turned into.
+ *
+ * This tree's one module is a capability, so only that half is used here; a
+ * module that exported a plain resource would come back on `resources` and be
+ * spread into a flow's own resource map beside the Markdown documents. Read
+ * once at module scope, not per hire.
+ */
+const { capabilities } = splitResourceModules(resourceModules);
+
+/**
+ * The built-in worker kind, carrying what the team's folder declared.
+ *
+ * Registered under `agent`, so it is the kind every seat that names no `flow:`
+ * is hired into. The app decides WHICH capabilities the roster may reach; each
+ * seat's own file decides which of their presets it wants, and a seat that
+ * names none carries the kind's defaults.
+ */
+const agent = defineAgentWorkerFlow({ uses: capabilities });
 
 /** This directory — the workforce root, read at run time the way Markdown always is. */
 export const workforceRoot = dirname(fileURLToPath(import.meta.url));
@@ -39,5 +63,8 @@ export interface HiredWorkforce {
  */
 export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
   const { workers, errors } = await readWorkforce(workforceRoot);
-  return { seats: hireWorkforce(workers, { kinds }), errors: errors.map((e) => e.path) };
+  return {
+    seats: hireWorkforce(workers, { kinds: { ...kinds, agent } }),
+    errors: errors.map((e) => e.path),
+  };
 }
