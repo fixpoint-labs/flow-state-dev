@@ -44,4 +44,4 @@
 3. `goals/task-board/hands-a-row-to-a-worker-in-its-own-session` passes **unedited**.
 4. `pnpm typecheck` and `pnpm test` pass across the workspace.
 5. `node spec/FIX-1440/evidence/classify-substrate.mjs` reports 0 files in the removal scope.
-6. `FIX-1045`, `FIX-1097`, `FIX-1121` cancelled; `FIX-1086` and `FIX-1171` re-scoped per D3.
+6. `FIX-1045` and `FIX-1097` cancelled; `FIX-1086`, `FIX-1171` and `FIX-1121` re-scoped per D3.

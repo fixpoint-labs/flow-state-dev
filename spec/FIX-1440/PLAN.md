@@ -17,11 +17,29 @@ that stay.
 | **S5** | `packages/client`: `listChildSessions`, `ListChildSessionsOptions`, `ChildSessionSummary`, `ChildSessionStatus`, index re-exports | Delete |
 | **S6** | `packages/react`: `SessionChildSessionsOptions`, the `childSessions` option, `.childSessions` / `.childSessionsStale` on `UseSessionResult`, `refreshChildSessions` and its three read-fence refs | Delete; leave the rest of `useSession` untouched |
 | **S7** | `packages/devtool`: `child-sessions-view.tsx`, `use-child-sessions.ts`, `child-session-links.ts`, the panel's Children tab and `handleOpenChildSession` | Delete. **The Tasks tab goes board-only in the same change**: `task-collections-view.tsx` carries a `ChildSession` column built on `ChildSessionSummary`, `linkChildSessionsToTasks` and `onOpenChildSession`, and that column goes with the tab. Dropping it retires almost all of `child-session-links.ts`; this is a cut, not a partial extract |
-| **S8** | `apps/kitchen-sink`: `background-work-panel.tsx`, `e2e/background-work.spec.ts`, the mounts in `app/page.tsx`, the section in `CLAUDE.md` | Delete the panel; the dispatch half (`flows/chat-agent/.../background-work.ts`) stays |
+| **S8** | `apps/kitchen-sink`: `background-work-panel.tsx`, `e2e/background-work.spec.ts`, the mounts in `app/page.tsx`, the section in `CLAUDE.md` | Delete the panel; the dispatch half (`flows/chat-agent/.../background-work.ts`) stays. **No replacement panel is built here** — see the S8 note below |
 | **S9** | Store listing options whose **only** caller is S1 — `SessionListOptions.orderBy: "createdAt"`, session `orgId`, `RequestListOptions.orderBy: "none"`, the status-array form, request `orgId` | Delete **only after** re-deriving that S1 was the sole caller; `parentage` itself stays (D1) |
 | **S10** | Docs — see the docs plan below | Edit / delete sections |
 | **S11** | Rename (D2): `context/detached-child.ts` → `dispatch-run.ts`, `deriveDispatchChildSessionId` → `deriveDispatchRunSessionId`, `evaluateAdoption`'s `child` vocabulary, and the stale header claim about settle/interrupt | Rename; **no change to `dsx_` or hash material** |
-| **S12** | Linear: cluster disposition per D3 | Cancel 3, re-scope 2 |
+| **S12** | Linear: cluster disposition per D3 | Cancel 2, re-scope 3 |
+
+### S8 — what the kitchen-sink shows afterwards
+
+Deleting the panel leaves the conversation's own reply as the surface: `reportBackgroundWork`
+emits "Filed X as background work", "Still running: N items", and "Back from the background: …"
+on the next turn. That is a real surviving demonstration and it teaches no session tree, so the
+removal is complete on its own.
+
+What it is **not** is a board-row view. `<TaskPlan />` mounts generically off a `task-board-meta`
+item (`chat-assistant.tsx:28`), so one renders for this board, but the pipeline's own header
+states the settle happens in the child session, "whose stream is its own" — so the parent stream
+never carries the completed row. **Before deleting the panel, open the kitchen-sink and look at
+what `<TaskPlan />` actually renders for `background-work`.** If it shows the rows, say so in the
+PR and nothing more is owed. If it shows an empty board, that is a pre-existing gap this change
+makes visible, and it gets its own issue — **do not invent a second board UI inside this
+leftover removal** (Architect, round 2).
+
+`SPEC.md`'s people table has been corrected to promise only what the paragraph above delivers.
 
 ## Build order
 
@@ -110,6 +128,13 @@ No new page. This change only removes.
 - `packages/engine/src/context/dispatch-operation.ts` describes the substrate without using any of the corpus's literal terms, so the evidence checker does not see it. Noted in the checker's header. Its `DispatchedChild` type name is a rename candidate under S11.
 
 ## Notes from review
+
+**Round 2 — `greptile-apps[bot]` + FSD Architect, 2026-09-18.** Both findings verified against
+real code and folded: `FIX-1121` moved from cancel to re-scope (the shutdown-abort path and the
+durability sweeper are outside S1–S12, so the defect outlives the removal), and `SPEC.md`'s
+kitchen-sink promise was corrected — it claimed a board-row replacement the plan does not build.
+The Architect's remaining points (fence the goal check, don't reopen D3's direction, don't invent
+a second board UI) are all already the plan's position.
 
 **Round 1 — `cursor[bot]`, 2026-09-18** (recorded verbatim; weigh against real code):
 

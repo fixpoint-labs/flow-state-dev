@@ -1,4 +1,4 @@
-# FIX-1440 · Remove child/nested session substrate — dispatchers + linked seats replace it
+# FIX-1440 · Remove browsable child-session surface — keep dispatch runs; rename off "child"
 
 Under [FIX-1208](https://linear.app/fixpoint-labs/issue/FIX-1208) (Remove superseded framework leftovers) · Size: M
 
@@ -7,9 +7,9 @@ Under [FIX-1208](https://linear.app/fixpoint-labs/issue/FIX-1208) (Remove supers
 | reads our docs to learn how background work is organised | Finds a documented endpoint for listing a session's children, and a line saying children can nest — so they model work as a session tree | Finds one way to organise work: a board of rows, handed to workers. No session tree to model |
 | opens the DevTool on a conversation | Sees a **Children** tab, clicks into a child, and gets another Children tab on that | Sees the conversation's own requests and its boards. Nothing invites them to descend |
 | builds on the framework and wants background work | Can browse the tree and is quietly encouraged to treat it as the org chart | Reads rows off a board, which is the surface that actually carries assignment and status |
-| runs the kitchen-sink reference app | Sees a Background Work panel that demonstrates enumerating children | Sees the same work demonstrated as board rows |
+| runs the kitchen-sink reference app | Sees a Background Work panel that demonstrates enumerating children | The conversation itself says what was filed and what came back. No panel enumerating child sessions — and no replacement panel is built here (see `PLAN.md` → S8) |
 | already dispatches work today (`dispatcher()`, task hand-off) | Works | Works, unchanged. The run still happens in its own derived session — it just isn't reachable as a tree |
-| is triaging the five open detached-child bugs | Five open bugs about the lifecycle of a surface we no longer want | Three are gone with the surface. Two are re-scoped to the dispatch behaviour they actually describe |
+| is triaging the five open detached-child bugs | Five open bugs about the lifecycle of a surface we no longer want | Two are gone with the surface. Three are re-scoped to the dispatch behaviour they actually describe |
 
 ![What changes](figures/what-changes.svg)
 
@@ -66,9 +66,8 @@ progress, in parallel with `F`.
 
 ## Sign off
 
-> **Open — this one needs your answer before the rest holds.**
-> **1. Do we delete the window, or the machinery behind it?** The issue says the substrate is a leftover the replacement no longer uses. It is not: a `dispatcher({ key })` call creates the derived session, and the shipped acceptance check for the replacement asserts it. Recommend removing the *browsable surface* and keeping the derived run. *If wrong:* if you meant a dispatched row must run in the caller's own session, that is a separate epic and this spec is the wrong shape for it. → [D1](DECISIONS.md#d1)
+1. **Do we delete the window, or the machinery behind it? — SIGNED, the window.** The issue said the substrate was a leftover the replacement no longer uses. It is not: a `dispatcher({ key })` call creates the derived session, and the shipped acceptance check for the replacement asserts it. Signed off on 2026-09-18: delete the browsable surface and the nest teaching, keep the derived run, and leave a same-session rewrite to W4 ([FIX-1408](https://linear.app/fixpoint-labs/issue/FIX-1408)). → [D1](DECISIONS.md#d1)
 
 2. **The internal vocabulary stops saying "child".** The derived session is renamed a *dispatch run* in code and internal docs, so nothing teaches a nest even where the mechanism survives. *If wrong:* the rename buys nothing but clarity, across roughly a dozen modules plus the architecture docs (`PLAN.md` → S11); skipping it leaves the word that caused this issue in place. → [D2](DECISIONS.md#d2)
 
-3. **Three of the five cluster bugs are cancelled, two are re-scoped.** `FIX-1045`, `FIX-1097`, `FIX-1121` describe the removed surface and go with it. `FIX-1086` and `FIX-1171` describe dispatch behaviour that survives. *If wrong:* cancelling a bug that was really about dispatch loses a real defect report. → [D3](DECISIONS.md#d3)
+3. **Two of the five cluster bugs are cancelled, three are re-scoped.** `FIX-1045` and `FIX-1097` describe the removed surface and go with it. `FIX-1086`, `FIX-1171` and `FIX-1121` describe dispatch behaviour that survives. *If wrong:* cancelling a bug that was really about dispatch loses a real defect report — which is why `FIX-1121` moved out of the cancel list in round 2. → [D3](DECISIONS.md#d3)
