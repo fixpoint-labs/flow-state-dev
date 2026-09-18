@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 320" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path: a ship-fence band under the axis saying the W3 floor is open with four children and no W4 ship PR merges until they close. Below it, nine lanes against time with a now line at September 18. Two input lanes from W3, TEAM.md and the tools fence, carry bars that stop at the now line and read spec approved and unbuilt. FIX-1408 carries the only done bar, done by decision. The three first-cut lanes — runtime inventory, channel boards and package cohesion — are empty lanes ahead of the now line and read spec and POC may start now. The two phase-2 lanes, catalog manifests and channel-admin, are empty and read off the exit gate. The last lane, the manager-queue lab, is empty and reads the proof, unadopted. The critical path is drawn in the gutter through the inventory, the boards and the lab.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .done  { fill:var(--code); stroke:none; }
+    .inp   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .lane  { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
+    .axis  { stroke:var(--rule); stroke-width:1; }
+    .now   { stroke:var(--gone); stroke-width:1.4; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:6 4; }
+    .crit  { fill:none; stroke:var(--ink-3); stroke-width:1.2; }
+    .critd { fill:var(--ink-3); stroke:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-ln  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.06em; }
+    .t-fen { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+
+  <text class="t-lbl" x="16" y="18">THE PATH — ONE LANE PER ISSUE, AGAINST TIME</text>
+
+  <g id="axis">
+    <path class="axis" d="M200 42 L924 42"/>
+    <text class="t-s" x="200" y="34">Sep 16</text>
+    <text class="t-now" x="252" y="34">now · Sep 18</text>
+    <text class="t-s" x="360" y="34">ahead · nothing scheduled</text>
+  </g>
+
+  <g id="ship-fence">
+    <text class="t-fen" x="16" y="62">SHIP FENCE</text>
+    <rect class="fence" x="200" y="50" width="724" height="16" rx="2"/>
+    <text class="t-fen" x="212" y="62">W3 floor open — FIX-1377 · FIX-1416 · FIX-1435 · FIX-1441 — no W4 ship PR merges until they close</text>
+  </g>
+
+  <path class="now" d="M298 74 L298 276"/>
+
+  <g id="critical-path">
+    <path class="crit" d="M190 155 L190 265"/>
+    <circle class="critd" cx="190" cy="155" r="3.2"/>
+    <circle class="critd" cx="190" cy="177" r="3.2"/>
+    <circle class="critd" cx="190" cy="265" r="3.2"/>
+  </g>
+
+  <g id="lanes-inputs">
+    <text class="t-ln" x="16" y="92">FIX-1377 TEAM.md · W3</text>
+    <rect class="inp" x="200" y="83" width="98" height="12" rx="2"/>
+    <text class="t-s" x="312" y="92">spec approved · unbuilt · #1819</text>
+
+    <text class="t-ln" x="16" y="114">FIX-1416 tools fence · W3</text>
+    <rect class="inp" x="200" y="105" width="98" height="12" rx="2"/>
+    <text class="t-s" x="312" y="114">spec approved · unbuilt · #1890</text>
+  </g>
+
+  <g id="lanes-set">
+    <text class="t-ln" x="16" y="138">FIX-1408 dispatch policy</text>
+    <rect class="done" x="258" y="129" width="40" height="12" rx="2"/>
+    <text class="t-s" x="312" y="138">done by decision — no impl PR</text>
+
+    <text class="t-ln" x="16" y="160">FIX-1405 inventory</text>
+    <path class="lane" d="M304 155 L548 155"/>
+    <text class="t-s" x="560" y="160">spec + POC may start now</text>
+
+    <text class="t-ln" x="16" y="182">FIX-1385 channel boards</text>
+    <path class="lane" d="M304 177 L548 177"/>
+    <text class="t-s" x="560" y="182">spec + POC now — the exit gate's surface</text>
+
+    <text class="t-ln" x="16" y="204">FIX-1394 package cohesion</text>
+    <path class="lane" d="M304 199 L548 199"/>
+    <text class="t-s" x="560" y="204">POC matrix first · ship tickets after ratify</text>
+
+    <text class="t-ln" x="16" y="226">FIX-817 catalog manifests</text>
+    <path class="lane" d="M304 221 L548 221"/>
+    <text class="t-s" x="560" y="226">phase-2 · off the gate · waits on inventory</text>
+
+    <text class="t-ln" x="16" y="248">FIX-1415 channel-admin</text>
+    <path class="lane" d="M304 243 L548 243"/>
+    <text class="t-s" x="560" y="248">phase-2 · off the gate · design only</text>
+
+    <text class="t-ln" x="16" y="270">FIX-1430 manager-queue lab</text>
+    <path class="lane" d="M304 265 L548 265"/>
+    <text class="t-s" x="560" y="270">the proof — unadopted. The epic ends here</text>
+  </g>
+
+  <g id="legend">
+    <rect class="done" x="120" y="290" width="16" height="10" rx="2"/>
+    <text class="t-s" x="144" y="299">done</text>
+    <rect class="inp" x="182" y="289" width="16" height="12" rx="2"/>
+    <text class="t-s" x="206" y="299">an input from W3 — spec approved, unbuilt</text>
+    <path class="lane" d="M448 295 L484 295"/>
+    <text class="t-s" x="492" y="299">not started — a lane, not a bar</text>
+    <circle class="critd" cx="676" cy="295" r="3.2"/>
+    <path class="crit" d="M676 289 L676 301"/>
+    <text class="t-s" x="692" y="299">on the critical path to the proof</text>
+  </g>
+</svg>
