@@ -197,6 +197,25 @@ describe("no door follows a symlink out of the configured root", () => {
     await expectNoDoorReadsOutside(spelled, "root (trailing separator)");
   });
 
+  it("refuses a root whose spelling collapses onto a different directory", async () => {
+    const { outside } = scaffold();
+    // `<base>/hop/../elsewhere`, where `hop` is a link to `<base>/holder/inner`.
+    // The kernel walks the link and then `..`, landing on `<base>/holder`; every
+    // caller instead builds its paths with `path.join`, which collapses `..`
+    // lexically and lands on `<base>`. So the directory the root check looks at
+    // and the directory the walk reads are two different places, and a link at
+    // the second one is never classified.
+    mkdirSync(join(base, "holder/inner"), { recursive: true });
+    buildTree(join(base, "holder/elsewhere"), "configured");
+    symlinkSync(join(base, "holder/inner"), join(base, "hop"));
+    symlinkSync(outside, join(base, "elsewhere"));
+
+    // Spelled by hand: `path.join` would collapse the `..` before any door saw
+    // it, which is the whole difference being tested.
+    const spelled = `${base}${sep}hop${sep}..${sep}elsewhere`;
+    await expectNoDoorReadsOutside(spelled, "root (`..` through a link)");
+  });
+
   it("refuses a symlinked teams/ folder", async () => {
     const { root, outside } = scaffold();
     relink(root, outside, "teams");
@@ -278,6 +297,29 @@ describe("what the root check deliberately does not cover", () => {
 
     const { workers } = await readWorkforceDirectory(join(base, "gateway", "tree"));
     expect(workers).toHaveLength(1);
+  });
+
+  it("still opens the ordinary spellings a root arrives in", async () => {
+    // The `..` refusal is the one check here that can fail by being too wide,
+    // and the cost of that is an app that will not boot. These are the shapes a
+    // configured root actually turns up in — absolute, trailing-separator,
+    // doubled-separator, `.`-suffixed, and relative with leading `..` steps,
+    // which collapse nothing because no directory precedes them.
+    const { root } = scaffold();
+    const spellings = [root, `${root}${sep}`, `${root}${sep}.`, `${base}${sep}${sep}configured`];
+    for (const spelling of spellings) {
+      const { workers } = await readWorkforceDirectory(spelling);
+      expect(workers, `refused an ordinary root spelled "${spelling}"`).toHaveLength(1);
+    }
+
+    const cwd = process.cwd();
+    try {
+      process.chdir(join(root, "teams", TEAM));
+      const { workers } = await readWorkforceDirectory(`..${sep}..`);
+      expect(workers, "refused a root reached by stepping up from the caller").toHaveLength(1);
+    } finally {
+      process.chdir(cwd);
+    }
   });
 
   it("follows a root spelled with a trailing `.` segment", async () => {

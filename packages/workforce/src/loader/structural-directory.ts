@@ -266,6 +266,39 @@ export function unreadable(what: string, name: string, cause: Error | undefined)
 }
 
 /**
+ * Whether a root's spelling carries a `..` segment that `path.join` would
+ * collapse — that is, one standing after a segment naming a real directory.
+ *
+ * Leading `..` segments are fine and common (`../workforce`): nothing precedes
+ * them, so nothing collapses and every path built from the root denotes what it
+ * says. What this catches is `<a>/../<b>`, where the kernel applies the `..`
+ * *after* walking `<a>` while `path.join` applies it *lexically* — so a linked
+ * `<a>` sends the two to different directories. See {@link classify} for the
+ * worked example.
+ */
+function collapsesThroughAnAncestor(root: string): boolean {
+  // Split on the separators this platform actually has — on POSIX a backslash
+  // is an ordinary filename character, so a folder named `a\..\b` is one
+  // segment and names no ancestor.
+  const segments: string[] = [""];
+  for (const character of root.slice(path.parse(root).root.length)) {
+    if (isSeparator(character)) segments.push("");
+    else segments[segments.length - 1] += character;
+  }
+
+  // A segment only makes a later `..` collapsible if it names a directory to
+  // collapse. `.`, `..` and the empty run between doubled separators do not:
+  // a root of `../../workforce` steps up twice from the caller's own directory
+  // and every path built from it still denotes what it says.
+  const namesADirectory = (segment: string): boolean =>
+    segment !== "." && segment !== ".." && segment !== "";
+
+  return segments.some(
+    (segment, index) => segment === ".." && segments.slice(0, index).some(namesADirectory),
+  );
+}
+
+/**
  * Open the configured workforce root, or throw.
  *
  * The root is the one level whose failure is a wiring mistake rather than a
@@ -283,10 +316,28 @@ export function unreadable(what: string, name: string, cause: Error | undefined)
  * writes by hand, into config or an environment variable, where the trailing
  * form is the ordinary way to write a directory down.
  *
+ * One spelling is refused before it is classified at all: a root carrying an
+ * interior `..`. Everything below the root is addressed as `path.join(root,
+ * …)`, which collapses `..` lexically, while the check here goes through the
+ * kernel, which collapses it only after walking what precedes it. With a link
+ * in front of the `..` those are two different directories, so classifying the
+ * root would answer for a tree the walk never reads — the check would pass and
+ * the content would come from somewhere else. Refused rather than resolved,
+ * because resolving it would pick one of the two meanings on the caller's
+ * behalf; the message asks for the path the caller means.
+ *
  * Returns nothing. Every reader goes on to open the levels it wants by name, so
  * the root's own entries have no reader.
  */
 export async function openRoot(root: string): Promise<void> {
+  if (collapsesThroughAnAncestor(root)) {
+    throw new Error(
+      `Workforce directory "${root}" is spelled with a ".." that steps back through an earlier ` +
+        `segment — refused for safety, because the folder this path checks and the folder its ` +
+        `contents would be read from need not be the same one. Pass the path it resolves to.`,
+    );
+  }
+
   if ((await classify(root)).kind === "symlink") {
     // Reported as the caller spelled it, so the message names the path they
     // configured rather than one they would have to recognize.
