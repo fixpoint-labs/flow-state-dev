@@ -161,21 +161,36 @@ const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> 
 ];
 
 /**
- * The pages the extraction below reads — the whole published surface for this
- * convention. A page added here that declares a shape with no row fails; a page
- * left out is a hole in the completeness check, so this list is the one thing
- * about the extraction that still has to be maintained by hand.
+ * Where the published surface lives. Every `.md` under these directories is
+ * read, so a page ADDED to one is scanned from the moment it lands — a
+ * hand-listed set of pages would have been the same defect this suite catches,
+ * one level up: a list describing itself as the published surface while
+ * silently not being it.
+ *
+ * What stays manual is which directories, which is a far smaller and more
+ * stable claim than which pages. The honest scope is therefore: **these trees,
+ * plus the files named below**. A page published somewhere else is not scanned
+ * and this suite will not say so.
  */
-const PUBLISHED_FILES: readonly string[] = [
-  "apps/docs/docs/workforce/overview.md",
-  "apps/docs/docs/workforce/workers-on-disk.md",
-  "apps/docs/docs/workforce/built-in-worker.md",
-  "apps/docs/docs/workforce/channels.md",
-  "apps/docs/docs/workforce/documents-on-disk.md",
-  "apps/docs/docs/workforce/capabilities-on-disk.md",
-  "apps/docs/docs/skills/overview.md",
-  "packages/workforce/README.md",
+const PUBLISHED_DIRECTORIES: readonly string[] = [
+  "apps/docs/docs/workforce",
+  "apps/docs/docs/skills",
 ];
+
+/** Published surface that is not a page under {@link PUBLISHED_DIRECTORIES}. */
+const PUBLISHED_EXTRA_FILES: readonly string[] = ["packages/workforce/README.md"];
+
+/** Every file the extraction reads, resolved when the check runs rather than listed. */
+async function publishedFiles(): Promise<string[]> {
+  const pages: string[] = [];
+  for (const directory of PUBLISHED_DIRECTORIES) {
+    const entries = await fs.readdir(path.join(REPO_ROOT, directory));
+    for (const entry of entries.sort()) {
+      if (entry.endsWith(".md")) pages.push(`${directory}/${entry}`);
+    }
+  }
+  return [...pages, ...PUBLISHED_EXTRA_FILES];
+}
 
 /** Segments the convention fixes. Everything else in a path is the author's name for something. */
 const RESERVED = new Set([
@@ -188,8 +203,6 @@ const RESERVED = new Set([
   "flows",
   "blocks",
 ]);
-/** The slot words that make a path a tree path rather than a ref. */
-const SLOTS = new Set(["workers", "resources", "skills", "channels"]);
 /** Filenames the convention fixes, which stay literal in a shape. */
 const FIXED_LEAVES = new Set(["WORKER.md", "CHANNEL.md", "SKILL.md"]);
 
@@ -217,12 +230,19 @@ function toShape(token: string): string | undefined {
   if (!["org", "teams", "flows", "blocks"].includes(segments[0])) return undefined;
 
   const last = segments[segments.length - 1];
-  // A shape ends in a file. `teams/engineering/workers/on-call/runbook` is a
-  // ref, not a path, and the ref tables print both in adjacent columns.
+  // A shape ends in a file. That one test is what separates a path from a ref
+  // and from a folder mention: `teams/engineering/workers/on-call/runbook` is a
+  // ref (the ref tables print both in adjacent columns), `org/skills/triage` is
+  // a folder. Neither has a file at the end.
+  //
+  // It used to ALSO require a segment from a known slot vocabulary. That was
+  // this suite's own defect, in the fix for this suite's own defect: it asked
+  // "is this built from parts we already recognize?", so a genuinely new slot —
+  // the one case the completeness check exists for — was discarded before it
+  // could be reported. Removing it costs nothing measurable: over the whole
+  // published surface it changes the extracted set by zero shapes, because the
+  // leaf test was already rejecting every ref and folder on its own.
   if (!FIXED_LEAVES.has(last) && !/\.[a-z]+$/.test(last)) return undefined;
-  if (!segments.some((segment) => SLOTS.has(segment)) && segments[0] !== "blocks") {
-    return undefined;
-  }
 
   return segments
     .map((segment, index) => {
@@ -742,6 +762,35 @@ describe("the published workforce-tree surface", () => {
     }
   });
 
+  it("surfaces a slot it has never seen before, rather than discarding it", () => {
+    // The regression for this suite's own worst defect. The extraction used to
+    // require a segment from a vocabulary of slots already known, which meant a
+    // genuinely NEW slot — the one thing the completeness check exists to catch
+    // — was thrown away before it could be reported, and the suite stayed green
+    // over a published path nothing handles.
+    //
+    // Synthetic rather than a real page on purpose: the whole point is a slot
+    // that does not exist yet, and one cannot be left sitting in the docs.
+    const declared = shapesDeclaredIn(
+      "A tool lives at `org/tools/scanner.md` and is read at boot.\n",
+    );
+
+    expect(
+      [...declared],
+      "An unrecognized slot must come out of the extraction spelled as itself, so the " +
+        "completeness assertion can fail on it by name. Discarding it is how a newly " +
+        "published shape stays invisible.",
+    ).toEqual(["org/tools/scanner.md"]);
+
+    // And the two things the leaf test is what rejects — a ref and a folder
+    // mention — must still not be mistaken for shapes, or removing the slot
+    // filter would have traded a blind spot for noise.
+    expect([...shapesDeclaredIn("its ref is `teams/engineering/workers/on-call/runbook`")]).toEqual(
+      [],
+    );
+    expect([...shapesDeclaredIn("the folder `org/skills/triage` holds it")]).toEqual([]);
+  });
+
   it("has a row for everything the published pages declare", async () => {
     // The other direction, and the one that decides whether the table can be
     // trusted as COMPLETE. Checking each row's quote proves no row went stale;
@@ -751,7 +800,7 @@ describe("the published workforce-tree surface", () => {
     // standing check instead.
     const declaredShapes = new Set<string>();
     const declaredExtensions = new Set<string>();
-    for (const file of PUBLISHED_FILES) {
+    for (const file of await publishedFiles()) {
       const contents = await fs.readFile(path.join(REPO_ROOT, file), "utf8");
       for (const shape of shapesDeclaredIn(contents)) declaredShapes.add(shape);
       for (const extension of extensionsDeclaredIn(contents)) declaredExtensions.add(extension);
