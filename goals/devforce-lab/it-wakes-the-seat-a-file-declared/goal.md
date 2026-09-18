@@ -67,7 +67,7 @@ handed every skill in the tree.
 | `no-commit` | what the run leaves behind | the row does not settle done |
 | `swap-documents` | the working seat's `document:` | its own brief's token cannot reach the prompt |
 | `drop-own-skill` | the working seat's resolved skill union | set equality, and the skill's token in the prompt |
-| `stopped-at-limit` | the outcome word the run reports | see **Findings** — this one's red is a framework observation |
+| `stopped-at-limit` | the stop report the run makes | the row does not settle done |
 
 **Model:** n/a — model-free by design. The model-backed half is the sibling goal,
 `it-commits-from-the-seats-own-file`, which drives the same tree, the same hire and the same wiring
@@ -76,21 +76,6 @@ with a real coding harness in the one slot that differs.
 **Run:** `pnpm tsx goals/devforce-lab/it-wakes-the-seat-a-file-declared/run.mts`
 
 Needs `git` and a writable temp directory. No network, no model credential, no `gh`.
-
-## Findings
-
-**BR-12 as the spec words it is not what the framework does, and the `stopped-at-limit` control
-reproduces it.** The rule says a bad outcome inside a normal finish (budget or spend exhausted) must
-not settle the row — "a normal finish is not success". What the manager actually does is read
-`status` for success and then ask the phase's done-condition; `outcome` is written to the run record
-and never consulted. So a run that reports `stopped-at-limit` and still leaves a commit settles its
-row `completed`.
-
-That is defensible as designed — the done-condition is the authority on completion, and the run
-record never is — and it is also the exact hazard BR-12 named: a run that stopped at its budget
-half-way through, having committed the half it finished, settles a row nobody finished. Not this
-goal's to fix (it consumes the shipped surfaces and changes none); recorded here and filed upward
-against the dispatch/manager work on FIX-1408.
 
 ## What this establishes, and what it does not
 

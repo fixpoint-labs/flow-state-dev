@@ -19,7 +19,8 @@
  * package versions:
  *
  * - {@link harnessManager} and its options, including the `harness` slot.
- * - `PhaseSpec` and the two run-context types a phase's hooks are handed.
+ * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
+ *   shared base, plus the prompt side and the completion side.
  * - `WorkspaceConfig`, and the construction-time guards a host should run at
  *   its own door (`assertDistinctRepository`, `assertBaseRefExists`,
  *   `assertCheckoutRootUsable`, `assertPositiveInt`).
@@ -52,6 +53,7 @@ export {
   type PhaseSpec,
   type PhaseRunContext,
   type PromptRunContext,
+  type CompletionRunContext,
   type AnsweredQuestion,
   type QuestionAnnouncement,
   type RequestIdentityContext,

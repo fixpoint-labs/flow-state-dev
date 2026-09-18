@@ -10,7 +10,8 @@
  *   and the conventions are the skill union the tree resolved for it. That is
  *   what makes BR-10 gradeable — the prompt carries three tokens that live in
  *   three different files and in none of this lab's code.
- * - **`isDone` is a commit the base ref does not have**, read out of the run's
+ * - **`isDone` refuses a run that reported `stopped-at-limit`, and otherwise is
+ *   a commit the base ref does not have**, read out of the run's
  *   own checkout with git. Not a pull request: conductor already proves the `gh`
  *   probe, and re-proving it would make this check expensive to re-run a year
  *   from now, which is the one thing a goal is for.
@@ -22,7 +23,7 @@
 
 import { assertBaseRefExists } from "@flow-state-dev/harness-manager";
 import type {
-  PhaseRunContext,
+  CompletionRunContext,
   PhaseSpec,
   PromptRunContext,
   WorkspaceConfig,
@@ -127,7 +128,13 @@ async function hasNewCommit(workspacePath: string, baseRef: string): Promise<boo
 export const implementPhase: PhaseSpec = {
   phase: PHASE,
   buildPrompt: buildSeatPrompt,
-  isDone: async (context: PhaseRunContext) => {
+  isDone: async (context: CompletionRunContext) => {
+    // **The run itself says it ran out of road, so a commit is not the job.**
+    // Checked before the probe: "a commit the base ref lacks" is the weakest
+    // completion signal this repo ships, and a budget-stopped run is precisely
+    // the case where committing something and finishing the work come apart.
+    if (context.stopReport === "stopped-at-limit") return false;
+
     const validated = context.validated as ValidatedWorkspace | undefined;
     if (validated === undefined) {
       throw new Error(
