@@ -1631,10 +1631,22 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // attempt's feedback and "still not done" alone loses the one fact that
       // explains it. A run that ran out of road and one that finished and got
       // it wrong want different next prompts.
+      //
+      // **Every clean end gets its own words, not two.** `status` and `outcome`
+      // are independent fields, so terminating normally while reporting
+      // `failed` — or reporting nothing at all — is a pairing this contract
+      // permits. Folding those into "finished cleanly" would tell the next
+      // attempt the run succeeded and simply missed the target, which is the
+      // same narrator-says-it-went-fine defect this field exists to close, one
+      // layer up.
+      const ended =
+        handle.outcome === "finished"
+          ? "the run finished cleanly"
+          : handle.outcome === "stopped-at-limit"
+            ? "the run stopped at its limit"
+            : `the run terminated normally reporting ${handle.outcome ?? "no terminal result"}`;
       throw new HarnessAttemptFailed(
-        handle.outcome === "stopped-at-limit"
-          ? `the run stopped at its limit and the ${state.phase} phase is still not done`
-          : `the run finished cleanly and the ${state.phase} phase is still not done`,
+        `${ended} and the ${state.phase} phase is still not done`,
       );
     },
   });

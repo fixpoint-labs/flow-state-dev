@@ -67,7 +67,7 @@ describe("the stop report crosses as reported", () => {
     expect(MANAGER).not.toMatch(/stopReport:\s*handle\.outcome\s*(\?\?|\|\||===|!==)/);
   });
 
-  it("is read in exactly three places, and only one of them is a comparison", () => {
+  it("is read only to phrase a failure, never to decide one", () => {
     // The authority rule, as a check rather than a comment. The manager may say
     // WHICH kind of clean end a phase refused — that text becomes the next
     // attempt's feedback — but it may not decide anything on it. So every read
@@ -77,11 +77,16 @@ describe("the stop report crosses as reported", () => {
     // check caught only the last of those.
     const reads = [...MANAGER.matchAll(/handle\.outcome/g)];
 
-    // Found the sites at all, or everything below examined nothing.
-    expect(reads.length).toBe(3);
+    // Found the sites at all, or everything below examined nothing. The count
+    // is asserted rather than bounded so a NEW read has to come here and be
+    // classified deliberately, which is the whole point of the check.
+    expect(reads.length).toBe(5);
 
     for (const read of reads) {
-      const site = MANAGER.slice(Math.max(0, read.index - 260), read.index + 260);
+      // Asymmetric on purpose: a read is either the pass-through it sits in,
+      // or it feeds a phrase bound just above the `throw` that consumes it, so
+      // the evidence for a legitimate site is always AHEAD of the read.
+      const site = MANAGER.slice(Math.max(0, read.index - 260), read.index + 700);
       const isPassThrough = /stopReport: handle\.outcome,/.test(site);
       const isFailureText = site.includes("HarnessAttemptFailed");
 
@@ -92,10 +97,13 @@ describe("the stop report crosses as reported", () => {
       ).toBe(true);
     }
 
-    // And the one comparison that exists says which word it is phrasing for.
+    // And every comparison that exists is naming a clean end for the failure
+    // text, which is why the set is pinned rather than the count: a third word
+    // appearing here means the manager started distinguishing cases, and a
+    // missing one means a kind of clean end got folded back into another's
+    // wording — the defect this file's own subject is an instance of.
     const comparisons = [...MANAGER.matchAll(/handle\.outcome\s*(===|!==|==|!=)\s*"([a-z_-]+)"/g)];
-    expect(comparisons.length).toBe(1);
-    expect(comparisons[0]![2]).toBe("stopped-at-limit");
+    expect(comparisons.map((m) => m[2]).sort()).toEqual(["finished", "stopped-at-limit"]);
   });
 });
 
