@@ -23,7 +23,8 @@
  * entry, `(ctx) => refs`, which the framework resolves per execution off
  * `ctx.flow.config`.
  *
- * That path carries **context and tools only**. Resources, state schemas and
+ * That path carries **context and tools** — catalog tools and controls alike;
+ * {@link DYNAMIC_KEYS} is the list. Resources, state schemas and
  * the generator singletons have to exist before a block runs, so the framework
  * resolves them at build time from static entries alone. Two consequences run
  * through this whole file:
@@ -104,20 +105,15 @@ const BUILD_TIME_ONLY_KEYS = [
  *
  * Kept only so the two lists can be checked against `PresetDef` together.
  *
- * `controlTools` (FIX-1393) is dynamic because that is what core does, not as
- * a preference: `resolveDynamicCapSurface` collects it on the same traversal
- * as `tools` and returns both. Classifying it build-time-only would refuse a
- * seat that names a control-bearing preset, which is the opposite of what a
- * control is for — a seat holds one because its own file asked, and a seat's
- * `capabilities:` selection is that asking.
+ * `controlTools` (FIX-1393) is dynamic because core makes it so —
+ * `resolveDynamicCapSurface` collects it alongside `tools` — not as a
+ * preference. Build-time-only would refuse a seat naming a control-bearing
+ * preset, which inverts what a control is for.
  *
- * The catalog half is settled the other way, and deliberately: a selected
- * preset's `tools` do NOT reach the seat past its own `tools:` fence — see
- * *"carries a selected preset's context but not its tool past the seat's
- * fence"* in `test/seat-capabilities.test.ts`. Selecting from what the app
- * installed is picking off a shelf, not declaring your own; letting it widen
- * a seat's `tools:` would re-open the hole FIX-1393 closed. Controls are the
- * exception because nothing about them is a catalog grant.
+ * Being dynamic is not being unfenced: a selected preset's catalog `tools`
+ * still stop at the seat's own `tools:`. See `PresetDef.controlTools` for the
+ * distinction and *"carries a selected preset's context but not its tool past
+ * the seat's fence"* in `test/seat-capabilities.test.ts` for the behaviour.
  */
 const DYNAMIC_KEYS = ["context", "tools", "controlTools"] as const satisfies readonly (keyof PresetDef)[];
 
