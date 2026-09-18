@@ -34,9 +34,10 @@
 
 | When | Then | Proved by |
 |---|---|---|
-| A reader greps live code for `childSession` | Matches appear only in the provenance route's own naming, if D2's rename leaves any there | Repointed corpus checker |
-| A reader opens the DevTool on a conversation | There is no tab that descends into children, and no breadcrumb that nests | S5; visual check |
-| A reader follows the docs to find background work | They are pointed at the flow's session list, with provenance as a secondary fact | Docs review |
+| A reader greps live code for `childSession` | Matches appear only in the provenance route's own naming, if D2's rename leaves any there | `evidence/first-class-dispatch-runs.mjs` → `no-devtool-descent` |
+| A reader opens the DevTool on a conversation | There is no tab that descends into children, and no breadcrumb that nests | S5; the same check's `no-devtool-descent`, plus a visual pass |
+| A reader follows the docs to find background work | They are pointed at the flow's session list, with provenance as a secondary fact | The same check's `docs-do-not-teach-a-nest`, over every tracked page |
+| An implementation over-applies the superseded removal | The provenance route and the derived id are still there — deleting either fails the check | The same check's `provenance-route-survives` and `derivation-untouched`, both green today |
 
 ## Failure taxonomy
 
@@ -55,5 +56,6 @@
 4. The DevTool has no descent: no Children tab, no nesting breadcrumb.
 5. `goals/task-board/hands-a-row-to-a-worker-in-its-own-session` passes **unedited**.
 6. `pnpm typecheck` and `pnpm test` pass across the workspace; the docs site builds with broken links throwing.
-7. `FIX-1045` closed as already fixed; `FIX-1097`, `FIX-1121`, `FIX-1086` and `FIX-1171` re-scoped to the dispatch lifecycle (D3).
-8. **Open, and not yet acceptance:** D4 (liveness authorization) is answered before this is implementable end to end.
+7. `node spec/FIX-1440/evidence/first-class-dispatch-runs.mjs` exits green on all six assertions. It is RED 3/6 today, which is what makes it a check rather than a description.
+8. `FIX-1045` closed as already fixed; `FIX-1097`, `FIX-1121`, `FIX-1086` and `FIX-1171` re-scoped to the dispatch lifecycle (D3).
+9. **Open, and not yet acceptance:** D4 (liveness authorization) is answered before this is implementable end to end.

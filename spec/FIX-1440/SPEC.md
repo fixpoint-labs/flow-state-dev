@@ -13,10 +13,6 @@ Under [FIX-1208](https://linear.app/fixpoint-labs/issue/FIX-1208) (Remove supers
 
 ![What changes](figures/what-changes.svg)
 
-> **The figure is stale.** It illustrates the superseded removal, not this direction. It is
-> redrawn before this spec goes back for review; it is left in place rather than deleted so the
-> PR's history stays readable.
-
 ## The surface, as a developer sees it
 
 ```diff

@@ -59,6 +59,7 @@ changes the **default**, not the mechanism.
 | `packages/engine/test/context/detached-child.test.ts` determinism cases (renamed) | S8 changed names, not bytes | unit |
 | `pnpm typecheck` / `pnpm test` | Nothing else moved | CI |
 | `pnpm --filter docs build` with `onBrokenLinks: throw` | No dangling anchor from a reframed section | CI |
+| `node spec/FIX-1440/evidence/first-class-dispatch-runs.mjs` | All six assertions green — the door opened, the descent teaching is gone, and the provenance route and derivation survived. **RED 3/6 at spec time by design** | acceptance |
 
 The second and third rows are the pair that matters: one proves the door opens, the other proves
 it was not already open for everyone. A change that only adds the first has not shown it preserved
@@ -66,12 +67,30 @@ the FIX-1009 protection.
 
 ## Evidence
 
-`evidence/classify-substrate.mjs` was built for the removal — its totality assertion requires the
-"removal scope" bucket to reach zero files. **Under this direction that assertion is wrong**, since
-almost nothing is being removed. It is repointed before this spec goes back for review: the useful
-part is the corpus sweep and the negative control, and what it should now assert is that no live
-code or published doc *teaches descent* — a much narrower forbidden set. Until then, treat its
-current PASS as evidence about the old direction only.
+`evidence/first-class-dispatch-runs.mjs` is the acceptance check, and it is **goal-shaped, so it is
+RED at spec time by design**:
+
+```
+RED — 3/6 assertions unmet: listing-opts-in, no-devtool-descent, docs-do-not-teach-a-nest
+```
+
+Three phases, and each check carries the sentence that says what would turn it red:
+
+- **MUST APPEAR** — `listing-opts-in`: `handleListSessions` threads a parentage option. Red today,
+  and it is the whole gap.
+- **MUST NOT APPEAR** — `wire-name-is-not-a-storage-concept` (green: the store enum must not leak to
+  the wire), `no-devtool-descent`, `docs-do-not-teach-a-nest`.
+- **MUST SURVIVE** — `provenance-route-survives` and `derivation-untouched`. Both green today, and
+  they exist to catch the *opposite* failure: an implementation that over-applies the superseded
+  removal and deletes what the owner amendment said to keep.
+
+A green run before implementation would mean the check isn't reaching what it claims to cover
+(BP-003, tenet 7). `--negative-control` hides the provenance route so a passing assertion is
+observed going red before any green is trusted; it restores the file in a `finally`.
+
+It replaces `classify-substrate.mjs`, deleted here: that checker's totality assertion required a
+"removal scope" bucket to reach zero files, and under this direction almost nothing is removed, so
+the assertion no longer meant anything.
 
 ## Guardrails
 
@@ -127,5 +146,6 @@ check stands and is carried into the guardrails above.
 > symbols** must grep empty in `packages/` + published docs, plus the goal check — drop the dispatch
 > allowlist and rely on narrow terms + `other` for surprises. I would **not** delete totality entirely.
 
-That note aged well: the forbidden-symbol shape is close to what the repointed checker needs now
-that the allowlist's premise is gone.
+That note aged well, and it was taken: `first-class-dispatch-runs.mjs` keeps the negative control
+and drops the allowlist entirely, asserting a narrow forbidden set plus the two things that must
+survive. Totality was not preserved — under this direction there is no bucket left to total.

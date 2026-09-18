@@ -1,66 +1,71 @@
-<svg viewBox="0 0 940 300" role="img" aria-label="Before: a conversation shows a browsable tree of child sessions, and background work runs in a derived session underneath. After: the browsable tree is gone, and background work still runs in the same derived session, now named a dispatch run and not reachable as a tree."
+<svg viewBox="0 0 940 320" role="img" aria-label="Today: a flow's session list shows only the conversations a person started, and the work a conversation dispatched is reachable only by descending into its children. After: the same dispatched run appears in the flow's own session list beside the conversation, opened directly, with the parent recorded beside it as provenance rather than as the way in."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
-            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+            --gone:#A9544F; }
     @media (prefers-color-scheme: dark) {
       :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
               --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
-              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
-    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
-    .n-keep { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
-    .n-gone { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
-    .n-pane { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
-    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-              font-size:9.5px; letter-spacing:.1em; }
-    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
-    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
-    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
-    .t-keep { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
-    .edge   { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
-    .edge-g { stroke:var(--gone); stroke-width:1.2; fill:none; stroke-dasharray:5 4; }
+              --gone:#DE8A84; } }
+    .pane  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .row   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .row-n { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .hide  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .lbl   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .hd    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .sm    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .gone  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .keep  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+    .edge  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .edge-g{ stroke:var(--gone); stroke-width:1.2; fill:none; stroke-dasharray:5 4; }
   </style>
 
-  <!-- ─────────── BEFORE ─────────── -->
-  <text class="t-lbl" x="20" y="24">TODAY</text>
-  <rect class="n-pane" x="16" y="34" width="430" height="246" rx="6"/>
+  <!-- ─────────── TODAY ─────────── -->
+  <text class="lbl" x="20" y="24">TODAY</text>
+  <rect class="pane" x="16" y="34" width="430" height="266" rx="6"/>
 
-  <rect class="n-box" x="40" y="56" width="180" height="46" rx="5"/>
-  <text class="t-b" x="56" y="78">the conversation</text>
-  <text class="t-s" x="56" y="93">a session</text>
+  <text class="lbl" x="40" y="58">THE FLOW'S SESSION LIST</text>
+  <rect class="row" x="40" y="68" width="380" height="40" rx="5"/>
+  <text class="hd" x="56" y="86">the conversation</text>
+  <text class="sm" x="56" y="100">listed · openable</text>
 
-  <!-- browsable tree -->
-  <path class="edge" d="M130 102 L130 132"/>
-  <rect class="n-box" x="40" y="132" width="380" height="60" rx="5"/>
-  <text class="t-lbl" x="56" y="152">BROWSABLE TREE</text>
-  <text class="t-b" x="56" y="172">“children” — a list you can open, and open again</text>
-  <text class="t-s" x="56" y="186">GET /sessions/:id/children · listChildSessions · DevTool tab</text>
+  <rect class="hide" x="40" y="118" width="380" height="34" rx="5"/>
+  <text class="gone" x="56" y="139">the dispatched run — not listed at any setting</text>
 
-  <path class="edge" d="M130 192 L130 218"/>
-  <rect class="n-keep" x="40" y="218" width="380" height="46" rx="5"/>
-  <text class="t-keep" x="56" y="238">WHERE THE WORK ACTUALLY RUNS</text>
-  <text class="t-b" x="56" y="255">a derived session per dispatched row</text>
+  <path class="edge-g" d="M130 152 L130 176"/>
+  <text class="sm" x="142" y="172">only door: descend</text>
+  <rect class="row" x="40" y="176" width="380" height="44" rx="5"/>
+  <text class="lbl" x="56" y="195">GET /sessions/:id/children</text>
+  <text class="hd" x="56" y="212">the work, one level down</text>
+
+  <rect class="row" x="40" y="236" width="380" height="44" rx="5"/>
+  <text class="lbl" x="56" y="255">AND ASKING IF IT IS ALIVE</text>
+  <text class="sm" x="56" y="272">answered only if it hangs beneath you</text>
 
   <!-- ─────────── arrow ─────────── -->
-  <path class="edge" d="M460 157 L486 157"/>
-  <path d="M486 152 L496 157 L486 162 z" fill="var(--ink-3)"/>
+  <path class="edge" d="M460 167 L486 167"/>
+  <path d="M486 162 L496 167 L486 172 z" fill="var(--ink-3)"/>
 
   <!-- ─────────── AFTER ─────────── -->
-  <text class="t-lbl" x="508" y="24">AFTER</text>
-  <rect class="n-pane" x="504" y="34" width="420" height="246" rx="6"/>
+  <text class="lbl" x="508" y="24">AFTER</text>
+  <rect class="pane" x="504" y="34" width="420" height="266" rx="6"/>
 
-  <rect class="n-box" x="528" y="56" width="180" height="46" rx="5"/>
-  <text class="t-b" x="544" y="78">the conversation</text>
-  <text class="t-s" x="544" y="93">a session</text>
+  <text class="lbl" x="528" y="58">THE FLOW'S SESSION LIST</text>
+  <rect class="row" x="528" y="68" width="372" height="40" rx="5"/>
+  <text class="hd" x="544" y="86">the conversation</text>
+  <text class="sm" x="544" y="100">listed · openable</text>
 
-  <path class="edge-g" d="M618 102 L618 132"/>
-  <rect class="n-gone" x="528" y="132" width="372" height="60" rx="5"/>
-  <text class="t-gone" x="544" y="158">removed</text>
-  <text class="t-s" x="544" y="176">no tree to browse, nothing to nest, nothing to grow on</text>
+  <rect class="row-n" x="528" y="118" width="372" height="48" rx="5"/>
+  <text class="keep" x="544" y="136">NOW LISTED HERE TOO</text>
+  <text class="hd" x="544" y="155">the dispatched run</text>
 
-  <path class="edge" d="M618 192 L618 218"/>
-  <rect class="n-keep" x="528" y="218" width="372" height="46" rx="5"/>
-  <text class="t-keep" x="544" y="238">UNCHANGED — RENAMED OFF “CHILD”</text>
-  <text class="t-b" x="544" y="255">a derived session per dispatched row</text>
+  <rect class="row" x="528" y="182" width="372" height="44" rx="5"/>
+  <text class="lbl" x="544" y="201">GET /sessions/:id/children</text>
+  <text class="hd" x="544" y="218">kept — now says who dispatched it</text>
+
+  <rect class="row" x="528" y="242" width="372" height="44" rx="5"/>
+  <text class="lbl" x="544" y="261">AND ASKING IF IT IS ALIVE</text>
+  <text class="sm" x="544" y="278">open — see D4, it carries a security cost</text>
 </svg>
