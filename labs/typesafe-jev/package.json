@@ -1,0 +1,30 @@
+{
+  "name": "@flow-state-dev/typesafe-jev",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "description": "POC lab: a TypeSafe/Jev decision block over OpenRouter. Handler-style — state + typed questions in, structured answers out. Not a generator.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root .",
+    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
+    "live-smoke": "tsx scripts/live-smoke.ts"
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
