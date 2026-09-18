@@ -1,0 +1,3411 @@
+{
+  ".changeset/channel-org-identity.md": {
+    "area": "tooling",
+    "hits": [
+      {
+        "line": 5,
+        "text": "`openChannels` accepts an `orgId`, so a channel's session is opened under the org its documents are scoped to (FIX-1412)."
+      }
+    ]
+  },
+  "apps/docs/docs/advanced/error-capture.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 48,
+        "text": "| `orgId` | `string?` | Present when the request is org-scoped. |"
+      }
+    ]
+  },
+  "apps/docs/docs/configuration/blocks.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 29,
+        "text": "| `requireOrg` | `boolean` | — | The flow rejects requests whose session has no `orgId`. |"
+      }
+    ]
+  },
+  "apps/docs/docs/configuration/client.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 43,
+        "text": "| `orgId` | `string` | — | Binds the request to an org **only under the default principal resolver**. A flow with its own `authentication.resolvePrincipal` takes the org from the verified principal and ignores this value, so a caller cannot claim an org it was not granted. Under such a flow the resolver has to return the org, or a `requireOrg` block still rejects the request. |"
+      }
+    ]
+  },
+  "apps/docs/docs/configuration/flow.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 142,
+        "text": "| `resolvePrincipal` | `(ctx) => principal \\| null` | — | Map the inbound request to `{ userId, orgId? }`. Throw a `PrincipalResolutionError` to pick the HTTP status (401/403). |"
+      },
+      {
+        "line": 145,
+        "text": "| `requireOrg` | `boolean` | — | Reserved. No runtime effect today. |"
+      },
+      {
+        "line": 216,
+        "text": "| `principal` | `{ userId, orgId? }` | gateway principal | Who the action runs as. |"
+      }
+    ]
+  },
+  "apps/docs/docs/fundamentals/state-and-scopes.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 253,
+        "text": "**Org** is the team-level boundary. Shared configuration, knowledge bases, settings that an admin controls for everyone. Available when the caller passes an `orgId`; `ctx.org` is `undefined` otherwise."
+      },
+      {
+        "line": 263,
+        "text": "Org scope is also shared across flows by default with the same registry-time schema check as user scope. Read it inside a block with `ctx.org?.state.config` — and remember the optional chain, since `ctx.org` is `undefined` when no `orgId` was passed. Once a session is bound to an `orgId`, requests claiming a different `orgId` against that session throw `OrgBindingMismatchError` at runtime."
+      },
+      {
+        "line": 265,
+        "text": "For the full operation reference and CAS semantics that apply to all four scopes, see [State Operations](/docs/fundamentals/state-operations). For how `userId` and `orgId` flow into a request — including who's responsible for verifying them — see [Authentication](/docs/server/authentication)."
+      },
+      {
+        "line": 279,
+        "text": "What stays shared, on purpose: **user** and **org** scopes. Org-level policy and quotas, and a user's preferences, are usually meant to apply across tenants, so they key on `userId` / `orgId` alone. If you need those isolated per tenant, encode the tenant into the id you pass."
+      },
+      {
+        "line": 338,
+        "text": "- **[Authentication](/docs/server/authentication)** — how `userId` and `orgId` reach a flow execution."
+      }
+    ]
+  },
+  "apps/docs/docs/fundamentals/state-operations.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 7,
+        "text": "Every scope (`request`, `session`, `user`, `org`, and the optional `sequencer`) exposes the same set of state operations. This page is the reference for them: what each one does, what its return value tells you, and what two concurrent writers end up with."
+      },
+      {
+        "line": 104,
+        "text": "const orgConfig = ctx.org?.state.config;  // typed; ctx.org may be undefined"
+      },
+      {
+        "line": 117,
+        "text": "ctx.session.identity  // { type: \"session\", id, userId, orgId? }"
+      },
+      {
+        "line": 119,
+        "text": "ctx.org?.identity     // { type: \"org\", id, ... }"
+      },
+      {
+        "line": 130,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 134,
+        "text": "`userId` is required on every action execution. `orgId` is optional — when omitted, `ctx.org` is `undefined`. `sessionId` is optional — when omitted, the framework auto-creates an ephemeral session."
+      }
+    ]
+  },
+  "apps/docs/docs/resources/external-collections.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 174,
+        "text": "scopeId: string;   // the resolved sessionId / userId / orgId"
+      },
+      {
+        "line": 176,
+        "text": "orgId?: string;"
+      }
+    ]
+  },
+  "apps/docs/docs/server/authentication.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 26,
+        "text": "`orgId`) that the framework can trust. If the credential is missing or"
+      },
+      {
+        "line": 35,
+        "text": "`UserBindingMismatchError` at context creation. Same for `orgId` via"
+      },
+      {
+        "line": 41,
+        "text": "- **Identity source.** The `userId` and `orgId` an action runs under come"
+      },
+      {
+        "line": 42,
+        "text": "from the resolver. Posting an `orgId` in the request body does not change"
+      },
+      {
+        "line": 90,
+        "text": "return { userId: session.userId, orgId: session.orgId };"
+      },
+      {
+        "line": 97,
+        "text": "The resolver returns a `ResolvedPrincipal`, a partial `{ userId?, orgId? }`,"
+      },
+      {
+        "line": 129,
+        "text": "return { userId: session.user.id, orgId: session.user.orgId };"
+      },
+      {
+        "line": 222,
+        "text": "orgId: typeof payload.org === \"string\" ? payload.org : undefined"
+      },
+      {
+        "line": 293,
+        "text": "`orgId` from the principal. A `userId` in the request body is ignored when a"
+      },
+      {
+        "line": 294,
+        "text": "resolver is configured, the same way `orgId` is ignored on action calls."
+      },
+      {
+        "line": 354,
+        "text": "A session's `userId` and `orgId` are immutable for the session's lifetime."
+      },
+      {
+        "line": 361,
+        "text": "- `OrgBindingMismatchError` — request supplied an `orgId` that doesn't"
+      },
+      {
+        "line": 416,
+        "text": "- Honour `requireOrg` — the flag is reserved for future enforcement work"
+      }
+    ]
+  },
+  "apps/docs/docs/workforce/built-in-worker.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 43,
+        "text": "The request has to resolve to an org. An app on the default principal resolver does that by sending an `orgId` with the request; an app that configures its own `resolvePrincipal` has to return the org from there, because the route reads the resolved principal and ignores a body `orgId` — a caller cannot name its own org. [The client reference](/docs/configuration/client) covers how a request carries one."
+      }
+    ]
+  },
+  "apps/docs/docs/workforce/channels.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 163,
+        "text": "await openChannels(channels, { client: sessionClient, userId: \"u_42\", orgId: \"org_acme\" });"
+      },
+      {
+        "line": 166,
+        "text": "Every channel session is then opened under that org, and resources stored at org scope resolve inside it. [Documents read from the tree](./documents-on-disk.md) are all org-scoped, so in a channel opened without an org, reading one fails with `Resource \"…\" is not registered`. The `orgId` argument decides the org only on an app that has not configured [authentication](../server/authentication.md); where a `resolvePrincipal` is in place, each session takes the org of the verified caller, so open your channels as a caller whose identity already carries the org you want. Re-opening cannot move a session between orgs. If you pass an `orgId` and a channel at that id is already open under a different org, or under none, `openChannels` names that channel and stops; delete that session so the next run opens the channel fresh, or drop the `orgId`."
+      }
+    ]
+  },
+  "apps/docs/docs/workforce/documents-on-disk.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 201,
+        "text": "A document is stored at org scope, so a request has to be bound to an org before a block can read one. The flow does not work that out from its resource map. It takes the requirement from its blocks, through [`requireOrg`](/docs/configuration/blocks)."
+      },
+      {
+        "line": 210,
+        "text": "Put `requireOrg: true` on the blocks that read a document, as the example in the next section does. The flow then turns away a request with no org up front, instead of running it and coming up empty. How a request carries its org is covered in [the client reference](/docs/configuration/client)."
+      },
+      {
+        "line": 251,
+        "text": "requireOrg: true,"
+      },
+      {
+        "line": 257,
+        "text": "`requireOrg: true` is what binds the request to an org, which org-scoped documents need to load at all."
+      }
+    ]
+  },
+  "apps/docs/guides/projects-on-org-scope.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 79,
+        "text": "? await ctx.org!.resources.artifacts.list({ topicPrefix: `${activeProjectId}/` })"
+      },
+      {
+        "line": 86,
+        "text": "await ctx.org!.resources.artifacts.set(`${activeProjectId}/note-${id}`, {"
+      },
+      {
+        "line": 97,
+        "text": "1. **Single-org apps.** Set `orgId = userId` (or any derived stable value) at session creation. The framework doesn't help or hinder — `orgId` is an opaque, app-owned identifier just like `userId`."
+      },
+      {
+        "line": 98,
+        "text": "2. **Multi-org apps.** Resolve `orgId` from your app's auth or routing context and pass it on session create. To enforce that a flow rejects unbound sessions, set `requireOrg: true` on the action's root block; the HTTP route returns 400 `OrgRequired` if a request hits an unbound session."
+      },
+      {
+        "line": 103,
+        "text": "requireOrg: true,"
+      },
+      {
+        "line": 105,
+        "text": "// ctx.org is guaranteed to be defined here."
+      },
+      {
+        "line": 129,
+        "text": "## What about session orgId?"
+      },
+      {
+        "line": 131,
+        "text": "`orgId` is **immutable** for the lifetime of a session. Once a session is created with an org, that binding is permanent. If a user genuinely needs to \"move\" a session to a different org, the app creates a new session and copies what should carry over."
+      }
+    ]
+  },
+  "apps/docs/guides/scheduled-dynamic.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 377,
+        "text": "principal: { userId: owner.id, orgId: owner.orgId }"
+      }
+    ]
+  },
+  "docs/architecture/authentication.md": {
+    "area": "reference",
+    "hits": [
+      {
+        "line": 18,
+        "text": "ResolvedPrincipal | { userId?: string; orgId?: string } | null` (or a"
+      },
+      {
+        "line": 30,
+        "text": "`body.orgId`) and returns them as the principal. It is there for early"
+      },
+      {
+        "line": 62,
+        "text": "| `org` | the session's bound `orgId`, taken from `principal.orgId` at session creation |"
+      },
+      {
+        "line": 71,
+        "text": "Return no `orgId` and the runtime builds no org resource registry for the"
+      },
+      {
+        "line": 74,
+        "text": "different `orgId` is rejected with `OrgBindingMismatchError` rather than"
+      },
+      {
+        "line": 75,
+        "text": "rebinding the session. Derive `orgId` from the same trusted source as"
+      },
+      {
+        "line": 219,
+        "text": "- **`resolvePrincipal` returns `{ orgId }` with no `userId`.** Treated as"
+      }
+    ]
+  },
+  "docs/architecture/flows-and-actions.md": {
+    "area": "reference",
+    "hits": [
+      {
+        "line": 52,
+        "text": "Config is per-copy and supplied at the mint, exactly like `id`, so it is normalized on the **mint** half of the factory path and not in the definition-derived half. A required field parsed at definition time would make every configured definition throw before its author could supply a bag. `FlowType` instead carries a `config` derived from one `safeParse({})` probe — the same value a bagless mint gets, so a blueprint and a mint never diverge — plus `requiresConfig`, a declaration-derived boolean beside `requiresOrg` that is true when that probe fails or its value does not satisfy a declaring block. The registry reads that boolean, and only that boolean, to refuse a definition handed over in place of an instance."
+      }
+    ]
+  },
+  "docs/architecture/inbound-transports.md": {
+    "area": "reference",
+    "hits": [
+      {
+        "line": 65,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 200,
+        "text": "Currently it enforces `requiresOrg`: when a flow declares"
+      },
+      {
+        "line": 201,
+        "text": "`requiresOrg: true`, the method checks `envelope.orgId`,"
+      },
+      {
+        "line": 202,
+        "text": "`principal.orgId`, and the stored session's `orgId` in that order."
+      },
+      {
+        "line": 424,
+        "text": "- `host.validateDispatch` called for a `requiresOrg` flow without an org"
+      }
+    ]
+  },
+  "docs/architecture/resources-and-client-data.md": {
+    "area": "reference",
+    "hits": [
+      {
+        "line": 55,
+        "text": "User- and org-scoped resources default to **shared** storage across every flow that touches the same `userId` / `orgId`. Set `flowIsolation: true` on a definition that should be flow-private — its data lives at `(scopeId, flowInstanceId, ref)` instead of `(scopeId, ref)`. The coordinate is the resolved **instance** id, not the kind (FIX-1323): two registered copies of one `collection` definition each get their own cell, and a singleton's instance id is its kind, so its existing keys are unchanged."
+      },
+      {
+        "line": 64,
+        "text": "| `org` | `false` (default) | `(orgId, ref)` |"
+      },
+      {
+        "line": 65,
+        "text": "| `org` | `true` | `(orgId, flowInstanceId, ref)` |"
+      },
+      {
+        "line": 191,
+        "text": "`ctx.session.state`, `ctx.user.state`, and `ctx.org.state` survive — state slices are namespaces that multiple unrelated blocks contribute keys into and need scope tagging at the install site. Resources have identity, so they carry their scope with them."
+      }
+    ]
+  },
+  "docs/architecture/state-and-scopes.md": {
+    "area": "reference",
+    "hits": [
+      {
+        "line": 295,
+        "text": "// Org scope (optional)"
+      },
+      {
+        "line": 296,
+        "text": "ctx.org?.state             // Readonly<TOrgState>"
+      },
+      {
+        "line": 476,
+        "text": "Every scope identity (`request`, `session`, `user`, `org`) carries an optional `tenantId`. The HTTP transport reads it from a configurable header — `x-tenant-id` by default, overridable via `createFlowApiRouter({ tenantIdHeader })` — and threads it onto the context, so handlers and lifecycle hooks can read `ctx.request.identity.tenantId` (or `ctx.session.identity.tenantId`) and branch on it."
+      },
+      {
+        "line": 510,
+        "text": "User- and org-scope records are not session-like — by default they are shared across every flow registered on a server, keyed by bare `userId` / `orgId`. A user has one `UserRecord`; every flow operating for that user reads and writes the same record. That is desirable when two flows genuinely share an identity concept (preferences, profile, quotas). It is a data-loss bug when two flows declare incompatible schemas over the same key."
+      },
+      {
+        "line": 542,
+        "text": "- **Flow-level**: `isolateUserState: true` / `isolateOrgState: true` on the `FlowDefinition`. Two roles: (1) it keys the **scope record** — the scope's single `state` blob (`ctx.user.state` / `ctx.org.state`) — and (2) it is the default `flowIsolation` for resources at that scope that don't declare their own. A flow that isolates a scope contributes no `stateSchema` to the registry schema merge for it, but still participates for any resource that opts back out."
+      },
+      {
+        "line": 551,
+        "text": "The `UserRecord.id` / `OrgRecord.id` field holds the scope-record's (possibly namespaced) key so lookups by record id are consistent. The `userId` / `orgId` fields remain the bare identity — list APIs that filter by `userId` continue to return both shared and isolated records for a given user, which is useful for admin and devtool views."
+      },
+      {
+        "line": 591,
+        "text": "A same-instance child inherits `flowId` and `flowKind`, `userId`, `tenantId`, `orgId` and `lineageId`, and records `parentSessionId`; a cross-instance child carries the target instance's `flowId`/`flowKind` and roots its own lineage. `evaluateAdoption` re-checks the owning instance (`flowId`, with kind and cardinality standing in for a pre-ownership record), principal, tenant, org, parent and lineage before adopting a record found at the derived key — the public session-create route lets a same-principal caller pre-create a record sitting at that deterministic id. `createExecutionContext` admits the session's and request's owner first, then validates user, tenant and org bindings; it does not check `parentSessionId`."
+      },
+      {
+        "line": 600,
+        "text": "| `org` | The same, on the bound `orgId` and `isolateOrgState` |"
+      }
+    ]
+  },
+  "docs/architecture/webhook-transport.md": {
+    "area": "reference",
+    "hits": [
+      {
+        "line": 114,
+        "text": "`validateSchedulesConfig`, and *before* the resource/`requireOrg`"
+      }
+    ]
+  },
+  "goals/devforce-lab/it-wakes-the-seat-a-file-declared/run.mts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 323,
+        "text": "const seat = lab.seats[seatId] as { kind?: string; requiresOrg?: boolean } | undefined;"
+      },
+      {
+        "line": 328,
+        "text": "if (seat.requiresOrg !== true) {"
+      },
+      {
+        "line": 519,
+        "text": "principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } as never,"
+      },
+      {
+        "line": 533,
+        "text": "principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } as never,"
+      }
+    ]
+  },
+  "goals/devforce-lab/lab/host.mts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 202,
+        "text": "// what makes the seats' `requireOrg: true` reads — and BR-17 — matter."
+      },
+      {
+        "line": 281,
+        "text": "orgId: LAB_ORG_ID,"
+      },
+      {
+        "line": 337,
+        "text": "// `validateDispatch` satisfies a flow's `requiresOrg` from an EXISTING"
+      }
+    ]
+  },
+  "goals/devforce-lab/lab/seat-config.mts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 81,
+        "text": "* **`requireOrg: true` is the whole of BR-17.** Every file-declared document is"
+      },
+      {
+        "line": 83,
+        "text": "* collects `requiresOrg` from its *blocks*, never from its resource map — so a"
+      },
+      {
+        "line": 94,
+        "text": "requireOrg: true,"
+      }
+    ]
+  },
+  "goals/devforce-lab/lab/workforce/flows/workers/coder.mts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 117,
+        "text": "// org: `defineFlow` collects `requiresOrg` from blocks, never from here."
+      }
+    ]
+  },
+  "goals/flow-instances/keeps-private-data-with-the-copy/fixtures/reviewer.ts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 60,
+        "text": "await ctx.org?.patchState({ marker: input.marker });"
+      }
+    ]
+  },
+  "goals/flow-instances/keeps-private-data-with-the-copy/goal.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 9,
+        "text": "(c) In the store: a user cell at `<userId>:<copy id>` and an org cell at `<orgId>:<copy id>` per copy, each holding that copy's marker; no cell at `<userId>:review` or `<orgId>:review`, the bare kind the old key rule used; and exactly one `directory` row at the bare `<userId>`, at version 1."
+      }
+    ]
+  },
+  "goals/flow-instances/keeps-private-data-with-the-copy/run.mts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 21,
+        "text": "orgId: string;"
+      },
+      {
+        "line": 54,
+        "text": "body: JSON.stringify({ userId: fixture.userId, orgId: fixture.orgId, input }),"
+      },
+      {
+        "line": 65,
+        "text": "org: (await stores.org.get(`${fixture.orgId}:${fixture.east.id}`))?.state,"
+      },
+      {
+        "line": 168,
+        "text": "const o = await orgState(`${fixture.orgId}:${copy.id}`);"
+      },
+      {
+        "line": 181,
+        "text": "if ((await stores.org.get(`${fixture.orgId}:${REVIEW_KIND}`)) !== undefined) {"
+      }
+    ]
+  },
+  "goals/pentest-lab/a-post-reaches-both-declared-seats/run.mts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 479,
+        "text": "if ((seat as { requiresOrg?: boolean }).requiresOrg !== true) {"
+      }
+    ]
+  },
+  "goals/pentest-lab/lab/README.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 82,
+        "text": "it declares carries no `orgId`, so it cannot thread one through — while"
+      },
+      {
+        "line": 93,
+        "text": "- **`openChannels` cannot thread an `orgId` through** (FIX-1412). The wrap above"
+      }
+    ]
+  },
+  "goals/pentest-lab/lab/host.mts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 17,
+        "text": "* `{ client, userId }` and the `createSession` it declares carries no `orgId`,"
+      },
+      {
+        "line": 239,
+        "text": "* reading block's `requireOrg` refuses at the door. The refusal is returned"
+      },
+      {
+        "line": 251,
+        "text": "/** The `orgId` the wrap injects, and the whole of what the wrap is. */"
+      },
+      {
+        "line": 272,
+        "text": "// what makes the seats' `requireOrg: true` reads and the client wrap matter."
+      },
+      {
+        "line": 397,
+        "text": "* `createSession` has no `orgId` field to pass one through, so it is added"
+      },
+      {
+        "line": 409,
+        "text": "...(options.omitOrgWrap === true ? {} : { orgId: LAB_ORG_ID }),"
+      },
+      {
+        "line": 475,
+        "text": "...(actOptions?.omitOrg === true ? {} : { orgId: LAB_ORG_ID }),"
+      },
+      {
+        "line": 539,
+        "text": "// `validateDispatch` satisfies a flow's `requiresOrg` from an EXISTING"
+      }
+    ]
+  },
+  "goals/pentest-lab/lab/notify.mts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 148,
+        "text": "* the sender's org — which is what carries the seats' `requireOrg: true`"
+      }
+    ]
+  },
+  "goals/pentest-lab/lab/workforce/flows/workers/probe.mts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 203,
+        "text": "* **Carries `requireOrg: true`, and that is the whole of BR-16.** Every"
+      },
+      {
+        "line": 205,
+        "text": "* `scope: \"org\"`), and `defineFlow` collects `requiresOrg` from its *blocks*,"
+      },
+      {
+        "line": 221,
+        "text": "requireOrg: true,"
+      },
+      {
+        "line": 376,
+        "text": "// org: `defineFlow` collects `requiresOrg` from blocks, never from here."
+      }
+    ]
+  },
+  "goals/workforce-conventions/capabilities-come-from-files-alone/harness.mts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 170,
+        "text": "body: JSON.stringify({ userId: USER_ID, orgId: ORG_ID, input: { message: QUESTION } }),"
+      }
+    ]
+  },
+  "goals/workforce-seats/the-built-in-kind-answers-from-a-file-alone/goal.md": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 33,
+        "text": "> **On the org id.** The built-in kind's skills collection is org-scoped, so a request carrying only a `userId` fails with `Resource \"skills\" is not registered` before the model is reached. The harness sends an `orgId`. This is a property of the kind, not of this check."
+      }
+    ]
+  },
+  "goals/workforce-seats/the-built-in-kind-answers-from-a-file-alone/harness.mts": {
+    "area": "consumer-or-site",
+    "hits": [
+      {
+        "line": 150,
+        "text": "body: JSON.stringify({ userId: USER_ID, orgId: ORG_ID, input: { message: QUESTION } }),"
+      },
+      {
+        "line": 243,
+        "text": "body: JSON.stringify({ userId: USER_ID, orgId: ORG_ID, input: { message: QUESTION } }),"
+      }
+    ]
+  },
+  "labs/trading-desk/test/past-reports.spec.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 442,
+        "text": "orgId: undefined,"
+      }
+    ]
+  },
+  "packages/bullmq/src/dispatcher.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 55,
+        "text": "orgId: envelope.orgId,"
+      }
+    ]
+  },
+  "packages/bullmq/src/types.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 21,
+        "text": "orgId?: string;"
+      }
+    ]
+  },
+  "packages/bullmq/src/worker.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 91,
+        "text": "orgId: data.orgId,"
+      }
+    ]
+  },
+  "packages/client/src/action-client/executeAction.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 119,
+        "text": "orgId: sendOptions?.orgId,"
+      },
+      {
+        "line": 155,
+        "text": "orgId: sendOptions?.orgId,"
+      }
+    ]
+  },
+  "packages/client/src/session-client/sessions.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 88,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 302,
+        "text": "orgId: createOptions.orgId,"
+      }
+    ]
+  },
+  "packages/client/src/types/index.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 83,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 153,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 225,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 433,
+        "text": "orgId?: string;"
+      }
+    ]
+  },
+  "packages/client/test/sessions.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 27,
+        "text": "orgId: \"proj_1\""
+      },
+      {
+        "line": 122,
+        "text": "expect(session.orgId).toBe(\"proj_1\");"
+      }
+    ]
+  },
+  "packages/core/CHANGELOG.md": {
+    "area": "reference",
+    "hits": [
+      {
+        "line": 163,
+        "text": "`ctx.session.patchState`, `ctx.user.patchState`, `ctx.org.patchState`, and `ctx.request.patchState` (and their `setState` / `incState` / `pushState` / `setStateRecord` / `deleteStateRecord` / `atomicState` siblings) now emit `state_change` SSE items with the matching `scope` value. Previously only sequencer/target-state writes emitted on the wire."
+      },
+      {
+        "line": 231,
+        "text": "New `authentication` config on `defineFlow`: `{ resolvePrincipal?, defaultUserId?, requireUser?, requireOrg? }`. `requireUser: false` is now a real option; flows that declare user-scoped state, clientData, or resources under `requireUser: false` are rejected at registration with the offending field named."
+      },
+      {
+        "line": 239,
+        "text": "`project` scope renamed to `org` across the framework. `ScopeType` is now `'request' | 'session' | 'user' | 'org'`. Block configs use `orgResources` / `orgStateSchema` / `orgClientData`. Session `orgId` and `userId` are now immutable; mismatches throw `OrgBindingMismatchError` / `UserBindingMismatchError`. New `requireOrg: true` block flag."
+      }
+    ]
+  },
+  "packages/core/README.md": {
+    "area": "reference",
+    "hits": [
+      {
+        "line": 137,
+        "text": "- `.forEach()` / `.forEachSideChain()` take a per-item factory `(item, index, ctx) => block` in place of a block. A block built that way does not exist when `defineFlow` walks the graph, so declare what the factory can produce with `blocks: [...]` in the trailing options (`IterationOptions` / `SideChainIterationOptions`); declared blocks count as the step's children for the dispatcher address check, resource merging, and `requireOrg`. Redundant on a call that passes a block directly."
+      },
+      {
+        "line": 197,
+        "text": "- `defineResourceCollection(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), required `scope: \"session\" | \"user\" | \"org\"`, optional `maxInstances`/`eviction`, lifecycle hooks, and `reactTo` (same `{ created?, stateUpdated?, deleted?, contentUpdated? }` shape as `defineResource`; supersedes the `onInstance*` callbacks for the block case)"
+      }
+    ]
+  },
+  "packages/core/src/blocks/router.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 242,
+        "text": "// Bubble `requireOrg` up from any route block. Without this, a route"
+      },
+      {
+        "line": 243,
+        "text": "// declaring `requireOrg: true` would be silently lost — the router's"
+      },
+      {
+        "line": 244,
+        "text": "// requiresOrg would stay `false`, and the flow's HTTP layer wouldn't"
+      },
+      {
+        "line": 247,
+        "text": "&& config.routes.some((route) => route.requiresOrg);"
+      },
+      {
+        "line": 255,
+        "text": "requiresOrg: routesRequireOrg,"
+      }
+    ]
+  },
+  "packages/core/src/blocks/sequencer-methods.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 133,
+        "text": "* resources and `requiresOrg`. Redundant with a block-shaped call, which"
+      }
+    ]
+  },
+  "packages/core/src/blocks/sequencer.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 1161,
+        "text": "requiresOrg: accumulatedRequiresOrg,"
+      },
+      {
+        "line": 1187,
+        "text": "/** OR child blocks' `requiresOrg` flags into the sequencer's accumulator. */"
+      },
+      {
+        "line": 1191,
+        "text": "if (block?.requiresOrg) merged = true;"
+      },
+      {
+        "line": 1202,
+        "text": "* whole point: a child block carries `declaredResources`, `requiresOrg` and"
+      },
+      {
+        "line": 2026,
+        "text": "(acc, h) => acc || Boolean(h.block.requiresOrg),"
+      }
+    ]
+  },
+  "packages/core/src/capability/types.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 54,
+        "text": "identity: { id: string; userId?: string; orgId?: string };"
+      }
+    ]
+  },
+  "packages/core/src/context.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 97,
+        "text": "if (ctx.org) {"
+      },
+      {
+        "line": 98,
+        "text": "scopes.org = ctx.org.state;"
+      }
+    ]
+  },
+  "packages/core/src/flow/defineFlow.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 364,
+        "text": "* `declaredResources` and `requiresOrg` ride. A plain tool block that reads"
+      },
+      {
+        "line": 634,
+        "text": "* `requireOrg` aggregation exactly like a `flow.actions` block — otherwise"
+      },
+      {
+        "line": 635,
+        "text": "* event-declared resources never prefetch and their `requireOrg` is never"
+      },
+      {
+        "line": 644,
+        "text": "* blocks in the request, so whatever they declare — resources, `requireOrg`,"
+      },
+      {
+        "line": 727,
+        "text": "/** True when any declared block (root or lifecycle observer) opted into `requireOrg`. */"
+      },
+      {
+        "line": 730,
+        "text": "if (block.requiresOrg) return true;"
+      },
+      {
+        "line": 1147,
+        "text": "requireOrg: override.requireOrg ?? base.requireOrg"
+      },
+      {
+        "line": 1186,
+        "text": "* callable blueprint's metadata (`actions`, `resources`, `requiresOrg`, …),"
+      },
+      {
+        "line": 1270,
+        "text": "// event binding's handler block participates in resource/`requireOrg`"
+      },
+      {
+        "line": 1338,
+        "text": "// Resources and `requiresOrg` are collected off the action roots alone. A"
+      },
+      {
+        "line": 1398,
+        "text": "requiresOrg: collectRequiresOrg(declaredBlocks),"
+      },
+      {
+        "line": 1482,
+        "text": "requiresOrg: baseInstance.requiresOrg,"
+      },
+      {
+        "line": 1485,
+        "text": "// Mirrored for the same reason `requiresOrg` is: this blueprint is read"
+      }
+    ]
+  },
+  "packages/core/src/helpers/block-graph.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 39,
+        "text": "* Only the dispatch walk needs the tool edge. Resources and `requiresOrg` are"
+      }
+    ]
+  },
+  "packages/core/src/types/auth.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 32,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 63,
+        "text": "* a partial `{ userId?, orgId? }` (the framework will then apply"
+      },
+      {
+        "line": 74,
+        "text": "| Promise<ResolvedPrincipal | { userId?: string; orgId?: string } | null>"
+      },
+      {
+        "line": 76,
+        "text": "| { userId?: string; orgId?: string }"
+      },
+      {
+        "line": 99,
+        "text": "* `requireOrg` is reserved for the org-scope state model (future). It has"
+      },
+      {
+        "line": 107,
+        "text": "* `{ userId?, orgId? }`, or `null`."
+      },
+      {
+        "line": 130,
+        "text": "requireOrg?: boolean;"
+      }
+    ]
+  },
+  "packages/core/src/types/block.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 321,
+        "text": "* `ctx.session.resources.*` / `ctx.user.resources.*` / `ctx.org.resources.*`"
+      },
+      {
+        "line": 896,
+        "text": "* without `orgId` when any block in any action declares it. Per-block"
+      },
+      {
+        "line": 899,
+        "text": "requireOrg?: boolean;"
+      },
+      {
+        "line": 1034,
+        "text": "* Computed at build time: true when this block declares `requireOrg: true`,"
+      },
+      {
+        "line": 1036,
+        "text": "* `mergeDeclaredResources` and surfaced on the flow as `flow.requiresOrg`"
+      },
+      {
+        "line": 1039,
+        "text": "requiresOrg: boolean;"
+      }
+    ]
+  },
+  "packages/core/src/types/concurrency.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 65,
+        "text": "orgId?: string;"
+      }
+    ]
+  },
+  "packages/core/src/types/external-resource-collection.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 95,
+        "text": "/** The resolved sessionId / userId / orgId for `scope`. */"
+      },
+      {
+        "line": 99,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 386,
+        "text": "if (ctx.scope === \"org\" && (ctx.orgId === undefined || ctx.scopeId === \"\")) {"
+      },
+      {
+        "line": 430,
+        "text": "if (ctx.scope === \"org\" && (ctx.orgId === undefined || ctx.scopeId === \"\")) {"
+      }
+    ]
+  },
+  "packages/core/src/types/flow.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 666,
+        "text": "* True when any block in any action declares `requireOrg: true`. The HTTP"
+      },
+      {
+        "line": 670,
+        "text": "requiresOrg: boolean;"
+      },
+      {
+        "line": 730,
+        "text": "* A declaration-derived flag beside `requiresOrg` — the registry reads it"
+      },
+      {
+        "line": 735,
+        "text": "/** Mirror of `FlowInstance.requiresOrg`. */"
+      },
+      {
+        "line": 736,
+        "text": "requiresOrg: boolean;"
+      }
+    ]
+  },
+  "packages/core/src/types/resource-collection.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 38,
+        "text": "* `userId` for `scope:\"user\"`, `orgId` for `scope:\"org\"`,"
+      }
+    ]
+  },
+  "packages/core/src/types/resource.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 178,
+        "text": "*     every flow the same `userId` / `orgId` touches."
+      },
+      {
+        "line": 190,
+        "text": "* id containing `:` or `\\` (in the kind, or in the `userId` / `orgId`) keys"
+      }
+    ]
+  },
+  "packages/core/src/types/scope.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 12,
+        "text": "orgId?: string;"
+      }
+    ]
+  },
+  "packages/core/src/types/tests/cross-package-validation.type-test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 146,
+        "text": "org: { stateSchema: SchemaOf<{ orgId: string }> };"
+      }
+    ]
+  },
+  "packages/core/src/types/tests/flow-state-inference.type-test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 15,
+        "text": "org: { stateSchema: SchemaOf<{ orgId: string }> };"
+      },
+      {
+        "line": 22,
+        "text": "const orgStateValue: DemoStateMap[\"org\"] = { orgId: \"proj_1\" };"
+      },
+      {
+        "line": 30,
+        "text": "{ orgId: string }"
+      }
+    ]
+  },
+  "packages/core/test/harness-resolver.test-d.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 39,
+        "text": "void (ctx.org!.state.neverDeclared.deeper as string);"
+      }
+    ]
+  },
+  "packages/core/test/require-org.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 2,
+        "text": "* FIX-428: tests for `requireOrg` block-flag bubbling."
+      },
+      {
+        "line": 4,
+        "text": "* `requireOrg` is opt-in per block: a leaf block declares it, and the flag"
+      },
+      {
+        "line": 6,
+        "text": "* block. The HTTP action route consults the resulting `flow.requiresOrg` to"
+      },
+      {
+        "line": 15,
+        "text": "describe(\"requireOrg bubbling\", () => {"
+      },
+      {
+        "line": 16,
+        "text": "it(\"a leaf handler with requireOrg sets requiresOrg on the action's block and the flow\", () => {"
+      },
+      {
+        "line": 21,
+        "text": "requireOrg: true,"
+      },
+      {
+        "line": 25,
+        "text": "expect(block.requiresOrg).toBe(true);"
+      },
+      {
+        "line": 32,
+        "text": "expect(flow.requiresOrg).toBe(true);"
+      },
+      {
+        "line": 40,
+        "text": "requireOrg: true,"
+      },
+      {
+        "line": 55,
+        "text": "expect(seq.requiresOrg).toBe(true);"
+      },
+      {
+        "line": 61,
+        "text": "expect(flow.requiresOrg).toBe(true);"
+      },
+      {
+        "line": 64,
+        "text": "it(\"a deeply nested sequencer bubbles requireOrg up through every level\", () => {"
+      },
+      {
+        "line": 69,
+        "text": "requireOrg: true,"
+      },
+      {
+        "line": 76,
+        "text": "expect(middle.requiresOrg).toBe(true);"
+      },
+      {
+        "line": 77,
+        "text": "expect(outer.requiresOrg).toBe(true);"
+      },
+      {
+        "line": 80,
+        "text": "it(\"a flow with no requiring blocks reports requiresOrg=false\", () => {"
+      },
+      {
+        "line": 93,
+        "text": "expect(flow.requiresOrg).toBe(false);"
+      },
+      {
+        "line": 96,
+        "text": "it(\"a sequencer where a sequencer-level requireOrg propagates to children-only chains\", () => {"
+      },
+      {
+        "line": 104,
+        "text": "// Sequencer-level requireOrg: not currently supported via SequencerConfig"
+      },
+      {
+        "line": 106,
+        "text": "// composes a single requireOrg leaf. Assert that the absence of any"
+      },
+      {
+        "line": 107,
+        "text": "// requireOrg leaf yields false."
+      },
+      {
+        "line": 109,
+        "text": "expect(seq.requiresOrg).toBe(false);"
+      },
+      {
+        "line": 112,
+        "text": "it(\"multi-action flow: any action requiring org sets flow.requiresOrg\", () => {"
+      },
+      {
+        "line": 117,
+        "text": "requireOrg: true,"
+      },
+      {
+        "line": 136,
+        "text": "expect(flow.requiresOrg).toBe(true);"
+      },
+      {
+        "line": 139,
+        "text": "it(\"a router bubbles requireOrg from any of its route blocks\", () => {"
+      },
+      {
+        "line": 144,
+        "text": "requireOrg: true,"
+      },
+      {
+        "line": 163,
+        "text": "expect(r.requiresOrg).toBe(true);"
+      },
+      {
+        "line": 169,
+        "text": "expect(flow.requiresOrg).toBe(true);"
+      },
+      {
+        "line": 172,
+        "text": "it(\"a router with no route requiring org reports requiresOrg=false\", () => {"
+      },
+      {
+        "line": 194,
+        "text": "expect(r.requiresOrg).toBe(false);"
+      }
+    ]
+  },
+  "packages/engine/CHANGELOG.md": {
+    "area": "reference",
+    "hits": [
+      {
+        "line": 189,
+        "text": "`createFlowApiRouter({ resolvePrincipal })` adds the host-level fallback. New helpers: `createHmacVerifier` (webhook signatures with timestamp tolerance and constant-time comparison), `createHs256JwtVerifier`, `extractBearerToken`. `requireUser: false` and `requireOrg: true` are enforced at the action route."
+      },
+      {
+        "line": 209,
+        "text": "Server-side rename of `project` → `org` in stores, routes, and request handling. Action route rejects requests against unbound sessions with `400 OrgRequired` when a downstream block declares `requireOrg: true`."
+      }
+    ]
+  },
+  "packages/engine/README.md": {
+    "area": "reference",
+    "hits": [
+      {
+        "line": 412,
+        "text": "- Both types accept `orgId`, with the same present-vs-absent NULL-safe matching"
+      },
+      {
+        "line": 458,
+        "text": "Both named types are exported from `@flow-state-dev/engine`. `ConditionalRequestFields` is a `Partial` of `RequestRecord` minus the fields that have their own write path: `id`, `version`, `createdAt`, `updatedAt`, `state`, `items`, `status`, and the indexed access-path fields (`flowKind`, `userId`, `sessionId`, `orgId`, `tenantId`). `abortRequested` is in the set. `ConditionalWriteResult` is `{ applied: boolean; status?: RequestStatus }`."
+      }
+    ]
+  },
+  "packages/engine/src/context/binding-errors.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 2,
+        "text": "* Errors raised when an incoming request's claimed `userId`, `orgId`,"
+      },
+      {
+        "line": 34,
+        "text": "* Thrown when a request supplies an `orgId` that doesn't match the org the"
+      }
+    ]
+  },
+  "packages/engine/src/context/create-request-host.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 94,
+        "text": "orgId: string | undefined;"
+      },
+      {
+        "line": 158,
+        "text": "orgId: string | undefined;"
+      },
+      {
+        "line": 223,
+        "text": "const recordOrg = record.orgId ?? undefined;"
+      },
+      {
+        "line": 224,
+        "text": "if (recordOrg !== identity.orgId) {"
+      },
+      {
+        "line": 228,
+        "text": "`request is bound to \"${identity.orgId ?? \"<unbound>\"}\"; a delivery never moves a ` +"
+      },
+      {
+        "line": 235,
+        "text": "orgId: recordOrg,"
+      },
+      {
+        "line": 299,
+        "text": "orgId: identity.orgId,"
+      },
+      {
+        "line": 315,
+        "text": "return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: true, delivery: \"child\" };"
+      },
+      {
+        "line": 334,
+        "text": "...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),"
+      },
+      {
+        "line": 372,
+        "text": "return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: true, delivery: \"child\" };"
+      },
+      {
+        "line": 374,
+        "text": "return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: false, delivery: \"child\" };"
+      },
+      {
+        "line": 482,
+        "text": "...(session.orgId !== undefined ? { orgId: session.orgId } : {}),"
+      }
+    ]
+  },
+  "packages/engine/src/context/createExecutionContext.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 459,
+        "text": "// session is generated below) and `options.orgId` may be absent on a request"
+      },
+      {
+        "line": 537,
+        "text": "const optionsOrgId = options.orgId;"
+      },
+      {
+        "line": 659,
+        "text": "orgId: options.orgId,"
+      },
+      {
+        "line": 717,
+        "text": "// orgId immutability. Org binding is fixed for the lifetime of a session;"
+      },
+      {
+        "line": 718,
+        "text": "// a request that claims a different orgId — including binding an"
+      },
+      {
+        "line": 720,
+        "text": "// create a new one. The previous code (`optionsOrgId ?? sessionRecord?.orgId`)"
+      },
+      {
+        "line": 723,
+        "text": "const sessionOrgId = sessionRecord.orgId;"
+      },
+      {
+        "line": 763,
+        "text": "orgId: resolvedOrgId,"
+      },
+      {
+        "line": 792,
+        "text": "//    org-bound session may omit `orgId` (only a *differing* value is"
+      },
+      {
+        "line": 793,
+        "text": "//    rejected, above), so capturing `options.orgId` left the host unbound and"
+      },
+      {
+        "line": 810,
+        "text": "orgId: resolvedOrgId,"
+      },
+      {
+        "line": 987,
+        "text": "// (org with no orgId)."
+      },
+      {
+        "line": 1337,
+        "text": "orgId: orgRecord?.orgId,"
+      },
+      {
+        "line": 2207,
+        "text": "// resolved sessionId / userId / orgId (the raw sessionId, not the"
+      },
+      {
+        "line": 2217,
+        "text": "orgId: orgRef.current?.orgId ?? optionsOrgId,"
+      },
+      {
+        "line": 2258,
+        "text": "scopeId: orgRef.current!.orgId,"
+      },
+      {
+        "line": 2268,
+        "text": "externalResourceContext: buildExternalResourceContext(\"org\", orgRef.current!.orgId),"
+      },
+      {
+        "line": 2388,
+        "text": "orgId: orgRef.current?.orgId,"
+      },
+      {
+        "line": 2425,
+        "text": "orgId: sessionRef.current.orgId,"
+      },
+      {
+        "line": 2531,
+        "text": "orgId: orgRef.current.orgId,"
+      },
+      {
+        "line": 2680,
+        "text": "orgId: orgRecord?.orgId"
+      }
+    ]
+  },
+  "packages/engine/src/context/detached-child.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 118,
+        "text": "orgId: string | undefined;"
+      },
+      {
+        "line": 135,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 146,
+        "text": "| \"orgId\""
+      },
+      {
+        "line": 206,
+        "text": "if (!sameOptional(record.orgId, expected.orgId)) {"
+      },
+      {
+        "line": 207,
+        "text": "return { adoptable: false, mismatch: \"orgId\" };"
+      }
+    ]
+  },
+  "packages/engine/src/context/dispatch-operation.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 92,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 225,
+        "text": "...(spec.orgId !== undefined ? { orgId: spec.orgId } : {}),"
+      }
+    ]
+  },
+  "packages/engine/src/context/initial-request-record.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 15,
+        "text": "* (vs worker-start) and carries `orgId` from the envelope rather than the"
+      },
+      {
+        "line": 39,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 70,
+        "text": "orgId: input.orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/context/resource-registry.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 707,
+        "text": "* `orgId` for `\"org\"`, `sessionId` for `\"session\"`. Threaded into"
+      },
+      {
+        "line": 811,
+        "text": "* (`userId`/`orgId`/`tenantId`/`flowKind`/`signal`), never from caller"
+      }
+    ]
+  },
+  "packages/engine/src/context/types.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 59,
+        "text": "orgId?: string;"
+      }
+    ]
+  },
+  "packages/engine/src/errors/error-capture.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 32,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 63,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 99,
+        "text": "orgId: identity.orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/execution/logging.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 82,
+        "text": "orgId: metadata.orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/execution/request-continuation.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 139,
+        "text": "orgId: record.orgId,"
+      },
+      {
+        "line": 154,
+        "text": "orgId: record.orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/execution/request-recovery.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 162,
+        "text": "const orgId = entry?.orgId ?? originalRecord?.orgId;"
+      },
+      {
+        "line": 207,
+        "text": "orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/execution/runAction.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 818,
+        "text": "orgId: options.orgId,"
+      },
+      {
+        "line": 1402,
+        "text": "orgId: options.orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/execution/types.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 24,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 78,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 193,
+        "text": "orgId: overrides.orgId ?? ctx.request.identity.orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/resources/internal.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 87,
+        "text": "* record — never from caller input (BP-031): `userId`/`orgId`/`tenantId`/"
+      },
+      {
+        "line": 89,
+        "text": "* sessionId / userId / orgId for the collection's scope (the raw sessionId, not"
+      },
+      {
+        "line": 93,
+        "text": "session: { userId: string; orgId?: string; tenantId?: string; flowKind: string },"
+      },
+      {
+        "line": 99,
+        "text": "scope === \"session\" ? sessionId : scope === \"user\" ? session.userId : session.orgId ?? \"\";"
+      },
+      {
+        "line": 104,
+        "text": "orgId: session.orgId,"
+      },
+      {
+        "line": 232,
+        "text": "if (!session.orgId) return undefined;"
+      },
+      {
+        "line": 233,
+        "text": "const scopeIds = resourceScopeIds(session.orgId, toIsolationFlow(flow), \"org\");"
+      }
+    ]
+  },
+  "packages/engine/src/routes/action-routes.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 37,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 113,
+        "text": "// `body.orgId` here, which would let a caller override a verified org"
+      },
+      {
+        "line": 115,
+        "text": "// reads `body.orgId` itself. See `docs/architecture/authentication.md`."
+      },
+      {
+        "line": 116,
+        "text": "orgId: principal.orgId,"
+      },
+      {
+        "line": 153,
+        "text": "orgId: resolvedActionInput.orgId,"
+      },
+      {
+        "line": 155,
+        "text": "principal: { userId: resolvedActionInput.userId, orgId: resolvedActionInput.orgId },"
+      }
+    ]
+  },
+  "packages/engine/src/routes/child-session-routes.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 218,
+        "text": "* `tenantId` or `orgId` key applies **no** filter, while an explicit"
+      },
+      {
+        "line": 224,
+        "text": "orgId: string | undefined;"
+      },
+      {
+        "line": 234,
+        "text": "orgId: parent.orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/routes/http-handlers.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 94,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 106,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 116,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 388,
+        "text": "requiresOrg: flow.requiresOrg,"
+      }
+    ]
+  },
+  "packages/engine/src/routes/recovery-routes.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 134,
+        "text": "orgId: originalRecord.orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/routes/session-routes.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 139,
+        "text": "// applies to `orgId` (BP-031): a verified identity is not displaceable by a"
+      },
+      {
+        "line": 189,
+        "text": "// reads the stored session's `orgId` to satisfy a flow's `requiresOrg`, so"
+      },
+      {
+        "line": 192,
+        "text": "orgId: ctx.principal === undefined ? getString(body.orgId) : ctx.principal.orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/routes/state-routes.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 63,
+        "text": "session.orgId === undefined"
+      },
+      {
+        "line": 66,
+        "text": "resolveOrgStorageKey(session.orgId, flow)"
+      }
+    ]
+  },
+  "packages/engine/src/stores/filesystem/request-store.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 223,
+        "text": "if (!matchesOrgFilter(listOptions, record.orgId)) {"
+      }
+    ]
+  },
+  "packages/engine/src/stores/filesystem/session-store.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 60,
+        "text": "if (!matchesOrgFilter(listOptions, record.orgId)) {"
+      }
+    ]
+  },
+  "packages/engine/src/stores/memory/request-store.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 277,
+        "text": "if (!matchesOrgFilter(options, record.orgId)) {"
+      }
+    ]
+  },
+  "packages/engine/src/stores/memory/session-store.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 101,
+        "text": "if (!matchesOrgFilter(options, record.orgId)) {"
+      }
+    ]
+  },
+  "packages/engine/src/stores/scope-keys.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 147,
+        "text": "* Bare `orgId` unless the flow isolates the org scope; then"
+      },
+      {
+        "line": 148,
+        "text": "* `${orgId}:${flow.id}`. Governs the scope *record* (`ctx.org.state`)"
+      },
+      {
+        "line": 152,
+        "text": "orgId: string,"
+      },
+      {
+        "line": 156,
+        "text": "? joinIsolationKey(orgId, flow.id)"
+      },
+      {
+        "line": 157,
+        "text": ": encodeScopeKeyComponent(orgId);"
+      },
+      {
+        "line": 219,
+        "text": "* The parameters admit `null` deliberately, even though `SessionRecord.orgId`"
+      },
+      {
+        "line": 260,
+        "text": "* semantics of {@link matchesTenantFilter} — deliberately, because `orgId` is"
+      },
+      {
+        "line": 271,
+        "text": "options: { orgId?: string } | undefined,"
+      },
+      {
+        "line": 274,
+        "text": "if (options === undefined || !(\"orgId\" in options)) return true;"
+      },
+      {
+        "line": 275,
+        "text": "return scopeValueMatches(recordOrgId, options.orgId);"
+      }
+    ]
+  },
+  "packages/engine/src/stores/types.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 44,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 136,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 198,
+        "text": "*   `sessionId`, `orgId`, `tenantId`) — denormalized into columns by the SQL adapters. `status`"
+      },
+      {
+        "line": 216,
+        "text": "| \"orgId\""
+      },
+      {
+        "line": 245,
+        "text": "orgId: string;"
+      },
+      {
+        "line": 289,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 351,
+        "text": "* semantics as `tenantId`; see {@link SessionListOptions.orgId} for why the"
+      },
+      {
+        "line": 354,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 834,
+        "text": "orgId?: string;"
+      }
+    ]
+  },
+  "packages/engine/src/transports/auth/defaultBodyUserIdPrincipalResolver.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 38,
+        "text": "const orgId = getString(body?.orgId);"
+      },
+      {
+        "line": 39,
+        "text": "return orgId === undefined ? { userId } : { userId, orgId };"
+      }
+    ]
+  },
+  "packages/engine/src/transports/concurrency/arbiter.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 128,
+        "text": "orgId: envelope.orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/transports/dispatcher.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 30,
+        "text": "orgId?: string;"
+      }
+    ]
+  },
+  "packages/engine/src/transports/errors.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 26,
+        "text": "* but no orgId is present on the envelope, the principal, or the stored"
+      },
+      {
+        "line": 35,
+        "text": "`Flow \"${flowKind}\" requires an org-bound session. Create a new session with orgId.`"
+      }
+    ]
+  },
+  "packages/engine/src/transports/host/createInboundTransportHost.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 380,
+        "text": "orgId: envelope.orgId ?? envelope.principal.orgId,"
+      },
+      {
+        "line": 593,
+        "text": "orgId: dispatchEnvelope.orgId,"
+      },
+      {
+        "line": 772,
+        "text": "orgId: dispatchEnvelope.orgId,"
+      },
+      {
+        "line": 901,
+        "text": "if (!flow.requiresOrg) return;"
+      },
+      {
+        "line": 902,
+        "text": "if ((envelope.orgId ?? envelope.principal.orgId) !== undefined) return;"
+      },
+      {
+        "line": 911,
+        "text": "existing?.orgId !== undefined &&"
+      },
+      {
+        "line": 941,
+        "text": "let orgId: string | undefined;"
+      },
+      {
+        "line": 947,
+        "text": "orgId ="
+      },
+      {
+        "line": 948,
+        "text": "typeof result.orgId === \"string\" && result.orgId.length > 0"
+      },
+      {
+        "line": 949,
+        "text": "? result.orgId"
+      },
+      {
+        "line": 976,
+        "text": "return orgId === undefined ? { userId } : { userId, orgId };"
+      }
+    ]
+  },
+  "packages/engine/src/transports/host/in-process-dispatcher.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 123,
+        "text": "orgId: envelope.orgId,"
+      }
+    ]
+  },
+  "packages/engine/src/transports/types.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 81,
+        "text": "/** Optional org binding (set if the adapter resolves one). */"
+      },
+      {
+        "line": 82,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 323,
+        "text": "* `requiresOrg`; future pre-conditions plug in here."
+      },
+      {
+        "line": 326,
+        "text": "* but no orgId is present on the envelope, the principal, or the stored"
+      }
+    ]
+  },
+  "packages/engine/src/transports/webhook/session-resolver.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 42,
+        "text": "...(principal.orgId !== undefined ? { orgId: principal.orgId } : {}),"
+      }
+    ]
+  },
+  "packages/engine/test/binding-immutability.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 11,
+        "text": "*   2. `orgId` rebinding silently succeeded — the previous code used"
+      },
+      {
+        "line": 12,
+        "text": "*      `optionsOrgId ?? sessionRecord.orgId`, letting any caller-supplied"
+      },
+      {
+        "line": 13,
+        "text": "*      orgId override the session's stored value on every request. This"
+      },
+      {
+        "line": 99,
+        "text": "describe(\"orgId immutability\", () => {"
+      },
+      {
+        "line": 100,
+        "text": "it(\"rejects a request that supplies a different orgId than the session was bound to\", async () => {"
+      },
+      {
+        "line": 110,
+        "text": "orgId: \"org_a\","
+      },
+      {
+        "line": 121,
+        "text": "orgId: \"org_b\","
+      },
+      {
+        "line": 127,
+        "text": "it(\"rejects late-binding an unbound session with an orgId\", async () => {"
+      },
+      {
+        "line": 149,
+        "text": "orgId: \"org_late\","
+      },
+      {
+        "line": 155,
+        "text": "it(\"accepts a request with a matching orgId\", async () => {"
+      },
+      {
+        "line": 165,
+        "text": "orgId: \"org_a\","
+      },
+      {
+        "line": 175,
+        "text": "orgId: \"org_a\","
+      },
+      {
+        "line": 178,
+        "text": "expect(ctx.org?.identity.id).toBe(\"org_a\");"
+      },
+      {
+        "line": 181,
+        "text": "it(\"accepts a request that omits orgId for an org-bound session (uses stored value)\", async () => {"
+      },
+      {
+        "line": 191,
+        "text": "orgId: \"org_a\","
+      },
+      {
+        "line": 203,
+        "text": "expect(ctx.org?.identity.id).toBe(\"org_a\");"
+      },
+      {
+        "line": 207,
+        "text": "it(\"userId mismatch is checked before orgId mismatch\", async () => {"
+      },
+      {
+        "line": 217,
+        "text": "orgId: \"org_a\","
+      },
+      {
+        "line": 221,
+        "text": "// Both userId and orgId are wrong — userId check fires first."
+      },
+      {
+        "line": 229,
+        "text": "orgId: \"org_b\","
+      }
+    ]
+  },
+  "packages/engine/test/child-session-listing-route.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 360,
+        "text": "orgId: undefined,"
+      },
+      {
+        "line": 588,
+        "text": "await seedSession(stores, \"bound_parent\", { orgId: \"acme\" });"
+      },
+      {
+        "line": 591,
+        "text": "orgId: \"acme\""
+      },
+      {
+        "line": 595,
+        "text": "orgId: \"globex\""
+      }
+    ]
+  },
+  "packages/engine/test/context.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 76,
+        "text": "expect(ctx.org).toBeUndefined();"
+      }
+    ]
+  },
+  "packages/engine/test/context/detached-child.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 136,
+        "text": "orgId: undefined,"
+      },
+      {
+        "line": 199,
+        "text": "const result = evaluateAdoption({ ...genuineChild, orgId: \"o_other\" }, expected);"
+      },
+      {
+        "line": 200,
+        "text": "expect(result).toEqual({ adoptable: false, mismatch: \"orgId\" });"
+      },
+      {
+        "line": 207,
+        "text": "const nulled = { ...genuineChild, orgId: null as unknown as undefined };"
+      },
+      {
+        "line": 208,
+        "text": "expect(evaluateAdoption(nulled, { ...expected, orgId: undefined })).toEqual({"
+      },
+      {
+        "line": 221,
+        "text": "orgId: undefined,"
+      }
+    ]
+  },
+  "packages/engine/test/context/dispatch-reply-from.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 358,
+        "text": "orgId: undefined,"
+      }
+    ]
+  },
+  "packages/engine/test/context/dispatch-seam.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 113,
+        "text": "orgId?: string"
+      },
+      {
+        "line": 126,
+        "text": "...(orgId !== undefined ? { orgId } : {}),"
+      },
+      {
+        "line": 238,
+        "text": "const orgRun = (to: string, orgId?: string) =>"
+      },
+      {
+        "line": 244,
+        "text": "sessionId: orgId === undefined ? \"s_sender_unbound\" : `s_sender_${orgId}`,"
+      },
+      {
+        "line": 245,
+        "text": "...(orgId !== undefined ? { orgId } : {}),"
+      }
+    ]
+  },
+  "packages/engine/test/context/request-host-create-race.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 31,
+        "text": "orgId: undefined,"
+      }
+    ]
+  },
+  "packages/engine/test/context/request-host-lineage-root.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 21,
+        "text": "identity: { userId: \"u_alice\", tenantId: undefined, orgId: undefined, sessionId, lineageId }"
+      }
+    ]
+  },
+  "packages/engine/test/context/request-host-provenance.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 25,
+        "text": "orgId: undefined,"
+      }
+    ]
+  },
+  "packages/engine/test/context/request-host-shipped-path.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 110,
+        "text": "* it. `orgId` goes through the default principal resolver, which reads it from"
+      },
+      {
+        "line": 117,
+        "text": "orgId?: string"
+      },
+      {
+        "line": 126,
+        "text": "...(orgId !== undefined ? { orgId } : {}),"
+      },
+      {
+        "line": 295,
+        "text": "orgId: \"org_acme\","
+      },
+      {
+        "line": 301,
+        "text": "// The dispatch OMITS orgId. That is legal — only a *differing* org is"
+      },
+      {
+        "line": 313,
+        "text": "// Reading `options.orgId` here left it undefined, so the seam produced a"
+      },
+      {
+        "line": 317,
+        "text": "expect(child?.orgId).toBe(\"org_acme\");"
+      }
+    ]
+  },
+  "packages/engine/test/error-capture.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 16,
+        "text": "orgId: \"org_1\""
+      },
+      {
+        "line": 45,
+        "text": "orgId: \"org_1\","
+      }
+    ]
+  },
+  "packages/engine/test/execution.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 1326,
+        "text": "orgId: \"org_scope\","
+      },
+      {
+        "line": 1360,
+        "text": "orgId: \"org_scope\","
+      },
+      {
+        "line": 1373,
+        "text": "if (ctx.org !== undefined) {"
+      },
+      {
+        "line": 1374,
+        "text": "await ctx.org.patchState({ tier: \"pro\" });"
+      }
+    ]
+  },
+  "packages/engine/test/external-resource-routes.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 310,
+        "text": "// ...read for a session with NO orgId."
+      }
+    ]
+  },
+  "packages/engine/test/flow-isolation.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 1330,
+        "text": "userId: \"user_1\", orgId: \"proj_1\", stores,"
+      },
+      {
+        "line": 1337,
+        "text": "userId: \"user_1\", orgId: \"proj_1\", stores,"
+      },
+      {
+        "line": 1350,
+        "text": "userId: \"user_1\", orgId: \"proj_1\", stores,"
+      },
+      {
+        "line": 1370,
+        "text": "flow, actionName: \"run\", requestId: \"req_1\", sessionId: \"sess_1\", userId: \"user_1\", orgId: \"proj_1\", stores,"
+      },
+      {
+        "line": 1372,
+        "text": "await ctx.org?.patchState({ title: \"My Project\" });"
+      },
+      {
+        "line": 1376,
+        "text": "expect(namespaced?.orgId).toBe(\"proj_1\");"
+      }
+    ]
+  },
+  "packages/engine/test/lineage-address-ownership.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 95,
+        "text": "orgId: undefined,"
+      }
+    ]
+  },
+  "packages/engine/test/list-option-widenings.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 120,
+        "text": "// orgId, on both list-option types"
+      },
+      {
+        "line": 124,
+        "text": "await store.set(\"bound\", session(\"bound\", { orgId: \"acme\", parentSessionId: \"p\" }), \"any\");"
+      },
+      {
+        "line": 125,
+        "text": "await store.set(\"other\", session(\"other\", { orgId: \"globex\", parentSessionId: \"p\" }), \"any\");"
+      },
+      {
+        "line": 129,
+        "text": "it(\"session orgId filters exactly, and an absent key filters nothing\", async () => {"
+      },
+      {
+        "line": 134,
+        "text": "(await store.list({ orgId: \"acme\", parentage: { parentOf: \"p\" } })).map((r) => r.id)"
+      },
+      {
+        "line": 136,
+        "text": "// An existing caller passing no `orgId` key still sees every record."
+      },
+      {
+        "line": 142,
+        "text": "it(\"an explicit undefined orgId matches only unbound records\", async () => {"
+      },
+      {
+        "line": 149,
+        "text": "(await store.list({ orgId: undefined, parentage: { parentOf: \"p\" } })).map("
+      },
+      {
+        "line": 158,
+        "text": "* owes the same answer to an `orgId: undefined` filter."
+      },
+      {
+        "line": 177,
+        "text": "...({ orgId: null } as Partial<SessionRecord>)"
+      },
+      {
+        "line": 183,
+        "text": "request(\"r_nulled\", { ...({ orgId: null } as Partial<RequestRecord>) }),"
+      },
+      {
+        "line": 189,
+        "text": "await sessions.list({ orgId: undefined, parentage: { parentOf: \"p\" } })"
+      },
+      {
+        "line": 192,
+        "text": "expect((await requests.list({ orgId: undefined })).map((r) => r.id)).toEqual(["
+      },
+      {
+        "line": 229,
+        "text": "it(\"request orgId filters exactly, with the same present-vs-absent rule\", async () => {"
+      },
+      {
+        "line": 231,
+        "text": "await store.set(\"r_acme\", request(\"r_acme\", { orgId: \"acme\" }), \"any\");"
+      },
+      {
+        "line": 232,
+        "text": "await store.set(\"r_globex\", request(\"r_globex\", { orgId: \"globex\" }), \"any\");"
+      },
+      {
+        "line": 235,
+        "text": "expect((await store.list({ orgId: \"acme\" })).map((r) => r.id)).toEqual([\"r_acme\"]);"
+      },
+      {
+        "line": 236,
+        "text": "expect((await store.list({ orgId: undefined })).map((r) => r.id)).toEqual(["
+      }
+    ]
+  },
+  "packages/engine/test/management-route-auth.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 61,
+        "text": "return org === undefined ? { userId: user } : { userId: user, orgId: org };"
+      },
+      {
+        "line": 338,
+        "text": "it(\"takes orgId from the principal, not body.orgId\", async () => {"
+      },
+      {
+        "line": 341,
+        "text": "// `validateDispatch` reads the stored session's `orgId` to satisfy a flow's"
+      },
+      {
+        "line": 342,
+        "text": "// `requiresOrg`, so a caller-set value here becomes an org binding the"
+      },
+      {
+        "line": 346,
+        "text": "body: { sessionId: \"s-org\", orgId: \"org-y\" }"
+      },
+      {
+        "line": 350,
+        "text": "expect((await stores.session.get(\"s-org\"))?.orgId).toBe(\"org-x\");"
+      }
+    ]
+  },
+  "packages/engine/test/principal-org-spoofing.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 2,
+        "text": "* The authenticated principal's `orgId` is the only org a request may run"
+      },
+      {
+        "line": 5,
+        "text": "* The action route builds the dispatch envelope's `orgId` from the resolved"
+      },
+      {
+        "line": 6,
+        "text": "* principal. A caller-supplied `body.orgId` must never displace it: when a flow"
+      },
+      {
+        "line": 16,
+        "text": "* guard cannot see: a brand-new session, where the request's orgId becomes the"
+      },
+      {
+        "line": 29,
+        "text": "function buildAuthenticatedFlow(capture: { orgId?: string }) {"
+      },
+      {
+        "line": 35,
+        "text": "capture.orgId = ctx.request.identity.orgId;"
+      },
+      {
+        "line": 49,
+        "text": ": { userId: \"user-a\", orgId: token };"
+      },
+      {
+        "line": 84,
+        "text": "it(\"ignores body.orgId when a resolver authenticated the principal\", async () => {"
+      },
+      {
+        "line": 85,
+        "text": "const capture: { orgId?: string } = {};"
+      },
+      {
+        "line": 93,
+        "text": "{ orgId: \"org-y\", sessionId: \"sess-spoof\", input: {} },"
+      },
+      {
+        "line": 98,
+        "text": "expect(capture.orgId).toBe(\"org-x\");"
+      },
+      {
+        "line": 102,
+        "text": "const capture: { orgId?: string } = {};"
+      },
+      {
+        "line": 110,
+        "text": "{ orgId: \"org-y\", sessionId: \"sess-binding\", input: {} },"
+      },
+      {
+        "line": 118,
+        "text": "expect(session?.orgId).toBe(\"org-x\");"
+      }
+    ]
+  },
+  "packages/engine/test/registry-routes.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 223,
+        "text": "requiresOrg: false,"
+      },
+      {
+        "line": 417,
+        "text": "orgId: \"proj_1\","
+      },
+      {
+        "line": 500,
+        "text": "await ctx.org?.patchState({ title: `Project ${input.value}` });"
+      },
+      {
+        "line": 532,
+        "text": "orgId: \"proj_iso_state\","
+      },
+      {
+        "line": 568,
+        "text": "expect(request?.orgId).toBe(\"proj_iso_state\");"
+      },
+      {
+        "line": 897,
+        "text": "describe(\"requiresOrg via validateDispatch\", () => {"
+      },
+      {
+        "line": 906,
+        "text": "requireOrg: true,"
+      },
+      {
+        "line": 914,
+        "text": "it(\"returns 400 OrgRequired when orgId is missing\", async () => {"
+      },
+      {
+        "line": 935,
+        "text": "it(\"returns 202 when orgId is present\", async () => {"
+      },
+      {
+        "line": 948,
+        "text": "orgId: \"o1\","
+      }
+    ]
+  },
+  "packages/engine/test/resource-delete-revival.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 99,
+        "text": "orgId: undefined,"
+      }
+    ]
+  },
+  "packages/engine/test/stores.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 75,
+        "text": "orgId: id,"
+      }
+    ]
+  },
+  "packages/engine/test/transports/host.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 49,
+        "text": "requireOrg: true,"
+      },
+      {
+        "line": 308,
+        "text": "metadata: { body: { userId: \"u_body\", orgId: \"o_1\" } }"
+      },
+      {
+        "line": 311,
+        "text": "expect(principal).toEqual({ userId: \"u_body\", orgId: \"o_1\" });"
+      },
+      {
+        "line": 314,
+        "text": "describe(\"validateDispatch — requiresOrg\", () => {"
+      },
+      {
+        "line": 315,
+        "text": "it(\"resolves for flows without requiresOrg\", async () => {"
+      },
+      {
+        "line": 328,
+        "text": "it(\"resolves when envelope.orgId is present\", async () => {"
+      },
+      {
+        "line": 336,
+        "text": "orgId: \"o_1\","
+      },
+      {
+        "line": 342,
+        "text": "it(\"resolves when principal.orgId is present\", async () => {"
+      },
+      {
+        "line": 350,
+        "text": "principal: { userId: \"u\", orgId: \"o_principal\" }"
+      },
+      {
+        "line": 355,
+        "text": "it(\"resolves when stored session has orgId\", async () => {"
+      },
+      {
+        "line": 364,
+        "text": "orgId: \"o_stored\","
+      },
+      {
+        "line": 398,
+        "text": "it(\"throws OrgRequiredError when session lacks orgId\", async () => {"
+      }
+    ]
+  },
+  "packages/engine/test/transports/per-flow-resolver.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 71,
+        "text": "const flowResolver = vi.fn(() => ({ userId: \"flow_user\", orgId: \"flow_org\" }));"
+      },
+      {
+        "line": 78,
+        "text": "expect(principal).toEqual({ userId: \"flow_user\", orgId: \"flow_org\" });"
+      },
+      {
+        "line": 94,
+        "text": "resolvePrincipal: () => ({ orgId: \"acme\" }),"
+      },
+      {
+        "line": 99,
+        "text": "expect(principal).toEqual({ userId: \"system\", orgId: \"acme\" });"
+      },
+      {
+        "line": 155,
+        "text": "mkContext(\"no-auth-config\", { userId: \"body_u\", orgId: \"body_o\" })"
+      },
+      {
+        "line": 157,
+        "text": "expect(principal).toEqual({ userId: \"body_u\", orgId: \"body_o\" });"
+      }
+    ]
+  },
+  "packages/orchestration/src/skills/activation-store.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 85,
+        "text": "return ctx.org as unknown as MutableScope | undefined;"
+      }
+    ]
+  },
+  "packages/react/src/hooks/useSession.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 115,
+        "text": "* against the session's stored `orgId` (set at session creation) and reject"
+      },
+      {
+        "line": 119,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 159,
+        "text": "* Org id the session is bound to, mirrored from `detail.orgId` once the"
+      },
+      {
+        "line": 162,
+        "text": "readonly orgId?: string;"
+      },
+      {
+        "line": 381,
+        "text": "const orgId = options?.orgId;"
+      },
+      {
+        "line": 1443,
+        "text": "orgId,"
+      },
+      {
+        "line": 1496,
+        "text": "orgId"
+      },
+      {
+        "line": 1721,
+        "text": "orgId: detail?.orgId ?? orgId,"
+      }
+    ]
+  },
+  "packages/store-postgres/src/active-request-registry.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 20,
+        "text": "entry.orgId ?? null,"
+      },
+      {
+        "line": 58,
+        "text": "entry.orgId = row.org_id as string;"
+      }
+    ]
+  },
+  "packages/store-postgres/src/request-store.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 126,
+        "text": "record.orgId ?? null,"
+      },
+      {
+        "line": 163,
+        "text": "// the tenant clause — `orgId` is optional on the record and written as"
+      },
+      {
+        "line": 166,
+        "text": "if (options !== undefined && \"orgId\" in options) {"
+      },
+      {
+        "line": 167,
+        "text": "const org = nullSafeEqualsClause(\"org_id\", options.orgId, p);"
+      }
+    ]
+  },
+  "packages/store-postgres/src/session-store.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 22,
+        "text": "record.orgId ?? null,"
+      },
+      {
+        "line": 56,
+        "text": "if (options !== undefined && \"orgId\" in options) {"
+      },
+      {
+        "line": 57,
+        "text": "const org = nullSafeEqualsClause(\"org_id\", options.orgId, p);"
+      }
+    ]
+  },
+  "packages/store-postgres/test/list-option-widenings.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 104,
+        "text": "it(\"session orgId filters exactly, NULL-safely, and only when the key is present\", async () => {"
+      },
+      {
+        "line": 106,
+        "text": "await s.session.set(\"bound\", session(\"bound\", { orgId: \"acme\", parentSessionId: \"p\" }), \"any\");"
+      },
+      {
+        "line": 107,
+        "text": "await s.session.set(\"other\", session(\"other\", { orgId: \"globex\", parentSessionId: \"p\" }), \"any\");"
+      },
+      {
+        "line": 111,
+        "text": "expect((await s.session.list({ orgId: \"acme\", parentage })).map((r) => r.id)).toEqual(["
+      },
+      {
+        "line": 117,
+        "text": "(await s.session.list({ orgId: undefined, parentage })).map((r) => r.id)"
+      },
+      {
+        "line": 126,
+        "text": "it(\"request orgId filters exactly, with the same present-vs-absent rule\", async () => {"
+      },
+      {
+        "line": 128,
+        "text": "await s.request.set(\"r_acme\", request(\"r_acme\", { orgId: \"acme\" }), \"any\");"
+      },
+      {
+        "line": 131,
+        "text": "expect((await s.request.list({ orgId: \"acme\" })).map((r) => r.id)).toEqual([\"r_acme\"]);"
+      },
+      {
+        "line": 132,
+        "text": "expect((await s.request.list({ orgId: undefined })).map((r) => r.id)).toEqual(["
+      },
+      {
+        "line": 154,
+        "text": "...({ orgId: null, tenantId: null } as Partial<SessionRecord>)"
+      },
+      {
+        "line": 161,
+        "text": "...({ orgId: null, tenantId: null } as Partial<RequestRecord>)"
+      },
+      {
+        "line": 168,
+        "text": "(await s.session.list({ orgId: undefined, parentage })).map((r) => r.id)"
+      },
+      {
+        "line": 173,
+        "text": "expect((await s.request.list({ orgId: undefined })).map((r) => r.id)).toEqual(["
+      },
+      {
+        "line": 304,
+        "text": "orgId: undefined,"
+      }
+    ]
+  },
+  "packages/store-postgres/test/stores.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 109,
+        "text": "orgId: id,"
+      },
+      {
+        "line": 1010,
+        "text": "expect(result!.orgId).toBe(\"proj_1\");"
+      },
+      {
+        "line": 1228,
+        "text": "orgId: \"proj_1\","
+      },
+      {
+        "line": 1238,
+        "text": "expect(result!.orgId).toBe(\"proj_1\");"
+      }
+    ]
+  },
+  "packages/store-sqlite/src/active-request-registry.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 15,
+        "text": "entry.orgId ?? null,"
+      },
+      {
+        "line": 53,
+        "text": "entry.orgId = row.org_id as string;"
+      }
+    ]
+  },
+  "packages/store-sqlite/src/request-store.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 150,
+        "text": "record.orgId ?? null,"
+      },
+      {
+        "line": 183,
+        "text": "// the tenant clause. `orgId` is optional on the record and written as"
+      },
+      {
+        "line": 185,
+        "text": "if (options !== undefined && \"orgId\" in options) {"
+      },
+      {
+        "line": 187,
+        "text": "params.push(options.orgId ?? null);"
+      }
+    ]
+  },
+  "packages/store-sqlite/src/session-store.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 17,
+        "text": "record.orgId ?? null,"
+      },
+      {
+        "line": 47,
+        "text": "if (options !== undefined && \"orgId\" in options) {"
+      },
+      {
+        "line": 49,
+        "text": "params.push(options.orgId ?? null);"
+      }
+    ]
+  },
+  "packages/store-sqlite/test/list-option-widenings.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 101,
+        "text": "it(\"session orgId filters exactly, NULL-safely, and only when the key is present\", async () => {"
+      },
+      {
+        "line": 103,
+        "text": "await s.session.set(\"bound\", session(\"bound\", { orgId: \"acme\", parentSessionId: \"p\" }), \"any\");"
+      },
+      {
+        "line": 104,
+        "text": "await s.session.set(\"other\", session(\"other\", { orgId: \"globex\", parentSessionId: \"p\" }), \"any\");"
+      },
+      {
+        "line": 108,
+        "text": "expect((await s.session.list({ orgId: \"acme\", parentage })).map((r) => r.id)).toEqual(["
+      },
+      {
+        "line": 113,
+        "text": "(await s.session.list({ orgId: undefined, parentage })).map((r) => r.id)"
+      },
+      {
+        "line": 122,
+        "text": "it(\"request orgId filters exactly, with the same present-vs-absent rule\", async () => {"
+      },
+      {
+        "line": 124,
+        "text": "await s.request.set(\"r_acme\", request(\"r_acme\", { orgId: \"acme\" }), \"any\");"
+      },
+      {
+        "line": 127,
+        "text": "expect((await s.request.list({ orgId: \"acme\" })).map((r) => r.id)).toEqual([\"r_acme\"]);"
+      },
+      {
+        "line": 128,
+        "text": "expect((await s.request.list({ orgId: undefined })).map((r) => r.id)).toEqual(["
+      },
+      {
+        "line": 150,
+        "text": "...({ orgId: null, tenantId: null } as Partial<SessionRecord>)"
+      },
+      {
+        "line": 157,
+        "text": "...({ orgId: null, tenantId: null } as Partial<RequestRecord>)"
+      },
+      {
+        "line": 164,
+        "text": "(await s.session.list({ orgId: undefined, parentage })).map((r) => r.id)"
+      },
+      {
+        "line": 169,
+        "text": "expect((await s.request.list({ orgId: undefined })).map((r) => r.id)).toEqual(["
+      }
+    ]
+  },
+  "packages/store-sqlite/test/stores.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 103,
+        "text": "orgId: id,"
+      },
+      {
+        "line": 927,
+        "text": "expect(result!.orgId).toBe(\"proj_1\");"
+      },
+      {
+        "line": 1138,
+        "text": "orgId: \"proj_1\","
+      },
+      {
+        "line": 1147,
+        "text": "expect(result!.orgId).toBe(\"proj_1\");"
+      }
+    ]
+  },
+  "packages/testing/src/runtime/createTestContext.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 56,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 75,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 143,
+        "text": "requiresOrg: false,"
+      },
+      {
+        "line": 165,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 205,
+        "text": "if (options.orgId !== undefined) {"
+      },
+      {
+        "line": 206,
+        "text": "await options.stores.org.set(options.orgId, {"
+      },
+      {
+        "line": 207,
+        "text": "id: options.orgId,"
+      },
+      {
+        "line": 208,
+        "text": "orgId: options.orgId,"
+      },
+      {
+        "line": 215,
+        "text": "await seedResourceState(\"org\", options.orgId, options.seed.org?.resources);"
+      },
+      {
+        "line": 223,
+        "text": "orgId: options.orgId,"
+      },
+      {
+        "line": 242,
+        "text": "orgId: options.orgId,"
+      },
+      {
+        "line": 443,
+        "text": "const orgId = options.orgId;"
+      },
+      {
+        "line": 456,
+        "text": "orgId,"
+      },
+      {
+        "line": 516,
+        "text": "orgId,"
+      },
+      {
+        "line": 525,
+        "text": "wrapScopeStateOps(\"org\", ctx.org as unknown as Record<string, unknown>, stateChanges);"
+      },
+      {
+        "line": 599,
+        "text": "orgId,"
+      }
+    ]
+  },
+  "packages/testing/src/test-utilities/testBlock.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 114,
+        "text": "org: asRecord(runtime.ctx.org?.state),"
+      }
+    ]
+  },
+  "packages/testing/src/test-utilities/testFlow.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 41,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 91,
+        "text": "if (options.orgId !== undefined) {"
+      },
+      {
+        "line": 92,
+        "text": "const existing = await options.stores.org.get(options.orgId);"
+      },
+      {
+        "line": 94,
+        "text": "await options.stores.org.set(options.orgId, {"
+      },
+      {
+        "line": 95,
+        "text": "id: options.orgId,"
+      },
+      {
+        "line": 96,
+        "text": "orgId: options.orgId,"
+      },
+      {
+        "line": 104,
+        "text": "await seedResourceState(\"org\", options.orgId, options.seed?.org?.resources);"
+      },
+      {
+        "line": 114,
+        "text": "orgId: options.orgId,"
+      },
+      {
+        "line": 138,
+        "text": "orgId: options.orgId,"
+      },
+      {
+        "line": 161,
+        "text": "const orgId = options.seed?.org === undefined ? undefined : \"test-org\";"
+      },
+      {
+        "line": 169,
+        "text": "orgId,"
+      },
+      {
+        "line": 179,
+        "text": "orgId,"
+      }
+    ]
+  },
+  "packages/tools/src/bash/blocks.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 219,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 293,
+        "text": "* workspaces root entirely — and `userId`/`orgId`, which DO come from a"
+      },
+      {
+        "line": 376,
+        "text": "* The fallback to `sessionId` when `userId`/`orgId` is absent takes the tenant"
+      }
+    ]
+  },
+  "packages/tools/test/bash-workspace-scope.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 35,
+        "text": "session: { identity: { id: sessionId, userId: \"u1\", orgId: \"o1\" } },"
+      },
+      {
+        "line": 212,
+        "text": "orgId: \"acme\","
+      },
+      {
+        "line": 219,
+        "text": "orgId: \"acme\","
+      },
+      {
+        "line": 231,
+        "text": "orgId: \"org-a\","
+      },
+      {
+        "line": 237,
+        "text": "orgId: \"org-b\","
+      }
+    ]
+  },
+  "packages/workforce/README.md": {
+    "area": "reference",
+    "hits": [
+      {
+        "line": 39,
+        "text": "registered` before the model is reached. On the default principal resolver, send an `orgId` with"
+      },
+      {
+        "line": 41,
+        "text": "reads the resolved principal and ignores a body `orgId`, so a caller cannot name its own org."
+      },
+      {
+        "line": 597,
+        "text": "document is org-scoped, and a flow collects `requiresOrg` from its blocks, not from its resource"
+      },
+      {
+        "line": 600,
+        "text": "`is not registered`, and `readResourceContentTool` says the same. Declare `requireOrg: true` on the"
+      },
+      {
+        "line": 611,
+        "text": "requireOrg: true,"
+      },
+      {
+        "line": 734,
+        "text": "Pass `orgId` alongside it. It is the org each channel session is opened under, and resources"
+      },
+      {
+        "line": 740,
+        "text": "session between orgs. If you pass an `orgId` and a channel at that id is already open under a"
+      },
+      {
+        "line": 742,
+        "text": "the next run opens the channel fresh, or drop the `orgId`."
+      },
+      {
+        "line": 906,
+        "text": "| `openChannels(manifests, { client, userId, orgId? })` | Runtime. One named session per record, carrying its members, charter and description, opened under `orgId` when one is given. Idempotent. |"
+      }
+    ]
+  },
+  "packages/workforce/src/channel/channel-binder.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 88,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 110,
+        "text": "* `orgId` — a channel already open under a different org (or under none)"
+      },
+      {
+        "line": 115,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 152,
+        "text": "* pinned by `management-route-auth.test.ts`'s \"takes orgId from the"
+      },
+      {
+        "line": 153,
+        "text": "* principal, not body.orgId\". Such an app opens its channels as a principal"
+      },
+      {
+        "line": 157,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 411,
+        "text": "orgId: string | undefined"
+      },
+      {
+        "line": 448,
+        "text": "// `orgId` are bound to no org, and re-opening cannot move them."
+      },
+      {
+        "line": 449,
+        "text": "if (orgId !== undefined && session.orgId !== orgId) {"
+      },
+      {
+        "line": 453,
+        "text": "`${session.orgId === undefined ? \"no org\" : `org \"${session.orgId}\"`}, but this run ` +"
+      },
+      {
+        "line": 454,
+        "text": "`asked for org \"${orgId}\". A session's org is fixed at creation, so re-opening cannot ` +"
+      },
+      {
+        "line": 456,
+        "text": "`drop the \\`orgId\\`. If your client's \\`getSession\\` does not return \\`orgId\\`, return ` +"
+      },
+      {
+        "line": 497,
+        "text": "*   `orgId` this run asked for that the open channel is not in: the same"
+      },
+      {
+        "line": 517,
+        "text": "*                  `orgId`: the org they are opened under, which org-scoped documents are"
+      },
+      {
+        "line": 537,
+        "text": "// Spread rather than passed as `orgId: options.orgId`: an app with no"
+      },
+      {
+        "line": 540,
+        "text": "...(options.orgId === undefined ? {} : { orgId: options.orgId }),"
+      },
+      {
+        "line": 565,
+        "text": "options.orgId"
+      }
+    ]
+  },
+  "packages/workforce/src/resources-from-docs.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 47,
+        "text": "* org-scoped, and `defineFlow` collects `requiresOrg` from its blocks, not from"
+      },
+      {
+        "line": 50,
+        "text": "* document resolves as unregistered. Declare `requireOrg: true` on the blocks"
+      }
+    ]
+  },
+  "packages/workforce/test/agent-worker-flow.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 148,
+        "text": "orgId: \"test-org\","
+      },
+      {
+        "line": 266,
+        "text": "orgId: \"test-org\","
+      },
+      {
+        "line": 422,
+        "text": "// `createTestContext` accepts `orgId`). The seat is also patched to"
+      },
+      {
+        "line": 448,
+        "text": "orgId: \"test-org\","
+      }
+    ]
+  },
+  "packages/workforce/test/agent-worker-memory.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 137,
+        "text": "orgId: \"test-org\","
+      },
+      {
+        "line": 270,
+        "text": "orgId: \"test-org\","
+      },
+      {
+        "line": 328,
+        "text": "orgId: \"test-org\","
+      },
+      {
+        "line": 395,
+        "text": "orgId: \"test-org\","
+      }
+    ]
+  },
+  "packages/workforce/test/channel-binder.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 35,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 215,
+        "text": "...(options.orgId === undefined ? {} : { orgId: String(options.orgId) }),"
+      },
+      {
+        "line": 299,
+        "text": "orgId: \"org_acme\""
+      },
+      {
+        "line": 306,
+        "text": "expect(created[0]).toMatchObject({ orgId: \"org_acme\" });"
+      },
+      {
+        "line": 312,
+        "text": "expect(created[0]).not.toHaveProperty(\"orgId\");"
+      },
+      {
+        "line": 403,
+        "text": "* org. Passing an `orgId` afterwards cannot move them — a session's org is"
+      },
+      {
+        "line": 415,
+        "text": "openChannels(roster, { client, userId: OWNER, orgId: \"org_acme\" })"
+      },
+      {
+        "line": 424,
+        "text": "await openChannels(roster, { client, userId: OWNER, orgId: \"org_acme\" });"
+      },
+      {
+        "line": 427,
+        "text": "openChannels(roster, { client, userId: OWNER, orgId: \"org_other\" })"
+      },
+      {
+        "line": 436,
+        "text": "await openChannels(roster, { client, userId: OWNER, orgId: \"org_acme\" });"
+      },
+      {
+        "line": 437,
+        "text": "await openChannels(roster, { client, userId: OWNER, orgId: \"org_acme\" });"
+      },
+      {
+        "line": 450,
+        "text": "await openChannels(roster, { client, userId: OWNER, orgId: \"org_acme\" });"
+      }
+    ]
+  },
+  "packages/workforce/test/channel-org-identity.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 6,
+        "text": "* not the claim that matters here: an `orgId` the binder passes is only worth"
+      },
+      {
+        "line": 65,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 84,
+        "text": "orgId: session.orgId,"
+      },
+      {
+        "line": 94,
+        "text": "/** The stored session, as the route hands it back — `orgId` included. */"
+      },
+      {
+        "line": 112,
+        "text": "await openChannels([record(\"engineering.standup\")], { client, userId: OWNER, orgId: ORG });"
+      },
+      {
+        "line": 120,
+        "text": "orgId: ORG"
+      },
+      {
+        "line": 129,
+        "text": "expect((await sessionOf(\"engineering.standup\")).orgId).toBeUndefined();"
+      },
+      {
+        "line": 145,
+        "text": "await openChannels([record(\"engineering.standup\")], { client, userId: OWNER, orgId: ORG });"
+      },
+      {
+        "line": 147,
+        "text": "expect(await sessionOf(\"engineering.standup\")).toMatchObject({ orgId: ORG });"
+      }
+    ]
+  },
+  "packages/workforce/test/resources-from-docs.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 180,
+        "text": "* org requirement from a flow-level resource — `requiresOrg` is collected off"
+      },
+      {
+        "line": 182,
+        "text": "* `requireOrg` accepts a user-only request and then has no documents on it:"
+      },
+      {
+        "line": 199,
+        "text": "...(declareRequireOrg ? { requireOrg: true } : {}),"
+      },
+      {
+        "line": 242,
+        "text": "// resource map contributes nothing to `requiresOrg`, so the transport"
+      },
+      {
+        "line": 244,
+        "text": "// declares `requireOrg`."
+      },
+      {
+        "line": 245,
+        "text": "expect(buildFlow(false).flow.requiresOrg).toBe(false);"
+      },
+      {
+        "line": 246,
+        "text": "expect(buildFlow(true).flow.requiresOrg).toBe(true);"
+      }
+    ]
+  },
+  "packages/workforce/test/seat-capabilities.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 182,
+        "text": "orgId: \"test-org\","
+      }
+    ]
+  },
+  "packages/workforce/test/seat-skills.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 81,
+        "text": "orgId: \"test-org\","
+      }
+    ]
+  },
+  "packages/workforce/test/worker-document-fence.test.ts": {
+    "area": "checks",
+    "hits": [
+      {
+        "line": 150,
+        "text": "orgId: ORG_ID,"
+      }
+    ]
+  },
+  "packages/workspace/src/scope-identity.ts": {
+    "area": "framework",
+    "hits": [
+      {
+        "line": 19,
+        "text": "* and `request.identity.id` come off the request body; `userId`, `orgId` and"
+      },
+      {
+        "line": 24,
+        "text": "session: { identity: { id: string; userId?: string; orgId?: string; tenantId?: string } };"
+      },
+      {
+        "line": 31,
+        "text": "orgId: ctx.session.identity.orgId,"
+      },
+      {
+        "line": 44,
+        "text": "orgId?: string;"
+      },
+      {
+        "line": 78,
+        "text": "return principal.orgId !== undefined"
+      },
+      {
+        "line": 79,
+        "text": "? [principal.orgId]"
+      }
+    ]
+  }
+}

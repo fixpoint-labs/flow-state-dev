@@ -1,0 +1,34 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="Before: a session may have no organization. After: verified and development principals enter a required organization boundary; historical unassigned records remain outside until attributed." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface2:#E8E8E1; --ink:#191C21; --muted:#4C535B; --rule:#D5D4CB; --accent:#3E4E8C; --soft:#E0E3F0; --code:#2C7C69; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) { :root { --surface:#181C1F; --surface2:#202528; --ink:#E6E8E5; --muted:#A4ACB1; --rule:#2B3135; --accent:#8B9BD8; --soft:#1B2140; --code:#5DBBA1; --gone:#DE8A84; } }
+    .bg { fill:var(--surface); } .box { fill:var(--surface2); stroke:var(--rule); }
+    .fence { fill:var(--soft); stroke:var(--accent); stroke-width:2; }
+    text { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:16px; }
+    .title { font-weight:650; font-size:19px; } .small { fill:var(--muted); font-size:14px; }
+    .bad { fill:var(--gone); } .good { fill:var(--code); }
+  </style>
+  <rect class="bg" width="940" height="360" rx="8"/>
+  <g id="before">
+    <text class="title" x="30" y="38">TODAY</text>
+    <rect class="box" x="30" y="58" width="350" height="202" rx="8"/>
+    <text x="50" y="92">Session</text>
+    <text class="small" x="50" y="128">User identity present</text>
+    <text class="bad" x="50" y="161">Organization may be absent</text>
+    <text class="small" x="50" y="204">Organization resources can fail later</text>
+    <text class="small" x="50" y="233">Some reads check only the user</text>
+  </g>
+  <g id="after">
+    <text class="title" x="430" y="38">AFTER</text>
+    <rect class="fence" x="430" y="58" width="480" height="202" rx="8"/>
+    <text x="450" y="92">Required organization boundary</text>
+    <text class="small" x="450" y="127">Verified principal  ·  or development default</text>
+    <text class="good" x="450" y="162">Session + requests + dispatched seats</text>
+    <text class="small" x="450" y="204">One immutable organization carried throughout</text>
+    <text class="small" x="450" y="233">Reads and writes check the bound organization</text>
+  </g>
+  <g id="legacy">
+    <rect class="box" x="430" y="284" width="480" height="48" rx="8"/>
+    <text class="small" x="450" y="313">Old unassigned data: attribute before admitting</text>
+  </g>
+</svg>
