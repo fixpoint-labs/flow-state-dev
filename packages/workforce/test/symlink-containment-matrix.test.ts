@@ -1,0 +1,294 @@
+/**
+ * The containment guarantee, held across every door at once.
+ *
+ * Each reader already has its own symlink tests, and each of those checks the
+ * level that reader happens to care about. That per-door shape is exactly how
+ * this class of hole survived before: `read-resources-directory` grew a root
+ * check while `read-workforce-directory` and `read-seat-skills` did not, and
+ * nothing in the suite compared them. So this file is deliberately a matrix —
+ * one symlinked tree per position, every door run over it — and its job is to
+ * fail the moment one door stops agreeing with the others.
+ *
+ * The assertion is the same everywhere and it is about content, not wording: a
+ * complete second workforce tree sits outside the configured root with a canary
+ * string in every file it holds, and no door may return, throw or report
+ * anything carrying that string. A door that followed a link would load a
+ * worker, channel, document, module or skill from the outside tree, and the
+ * canary is what makes that visible without pinning any message text.
+ *
+ * Real symlinks on a real filesystem, on purpose: what `lstat` does with a link,
+ * with a trailing separator, or with a link partway down a path is filesystem
+ * behaviour, and a mock would only assert our idea of it.
+ */
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, sep } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  readChannelsDirectory,
+  readResourcesDirectory,
+  readSeatSkills,
+  readWorkforceDirectory,
+} from "../src/loader";
+import { discoverWorkforceCode } from "../src/codegen";
+// Not on the `./codegen` subpath — the command reaches it through
+// `discoverWorkforceCode`. Imported directly because it opens the root itself,
+// which makes it a door in its own right.
+import { discoverResourceModules } from "../src/codegen/discover-resource-modules";
+
+/**
+ * Marks every file in the outside tree. Finding it anywhere in a door's output
+ * means that door read through a link.
+ */
+const CANARY = "CANARY-OUTSIDE-THE-ROOT";
+
+const TEAM = "engineering";
+const WORKER = "lead";
+
+let base: string;
+
+beforeEach(() => {
+  base = mkdtempSync(join(tmpdir(), "workforce-containment-"));
+});
+
+afterEach(() => {
+  rmSync(base, { recursive: true, force: true });
+});
+
+/**
+ * A complete workforce tree — one of everything every door reads — with `tag`
+ * written into every file, so the tree a result came from is identifiable.
+ */
+function buildTree(dir: string, tag: string): void {
+  const doc = (what: string) => `---\ndescription: ${what} ${tag}\n---\n\nbody ${tag}\n`;
+  const skill = (name: string) =>
+    `---\nname: ${name}\ndescription: ${name} ${tag}\n---\n\nbody ${tag}\n`;
+  const module_ = `// ${tag}\nexport default {};\n`;
+
+  const worker = `teams/${TEAM}/workers/${WORKER}`;
+
+  mkdirSync(join(dir, worker), { recursive: true });
+  writeFileSync(join(dir, worker, "WORKER.md"), doc("worker"));
+
+  mkdirSync(join(dir, `teams/${TEAM}/channels/standup`), { recursive: true });
+  writeFileSync(join(dir, `teams/${TEAM}/channels/standup/CHANNEL.md`), doc("channel"));
+
+  mkdirSync(join(dir, `teams/${TEAM}/resources`), { recursive: true });
+  writeFileSync(join(dir, `teams/${TEAM}/resources/brief.md`), doc("document"));
+  writeFileSync(join(dir, `teams/${TEAM}/resources/store.ts`), module_);
+
+  mkdirSync(join(dir, worker, "resources"), { recursive: true });
+  writeFileSync(join(dir, worker, "resources/notes.md"), doc("document"));
+
+  mkdirSync(join(dir, `teams/${TEAM}/skills/team-skill`), { recursive: true });
+  writeFileSync(join(dir, `teams/${TEAM}/skills/team-skill/SKILL.md`), skill("team-skill"));
+
+  mkdirSync(join(dir, worker, "skills/own-skill"), { recursive: true });
+  writeFileSync(join(dir, worker, "skills/own-skill/SKILL.md"), skill("own-skill"));
+
+  mkdirSync(join(dir, "org/skills/org-skill"), { recursive: true });
+  writeFileSync(join(dir, "org/skills/org-skill/SKILL.md"), skill("org-skill"));
+
+  mkdirSync(join(dir, "org/resources"), { recursive: true });
+  writeFileSync(join(dir, "org/resources/policy.md"), doc("document"));
+
+  mkdirSync(join(dir, "blocks"), { recursive: true });
+  writeFileSync(join(dir, "blocks/tally.ts"), module_);
+  mkdirSync(join(dir, "flows/workers"), { recursive: true });
+  writeFileSync(join(dir, "flows/workers/agent.ts"), module_);
+  mkdirSync(join(dir, "flows/channels"), { recursive: true });
+  writeFileSync(join(dir, "flows/channels/room.ts"), module_);
+}
+
+/** The configured tree and the tree outside it, side by side under `base`. */
+function scaffold(): { root: string; outside: string } {
+  const root = join(base, "configured");
+  const outside = join(base, "outside");
+  buildTree(root, "configured");
+  buildTree(outside, CANARY);
+  return { root, outside };
+}
+
+/** Replace a path inside the configured tree with a link to its outside twin. */
+function relink(root: string, outside: string, relative: string): void {
+  rmSync(join(root, relative), { recursive: true, force: true });
+  symlinkSync(join(outside, relative), join(root, relative));
+}
+
+/** Every reader that opens a workforce root, named for the failure message. */
+const DOORS: ReadonlyArray<{ name: string; open: (root: string) => Promise<unknown> }> = [
+  { name: "readWorkforceDirectory", open: (root) => readWorkforceDirectory(root) },
+  { name: "readChannelsDirectory", open: (root) => readChannelsDirectory(root) },
+  { name: "readResourcesDirectory", open: (root) => readResourcesDirectory(root) },
+  { name: "readSeatSkills", open: (root) => readSeatSkills(root, { team: TEAM, worker: WORKER }) },
+  { name: "discoverWorkforceCode", open: (root) => discoverWorkforceCode(root) },
+  { name: "discoverResourceModules", open: (root) => discoverResourceModules(root) },
+];
+
+/**
+ * Everything one door produced, flattened to a string — the returned record,
+ * every collected `Error` message, and a thrown error with its `problems`.
+ *
+ * Flattened rather than inspected field by field because the six doors return
+ * five different shapes, and what is being asserted is the one thing they share:
+ * nothing from outside the root came back, whichever field it would have
+ * arrived in.
+ */
+async function everythingProduced(
+  door: (root: string) => Promise<unknown>,
+  root: string,
+): Promise<string> {
+  try {
+    return JSON.stringify(await door(root), (_key, value) =>
+      value instanceof Error ? value.message : value,
+    );
+  } catch (err) {
+    const problems = (err as { problems?: string[] }).problems ?? [];
+    return `${(err as Error).message}\n${problems.join("\n")}`;
+  }
+}
+
+/**
+ * Run every door over `root` and require that none of them read the outside
+ * tree. `what` names the position under test so a failure says which one moved.
+ */
+async function expectNoDoorReadsOutside(root: string, what: string): Promise<void> {
+  for (const { name, open } of DOORS) {
+    const produced = await everythingProduced(open, root);
+    expect(
+      produced.includes(CANARY),
+      `${name} followed the symlinked ${what} and read the tree outside the configured root`,
+    ).toBe(false);
+  }
+}
+
+describe("no door follows a symlink out of the configured root", () => {
+  it("refuses a symlinked root", async () => {
+    const { outside } = scaffold();
+    const linked = join(base, "linked-root");
+    symlinkSync(outside, linked);
+
+    // Throwing, specifically: a root that is not the configured tree is a
+    // wiring mistake, and returning an empty result would read as a tree that
+    // simply declares nothing.
+    for (const { name, open } of DOORS) {
+      await expect(open(linked), `${name} did not refuse a symlinked root`).rejects.toThrow(
+        /refused for safety/,
+      );
+    }
+    await expectNoDoorReadsOutside(linked, "root");
+  });
+
+  it("refuses a symlinked root spelled with a trailing separator", async () => {
+    const { outside } = scaffold();
+    const linked = join(base, "linked-root");
+    symlinkSync(outside, linked);
+
+    // `lstat` resolves the FINAL link when a path ends in a separator, so this
+    // spelling is the one that hides a link from a naive check — and it is the
+    // ordinary way a directory falls out of config or an environment variable.
+    const spelled = `${linked}${sep}`;
+    for (const { name, open } of DOORS) {
+      await expect(
+        open(spelled),
+        `${name} was fooled by the trailing separator`,
+      ).rejects.toThrow(/refused for safety/);
+    }
+    await expectNoDoorReadsOutside(spelled, "root (trailing separator)");
+  });
+
+  it("refuses a symlinked teams/ folder", async () => {
+    const { root, outside } = scaffold();
+    relink(root, outside, "teams");
+    await expectNoDoorReadsOutside(root, "teams/ folder");
+  });
+
+  it("refuses a symlinked team folder", async () => {
+    const { root, outside } = scaffold();
+    relink(root, outside, `teams/${TEAM}`);
+    await expectNoDoorReadsOutside(root, "team folder");
+  });
+
+  it("refuses a symlinked worker folder", async () => {
+    const { root, outside } = scaffold();
+    relink(root, outside, `teams/${TEAM}/workers/${WORKER}`);
+    await expectNoDoorReadsOutside(root, "worker folder");
+  });
+
+  it.each([
+    ["workers/ level", `teams/${TEAM}/workers`],
+    ["resources/ slot", `teams/${TEAM}/resources`],
+    ["channels/ slot", `teams/${TEAM}/channels`],
+    ["skills/ level", `teams/${TEAM}/skills`],
+    ["org/ level", "org"],
+    ["locked code folder", "blocks"],
+    ["locked folder's ancestor", "flows"],
+  ])("refuses a symlinked %s", async (what, relative) => {
+    const { root, outside } = scaffold();
+    relink(root, outside, relative);
+    await expectNoDoorReadsOutside(root, what);
+  });
+
+  it("refuses a symlinked ancestor of a level a reader jumps straight to", async () => {
+    const { root, outside } = scaffold();
+    // `readSeatSkills` addresses `teams/<t>/workers/<w>/skills` by name instead
+    // of walking down to it, and `lstat` answers for the final component alone
+    // — the OS resolves everything above it silently. Without an explicit
+    // ancestor check this link is followed and the level loads from outside.
+    relink(root, outside, `teams/${TEAM}/workers`);
+    await expectNoDoorReadsOutside(root, "ancestor of a jumped-to level");
+  });
+
+  it("refuses every symlinked leaf file at once", async () => {
+    const { root, outside } = scaffold();
+    // A real folder says nothing about the file inside it: a link at the leaf
+    // reaches outside exactly as a linked folder would, and each door has its
+    // own leaf to be fooled at.
+    for (const leaf of [
+      `teams/${TEAM}/workers/${WORKER}/WORKER.md`,
+      `teams/${TEAM}/channels/standup/CHANNEL.md`,
+      `teams/${TEAM}/resources/brief.md`,
+      `teams/${TEAM}/resources/store.ts`,
+      `teams/${TEAM}/skills/team-skill/SKILL.md`,
+      "blocks/tally.ts",
+      "flows/workers/agent.ts",
+    ]) {
+      relink(root, outside, leaf);
+    }
+    await expectNoDoorReadsOutside(root, "leaf file");
+  });
+});
+
+describe("what the root check deliberately does not cover", () => {
+  // Both of these load the tree behind a link, and both are settled decisions
+  // rather than gaps. They are pinned so the decision is visible where the
+  // refusals are, and so a change to either is a test edit somebody has to
+  // justify rather than a silent widening.
+
+  it("does not look above the configured root", async () => {
+    const { outside } = scaffold();
+    // The root's own final component is a real directory; the link is its
+    // parent. Checking above the root would mean refusing every root that lives
+    // under a linked parent — which is the ordinary layout wherever a tree is
+    // reached through a linked checkout or a linked config directory.
+    mkdirSync(join(base, "holder"), { recursive: true });
+    buildTree(join(base, "holder/tree"), CANARY);
+    symlinkSync(join(base, "holder"), join(base, "gateway"));
+    void outside;
+
+    const { workers } = await readWorkforceDirectory(join(base, "gateway", "tree"));
+    expect(workers).toHaveLength(1);
+  });
+
+  it("follows a root spelled with a trailing `.` segment", async () => {
+    const { outside } = scaffold();
+    const linked = join(base, "linked-root");
+    symlinkSync(outside, linked);
+
+    // `<link>/.` resolves the link, and that is the documented way for an
+    // operator who means to run a linked tree to say so. Unlike `<link>/`, this
+    // spelling does not fall out of config by accident — it has to be written.
+    const { workers } = await readWorkforceDirectory(`${linked}${sep}.`);
+    expect(workers).toHaveLength(1);
+  });
+});
