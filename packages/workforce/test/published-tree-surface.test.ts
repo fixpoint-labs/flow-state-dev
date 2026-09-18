@@ -16,9 +16,15 @@
  * known can only ever confirm that list. So {@link PUBLISHED_SHAPES} is read off
  * the *published* surface — the pages and READMEs an author actually reads —
  * and every row carries the file and the verbatim sentence that publishes it.
- * The first test re-checks those quotes against the real files, so a doc that
- * starts publishing a new shape, or stops publishing an old one, breaks this
- * suite rather than letting it drift away from what authors are being told.
+ *
+ * That derivation is guarded in BOTH directions, because either one alone
+ * rots. Checking each row's quote against its file proves no row went stale —
+ * and proves nothing about a page that started declaring something new, which
+ * would leave the table quietly incomplete while every assertion in it passed.
+ * So {@link shapesDeclaredIn} runs the extraction as a standing check: the
+ * pages are read, every path shape and file extension they declare is pulled
+ * out, and anything without a row fails. A missing row is worse than a missing
+ * check, because it looks like coverage.
  *
  * **The same rule, one level up.** A path is not the only thing the convention
  * publishes. The ref tables publish *addresses*, and an address that resolves
@@ -42,7 +48,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { discoverWorkforceCode } from "../src/codegen/discover";
+import { WorkforceCodeError, discoverWorkforceCode } from "../src/codegen/discover";
 import { readChannelsDirectory } from "../src/loader/read-channels-directory";
 import { readResourcesDirectory } from "../src/loader/read-resources-directory";
 import { readSeatSkills } from "../src/loader/read-seat-skills";
@@ -63,12 +69,22 @@ interface Readout {
   resourceModules: string[];
   /** `<slot>:<name>` for every file in a locked code folder. */
   code: string[];
-  /** Skill names the `alpha.lead` seat resolved, read directly. */
+  /**
+   * Skill names the `alpha.lead` seat resolved.
+   *
+   * Read through a SECOND `readSeatSkills` call rather than off the manifest
+   * `readWorkforce` already joined on, deliberately: a skill row stays
+   * observable even when the `WORKER.md` beside it is the thing that failed,
+   * which is exactly the case where a skills-level silence would otherwise be
+   * hidden behind a worker-level one.
+   */
   teamSeatSkills: string[];
   /** Document refs that loaded, paired with the worker each one is addressed to. */
   workerAddressedRefs: Array<{ ref: string; worker: string; folder: string }>;
   /** Every root-relative path any reader reported as a failure. */
   reported: string[];
+  /** Whether the codegen walk threw, which empties {@link Readout.code} and {@link Readout.resourceModules}. */
+  codeWalkThrew: boolean;
 }
 
 /** One path shape the published convention tells an author they may write. */
@@ -102,6 +118,15 @@ interface PublishedShape {
 const KNOWN_SILENT_GAPS: ReadonlyArray<{ shape: string; owner: string }> = [];
 
 /**
+ * The ref-table row that publishes an org worker's document address. Cited
+ * twice — once as the row that says the path may be written, once as the
+ * promise that its ref names a worker — so it lives in one place: the two
+ * citations must not be able to drift apart.
+ */
+const ORG_WORKER_DOC_REF_ROW =
+  "| `<root>/org/workers/build/resources/runbook.md` | `workers/build/runbook` |";
+
+/**
  * Where the convention publishes that a worker's documents get an address
  * naming that worker. Two unambiguous table rows, checked verbatim the way
  * {@link PublishedShape.publishedIn} is — a ref table states the promise far
@@ -110,7 +135,7 @@ const KNOWN_SILENT_GAPS: ReadonlyArray<{ shape: string; owner: string }> = [];
 const WORKER_REFS_RESOLVE: ReadonlyArray<{ file: string; quote: string }> = [
   {
     file: "apps/docs/docs/workforce/documents-on-disk.md",
-    quote: "| `<root>/org/workers/build/resources/runbook.md` | `workers/build/runbook` |",
+    quote: ORG_WORKER_DOC_REF_ROW,
   },
   {
     file: "packages/workforce/README.md",
@@ -134,6 +159,213 @@ const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> 
       "published for its documents names nothing hireable",
   },
 ];
+
+/**
+ * The pages the extraction below reads — the whole published surface for this
+ * convention. A page added here that declares a shape with no row fails; a page
+ * left out is a hole in the completeness check, so this list is the one thing
+ * about the extraction that still has to be maintained by hand.
+ */
+const PUBLISHED_FILES: readonly string[] = [
+  "apps/docs/docs/workforce/overview.md",
+  "apps/docs/docs/workforce/workers-on-disk.md",
+  "apps/docs/docs/workforce/built-in-worker.md",
+  "apps/docs/docs/workforce/channels.md",
+  "apps/docs/docs/workforce/documents-on-disk.md",
+  "apps/docs/docs/workforce/capabilities-on-disk.md",
+  "apps/docs/docs/skills/overview.md",
+  "packages/workforce/README.md",
+];
+
+/** Segments the convention fixes. Everything else in a path is the author's name for something. */
+const RESERVED = new Set([
+  "org",
+  "teams",
+  "workers",
+  "resources",
+  "skills",
+  "channels",
+  "flows",
+  "blocks",
+]);
+/** The slot words that make a path a tree path rather than a ref. */
+const SLOTS = new Set(["workers", "resources", "skills", "channels"]);
+/** Filenames the convention fixes, which stay literal in a shape. */
+const FIXED_LEAVES = new Set(["WORKER.md", "CHANNEL.md", "SKILL.md"]);
+
+/**
+ * A published path token, reduced to the shape it is an instance of.
+ *
+ * Normalizes by STRUCTURE rather than against a list of shapes already known:
+ * a segment the convention fixes stays literal, and anything else is the
+ * author's own name, rewritten to the placeholder its parent slot implies. That
+ * is what lets a shape nobody has written down yet come out of this function —
+ * a list-driven normalizer could only ever return shapes already in the table,
+ * which is the self-confirming scan one level down.
+ *
+ * A segment in a position the convention does not fix stays literal on purpose,
+ * so a genuinely new slot (`org/tools/...`) arrives spelled as itself and fails
+ * the comparison loudly instead of being bent into a shape that fits.
+ *
+ * Returns `undefined` for a token that is not a tree path at all: a ref (no
+ * slot word), or a folder mention with no file at the end.
+ */
+function toShape(token: string): string | undefined {
+  let segments = token.split("/").filter(Boolean);
+  if (segments[0] === "workforce") segments = segments.slice(1);
+  if (segments.length < 2) return undefined;
+  if (!["org", "teams", "flows", "blocks"].includes(segments[0])) return undefined;
+
+  const last = segments[segments.length - 1];
+  // A shape ends in a file. `teams/engineering/workers/on-call/runbook` is a
+  // ref, not a path, and the ref tables print both in adjacent columns.
+  if (!FIXED_LEAVES.has(last) && !/\.[a-z]+$/.test(last)) return undefined;
+  if (!segments.some((segment) => SLOTS.has(segment)) && segments[0] !== "blocks") {
+    return undefined;
+  }
+
+  return segments
+    .map((segment, index) => {
+      if (RESERVED.has(segment) || FIXED_LEAVES.has(segment)) return segment;
+      const parent = segments[index - 1];
+      const grandparent = segments[index - 2];
+      const extension = /\.([a-z]+)$/.exec(segment)?.[1];
+      if (grandparent === "flows") return `<kind>.${extension}`;
+      if (parent === "blocks") return `<name>.${extension}`;
+      if (parent === "resources") return `<name>.${extension}`;
+      if (parent === "teams") return "<team>";
+      if (parent === "workers") return "<worker>";
+      if (parent === "skills") return "<skill>";
+      if (parent === "channels") return "<channel>";
+      return segment;
+    })
+    .join("/");
+}
+
+/**
+ * Every path an indented tree block spells, reassembled from its indentation.
+ *
+ * Fences are read separately from prose because a fence spells one path across
+ * many lines, which is exactly the part a line-by-line regex cannot see — and
+ * is why the first version of this table was extracted by hand.
+ */
+function pathsInFence(lines: readonly string[]): string[] {
+  const found: string[] = [];
+  const stack: Array<{ indent: number; name: string }> = [];
+  for (const raw of lines) {
+    // Trailing annotations: `request-triage.ts     ← a worker kind`, `foo  # note`.
+    const line = raw.replace(/\s+←.*$/, "").replace(/\s+#.*$/, "").trimEnd();
+    if (line.trim() === "") continue;
+    const indent = line.length - line.trimStart().length;
+    const name = line.trim().replace(/\/$/, "");
+    if (!/^[A-Za-z0-9_<>.\-/]+$/.test(name)) continue;
+    while (stack.length > 0 && stack[stack.length - 1]!.indent >= indent) stack.pop();
+    stack.push({ indent, name });
+    found.push(stack.map((entry) => entry.name).join("/"));
+  }
+  return found;
+}
+
+/** Every path token written inline — in prose, a table cell, or a code span. */
+function pathsInLine(line: string): string[] {
+  const found: string[] = [];
+  const pattern = /(?:<root>\/|workforce\/|\.\/)?((?:org|teams|flows|blocks)\/[A-Za-z0-9_<>/.\-]*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(line)) !== null) {
+    found.push(match[1]!.replace(/[.,`|)]+$/, ""));
+  }
+  return found;
+}
+
+/** Every shape one published page declares, from its fences and its prose alike. */
+function shapesDeclaredIn(text: string): Set<string> {
+  const tokens: string[] = [];
+  let inFence = false;
+  let language = "";
+  let fence: string[] = [];
+
+  for (const line of text.split("\n")) {
+    const marker = /^```(\w*)/.exec(line.trim());
+    if (marker !== null) {
+      if (inFence) {
+        // An unlabelled fence holding indented names is a tree; anything else
+        // (ts, bash, md) is read line by line like prose.
+        const isTree = language === "" && fence.some((entry) => /^\s{2,}\S/.test(entry));
+        tokens.push(...(isTree ? pathsInFence(fence) : fence.flatMap(pathsInLine)));
+        inFence = false;
+        fence = [];
+      } else {
+        inFence = true;
+        language = marker[1]!;
+      }
+      continue;
+    }
+    if (inFence) fence.push(line);
+    else tokens.push(...pathsInLine(line));
+  }
+
+  const shapes = new Set<string>();
+  for (const token of tokens) {
+    const shape = toShape(token);
+    if (shape !== undefined) shapes.add(shape);
+  }
+  return shapes;
+}
+
+/**
+ * Every file extension the published pages name as one an author may write —
+ * a backtick span holding nothing but a dotted suffix, which is how the pages
+ * spell one.
+ *
+ * Extensions are extracted separately because a published shape is a path AND
+ * what may sit at the end of it. `.tsx` is declared in a sentence and appears
+ * in no path anywhere, so a check that read only paths would have reported full
+ * coverage over a declaration nothing exercised.
+ */
+function extensionsDeclaredIn(text: string): Set<string> {
+  return new Set([...text.matchAll(/`(\.[a-z]{1,5})`/g)].map((match) => match[1]!));
+}
+
+/**
+ * A table shape no path token in the docs spells, because the page publishes it
+ * in a sentence instead. Asserted to be exactly the difference, so a row cannot
+ * hide here once the pages start spelling it out.
+ */
+const PROSE_PUBLISHED: ReadonlyArray<{ shape: string; why: string }> = [
+  {
+    shape: "org/resources/<name>.ts",
+    why: "published by 'A capability lives at the organization level or in a team.' — no page writes the path",
+  },
+  {
+    shape: "org/workers/<worker>/resources/<name>.ts",
+    why: "published by 'A plain resource there is fine…' — the sentence covers a worker's folder at either level",
+  },
+  {
+    shape: "teams/<team>/workers/<worker>/resources/<name>.ts",
+    why: "the same sentence, at the team level",
+  },
+  {
+    shape: "flows/workers/<kind>.tsx",
+    why: "published by 'Every `.ts` and `.tsx` file…' — the pages spell only the `.ts` form in their trees",
+  },
+  {
+    shape: "teams/<team>/resources/<name>.tsx",
+    why: "the same sentence, for the module walk's own extension list",
+  },
+];
+
+/**
+ * A dotted token that reads as an extension and is not one. Each needs a
+ * reason: a silently lossy filter is the defect this suite is named after.
+ */
+const NOT_AN_EXTENSION: ReadonlyArray<{ token: string; why: string }> = [
+  { token: ".tap", why: "the `.tap()` step method, written in backticks beside `.md` and `.ts`" },
+];
+
+/** Write one instance of every published shape into the fixture tree. */
+async function writeAllPublishedShapes(root: string): Promise<void> {
+  for (const shape of PUBLISHED_SHAPES) await shape.write(root);
+}
 
 async function writeFile(root: string, at: string, contents: string): Promise<void> {
   const target = path.join(root, ...at.split("/"));
@@ -247,7 +479,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "org/workers/<worker>/resources/<name>.md",
     publishedIn: {
       file: "apps/docs/docs/workforce/documents-on-disk.md",
-      quote: "| `<root>/org/workers/build/resources/runbook.md` | `workers/build/runbook` |",
+      quote: ORG_WORKER_DOC_REF_ROW,
     },
     write: (root) =>
       writeFile(root, "org/workers/build/resources/playbook.md", doc("A playbook.")),
@@ -350,6 +582,37 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     accountedFor: (out) =>
       out.code.includes("block:triage") || out.reported.includes("blocks/triage.ts"),
   },
+  // `.tsx` is published in a sentence and written in no tree on any page, so
+  // nothing above exercises it — a declaration the suite reported full coverage
+  // over while never touching it.
+  //
+  // Two rows, not seven. The extension is not one setting: `codegen/discover.ts`
+  // and `codegen/discover-resource-modules.ts` each keep their OWN
+  // `TYPESCRIPT_EXTENSIONS`, so one row per walk is the granularity at which
+  // dropping `.tsx` can actually be caught. A row for every `.ts` position would
+  // be six more fixtures that all fail or all pass together.
+  {
+    shape: "flows/workers/<kind>.tsx",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      quote: "Every `.ts` and `.tsx` file in one of the three folders is a declaration",
+    },
+    write: (root) => writeFile(root, "flows/workers/intake.tsx", "export default {};\n"),
+    accountedFor: (out) =>
+      out.code.includes("worker:intake") || out.reported.includes("flows/workers/intake.tsx"),
+  },
+  {
+    shape: "teams/<team>/resources/<name>.tsx",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      quote: "Every `.ts` and `.tsx` file in one of the three folders is a declaration",
+    },
+    write: (root) =>
+      writeFile(root, "teams/alpha/resources/panel.tsx", "export default {};\n"),
+    accountedFor: (out) =>
+      out.resourceModules.includes("teams/alpha/panel") ||
+      out.reported.includes("teams/alpha/resources/panel.tsx"),
+  },
 ];
 
 /**
@@ -380,6 +643,7 @@ async function readEverything(root: string): Promise<Readout> {
   const seat = await readSeatSkills(root, { team: "alpha", worker: "lead" });
   for (const error of seat.errors) reported.push(error.path);
 
+  let codeWalkThrew = false;
   let code: string[] = [];
   let resourceModules: string[] = [];
   try {
@@ -387,9 +651,28 @@ async function readEverything(root: string): Promise<Readout> {
     code = discovered.files.map((file) => `${file.slot}:${file.name}`);
     resourceModules = discovered.resourceModules.map((module) => module.ref);
   } catch (err) {
-    // The codegen walk refuses loudly, by throwing with every problem named.
-    // That is the policy working, so the message counts as the report.
-    reported.push((err as Error).message);
+    // The codegen walk refuses loudly, by throwing once with every problem
+    // named. That is the policy working — but every predicate here asks
+    // `reported.includes(path)`, an exact match per element, so pushing the
+    // aggregate message as one string means a path INSIDE it never matches and
+    // a conforming refusal gets classified as silence. The message counts as a
+    // report to a human reading the failure; it does not count to `includes`.
+    //
+    // So the structured list is used instead, and each problem contributes the
+    // path it names. The walk quotes the offending path in every problem it
+    // builds, which is what makes this recoverable rather than a guess.
+    const problems = err instanceof WorkforceCodeError ? err.problems : [(err as Error).message];
+    for (const problem of problems) {
+      const quoted = [...problem.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
+      // A refusal can name two paths (a duplicate basename names both). Push
+      // each, and the raw problem too so a human reading a failure sees it.
+      reported.push(...quoted, problem);
+    }
+    // `files` and `resourceModules` are lost with the throw, so every OTHER
+    // code shape in this run reads unaccounted. That is deliberate rather than
+    // papered over: a degraded readout should fail loudly and be explained, not
+    // quietly excuse whatever it can no longer see.
+    codeWalkThrew = true;
   }
 
   return {
@@ -404,6 +687,7 @@ async function readEverything(root: string): Promise<Readout> {
       return addressed === undefined ? [] : [{ ref: document.ref, ...addressed }];
     }),
     reported,
+    codeWalkThrew,
   };
 }
 
@@ -458,8 +742,57 @@ describe("the published workforce-tree surface", () => {
     }
   });
 
+  it("has a row for everything the published pages declare", async () => {
+    // The other direction, and the one that decides whether the table can be
+    // trusted as COMPLETE. Checking each row's quote proves no row went stale;
+    // it proves nothing about a page that started declaring something new, and
+    // a missing row is worse than a missing check because it looks like
+    // coverage. So the extraction that built this table by hand runs as a
+    // standing check instead.
+    const declaredShapes = new Set<string>();
+    const declaredExtensions = new Set<string>();
+    for (const file of PUBLISHED_FILES) {
+      const contents = await fs.readFile(path.join(REPO_ROOT, file), "utf8");
+      for (const shape of shapesDeclaredIn(contents)) declaredShapes.add(shape);
+      for (const extension of extensionsDeclaredIn(contents)) declaredExtensions.add(extension);
+    }
+
+    const tabled = new Set(PUBLISHED_SHAPES.map((row) => row.shape));
+
+    // Every shape the pages spell must have a row.
+    expect(
+      [...declaredShapes].filter((shape) => !tabled.has(shape)).sort(),
+      `The published pages declare a path shape with no row in PUBLISHED_SHAPES.\n` +
+        `Add a row for it — with the file and sentence that publishes it — or, if the ` +
+        `extraction misread something, fix the extraction. Do not delete the shape from here.`,
+    ).toEqual([]);
+
+    // And every row the extraction cannot see is accounted for as prose, so a
+    // row cannot quietly hide behind the extractor's blind spots.
+    expect(
+      [...tabled].filter((shape) => !declaredShapes.has(shape)).sort(),
+      `A row is not spelled as a path anywhere in the published pages. That is fine when the ` +
+        `page publishes it in a sentence — list it in PROSE_PUBLISHED with which sentence. ` +
+        `If a page has since started spelling it out, remove it from PROSE_PUBLISHED instead.`,
+    ).toEqual([...PROSE_PUBLISHED.map((entry) => entry.shape)].sort());
+
+    // An extension is half of what a published shape is. A row must exercise
+    // each one the pages name, or it is a declaration nothing checks.
+    const exercised = new Set(
+      [...tabled].map((shape) => /\.[a-z]+$/.exec(shape)?.[0]).filter(Boolean),
+    );
+    const excused = new Set(NOT_AN_EXTENSION.map((entry) => entry.token));
+    expect(
+      [...declaredExtensions].filter((ext) => !exercised.has(ext) && !excused.has(ext)).sort(),
+      `The published pages name a file extension no row exercises.\n` +
+        `Each of the two walks keeps its own TYPESCRIPT_EXTENSIONS list, so one row per walk ` +
+        `is what covers an extension — drop it from one list and only that walk's row fails. ` +
+        `If the token is not really an extension, add it to NOT_AN_EXTENSION with why.`,
+    ).toEqual([]);
+  });
+
   it("is either consumed or reported — never passed over in silence", async () => {
-    for (const shape of PUBLISHED_SHAPES) await shape.write(root);
+    await writeAllPublishedShapes(root);
 
     const out = await readEverything(root);
     const silent = PUBLISHED_SHAPES.filter((shape) => !shape.accountedFor(out)).map(
@@ -473,6 +806,10 @@ describe("the published workforce-tree surface", () => {
       [...silent].sort(),
       `Silent shapes and known gaps disagree.\n` +
         `Known gaps:\n${KNOWN_SILENT_GAPS.map((gap) => `  ${gap.shape}  (${gap.owner})`).join("\n")}\n` +
+        (out.codeWalkThrew
+          ? `NOTE: the codegen walk threw, so its files and modules are empty this run — ` +
+            `code shapes it did not name are unverifiable rather than silent.\n`
+          : ``) +
         `A shape here that is not a known gap is a new instance of the class: make it work, ` +
         `or refuse it loudly at load time naming the path. A known gap missing here is fixed — delete its row.`,
     ).toEqual([...KNOWN_SILENT_GAPS.map((gap) => gap.shape)].sort());
@@ -487,7 +824,7 @@ describe("the published workforce-tree surface", () => {
       ).toBe(true);
     }
 
-    for (const shape of PUBLISHED_SHAPES) await shape.write(root);
+    await writeAllPublishedShapes(root);
     // A team worker folder holding documents and no `WORKER.md`. The convention
     // says such a folder's documents load and the missing file is reported
     // separately, so this is the case that proves the assertion below
