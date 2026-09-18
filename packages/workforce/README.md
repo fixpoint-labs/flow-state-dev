@@ -349,8 +349,8 @@ worker.
 those names against the catalog and hands the model that list and nothing else. A skill does not
 widen it: a skill's `allowed-tools` are validated against the catalog but never registered, and a
 skill's delegated workers are seated from the holding worker's own list. Nor does a capability
-passed through `uses`: whatever catalog tools it carries, the worker's own `tools:` is what the
-model gets. Everything else the capability brings — context, storage, helpers — arrives as usual.
+passed through `uses`: whatever tools it carries, the worker's own `tools:` is what the model gets.
+Everything else the capability brings — context, storage, helpers — arrives as usual.
 
 What does reach a worker without appearing in `tools:` is a **control**, which is framework
 machinery rather than a tool from the app's catalog, switched on by the worker's own settings:
@@ -359,8 +359,8 @@ machinery rather than a tool from the app's catalog, switched on by the worker's
   already holds into the turn;
 - the **delegation surface**, when a skill the worker holds declares `agents:`, which puts the task
   board's eight tools plus `runBoard` on the worker;
-- a **control on a capability preset**, when the worker selects that preset in its
-  `capabilities:` key — catalog tools in the same preset are still held back, the control is not.
+- the **controls a capability preset declares**, when the worker selects that preset in its
+  `capabilities:` key — a preset's `controlTools` reach the worker, its `tools` do not.
 
 #### The memory recipe
 

@@ -127,7 +127,23 @@ Only the built-in [`agent` kind](./built-in-worker.md) reads this key. A kind yo
 
 Presets carry tools as well as context. A worker that selects one gets the preset's context, and does not get its tools. A worker's [`tools:` list is the whole of what it can call](./built-in-worker.md#tools), and a capability's tools are not on it — a worker with `tools: []` calls nothing, whatever it selected. So selecting a tool-bearing preset is a way to give one worker that preset's context, not a way around its tool list. To let a worker call a tool, put the tool in the kind's catalog and name it in `tools:`.
 
-A preset can carry a **control** instead: framework machinery the capability builds itself, which no catalog could name. A worker that selects that preset gets the control, and an empty `tools:` does not hold it back, the same as the [other settings that put a control on a worker](./built-in-worker.md#tools).
+A preset can declare a **control** as well: framework machinery the capability builds itself, which a `tools:` list has no way to name. Controls go in the preset's `controlTools`, and a worker that selects the preset gets them whatever its `tools:` says. One preset can hold both slots:
+
+```ts
+const dispatch = defineCapability({
+  name: "dispatch",
+  presets: {
+    radio: {
+      context: [radioGuidance],
+      controlTools: [ping],  // reaches a worker that selects `radio`
+      tools: [lookup],       // held back, whatever that worker's `tools:` says
+    },
+    default: [],
+  },
+});
+```
+
+A worker whose file selects `radio` gets the `radio` context and can call `ping`. With `tools: []` it can call nothing else.
 
 ### When a file is wrong
 
