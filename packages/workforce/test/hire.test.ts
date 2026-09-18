@@ -120,10 +120,13 @@ function hireOne(manifest: WorkerManifest): FlowInstance {
   return seat!;
 }
 
-function refusalOf(manifests: WorkerManifest[]): string {
+function refusalOf(
+  manifests: WorkerManifest[],
+  withKinds: HireOptions["kinds"] = kinds
+): string {
   let seats: FlowInstance[] | undefined;
   try {
-    seats = hireWorkforce(manifests, { kinds });
+    seats = hireWorkforce(manifests, { kinds: withKinds });
   } catch (error) {
     expect(seats).toBeUndefined();
     return error instanceof Error ? error.message : String(error);
@@ -512,6 +515,45 @@ describe("hireWorkforce", () => {
     expect(message).toContain('worker "engineering.door"');
     expect(message).toContain("workerConfigSchema()");
     expect(message).toContain('worker "engineering.scribe"');
+  });
+
+  // The hint's whole job is to name the key an author has to add, and the case
+  // it is most needed for is the NEWEST key — the one nobody has heard of yet.
+  // A hand-rolled kind that declared the older three refuses either way, so
+  // asserting on the refusal proves nothing: what is asserted is the hint's
+  // CONTENT.
+  //
+  // This is the check that keeps the hint's key list from drifting behind the
+  // contract. It is written against whichever key the contract declares last,
+  // read off the schema rather than spelled here, so the fifth key inherits it.
+  it("names the newest contract key in the hint when a hand-rolled kind is missing it", () => {
+    const declaredKeys = Object.keys(workerConfigSchema().shape);
+    const newest = declaredKeys[declaredKeys.length - 1]!;
+
+    // Declares every contract key EXCEPT the newest — so the only thing wrong
+    // with this kind is the one thing the hint has to be able to say.
+    const shape: Record<string, z.ZodTypeAny> = { retries: z.number().default(3) };
+    for (const key of declaredKeys) {
+      if (key !== newest) shape[key] = z.any().optional();
+    }
+    const missingNewest = defineFlow({
+      kind: "missing-newest",
+      cardinality: "collection",
+      configSchema: z.object(shape),
+      actions: { run: { inputSchema, block: work } }
+    });
+
+    const message = refusalOf(
+      [record({ id: "engineering.stale", declared: { flow: "missing-newest" }, body: "Work." })],
+      { ...kinds, "missing-newest": missingNewest as never }
+    );
+
+    // The refusal itself fires whatever the hint says — that half is the
+    // control, and it is why the hint's own text is what is asserted next.
+    expect(message).toContain(`"${newest}" is not a declared setting`);
+    // The hint, naming the key and the fix.
+    expect(message).toContain(`\`${newest}\``);
+    expect(message).toContain("workerConfigSchema()");
   });
 
   it("reads `description` for nothing, and keeps it out of the settings bag", () => {

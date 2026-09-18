@@ -46,6 +46,7 @@ import {
   type WorkerManifest
 } from "./manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
+import { workerConfigSchema } from "./worker-config";
 
 /** The two keys the factory itself reads. Everything else is the worker's settings. */
 const RESERVED_KEYS = ["flow", "description"] as const;
@@ -145,8 +146,23 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The keys the contract declares, in the order an author reads them. */
-const CONTRACT_KEYS = [INSTRUCTIONS_KEY, TEAM_INSTRUCTIONS_KEY, SEAT_SKILLS_KEY] as const;
+/**
+ * The keys the contract declares, in the order an author reads them — **read
+ * off the contract rather than listed here.**
+ *
+ * A hand-maintained copy of this membership is the same defect one level up
+ * from the one {@link admissionHint} exists to prevent: the hint's whole job is
+ * to name the key an author has to add, and the key it is needed for most is
+ * the NEWEST one, which is exactly the one a hand-written list is missing the
+ * day it is added. The refusal still fires either way, so the symptom is a
+ * diagnostic that goes quiet on the one case nobody has heard of yet — and an
+ * author reads that silence as "not that".
+ *
+ * `workerConfigSchema()` is the one definition of the set, so it is the one
+ * thing consulted. Built once at module scope: the schema is a fresh object per
+ * call, and its SHAPE is what is read.
+ */
+const CONTRACT_KEYS: readonly string[] = Object.keys(workerConfigSchema().shape);
 
 /**
  * Why a mint refused, in one added sentence — **or nothing, which is the
@@ -181,8 +197,9 @@ function admissionHint(refusal: string): string | undefined {
   // than reporting a key. No door of any kind, no ambiguity, nothing to infer.
   if (refusal.includes("declares no configSchema")) {
     return (
-      `A hireable kind must declare somewhere for a seat's instructions and resolved skills to ` +
-      `arrive: \`configSchema: workerConfigSchema()\`, extended with this kind's own settings.`
+      `A hireable kind must declare somewhere for what the hire step imposes — ` +
+      `${CONTRACT_KEYS.map((key) => `\`${key}\``).join(", ")} — to arrive: ` +
+      `\`configSchema: workerConfigSchema()\`, extended with this kind's own settings.`
     );
   }
 
@@ -205,8 +222,8 @@ function admissionHint(refusal: string): string | undefined {
   const named = missing.map((key) => `\`${key}\``).join(", ");
   return (
     `${missing.length === 1 ? "That key is" : "Those keys are"} the framework's: every hireable kind ` +
-    `admits ${named} by composing \`workerConfigSchema()\`, which is where a seat's instructions and ` +
-    `its resolved skills arrive. Wrap this kind's settings: ` +
+    `admits ${named} by composing \`workerConfigSchema()\`, which is where everything the hire step ` +
+    `imposes on a seat arrives. Wrap this kind's settings: ` +
     `\`configSchema: workerConfigSchema().extend({ ...its own settings })\`.`
   );
 }
