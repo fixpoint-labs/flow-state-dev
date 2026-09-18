@@ -127,6 +127,8 @@ Only the built-in [`agent` kind](./built-in-worker.md) reads this key. A kind yo
 
 Presets carry tools as well as context. A worker that selects one gets the preset's context, and does not get its tools. A worker's [`tools:` list is the whole of what it can call](./built-in-worker.md#tools), and a capability's tools are not on it — a worker with `tools: []` calls nothing, whatever it selected. So selecting a tool-bearing preset is a way to give one worker that preset's context, not a way around its tool list. To let a worker call a tool, put the tool in the kind's catalog and name it in `tools:`.
 
+A preset can carry a **control** instead: framework machinery the capability builds itself, which no catalog could name. A worker that selects that preset gets the control, and an empty `tools:` does not hold it back, the same as the [other settings that put a control on a worker](./built-in-worker.md#tools).
+
 ### When a file is wrong
 
 The whole selection is checked when the roster is hired, so a mistake is a refusal at startup rather than a failed answer in front of someone. A worker is refused, by name, when its file names:
