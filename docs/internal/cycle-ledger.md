@@ -2564,10 +2564,39 @@ neighbour — here, a PR number in flight nearby.
 
 **Proposed as a new class, not minted.** Following the precedent this file set for `vacuous-assertion`
 (cycle 11, still a reading label until the owner rules), it is recorded as a proposal:
-**`invented-reference` — a citation that was never true, as distinct from one that went stale.** The
+**`invented-attribution` — content attributed to a source that never carried it, as distinct from a
+claim that went stale.** (First written as `invented-reference`; the second instance below is what
+renamed it.) The
 closed set is not changed here. Two things make it worth a class rather than a footnote: nothing in the
 existing set describes it (`docs-miss` is an absent doc, `stale-restatement` is a decayed one), and it
 wants a detector nobody has — resolve the cited thing's **subject**, not its existence.
+
+**Second instance, within the hour, and it is a different subspecies.** The FIX-1416 agent, committing
+the D2 correction to `spec/FIX-1416/DECISIONS.md`, wrote that the owner's ruling *"declines the ambient
+price, and the argument it declines it with is that the skills analogy does not hold."* **The owner's
+quoted words say nothing of the kind.** Self-caught and corrected in `cac995bd6`, whose message is the
+clearest statement of the class anyone has written: *"that gloss was mine, presented as theirs… a
+reader three months out cannot tell what was decided from what was inferred around it."* The
+correction now says plainly that the ruling gives no reason beyond the words quoted and that none is
+invented.
+
+**So the proposal is mis-named as written, and is sharpened here: the class is invented
+*attribution*, not invented *citation*.** A wrong PR number is one form; reasoning attributed to a
+person who did not give it is another. Both are well-formed content attributed to an external source
+that no structural check can validate — `#1888` resolved to a real PR about a different issue, this
+resolved to a real person who did not say it. Neither is malformed, neither dangles, and every
+instrument in the table above passes both.
+
+**The second form is the more dangerous, and the reason is structural.** A wrong citation can be
+falsified by anyone who follows it. Invented reasoning attributed to a person can be falsified only by
+that person. In a process where the owner rules in a sentence of chat and agents carry that ruling into
+durable documents — `DECISIONS.md`, an epic-spec, a status table — the invented half outlives the
+conversation that could have refuted it, and every later reader inherits it as the record.
+
+**n=2, both the same day, and both self-caught.** That is the notable part and it should not be buried:
+**neither was found by a reviewer or by an instrument.** Both authors caught their own attribution
+after writing it. Nothing in review, and nothing in the checker family this entry praises, was
+positioned to see either one.
 
 #### A control script destroyed uncommitted work
 
@@ -2708,10 +2737,17 @@ remains unwritten and is not part of this landing.
    the instances are the ones the entry must name as evidence anyway, and a cycle that cannot name them
    does not have a grounded fix to land. **Score it in cycle 14 on whether it catches a reachability
    defect *before* review does, on a rule that would otherwise have shipped.**
-7. **Is `invented-reference` a real class?** Proposed, not minted — see *Observed after collection*.
-   Baseline: **one instance, outside the sample**, caught by its author before it reached `main`. It
-   defeats every instrument this entry discusses, including both checkers it praises, because the cited
-   thing *existed* and was about something else. Collect deliberately next cycle rather than waiting
-   for a self-report: grep a sample of atlas and spec citations and resolve each one's **subject**, not
-   its existence. If a second instance appears, it needs a detector and a place in the closed set; if
-   none does, drop the proposal rather than leaving it standing.
+7. **Is `invented-attribution` a real class?** Proposed, not minted — see *Observed after collection*.
+   Renamed from `invented-reference` once the second instance showed the class is about attribution, not
+   citation. Baseline: **two instances, both outside the sample, both the same day, both self-caught** —
+   a PR number that resolved to a different issue, and reasoning attributed to the owner who never gave
+   it. It defeats every instrument this entry discusses, including both checkers it praises, because in
+   each case the cited thing *existed* and was about something else.
+   **The survival condition has changed: it no longer needs a second instance.** What it needs is
+   whether it appears when **nobody is looking for it**. Both instances were caught by authors who had
+   just spent a session on adjacent classes, which is the same favourable-condition problem as the
+   counter-evidence above. Collect it deliberately next cycle rather than waiting for a self-report:
+   take a sample of atlas and spec citations and resolve each one's **subject**, not its existence — and
+   for any reasoning attributed to a person, check it against what they actually wrote. Watch the
+   attributed-reasoning form first: a wrong citation is falsifiable by any reader, invented reasoning
+   only by the person quoted.
