@@ -26,7 +26,7 @@ work is presentation and docs, not plumbing.
 | **S4** | `packages/react` — expose it wherever the session list is read | Add |
 | **S5** | `packages/devtool` — the session list. Dispatch runs appear among the flow's sessions, **indented one level** under the session that spawned them, each carrying a **spawned / re-used** label and an **open parent** link. **Delete** the recursive Children tab and its breadcrumb: that descent is the teaching the issue objects to. The DevTool passes the S2 include by default — the wire default does not move (D1) | Add + delete |
 | **S12** | `packages/devtool` — the block tree (**D5**). A dispatched run renders as one collapsed node naming the separate session, with a "load this session's activity" affordance that pulls its items in place, and a link to open the session on its own. **Collapsed by default**, and expanding never navigates away | Add |
-| **S6** | Liveness authorization per **D4** — gated on that decision, which is open. Do not start until it is answered | Blocked |
+| **S6** | Liveness authorization per **D4**, settled on option (b): **keep** the descendant walk in `isDescendantSession` and add a **same-flow-same-principal** arm beside it, so a dispatch run is liveness-readable without descent. Read D4 before starting — its resolution is a reading of the approval, not a typed answer, and (a) "replace the walk" is the one that widens | Add |
 | **S7** | `child-session-routes.ts` — keep. Re-document as a provenance index; rename its vocabulary under S8 | Keep + rename |
 | **S8** | Rename (D2): `context/detached-child.ts` → `dispatch-run.ts`, `deriveDispatchChildSessionId` → `deriveDispatchRunSessionId`, `DispatchedChild`, and the stale header claim about settle/interrupt | Rename; **no change to `dsx_` or hash material** |
 | **S9** | Docs — reframe children as provenance, document the new include, drop the nest-as-hierarchy framing | Edit |
@@ -45,13 +45,15 @@ flowchart TD
   S12 --> S10[S10 kitchen-sink copy]
   S1 --> S9[S9 docs]
   S9 --> S8[S8 rename]
-  D4{{D4 answered}} --> S6[S6 liveness auth]
+  S6[S6 liveness auth: keep the walk, add a same-flow arm]
   S11[S11 Linear dispositions]
 ```
 
-S6 hangs off D4 and is the only reason this spec is not implementable end to end. Everything else
-is unblocked: D1 and D5 are settled, so S1–S5 and S8–S12 can start now. S12 is the cheapest thing
-to cut if the set needs trimming — it is additive and nothing else depends on it.
+Nothing is blocked — the spec is approved and every decision is settled, so S1–S12 can start.
+S6 stands alone: it touches authorization, nothing else depends on it, and it is the one surface
+whose decision was read off the approval rather than typed, so do it deliberately and last rather
+than folding it into the listing work. S12 is the cheapest thing to cut if the set needs trimming
+— it is additive and nothing else depends on it.
 
 ## Checks
 
@@ -63,6 +65,8 @@ to cut if the set needs trimming — it is additive and nothing else depends on 
 | `packages/engine/test/context/detached-child.test.ts` determinism cases (renamed) | S8 changed names, not bytes | unit |
 | A devtool test: a flow with one conversation and two runs it dispatched | The runs render indented under their parent, labelled spawned or re-used, with a parent link. One level only — a run spawned by a run does not indent twice | component |
 | A devtool test: mount a parent whose block tree contains a dispatched run | The run's items are **absent** until the load affordance is used, then present and marked as a separate session. This is D5's default-off, and it is the assertion that matters | component |
+| A liveness test: a caller reads their own dispatch run on the same flow, not beneath them | The new D4 arm answers where the walk alone would have refused | unit |
+| The existing `isDescendantSession` refusal cases, **unedited** | The walk still refuses another principal, another tenant, another flow. S6 added an arm; it did not relax one | unit |
 | `pnpm typecheck` / `pnpm test` | Nothing else moved | CI |
 | `pnpm --filter docs build` with `onBrokenLinks: throw` | No dangling anchor from a reframed section | CI |
 | `node spec/FIX-1440/evidence/first-class-dispatch-runs.mjs` | All six assertions green — the door opened, the descent teaching is gone, and the provenance route and derivation survived. **RED 3/6 at spec time by design** | acceptance |
@@ -107,10 +111,12 @@ the assertion no longer meant anything.
   reason (`stores/types.ts:291–304`), and D1 keeps it: the **wire** default does not move, the
   DevTool just opts in. If that is ever flipped, it is a deliberate, announced behaviour change for
   every existing consumer and it needs its own line in the changeset.
+- **Don't drop the descendant walk.** D4 resolved to keeping it and adding an arm beside it; the
+  walk re-checks principal, tenant and flow at every hop, so removing it widens liveness rather
+  than relaxing a shape rule. If the walk starts looking redundant while you are in there, that is
+  a question to raise, not a cleanup to do.
 - **Don't let the indent become a tree.** One level, rendered from `parentSessionId` on records already in the list. No recursive fetch, no breadcrumb, no drill-down — the moment it recurses it is the Children tab again under a new name.
 - **Don't load a dispatch run's activity eagerly.** D5 is default-off for a reason a test should hold: a fifty-row drain must not pour fifty sessions into one block tree.
-- **Don't drop the descendant walk without answering D4.** It re-checks principal, tenant and flow
-  at every hop; removing it widens liveness, it does not merely relax a shape rule.
 - **Rebuild core before typechecking a dependent package.** A stale `dist` reports a clean
   typecheck that CI will fail.
 
@@ -118,7 +124,7 @@ the assertion no longer meant anything.
 
 - `main` was broken at spec time; the fix was in PR #1880, unmerged. Branch from a green `main`.
 - The implementation PR carries a changeset — `minor`, because published packages gain public API
-  (and, if D1 resolves default-on, change existing behaviour).
+  (additive only — D1 kept the wire default opt-in, so no existing caller's behaviour changes).
 - Branch naming: this spec is on `spec/FIX-1440` because CI keys its spec-folder exemption on the
   branch prefix. The implementation branch follows the repo's ordinary `fix/FIX-1440-*` convention.
 
@@ -133,6 +139,16 @@ the assertion no longer meant anything.
   even adjacent now that the panel stays.
 
 ## Notes from review
+
+**Round 5 — approved, 2026-09-18.** The spec set was approved and the PR closed unmerged. Two
+items were still listed open on the sign-off and are now resolved **to the recommendations printed
+beside them**: D4 to option (b), and D1's wire default to opt-in.
+
+> **Implementer, read this before S6.** D4's resolution is a *reading of an approval*, not an
+> answer typed against the question — `SPEC.md` and `DECISIONS.md` both say so. It lands on the
+> safe side of a security fork (keep the walk, add an arm), so building it costs one extra
+> authorization path if the reading is wrong, rather than a widened one. Do not "simplify" it into
+> option (a) while you are in there; if the walk looks redundant, that is a question for the owner.
 
 **Round 4 — owner + FSD Architect, 2026-09-18.** The owner specified the DevTool
 ([UX note](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5732752729),

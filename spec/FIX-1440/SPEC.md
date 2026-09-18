@@ -8,7 +8,7 @@ Under [FIX-1208](https://linear.app/fixpoint-labs/issue/FIX-1208) (Remove supers
 | reads our docs to learn how background work is organised | Learns a session tree: a parent, its children, and children under those | Learns that dispatched work runs in its own session on the same flow, and that the parent is recorded as provenance rather than as an owner |
 | opens the DevTool on a conversation | Sees a **Children** tab and descends, getting another Children tab at each level | Sees dispatch runs in the flow's session list, indented one level under the session that spawned them, each labelled and linking back to its parent. The hierarchy is shown, not navigated — nothing to drill into |
 | is reading one conversation and wants to know what the work it kicked off actually did | Opens the run's own session and reads it there, then goes back | Pulls the run's activity into the conversation's own block tree, on demand. Marked as a separate session, and collapsed until asked for |
-| asks the framework whether a background request is still alive | Gets an answer only if that work hangs beneath the asking session | Gets an answer for their own work on that flow — see D4, which is open |
+| asks the framework whether a background request is still alive | Gets an answer only if that work hangs beneath the asking session | Gets an answer for their own work on that flow, without the work having to hang beneath them. The existing descent check stays in place beside the new one, so nothing that was private becomes readable |
 | already dispatches work today (`dispatcher()`, task hand-off) | Works | Works, unchanged. Same derived session, same ids |
 | is triaging the five open detached-child bugs | Five open bugs, two of them cancelled on reasons that did not survive scrutiny | One closes because it is already fixed in code. Four stay open, re-pointed at the dispatch lifecycle they actually describe |
 
@@ -95,13 +95,19 @@ Only the teaching, and only where it is a tree to walk: the DevTool's recursive 
 and breadcrumb, and the docs' framing of children as a hierarchy to enumerate. The route survives;
 the invitation to descend does not.
 
-## Sign off
+## Sign off — approved 2026-09-18
 
-1. **What replaces the descendant-chain liveness check — the one still open, and the one with a security cost.** Today a caller may ask whether a request is alive only if it hangs beneath them. That is the "nest-only authorization" the amendment names, but the same walk also re-checks principal, tenant and flow at every hop. Recommend keeping the walk and adding a same-flow-same-principal arm beside it, rather than replacing it outright. *If wrong:* replacing it widens a liveness answer from "my subtree" to "anything of mine on this flow." → [D4](DECISIONS.md#d4)
+Approved on [PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5733583229),
+which then closed unmerged, as spec PRs do. Two of the five items below were still listed open when
+the approval landed. Both are recorded resolved **to the recommendation printed beside them**, and
+both are marked here as a reading rather than a typed answer, because the difference matters to
+whoever implements them.
 
-2. **Should `GET /sessions` itself start including dispatch runs, or stay opt-in? — OPEN, and small.** The direction is settled and the DevTool shape is specified; what is not answered is the wire default. Drafting against **opt-in**: the DevTool passes the include, so you see every session on the flow, while a third-party caller of `GET /sessions` still gets exactly what it gets today. *If wrong:* one line in S1, plus an announced behaviour-change note, and the "byte-identical without the include" rule inverts. Nothing blocks on it either way. → [D1](DECISIONS.md#d1)
+1. **What replaces the descendant-chain liveness check — resolved to "keep the walk", *read from the approval*.** Today a caller may ask whether a request is alive only if it hangs beneath them. That is the "nest-only authorization" the amendment names, but the same walk also re-checks principal, tenant and flow at every hop. Taken: keep the walk and add a same-flow-same-principal arm beside it, rather than replacing it outright. *If that reading is wrong:* say so before S6 starts — replacing the walk widens a liveness answer from "my subtree" to "anything of mine on this flow", which is a security change and not a navigation fix. → [D4](DECISIONS.md#d4)
 
-3. **A run's activity reads inside its parent, loaded on demand — SETTLED, and it is new scope.** The block tree gains a node for a dispatched run that the reader can expand in place, so following one causal chain does not mean bouncing between two sessions. Collapsed by default. This is the one part of the change that adds a surface rather than re-pointing one, which tenet 3 makes us say out loud. *If wrong:* the cheapest cut in this spec — drop it and the rest still stands. → [D5](DECISIONS.md#d5)
+2. **Does `GET /sessions` itself start including dispatch runs? — resolved to opt-in, *read from the approval*.** The DevTool passes the include, so you see every session on the flow, while a third-party caller of `GET /sessions` still gets exactly what it gets today. *If that reading is wrong:* one line in S1 plus an announced behaviour-change note, and the "byte-identical without the include" rule inverts. Cheap either way, and cheaper before S1 is built. → [D1](DECISIONS.md#d1)
+
+3. **A run's activity reads inside its parent, loaded on demand — and it is new scope.** The block tree gains a node for a dispatched run that the reader can expand in place, so following one causal chain does not mean bouncing between two sessions. Collapsed by default. This is the one part of the change that adds a surface rather than re-pointing one, which tenet 3 makes us say out loud. *If wrong:* the cheapest cut in this spec — drop it and the rest still stands. → [D5](DECISIONS.md#d5)
 
 4. **The internal vocabulary stops saying "child".** The derived session is renamed a *dispatch run* in code and internal docs. *If wrong:* skipping it leaves the word that caused this issue in place. → [D2](DECISIONS.md#d2)
 

@@ -38,6 +38,14 @@
 | A reader asks what dispatched a run | `parentSessionId` on the record answers it | Unchanged field (D1, and the issue's own ask to keep the provenance edge) |
 | A reader treats the children route as the only way to reach the work | The docs no longer support that reading | Docs review; the framing is what S9 changes |
 
+## Liveness answers for your own work, and nothing more
+
+| When | Then | Proved by |
+|---|---|---|
+| A caller asks whether their own dispatch run on this flow is alive, and it does not hang beneath them | It answers | The new same-flow-same-principal arm (S6) |
+| A caller asks about a session belonging to another principal, another tenant, or another flow | It still refuses | The descendant walk stays in place beside the new arm; its existing refusal cases run unedited |
+| The new arm is present and the walk has been removed | The change is wrong, whatever the tests say | D4 resolved on keeping both. Reviewer check, not an automated one |
+
 ## The dispatch path is untouched
 
 | When | Then | Proved by |
@@ -62,7 +70,7 @@
 |---|---|---|
 | The include is spelled as a storage concept on the wire | Callers learn `parentage: "all"`, coupling the HTTP surface to a store enum | Prevented by S2 pinning a caller-facing name and mapping at the route |
 | The default listing silently widens | Every existing consumer of `GET /sessions` sees machine sessions appear | Prevented by the second rule in the first table, which is a test, not a convention |
-| The descendant walk is dropped without D4 | Liveness widens from "my subtree" to "anything of mine on this flow" | Blocked: S6 does not start until D4 is answered |
+| The descendant walk is dropped | Liveness widens from "my subtree" to "anything of mine on this flow" | Prevented by D4's resolution: S6 **adds** a same-flow-same-principal arm and leaves the walk in place. Both arms have a test |
 | The indent recurses | The Children tab returns under a new name — a drill-down with extra steps | Prevented by the second rule in the indentation table, which is a test |
 | A run's activity loads eagerly | A fifty-row drain makes the parent's block tree unreadable, moving the problem one surface over | Prevented by the first rule in the on-demand table, which asserts the items are absent |
 | A derived id changes | An in-flight run mints a second session, and its board row waits out a lease | Prevented by D2's constraint that the prefix and hash material do not move |
@@ -78,4 +86,4 @@
 7. `pnpm typecheck` and `pnpm test` pass across the workspace; the docs site builds with broken links throwing.
 8. `node spec/FIX-1440/evidence/first-class-dispatch-runs.mjs` exits green on all six assertions. It is RED 3/6 today, which is what makes it a check rather than a description.
 9. `FIX-1045` closed as already fixed; `FIX-1097`, `FIX-1121`, `FIX-1086` and `FIX-1171` re-scoped to the dispatch lifecycle (D3).
-10. **Open, and not yet acceptance:** D4 (liveness authorization) is answered before this is implementable end to end.
+10. A caller may read liveness for their own dispatch run on the same flow without descent, **and** the descendant walk still answers what it answered before. Two tests: one for the new arm, one pinning that a session belonging to a different principal or a different flow is still refused (D4).

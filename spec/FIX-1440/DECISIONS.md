@@ -8,7 +8,7 @@ flowchart TD
   X -.->|"superseded 2026-09-18"| Z["delete /children<br/>and the DevTool tab"]
   S --> D1["D1 · make dispatch runs first-class<br/>on their flow's session path"]
   S --> D2["D2 · rename the mechanism<br/>off 'child'"]
-  D1 --> D4["D4 · what replaces the<br/>descendant-chain liveness check"]
+  D1 --> D4["D4 · keep the descendant walk,<br/>add a same-flow arm beside it"]
   D1 --> D3["D3 · cluster bugs: 1 closes,<br/>4 re-scoped on evidence"]
   D1 --> D5["D5 · the run's activity reads<br/>inside its parent, on demand"]
 ```
@@ -24,13 +24,21 @@ away and the sessions are still second-class, just harder to find.
 
 ## D1 — Make dispatch-run sessions first-class on their flow {#d1}
 
-**Status: direction SETTLED; the wire default is still OPEN.** Direction from the owner amendment of
+**Status: SETTLED, wire default included.** Direction from the owner amendment of
 2026-09-18 ([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5724121456)),
-and the **presentation** specified on 2026-09-18
-([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5732752729)).
-What the owner has not answered is whether `GET /sessions` itself should default to including
-dispatch runs. This spec drafts against **opt-in** and says below why; nothing in it blocks on the
-answer, because opt-in is the shape either way and only the default would move.
+the **presentation** specified on 2026-09-18
+([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5732752729)),
+and the wire default carried by the approval of 2026-09-18
+([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5733583229)).
+
+**How the wire default got answered, stated plainly so it can be corrected.** The owner approved
+the spec while `SPEC.md`'s sign-off carried this as item 2 with an explicit recommendation —
+**opt-in**: the DevTool passes the include, `GET /sessions` returns exactly what it returns today
+for everyone else. The approval covers the document it approved, so this is recorded as **opt-in**,
+which is also what the spec was already drafted against. It is a **reading of an approval, not an
+answer typed against this question**, and it is the reversible half of the fork: flipping to
+default-on later is one line in S1 plus an announced behaviour-change note. If the intent was
+default-on, say so before S1 is built and this record changes with it.
 
 **Instead of** deleting the browsable Children surface, give a dispatch-run session the same
 standing on its flow as any other session: listable and openable on the flow's ordinary session
@@ -81,20 +89,18 @@ So the listing shows three things a flat list cannot: a **label** saying this se
 (or re-used) by a dispatcher, **indentation** under the session that spawned it, and a **link from
 the run back to its parent**. That is the shape; see the wireframe in `SPEC.md`.
 
-**The reading taken, and it stays a reading until the owner says otherwise.** "Top level in the
-sense that you *could* go to that flow and see all sessions" is a statement about reachability, so
-this spec drafts against the **API keeping the opt-in** while **the DevTool opts in by default**
-and renders the hierarchy above. That delivers every element the owner described, and a
-third-party consumer of `GET /sessions` still sees exactly what it sees today — the FIX-1009
-protection survives where it was aimed, at callers who never asked for machine sessions.
+**The reading taken.** "Top level in the sense that you *could* go to that flow and see all
+sessions" is a statement about reachability, so the **API keeps the opt-in** while **the DevTool
+opts in by default** and renders the hierarchy above. That delivers every element the owner
+described, and a third-party consumer of `GET /sessions` still sees exactly what it sees today —
+the FIX-1009 protection survives where it was aimed, at callers who never asked for machine
+sessions.
 
-It is deliberately **not** recorded as the owner settling the wire default, because he did not
-address it. Two different costs hang on it: the view question costs nothing, and the wire question
-changes the result set for every existing consumer. Folding the second into an answer about the
-first would be inferring a decision from silence. If the wire default should flip, it is a
-one-line change to S1 plus an announced behaviour-change line in the changeset, and the
-`BUSINESS-RULES` "byte-identical without the include" rule inverts with it — that rule stays as
-written until then.
+The two halves of this decision were separated on purpose and stay separated: the view question
+costs nothing, while the wire question changes the result set for every existing consumer. The
+view half was answered directly; the wire half rode in on the approval of a document that
+recommended opt-in. `BUSINESS-RULES`' "byte-identical without the include" rule therefore **stands
+as written** and is now an acceptance criterion rather than a placeholder.
 
 **Indentation is a view, not a tree.** It is worth being explicit, because the thing this issue
 objects to is a nest: the list stays one flat, ordinary session list that happens to indent a row
@@ -165,8 +171,20 @@ from the DevTool. It removes a recursive tree and adds an inline view, and the s
 
 ## D4 — What replaces the descendant-chain liveness check {#d4}
 
-**Status: OPEN.** Raised by the amendment's "kill shadow-only / nest-only authorization"; it is
-the one place that phrase lands on real code.
+**Status: SETTLED on option (b) by the approval of 2026-09-18
+([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5733583229)) —
+and this one is a reading, flagged as such.** Raised by the amendment's "kill shadow-only /
+nest-only authorization"; it is the one place that phrase lands on real code.
+
+**Why it is recorded as settled, and what would unsettle it.** This was item 1 of `SPEC.md`'s
+sign-off — the hardest ask, carrying the recommendation **(b) keep the descendant walk and add a
+same-flow-same-principal arm beside it**. The approval covers the document, so (b) is what S6
+builds. I wrote in this card that (a) "is the owner's call to confirm rather than mine to assume",
+so the honest record is that he approved a document recommending (b) rather than typing "(b)".
+(b) is the option that **does not widen a security boundary**, so reading the approval this way
+errs toward the conservative side of the fork: if the intent was (a), the cost of my reading is
+one extra authorization arm, not a widened one. **If (a) was intended, say so before S6 starts** —
+after that it is a security-relevant change rather than a deletion.
 
 **Instead of** authorising a liveness read by walking the caller's descendant chain, authorise it
 the way the rest of the route layer already does — same principal, same tenant, same flow
@@ -190,10 +208,10 @@ explicit "same flow, same principal" arm beside it, so a first-class dispatch ru
 without making every sibling request readable. (c) Leave it, and accept that first-class means
 listable but not liveness-readable.
 
-**Recommendation: (b).** It satisfies the amendment — no session is reachable *only* by descent —
-without trading a security boundary for a navigation fix. (a) is simpler and I would take it if
-the flow-ownership check alone is judged sufficient, which is the owner's call to confirm rather
-than mine to assume.
+**Taken: (b).** It satisfies the amendment — no session is reachable *only* by descent — without
+trading a security boundary for a navigation fix. (a) is simpler and would be the call if the
+flow-ownership check alone is judged sufficient; it is the one that widens, so it is not the one
+to infer.
 
 ---
 
@@ -242,14 +260,20 @@ close with the substrate. Four of five stay open, because four of five describe 
 
 ## Open
 
-- **D4** — what replaces the descendant-chain liveness check. The one with a security cost rather
-  than a navigation cost, which is why it is not being inherited from D1. Blocks S6 and nothing else.
-- **D1's wire default** — whether `GET /sessions` itself defaults to including dispatch runs. The
-  spec drafts against opt-in and is implementable that way, so this blocks nothing; it is listed
-  here because it was inferred rather than answered, and an inference should not sit in the record
-  looking like a decision.
+Nothing blocks. D1 (direction and wire default), D2, D3, D4 and D5 are all settled, so S1–S12 are
+implementable end to end.
 
-D5 is settled. D2 and D3 were never forks for the product owner.
+**Two of them are readings of the approval rather than answers typed against the question**, and
+they are listed here so the distinction stays visible rather than being smoothed into the record:
+
+- **D4 → (b)**, keep the descendant walk and add a same-flow-same-principal arm. The conservative
+  half of a security fork. Reversible until S6 starts.
+- **D1's wire default → opt-in.** `GET /sessions` unchanged for existing callers; the DevTool
+  passes the include. Reversible at a one-line cost plus an announced behaviour-change note.
+
+Both were carried on `SPEC.md`'s sign-off with those exact recommendations when it was approved,
+and both are the option that changes less. If either reading is wrong, correcting it costs a
+sentence now and a security review later.
 
 ## Settled
 
@@ -265,3 +289,4 @@ D5 is settled. D2 and D3 were never forks for the product owner.
 - **Round 2** — D1 signed (Path A). Two findings folded against real code: `FIX-1121` moved from cancel to re-scope, and `SPEC.md`'s kitchen-sink promise corrected to what S8 actually delivers.
 - **Round 3 — owner amendment, 2026-09-18.** D1 superseded before implementation began. The target is unchanged (stop teaching a session tree as the org chart); the cause was re-identified as second-class sessions rather than the window onto them, so the change turned from a removal into an addition. Checking the amendment's premise showed the gap is one missing opt-in on `GET /sessions`, with every other route already serving these sessions by id — so the new direction is a smaller diff than the removal it replaced. D3 went back to pending, and D4 was opened for the authorization half.
 - **Round 4 — owner, 2026-09-18.** The DevTool shape specified: dispatch runs indented under the session that spawned them, labelled as spawned or re-used, and linking back to their parent; plus a new ask — the run's activity readable **inside the parent's block tree**, loaded on demand rather than by default. D1's open sub-question closed with it. That second ask is new scope and became D5. Wireframes added to `SPEC.md` on request. D4 remains the only open question.
+- **Round 5 — approved, 2026-09-18.** The owner approved the spec set and closed the PR unmerged, which is where a spec PR ends (BP-037: the branch is kept, Linear is the durable copy). The approval arrived with two items still listed open on the sign-off, each carrying a recommendation, so both are recorded resolved **to those recommendations** — D4 to (b), D1's wire default to opt-in — and both are flagged above as readings rather than typed answers. Each is the option that changes less, which is why reading them this way is safe to do and cheap to undo.
