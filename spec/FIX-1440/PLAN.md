@@ -2,142 +2,131 @@
 
 Directional. Shape and sequence, not the finished design.
 
-## Surfaces
+> **Rewritten 2026-09-18** for the owner amendment. The previous plan was a twelve-surface
+> deletion; this one is an addition plus one removal of teaching. Nothing from the old surface
+> list carries over unexamined.
 
-Removals first (tenet 3). The corpus behind these counts is re-derived by
-`evidence/classify-substrate.mjs`; 51 files are in the removal scope, 112 are dispatch internals
-that stay.
+## The shape of the change
+
+One sentence: **`GET /sessions` learns to include dispatch runs, the DevTool stops being a tree to
+descend, and `/children` is re-documented as provenance.** Everything else follows from those.
+
+The gap is narrow and was measured, not assumed — see `DECISIONS.md → D1`. A dispatch-run session
+is already openable by id on every route that matters; it is only undiscoverable. So most of the
+work is presentation and docs, not plumbing.
+
+## Surfaces
 
 | ID | Surface | Action |
 |---|---|---|
-| **S1** | `packages/engine/src/routes/child-session-routes.ts` (432 lines, entirely this surface) | Delete |
-| **S2** | Route wiring: `router.ts` `list_session_children` entry, `parseFlowRoute.ts` union member, `route-auth.ts` case, `http-handlers.ts` import + dispatch arm | Delete the arm in each |
-| **S3** | `runtime-config.ts` — `maxChildSessionListLimit`, `DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT`, `assertMaxChildSessionListLimit`; and the option on `CreateFlowApiRouterOptions` + its thread through `createFlowState.ts` | Delete |
-| **S4** | `routes/index.ts` re-exports of `ChildSessionStatus`, `ChildSessionSummary` | Delete |
-| **S5** | `packages/client`: `listChildSessions`, `ListChildSessionsOptions`, `ChildSessionSummary`, `ChildSessionStatus`, index re-exports | Delete |
-| **S6** | `packages/react`: `SessionChildSessionsOptions`, the `childSessions` option, `.childSessions` / `.childSessionsStale` on `UseSessionResult`, `refreshChildSessions` and its three read-fence refs | Delete; leave the rest of `useSession` untouched |
-| **S7** | `packages/devtool`: `child-sessions-view.tsx`, `use-child-sessions.ts`, `child-session-links.ts`, the panel's Children tab and `handleOpenChildSession` | Delete. **The Tasks tab goes board-only in the same change**: `task-collections-view.tsx` carries a `ChildSession` column built on `ChildSessionSummary`, `linkChildSessionsToTasks` and `onOpenChildSession`, and that column goes with the tab. Dropping it retires almost all of `child-session-links.ts`; this is a cut, not a partial extract |
-| **S8** | `apps/kitchen-sink`: `background-work-panel.tsx`, `e2e/background-work.spec.ts`, the mounts in `app/page.tsx`, the section in `CLAUDE.md` | Delete the panel; the dispatch half (`flows/chat-agent/.../background-work.ts`) stays. **No replacement panel is built here** — see the S8 note below |
-| **S9** | Store listing options whose **only** caller is S1 — `SessionListOptions.orderBy: "createdAt"`, session `orgId`, `RequestListOptions.orderBy: "none"`, the status-array form, request `orgId` | Delete **only after** re-deriving that S1 was the sole caller; `parentage` itself stays (D1) |
-| **S10** | Docs — see the docs plan below | Edit / delete sections |
-| **S11** | Rename (D2): `context/detached-child.ts` → `dispatch-run.ts`, `deriveDispatchChildSessionId` → `deriveDispatchRunSessionId`, `evaluateAdoption`'s `child` vocabulary, and the stale header claim about settle/interrupt | Rename; **no change to `dsx_` or hash material** |
-| **S12** | Linear: cluster disposition per D3 | Cancel 2, re-scope 3 |
-
-### S8 — what the kitchen-sink shows afterwards
-
-Deleting the panel leaves the conversation's own reply as the surface: `reportBackgroundWork`
-emits "Filed X as background work", "Still running: N items", and "Back from the background: …"
-on the next turn. That is a real surviving demonstration and it teaches no session tree, so the
-removal is complete on its own.
-
-What it is **not** is a board-row view. `<TaskPlan />` mounts generically off a `task-board-meta`
-item (`chat-assistant.tsx:28`), so one renders for this board, but the pipeline's own header
-states the settle happens in the child session, "whose stream is its own" — so the parent stream
-never carries the completed row. **Before deleting the panel, open the kitchen-sink and look at
-what `<TaskPlan />` actually renders for `background-work`.** If it shows the rows, say so in the
-PR and nothing more is owed. If it shows an empty board, that is a pre-existing gap this change
-makes visible, and it gets its own issue — **do not invent a second board UI inside this
-leftover removal** (Architect, round 2).
-
-`SPEC.md`'s people table has been corrected to promise only what the paragraph above delivers.
+| **S1** | `handleListSessions` (`session-routes.ts:58–73`) — thread a named include through to `SessionListOptions.parentage`. The store option already exists (`"top-level" \| "all" \| { parentOf }`); the route simply never passes it | Add |
+| **S2** | The wire name for that include. **Not** `parentage: "all"` verbatim — that is a storage concept. Pin a caller-facing name (`include=dispatch-runs`) and map it at the route | Add |
+| **S3** | `packages/client` — `sessions.list` gains the option and its type | Add |
+| **S4** | `packages/react` — expose it wherever the session list is read | Add |
+| **S5** | `packages/devtool` — dispatch runs appear among the flow's sessions, each showing what dispatched it. **Delete** the recursive Children tab and its breadcrumb: that descent is the teaching the issue objects to | Add + delete |
+| **S6** | Liveness authorization per **D4** — gated on that decision, which is open. Do not start until it is answered | Blocked |
+| **S7** | `child-session-routes.ts` — keep. Re-document as a provenance index; rename its vocabulary under S8 | Keep + rename |
+| **S8** | Rename (D2): `context/detached-child.ts` → `dispatch-run.ts`, `deriveDispatchChildSessionId` → `deriveDispatchRunSessionId`, `DispatchedChild`, and the stale header claim about settle/interrupt | Rename; **no change to `dsx_` or hash material** |
+| **S9** | Docs — reframe children as provenance, document the new include, drop the nest-as-hierarchy framing | Edit |
+| **S10** | `apps/kitchen-sink` — the Background Work panel now demonstrates something we keep. Reframe its copy away from "children"; do not delete it | Edit |
+| **S11** | Linear: cluster re-triage per **D3** — pending, and it is research, not bookkeeping | Blocked |
 
 ## Build order
 
 ```mermaid
 flowchart TD
-  S1[S1 delete the route] --> S2[S2 unwire it]
-  S2 --> S3[S3 drop the config knob]
-  S2 --> S4[S4 drop the type re-exports]
-  S4 --> S5[S5 client]
-  S5 --> S6[S6 react]
-  S6 --> S7[S7 devtool]
-  S7 --> S8[S8 kitchen-sink]
-  S2 --> S9[S9 sole-caller list options]
-  S8 --> S10[S10 docs]
-  S10 --> S11[S11 rename the survivor]
-  S11 --> S12[S12 Linear]
+  S2[S2 pin the wire name] --> S1[S1 route passes parentage]
+  S1 --> S3[S3 client]
+  S3 --> S4[S4 react]
+  S4 --> S5[S5 devtool: list + kill the tree]
+  S5 --> S10[S10 kitchen-sink copy]
+  S1 --> S9[S9 docs]
+  S9 --> S8[S8 rename]
+  D4{{D4 answered}} --> S6[S6 liveness auth]
+  D3{{D3 re-triaged}} --> S11[S11 Linear]
 ```
 
-S3, S4 and S9 are independent of each other once S2 lands. S11 is deliberately last: renaming
-before the deletions would make every deleted file's diff noisier than it needs to be.
-
-**S11 can ship as its own PR** if the reviewer wants the deletion landed first. S1–S10 and S12
-satisfy D1 on their own; the rename is D2 and depends on nothing in them. Splitting costs a second
-review round and buys a smaller first diff — the implementer's call at the time.
+S6 and S11 hang off open decisions and are the reason this spec is not yet implementable end to
+end. S1–S5 and S8–S10 are unblocked once the D1 sub-question is answered, because that answer only
+changes the **default**, not the mechanism.
 
 ## Checks
 
 | Check | Proves | Where |
 |---|---|---|
-| `pnpm tsx goals/task-board/hands-a-row-to-a-worker-in-its-own-session/run.mts` | D1 — the dispatch path is genuinely untouched. **Model-free, so it runs anywhere.** Must pass **unedited**; editing it to accommodate the change would void it | goal |
-| `node spec/FIX-1440/evidence/classify-substrate.mjs` | Removal scope reaches 0, and nothing new crept in | evidence |
-| `pnpm typecheck` | Every deleted export's call sites are gone | CI |
-| `pnpm test` | The surviving suites still hold, notably `detached-child.test.ts` (renamed) determinism cases | CI |
-| `pnpm --filter docs build` with `onBrokenLinks: throw` | No dangling anchor from a deleted section | CI |
-| The renamed derivation suite's determinism cases | S11 changed names, not bytes | unit |
+| `pnpm tsx goals/task-board/hands-a-row-to-a-worker-in-its-own-session/run.mts` | The dispatch path is untouched. **Model-free, so it runs anywhere.** Must pass **unedited** | goal |
+| A new listing test: dispatch a row, then list the flow's sessions with the include | The run is discoverable without descending — the whole point of D1 | unit |
+| The same listing **without** the include | Today's result set is byte-identical, so no existing caller's view changes | unit |
+| `packages/engine/test/context/detached-child.test.ts` determinism cases (renamed) | S8 changed names, not bytes | unit |
+| `pnpm typecheck` / `pnpm test` | Nothing else moved | CI |
+| `pnpm --filter docs build` with `onBrokenLinks: throw` | No dangling anchor from a reframed section | CI |
 
-**Before deleting S9, re-derive the sole-caller claim** — grep every `session.list` / `request.list`
-call site again rather than trusting this plan's table. It was true at spec time; a landed PR could
-have added a second caller.
+The second and third rows are the pair that matters: one proves the door opens, the other proves
+it was not already open for everyone. A change that only adds the first has not shown it preserved
+the FIX-1009 protection.
 
-## Docs
+## Evidence
 
-| File | Action |
-|---|---|
-| `apps/docs/docs/server/background-work.md` | Delete lines ~195–425 (`Listing a session's children` through `What this endpoint won't do`). Keep `Starting a job from a flow` and `Starting a job on another flow`. **`#what-status-tells-you` is linked twice from `orchestration/task-board.md:411,421`** — repoint both |
-| `apps/docs/docs/client/overview.md` | Delete `### Child sessions` (~136–198). **Linked from `api/client.md:104` and `background-work.md:431`** — repoint |
-| `apps/docs/docs/api/client.md` | Delete the `sessions.listChildSessions` entry (~68–104) |
-| `apps/docs/docs/client/react.md` | Delete the child-session list section (~105–152) |
-| `apps/docs/docs/api/react.md` | Delete `childSessions` / `childSessionsStale` from `SessionView` |
-| `apps/docs/docs/devtool/overview.md` | Delete `## Child sessions` (~107–121) |
-| `apps/docs/docs/server/setup.md` | Remove the route-table row (line ~233) |
-| `apps/docs/docs/server/authentication.md` | Remove the `/children` access note (~318–321) |
-| `apps/docs/docs/configuration/runtime.md` | Remove the `maxChildSessionListLimit` row (~58) |
-| `apps/docs/guides/background-work.md` | Remove the `Watching any of it` children bullet and the "a child that dispatches work has children too" line; keep the dispatch sections |
-| `packages/engine/README.md` | Delete `## Child sessions of a session` + the config row. **`packages/bullmq/README.md:266` links the live URL** — check it still resolves |
-| `packages/client/README.md`, `packages/react/README.md` | Delete the child-session sections |
-| `docs/architecture/server-and-client.md` | Delete the `Background work (child sessions)` contract and the `childSessions` SessionView rows |
-| `docs/architecture/dispatched-work.md`, `state-and-scopes.md` | Keep — rename vocabulary per S11 |
-| `docs/atlas/framework.html` | Stop naming child sessions as a substrate. Not in the Docusaurus build, but it is prose a reader sees |
-
-No new page. This change only removes.
-
-## Pinned names
-
-- The renamed module is `dispatch-run.ts`; the exported derivation is `deriveDispatchRunSessionId`.
-- The session-id prefix stays `dsx_`.
-- Nothing is renamed to "workstream" (the issue's invent-kill, and [FIX-1308](https://linear.app/fixpoint-labs/issue/FIX-1308) retired that vocabulary).
+`evidence/classify-substrate.mjs` was built for the removal — its totality assertion requires the
+"removal scope" bucket to reach zero files. **Under this direction that assertion is wrong**, since
+almost nothing is being removed. It is repointed before this spec goes back for review: the useful
+part is the corpus sweep and the negative control, and what it should now assert is that no live
+code or published doc *teaches descent* — a much narrower forbidden set. Until then, treat its
+current PASS as evidence about the old direction only.
 
 ## Guardrails
 
-- **Don't edit the goal check to make it pass.** It is the only thing standing between this removal and a silent dispatch regression, and it discriminates on *where* work ran. If it goes red, the change is wrong, not the check.
-- **Don't change `dsx_` or the hash material.** Derived ids are how a retry re-enters its own run; moving them strands in-flight work for a lease period. This is D2's explicit boundary.
-- **Don't remove `parentSessionId` or the parentage filter.** They serve adoption and the liveness read, both of which survive. The issue asks for the provenance edge to be kept, and this is it.
-- **Rebuild core before typechecking a dependent package.** `packages/*/tsconfig.json` resolves `@flow-state-dev/core` through its built `dist/*.d.ts`, so a stale `dist` reports a clean typecheck that CI will fail.
-- **Delete, don't deprecate.** Pre-1.0, and tenet 3 — old and new side by side is how incoherence starts.
+- **Don't edit the goal check to make it pass.** It discriminates on *where* work ran, and it is
+  the fence between this change and a silent dispatch regression.
+- **Don't change `dsx_` or the hash material.** Derived ids are how a retry re-enters its own run.
+- **Don't widen the default listing silently.** The `parentage` narrowing exists for a documented
+  reason (`stores/types.ts:291–304`). If the answer to D1's sub-question is default-on, that is a
+  deliberate, announced behaviour change for every existing consumer, and it needs its own line in
+  the changeset.
+- **Don't drop the descendant walk without answering D4.** It re-checks principal, tenant and flow
+  at every hop; removing it widens liveness, it does not merely relax a shape rule.
+- **Rebuild core before typechecking a dependent package.** A stale `dist` reports a clean
+  typecheck that CI will fail.
 
 ## At implement time
 
 - `main` was broken at spec time; the fix was in PR #1880, unmerged. Branch from a green `main`.
-- The implementation PR carries a changeset (`minor` — published packages lose public exports). The spec PR does not.
-- Branch naming: this spec is on `spec/FIX-1440` because CI keys its spec-folder exemption on the branch prefix. The implementation branch follows the repo's ordinary `fix/FIX-1440-*` convention.
+- The implementation PR carries a changeset — `minor`, because published packages gain public API
+  (and, if D1 resolves default-on, change existing behaviour).
+- Branch naming: this spec is on `spec/FIX-1440` because CI keys its spec-folder exemption on the
+  branch prefix. The implementation branch follows the repo's ordinary `fix/FIX-1440-*` convention.
 
 ## Follow-ups
 
-- **`ParentTaskBinding` is never constructed anywhere in the repo** — `createFlowState.ts:892` states this deliberately, so `parentTask()` always resolves `undefined` and `settleParentTask` always refuses `no-parent-task`. Two of `RequestHost`'s verbs are dead on the shipped path. Not in scope here; worth its own leftovers issue under FIX-1208.
-- `packages/engine/src/context/dispatch-operation.ts` describes the substrate without using any of the corpus's literal terms, so the evidence checker does not see it. Noted in the checker's header. Its `DispatchedChild` type name is a rename candidate under S11.
+- **`ParentTaskBinding` is never constructed anywhere in the repo** — `createFlowState.ts:892`
+  states this deliberately, so `parentTask()` always resolves `undefined` and `settleParentTask`
+  always refuses `no-parent-task`. Two of `RequestHost`'s verbs are dead on the shipped path. Not
+  in scope here; worth its own leftovers issue under FIX-1208.
+- If the kitchen-sink's `<TaskPlan />` renders empty for the background-work board, that is a
+  pre-existing gap and earns its own issue. It is not this change's to fix, and it is no longer
+  even adjacent now that the panel stays.
 
 ## Notes from review
 
-**Round 2 — `greptile-apps[bot]` + FSD Architect, 2026-09-18.** Both findings verified against
-real code and folded: `FIX-1121` moved from cancel to re-scope (the shutdown-abort path and the
-durability sweeper are outside S1–S12, so the defect outlives the removal), and `SPEC.md`'s
-kitchen-sink promise was corrected — it claimed a board-row replacement the plan does not build.
-The Architect's remaining points (fence the goal check, don't reopen D3's direction, don't invent
-a second board UI) are all already the plan's position.
+**Round 3 — owner amendment, 2026-09-18.** Direction changed from removal to first-class
+addressability before implementation began. Checking the premise showed the gap is one missing
+opt-in on `GET /sessions`; every other route already serves these sessions by id. The rounds below
+were argued against the superseded plan and are kept for history.
+
+**Round 2 — `greptile-apps[bot]` + FSD Architect, 2026-09-18.** Both findings verified against real
+code and folded: `FIX-1121` moved from cancel to re-scope (the shutdown-abort path and the
+durability sweeper are outside this change, so the defect outlives it — still true under the new
+direction), and `SPEC.md`'s kitchen-sink promise was corrected. The Architect's fence on the goal
+check stands and is carried into the guardrails above.
 
 **Round 1 — `cursor[bot]`, 2026-09-18** (recorded verbatim; weigh against real code):
 
-> `classify-substrate.mjs` is the right *idea*, heavy on maintenance. Totality + `--negative-control` match `issue-spec` Step 5 and are worth keeping. The ~110-line `DISPATCH` allowlist plus `DISPATCH_SUBTREES` blanket rules duplicate `PLAN.md` and can mis-bucket future viewing APIs under `packages/core/` etc. A lighter alternative (if you want less dual maintenance): **forbidden public symbols** (`listChildSessions`, `/children`, `ChildSessionSummary`, …) must grep empty in `packages/` + published docs, plus the goal check — drop the dispatch allowlist and rely on narrow terms + `other` for surprises. I would **not** delete totality entirely.
+> `classify-substrate.mjs` is the right *idea*, heavy on maintenance. Totality + `--negative-control`
+> match `issue-spec` Step 5 and are worth keeping. The ~110-line `DISPATCH` allowlist plus
+> `DISPATCH_SUBTREES` blanket rules duplicate `PLAN.md` and can mis-bucket future viewing APIs under
+> `packages/core/` etc. A lighter alternative (if you want less dual maintenance): **forbidden public
+> symbols** must grep empty in `packages/` + published docs, plus the goal check — drop the dispatch
+> allowlist and rely on narrow terms + `other` for surprises. I would **not** delete totality entirely.
 
-> Optional simplification path: if PO approves surface removal but wants to defer vocabulary churn, add an explicit **D2 optional / phase B** branch here (S1–S10 first, S11 follow-up).
+That note aged well: the forbidden-symbol shape is close to what the repointed checker needs now
+that the allowlist's premise is gone.

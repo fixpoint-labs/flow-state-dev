@@ -1,19 +1,21 @@
-# FIX-1440 · Remove browsable child-session surface — keep dispatch runs; rename off "child"
+# FIX-1440 · Make dispatch-run sessions first-class on their flow; rename off "child"
 
 Under [FIX-1208](https://linear.app/fixpoint-labs/issue/FIX-1208) (Remove superseded framework leftovers) · Size: M
 
 | Someone who… | Today | After |
 |---|---|---|
-| reads our docs to learn how background work is organised | Finds a documented endpoint for listing a session's children, and a line saying children can nest — so they model work as a session tree | Finds one way to organise work: a board of rows, handed to workers. No session tree to model |
-| opens the DevTool on a conversation | Sees a **Children** tab, clicks into a child, and gets another Children tab on that | Sees the conversation's own requests and its boards. Nothing invites them to descend |
-| builds on the framework and wants background work | Can browse the tree and is quietly encouraged to treat it as the org chart | Reads rows off a board, which is the surface that actually carries assignment and status |
-| runs the kitchen-sink reference app | Sees a Background Work panel that demonstrates enumerating children | The conversation itself says what was filed and what came back. No panel enumerating child sessions — and no replacement panel is built here (see `PLAN.md` → S8) |
-| already dispatches work today (`dispatcher()`, task hand-off) | Works | Works, unchanged. The run still happens in its own derived session — it just isn't reachable as a tree |
-| is triaging the five open detached-child bugs | Five open bugs about the lifecycle of a surface we no longer want | Two are gone with the surface. Three are re-scoped to the dispatch behaviour they actually describe |
+| runs background work and wants to see it | Can only reach it by opening the conversation and descending into its children. The work exists, but not as something the flow lists | Finds it on the flow's own session list, like any other session, and opens it directly |
+| reads our docs to learn how background work is organised | Learns a session tree: a parent, its children, and children under those | Learns that dispatched work runs in its own session on the same flow, and that the parent is recorded as provenance rather than as an owner |
+| opens the DevTool on a conversation | Sees a **Children** tab and descends, getting another Children tab at each level | Sees dispatch runs among the flow's sessions, each showing what dispatched it. No tree to walk down |
+| asks the framework whether a background request is still alive | Gets an answer only if that work hangs beneath the asking session | Gets an answer for their own work on that flow — see D4, which is open |
+| already dispatches work today (`dispatcher()`, task hand-off) | Works | Works, unchanged. Same derived session, same ids |
+| is triaging the five open detached-child bugs | Five open bugs about a surface nobody was sure we were keeping | Re-triaged against a surface we are now keeping and fixing — **pending, see D3** |
 
 ![What changes](figures/what-changes.svg)
 
-The browsable tree on the left is the whole of what gets deleted; the green box under it is untouched. Read the two panes as the same system with one layer taken out — background work does not move, it just stops being something a reader can walk.
+> **The figure is stale.** It illustrates the superseded removal, not this direction. It is
+> redrawn before this spec goes back for review; it is left in place rather than deleted so the
+> PR's history stays readable.
 
 ## The surface, as a developer sees it
 
@@ -26,21 +28,19 @@ The browsable tree on the left is the whole of what gets deleted; the green box 
     session: "per-task"
   });
 
-  // Reading what happened — this is what changes.
+  // Finding the work afterwards — this is what changes.
+- // Only door: descend from the parent.
 - const kids = await client.sessions.listChildSessions(sessionId);
-- for (const k of kids) console.log(k.topic, k.status);
-+ const board = await client.resources.readCollection(sessionId, "reports");
-+ for (const row of board.tasks) console.log(row.goal, row.status);
++ // A dispatch run is a session of this flow, and lists as one.
++ const sessions = await client.sessions.list({ flowKind: "reports", include: "dispatch-runs" });
++
++ // The parent is still recorded, as provenance rather than as the only route.
++ const runs = await client.sessions.listChildSessions(sessionId);   // stays
 ```
 
-```diff
-- GET /api/flows/sessions/:sessionId/children   → { children: ChildSessionSummary[] }
-```
-
-Removed public types: `ChildSessionSummary`, `ChildSessionStatus` (from `engine` and `client`),
-`ListChildSessionsOptions`, `SessionClient.listChildSessions`,
-`UseSessionResult.childSessions` / `.childSessionsStale`, and the
-`maxChildSessionListLimit` runtime option.
+Nothing public is removed. `GET /sessions` gains a named way to include dispatch runs;
+`GET /sessions/:id/children` keeps its shape and is documented as a provenance index.
+`GET /sessions/:id` needs no change — it already serves these sessions.
 
 ## How the mechanism reaches the work
 
@@ -58,16 +58,25 @@ progress, in parallel with `F`.
 
 ## What stays exactly as it is
 
-- `dispatcher()`, the task board, and the hand-off — including the derived session each dispatched row runs in.
-- `parentSessionId` on the stored session record, and the parentage filter every store adapter implements. They are how the seam re-enters a run on retry, and how the liveness read authorises.
+- `dispatcher()`, the task board, and the hand-off — including the derived session each dispatched row runs in, its `dsx_` id and its hash material.
+- `parentSessionId` on the stored session record, and the parentage filter every store adapter implements — now read as provenance, which is what the amendment asks for.
+- `GET /sessions/:id/children` and the types on it. Re-documented, not removed.
 - `lineageId` and `sharedToLineage` resources. Independent of nesting; minted at root-session creation.
 - Same-session sub-agents, Workforce seat sessions, Relay.
-- Nested **task boards**. Session nest and board nest are different things, and only the first goes.
+- Nested **task boards**. Session nest and board nest are different things.
+
+## What goes
+
+Only the teaching, and only where it is a tree to walk: the DevTool's recursive **Children** tab
+and breadcrumb, and the docs' framing of children as a hierarchy to enumerate. The route survives;
+the invitation to descend does not.
 
 ## Sign off
 
-1. **Do we delete the window, or the machinery behind it? — SIGNED, the window.** The issue said the substrate was a leftover the replacement no longer uses. It is not: a `dispatcher({ key })` call creates the derived session, and the shipped acceptance check for the replacement asserts it. Signed off on 2026-09-18: delete the browsable surface and the nest teaching, keep the derived run, and leave a same-session rewrite to W4 ([FIX-1408](https://linear.app/fixpoint-labs/issue/FIX-1408)). → [D1](DECISIONS.md#d1)
+1. **Dispatch runs become first-class on their flow — SIGNED in direction, one sub-question open.** Amended by the owner on 2026-09-18, superseding the draft's removal. Open: do they appear in the **default** session list, or behind an explicit opt-in? Recommend opt-in — it delivers reachability without changing what every existing caller of `GET /sessions` sees. → [D1](DECISIONS.md#d1)
 
-2. **The internal vocabulary stops saying "child".** The derived session is renamed a *dispatch run* in code and internal docs, so nothing teaches a nest even where the mechanism survives. *If wrong:* the rename buys nothing but clarity, across roughly a dozen modules plus the architecture docs (`PLAN.md` → S11); skipping it leaves the word that caused this issue in place. → [D2](DECISIONS.md#d2)
+2. **The internal vocabulary stops saying "child".** The derived session is renamed a *dispatch run* in code and internal docs. Unchanged by the amendment, which restates it. *If wrong:* skipping it leaves the word that caused this issue in place. → [D2](DECISIONS.md#d2)
 
-3. **Two of the five cluster bugs are cancelled, three are re-scoped.** `FIX-1045` and `FIX-1097` describe the removed surface and go with it. `FIX-1086`, `FIX-1171` and `FIX-1121` describe dispatch behaviour that survives. *If wrong:* cancelling a bug that was really about dispatch loses a real defect report — which is why `FIX-1121` moved out of the cancel list in round 2. → [D3](DECISIONS.md#d3)
+3. **What replaces the descendant-chain liveness check — OPEN, and the one with a security cost.** Today a caller may ask whether a request is alive only if it hangs beneath them. That is the "nest-only authorization" the amendment names, but the same walk also re-checks principal, tenant and flow at every hop. Recommend keeping the walk and adding a same-flow-same-principal arm beside it, rather than replacing it outright. *If wrong:* replacing it widens a liveness answer from "my subtree" to "anything of mine on this flow." → [D4](DECISIONS.md#d4)
+
+4. **The five cluster bugs need re-triage — PENDING, not a decision yet.** Two were cancelled because they described a surface being deleted. That surface now stays, so those cancellations rest on a reason that no longer holds and are withdrawn until re-examined. → [D3](DECISIONS.md#d3)

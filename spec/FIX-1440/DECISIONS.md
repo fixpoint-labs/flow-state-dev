@@ -2,41 +2,79 @@
 
 ```mermaid
 flowchart TD
-  I["Remove the child/nested<br/>session substrate"] --> Q{"Is the substrate<br/>actually unused?"}
-  Q -->|"evidence says no"| S["Split it in two"]
-  Q -.->|"the issue assumed yes"| X["Delete it all<br/>— breaks dispatch"]
-  S --> D1["D1 · SIGNED — delete the browsable surface,<br/>keep the derived run"]
+  I["The framework teaches a session tree<br/>as the org chart"] --> Q{"What is actually<br/>wrong with it?"}
+  Q -->|"draft's answer"| X["the window exists<br/>— delete it"]
+  Q -->|"owner's answer"| S["dispatch runs are<br/>second-class sessions"]
+  X -.->|"superseded 2026-09-18"| Z["delete /children<br/>and the DevTool tab"]
+  S --> D1["D1 · make dispatch runs first-class<br/>on their flow's session path"]
   S --> D2["D2 · rename the mechanism<br/>off 'child'"]
-  D1 --> D3["D3 · cluster bugs:<br/>cancel 2, re-scope 3"]
-  X -.->|"rejected"| W["a dispatch rewrite<br/>— its own epic, under W4"]
+  D1 --> D4["D4 · what replaces the<br/>descendant-chain liveness check"]
+  D1 --> D3["D3 · cluster bugs:<br/>RE-TRIAGE PENDING"]
 ```
 
-The dashed path is the issue as written. The evidence below is why the spec takes the solid one.
+The dashed path is this spec's own first draft, superseded by the owner on 2026-09-18. Both the
+draft and the amendment agree on the target — the framework should stop teaching a session tree as
+the org chart. They disagree on what causes it. The draft said the browsable window causes it. The
+owner's answer is that **second-class sessions** cause it: work that can only be reached by
+descending from a parent reads as subordinate, whatever the window looks like. Take the window
+away and the sessions are still second-class, just harder to find.
 
 ---
 
-## D1 — Delete the browsable surface; keep the derived session a dispatched row runs in {#d1}
+## D1 — Make dispatch-run sessions first-class on their flow {#d1}
 
-**Status: CLOSED — Path A, signed off by the product owner on 2026-09-18** ([PR #1888 comment](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5723901352)). Delete the browsable Children surface and the nest teaching; keep the derived session a dispatched row runs in; rename it off "child" per D2; do **not** rewrite dispatch to same-session inline runs. The evidence below is kept because it is why the fork existed.
+**Status: OPEN on one sub-question** (how they appear by default — see the fork at the end of this
+card). The direction is settled by the owner amendment of 2026-09-18
+([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5724121456)).
 
-**Instead of** removing the L1 child/nested/detached session substrate as the issue specifies — id
-minting, spawn paths, parentage predicates — the spec removes only the read surface that presents
-a session tree to a user, and leaves the derived session that a dispatched row runs in.
+**Instead of** deleting the browsable Children surface, give a dispatch-run session the same
+standing on its flow as any other session: listable and openable on the flow's ordinary session
+path, without descending from a parent. `/children` stays, re-framed as a **provenance index**
+("who dispatched this") rather than the only door to the work.
 
-**Because** the premise the issue rests on is false, and the check that proves it is already in the
-repo and green:
+**Because** the teaching the issue objects to is *second-class sessions*, not the route that
+exposes them. The evidence is narrower than either the issue or this spec's first draft assumed:
 
-- A `dispatcher({ key })` call **creates** a session record with `parentSessionId` set to the caller (`packages/engine/src/context/create-request-host.ts:335`, written at `:359`). There is no other delivery target on the `task` path: `TaskSessionPolicy` is a closed union of `"per-task"`, `"per-worker"` and `{ key }`, and all three arms produce a key (`packages/core/src/types/dispatch.ts:82`, `taskSessionKeyFor` at `:207`).
-- `goals/task-board/hands-a-row-to-a-worker-in-its-own-session` asserts each row runs in *its own child session, distinct from the drain's*, and that the parent has one child per row. Its anti-game section fails a board that runs rows inline. **Run on the real path 2026-09-18: PASS**, two rows in `dsx_` sessions.
+- **Discoverability is the whole gap.** `handleListSessions` never passes a `parentage` option
+  (`session-routes.ts:58–73`), and `SessionListOptions.parentage` **narrows to `"top-level"` when
+  omitted** (`stores/types.ts:291–304`). There is no query parameter to opt in. A dispatch run is
+  therefore unreachable on `GET /sessions` at any setting.
+- **Everything else already works.** `handleGetSession` loads by id and does not refuse a parented
+  record (`session-routes.ts:100–121`). Grepping the route layer for `parentSessionId`,
+  `parentage` and `isDescendant` returns hits in `child-session-routes.ts` alone — so stream,
+  state, resource and abort routes already serve a dispatch-run session by id. It is **openable
+  today and only undiscoverable.**
+- **The narrowing is deliberate, not an oversight.** Its own doc comment says it exists so callers
+  "silently start showing internal machinery beside the user's own sessions" cannot happen. That
+  is a real concern and it is what the open fork below is about — it is not a reason to leave the
+  sessions unreachable.
 
-So "the substrate is a leftover nobody uses" is not what the code does. Removing it as written is a rewrite of how dispatch runs and authorises work, not a leftover deletion.
+So the change is **additive**: a door, not a demolition. That is a smaller diff than the draft's
+removal, it keeps the provenance edge the issue explicitly asked to preserve, and it fixes the
+thing the issue complained about rather than the thing that made it visible.
 
-**Locks in** that a dispatched row keeps its own session. It does **not** lock in the word "child"
-(see D2), and it does not lock in the browsable tree, which goes.
+**Locks in** that a dispatched row keeps its own session (unchanged from the draft and from the
+amendment's point 3), that the session is addressable on its flow's normal path, and that
+`/children` survives as provenance.
 
-**What lost:** the literal reading of the issue — rejected at sign-off, recorded here as history. If background work must stop getting a session of its own, that is a dispatch rewrite and belongs under W4 ([FIX-1408](https://linear.app/fixpoint-labs/issue/FIX-1408)) as its own issue, not here.
+**What lost:** the draft's deletion, and with it the simplicity of a change that only subtracts.
+This direction adds surface, which tenet 3 makes us justify rather than assume: the justification
+is that the surface being added is the one that makes an existing surface honest, and the DevTool
+Children *tree* — the recursive descent that most strongly taught the nest — still goes.
 
----
+**Still open — the one sub-question.** Do dispatch runs appear in the **default** session listing,
+or only behind an explicit opt-in?
+
+- *Opt-in (drafting against this).* First-class addressability, default list unchanged. A board
+  that dispatches fifty rows does not put fifty entries in front of a user who asked for their
+  conversations. Preserves the documented reason the narrowing exists.
+- *Default-on.* Stronger reading of "first-class". Simpler to explain, and no caller has to know
+  a flag exists. Costs the FIX-1009 protection, and every existing consumer of `GET /sessions`
+  sees its result set change.
+
+Same mechanism either way; only the default moves. Recommendation is opt-in, because it delivers
+the amendment's actual requirement — reachable without descent — without silently changing what
+every existing caller sees.
 
 ## D2 — Rename the mechanism off "child" {#d2}
 
@@ -60,10 +98,51 @@ one it started. The prefix stays; only the vocabulary moves.
 
 ---
 
-## D3 — Cancel two cluster bugs, re-scope three {#d3}
+## D4 — What replaces the descendant-chain liveness check {#d4}
 
-**Instead of** cancelling all five as "gone with substrate", cancel only the two that describe the
-removed surface and re-scope the three that describe dispatch behaviour surviving it.
+**Status: OPEN.** Raised by the amendment's "kill shadow-only / nest-only authorization"; it is
+the one place that phrase lands on real code.
+
+**Instead of** authorising a liveness read by walking the caller's descendant chain, authorise it
+the way the rest of the route layer already does — same principal, same tenant, same flow
+instance.
+
+**Because** `livenessOf` is the only production consumer of `isDescendantSession`
+(`create-request-host.ts:643`, consumed at `liveness-read.ts:131`), and that walk is precisely
+"you may only see this work if it hangs beneath you." While it stands, a dispatch run is
+first-class in the listing and still second-class in what a caller may ask about it.
+
+**The cost is real and must not be waved through.** The walk re-checks principal, tenant **and**
+flow ownership at every hop (`create-request-host.ts:656–670`), so it is doing defence-in-depth,
+not only shape enforcement. `liveness-read.ts:122–128` says so directly: the flow-ownership check
+"is what stands between 'a request I started' and 'any request the same principal happens to be
+running under this session id'." Dropping the walk widens a liveness answer from *my subtree* to
+*anything of mine on this flow*. For one user reading their own work that is defensible; it is
+still a widening and it should be decided deliberately rather than inherited from D1.
+
+**Options.** (a) Replace the walk with principal + tenant + flow. (b) Keep the walk and add an
+explicit "same flow, same principal" arm beside it, so a first-class dispatch run is reachable
+without making every sibling request readable. (c) Leave it, and accept that first-class means
+listable but not liveness-readable.
+
+**Recommendation: (b).** It satisfies the amendment — no session is reachable *only* by descent —
+without trading a security boundary for a navigation fix. (a) is simpler and I would take it if
+the flow-ownership check alone is judged sufficient, which is the owner's call to confirm rather
+than mine to assume.
+
+---
+
+## D3 — RE-TRIAGE PENDING {#d3}
+
+> **This card is stale and is being redone.** Its dispositions were decided against the draft's
+> removal. Two of them — `FIX-1045` and `FIX-1097` — were cancelled *because* they described a
+> surface that was going away. Under D1 that surface stays, so both inherit a disposition whose
+> reason no longer holds and must be re-examined on their own merits against current code. They
+> are **not** cancelled until that is done. `FIX-1121`'s move to re-scope survives the change of
+> direction, because it was decided on the behaviour outliving the change rather than on the
+> surface going away.
+
+The table below is the **superseded** triage, kept until the re-triage replaces it.
 
 | Issue | Disposition | Why |
 |---|---|---|
@@ -102,10 +181,11 @@ None. D1 was the only fork for the product owner and it is signed (above).
 - **"A dispatched row runs in a session of its own"** — CONFIRMED by running `goals/task-board/hands-a-row-to-a-worker-in-its-own-session` on the real path, 2026-09-18. Two rows settled in `dsx_` sessions distinct from the drain's. Resolved; do not reopen.
 - **"The parentage chain authorises settle, interrupt and liveness"** — REFUTED. The claim is in `packages/engine/src/context/detached-child.ts`'s file header, and it is stale prose. In shipped code only `livenessOf` walks the chain (`create-request-host.ts:583`, consumed at `liveness-read.ts:131`). `settleParentTask` is deliberately unwired — `createFlowState.ts:892` says so in as many words — and there is no interrupt verb on `RequestHost`. This doc/code mismatch is itself a tenet-1 finding and is fixed as part of D2's rename pass.
 
-- **"FIX-1121 describes only the deleted docs"** — REFUTED in round 2, against my own draft. The shutdown-abort path and the durability sweeper's prunable-terminal set are both outside this change's surfaces, so the defect outlives the removal. D3 re-scopes it rather than cancelling it, which is what D3's own stated principle required all along.
+- **"FIX-1121 describes only the deleted docs"** — REFUTED in round 2, against my own draft. The shutdown-abort path and the durability sweeper's prunable-terminal set are both outside this change's surfaces, so the defect outlives the removal. D3 re-scopes it rather than cancelling it, which is what D3's own stated principle required all along. This finding survives the change of direction, because it turned on behaviour outliving the change rather than on the surface being deleted.
 
 ## How it got here
 
 - **Draft** — Framed as a scope split rather than the removal the issue asks for, because running the replacement's own acceptance check showed the replacement is built on the substrate. The build is: delete the read surface and its docs, rename the surviving mechanism, dispose of the bug cluster by inspection.
 - **Round 1** — Four factual corrections to the spec's own documents; no change of approach. Recorded in `PLAN.md` → Notes from review.
 - **Round 2** — D1 signed (Path A). Two findings folded against real code: `FIX-1121` moved from cancel to re-scope, and `SPEC.md`'s kitchen-sink promise corrected to what S8 actually delivers.
+- **Round 3 — owner amendment, 2026-09-18.** D1 superseded before implementation began. The target is unchanged (stop teaching a session tree as the org chart); the cause was re-identified as second-class sessions rather than the window onto them, so the change turned from a removal into an addition. Checking the amendment's premise showed the gap is one missing opt-in on `GET /sessions`, with every other route already serving these sessions by id — so the new direction is a smaller diff than the removal it replaced. D3 went back to pending, and D4 was opened for the authorization half.
