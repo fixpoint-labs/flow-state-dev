@@ -7,9 +7,10 @@ deliberately not next. Each epic's own plan owns its checks.
 
 ![The arc](figures/arc.svg)
 
-Nine days, not three months. The project opened in June, but every epic here was filed from
-**Sep 8** onward — before that, the work ran as 32 unparented vocabulary issues. Only one epic has
-ever been in flight at a time, which is the cap doing its job rather than a queue forming.
+Eleven days, not three months. The project opened in June, but every epic here was filed from
+**Sep 8** onward; the vocabulary era before it left 40 issues that still sit under no epic. Until
+now only one epic had ever been in flight at a time — **W3 and W4 are the first overlap**, and it is
+a narrow one: W4 is standing up its epic-spec while W3 runs out its last four issues.
 
 ## What each epic consumes and releases
 
@@ -39,7 +40,7 @@ delay to the others, it is that the client door stays shut.
 
 - **The propagation pass.** Gated on the vocabulary locking (PD-4), not on capacity.
 - **Tasks, Skills internals, Memory implementation.** Own projects; this one owns the vocabulary.
-- **Re-parenting the 32 unparented issues.** They are the pre-epic era. Sweeping them under epics
+- **Re-parenting the 40 unparented issues.** They are the pre-epic era. Sweeping them under epics
   retroactively would make the arc look tidier and tell you less about what actually happened.
 - **A second harness or transport for the MCP door.** W1 has not started; widening it before it
   does is scope with no consumer.

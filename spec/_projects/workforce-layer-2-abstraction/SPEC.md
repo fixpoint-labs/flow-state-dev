@@ -13,7 +13,7 @@ epics that establish it.
 |---|---|
 | **Winning when** | Someone stands up a working team of agents from files alone — no TypeScript to declare a channel, a resource, or a skill — and Layer 1 stays fully available to anyone who wants past the conventions |
 | **The read** | Layer 2 nouns that still require code to declare. Five at the start, and the count only moves when a convention ships with a reader and a proof |
-| **Now** | 2 epics done · 1 in flight · 2 not started. 65 work issues, of which **32 still sit under no epic** — the vocabulary era this project began in, before the epic structure existed |
+| **Now** | 2 epics done · 1 in flight · 1 standing up its spec · 1 not started. 91 work issues, of which **40 still sit under no epic** — the vocabulary era this project began in, before the epic structure existed |
 | **Kill line** | If real apps turn out to want to assemble Layer 2 themselves, this project is mis-shaped rather than unfinished: what changes is that the conventions become examples, not the remaining epic list |
 
 ![The territory](figures/territory.svg)
@@ -22,17 +22,25 @@ Above the fence is what this project owns; below it is the substrate it assemble
 own. The fence is one question — *is there exactly one of it?* — and it is the test every epic
 under this project is checked against.
 
-## The epics — as of 2026-09-17
+## The epics — as of 2026-09-18
 
 | Epic | What it owns | State | Issues |
 |---|---|---|---|
 | [FIX-1332](https://linear.app/fixpoint-labs/issue/FIX-1332) · **W2 foundation** | Conventions, seat factory, thin Agent | **done** | 5/5 |
 | [FIX-1359](https://linear.app/fixpoint-labs/issue/FIX-1359) · **default agent flow** | OOTB replaceable `agent` flow kind | **done** | 7/11 |
-| [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351) · **W3 file surface** | Channels, resources, skills + a thin pentest lab | **in flight** | 5/14 |
+| [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351) · **W3 file surface** | Channels, resources, skills + a thin pentest lab | **in flight** | 16/21 |
+| [FIX-1407](https://linear.app/fixpoint-labs/issue/FIX-1407) · **W4 routing** | Work routing & package cohesion | *spec in progress* | 1/7 |
 | [FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333) · **W1 MCP door** | Client door over intake, boards, dispatcher | *not started* | — |
-| [FIX-1407](https://linear.app/fixpoint-labs/issue/FIX-1407) · **W4 routing** | Work routing & package cohesion | *not started* | 0/4 |
 
-2 done · 1 in flight · 2 not started.
+2 done · 1 in flight · 1 standing up its spec · 1 not started.
+
+**The epic PRs are the other half of this table**, because an epic wraps by closing its PR unmerged
+and leaves its Linear state alone. W2 and the agent flow read *done* that way
+([#1664](https://github.com/fixpoint-labs/flow-state-dev/pull/1664),
+[#1730](https://github.com/fixpoint-labs/flow-state-dev/pull/1730)); W3 is *in flight* on
+[#1718](https://github.com/fixpoint-labs/flow-state-dev/pull/1718). W4's epic-spec is being written
+on `epic/work-routing-package-cohesion` and **its PR number is not in yet** — the next refresh fills
+that cell rather than guessing it.
 
 **Two things in that table are worth reading twice.** The numbering is not the order — W1 was filed
 the same day as W2 and has not started, while W2 finished in four days. And **FIX-1359 is marked
