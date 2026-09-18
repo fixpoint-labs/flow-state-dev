@@ -125,7 +125,7 @@ Only the built-in [`agent` kind](./built-in-worker.md) reads this key. A kind yo
 
 ### A preset carrying a tool
 
-Presets carry tools as well as context, and a preset a worker selects gives that worker's model the preset's tools. The worker's `tools:` list does not hold them back: `tools:` names the kind's tool catalog, and [a tool a capability carries](./built-in-worker.md#tools) is not a catalog tool. Select a tool-bearing preset only where you want that worker to have the tool.
+Presets carry tools as well as context. A worker that selects one gets the preset's context, and does not get its tools. A worker's [`tools:` list is the whole of what it can call](./built-in-worker.md#tools), and a capability's tools are not on it — a worker with `tools: []` calls nothing, whatever it selected. So selecting a tool-bearing preset is a way to give one worker that preset's context, not a way around its tool list. To let a worker call a tool, put the tool in the kind's catalog and name it in `tools:`.
 
 ### When a file is wrong
 

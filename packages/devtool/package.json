@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/devtool",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pre-built DevTool assets served by fsdev dev.",
   "keywords": [
     "ai",
@@ -98,7 +98,7 @@
     "vitest": "^3.2.4"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-styles.mjs",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist && node scripts/copy-styles.mjs",
     "build:assets": "node scripts/build-assets.mjs",
     "prepublishOnly": "node scripts/check-assets.mjs",
     "typecheck": "node ../../scripts/typecheck.mjs",

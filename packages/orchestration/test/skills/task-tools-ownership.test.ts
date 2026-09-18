@@ -25,10 +25,10 @@ import { buildDelegationCtx } from "./delegation-ctx";
 function findTool(name: string): GeneratorTool {
   const presetDefs = (
     taskTools as unknown as {
-      __presetDefs?: { tools?: { tools?: GeneratorTool[] } };
+      __presetDefs?: { tools?: { controlTools?: GeneratorTool[] } };
     }
   ).__presetDefs;
-  const tool = presetDefs?.tools?.tools?.find((t) => t.config?.name === name);
+  const tool = presetDefs?.tools?.controlTools?.find((t) => t.config?.name === name);
   if (!tool) throw new Error(`tool not found: ${name}`);
   return tool;
 }

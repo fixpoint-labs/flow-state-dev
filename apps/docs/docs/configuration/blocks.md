@@ -71,7 +71,7 @@ const chat = generator({
 | `user` | string, fn, or slot | — | The user message for this turn. |
 | `context` | slot | — | Extra system/context material. |
 | `history` | `true`, query, or slot | off | Prior turns. `true` loads the session window. |
-| `tools` | tool list or `(input, ctx) => tools` | — | Tools the model may call. |
+| `tools` | tool list or `(input, ctx) => tools` | — | Tools the model may call. Declaring it also drops tools a capability would contribute — see [Tools a capability contributes](/docs/fundamentals/capabilities#capability-tools). |
 | `uses` | capability list | — | May contribute model, tools, context, and resources. |
 | `itemVisibility` | `{ client, history }` | **unset = no auto-emission** | Who sees auto-emitted messages. See [Visibility](#itemvisibility). |
 | `agentName` | `string` | block `name` when visibility is set | Provenance stamp. Shared names collaborate; distinct names stay isolated. |

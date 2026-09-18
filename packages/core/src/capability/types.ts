@@ -96,6 +96,32 @@ export type PresetDef<TSessionState = any> = {
     | GeneratorTool[]
     | ((ctx: CapabilityPresetCtx<TSessionState>) => GeneratorTool[] | Promise<GeneratorTool[]>);
 
+  /**
+   * Tools that are NOT subject to a consuming block's `tools:` fence (FIX-1393).
+   *
+   * A block's declared `tools:` is the complete and exclusive set of **catalog**
+   * tools the model may call. Anything a capability contributes through `tools`
+   * above is a catalog grant and is fenced out unless the block named it.
+   *
+   * `controlTools` is the other kind: a framework **control** the block reached
+   * for by composing this capability at all. The composition is the
+   * declaration, so there is nothing for the fence to check — and no way for
+   * the block to re-declare it, since a control is usually built inside the
+   * capability and never exported for a `tools:` list to name.
+   *
+   * Use it only for tools whose presence is already implied by the block's own
+   * configuration — the skills loader a seat switched on, the delegation board
+   * a skill it holds asked for. A capability that grants access to something
+   * the block did not ask for (memory `recall`, MCP, resource tools) belongs in
+   * `tools`, where the fence can see it.
+   *
+   * A capability may declare both: `createSkillsLibrary` registers the app
+   * catalog through `tools` and its own loader through `controlTools`.
+   */
+  controlTools?:
+    | GeneratorTool[]
+    | ((ctx: CapabilityPresetCtx<TSessionState>) => GeneratorTool[] | Promise<GeneratorTool[]>);
+
   // Generator-only singletons. Block-kind validated at merge time — declaring
   // any of these on a capability used by a handler/sequencer/router throws a
   // clear error. Among capabilities, last-wins; among capability + block, the

@@ -25,7 +25,15 @@
  *
  * **A worker's `tools:` is a hard runtime fence**, not a hint: a seat may call
  * exactly the catalog keys it names, and an empty list means none, regardless
- * of what else the app's catalog carries. The skills library is handed the
+ * of what else the app's catalog carries — and, since FIX-1393, regardless of
+ * what a capability attached through `uses` would otherwise contribute. Core
+ * enforces that half; see `docs/architecture/capabilities.md` → *The tools
+ * fence*. What the fence deliberately does NOT hold back is a framework
+ * **control** a capability declares through `controlTools` — the skill loader
+ * this seat switched on, the delegation board a skill it holds asked for. A
+ * seat only holds those because its own config asked, and they are built
+ * inside their capability and never exported, so no `tools:` list could name
+ * one back in. The skills library is handed the
  * app's catalog with registration turned off (`registerCatalogTools: false`),
  * so a bound skill's `allowed-tools` are still validated against it — a typo
  * or a tool the app never registered still fails loud at build time — but the
@@ -43,13 +51,12 @@
  * is the seat's, not the skill's: a seat with `tools: []` reaches nothing,
  * including through a worker it delegated to.
  *
- * The one place that fence is upheld by convention rather than by the
- * framework is {@link AgentWorkerFlowOptions.uses}: the resolver unions a
- * capability's tools onto the generator's list instead of intersecting it
- * with the seat's, so an app passing a capability with default-on tools must
- * turn them off at the preset. FIX-1393 moves the intersection into
- * `@flow-state-dev/core`, at which point the convention stops mattering. The
- * rule itself does not change either way.
+ * {@link AgentWorkerFlowOptions.uses} is fenced by the framework too
+ * (FIX-1393): core drops a capability's catalog-granted tools when the block
+ * declares `tools:`, and this kind declares it on every seat. An app passing a
+ * capability with default-on tools no longer has to turn them off to keep a
+ * seat's list honest. What the fence does not touch is a capability's
+ * `controlTools` — see the paragraph above.
  */
 
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
@@ -206,13 +213,13 @@ export interface AgentWorkerFlowOptions {
    * refused at the mint. Selecting only ever ADDS to what the entry already
    * carries — see `./seat-capabilities`.
    *
-   * **Tool-carrying presets are not fenced here.** The framework's resolver
-   * unions a capability's tools onto the generator's own list rather than
-   * intersecting it, so a preset that ships a tool reaches a worker whose
-   * `tools:` is empty. FIX-1393 lands that intersection in
-   * `@flow-state-dev/core`; until it does, an app passing a capability with
-   * default-on tools turns them off at the preset, as the README's memory
-   * recipe does with `recall` and `connect`.
+   * **Tool-carrying presets ARE fenced** (FIX-1393). Core drops a capability's
+   * catalog-granted tools when the consuming block declares `tools:`, and this
+   * kind declares it on every seat — so a preset that ships a tool does not
+   * reach a worker whose `tools:` is empty. Turning such presets off at the
+   * preset (as the README's memory recipe does with `recall` and `connect`) is
+   * still reasonable on cost grounds, but it is no longer what keeps the seat's
+   * list honest. A capability's `controlTools` are exempt by design.
    */
   uses?: UsesSlot;
   /**

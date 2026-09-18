@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/core",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Isomorphic builders, type contracts, and item taxonomy for the flow-state-dev block framework.",
   "keywords": [
     "ai",
@@ -158,7 +158,7 @@
     "@types/picomatch": "^3.0.1"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "node ../../scripts/typecheck.mjs && tsc -p tsconfig.test-d.json",
     "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",

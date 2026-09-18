@@ -131,9 +131,9 @@ function toolNamed(tools: GeneratorTool[], name: string): GeneratorTool {
 /** The `addTask` tool a board-bound `taskTools` capability exposes to a worker. */
 function capabilityAddTask(capability: DefinedCapability): GeneratorTool {
   const presetDefs = (capability as unknown as {
-    __presetDefs?: { tools?: { tools?: GeneratorTool[] } };
+    __presetDefs?: { tools?: { controlTools?: GeneratorTool[] } };
   }).__presetDefs;
-  const tool = presetDefs?.tools?.tools?.find((t) => toolName(t) === "addTask");
+  const tool = presetDefs?.tools?.controlTools?.find((t) => toolName(t) === "addTask");
   if (!tool) throw new Error("board-bound taskTools exposes no addTask");
   return tool;
 }
