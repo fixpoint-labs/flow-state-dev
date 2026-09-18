@@ -73,7 +73,7 @@ Everything else is yours to name, including what the completion-check context ty
 ## Docs
 
 - **EXTEND** `apps/docs/docs/orchestration/harness-manager.md` — the paragraph on what `isDone` answers and when it is consulted. Add the second fact the check is handed and say plainly that a check which ignores it will close a row on a run that stopped at its budget. *Voice risk:* this is a correctness caveat, and the temptation is to soften it into "you may also consider". Don't — the docs' job here is to make the cost of ignoring it visible. Teach the Lab as **DevForce**; `labs/conductor` is the package path, not the product name.
-- **EXTEND** `packages/harness-manager/README.md` — the one line describing the done-condition, plus the outcome in the phase example.
+- **EXTEND** `packages/harness-manager/README.md` — the one line describing the done-condition, plus the stop report in the phase example.
 - **One `minor` changeset** for `@flow-state-dev/harness-manager`. It is published and the phase contract is what a consumer writes against, so a downstream author needs to know the check gained an input (BP-022). `labs/conductor` and `goals/devforce-lab` are private and get none.
 - **No new page.** This is one paragraph under an existing concept.
 
@@ -115,4 +115,4 @@ Below-the-bar feedback from the spec PR, verbatim. Inputs, not instructions — 
 
 ## Follow-ups
 
-- **The framework cannot enforce that a phase consults the outcome**, which is [D1](DECISIONS.md#d1)'s named cost. If a third phase ships and forgets, that is the evidence for reversing it: a manager-level default with an explicit per-phase opt-out. Flagged, not filed — filing it now would pre-commit to a design the data has not asked for yet.
+- **The framework cannot enforce that a phase consults the stop report**, which is [D1](DECISIONS.md#d1)'s named cost. If a third phase ships and forgets, that is the evidence for reversing it: a manager-level default with an explicit per-phase opt-out. Flagged, not filed — filing it now would pre-commit to a design the data has not asked for yet.
