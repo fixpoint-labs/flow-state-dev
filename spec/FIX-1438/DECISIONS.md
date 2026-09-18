@@ -4,11 +4,13 @@
 
 What was considered, what was chosen, why, and what each choice locks in. Three decisions are the sign-off surface. Everything else here is context for them.
 
+**Stop report** is the run's three-way word for how it ended (`finished`, `stopped-at-limit`, `failed`), defined in [SPEC.md](SPEC.md). It is not the run record's own `outcome` bookkeeping, which this spec does not touch.
+
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-1438"] --> D1["D1 · the phase's check receives the outcome word<br/>the manager rules on nothing"]
+  I["FIX-1438"] --> D1["D1 · the phase's check receives the stop report<br/>the manager rules on nothing"]
   D1 -.->|"rejected"| X1["the manager refuses to settle a budget stop<br/>the run's narration vetoes the phase's judgement"]
   D1 -.->|"rejected"| X2["document it as designed<br/>the hazard the epic exists to kill, written down and kept"]
   I --> D2["D2 · a refused budget stop re-opens the row,<br/>and errors once retries are spent"]
@@ -20,11 +22,11 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · The phase's completion check receives the run's outcome word; the manager still decides nothing on it
+## D1 · The phase's completion check receives the run's stop report; the manager still decides nothing on it
 
 | | |
 |---|---|
-| **Instead of** | The manager comparing the outcome itself and refusing to settle a row whose run stopped at a limit |
+| **Instead of** | The manager comparing the stop report itself and refusing to settle a row whose run stopped at a limit |
 | **Because** | What "done" means genuinely differs by phase, and only the phase knows it. A rule in the manager would let the run's own narration overrule the phase's judgement, so a pessimistic report would block work that really was finished. That inversion is the one thing the current design is built to avoid, and the issue locks it as out of bounds |
 | **Locks in** | Every phase author now owns one more call, and the framework cannot make them take it. A phase that ignores the new fact closes rows on partial work exactly as today, silently. The contract, the two shipped phases, and the lab control are the whole of the teaching |
 
@@ -54,10 +56,10 @@ The honest cost of this decision is that it does not, by itself, fix anything. I
 
 ## Decided, not asked
 
-- **The outcome travels as the word the run reported, never narrowed to a boolean or defaulted.** A word this framework version does not define must reach the check as itself; silently mapping an unknown word to `finished` is the same silent partial success in a new place.
+- **The stop report travels as the word the run reported, never narrowed to a boolean or defaulted.** A word this framework version does not define must reach the check as itself; silently mapping an unknown word to `finished` is the same silent partial success in a new place.
 - **Reporting nothing stays distinguishable from reporting `finished`.** The absent case is its own value, because a check that cannot tell them apart is the sometimes-absent field the manager's own contract already refuses.
-- **The outcome is absent from the prompt builder's context, deliberately and always.** It is the mirror of the rule that keeps the previous attempt's reason off the completion check: a value that means "this attempt" in one place and "the last attempt" in another is a field that lies by position.
-- **The manager reads the outcome for one thing only — to say which kind of stop a failure was, in the reason it writes on the re-opened row.** That is phrasing, not a decision.
+- **The stop report is absent from the prompt builder's context, deliberately and always.** It is the mirror of the rule that keeps the previous attempt's reason off the completion check: a value that means "this attempt" in one place and "the last attempt" in another is a field that lies by position.
+- **The manager reads the stop report for one thing only — to say which kind of stop a failure was, in the reason it writes on the re-opened row.** That is what it already does today, and it stays phrasing rather than a decision.
 - **The lab's `stopped-at-limit` control stops being special-cased.** It becomes an ordinary control, caught by the same assertion that catches the others.
 
 ## Considered and dropped
@@ -75,3 +77,4 @@ The honest cost of this decision is that it does not, by itself, fix anything. I
 ## How it got here
 
 - **Draft** — framed as *two facts are reported and one is read*; chose to hand the second fact to the phase's completion check rather than rule on it in the manager; both shipped phases refuse, and a refusal settles through the re-pend path that already exists.
+- **Review** — the stop report and the run record's `outcome` are now named apart everywhere, because the draft repeated the issue's claim that the stop report is written to the run record. It is not: it reaches no store and is read only by the text of a failure message. No decision moved; three reviewers hit the same collision.

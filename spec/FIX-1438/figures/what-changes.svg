@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two columns. Today, a finished run reports both a status and an outcome word, only the status reaches the completion check, the outcome word goes nowhere, and the row settles completed. After, both reach the check, the check answers not done, and the row re-opens with the reason attached.">
+     aria-label="Two columns. Today, a finished run reports both a status and a stop report, only the status reaches the completion check, the stop report reaches no decision, and the row settles completed. After, both reach the check, the check answers not done, and the row re-opens with the reason attached.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -39,18 +39,18 @@
   <line class="div" x1="470" y1="12" x2="470" y2="318"/>
 
   <g id="today-run">
-    <rect class="n-box" x="24" y="38" width="196" height="78" rx="5"/>
+    <rect class="n-box" x="24" y="38" width="208" height="78" rx="5"/>
     <text class="t-lbl" x="40" y="58">THE RUN ENDED</text>
     <text class="t-s" x="40" y="80">status: completed</text>
-    <text class="t-s" x="40" y="100">outcome: stopped-at-limit</text>
+    <text class="t-s" x="40" y="100">stop report: stopped-at-limit</text>
   </g>
   <g id="today-edges">
-    <path class="e" d="M220 78 L 272 78" marker-end="url(#a)"/>
-    <text class="t-s" x="228" y="70">status</text>
-    <path class="e-gone" d="M220 100 L 268 100 L 268 136" />
+    <path class="e" d="M232 78 L 272 78" marker-end="url(#a)"/>
+    <text class="t-s" x="234" y="70">status</text>
+    <path class="e-gone" d="M232 100 L 268 100 L 268 136" />
     <circle cx="268" cy="142" r="4" fill="none" stroke="var(--gone)" stroke-width="1.3"/>
-    <text class="t-gone" x="196" y="164">outcome is recorded,</text>
-    <text class="t-gone" x="196" y="178">never consulted</text>
+    <text class="t-gone" x="190" y="164">the stop report reaches</text>
+    <text class="t-gone" x="190" y="178">no decision</text>
   </g>
   <g id="today-check">
     <rect class="n-box" x="272" y="50" width="172" height="56" rx="5"/>
@@ -66,16 +66,16 @@
   </g>
 
   <g id="after-run">
-    <rect class="n-box" x="504" y="38" width="196" height="78" rx="5"/>
+    <rect class="n-box" x="504" y="38" width="208" height="78" rx="5"/>
     <text class="t-lbl" x="520" y="58">THE RUN ENDED</text>
     <text class="t-s" x="520" y="80">status: completed</text>
-    <text class="t-s" x="520" y="100">outcome: stopped-at-limit</text>
+    <text class="t-s" x="520" y="100">stop report: stopped-at-limit</text>
   </g>
   <g id="after-edges">
-    <path class="e" d="M700 78 L 752 78" marker-end="url(#a)"/>
-    <text class="t-s" x="708" y="70">status</text>
-    <path class="e-new" d="M700 100 L 726 100 L 726 92 L 752 92" marker-end="url(#ag)"/>
-    <text class="t-s" x="704" y="118">outcome</text>
+    <path class="e" d="M712 78 L 752 78" marker-end="url(#a)"/>
+    <text class="t-s" x="714" y="70">status</text>
+    <path class="e-new" d="M712 100 L 732 100 L 732 92 L 752 92" marker-end="url(#ag)"/>
+    <text class="t-s" x="712" y="122">stop report</text>
   </g>
   <g id="after-check">
     <rect class="n-live" x="752" y="44" width="172" height="68" rx="5"/>
