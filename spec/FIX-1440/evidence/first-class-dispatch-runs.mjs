@@ -10,6 +10,13 @@
  * lands. A green run here before implementation would mean the check is not reaching the
  * thing it claims to cover (BP-003, tenet 7).
  *
+ * SCOPE, stated so a reader does not over-trust a green run. This checks the *corpus* — which
+ * modules exist and what published prose says. The DevTool behaviour D1 and D5 specify (one level
+ * of indent, the spawned/re-used label, the parent link, and a run's activity staying unloaded
+ * until asked for) is **not** assertable at file level without dictating a layout, so it is
+ * covered by the component tests in `PLAN.md → Checks` instead. A green run here means the descent
+ * is gone, not that its replacement is right.
+ *
  * Two kinds of assertion, and both earn their place:
  *
  *   - MUST APPEAR — the door this change opens. Red now.
@@ -81,7 +88,7 @@ const CHECKS = [
   {
     id: "no-devtool-descent",
     phase: "MUST NOT APPEAR",
-    why: "S5 — the recursive Children tab is the strongest nest-as-org-chart teaching",
+    why: "S5 — the recursive Children tab is the strongest nest-as-org-chart teaching. Its replacement is an indented listing and an in-place load (D5), neither of which is a descent",
     fails: "if any devtool child-session view/hook/links module still exists, the descent survives",
     run: () => {
       const present = tracked().filter(

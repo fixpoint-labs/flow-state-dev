@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 380" width="940" height="380" role="img" aria-label="A wireframe of the DevTool's session list for one flow. Conversations sit at the left margin. A session a dispatcher spawned sits one level indented beneath the conversation that spawned it, carrying a label that says whether it was spawned or re-used and a link back to its parent. The indent is one level only; there is no deeper nesting and nothing to drill into."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .pane  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .row   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .row-d { fill:var(--surface); stroke:var(--code); stroke-width:1.4; }
+    .chip  { fill:var(--code-soft); stroke:none; }
+    .lbl   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .hd    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .sm    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .chipt { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9px; letter-spacing:.09em; }
+    .link  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .note  { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .noteh { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+    .edge  { stroke:var(--ink-3); stroke-width:1; fill:none; }
+    .tick  { stroke:var(--code); stroke-width:1.2; fill:none; }
+  </style>
+
+  <text class="lbl" x="20" y="24">DEVTOOL · SESSIONS · FLOW "REPORTS"</text>
+  <rect class="pane" x="16" y="34" width="556" height="290" rx="6"/>
+
+  <!-- conversation -->
+  <rect class="row" x="36" y="56" width="500" height="42" rx="5"/>
+  <text class="hd" x="52" y="75">Weekly report chat</text>
+  <text class="sm" x="52" y="89">conversation · you started it</text>
+
+  <!-- indent guide -->
+  <path class="tick" d="M52 98 L52 232"/>
+
+  <!-- spawned run -->
+  <rect class="row-d" x="64" y="110" width="472" height="52" rx="5"/>
+  <rect class="chip" x="80" y="120" width="116" height="16" rx="3"/>
+  <text class="chipt" x="87" y="131">SPAWNED · summarize</text>
+  <text class="hd" x="80" y="153">summarize-report</text>
+  <text class="link" x="408" y="153">↑ open parent</text>
+
+  <!-- re-used run -->
+  <rect class="row-d" x="64" y="174" width="472" height="52" rx="5"/>
+  <rect class="chip" x="80" y="184" width="116" height="16" rx="3"/>
+  <text class="chipt" x="87" y="195">RE-USED · summarize</text>
+  <text class="hd" x="80" y="217">summarize-report</text>
+  <text class="link" x="408" y="217">↑ open parent</text>
+
+  <!-- second conversation -->
+  <rect class="row" x="36" y="238" width="500" height="42" rx="5"/>
+  <text class="hd" x="52" y="257">Q3 review chat</text>
+  <text class="sm" x="52" y="271">conversation · you started it</text>
+
+  <text class="sm" x="36" y="304">no Children tab · nothing to drill into · one list</text>
+
+  <!-- annotations -->
+  <path class="edge" d="M540 136 L596 136"/>
+  <text class="noteh" x="604" y="120">One level of indent</text>
+  <text class="note" x="604" y="136">Under the session that spawned it. A run</text>
+  <text class="note" x="604" y="150">spawned by a run indents once, not twice.</text>
+  <text class="note" x="604" y="164">This is a view, not a tree to walk.</text>
+
+  <path class="edge" d="M540 200 L596 200"/>
+  <text class="noteh" x="604" y="196">Spawned, or re-used</text>
+  <text class="note" x="604" y="212">A keyed dispatch derives its session id, so</text>
+  <text class="note" x="604" y="226">a retry re-enters the run it started instead</text>
+  <text class="note" x="604" y="240">of minting a second. The label says which.</text>
+
+  <path class="edge" d="M540 217 L570 217 L570 276 L596 276"/>
+  <text class="noteh" x="604" y="272">Provenance is one click</text>
+  <text class="note" x="604" y="288">The link back replaces the tree walk. The</text>
+  <text class="note" x="604" y="302">children route is the index behind it now,</text>
+  <text class="note" x="604" y="316">not the way in.</text>
+</svg>

@@ -10,6 +10,7 @@ flowchart TD
   S --> D2["D2 · rename the mechanism<br/>off 'child'"]
   D1 --> D4["D4 · what replaces the<br/>descendant-chain liveness check"]
   D1 --> D3["D3 · cluster bugs: 1 closes,<br/>4 re-scoped on evidence"]
+  D1 --> D5["D5 · the run's activity reads<br/>inside its parent, on demand"]
 ```
 
 The dashed path is this spec's own first draft, superseded by the owner on 2026-09-18. Both the
@@ -23,9 +24,10 @@ away and the sessions are still second-class, just harder to find.
 
 ## D1 — Make dispatch-run sessions first-class on their flow {#d1}
 
-**Status: OPEN on one sub-question** (how they appear by default — see the fork at the end of this
-card). The direction is settled by the owner amendment of 2026-09-18
-([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5724121456)).
+**Status: SETTLED.** Direction from the owner amendment of 2026-09-18
+([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5724121456));
+the sub-question below was answered by the owner on 2026-09-18
+([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5732752729)).
 
 **Instead of** deleting the browsable Children surface, give a dispatch-run session the same
 standing on its flow as any other session: listable and openable on the flow's ordinary session
@@ -62,19 +64,33 @@ This direction adds surface, which tenet 3 makes us justify rather than assume: 
 is that the surface being added is the one that makes an existing surface honest, and the DevTool
 Children *tree* — the recursive descent that most strongly taught the nest — still goes.
 
-**Still open — the one sub-question.** Do dispatch runs appear in the **default** session listing,
-or only behind an explicit opt-in?
+**The sub-question, answered.** It was: do dispatch runs appear in the **default** session listing,
+or behind an opt-in? The owner's answer describes the *view*, not the wire:
 
-- *Opt-in (drafting against this).* First-class addressability, default list unchanged. A board
-  that dispatches fifty rows does not put fifty entries in front of a user who asked for their
-  conversations. Preserves the documented reason the narrowing exists.
-- *Default-on.* Stronger reading of "first-class". Simpler to explain, and no caller has to know
-  a flag exists. Costs the FIX-1009 protection, and every existing consumer of `GET /sessions`
-  sees its result set change.
+> Every session is now top level in the sense that you could go to that flow and see all sessions.
+> However those sessions can still be spawned/parented by another, in which we would show a label
+> indicating that in the session list, and when viewing the child session you can link to see the
+> parent session that spawned it. […] Ideally they show up under the current sessions, slightly
+> indented (to show that they are parented by another session in the list).
 
-Same mechanism either way; only the default moves. Recommendation is opt-in, because it delivers
-the amendment's actual requirement — reachable without descent — without silently changing what
-every existing caller sees.
+So the listing shows three things a flat list cannot: a **label** saying this session was spawned
+(or re-used) by a dispatcher, **indentation** under the session that spawned it, and a **link from
+the run back to its parent**. That is the shape; see the wireframe in `SPEC.md`.
+
+**The reading taken, and it is a reading.** "Top level in the sense that you *could* go to that
+flow and see all sessions" is a statement about reachability, so the **API keeps the opt-in** and
+**the DevTool opts in by default** and renders the hierarchy above. That delivers every element
+the owner described, and a third-party consumer of `GET /sessions` still sees exactly what it sees
+today — the FIX-1009 protection survives where it was aimed, at callers who never asked for
+machine sessions. Making the *wire* default-on instead is a one-line change to S1 and a `minor`
+with a behaviour-change note; **say so if that was the intent.** Everything else in this spec is
+unaffected either way.
+
+**Indentation is a view, not a tree.** It is worth being explicit, because the thing this issue
+objects to is a nest: the list stays one flat, ordinary session list that happens to indent a row
+under its parent when both are on screen. There is no recursion, no drill-down, and no level
+beyond one — a run spawned by a run indents once, beside its own parent, not twice. The DevTool
+renders the hierarchy; it does not navigate one.
 
 ## D2 — Rename the mechanism off "child" {#d2}
 
@@ -95,6 +111,45 @@ removed surface in the changelog and nothing live.
 **What lost:** `dsx_` session-id prefix bytes are **not** changed. Renaming the prefix would change
 every derived id, so an in-flight retry across the upgrade would mint a second session beside the
 one it started. The prefix stays; only the vocabulary moves.
+
+---
+
+## D5 — A dispatch run's activity reads inside its parent, on demand {#d5}
+
+**Status: SETTLED** by the owner on 2026-09-18
+([PR #1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888#issuecomment-5732752729)).
+
+**Instead of** making a reader open the run's own session to see what it did, let the parent's
+block tree show the dispatched run's activity **in place** — clearly marked as a separate session
+the dispatcher spawned or re-used, and **not loaded by default**. The reader chooses to pull it in.
+
+**Because** first-class addressability solves *finding* the work and creates a second problem:
+following one conversation now means bouncing between two session views. The owner's words are
+"so that you don't have to bounce around." Inlining the activity answers the reading question
+without re-creating the thing this issue objects to, and the two are genuinely different: a
+**Children tab is a place you navigate to**, where a session's identity is its position in a tree;
+inline activity is **one session's work shown where it was triggered**, with the separateness
+stated rather than hidden.
+
+**Default-off is load-bearing, not a preference.** A dispatcher that drains fifty rows would
+otherwise pour fifty sessions' items into one block tree and make the parent unreadable — the
+exact failure the flat session list was protecting against, moved one surface over. Off by
+default, the cost is paid only by the reader who asked for it, one run at a time.
+
+**"Spawned (or re-used)" is a real distinction and the label must carry it.** A `dispatcher({ key })`
+call derives its session id, so a retry re-enters the session it started rather than minting a
+second one (D2, and the adoption cases in the derivation suite). A reader looking at a run that
+started before this turn needs to know they are seeing an existing session being re-entered, not
+new work. The derivation already knows which happened; the label surfaces it.
+
+**Locks in** that the block tree gains a node kind for a dispatched run, that it is collapsed
+until asked for, and that expanding it never navigates away from the parent.
+
+**What lost:** the simplicity of "a dispatch run is just another session, look at it there."
+This is real added surface, and tenet 3 makes it justify itself: the justification is that the
+alternative it replaces — bouncing between two sessions to read one causal chain — is the reason
+people reached for a nest in the first place. Also lost: any claim that this change only subtracts
+from the DevTool. It removes a recursive tree and adds an inline view, and the second is not free.
 
 ---
 
@@ -177,7 +232,10 @@ close with the substrate. Four of five stay open, because four of five describe 
 
 ## Open
 
-None. D1 was the only fork for the product owner and it is signed (above).
+**D4 only** — what replaces the descendant-chain liveness check. D1 is settled in direction and in
+its default, D5 is settled, and D2 and D3 were never forks for the product owner. D4 is the one
+question left, and it is the one with a security cost rather than a navigation cost, which is why
+it is not being inherited from D1.
 
 ## Settled
 
@@ -192,3 +250,4 @@ None. D1 was the only fork for the product owner and it is signed (above).
 - **Round 1** — Four factual corrections to the spec's own documents; no change of approach. Recorded in `PLAN.md` → Notes from review.
 - **Round 2** — D1 signed (Path A). Two findings folded against real code: `FIX-1121` moved from cancel to re-scope, and `SPEC.md`'s kitchen-sink promise corrected to what S8 actually delivers.
 - **Round 3 — owner amendment, 2026-09-18.** D1 superseded before implementation began. The target is unchanged (stop teaching a session tree as the org chart); the cause was re-identified as second-class sessions rather than the window onto them, so the change turned from a removal into an addition. Checking the amendment's premise showed the gap is one missing opt-in on `GET /sessions`, with every other route already serving these sessions by id — so the new direction is a smaller diff than the removal it replaced. D3 went back to pending, and D4 was opened for the authorization half.
+- **Round 4 — owner, 2026-09-18.** The DevTool shape specified: dispatch runs indented under the session that spawned them, labelled as spawned or re-used, and linking back to their parent; plus a new ask — the run's activity readable **inside the parent's block tree**, loaded on demand rather than by default. D1's open sub-question closed with it. That second ask is new scope and became D5. Wireframes added to `SPEC.md` on request. D4 remains the only open question.

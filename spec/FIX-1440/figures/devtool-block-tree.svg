@@ -1,0 +1,80 @@
+<svg viewBox="0 0 940 352" width="940" height="352" role="img" aria-label="A wireframe of a parent session's block tree in the DevTool. By default a dispatched run appears as a single collapsed node that names the separate session and offers to load its activity. Once the reader loads it, the run's items appear inline beneath that node in a tinted band, still marked as a separate session, with a link to open the session on its own."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .pane  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .row   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .row-d { fill:var(--surface); stroke:var(--code); stroke-width:1.4; }
+    .band  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .inner { fill:var(--surface); stroke:var(--code); stroke-width:1; stroke-opacity:.45; }
+    .lbl   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .hd    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .sm    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .keep  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9px; letter-spacing:.09em; }
+    .link  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .note  { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .edge  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+  </style>
+
+  <!-- ─────────── default ─────────── -->
+  <text class="lbl" x="20" y="24">DEFAULT — NOT LOADED</text>
+  <rect class="pane" x="16" y="34" width="424" height="266" rx="6"/>
+
+  <text class="lbl" x="36" y="56">WEEKLY REPORT CHAT · BLOCKS</text>
+
+  <rect class="row" x="36" y="66" width="384" height="34" rx="5"/>
+  <text class="hd" x="52" y="87">gather figures</text>
+
+  <rect class="row-d" x="36" y="110" width="384" height="60" rx="5"/>
+  <text class="keep" x="52" y="130">DISPATCHED · SEPARATE SESSION</text>
+  <text class="hd" x="52" y="148">summarize-report</text>
+  <text class="link" x="52" y="163">+ load this session's activity</text>
+
+  <rect class="row" x="36" y="180" width="384" height="34" rx="5"/>
+  <text class="hd" x="52" y="201">post to channel</text>
+
+  <text class="sm" x="36" y="240">one node · the parent stays readable however</text>
+  <text class="sm" x="36" y="256">many rows the dispatcher drained</text>
+
+  <!-- ─────────── arrow ─────────── -->
+  <path class="edge" d="M452 156 L478 156"/>
+  <path d="M478 151 L488 156 L478 161 z" fill="var(--ink-3)"/>
+
+  <!-- ─────────── loaded ─────────── -->
+  <text class="lbl" x="508" y="24">THE READER LOADS IT</text>
+  <rect class="pane" x="504" y="34" width="420" height="266" rx="6"/>
+
+  <text class="lbl" x="524" y="56">WEEKLY REPORT CHAT · BLOCKS</text>
+
+  <rect class="row" x="524" y="66" width="380" height="30" rx="5"/>
+  <text class="hd" x="540" y="86">gather figures</text>
+
+  <rect class="band" x="524" y="104" width="380" height="128" rx="5"/>
+  <text class="keep" x="540" y="122">DISPATCHED · SEPARATE SESSION</text>
+  <text class="link" x="806" y="122">open it ↗</text>
+  <text class="hd" x="540" y="140">summarize-report</text>
+
+  <rect class="inner" x="540" y="150" width="348" height="24" rx="4"/>
+  <text class="sm" x="552" y="166">read the figures resource</text>
+  <rect class="inner" x="540" y="178" width="348" height="24" rx="4"/>
+  <text class="sm" x="552" y="194">draft the summary</text>
+  <rect class="inner" x="540" y="206" width="348" height="24" rx="4"/>
+  <text class="sm" x="552" y="222">settle the board row</text>
+
+  <rect class="row" x="524" y="242" width="380" height="30" rx="5"/>
+  <text class="hd" x="540" y="262">post to channel</text>
+
+  <text class="sm" x="524" y="290">the tint and the label say it is another session</text>
+
+  <!-- ─────────── reading ─────────── -->
+  <text class="note" x="20" y="322">Default-off is the rule, not the preference: a dispatcher that drains fifty rows would otherwise pour fifty sessions into one</text>
+  <text class="note" x="20" y="338">tree. The reader pays for one run at a time, and expanding never navigates away from the parent.</text>
+</svg>

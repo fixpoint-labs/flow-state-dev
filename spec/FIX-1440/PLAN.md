@@ -8,8 +8,9 @@ Directional. Shape and sequence, not the finished design.
 
 ## The shape of the change
 
-One sentence: **`GET /sessions` learns to include dispatch runs, the DevTool stops being a tree to
-descend, and `/children` is re-documented as provenance.** Everything else follows from those.
+One sentence: **`GET /sessions` learns to include dispatch runs, the DevTool lists them indented
+under what spawned them and can pull a run's activity into its parent on demand, and `/children`
+is re-documented as provenance.** Everything else follows from those.
 
 The gap is narrow and was measured, not assumed — see `DECISIONS.md → D1`. A dispatch-run session
 is already openable by id on every route that matters; it is only undiscoverable. So most of the
@@ -23,7 +24,8 @@ work is presentation and docs, not plumbing.
 | **S2** | The wire name for that include. **Not** `parentage: "all"` verbatim — that is a storage concept. Pin a caller-facing name (`include=dispatch-runs`) and map it at the route | Add |
 | **S3** | `packages/client` — `sessions.list` gains the option and its type | Add |
 | **S4** | `packages/react` — expose it wherever the session list is read | Add |
-| **S5** | `packages/devtool` — dispatch runs appear among the flow's sessions, each showing what dispatched it. **Delete** the recursive Children tab and its breadcrumb: that descent is the teaching the issue objects to | Add + delete |
+| **S5** | `packages/devtool` — the session list. Dispatch runs appear among the flow's sessions, **indented one level** under the session that spawned them, each carrying a **spawned / re-used** label and an **open parent** link. **Delete** the recursive Children tab and its breadcrumb: that descent is the teaching the issue objects to. The DevTool passes the S2 include by default — the wire default does not move (D1) | Add + delete |
+| **S12** | `packages/devtool` — the block tree (**D5**). A dispatched run renders as one collapsed node naming the separate session, with a "load this session's activity" affordance that pulls its items in place, and a link to open the session on its own. **Collapsed by default**, and expanding never navigates away | Add |
 | **S6** | Liveness authorization per **D4** — gated on that decision, which is open. Do not start until it is answered | Blocked |
 | **S7** | `child-session-routes.ts` — keep. Re-document as a provenance index; rename its vocabulary under S8 | Keep + rename |
 | **S8** | Rename (D2): `context/detached-child.ts` → `dispatch-run.ts`, `deriveDispatchChildSessionId` → `deriveDispatchRunSessionId`, `DispatchedChild`, and the stale header claim about settle/interrupt | Rename; **no change to `dsx_` or hash material** |
@@ -38,16 +40,18 @@ flowchart TD
   S2[S2 pin the wire name] --> S1[S1 route passes parentage]
   S1 --> S3[S3 client]
   S3 --> S4[S4 react]
-  S4 --> S5[S5 devtool: list + kill the tree]
-  S5 --> S10[S10 kitchen-sink copy]
+  S4 --> S5[S5 devtool list: indent + label + parent link]
+  S5 --> S12[S12 devtool block tree: load a run in place]
+  S12 --> S10[S10 kitchen-sink copy]
   S1 --> S9[S9 docs]
   S9 --> S8[S8 rename]
   D4{{D4 answered}} --> S6[S6 liveness auth]
   S11[S11 Linear dispositions]
 ```
 
-S6 hangs off an open decision and is the reason this spec is not yet implementable end to end. S1–S5 and S8–S10 are unblocked once the D1 sub-question is answered, because that answer only
-changes the **default**, not the mechanism.
+S6 hangs off D4 and is the only reason this spec is not implementable end to end. Everything else
+is unblocked: D1 and D5 are settled, so S1–S5 and S8–S12 can start now. S12 is the cheapest thing
+to cut if the set needs trimming — it is additive and nothing else depends on it.
 
 ## Checks
 
@@ -57,6 +61,8 @@ changes the **default**, not the mechanism.
 | A new listing test: dispatch a row, then list the flow's sessions with the include | The run is discoverable without descending — the whole point of D1 | unit |
 | The same listing **without** the include | Today's result set is byte-identical, so no existing caller's view changes | unit |
 | `packages/engine/test/context/detached-child.test.ts` determinism cases (renamed) | S8 changed names, not bytes | unit |
+| A devtool test: a flow with one conversation and two runs it dispatched | The runs render indented under their parent, labelled spawned or re-used, with a parent link. One level only — a run spawned by a run does not indent twice | component |
+| A devtool test: mount a parent whose block tree contains a dispatched run | The run's items are **absent** until the load affordance is used, then present and marked as a separate session. This is D5's default-off, and it is the assertion that matters | component |
 | `pnpm typecheck` / `pnpm test` | Nothing else moved | CI |
 | `pnpm --filter docs build` with `onBrokenLinks: throw` | No dangling anchor from a reframed section | CI |
 | `node spec/FIX-1440/evidence/first-class-dispatch-runs.mjs` | All six assertions green — the door opened, the descent teaching is gone, and the provenance route and derivation survived. **RED 3/6 at spec time by design** | acceptance |
@@ -98,9 +104,11 @@ the assertion no longer meant anything.
   the fence between this change and a silent dispatch regression.
 - **Don't change `dsx_` or the hash material.** Derived ids are how a retry re-enters its own run.
 - **Don't widen the default listing silently.** The `parentage` narrowing exists for a documented
-  reason (`stores/types.ts:291–304`). If the answer to D1's sub-question is default-on, that is a
-  deliberate, announced behaviour change for every existing consumer, and it needs its own line in
-  the changeset.
+  reason (`stores/types.ts:291–304`), and D1 keeps it: the **wire** default does not move, the
+  DevTool just opts in. If that is ever flipped, it is a deliberate, announced behaviour change for
+  every existing consumer and it needs its own line in the changeset.
+- **Don't let the indent become a tree.** One level, rendered from `parentSessionId` on records already in the list. No recursive fetch, no breadcrumb, no drill-down — the moment it recurses it is the Children tab again under a new name.
+- **Don't load a dispatch run's activity eagerly.** D5 is default-off for a reason a test should hold: a fifty-row drain must not pour fifty sessions into one block tree.
 - **Don't drop the descendant walk without answering D4.** It re-checks principal, tenant and flow
   at every hop; removing it widens liveness, it does not merely relax a shape rule.
 - **Rebuild core before typechecking a dependent package.** A stale `dist` reports a clean
