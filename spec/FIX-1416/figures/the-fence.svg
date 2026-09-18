@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 452" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Four things offer a seat tools. Today three reach the fence and only two cross it: the tools the seat named, and a capability's framework controls. A capability's catalog grant stops at the fence, and a blocks folder beside the worker is not read at all. After, that folder is read and crosses too.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-off  { fill:none; stroke:var(--rule); stroke-width:1.2; stroke-dasharray:3 3; }
+    .n-see  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-off  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .a      { stroke:var(--ink-2); stroke-width:1.2; fill:none; }
+    .a-new  { stroke:var(--accent); stroke-width:1.6; fill:none; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:5 4; }
+    .stop   { stroke:var(--gone); stroke-width:1.6; }
+  </style>
+
+  <g id="row-today" transform="translate(0,28)">
+    <text class="t-lbl" x="16" y="12">TODAY</text>
+    <text class="t-lbl" x="440" y="12" text-anchor="middle">THE FENCE — A DECLARED tools:</text>
+    <text class="t-lbl" x="560" y="12">WHAT THE MODEL MAY CALL</text>
+
+    <rect class="n-box" x="16" y="24" width="286" height="30" rx="4"/>
+    <text class="t-b" x="30" y="43">a key the seat named in <tspan class="t-s">tools:</tspan></text>
+    <rect class="n-box" x="16" y="60" width="286" height="30" rx="4"/>
+    <text class="t-b" x="30" y="79">a capability&#8217;s catalog grant</text>
+    <rect class="n-box" x="16" y="96" width="286" height="30" rx="4"/>
+    <text class="t-b" x="30" y="115">a capability&#8217;s framework control</text>
+    <rect class="n-off" x="16" y="132" width="286" height="30" rx="4"/>
+    <text class="t-off" x="30" y="151">a block beside the worker &#8212; not read</text>
+
+    <path class="a" d="M302 39 H556"/><path class="a" d="M548 35 l8 4 -8 4"/>
+    <path class="a" d="M302 75 H424"/>
+    <path class="stop" d="M428 70 l10 10 M438 70 l-10 10"/>
+    <path class="a" d="M302 111 H556"/><path class="a" d="M548 107 l8 4 -8 4"/>
+
+    <path class="fence" d="M440 18 V170"/>
+
+    <rect class="n-see" x="560" y="24" width="364" height="102" rx="5"/>
+    <text class="t-s" x="576" y="52">desk-note</text>
+    <text class="t-s" x="576" y="74">the skill loader</text>
+    <text class="t-lbl" x="576" y="102">NOTHING ELSE</text>
+  </g>
+
+  <g id="row-after" transform="translate(0,256)">
+    <text class="t-lbl" x="16" y="12">AFTER</text>
+
+    <rect class="n-box" x="16" y="24" width="286" height="30" rx="4"/>
+    <text class="t-b" x="30" y="43">a key the seat named in <tspan class="t-s">tools:</tspan></text>
+    <rect class="n-box" x="16" y="60" width="286" height="30" rx="4"/>
+    <text class="t-b" x="30" y="79">a capability&#8217;s catalog grant</text>
+    <rect class="n-box" x="16" y="96" width="286" height="30" rx="4"/>
+    <text class="t-b" x="30" y="115">a capability&#8217;s framework control</text>
+    <rect class="n-new" x="16" y="132" width="286" height="30" rx="4"/>
+    <text class="t-b" x="30" y="151">a block beside the worker</text>
+
+    <path class="a" d="M302 39 H556"/><path class="a" d="M548 35 l8 4 -8 4"/>
+    <path class="a" d="M302 75 H424"/>
+    <path class="stop" d="M428 70 l10 10 M438 70 l-10 10"/>
+    <path class="a" d="M302 111 H556"/><path class="a" d="M548 107 l8 4 -8 4"/>
+    <path class="a-new" d="M302 147 H556"/><path class="a-new" d="M547 142 l9 5 -9 5"/>
+
+    <path class="fence" d="M440 18 V170"/>
+
+    <rect class="n-see" x="560" y="24" width="364" height="138" rx="5"/>
+    <text class="t-s" x="576" y="52">desk-note</text>
+    <text class="t-s" x="576" y="74">the skill loader</text>
+    <text class="t-s" x="576" y="96">check-inventory</text>
+    <text class="t-lbl" x="576" y="130">NOTHING ELSE</text>
+  </g>
+</svg>
