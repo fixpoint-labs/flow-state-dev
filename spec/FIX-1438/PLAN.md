@@ -48,7 +48,7 @@ flowchart TD
 
 **The red state to produce first.** The finding reproduces today on `main`: the control is red with *the run reported outcome "stopped-at-limit" and the row settled done anyway*, and the plain gate is green (both run 2026-09-18 on `a34a3ab`, this branch's base). VG is that same pair after the change, with the control's red coming from a different assertion. If VG's control is *green* at any point, the change is wrong — a control that stopped going red has stopped being a control.
 
-## Pinned names · the only two
+## Pinned names · the only three
 
 | Where | Name | Why pinned |
 |---|---|---|
