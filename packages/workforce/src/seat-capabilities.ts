@@ -23,7 +23,8 @@
  * entry, `(ctx) => refs`, which the framework resolves per execution off
  * `ctx.flow.config`.
  *
- * That path carries **context and tools only**. Resources, state schemas and
+ * That path carries **context and tools** — catalog tools and controls alike;
+ * {@link DYNAMIC_KEYS} is the list. Resources, state schemas and
  * the generator singletons have to exist before a block runs, so the framework
  * resolves them at build time from static entries alone. Two consequences run
  * through this whole file:
@@ -102,22 +103,21 @@ const BUILD_TIME_ONLY_KEYS = [
 /**
  * The surface keys the dynamic path DOES carry, as the framework resolves it.
  *
- * `controlTools` is here for the same reason `tools` is — the framework walks
- * a dynamic entry for both in one pass — but it behaves differently once it
- * arrives: a control is never fenced by the block's `tools:`, while a catalog
- * tool is. So a seat that selects a control-bearing preset can call that
- * control even though its own `tools:` list is empty. That is the framework's
- * rule, not this module's: the capability is the declaration, and a control is
- * usually built inside it and never exported, so there is no name a `tools:`
- * list could use to let it back in.
- *
  * Kept only so the two lists can be checked against `PresetDef` together.
+ *
+ * `controlTools` (FIX-1393) is dynamic because core makes it so —
+ * `resolveDynamicCapSurface` collects it alongside `tools` — not as a
+ * preference. Build-time-only would refuse a seat naming a control-bearing
+ * preset, which inverts what a control is for.
+ *
+ * Being dynamic is not being unfenced: a selected preset's catalog `tools`
+ * still stop at the seat's own `tools:`. See `PresetDef.controlTools` for the
+ * distinction, and the paired tests in `test/seat-capabilities.test.ts` for
+ * the behaviour — *"carries a selected preset's context but not its tool past
+ * the seat's fence"* and *"lets a selected preset's CONTROL tool through the
+ * same empty tools list"*, one key apart on the same seat.
  */
-const DYNAMIC_KEYS = [
-  "context",
-  "tools",
-  "controlTools"
-] as const satisfies readonly (keyof PresetDef)[];
+const DYNAMIC_KEYS = ["context", "tools", "controlTools"] as const satisfies readonly (keyof PresetDef)[];
 
 /**
  * Compile-time proof that every `PresetDef` key is classified as one or the
