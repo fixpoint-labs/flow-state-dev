@@ -2281,6 +2281,13 @@ FIX-1377 and FIX-1416 are in spec review; FIX-1435 and FIX-1441 are open), so th
 **not wrapped**: every endpoint that never occurred falls back to **collection time** and the epic
 row stays a **partial**.
 
+**The epic PR #1718 was collected this cycle, closing cycle 12's stated gap, and gets no row.** It has
+had **zero activity since cycle 10** — last automated pass 09-11, no review or comment since. Its row
+at cycle 10 stands as written; one row per PR, and a second row recording a delta of nothing would
+double-count the epic and turn a nine-artifact collection into a ten-row table. Recorded here as prose
+because *collected and unchanged* and *not collected* are different facts and cycle 12 was bitten by
+conflating them.
+
 **Method — rounds.** Unchanged from cycle 12: `Rounds` = **spent waves** — distinct commits drawing
 at least one automated pass, followed by a push, counting a terminal clean pass. Read from
 `/pulls/N/reviews` **and** `/issues/N/comments`, because a zero-finding Codex pass posts as an issue
@@ -2302,7 +2309,6 @@ collected the same way, and the comparison below says so rather than reporting a
 
 | PR | Kind | Rounds | Endpoint | Feedback classes (deduped) | Felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|---|
-| [#1718](https://github.com/fixpoint-labs/flow-state-dev/pull/1718) epic-spec | epic | **unchanged (in flight)** | collection | — **zero new activity since cycle 10**; last automated pass 09-11 | no | — collected this cycle, closing cycle 12's stated gap |
 | [#1848](https://github.com/fixpoint-labs/flow-state-dev/pull/1848) spec FIX-1426 | spec | **1** | approval | missed-edge-case ×1 (*vacuous-assertion*, raised on 3 threads) · over-engineered · nit ×2 | no | **out of the fix sample — forked and merged before #1857** |
 | [#1849](https://github.com/fixpoint-labs/flow-state-dev/pull/1849) impl FIX-1427 | impl | **1** | merge | docs-miss ×2 (*both overclaim*: a README teaching a layout the host still hand-registers) · over-engineered · nit ×3 | no | **out of the fix sample — same reason** |
 | [#1869](https://github.com/fixpoint-labs/flow-state-dev/pull/1869) impl FIX-1420 | impl | **2** (1 finding + 1 clean) | merge | stale-restatement ×2 (a row 16 lines under the card it contradicts; an `aria-label` teaching the opposite of its own diagram) · docs-miss ×2 (one *overclaim*) · missed-edge-case | no | **the scan it shipped reported itself green while two sites survived** |
@@ -2413,6 +2419,55 @@ missed by a sweep that demonstrably ran:
 fold comment, and shipped a wrong tag anyway** — because the hole has no method attached. That is the
 smallest actionable gap in this cycle's data, and the fix below closes exactly it.
 
+### The result — the fix was unbindable in three independent ways on first contact
+
+**This is cycle 13's finding.** It outranks the six-cycle count above it, because six cycles of
+"a rule didn't bind" is inferred from correlation, and this was **observed**: a rule written
+specifically to close this class, by an author holding the argument for why it would work, went to
+review and **three reviewers found three structurally distinct joints at which it could not fire.**
+None overlaps. Each is a different part of the machine.
+
+| Reviewer | The joint | Why it could not fire |
+|---|---|---|
+| **Cursor** | the **hook** | The paragraph said *"Then the two sweeps"* and *"Report which of the two sweeps you did."* Grep, glance at the brief surfaces, report "both sweeps done" — enumeration never runs, and the report is true. |
+| **Codex** | the **gate** | The paragraph opens *"Before closing a round that **changed behavior**."* **#1886 and #1898 changed no behavior.** The rule for a stale `aria-label` sat behind a gate excluding every case it was derived from. |
+| **Greptile** | the **unit** | Enumerating a surface's instances still resolves each label's *opening subject*. #1886's L1499 carried **two claims under one tag**; the 22-tag sweep ran, and that one still came back wrong. |
+
+Hook, gate, unit. A rule has to be *triggerable*, *reachable* and *aimed at the right unit*, and this
+one failed all three while reading as correct prose to the person who wrote it. **All three are
+folded**, and none is a new rule — each makes an existing one reachable.
+
+**A fourth instance, in the paragraph itself.** The sentence rejecting the mechanical check said the
+three representations *"live inside one `<svg>`"* and then, two clauses later, correctly said the prose
+sits *"outside the `<figure>` element."* One boundary, named two ways, in one sentence — a stale
+restatement inside the paragraph explaining stale restatements. Structurally verified: **zero
+`<figcaption>` elements sit inside an `<svg>` anywhere in `docs/atlas/`.** Corrected.
+
+#### What this does to the recommendation — stated plainly
+
+**The landing does not move: one checklist line in `issue-implement` 10.6 is still the right
+altitude.** But the entry's claim for it is now weaker, and pretending otherwise would be the defect
+this file exists to catch:
+
+- **The line shipped unbindable and was repaired only because three reviewers stress-tested its
+  structure.** In the ordinary case a loop fix gets no such pass. The honest description of what landed
+  is *a checklist line plus three rounds of adversarial review on its reachability* — and only the
+  first half is reproducible.
+- **The failure mode this cycle measured is reachability, not wording.** Six cycles of sharpening
+  assumed the sentences weren't sharp enough. Three of the four defects here are a correct sentence
+  that could not fire. That is a different quantity, and **claim 1 now measures it first**.
+- **What caught it was not a rule.** It was three readers examining the structure a rule was inserted
+  into. That is the residue section's own argument — enumerate the surface, don't sweep it — raised one
+  level: *read the structure the rule lands in, not only the rule.*
+
+**The candidate fix that follows — deliberately not taken here.** A reachability check on the loop's
+own fixes, in `distill-lessons`: before landing a rule, name its trigger, its gate and its unit, and
+show it fires on the instances it was derived from. That is what the three reviewers did by hand. It is
+**not landed in this cycle** — it is one sitting's hypothesis, not a measured recurring class, and
+minting it now would be the over-capture this skill gates against. It is claim 6 below, with this
+cycle's four instances as its baseline. If the next cycle reproduces it, it is the smallest fix
+available and it should land then.
+
 ### Findings recorded, not fixed
 
 - **The repo has built the right instrument three times in two cycles and retained none of it.**
@@ -2420,10 +2475,15 @@ smallest actionable gap in this cycle's data, and the fix below closes exactly i
   nothing** — not `package.json`, not `.github/workflows/`, not `docs/`, not `AGENTS.md`, not a skill.
   Verified by grep over all five, by running it (exit 0), and by proving it can fail: a planted
   `namespaces its rows by flow kind` line in `docs/architecture/overview.md` made it exit 1 naming the
-  line. `pnpm typecheck` already runs five sibling `validate-*.mjs` guards, so a wired home exists. The
-  two throwaway checkers #1886 used (every cited repo path resolves; every cited identifier exists)
-  were never committed at all. **Follow-up, not folded here:** wire it, and settle whether a per-claim
-  guard is a deliverable or a scratch file.
+  line. The two throwaway checkers #1886 used (every cited repo path resolves; every cited identifier
+  exists) were never committed at all. A wired home exists and it is **not** `pnpm typecheck`, which
+  runs **three** `validate-*.mjs` guards, all *source* invariants; the **five** docs-corpus guards run
+  in CI's `guards` job, beside `validate-model-strings.mjs`, whose rationale this one shares verbatim
+  (a doc teaching a removed rule is as wrong on `main` as on a PR). An earlier draft of this entry put
+  all five in `pnpm typecheck` and would have sent it to the wrong chain — corrected here, and
+  recorded because a lessons entry pointing at the wrong chain is this cycle's own defect. **Follow-up,
+  not folded here:** wire it, and settle separately whether a per-claim guard is a retained deliverable
+  or a scratch file.
 - **Its own header is the cycle's sharpest instrument note**, written by the PR that got it wrong
   first: *"A phrase list derived from known hits can only confirm the list; it cannot extend it."*
   Rebuilt to match **concepts co-occurring**, it holds. Same finding as cycle 12's *"does deriving a
@@ -2482,7 +2542,7 @@ were tested against this cycle's data rather than assumed:
   identifier exists — #1886's two throwaway checkers). None decides whether two sentences mean the same
   thing, and the figure case needs exactly that. **(ii) The strict, decidable version catches one of
   three instances.** A co-edit check — *a commit touched some but not all of a figure's `<text>`,
-  `aria-label` and `<figcaption>`* — fires on #1869, where all three live inside one `<svg>`. It does
+  `aria-label` and `<figcaption>`* — fires on #1869, where all three live inside one `<figure>`. It does
   **not** fire on #1886 §6 or on #1898, where the corrected prose sits *outside* the `<figure>`
   element; reaching those needs a tunable "prose near the figure" radius, which is a false-positive
   generator, and the repo's own guard header already says why that fails: *"a guard nobody can get to
@@ -2490,13 +2550,24 @@ were tested against this cycle's data rather than assumed:
 - **The class is also not figure-shaped.** Three of twelve `stale-restatement` findings involve a
   figure. Scoping the fix to figures would aim it at a quarter of the class.
 
-**What landed instead** — two sentences inside 10.6's existing sweep paragraph, closing the hole that
-paragraph opens:
+**What landed instead** — inside 10.6's existing sweep paragraph, closing the hole that paragraph
+opens. Quoted **as landed in this PR**; `issue-implement` 10.6 is the live source and will drift from
+this snapshot, which is the point of an audit record:
 
 > **For a surface that paraphrases, enumerate the surface instead of the words** — a figure is three
 > representations that move together (its visible text, its `aria-label`, its caption sentence), a
 > tagged table is its N tags, a status column is its N rows — and resolve each instance against the
-> corrected claim. An empty grep over a paraphrasing surface is not coverage of it.
+> corrected claim. An empty grep over a paraphrasing surface is not coverage of it. **One label can
+> cover more than one claim, so resolve every claim under it, not the opening subject** — and where
+> those claims differ in status or layer, **split the label** rather than picking the reading that
+> makes it true. **Report both sweeps by name, and say whether enumeration ran and over what** — a
+> surface sweep reported without it is a word sweep twice.
+
+…together with three changes review forced on the surrounding paragraph, recorded in *The result*
+above: the sweeps are now **named** (word sweep / surface sweep), the paragraph's gate was broadened
+from *a round that changed behavior* to any **corrected claim or documentation change**, and a label
+covering more than one claim must have **every** claim resolved and the label **split** where they
+differ.
 
 It is the third rung of this skill's own ladder (one checklist line in a skill), an edit to an existing
 step rather than a new one, and it names the method that **already worked twice in this cycle's own
@@ -2513,13 +2584,25 @@ remains unwritten and is not part of this landing.
    running sweep missed, two of which escaped review entirely. Score the second group — the first is
    mostly reachable by 10.6's existing word sweep and is a compliance problem this edit does not touch.
    Score it only on a sample that contains documentation.
+   **And score reachability first, because it is now the measured failure mode:** for each instance,
+   ask whether the rule *could have fired* — was its gate open, was its obligation named in the hook —
+   before asking whether anyone applied it. Two of this cycle's own folds were reachability defects
+   found by review, not wording defects. A cycle that scores only application will keep reporting
+   "the rule didn't bind" for a rule that was never reachable.
 2. **Is `vacuous-assertion` measurable yet?** Not this cycle: the population had one artifact that
    asserts. Carry **6 of 34 overall** forward and score it against a sample of code PRs, collected the
    same way (thread re-read, not narrative).
 3. **Does a per-claim guard survive its own PR?** Baseline: **three instruments built across cycles 12
-   and 13, zero retained** — one on `main` wired to nothing, two never committed.
+   and 13, zero retained** — one on `main` wired to nothing, two never committed. The first is wired
+   in a separate change, which makes it the precedent case; the retention policy is filed, not decided.
 4. **Does the Linear mirror ever bind?** Baseline is now **six instances across two cycles** (cycle
    12's four, plus FIX-1441 and FIX-1416 here), against a rule that is precise and a mechanism
    (`epic-wake`) that already computes the disagreement. Second cycle recorded, nothing built.
 5. **Are the loop's fixes landed at the gate?** Cycle 12 was the first `yes`. This cycle is the second.
    The baseline is **two of five landed same-day**; score whether it holds.
+6. **Is a loop fix's *reachability* the thing that fails?** New, and not acted on this cycle. Baseline:
+   **four defects in one sitting, on one rule** — hook (satisfiable without the obligation), gate
+   (excluded its own motivating cases), unit (resolved a label's opening subject, not its claims), plus
+   a stale restatement inside the paragraph explaining stale restatements. Each found by a different
+   reviewer. If a second cycle reproduces this, land the reachability check in `distill-lessons`: name a
+   proposed rule's trigger, gate and unit, and show it fires on the instances it came from.
