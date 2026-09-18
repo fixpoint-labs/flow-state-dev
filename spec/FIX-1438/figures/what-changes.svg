@@ -1,0 +1,94 @@
+<svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two columns. Today, a finished run reports both a status and an outcome word, only the status reaches the completion check, the outcome word goes nowhere, and the row settles completed. After, both reach the check, the check answers not done, and the row re-opens with the reason attached.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-done { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-live { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .e      { stroke:var(--ink-2); stroke-width:1.3; fill:none; }
+    .e-gone { stroke:var(--gone); stroke-width:1.3; fill:none; stroke-dasharray:4 3; }
+    .e-new  { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .div    { stroke:var(--rule); stroke-width:1; stroke-dasharray:3 4; }
+  </style>
+
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--code)"/>
+    </marker>
+  </defs>
+
+  <g id="headings">
+    <text class="t-lbl" x="24" y="24">TODAY</text>
+    <text class="t-lbl" x="504" y="24">AFTER</text>
+  </g>
+
+  <line class="div" x1="470" y1="12" x2="470" y2="318"/>
+
+  <g id="today-run">
+    <rect class="n-box" x="24" y="38" width="196" height="78" rx="5"/>
+    <text class="t-lbl" x="40" y="58">THE RUN ENDED</text>
+    <text class="t-s" x="40" y="80">status: completed</text>
+    <text class="t-s" x="40" y="100">outcome: stopped-at-limit</text>
+  </g>
+  <g id="today-edges">
+    <path class="e" d="M220 78 L 272 78" marker-end="url(#a)"/>
+    <text class="t-s" x="228" y="70">status</text>
+    <path class="e-gone" d="M220 100 L 268 100 L 268 136" />
+    <circle cx="268" cy="142" r="4" fill="none" stroke="var(--gone)" stroke-width="1.3"/>
+    <text class="t-gone" x="196" y="164">outcome is recorded,</text>
+    <text class="t-gone" x="196" y="178">never consulted</text>
+  </g>
+  <g id="today-check">
+    <rect class="n-box" x="272" y="50" width="172" height="56" rx="5"/>
+    <text class="t-lbl" x="286" y="70">THE PHASE'S CHECK</text>
+    <text class="t-s" x="286" y="92">a commit exists → done</text>
+  </g>
+  <g id="today-row">
+    <rect class="n-box" x="272" y="216" width="172" height="62" rx="5"/>
+    <text class="t-lbl" x="286" y="236">THE BOARD ROW</text>
+    <text class="t-b" x="286" y="260">completed</text>
+    <path class="e" d="M358 106 L 358 210" marker-end="url(#a)"/>
+    <text class="t-gone" x="272" y="302">half the job, closed</text>
+  </g>
+
+  <g id="after-run">
+    <rect class="n-box" x="504" y="38" width="196" height="78" rx="5"/>
+    <text class="t-lbl" x="520" y="58">THE RUN ENDED</text>
+    <text class="t-s" x="520" y="80">status: completed</text>
+    <text class="t-s" x="520" y="100">outcome: stopped-at-limit</text>
+  </g>
+  <g id="after-edges">
+    <path class="e" d="M700 78 L 752 78" marker-end="url(#a)"/>
+    <text class="t-s" x="708" y="70">status</text>
+    <path class="e-new" d="M700 100 L 726 100 L 726 92 L 752 92" marker-end="url(#ag)"/>
+    <text class="t-s" x="704" y="118">outcome</text>
+  </g>
+  <g id="after-check">
+    <rect class="n-live" x="752" y="44" width="172" height="68" rx="5"/>
+    <text class="t-lbl" x="766" y="64">THE PHASE'S CHECK</text>
+    <text class="t-s" x="766" y="86">a commit, and how it</text>
+    <text class="t-s" x="766" y="100">stopped → not done</text>
+  </g>
+  <g id="after-row">
+    <rect class="n-box" x="752" y="216" width="172" height="62" rx="5"/>
+    <text class="t-lbl" x="766" y="236">THE BOARD ROW</text>
+    <text class="t-b" x="766" y="260">open again</text>
+    <path class="e-new" d="M838 112 L 838 210" marker-end="url(#ag)"/>
+    <text class="t-s" x="752" y="302">reason attached; the next</text>
+    <text class="t-s" x="752" y="316">attempt resumes the session</text>
+  </g>
+</svg>
