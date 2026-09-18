@@ -64,4 +64,8 @@ function entry(name) {
   return path.join(dir, 'dist', 'claude', name); // last-ditch; import will no-op if absent
 }
 
-import(pathToFileURL(entry("hooks.js")).href).then((m) => m.main(process.argv[2])).catch(() => { /* graft unavailable — no-op */ });
+// One launcher: an argv mode loads hooks.js (Stop / PostToolUse / …); no argv
+// loads statusline.js. Same resolve path either way — the copies were identical.
+const mode = process.argv[2];
+const script = mode ? "hooks.js" : "statusline.js";
+import(pathToFileURL(entry(script)).href).then((m) => m.main(mode)).catch(() => { /* graft unavailable — no-op */ });
