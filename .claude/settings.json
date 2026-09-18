@@ -24,6 +24,59 @@
             "statusMessage": "BP-009 docs advisory (optional; strict via FSD_DOCS_CHECK_STRICT=1)"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" stop",
+            "timeout": 8000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" post-edit",
+            "timeout": 10000
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|mcp__graft__|Read|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" tool-savings",
+            "timeout": 8000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" prompt",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" session-start",
+            "timeout": 8000
+          }
+        ]
       }
     ]
   },
@@ -35,7 +88,11 @@
       "mcp__Claude_Code_Remote__update_trigger",
       "mcp__Claude_Code_Remote__list_triggers",
       "mcp__Claude_Code_Remote__subscribe_pr_activity",
-      "mcp__Claude_Code_Remote__unsubscribe_pr_activity"
+      "mcp__Claude_Code_Remote__unsubscribe_pr_activity",
+      "Bash(graft:*)",
+      "Bash(npx graft:*)",
+      "Bash(graft-dev:*)",
+      "Bash(node dist/cli.js:*)"
     ],
     "deny": [
       "Read(./.env)",
@@ -44,5 +101,16 @@
   },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  }
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-statusline.cjs\""
+  },
+  "subagentStatusLine": {
+    "type": "command",
+    "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-statusline.cjs\""
+  },
+  "footerLinksRegexes": [
+    "graft/[\\w./-]+\\.md"
+  ]
 }
