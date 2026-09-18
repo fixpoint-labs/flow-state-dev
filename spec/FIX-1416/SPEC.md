@@ -4,7 +4,7 @@
 
 Feature (exploration) · `workforce` · small · 2 PRs · epic [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351)
 
-## Five people, before and after
+## Six people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
@@ -12,6 +12,7 @@ Feature (exploration) · `workforce` · small · 2 PRs · epic [FIX-1351](https:
 | **drops a tool into one worker's own folder** | Nothing happens, silently. The folder is passed over, and so is a `tools/` folder next to it | The block is that seat's, always, without being listed anywhere — the promise that seat's `skills/` folder already makes |
 | **reads a `WORKER.md` to see what a seat can call** | The `tools:` list is the whole answer | The list **plus** whatever sits in that seat's own folder. Two places now, not one |
 | **writes a block whose file name and block name disagree** | The seat is hired without complaint, and the model is advertised a name the seat's list never authorized | Refused when the workforce is hired, naming both |
+| **puts a tool in their folder that needs a store** | n/a — the folder isn't read. Wire it up naively and the tool is advertised to the model, runs, and finds the store handle simply absent. No error, anywhere | Refused when the workforce is hired, naming the block and the two ways to give it its store |
 | **attaches a tool-bearing capability to the workforce** | Its catalog tools are dropped for every seat; its framework controls still arrive | Unchanged, byte for byte |
 
 **Most of this already works and nobody can tell.** The pieces landed separately — the file scan
@@ -46,11 +47,19 @@ crossing).
 +             check-inventory.ts     ← this seat's, always, listed nowhere
 ```
 
-**The one line an app adds:**
+**The one line an app adds** — the app's catalog, on the option that already exists:
 
 ```diff
 - const agent = defineAgentWorkerFlow({ uses: capabilities });
-+ const agent = defineAgentWorkerFlow({ uses: capabilities, catalog: blocks, seatBlocks });
++ const agent = defineAgentWorkerFlow({ uses: capabilities, catalog: blocks });
+```
+
+**And the seat's own folder rides the hire step, where every other per-seat bag
+already rides** — no second option on the kind:
+
+```diff
+- hireWorkforce(workers, { kinds })
++ hireWorkforce(workers, { kinds, seatBlocks })
 ```
 
 **And the seat's own file, unchanged in shape:**
@@ -71,14 +80,17 @@ is new, and it is the part worth arguing about.
 flowchart LR
   F["workforce/blocks/*.ts"] -->|"fsdev gen"| M["the blocks map"]
   S["teams/*/workers/*/blocks/*.ts"] -->|"fsdev gen"| P["a per-seat map"]
-  M -->|"catalog:"| K["the agent kind"]
-  P -->|"seatBlocks:"| K
-  W["WORKER.md · tools:"] -->|"names catalog keys"| K
-  K -->|"named, plus this seat's own"| G["the seat's declared tools"]
+  M -->|"catalog: · the kind"| K["the agent kind"]
+  P -->|"hireWorkforce · onto this seat's bag"| H["the seat"]
+  W["WORKER.md · tools:"] -->|"names catalog keys"| H
+  K --> H
+  H -->|"named, plus this seat's own"| G["the seat's declared tools"]
 ```
 
 Both halves are build-time walks, like every other file convention here: nothing scans a folder
-while an app runs, so a bundled deploy registers exactly what a local one does.
+while an app runs, so a bundled deploy registers exactly what a local one does. The app's catalog
+is the **kind's**, shared by every seat; the folder's blocks are **this seat's**, and travel the
+same road its instructions and its skills already travel.
 
 ## What stays as it is
 
@@ -91,6 +103,9 @@ while an app runs, so a bundled deploy registers exactly what a local one does.
   [FIX-1434](https://linear.app/fixpoint-labs/issue/FIX-1434) and is deliberately not here.
 - **A team's file authors still cannot grant themselves a tool the app never shipped.** The app
   decides what the catalog contains; a seat decides which of it to use.
+- **Where a store comes from.** Resources are installed on the kind, for every seat of it, and
+  that does not change here. A block in a seat's folder may **use** a store the kind already has;
+  it may not be the thing that declares one.
 
 ## Sign off
 

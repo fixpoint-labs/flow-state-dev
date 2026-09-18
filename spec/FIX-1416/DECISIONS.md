@@ -55,15 +55,48 @@ model-visible toolset is the obvious mitigation and is a follow-up, not this iss
 <a name="d3"></a>
 ## Decided, not asked
 
-- **One tool has one name: the file's, the catalog key's and the block's own must agree, refused
-  when the workforce is hired.** This is the engineer's call, not a fork — the alternative is an
-  ambiguity nobody wants — but it is recorded here because the POC is what found it and because it
-  binds something public. A seat authorized `lookup-customer` (the file name, and the catalog key)
-  and the model was advertised `lookupCustomer` (the block's own `name`); the call by the authorized
-  name never landed and the call by the other one did. Nothing checks they agree, and three readers
-  each use a different one — the seat's `tools:` list, the model's prompt and trace, and a skill's
-  `allowed-tools` validation. The guard goes at the kind's door rather than at the scan, so it also
-  covers a hand-built catalog and leaves a block used only as a flow action alone.
+- **The seat's own blocks ride the HIRE step, not a second option on the kind factory.**
+  `hireWorkforce` already imposes every other per-seat bag — `instructions`, `teamInstructions`,
+  and `seatSkills` from `manifest.skills` (`hire.ts:361`), each refused when an author writes it
+  (`hire.ts:249`, `:258`, `:271`). A seat's own blocks are the same kind of thing, so they become
+  the **fourth contract key** rather than a new door. The POC checked the one premise that was not
+  obvious — the three existing keys all carry strings, and this one carries live blocks: a
+  `BlockDefinition` on a seat's settings bag survives the mint and the model calls it (POC test 5).
+  <br/>**What the kind-factory route would have bought, and why it is worth nothing here:** the
+  factory knows the map before `defineFlow` runs, so it *could* merge colocated resource
+  declarations statically — the hire path cannot, because the flow is built before any seat exists.
+  But collecting one seat's resources onto the kind installs them for every seat of that kind, which
+  is the leak this convention already refuses by name, and per-seat resource installation does not
+  exist in workforce at all (kitchen-sink and the pentest lab both install resources kind-wide). The
+  advantage is one the factory route could not take. With it gone, the hire path wins on symmetry
+  and **D1's "no new framework surface" becomes literally true: zero new options on
+  `defineAgentWorkerFlow`.**
+- **A colocated block may USE a store the kind already has; it may not DECLARE one, and one that
+  does is refused by name at hire.** `defineFlow` collects `declaredResources` by walking the
+  flow's *action* blocks (`defineFlow.ts:710-721`); a block appended through the function-valued
+  `tools:` resolver is not one, so its declarations are never seen. The POC ran it: hire accepted
+  the seat, the turn **did not error**, and the store handle was simply absent inside `execute`
+  (test 6) — a tool advertised to the model, doing nothing, with nothing said anywhere. That is the
+  defect class this epic exists to kill, so the refusal is not a stopgap. The alternative —
+  collecting colocated declarations onto the kind — is more useful and costs the same leak as
+  above: seat A's store installed for every sibling seat. Refusing is smaller, honest, and leaves
+  the useful case open, because the two fixes are both one line: declare the store on the kind, or
+  move the block to `workforce/blocks/` and name it in `tools:`.
+- **One tool has one name: the file's, the map key's and the block's own must agree — on BOTH
+  maps, the app's catalog and the seat's own — refused when the workforce is hired.** This is the
+  engineer's call, not a fork — the alternative is an ambiguity nobody wants — but it is recorded
+  here because the POC is what found it and because it binds something public. A seat authorized
+  `lookup-customer` (the file name, and the catalog key) and the model was advertised
+  `lookupCustomer` (the block's own `name`); the call by the authorized name never landed and the
+  call by the other one did. Nothing checks they agree, and three readers each use a different one
+  — the seat's `tools:` list, the model's prompt and trace, and a skill's `allowed-tools`
+  validation. The guard goes at the kind's door rather than at the scan, so it also covers a
+  hand-built catalog and leaves a block used only as a flow action alone.
+  <br/>**Both maps, because the colocated map is filename-keyed too** and would otherwise rebuild
+  the ambiguity on the second surface. Once the rule holds on both, the collision check (BR-8) is
+  stated over **resolved tool names** rather than keys — which is what closes the sharper case: a
+  colocated block named `bar` colliding with a catalog tool `bar` is invisible to a key-based
+  check and would fail on the first turn instead of at hire.
   **What it binds:** a file's basename is now a tool name a model sees, so tool names inherit the
   segment rules — lowercase, digits, single hyphens, and **no dot**, because a dot is the joiner a
   worker id is split on (`packages/workforce/src/loader/segments.ts:29`). A namespace prefix like
@@ -93,7 +126,9 @@ model-visible toolset is the obvious mitigation and is a follow-up, not this iss
 | Name-intersecting capability tools with a seat's `tools:` instead of dropping them | Already settled and shipped as *drop* (FIX-1393); re-opening it is out of scope and the core doc explains why the intersection was inert |
 | Let a seat's `tools:` widen itself with a prefix (`engineering.*`) as part of this | [FIX-1434](https://linear.app/fixpoint-labs/issue/FIX-1434). This spec does not depend on it, and the one-name rule constrains it — see "Decided, not asked" |
 | Make every scanned block's `name` equal its basename, at gen time | Broader than the harm. A block used only as a flow action never reaches a model, and kitchen-sink's own block documents that the two names are allowed to differ. The one-name rule puts the guard at the door where the harm is, which also covers a hand-built catalog |
-| Build the colocated half now and answer the levels fork later | The walk's slot patterns are what the fork decides. Building worker-only and widening later is additive; building all three and narrowing is a breaking change to working trees |
+| A second option on `defineAgentWorkerFlow` for the per-seat map | Hire already carries every other per-seat bag, and the one thing the factory route could have bought — statically installed colocated resources — is closed by the kind-wide resource model regardless. See "Decided, not asked" |
+| Collecting a colocated block's resource declarations onto the kind | More useful than refusing, and it installs one seat's store for every seat of that kind. Impossible on the hire path anyway. Refusal named at the door leaves the same case open through one extra line |
+| **Holding PR2 until the levels fork is answered** | Dropped during review. `BR-10` already encodes worker-only and refuses the other levels with a fix message, so PR2 has a rule to build against. Widening later is additive and changes no file that exists, so the fork stays open without blocking |
 
 <a name="open"></a>
 ## Open
@@ -135,3 +170,9 @@ it.
 - **Draft** — framed from the shipped fence and the shipped scan rather than from the ticket's
   wishlist; a POC ran the primary recipe end to end and found the two-names gap, which nothing in
   the repo had asked about.
+- **Review round 1** — D2's delivery route moved from a kind-factory option to the hire step, after
+  the POC showed a live block survives a seat's settings bag and the factory route's one advantage
+  turned out to be unusable. A hole in D2 was closed: a colocated block that declares a resource is
+  advertised to the model and finds no handle, silently, so declaring one is now refused by name.
+  The one-name rule was extended to the colocated map and its collision check restated over
+  resolved tool names. PR2 stopped waiting on the levels fork, which remains open and unanswered.

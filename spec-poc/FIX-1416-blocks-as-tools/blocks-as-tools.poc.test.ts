@@ -11,31 +11,40 @@
  * with a `workforce/blocks/` folder (kitchen-sink) reaches its block as a flow
  * ACTION through a relative import, and passes no `catalog` at all.
  *
- * So this pins four things, each on the path a real app would take:
+ * So this pins five things, each on the path a real app would take:
  *
  *   1. the generated map's type is accepted where `ToolCatalog` is expected
  *   2. a seat naming a scanned block reaches its `execute`
  *   3. a seat with `tools: []` does not — the fence holds over a scanned block
  *   4. WHICH NAME the model is advertised: the scan's registration key, or the
  *      block's own `name`, when an author lets the two differ
+ *   5. whether a live `BlockDefinition` survives the HIRE path onto a seat's
+ *      `ctx.flow.config` — the premise the colocated half's delivery route
+ *      rests on (added for spec review round 1)
+ *   6. what an author gets when a colocated block DECLARES a resource — the
+ *      hole review round 1 found in D2 (added for spec review round 1)
  *
- * (4) is the one nobody has asked. It is the reason this POC exists.
+ * (4) is the one nobody had asked, (5) decides where the colocated map is
+ * wired, and (6) is the defect that decides what a colocated block may declare.
+ * They are the reason this POC exists.
  *
  * Run:
  *   npx vitest run --root spec-poc/FIX-1416-blocks-as-tools
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { handler } from "@flow-state-dev/core";
+import { defineCapability, defineFlow, generator, handler } from "@flow-state-dev/core";
+import { defineResource } from "@flow-state-dev/core/types";
 import type { BlockDefinition, FlowInstance, ToolCatalog } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
 import { hireWorkforce } from "../../packages/workforce/src/hire";
 import type { WorkerManifest } from "../../packages/workforce/src/manifest";
+import { workerConfigSchema } from "../../packages/workforce/src/worker-config";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../../packages/workforce/src/agent-worker-flow";
 
 /** Calls counted per block, so "did the model reach it" is observable. */
-const calls = { deskNote: 0, mismatched: 0 };
+const calls = { deskNote: 0, mismatched: 0, colocated: 0 };
 
 /**
  * Stands in for `workforce/blocks/desk-note.ts`. Copied in shape from the real
@@ -178,5 +187,207 @@ describe("FIX-1416 · a scanned block as a seat's tool", () => {
 
     // Recorded, not asserted either way — the POC exists to FIND this out.
     expect(reachedByFileName + reachedByBlockName).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Round-1 review asked where the per-seat colocated map should be wired: a
+ * second option on `defineAgentWorkerFlow` beside `catalog:`, or the hire path
+ * that already carries every OTHER per-seat bag (`instructions`,
+ * `teamInstructions`, `seatSkills` — `hire.ts:361` imposes the last one from
+ * `manifest.skills`).
+ *
+ * The hire path is the better symmetry IF a live `BlockDefinition` can ride a
+ * seat's settings bag. That is not obvious: the three existing contract keys
+ * all carry STRINGS, and the bag goes through a zod schema and then sits on
+ * `ctx.flow.config`. A function-bearing value could be rejected at the mint,
+ * stripped by validation, or arrive as something the resolver cannot call.
+ *
+ * So: put one on the bag through `hireWorkforce` and try to call it.
+ */
+const colocated = handler({
+  name: "check-inventory",
+  description: "Checks the desk's inventory.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ count: z.number() }),
+  execute: () => {
+    calls.colocated += 1;
+    return { count: 3 };
+  },
+});
+
+/**
+ * A kind shaped like the agent kind's colocated half and nothing else: the
+ * contract schema plus one key holding live blocks, and a `tools:` resolver
+ * that reads them off the seat's own config. No catalog, no `tools:` list —
+ * whatever the model can call arrived through the bag.
+ */
+const seatBlocksKind = defineFlow({
+  kind: "desk-with-own-blocks",
+  cardinality: "collection",
+  configSchema: workerConfigSchema().extend({
+    model: z.string().default("intent/chat"),
+    seatBlocks: z.record(z.custom<BlockDefinition<any, any>>()).default({}),
+  }),
+  actions: {
+    run: {
+      inputSchema: z.object({ message: z.string() }),
+      block: generator({
+        name: "answer",
+        model: (_input, ctx) => ctx.flow.config.model,
+        prompt: (_input, ctx) => ctx.flow.config.instructions ?? "",
+        // The whole question, in one line: does this read return callable blocks?
+        tools: (_input, ctx) => Object.values(ctx.flow.config.seatBlocks ?? {}),
+        user: (input: { message: string }) => input.message,
+      }),
+    },
+  },
+});
+
+describe("FIX-1416 · round 1 · can a colocated block ride the hire path?", () => {
+  it("5 · a live BlockDefinition on a seat's settings bag survives the mint and the model can call it", async () => {
+    calls.colocated = 0;
+
+    const [seat] = hireWorkforce(
+      [
+        record({
+          id: "support.clerk",
+          declared: {
+            flow: "desk-with-own-blocks",
+            seatBlocks: { "check-inventory": colocated },
+          } as never,
+          body: "Clerk.",
+        }),
+      ],
+      { kinds: { "desk-with-own-blocks": seatBlocksKind as never } },
+    );
+
+    expect(seat).toBeDefined();
+
+    const runtime = await createTestContext({
+      flow: { ...seat!, cardinality: "singleton" },
+      orgId: "test-org",
+      org: { state: {} },
+      sessionId: "test-session",
+      sequencerName: seat!.actions.run!.block.name,
+      declaredResources: seat!.actions.run!.block.declaredResources,
+      generators: {
+        answer: mockGenerator({
+          name: "answer",
+          script: [callTool("check-inventory"), { text: "done" }] as never,
+        }),
+      },
+    });
+
+    const result = await executeBlock({
+      block: seat!.actions.run!.block,
+      input: { message: "what is in stock" },
+      ctx: runtime.ctx,
+    });
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `\n  VERDICT (5): mint ${seat ? "accepted" : "refused"} the bag · ` +
+        `turn error: ${result.error ? String(result.error) : "none"} · ` +
+        `colocated block reached: ${calls.colocated}\n`,
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(calls.colocated).toBe(1);
+  });
+
+  /**
+   * The hole review round 1 found in D2, and the one test 5 was too easy to
+   * catch: `check-inventory` needs nothing, so it cannot show what happens to a
+   * colocated block that needs a store.
+   *
+   * `defineFlow` collects `declaredResources` by walking the flow's ACTION
+   * blocks (`defineFlow.ts:710-721`). A block appended through a
+   * function-valued `tools:` resolver is not an action block, so its
+   * declarations are never seen — and a per-seat bag cannot change that,
+   * because the flow was built before the seat existed.
+   *
+   * So the question is not *whether* the resource is installed. It is what an
+   * author SEES when it isn't: a loud failure, or a tool the model calls into
+   * a hole.
+   */
+  it("6 · a colocated block that DECLARES a resource — what does the author get?", async () => {
+    const deskLedger = defineResource({
+      scope: "session",
+      stateSchema: z.object({ entries: z.number() }),
+    });
+
+    let sawResource: unknown = "never ran";
+    const needsAStore = handler({
+      name: "read-ledger",
+      description: "Reads the desk ledger.",
+      uses: [defineCapability({ name: "desk-ledger", resources: { deskLedger } })],
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async (_input, ctx) => {
+        // The whole question: is the handle there when the model calls it?
+        sawResource = (ctx as { resources?: Record<string, unknown> }).resources?.deskLedger
+          ? "present"
+          : "absent";
+        return { ok: true };
+      },
+    });
+
+    // It really does declare the resource — the block half is fine.
+    expect(needsAStore.declaredResources?.deskLedger).toBe(deskLedger);
+
+    const [seat] = hireWorkforce(
+      [
+        record({
+          id: "support.ledger",
+          declared: {
+            flow: "desk-with-own-blocks",
+            seatBlocks: { "read-ledger": needsAStore },
+          } as never,
+          body: "Ledger clerk.",
+        }),
+      ],
+      { kinds: { "desk-with-own-blocks": seatBlocksKind as never } },
+    );
+
+    // The seat's ACTION block never saw the declaration, which is the defect:
+    // the flow is built before any seat exists, so nothing could have merged it.
+    const actionDeclares =
+      seat!.actions.run!.block.declaredResources?.deskLedger !== undefined;
+
+    const runtime = await createTestContext({
+      flow: { ...seat!, cardinality: "singleton" },
+      orgId: "test-org",
+      org: { state: {} },
+      sessionId: "test-session",
+      sequencerName: seat!.actions.run!.block.name,
+      declaredResources: seat!.actions.run!.block.declaredResources,
+      generators: {
+        answer: mockGenerator({
+          name: "answer",
+          script: [callTool("read-ledger"), { text: "done" }] as never,
+        }),
+      },
+    });
+
+    const result = await executeBlock({
+      block: seat!.actions.run!.block,
+      input: { message: "read the ledger" },
+      ctx: runtime.ctx,
+    });
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `\n  VERDICT (6): hire ${seat ? "accepted" : "refused"} it · ` +
+        `action block declares the resource: ${actionDeclares} · ` +
+        `turn error: ${result.error ? String(result.error) : "none"} · ` +
+        `handle inside execute: ${String(sawResource)}\n`,
+    );
+
+    // The finding, asserted so it cannot rot: hire accepts a block whose
+    // resource the flow never installed. Whatever happens next — a throw, or a
+    // silent hole — the author was told nothing at the door.
+    expect(seat).toBeDefined();
+    expect(actionDeclares).toBe(false);
   });
 });
