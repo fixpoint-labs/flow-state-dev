@@ -16,7 +16,7 @@ that stay.
 | **S4** | `routes/index.ts` re-exports of `ChildSessionStatus`, `ChildSessionSummary` | Delete |
 | **S5** | `packages/client`: `listChildSessions`, `ListChildSessionsOptions`, `ChildSessionSummary`, `ChildSessionStatus`, index re-exports | Delete |
 | **S6** | `packages/react`: `SessionChildSessionsOptions`, the `childSessions` option, `.childSessions` / `.childSessionsStale` on `UseSessionResult`, `refreshChildSessions` and its three read-fence refs | Delete; leave the rest of `useSession` untouched |
-| **S7** | `packages/devtool`: `child-sessions-view.tsx`, `use-child-sessions.ts`, `child-session-links.ts`, the panel's Children tab and `handleOpenChildSession` | Delete. **`linkChildSessionsToTasks` / `taskLinkKey` / `Truncation` are also consumed by `task-collections-view.tsx`** — move what the Tasks tab still needs rather than deleting it out from under it |
+| **S7** | `packages/devtool`: `child-sessions-view.tsx`, `use-child-sessions.ts`, `child-session-links.ts`, the panel's Children tab and `handleOpenChildSession` | Delete. **The Tasks tab goes board-only in the same change**: `task-collections-view.tsx` carries a `ChildSession` column built on `ChildSessionSummary`, `linkChildSessionsToTasks` and `onOpenChildSession`, and that column goes with the tab. Dropping it retires almost all of `child-session-links.ts`; this is a cut, not a partial extract |
 | **S8** | `apps/kitchen-sink`: `background-work-panel.tsx`, `e2e/background-work.spec.ts`, the mounts in `app/page.tsx`, the section in `CLAUDE.md` | Delete the panel; the dispatch half (`flows/chat-agent/.../background-work.ts`) stays |
 | **S9** | Store listing options whose **only** caller is S1 — `SessionListOptions.orderBy: "createdAt"`, session `orgId`, `RequestListOptions.orderBy: "none"`, the status-array form, request `orgId` | Delete **only after** re-deriving that S1 was the sole caller; `parentage` itself stays (D1) |
 | **S10** | Docs — see the docs plan below | Edit / delete sections |
@@ -42,6 +42,10 @@ flowchart TD
 
 S3, S4 and S9 are independent of each other once S2 lands. S11 is deliberately last: renaming
 before the deletions would make every deleted file's diff noisier than it needs to be.
+
+**S11 can ship as its own PR** if the reviewer wants the deletion landed first. S1–S10 and S12
+satisfy D1 on their own; the rename is D2 and depends on nothing in them. Splitting costs a second
+review round and buys a smaller first diff — the implementer's call at the time.
 
 ## Checks
 
@@ -107,4 +111,8 @@ No new page. This change only removes.
 
 ## Notes from review
 
-_(none yet)_
+**Round 1 — `cursor[bot]`, 2026-09-18** (recorded verbatim; weigh against real code):
+
+> `classify-substrate.mjs` is the right *idea*, heavy on maintenance. Totality + `--negative-control` match `issue-spec` Step 5 and are worth keeping. The ~110-line `DISPATCH` allowlist plus `DISPATCH_SUBTREES` blanket rules duplicate `PLAN.md` and can mis-bucket future viewing APIs under `packages/core/` etc. A lighter alternative (if you want less dual maintenance): **forbidden public symbols** (`listChildSessions`, `/children`, `ChildSessionSummary`, …) must grep empty in `packages/` + published docs, plus the goal check — drop the dispatch allowlist and rely on narrow terms + `other` for surprises. I would **not** delete totality entirely.
+
+> Optional simplification path: if PO approves surface removal but wants to defer vocabulary churn, add an explicit **D2 optional / phase B** branch here (S1–S10 first, S11 follow-up).

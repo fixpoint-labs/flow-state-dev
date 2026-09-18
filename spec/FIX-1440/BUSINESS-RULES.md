@@ -26,7 +26,7 @@
 |---|---|---|
 | The derived-session module is renamed | Every derived session id is byte-identical to the one the old code produced | The determinism cases in the renamed suite, which pin the id for fixed inputs |
 | A run is in flight across the upgrade and retries | It re-enters the session it started, not a second one beside it | Same — the `dsx_` prefix and hash material are unchanged (D2) |
-| A reader greps the repo for `child session` after this lands | Matches appear only in changelogs and internal records, never in live code or published docs | `spec/FIX-1440/evidence/classify-substrate.mjs`, re-run at implement time |
+| A reader greps the repo for `child session` or `childSession` after this lands | Matches appear only in changelogs and internal records, never in live code or published docs. `parentSessionId` is **not** covered by this rule — it keeps its name (D2) | `spec/FIX-1440/evidence/classify-substrate.mjs`, re-run at implement time |
 
 ## Failure taxonomy
 

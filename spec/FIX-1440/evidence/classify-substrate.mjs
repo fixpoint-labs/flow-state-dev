@@ -118,9 +118,11 @@ const VIEWING = [
 
 /**
  * DISPATCH — the derived session a dispatched row runs in, and the parent-chain
- * walk that authorises settle / interrupt / liveness over it. The spec KEEPS
- * these. `goals/task-board/hands-a-row-to-a-worker-in-its-own-session` asserts
- * this behaviour and passes today; deleting them takes it red.
+ * walk `livenessOf` authorises by. (Only `livenessOf`: `settleParentTask` is
+ * deliberately unwired and there is no interrupt verb — see DECISIONS.md →
+ * Settled.) The spec KEEPS these.
+ * `goals/task-board/hands-a-row-to-a-worker-in-its-own-session` asserts this
+ * behaviour and passes today; deleting them takes it red.
  */
 const DISPATCH = [
   // the derived session and the seam that mints/adopts it
