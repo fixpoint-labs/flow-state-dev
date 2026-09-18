@@ -31,6 +31,7 @@ const TONE = "TONE-2216";
 const EXTRA = "EXTRA-9074";
 const SHARED = "SHARED-3308";
 const SURVEY = "SURVEY-1902";
+const RADIO = "RADIO-5517";
 
 /** Nothing on by default — the shape a discovered `research.ts` has. */
 const research = defineCapability({
@@ -89,6 +90,35 @@ function fieldwork() {
     name: "fieldwork",
     presets: {
       survey: { context: [SURVEY], tools: [lookup] },
+      default: []
+    }
+  });
+  return { capability, calls: () => calls };
+}
+
+/**
+ * A preset carrying a CONTROL rather than a catalog tool — the exemption.
+ *
+ * Same shape as {@link fieldwork}, and deliberately so: the two differ in one
+ * key, so the opposite results below are attributable to that key and nothing
+ * else.
+ */
+function dispatch() {
+  let calls = 0;
+  const ping = handler({
+    name: "ping",
+    description: "A framework control.",
+    inputSchema: z.object({}),
+    outputSchema: z.object({ ok: z.boolean() }),
+    execute: () => {
+      calls += 1;
+      return { ok: true };
+    }
+  });
+  const capability = defineCapability({
+    name: "dispatch",
+    presets: {
+      radio: { context: [RADIO], controlTools: [ping] },
       default: []
     }
   });
@@ -305,6 +335,38 @@ describe("a seat picks presets from what its kind carries", () => {
     expect(said.error).toBeUndefined();
     expect(said.prompt).not.toContain(SURVEY);
     expect(calls()).toBe(0);
+  });
+
+  // The exemption, and the reason the fence above is about CATALOG tools
+  // rather than tools. A control is not something a `tools:` list could have
+  // named — it is usually built inside the capability and never exported — so
+  // the capability being composed IS the declaration, and the seat's empty
+  // `tools:` does not reach it. Same seat shape as the check above, one key
+  // different on the preset, opposite result.
+  it("lets a selected preset's CONTROL tool through the same empty tools list", async () => {
+    const { capability, calls } = dispatch();
+    const kind = defineAgentWorkerFlow({ uses: [capability] });
+    const seat = hire(
+      [
+        record({
+          id: "engineering.operator",
+          declared: { tools: [], capabilities: { dispatch: ["radio"] } }
+        }),
+        record({ id: "engineering.ghost" })
+      ],
+      { [AGENT_KIND]: kind }
+    );
+
+    const operated = await turn(seat("engineering.operator"), callsTool("ping"));
+    expect(operated.error).toBeUndefined();
+    expect(occurrences(operated.prompt, RADIO)).toBe(1);
+    expect(calls()).toBe(1);
+
+    // Still a selection, not a gift to the kind: the sibling named nothing.
+    const said = await turn(seat("engineering.ghost"), callsTool("ping"));
+    expect(said.error).toBeUndefined();
+    expect(said.prompt).not.toContain(RADIO);
+    expect(calls()).toBe(1);
   });
 
   // An empty list is the same as saying nothing — it is how an author leaves a

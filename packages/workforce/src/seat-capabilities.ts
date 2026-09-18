@@ -112,8 +112,10 @@ const BUILD_TIME_ONLY_KEYS = [
  *
  * Being dynamic is not being unfenced: a selected preset's catalog `tools`
  * still stop at the seat's own `tools:`. See `PresetDef.controlTools` for the
- * distinction and *"carries a selected preset's context but not its tool past
- * the seat's fence"* in `test/seat-capabilities.test.ts` for the behaviour.
+ * distinction, and the paired tests in `test/seat-capabilities.test.ts` for
+ * the behaviour — *"carries a selected preset's context but not its tool past
+ * the seat's fence"* and *"lets a selected preset's CONTROL tool through the
+ * same empty tools list"*, one key apart on the same seat.
  */
 const DYNAMIC_KEYS = ["context", "tools", "controlTools"] as const satisfies readonly (keyof PresetDef)[];
 
