@@ -21,6 +21,15 @@
  * that never denote anything, and `validateSegment` is the one rule for what a
  * name in this tree may be. What a reader does inside a team is its own.
  *
+ * **One rule binds every reader here, and the next one added beside them.** A
+ * tree entry the published convention tells an author they may write is either
+ * consumed or refused loudly, naming the path. It is never passed over in
+ * silence — an author who followed the docs and got no seat, no channel and no
+ * error has no way left to find out. `discoverWorkforceCode` states the same
+ * rule for the code folders; `test/published-tree-surface.test.ts` checks it
+ * for the whole tree, against the shapes the published pages declare, and is
+ * where a shape that is still silent is recorded with the issue that owns it.
+ *
  * Kept behind a subpath so importing the package root does not pull a consumer
  * onto `node:fs`.
  */
