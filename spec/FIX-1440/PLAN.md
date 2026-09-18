@@ -29,7 +29,7 @@ work is presentation and docs, not plumbing.
 | **S8** | Rename (D2): `context/detached-child.ts` → `dispatch-run.ts`, `deriveDispatchChildSessionId` → `deriveDispatchRunSessionId`, `DispatchedChild`, and the stale header claim about settle/interrupt | Rename; **no change to `dsx_` or hash material** |
 | **S9** | Docs — reframe children as provenance, document the new include, drop the nest-as-hierarchy framing | Edit |
 | **S10** | `apps/kitchen-sink` — the Background Work panel now demonstrates something we keep. Reframe its copy away from "children"; do not delete it | Edit |
-| **S11** | Linear: cluster re-triage per **D3** — pending, and it is research, not bookkeeping | Blocked |
+| **S11** | Linear per **D3**: close `FIX-1045` (already fixed), re-scope `FIX-1097`, `FIX-1121`, `FIX-1086`, `FIX-1171`. Do not touch `FIX-1090`, `FIX-1108`, `FIX-1075` | Ready |
 
 ## Build order
 
@@ -43,11 +43,10 @@ flowchart TD
   S1 --> S9[S9 docs]
   S9 --> S8[S8 rename]
   D4{{D4 answered}} --> S6[S6 liveness auth]
-  D3{{D3 re-triaged}} --> S11[S11 Linear]
+  S11[S11 Linear dispositions]
 ```
 
-S6 and S11 hang off open decisions and are the reason this spec is not yet implementable end to
-end. S1–S5 and S8–S10 are unblocked once the D1 sub-question is answered, because that answer only
+S6 hangs off an open decision and is the reason this spec is not yet implementable end to end. S1–S5 and S8–S10 are unblocked once the D1 sub-question is answered, because that answer only
 changes the **default**, not the mechanism.
 
 ## Checks

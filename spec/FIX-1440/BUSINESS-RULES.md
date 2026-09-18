@@ -55,4 +55,5 @@
 4. The DevTool has no descent: no Children tab, no nesting breadcrumb.
 5. `goals/task-board/hands-a-row-to-a-worker-in-its-own-session` passes **unedited**.
 6. `pnpm typecheck` and `pnpm test` pass across the workspace; the docs site builds with broken links throwing.
-7. **Open, and not yet acceptance:** D4 (liveness authorization) and D3 (cluster re-triage) are answered before this is implementable end to end.
+7. `FIX-1045` closed as already fixed; `FIX-1097`, `FIX-1121`, `FIX-1086` and `FIX-1171` re-scoped to the dispatch lifecycle (D3).
+8. **Open, and not yet acceptance:** D4 (liveness authorization) is answered before this is implementable end to end.

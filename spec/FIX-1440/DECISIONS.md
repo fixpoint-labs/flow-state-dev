@@ -9,7 +9,7 @@ flowchart TD
   S --> D1["D1 · make dispatch runs first-class<br/>on their flow's session path"]
   S --> D2["D2 · rename the mechanism<br/>off 'child'"]
   D1 --> D4["D4 · what replaces the<br/>descendant-chain liveness check"]
-  D1 --> D3["D3 · cluster bugs:<br/>RE-TRIAGE PENDING"]
+  D1 --> D3["D3 · cluster bugs: 1 closes,<br/>4 re-scoped on evidence"]
 ```
 
 The dashed path is this spec's own first draft, superseded by the owner on 2026-09-18. Both the
@@ -132,33 +132,36 @@ than mine to assume.
 
 ---
 
-## D3 — RE-TRIAGE PENDING {#d3}
+## D3 — Cluster disposition, re-triaged on the merits {#d3}
 
-> **This card is stale and is being redone.** Its dispositions were decided against the draft's
-> removal. Two of them — `FIX-1045` and `FIX-1097` — were cancelled *because* they described a
-> surface that was going away. Under D1 that surface stays, so both inherit a disposition whose
-> reason no longer holds and must be re-examined on their own merits against current code. They
-> are **not** cancelled until that is done. `FIX-1121`'s move to re-scope survives the change of
-> direction, because it was decided on the behaviour outliving the change rather than on the
-> surface going away.
+**Status: re-triaged 2026-09-18** after the amendment withdrew the reason the original dispositions
+rested on. Each issue was read against current code rather than against this spec's direction.
 
-The table below is the **superseded** triage, kept until the re-triage replaces it.
+**The draft cancelled two issues and both reasons were wrong.** That is the finding, and it is
+about this spec, not about the issues. Reading them properly changes one verdict and rescues the
+other for a different reason.
 
-| Issue | Disposition | Why |
+| Issue | Disposition | Why, against current code |
 |---|---|---|
-| [FIX-1045](https://linear.app/fixpoint-labs/issue/FIX-1045) | Cancel | Child ids omitting flow kind — the cross-flow derivation already takes `targetFlowId`; the collision it describes is in the removed listing's addressing |
-| [FIX-1097](https://linear.app/fixpoint-labs/issue/FIX-1097) | Cancel | Cancellation reaching a pre-execution child — no interrupt verb exists on `RequestHost`; the issue describes a surface that was never built |
-| [FIX-1121](https://linear.app/fixpoint-labs/issue/FIX-1121) | **Re-scope** | Shutdown writing a terminal status for a queued child. Cancelled in the draft on the *framing* ("contradicting shipped docs" — those docs go), which was the wrong test. The behaviour survives: `createFlowState`'s drain cancels outstanding dispatched children via `abortRequest` (`createFlowState.ts:554`), and `aborted` is in `PRUNABLE_TERMINAL_STATUSES` (`durability-sweeper.ts:104`), so a run that never started is pruned as non-resumable. Neither file is touched by S1–S12. Re-scoped to the dispatch lifecycle |
-| [FIX-1086](https://linear.app/fixpoint-labs/issue/FIX-1086) | **Re-scope** | A dead run's row looks stalled for one lease period. That is lease recovery on the board, and it survives the removal untouched |
-| [FIX-1171](https://linear.app/fixpoint-labs/issue/FIX-1171) | **Re-scope** | "Background work has no way back" — labelled Feature, and it is one: a dispatched run settling a row without replying to its conversation is a real gap that this removal neither causes nor fixes |
+| [FIX-1045](https://linear.app/fixpoint-labs/issue/FIX-1045) | **Close — already fixed** | Describes `deriveChildSessionId` hashing `[tenant, user, parentSession, topic, key]` with no flow discriminator, so two flows sharing a parent session collide. That function no longer exists. The live derivation is `deriveDispatchChildSessionId`, and its call site passes `crossFlow ? targetFlow.id : undefined` (`create-request-host.ts:260–272`) — the discriminator is present on exactly the colliding path. The issue also rests on `startDetached`, which is gone. **The draft's stated reason — "the collision is in the removed listing's addressing" — was wrong**; the addressing was never the listing's |
+| [FIX-1097](https://linear.app/fixpoint-labs/issue/FIX-1097) | **Re-scope** *(was: cancel)* | The draft said "no interrupt verb exists on `RequestHost`; the issue describes a surface that was never built." **That is a misread of the issue.** It is not about a `RequestHost` verb at all — it is about `dispose()`'s drain cancelling through the abort-controller registry while a child is still in pre-execution setup and not yet registered. That path is live (`createFlowState.ts:554`, `#cancelOutstandingChildren`) and untouched by any direction this spec has taken. Carry the issue's own caveat with it: the defect is **reasoned from code, not demonstrated**, and its first task is a test that genuinely fails |
+| [FIX-1121](https://linear.app/fixpoint-labs/issue/FIX-1121) | **Re-scope** | Shutdown writes a terminal status for a queued run that never started, and `aborted` is in `PRUNABLE_TERMINAL_STATUSES` (`durability-sweeper.ts:104`), so it is pruned as non-resumable. Decided in round 2 on the behaviour outliving the change, so the amendment does not disturb it |
+| [FIX-1086](https://linear.app/fixpoint-labs/issue/FIX-1086) | **Re-scope** | A dead run's row looks stalled for one lease period. Lease recovery on the board; survives untouched |
+| [FIX-1171](https://linear.app/fixpoint-labs/issue/FIX-1171) | **Re-scope** | "Background work has no way back" — labelled Feature, and it is one. A real gap this change neither causes nor fixes |
 
-**Because** cancelling a bug that was really about dispatch loses a defect report, and the issue's own guidance says to review before cancelling rather than sweep the cluster.
+**Not in this cluster and not touched:** `FIX-1090`, `FIX-1108`, `FIX-1075`. Named by the reviewer
+so they are not swept in by proximity. Nothing in this spec gives a reason to close any of them.
 
-**Locks in** that `FIX-1086`, `FIX-1171` and `FIX-1121` stay open and get re-pointed at the board and the dispatch lifecycle, not the tree.
+**Because** a disposition inherited from a direction is not a disposition. Both of the draft's
+cancellations were decided by asking "does this describe the surface we are deleting?" rather than
+"is this defect real in the code we will ship." When the direction moved, one answer survived by
+luck and the other was simply wrong.
 
-**What lost:** three issues stay on the backlog that the issue's acceptance sketch would have closed.
+**Locks in** that only `FIX-1045` closes, and on evidence rather than on scope. Four issues stay
+open and get re-pointed at the dispatch lifecycle.
 
----
+**What lost:** the tidiness of the issue's original acceptance sketch, which expected the cluster to
+close with the substrate. Four of five stay open, because four of five describe live behaviour.
 
 ## Decided, not asked
 

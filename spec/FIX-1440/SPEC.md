@@ -9,7 +9,7 @@ Under [FIX-1208](https://linear.app/fixpoint-labs/issue/FIX-1208) (Remove supers
 | opens the DevTool on a conversation | Sees a **Children** tab and descends, getting another Children tab at each level | Sees dispatch runs among the flow's sessions, each showing what dispatched it. No tree to walk down |
 | asks the framework whether a background request is still alive | Gets an answer only if that work hangs beneath the asking session | Gets an answer for their own work on that flow — see D4, which is open |
 | already dispatches work today (`dispatcher()`, task hand-off) | Works | Works, unchanged. Same derived session, same ids |
-| is triaging the five open detached-child bugs | Five open bugs about a surface nobody was sure we were keeping | Re-triaged against a surface we are now keeping and fixing — **pending, see D3** |
+| is triaging the five open detached-child bugs | Five open bugs, two of them cancelled on reasons that did not survive scrutiny | One closes because it is already fixed in code. Four stay open, re-pointed at the dispatch lifecycle they actually describe |
 
 ![What changes](figures/what-changes.svg)
 
@@ -79,4 +79,4 @@ the invitation to descend does not.
 
 3. **What replaces the descendant-chain liveness check — OPEN, and the one with a security cost.** Today a caller may ask whether a request is alive only if it hangs beneath them. That is the "nest-only authorization" the amendment names, but the same walk also re-checks principal, tenant and flow at every hop. Recommend keeping the walk and adding a same-flow-same-principal arm beside it, rather than replacing it outright. *If wrong:* replacing it widens a liveness answer from "my subtree" to "anything of mine on this flow." → [D4](DECISIONS.md#d4)
 
-4. **The five cluster bugs need re-triage — PENDING, not a decision yet.** Two were cancelled because they described a surface being deleted. That surface now stays, so those cancellations rest on a reason that no longer holds and are withdrawn until re-examined. → [D3](DECISIONS.md#d3)
+4. **One cluster bug closes, four stay open.** Re-triaged against code rather than against this spec's direction, which changed twice. `FIX-1045` is already fixed — the derivation it complains about now carries the flow discriminator on exactly the colliding path. The other four describe live dispatch-lifecycle behaviour. *If wrong:* the draft cancelled two of these on reasons that did not survive reading the issues properly, which is the error this re-triage corrects. → [D3](DECISIONS.md#d3)
