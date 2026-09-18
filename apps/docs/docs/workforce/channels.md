@@ -157,13 +157,13 @@ flowRegistry.registerMany(channelInstances(channels));
 await openChannels(channels, { client: sessionClient, userId: "u_42" });
 ```
 
-If your app has orgs, pass one:
+Pass the org these channels belong to:
 
 ```ts
 await openChannels(channels, { client: sessionClient, userId: "u_42", orgId: "org_acme" });
 ```
 
-Every channel session is then opened under that org, and resources stored at org scope resolve inside it. The `orgId` argument decides the org only on an app that has not configured [authentication](../server/authentication.md); where a `resolvePrincipal` is in place, each session takes the org of the verified caller, so open your channels as a caller whose identity already carries the org you want. [Documents read from the tree](./documents-on-disk.md) are all org-scoped, so in a channel opened without an org, reading one fails with `Resource "…" is not registered`. Re-opening cannot move a session between orgs. If you pass an `orgId` and a channel at that id is already open under a different org, or under none, `openChannels` names that channel and stops; delete that session so the next run opens the channel fresh, or drop the `orgId`.
+Every channel session is then opened under that org, and resources stored at org scope resolve inside it. [Documents read from the tree](./documents-on-disk.md) are all org-scoped, so in a channel opened without an org, reading one fails with `Resource "…" is not registered`. The `orgId` argument decides the org only on an app that has not configured [authentication](../server/authentication.md); where a `resolvePrincipal` is in place, each session takes the org of the verified caller, so open your channels as a caller whose identity already carries the org you want. Re-opening cannot move a session between orgs. If you pass an `orgId` and a channel at that id is already open under a different org, or under none, `openChannels` names that channel and stops; delete that session so the next run opens the channel fresh, or drop the `orgId`.
 
 `openChannels` is idempotent: a channel that is already open is left alone, so re-running it over an unchanged roster does nothing. The flip side is that re-opening is not a migration. Add a member or rewrite a charter, and a channel that is already open does not see it. Re-running does repair one thing: a channel whose id was claimed by a post before it was opened. That leaves an empty session, and re-running binds it.
 

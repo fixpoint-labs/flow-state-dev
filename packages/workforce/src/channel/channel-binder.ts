@@ -132,11 +132,12 @@ export interface OpenChannelsOptions {
    */
   userId: string;
   /**
-   * The org every channel session is opened under. Optional, because an app
-   * with no orgs has none to give.
+   * The org every channel session is opened under.
    *
-   * An app that HAS one needs this, and the failure without it is not a loud
-   * one: file-declared documents install at `scope: "org"`, and an org-scoped
+   * Optional in this type because an app with no org has none to hand over,
+   * which is not the same as leaving it out being a mode worth choosing. The
+   * failure without one is not a loud one: file-declared documents install at
+   * `scope: "org"`, and an org-scoped
    * lookup is matched against the org the session was opened with — so a
    * channel opened without one wakes seats that resolve every declared
    * document as unregistered. A session's org is fixed at creation, so this is
