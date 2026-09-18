@@ -1,0 +1,66 @@
+<svg viewBox="0 0 940 300" role="img" aria-label="Before: a conversation shows a browsable tree of child sessions, and background work runs in a derived session underneath. After: the browsable tree is gone, and background work still runs in the same derived session, now named a dispatch run and not reachable as a tree."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-keep { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-gone { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .n-pane { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-keep { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+    .edge   { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .edge-g { stroke:var(--gone); stroke-width:1.2; fill:none; stroke-dasharray:5 4; }
+  </style>
+
+  <!-- ─────────── BEFORE ─────────── -->
+  <text class="t-lbl" x="20" y="24">TODAY</text>
+  <rect class="n-pane" x="16" y="34" width="430" height="246" rx="6"/>
+
+  <rect class="n-box" x="40" y="56" width="180" height="46" rx="5"/>
+  <text class="t-b" x="56" y="78">the conversation</text>
+  <text class="t-s" x="56" y="93">a session</text>
+
+  <!-- browsable tree -->
+  <path class="edge" d="M130 102 L130 132"/>
+  <rect class="n-box" x="40" y="132" width="380" height="60" rx="5"/>
+  <text class="t-lbl" x="56" y="152">BROWSABLE TREE</text>
+  <text class="t-b" x="56" y="172">“children” — a list you can open, and open again</text>
+  <text class="t-s" x="56" y="186">GET /sessions/:id/children · listChildSessions · DevTool tab</text>
+
+  <path class="edge" d="M130 192 L130 218"/>
+  <rect class="n-keep" x="40" y="218" width="380" height="46" rx="5"/>
+  <text class="t-keep" x="56" y="238">WHERE THE WORK ACTUALLY RUNS</text>
+  <text class="t-b" x="56" y="255">a derived session per dispatched row</text>
+
+  <!-- ─────────── arrow ─────────── -->
+  <path class="edge" d="M460 157 L486 157"/>
+  <path d="M486 152 L496 157 L486 162 z" fill="var(--ink-3)"/>
+
+  <!-- ─────────── AFTER ─────────── -->
+  <text class="t-lbl" x="508" y="24">AFTER</text>
+  <rect class="n-pane" x="504" y="34" width="420" height="246" rx="6"/>
+
+  <rect class="n-box" x="528" y="56" width="180" height="46" rx="5"/>
+  <text class="t-b" x="544" y="78">the conversation</text>
+  <text class="t-s" x="544" y="93">a session</text>
+
+  <path class="edge-g" d="M618 102 L618 132"/>
+  <rect class="n-gone" x="528" y="132" width="372" height="60" rx="5"/>
+  <text class="t-gone" x="544" y="158">removed</text>
+  <text class="t-s" x="544" y="176">no tree to browse, nothing to nest, nothing to grow on</text>
+
+  <path class="edge" d="M618 192 L618 218"/>
+  <rect class="n-keep" x="528" y="218" width="372" height="46" rx="5"/>
+  <text class="t-keep" x="544" y="238">UNCHANGED — RENAMED OFF “CHILD”</text>
+  <text class="t-b" x="544" y="255">a derived session per dispatched row</text>
+</svg>
