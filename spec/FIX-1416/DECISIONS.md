@@ -9,7 +9,7 @@ surface; one fork is still open and needs an answer before the second PR is buil
 
 ```mermaid
 flowchart TD
-  I["FIX-1416"] --> D1["D1 · the recipe is a wiring line<br/>no new framework surface"]
+  I["FIX-1416"] --> D1["D1 · wiring, guards, docs<br/>plus one built thing: registration"]
   D1 -.->|"rejected"| X1["a tools registry beside the blocks scan<br/>a second map naming the same files"]
   I --> D2["D2 · a colocated tool JOINS the seat's declaration"]
   D2 -.->|"rejected"| X2["deliver it as a capability controlTool<br/>says the opposite of what a control is,<br/>and leaks to every seat of the kind"]
@@ -19,13 +19,28 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · The primary recipe ships as a wiring line, a guard and documentation — not as new framework surface
+## D1 · The primary recipe ships as wiring, guards and documentation — no new public option. The one thing it builds is registration
 
 | | |
 |---|---|
 | **Instead of** | A tools registry beside the blocks scan, a `blocks → tools` adapter, or a third `tools/` convention |
-| **Because** | It already works and nobody checked. A scanned block **is** a generator tool by definition (`GeneratorTool = BlockDefinition`, `packages/core/src/blocks/generator.ts:347`), the generated map **is** the catalog's shape (`ToolCatalog = Record<string, GeneratorTool>`, `packages/core/src/types/skill.ts:28`), the mint already refuses a name the catalog lacks (`packages/workforce/src/agent-worker-flow.ts:295`), and the fence already governs the result. The POC ran the whole path end to end and it works with no adapter |
-| **Locks in** | The app stays the only place that decides which blocks a workforce may reach — `catalog:` is a line in the app's own code, not a file a team edits. A team cannot grant itself a non-colocated tool by editing files alone. That is deliberate, and it is the reason the colocated half below is a separate decision rather than a generalisation of this one |
+| **Because** | Nearly all of it already works and nobody checked. A scanned block **is** a generator tool by definition (`GeneratorTool = BlockDefinition`, `packages/core/src/blocks/generator.ts:347`), the generated map **is** the catalog's shape (`ToolCatalog = Record<string, GeneratorTool>`, `packages/core/src/types/skill.ts:28`), the mint already refuses a name the catalog lacks (`packages/workforce/src/agent-worker-flow.ts:295`), and the fence already governs the result. The POC ran that path end to end with no adapter. The exception is stores — see the qualifier below — and one registration closes it |
+| **Locks in** | The app stays the only place that decides which blocks a workforce may reach — `catalog:` is a line in the app's own code, not a file a team edits. A team cannot grant itself a non-colocated tool by editing files alone. That is deliberate, and it is the reason the colocated half below is a separate decision rather than a generalisation of this one. **And every store any catalog tool declares is installed on the kind, for every seat of it** — including seats whose `tools:` never name that tool. That is what kind-wide means, and it is the same bill `uses` already presents |
+
+**The qualifier, found in review, and worth reading before the paragraph below.** "Already works"
+was true of tools that need *nothing*. A seat reaches its tools through a resolver that runs per
+turn off `ctx.flow.config` (`agent-worker-flow.ts:615-616`), so a block arriving that way was never
+an action block and is outside the walk that installs a block's stores
+(`defineFlow.ts:710-721`). The POC ran it on the catalog path: the flow does not know the store,
+the tool is advertised to the model anyway, and a block that really uses its handle **throws inside
+itself while the turn reports success** (test 7). So D1 now carries one thing it must build — at
+kind construction, merge `declaredResources` from the catalog's entries into the kind — and that is
+a behaviour derived from the `catalog` option that already exists, not a new door.
+
+**This is D1's own *If wrong* firing, and it fired before anything shipped.** The card said the risk
+was documenting a seam as supported when it needs more than wiring. That is exactly what review
+found. Recording it because a spec instrument that catches its own failure mode is worth more than
+a spec that was right by luck.
 
 The evidence that this was a gap and not a design hole: `apps/kitchen-sink/workforce/hire.ts:43`
 passes no catalog at all, and reaches its one custom block as a **flow action** through a relative
@@ -34,8 +49,8 @@ a catalog — the pentest lab, `goals/pentest-lab/lab/host.mts:279` — assemble
 file outside the convention tree and runs no scan at all. The published docs say the generated
 `blocks` map feeds "a task board's `workers`"
 (`apps/docs/docs/workforce/workers-on-disk.md:411`) and say nothing about tools. So the recipe the
-architect called primary has never been written down, wired, or proved — which is a documentation
-and proof deliverable, not a build.
+architect called primary has never been written down, wired, or proved — which is mostly a
+documentation and proof deliverable, and one small build.
 
 <a name="d2"></a>
 ## D2 · A worker-colocated tool is ambient by joining the seat's own declaration, not by being exempted from the fence
@@ -68,9 +83,21 @@ model-visible toolset is the obvious mitigation and is a follow-up, not this iss
   But collecting one seat's resources onto the kind installs them for every seat of that kind, which
   is the leak this convention already refuses by name, and per-seat resource installation does not
   exist in workforce at all (kitchen-sink and the pentest lab both install resources kind-wide). The
-  advantage is one the factory route could not take. With it gone, the hire path wins on symmetry
-  and **D1's "no new framework surface" becomes literally true: zero new options on
-  `defineAgentWorkerFlow`.**
+  advantage is one the factory route could not take. With it gone, the hire path wins on symmetry,
+  and **D1 adds no new public option to `defineAgentWorkerFlow`** — the one thing D1 builds is
+  registration, which is derived from the `catalog` it already takes.
+- **A catalog block's resource declarations are registered on the kind; a colocated block's are
+  refused. Same word, two verdicts, and the asymmetry is the whole point.** The app's `catalog` is
+  a kind-construction argument and is **already kind-wide** — every seat of the kind shares it — so
+  merging its entries' `declaredResources` installs exactly what the kind's own `uses` would have
+  installed. Nothing leaks, because there was never a per-seat boundary to leak across. The seat's
+  own folder is the opposite: it is one seat's, it arrives at hire after the flow is built, and
+  collecting it would install seat A's store for every sibling. So the catalog half is registered
+  and the colocated half is refused, and the reason is *where the map is scoped*, not which is more
+  convenient. **Both cases are the defect class [FIX-1421](https://linear.app/fixpoint-labs/issue/FIX-1421)
+  shipped a detector for tonight** — an author writes what the convention documents, it is accepted,
+  and nothing happens until it fails somewhere unrelated. Landing a new instance of it in the same
+  epic would have been poor.
 - **A colocated block may USE a store the kind already has; it may not DECLARE one, and one that
   does is refused by name at hire.** `defineFlow` collects `declaredResources` by walking the
   flow's *action* blocks (`defineFlow.ts:710-721`); a block appended through the function-valued
@@ -128,6 +155,7 @@ model-visible toolset is the obvious mitigation and is a follow-up, not this iss
 | Make every scanned block's `name` equal its basename, at gen time | Broader than the harm. A block used only as a flow action never reaches a model, and kitchen-sink's own block documents that the two names are allowed to differ. The one-name rule puts the guard at the door where the harm is, which also covers a hand-built catalog |
 | A second option on `defineAgentWorkerFlow` for the per-seat map | Hire already carries every other per-seat bag, and the one thing the factory route could have bought — statically installed colocated resources — is closed by the kind-wide resource model regardless. See "Decided, not asked" |
 | Collecting a colocated block's resource declarations onto the kind | More useful than refusing, and it installs one seat's store for every seat of that kind. Impossible on the hire path anyway. Refusal named at the door leaves the same case open through one extra line |
+| **Limiting D1 instead of registering** — a catalog tool that declares resources is out of the recipe, and the author declares the store on the kind or mounts the block as a flow action | Honest, and it makes the primary recipe worse at the one thing it exists for. The catalog is already kind-wide, so registering costs nothing the kind was not already paying, and it makes D1's claim true rather than true-for-resource-free-blocks. Rejected on those grounds, not because it was unworkable |
 | **Holding PR2 until the levels fork is answered** | Dropped during review. `BR-10` already encodes worker-only and refuses the other levels with a fix message, so PR2 has a rule to build against. Widening later is additive and changes no file that exists, so the fork stays open without blocking |
 
 <a name="open"></a>
@@ -176,3 +204,8 @@ it.
   advertised to the model and finds no handle, silently, so declaring one is now refused by name.
   The one-name rule was extended to the colocated map and its collision check restated over
   resolved tool names. PR2 stopped waiting on the levels fork, which remains open and unanswered.
+- **Review round 2** — the resource gap turned out to be wider than the colocated half: a block
+  reached through `catalog:` is outside the same walk, so D1's "already works" was overstated. The
+  POC reproduced it on that path (test 7) and D1 now carries one built thing — the kind registers
+  what its catalog declares — with the catalog/colocated asymmetry written down. The one-name
+  rule's two moments were stated explicitly instead of being implied differently in two documents.

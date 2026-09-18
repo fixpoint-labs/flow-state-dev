@@ -5,15 +5,17 @@
 The cases, as rules. *Proved by* is the check the plan runs. Rows marked **unchanged** are pinned
 here because this issue is the first thing to depend on them and a regression would be silent.
 
-## Naming a tool the app shipped
+## The tools the app ships
 
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-1 | An app hands the generated `blocks` map over as the agent kind's catalog, and a seat's `tools:` names one of its keys | The model may call it, and calling it reaches the block's `execute` | CI · the POC, graduated |
 | BR-2 | A seat names a key the catalog does not carry, including when there is no catalog | Refused when the workforce is hired, naming the tool and the fix | **unchanged** · existing suite |
-| BR-3 | A map entry's key and the block's own `name` disagree — in the app's catalog **or** in a seat's own folder | Refused when the workforce is hired, naming both and saying which one the model would have seen | CI, both maps |
+| BR-3 | A map entry's key and the block's own `name` disagree — in the app's catalog **or** in a seat's own folder | Refused, naming both and saying which one the model would have seen. **Two moments, by design:** the app's catalog is a kind-construction argument, so it is checked when the kind is built, before any seat exists; a seat's own map arrives at hire, so it is checked there. Both are before any seat runs | CI, both maps, both moments |
 | BR-4 | A capability attached through `uses` contributes a catalog tool | Dropped. Every seat of this kind declares `tools:`, so the fence is always up | **unchanged** · `packages/core/test/generator-tools-fence.test.ts` + a workforce-level check |
 | BR-5 | That same capability contributes a framework control through `controlTools` | It still reaches the seat | **unchanged** · same |
+| BR-17 | A block in the app's catalog **declares** resources — its own, or a capability through `uses` that carries them | Those declarations are merged into the kind when it is built, so the store is there when the model calls the tool | CI · red state first (see below) |
+| BR-18 | A seat's `tools:` does not name that block | The store is installed anyway. The catalog is the **kind's**, and a kind's resources belong to every seat of it — the same bill `uses` already presents. Do not make this per-seat | CI |
 
 ## A tool sitting beside the worker
 
@@ -50,11 +52,23 @@ minting the seats. **Nothing fails on a seat's first turn**, which is the bargai
 convention already makes — a bad tree is a build error with a path in it, not a model that
 mysteriously cannot call something.
 
-**BR-15 is the rule that bargain exists for, and it has a real red state.** Wired naively, a
-colocated block that declares a store is hired without complaint, advertised to the model, called,
-and finds the handle absent — and the turn *does not error*. The POC on this branch runs exactly
-that (test 6). So the check for BR-15 is not "does it throw": it is that the block never reaches a
-model at all, because hire refused it by name. Nothing degrades and nothing retries. A `gen` run that hits any
+**BR-15 and BR-17 are the rules that bargain exists for, and both have a real red state.** A seat
+reaches its tools through a resolver that runs per turn, so a block arriving that way was never an
+action block and is outside the walk that installs a block's stores. Wired naively:
+
+- **Colocated (BR-15).** Hired without complaint, advertised, called, handle absent, turn reports
+  success. POC test 6.
+- **Catalog (BR-17).** The same, through the front door of the primary recipe — and the POC's test 7
+  block *uses* its handle rather than guarding the read, which shows the sharper end: it **throws
+  inside `execute`, and the turn still reports success**, because the throw becomes a failed tool
+  result the model reads and moves past. Nothing surfaces to the author at any layer.
+
+So neither check is "does it throw". BR-15's is that the block never reaches a model, because hire
+refused it by name. BR-17's is that the handle is *there* — the tool runs and its store works.
+
+The two rules differ because the maps differ in scope, not in convenience: the catalog is already
+kind-wide, so registering its declarations installs nothing new; a seat's folder is one seat's, so
+registering would hand seat A's store to every sibling. Nothing degrades and nothing retries. A `gen` run that hits any
 refusal writes no file, so a registry is never left quietly short.
 
 ## Acceptance criteria this issue owns
@@ -65,4 +79,5 @@ shows the block's own `execute` ran — the soft-expand of
 half adds a second seat that calls a block from its own folder with `tools:` empty — and **that
 block reads a store**, so the goal exercises BR-16 rather than another handler that needs nothing.
 A colocated tool that needs nothing cannot show whether the resource path holds; that is precisely
-how BR-15 was missed until review.
+how BR-15 and BR-17 were both missed until review. The catalog-path seat's tool reads a store too,
+for the same reason.

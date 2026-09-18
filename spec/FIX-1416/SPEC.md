@@ -4,24 +4,33 @@
 
 Feature (exploration) · `workforce` · small · 2 PRs · epic [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351)
 
-## Six people, before and after
+## Seven people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
 | **writes a custom tool for their workforce** | Writes the block, runs the scan, and then nothing connects it to a worker. The generated map is documented as feeding a task board; the tool catalog a seat's `tools:` names is a separate thing, assembled by hand from files outside the convention tree | One line hands the scanned blocks over as the catalog. A seat names the block in `tools:` and calls it |
+| **writes a custom tool that needs a store** | Wire it up and it looks fine: hired, advertised to the model, called — and the store handle is not there. The tool fails inside itself and the turn still reports success | The kind registers what its catalog declares, so the handle is there. The store is the kind's, shared by every seat of it |
 | **drops a tool into one worker's own folder** | Nothing happens, silently. The folder is passed over, and so is a `tools/` folder next to it | The block is that seat's, always, without being listed anywhere — the promise that seat's `skills/` folder already makes |
 | **reads a `WORKER.md` to see what a seat can call** | The `tools:` list is the whole answer | The list **plus** whatever sits in that seat's own folder. Two places now, not one |
-| **writes a block whose file name and block name disagree** | The seat is hired without complaint, and the model is advertised a name the seat's list never authorized | Refused when the workforce is hired, naming both |
-| **puts a tool in their folder that needs a store** | n/a — the folder isn't read. Wire it up naively and the tool is advertised to the model, runs, and finds the store handle simply absent. No error, anywhere | Refused when the workforce is hired, naming the block and the two ways to give it its store |
+| **writes a block whose file name and block name disagree** | The seat is hired without complaint, and the model is advertised a name the seat's list never authorized | Refused before any seat runs, naming both — when the kind is built for the app's catalog, at hire for a seat's own folder |
+| **puts a tool in their folder that needs a store** | n/a — the folder isn't read | Refused at hire, naming the block and the two ways to give it its store. A seat's folder is one seat's; a store is the kind's, so this is the one case that cannot be registered instead |
 | **attaches a tool-bearing capability to the workforce** | Its catalog tools are dropped for every seat; its framework controls still arrive | Unchanged, byte for byte |
 
-**Most of this already works and nobody can tell.** The pieces landed separately — the file scan
-in [FIX-1357](https://linear.app/fixpoint-labs/issue/FIX-1357), the enforced fence in
-[FIX-1393](https://linear.app/fixpoint-labs/issue/FIX-1393) — and the seam between them was never
-written down, wired in an app, or proved. The one app with a `workforce/blocks/` folder reaches its
-block a different way entirely, as a flow action. So the honest shape of this issue is *smaller
-than it looks*: one wiring line, one guard, one folder, and the documentation that makes the recipe
-findable.
+**Most of this already works and nobody can tell — with one qualifier that cost a review round to
+find.** The pieces landed separately: the file scan in
+[FIX-1357](https://linear.app/fixpoint-labs/issue/FIX-1357), the enforced fence in
+[FIX-1393](https://linear.app/fixpoint-labs/issue/FIX-1393). The seam between them was never
+written down, wired in an app, or proved — the one app with a `workforce/blocks/` folder reaches
+its block a different way entirely, as a flow action.
+
+**The qualifier: it works for a tool that needs nothing.** A seat reaches its tools through a
+resolver that runs per turn, so a block arriving that way is outside the walk that installs a
+block's stores. Declare a store on a custom tool today and it is hired, advertised to the model,
+called — and the handle is not there. The tool fails inside itself and the turn reports success.
+Nothing anywhere says a word. So the honest shape of this issue is still *smaller than it looks* —
+one wiring line, one registration, two guards, one folder, and the documentation that makes the
+recipe findable — but "already works" needed that sentence attached to it, and did not have one
+until a reviewer pulled on it.
 
 ## What changes
 
@@ -104,8 +113,10 @@ same road its instructions and its skills already travel.
 - **A team's file authors still cannot grant themselves a tool the app never shipped.** The app
   decides what the catalog contains; a seat decides which of it to use.
 - **Where a store comes from.** Resources are installed on the kind, for every seat of it, and
-  that does not change here. A block in a seat's folder may **use** a store the kind already has;
-  it may not be the thing that declares one.
+  that does not change here. What changes is that a block in the app's **catalog** now gets its
+  declarations registered, instead of being advertised with nothing behind it. A block in one
+  **seat's folder** may *use* a store the kind already has; it may not be the thing that declares
+  one, because a seat's folder is one seat's and a store is every seat's.
 
 ## Sign off
 
@@ -113,9 +124,11 @@ same road its instructions and its skills already travel.
    declaration, not by being exempted from the fence.** *If wrong:* `tools:` in a worker file stops
    being the complete answer to "what can this seat call", and anyone auditing a seat has to read
    its folder too. That cost is real and it is the price of the ruling.
-2. **[D1](DECISIONS.md#d1) · The primary recipe ships as a wiring line, a guard and documentation
-   — no new framework surface.** *If wrong:* we have documented a seam as supported and it turns
-   out to need an adapter, so the docs are wrong in public before the code is.
+2. **[D1](DECISIONS.md#d1) · The primary recipe ships as wiring, guards and documentation — no new
+   public option.** The one thing it must *build* is registration: the kind installs what its
+   catalog's blocks declare, so a custom tool that needs a store has one. *If wrong:* we have
+   documented a seam as supported when it needs more than wiring, so the docs are wrong in public
+   before the code is.
 
 One thing was **decided, not asked**, and is flagged because it binds something public: a tool has
 one name, and the file's, the catalog key's and the block's own must agree

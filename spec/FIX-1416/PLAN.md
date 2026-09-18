@@ -11,13 +11,14 @@ builds against BR-10 (worker-only), and widening that rule later is additive.
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the kind factory (`agent-worker-flow.ts`) | Refuse when a map entry's key and its block's `name` disagree, naming both (the one-name rule). Written once and applied to **both** maps — the app's catalog here, the seat's own in S6b | BR-3 |
+| S1 | `workforce` · the kind factory (`agent-worker-flow.ts`) | Refuse when a map entry's key and its block's `name` disagree, naming both (the one-name rule). Written once and applied to **both** maps — the app's catalog **at kind construction** here, the seat's own **at hire** in S6b | BR-3 |
+| S1b | `workforce` · the kind factory, same seam | Merge `declaredResources` from the catalog's entries into the kind when it is built, so a catalog tool that needs a store has one. The catalog is already kind-wide, so this installs nothing the kind was not already scoped for | BR-17 BR-18 |
 | S2 | `workforce` · docs surfaces | The catalog wiring recipe, end to end: scan → `catalog:` → `tools:` → the model. This is the deliverable D1 is mostly made of | BR-1 BR-2 BR-4 BR-5 |
 | S3 | `goals/pentest-lab` · a new goal | A seat calls a custom block it named in `tools:`, on a real model. Soft-expand of FIX-1355. The lab already builds a catalog by hand (`lab/host.mts:279`); the delta is a block under its own `workforce/blocks/` and the scan, so the goal proves the *convention* path rather than the hand-wired one | BR-1 |
 | S4 | `workforce` · the code walk (`codegen/discover.ts`) | A per-seat blocks slot, `teams/*/workers/*/blocks/`, beside the existing `RESOURCE_SLOT_PATTERNS` walk. Refuse a `blocks/` folder at any other level and a `tools/` folder anywhere, each naming the fix | BR-6 BR-10 BR-12 BR-13 |
 | S5 | `workforce` · the renderer (`codegen/render.ts`) | A fourth export, `seatBlocks`, keyed by the seat's id (`<team>.<worker>`) then by block basename. Deterministic ordering, as the other three are | BR-6 BR-9 |
 | S6 | `workforce` · **the hire step** (`hire.ts`) + `worker-config.ts` | `seatBlocks` becomes the **fourth contract key**: declared on `workerConfigSchema()`, imposed by `hireWorkforce` from the seat's entry in the generated map, refused when an author writes it — the shape `seatSkills` already has (`hire.ts:258`, `:361`). `hireWorkforce` takes the map as its option, not the kind factory | BR-6 BR-9 BR-14 |
-| S6b | `workforce` · the kind factory (`agent-worker-flow.ts:615`) | Union this seat's own blocks into the generator's `tools:` resolver (D2). Refuse at the mint: a resolved tool-name collision (BR-8), and a colocated block that declares resources (BR-15) | BR-7 BR-8 BR-11 BR-15 BR-16 |
+| S6b | `workforce` · the kind factory (`agent-worker-flow.ts:615`) | Union this seat's own blocks into the generator's `tools:` resolver (D2). Refuse at the mint: the seat-map half of the one-name rule (BR-3), a resolved tool-name collision (BR-8), and a colocated block that declares resources (BR-15) | BR-3 BR-7 BR-8 BR-11 BR-15 BR-16 |
 | S7 | Docs + changeset | The worker-level `blocks/` folder; reconcile the line that calls `tools/` layout; one `minor` changeset for `@flow-state-dev/workforce` | — |
 
 **Nothing is removed.** Worth saying out loud on an exploration ticket: the honest finding is that
@@ -28,7 +29,8 @@ one while building, that is a separate issue.
 
 ```mermaid
 flowchart TD
-  S1["S1 · one name, refused at the door"] --> S2["S2 · the recipe, documented"]
+  S1["S1 · one name, refused at the door"] --> S1b["S1b · register what the catalog declares"]
+  S1b --> S2["S2 · the recipe, documented"]
   S2 --> S3["S3 · the lab proof"]
   S3 --> S4["S4 · the per-seat walk"]
   S4 --> S5["S5 · render the per-seat map"]
@@ -39,7 +41,7 @@ flowchart TD
 
 | PR | Surfaces | depends_on |
 |---|---|---|
-| PR1 | S1 S2 S3 | — |
+| PR1 | S1 S1b S2 S3 | — |
 | PR2 | S4 S5 S6 S6b S7 | PR1 |
 
 **PR2 does not wait on the open product question.** It builds against BR-10 — the worker's own
@@ -51,7 +53,8 @@ read this as the question being settled; it is open and unanswered, and it is th
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S1 | BR-3: the refusal fires on a mismatch, names both names, and does **not** fire when they agree. The POC's mismatched-block fixture is the red state |
+| V1 | S1 | BR-3 at **kind construction** for the catalog: the refusal fires on a mismatch, names both names, and does **not** fire when they agree. The POC's mismatched-block fixture is the red state. The seat-map half of BR-3 is V5's, at hire — assert both moments, not one |
+| V8 | S1b | BR-17's red state **first**, on the catalog path: a catalog block declaring a store is hired, advertised, called, and its handle is missing — the block throws inside `execute` **and the turn still reports success** (POC test 7 is this, verbatim; note it is the turn's success that makes it silent, not the absence of a throw). Then the registration, and the same tool runs with a working store. BR-18: a seat that never names the tool still has the store installed |
 | V2 | S1 | BR-1, BR-4, BR-5 pinned at workforce level, observing what the **model** receives, not a resolver result. The POC graduates here |
 | V3 | S3 | VG below |
 | VG | S3 | Goal, real model: a lab seat named a custom block in `tools:`, the model called it, and the block's own `execute` ran. `goals/pentest-lab/a-seat-calls-a-custom-block/run.mts`, shaped like the two goals already there |
@@ -115,8 +118,14 @@ per turn, in the `tools:` slot:
     return the already-resolved array                  ← the whole of D2
 
 at the kind's construction, once:
-    refuse if any map key ≠ its block's own name       (BR-3 · the one-name rule)
+    refuse if any CATALOG key ≠ its block's own name   (BR-3, catalog half)
+    kind resources ← merge every catalog entry's declaredResources   (BR-17)
 ```
+
+**The one-name rule has two moments and the plan means both.** The app's catalog is a
+kind-construction argument, so its half is checked there, before any seat exists. A seat's own map
+arrives at hire, so its half is checked there. Encode both; an acceptance test that asserts only one
+passes while half the rule is unimplemented.
 
 **Resolve at hire, not per turn.** The slot runs before every step of every generator turn, so it
 does what `seatCatalog` does (`agent-worker-flow.ts:487-488`, read at `:508`, `:641`, `:649`): the
@@ -135,11 +144,13 @@ changed the spec:
 | 1–3 | The generated map is accepted as a catalog with no adapter; a seat naming a scanned block reaches its `execute`; `tools: []` fences it | Held, as D1 assumed |
 | 4 | Which name the model is advertised when the file name and the block's `name` differ | **The block's own name.** The call by the authorized name never landed. Produced the one-name rule |
 | 5 | Whether a live `BlockDefinition` survives the hire path onto `ctx.flow.config` | **It does**, and the model calls it. Settled the delivery route |
-| 6 | What an author gets when a colocated block declares a resource | **Hired, advertised, called, handle absent, no error.** Produced BR-15 |
+| 6 | What an author gets when a **colocated** block declares a resource | **Hired, advertised, called, handle absent, turn reports success.** Produced BR-15 |
+| 7 | The same on the **catalog** path, with a block that really uses its handle | **The same hole, through the primary recipe's front door** — and because this block does not guard the read, it throws inside `execute` while the turn still reports success. Produced BR-17, and put the qualifier on D1 |
 
-Tests 4 and 6 are the two an implementer should graduate first — they are the red states. Note that
-test 6's block is the only one that needs a store; a resource-free handler cannot show this, which
-is how the hole survived the first draft.
+Tests 4, 6 and 7 are the ones an implementer should graduate first — they are the red states. Note
+that tests 6 and 7 carry the only blocks that need a store; a resource-free handler cannot show
+this, which is how the hole survived the first draft and half of it survived the first review round
+too.
 
 ## At implement time
 
@@ -155,13 +166,15 @@ is how the hole survived the first draft.
 
 ## Notes from review
 
-Round 1 (Cursor, then Codex). Four findings were folded into the documents above — the delivery
-route, BR-15, the one-name rule's second map, and PR2's unblocking — and are recorded in
-[DECISIONS → How it got here](DECISIONS.md). Below the bar, for you to weigh against real code:
+Two rounds (Cursor, Codex, Greptile, the FSD Architect). Six findings were folded into the
+documents above — the delivery route, BR-15, the one-name rule's second map, PR2's unblocking, the
+resource gap on the catalog path (BR-17/BR-18, and D1's qualifier), and the one-name rule's two
+moments — and are recorded in [DECISIONS → How it got here](DECISIONS.md). Below the bar, for you to
+weigh against real code:
 
 - "POC test 4 records a verdict rather than asserting a direction." Correct for a discovery POC,
-  and it is why the table above marks 4 and 6 as the two to graduate — a graduating test carries
-  the direction, the POC carried the question.
+  and it is why the table above marks 4, 6 and 7 as the ones to graduate — a graduating test
+  carries the direction, the POC carried the question.
 
 These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
 discarding one. A note that turns out to reveal a design problem is a spec blind spot — surface it

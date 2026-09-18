@@ -390,4 +390,74 @@ describe("FIX-1416 · round 1 · can a colocated block ride the hire path?", () 
     expect(seat).toBeDefined();
     expect(actionDeclares).toBe(false);
   });
+
+  /**
+   * Round 1, second reviewer: the same gap on the CATALOG path.
+   *
+   * The claim is that `defineFlow`'s static walk misses a catalog tool for
+   * exactly the reason it misses a colocated one — the seat's `tools:` slot is
+   * a RUNTIME resolver reading `ctx.flow.config` (`agent-worker-flow.ts:615`),
+   * so nothing it returns was ever an action block.
+   *
+   * If that holds, it is not a colocated-tools problem. It is a hole under
+   * D1's headline: the primary recipe does NOT already work end to end for a
+   * block that needs a store, and test 2 only read as green because its
+   * handler needed nothing.
+   *
+   * Test 6 read the handle through `?.`, which cannot tell "absent" from
+   * "throws on use". This one USES it, the way a real tool would.
+   */
+  it("7 · the same gap on the CATALOG path — and what a block that really uses its store gets", async () => {
+    const auditLog = defineResource({
+      scope: "session",
+      stateSchema: z.object({ lines: z.number() }),
+    });
+
+    let outcome = "never ran";
+    const catalogToolNeedingAStore = handler({
+      name: "write-audit",
+      description: "Appends to the audit log.",
+      uses: [defineCapability({ name: "audit", resources: { auditLog } })],
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async (_input, ctx) => {
+        try {
+          // A real tool does not optional-chain its own declared resource.
+          const res = (ctx as { resources: Record<string, { get: () => unknown }> })
+            .resources.auditLog;
+          await res.get();
+          outcome = "handle worked";
+        } catch (error) {
+          outcome = `threw: ${error instanceof Error ? error.message : String(error)}`;
+        }
+        return { ok: true };
+      },
+    });
+
+    const kind = defineAgentWorkerFlow({
+      catalog: { "write-audit": catalogToolNeedingAStore },
+    });
+    const [seat] = hireWorkforce(
+      [record({ id: "support.auditor", declared: { tools: ["write-audit"] }, body: "Auditor." })],
+      { kinds: { [AGENT_KIND]: kind } },
+    );
+
+    // Does the flow the seat runs know about the store its own catalog tool declared?
+    const actionDeclares =
+      seat!.actions.run!.block.declaredResources?.auditLog !== undefined;
+
+    const result = await run(seat!, "write-audit");
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `\n  VERDICT (7): CATALOG path · action block declares the resource: ${actionDeclares} · ` +
+        `turn error: ${result.error ? String(result.error) : "none"} · ` +
+        `inside execute: ${outcome}\n`,
+    );
+
+    // The finding: a block reached through `catalog:` + `tools:` is outside the
+    // static walk exactly as a colocated one is. D1's "already works" is true
+    // of resource-free blocks only.
+    expect(actionDeclares).toBe(false);
+  });
 });
