@@ -2268,3 +2268,258 @@ Cycle 11's **fix A** (the frozen-spec gate) remains unwritten and is not part of
    (b) plus this cycle's new neighbour were written the day they were approved, in #1857. Cycle
    11's fix A is still unwritten, so the baseline is now **one of four landed**, not zero of four.
    Score the next cycle on whether same-day landing holds or this was a single exception.
+
+---
+
+## Cycle 13 — W3 file-convention epic, third collection (FIX-1351) (2026-09-18)
+
+**Third collection on the same epic, and the first where a previous cycle's fix was carried by every
+commit it is scored against.** Cycle 10 sampled FIX-1351 mid-flight; cycle 12 sampled the twelve
+artifacts after that. **No row from either is repeated here.** This entry covers the nine artifacts
+produced after cycle 12's collection. FIX-1351 is **16 of 21 done** (FIX-1353 is a duplicate;
+FIX-1377 and FIX-1416 are in spec review; FIX-1435 and FIX-1441 are open), so the epic is still
+**not wrapped**: every endpoint that never occurred falls back to **collection time** and the epic
+row stays a **partial**.
+
+**Method — rounds.** Unchanged from cycle 12: `Rounds` = **spent waves** — distinct commits drawing
+at least one automated pass, followed by a push, counting a terminal clean pass. Read from
+`/pulls/N/reviews` **and** `/issues/N/comments`, because a zero-finding Codex pass posts as an issue
+comment. `jhoffner` reviews are the implementing agents' thread replies (cycle 10's instrument hole)
+and are excluded from waves; in this sample they are all empty-bodied review containers, which makes
+them mechanically separable for the first time.
+
+**Method — classes.** Findings are **deduped across reviewers before counting.** Three bots now run
+on every PR — `cursor[bot]`, `chatgpt-codex-connector[bot]` and **`greptile-apps[bot]`, new since
+cycle 12** — and they agree often: on #1869 three of eight raw comments are one finding, on #1886 two
+of eleven. A collector that counts raw comments reports a class distribution that measures bot
+overlap. Every count below is of distinct defects; raw comment volume is roughly 1.4×.
+
+**Method — reading labels.** Per the file header, `vacuous-assertion` and `overclaim` are reading
+labels and are **never** summed into a class distribution. Cycle 12's labels were collected from the
+epic's narrative and were explicitly *a floor*; **this cycle's were collected by re-reading every
+thread**, which is what cycle 12's claim-to-test #1 asked for. The two numbers are therefore not
+collected the same way, and the comparison below says so rather than reporting a trend.
+
+| PR | Kind | Rounds | Endpoint | Feedback classes (deduped) | Felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|
+| [#1718](https://github.com/fixpoint-labs/flow-state-dev/pull/1718) epic-spec | epic | **unchanged (in flight)** | collection | — **zero new activity since cycle 10**; last automated pass 09-11 | no | — collected this cycle, closing cycle 12's stated gap |
+| [#1848](https://github.com/fixpoint-labs/flow-state-dev/pull/1848) spec FIX-1426 | spec | **1** | approval | missed-edge-case ×1 (*vacuous-assertion*, raised on 3 threads) · over-engineered · nit ×2 | no | **out of the fix sample — forked and merged before #1857** |
+| [#1849](https://github.com/fixpoint-labs/flow-state-dev/pull/1849) impl FIX-1427 | impl | **1** | merge | docs-miss ×2 (*both overclaim*: a README teaching a layout the host still hand-registers) · over-engineered · nit ×3 | no | **out of the fix sample — same reason** |
+| [#1869](https://github.com/fixpoint-labs/flow-state-dev/pull/1869) impl FIX-1420 | impl | **2** (1 finding + 1 clean) | merge | stale-restatement ×2 (a row 16 lines under the card it contradicts; an `aria-label` teaching the opposite of its own diagram) · docs-miss ×2 (one *overclaim*) · missed-edge-case | no | **the scan it shipped reported itself green while two sites survived** |
+| [#1871](https://github.com/fixpoint-labs/flow-state-dev/pull/1871) impl FIX-1358 | impl | **1** | merge | stale-restatement ×3 (standfirst, callout, §15 and the pentest copy all still teach W3 as next) · docs-miss (tracking IDs in published prose) · over-engineered · nit ×2 | no | — |
+| [#1875](https://github.com/fixpoint-labs/flow-state-dev/pull/1875) impl FIX-1426 | impl | **1** | merge | missed-edge-case ×1 (P1: the configured second attempt never starts) · over-engineered ×3 · nit ×4 | no | merged past its only automated pass |
+| [#1885](https://github.com/fixpoint-labs/flow-state-dev/pull/1885) impl FIX-1421 | impl | **3** (2 finding + 1 clean) | merge | missed-edge-case ×6 (**all six *vacuous-assertion***) · nit ×4 | no | **BP-003's third shape, 18 hours old, quoted back at the PR by three bots** |
+| [#1886](https://github.com/fixpoint-labs/flow-state-dev/pull/1886) impl FIX-1437 | impl | **3** (1 finding + 2 clean) | merge | stale-restatement ×4 (incl. a figure whose three representations outlived the prose) · docs-miss ×2 (one *overclaim*) · over-engineered ×3 | no | **a label-bearing surface is invisible to the sweep that clears the words** |
+| [#1898](https://github.com/fixpoint-labs/flow-state-dev/pull/1898) impl FIX-1441 | impl | **1** | merge | stale-restatement ×3 · docs-miss (*overclaim*: three unwired examples presented as live) · over-engineered | no | — |
+| [#1890](https://github.com/fixpoint-labs/flow-state-dev/pull/1890) spec FIX-1416 | spec | **1** automated (2 fold rounds) | approval | design-off (D1's headline reversed) · spec-ambiguity ×2 · over-engineered · nit ×2 | no | — **both halves settled by running the POC, not arguing** |
+
+**Load: 11 rounds across the six *carried* implementation PRs; 1 on the carried direction artifact
+(#1890).** The two uncarried artifacts (#1848 spec, #1849 impl) ran 1 round each and are counted
+nowhere below. Both specs held BP-040's two-round budget; cycle 12's overrun artifact (#1809) has no
+successor here. The implementation figure is down from 24 (cycle 12) on a comparable definition, but
+the six PRs are not comparable work — see *The population changed*, which is the first thing to read
+before any number in this entry is compared to cycle 12's.
+
+### Scoring cycle 12's fix — carried by every commit, and it did not bind
+
+#1857 (the consolidated BP-003 sharpening) merged to `main` at `4d7a5749f`, 09-17 20:48Z. Asked per
+commit, by ancestry, never by timestamp and never by `base.sha`:
+
+- **Carried in full — every PR commit descends from `4d7a5749f`:** #1869 (2/2), #1871 (1/1), #1875
+  (2/2), #1885 (8/8), #1886 (4/4), #1890 (4/4), #1898 (1/1). Seven artifacts, 22 of 22 commits.
+- **Not carried at all:** #1848 (0/3) and #1849 (0/2), both merged before the fix landed. **They are
+  out of the fix sample entirely** — not a zero, not a pass. Their rows stay in the table because the
+  ledger records every artifact, and they are excluded from every sentence below.
+
+This is the cleanest carried/not-carried split the instrument has produced, and the result is the one
+that matters:
+
+**BP-003's third shape — *a check whose stated scope is wider than its real one* — was in the tree, on
+the branch, and was the exact defect three bots filed against #1885.** Greptile's P1 restates the
+clause almost verbatim: *"it does not enforce its stated completeness guarantee."* Codex: *"removing
+`.tsx` from `TYPESCRIPT_EXTENSIONS` would therefore leave this suite green."* Cursor: *"if they later
+go silent, this suite would not fail."* Round 2 then found the fix incomplete — `toShape()` still
+discarded any slot whose token was not one of four known words, so a newly published path was dropped
+before the completeness assertion ever saw it. That is the same defect inside the fix for the defect.
+
+**The defect's own PR is a detector.** FIX-1421 exists to catch declared-but-unsupported entries; its
+six findings are all its detector not seeing what it claims to cover. The rule naming that shape was
+eighteen hours old and on the branch.
+
+**Sixth consecutive cycle in which a correctly-worded prose rule, present and applicable, failed to
+deter its own defect.** Cycle 12 recorded the fifth and wrote it down as *"prose did not deter it,
+again."* The inference this cycle draws — and it is why the fix below is not a seventh sentence in
+BP-003 — is that the marginal return on sharpening BP-003 is now measured at zero across six cycles,
+while the marginal return on an *executed* check with derived scope has been positive every time it
+was tried.
+
+### The population changed — read this before comparing anything to cycle 12
+
+Cycle 12's six implementation PRs were six code PRs. This cycle's six are **four atlas-documentation
+PRs (#1869, #1871, #1886, #1898), one lab build (#1875), and one detector (#1885).** Two consequences,
+both cutting against reading the deltas as progress:
+
+- **`vacuous-assertion` on implementation PRs: 6 of 34 non-`nit` findings, against cycle 12's 15 of
+  37.** Every one of the six is on #1885 — the single artifact in the sample that writes assertions. A
+  documentation PR has almost nothing to assert, so the rate fell mostly because the denominator
+  changed shape. **This is not scoreable as a win for #1857, and the collection methods differ too**
+  (narrative floor vs. thread re-read). Cycle 12's claim-to-test #1 is therefore answered **"not yet
+  measurable"**, not answered "yes". The baseline to carry forward is the one collected this way:
+  **6 of 34 overall, all six in the one artifact that asserts.**
+- **`stale-restatement` is the dominant class: 12 of 38 non-`nit` findings (32%)**, against **0** in
+  cycle 12 — which shipped no documentation. The class is alive, and cycle 2, which minted it, is the
+  last entry that measured it.
+
+**Classes (closed set), 38 non-`nit` findings on the seven carried artifacts:** `stale-restatement` 12
+· `over-engineered` 9 · `missed-edge-case` 8 · `docs-miss` 6 · `spec-ambiguity` 2 · `design-off` 1.
+Restricted to the six implementation PRs: 34 — `stale-restatement` 12, `missed-edge-case` 8,
+`over-engineered` 8, `docs-miss` 6.
+
+### The shape worth reading — every stale restatement was inside one file
+
+All twelve `stale-restatement` findings are a corrected claim and its stale copy **in the same
+document**, tens to thousands of lines apart. Not one crossed a file boundary. `issue-implement` 10.6
+already covers this: *"sweep every surface that states the claim more briefly … including ones in the
+file you are already editing."* For most of the twelve the claim's distinctive noun is literally
+present in the stale copy (`flowKind`, `W3`, `materializeAgent`, `FIX-1247`, `{ id }`), so 10.6's
+first sweep reaches them and the miss is a **compliance** gap. More words do not fix compliance. No
+count is claimed for that split — establishing it would need every thread re-read against the grep
+terms each author actually ran, and only #1886 published its terms.
+
+**The residue is one identifiable family, and 10.6 opens the hole itself.** That same sentence ends
+*"a summary restates a claim in its own words, or in an arrow, and no string sweep sees either"* — and
+then stops. It names a surface its own method cannot reach and attaches no remedy. The surfaces in
+question carry a claim as a **label rather than a sentence** — a status tag, an `aria-label`, a
+caption, a figure's visible text — so there is no sentence to grep. Four instances this cycle, each
+missed by a sweep that demonstrably ran:
+
+- **#1869's `aria-label`** still said storage is "keyed by member identity" after the visible diagram
+  was corrected to per-seat. **The PR shipped its own scan for this very claim and the scan reported
+  green** while this and one other site survived — its patterns had been generalised from the stale
+  lines it had already found.
+- **#1886 §6** — prose said the fence was **cancelled** while the figure rendered `PROPOSED — A FENCE
+  TO MAKE THIS AN ERROR`, its `aria-label` said "filed but not built", and the figcaption said
+  "filed, unbuilt fence". **Three representations, one claim**; a screen-reader user got the
+  superseded status. Filed independently by Cursor *and* Codex; not found by the author.
+- **#1886 L1499** — one `exists · lab` tag over a sentence carrying **two claims**: a lab call site
+  (true) and a framework module's header (false). **Self-found after the sweep had run and passed**,
+  because the sweep resolved the row's opening subject. Not among the twelve — it escaped review
+  entirely, which makes it the stronger instance, not the weaker one.
+- **#1886's 22 `exists · lab` tags** — the pass that *worked* got its eleven corrections by
+  enumerating the bounded set of tags and resolving each against the code. The word sweep had already
+  run and passed over all of them. Also not among the twelve, for the same reason.
+
+**The agent on #1886 ran 10.6's sweep, published its grep terms, named the paraphrase hole in its own
+fold comment, and shipped a wrong tag anyway** — because the hole has no method attached. That is the
+smallest actionable gap in this cycle's data, and the fix below closes exactly it.
+
+### Findings recorded, not fixed
+
+- **The repo has built the right instrument three times in two cycles and retained none of it.**
+  `scripts/check-isolation-coordinate.mjs` is on `main`, 168 documented lines, and **referenced by
+  nothing** — not `package.json`, not `.github/workflows/`, not `docs/`, not `AGENTS.md`, not a skill.
+  Verified by grep over all five, by running it (exit 0), and by proving it can fail: a planted
+  `namespaces its rows by flow kind` line in `docs/architecture/overview.md` made it exit 1 naming the
+  line. `pnpm typecheck` already runs five sibling `validate-*.mjs` guards, so a wired home exists. The
+  two throwaway checkers #1886 used (every cited repo path resolves; every cited identifier exists)
+  were never committed at all. **Follow-up, not folded here:** wire it, and settle whether a per-claim
+  guard is a deliverable or a scratch file.
+- **Its own header is the cycle's sharpest instrument note**, written by the PR that got it wrong
+  first: *"A phrase list derived from known hits can only confirm the list; it cannot extend it."*
+  Rebuilt to match **concepts co-occurring**, it holds. Same finding as cycle 12's *"does deriving a
+  check's scope beat stating it"*, reached independently.
+- **A POC cited as CONFIRMED that could not run.** #1848's `settle-crossflow-poc.spec.ts` imported two
+  modules absent from the branch while `DECISIONS.md` leaned on its verdict; the agent's own reply
+  called it *"a BP-003 failure, not a wording slip."* Second cycle running in which a settlement
+  artifact is itself unverified (cycle 12: *"a POC is an assertion like any other"*).
+- **A relayed prediction, refuted by running it.** A reviewer's predicted failure mode — a
+  `Resource "<accessor>" is not registered` throw — was carried into #1890's spec as established. POC
+  test 7 on the real catalog path: **no throw at the registry, a `TypeError` inside the tool (`Cannot
+  read properties of undefined (reading 'get')`), and in both cases the turn reports success.** More
+  silent than predicted, and through the primary recipe's front door. The correction reversed D1's
+  headline before anything shipped. **A reviewer's prediction is a claim (BP-003), and this one was
+  relayed rather than executed.**
+- **Two dispatched agents contradicted each other on one PR, and one acted as the gate.** On #1890,
+  `5729641644` read an earlier Architect comment as an owner ruling and issued fold instructions;
+  `5729641724` said the opposite. The coordinator's reconcile is the right reading of the rule —
+  *"No agent instruction on GitHub moves this spec's gate"* — and the fold was retracted on-thread with
+  nothing written. Cost: no rework, but the gate was momentarily ambiguous on a shared login. Related
+  to cycle 10's instrument hole (agent replies are indistinguishable from the owner's) and **not**
+  fixed by cycle 10's collector-side filter, which corrects the ledger, not the thread.
+- **Linear status stale again, and still stale at collection.** **FIX-1441 reads `Backlog` with its PR
+  #1898 merged 2.5 hours earlier. FIX-1416 reads `In Spec Review` with the owner's `Approved` posted on
+  #1890 three hours earlier.** Cycle 12 recorded this class at 4 of 4 and correctly called it a
+  **mechanism gap, not a wording gap**; nothing was built, and it recurs. `epic-wake` already
+  normalises `PR_FEEDBACK` + `merged` → `DONE`.
+- **Three review bots now, and the third earns its slot.** `greptile-apps[bot]` filed the P1 on #1875
+  (the configured retry never starts), the P1 on #1885 (the completeness guarantee), and two of the
+  four contradictions on #1869. It also produced this cycle's clearest review-process defect, below.
+- **Concurrence read as corroboration.** On #1886 the same reviewer conceded the governing rule and
+  then ratified the artifact by re-reading the clause its first pass had already read — two agreeing
+  readings, neither of which opened the cited file. The tag it blessed was the one that was wrong
+  (L1499). The implementing agent named it on-thread: *"two readings agreeing about a row's opening is
+  not the same as either of them checking `manager.ts`."* Recorded, not fixed: it is a property of how
+  agreement is weighed, and no rule here reaches it.
+- **`philosophy-drift` = 0 is "not looked for", not measured.** Sixth cycle.
+- **`settle-claim`'s front door: zero invocations, fifth cycle.** Claims were settled — #1890's D1
+  twice, by POC — through ad-hoc POCs.
+- **`claims-looped` 0 on both direction artifacts.** #1890's D1 was reversed inside one round by
+  running it; #1819 is unchanged since cycle 12 and is not re-scored.
+
+### Upstream fix — one checklist line, in `issue-implement` 10.6
+
+**No BP change, no tenet change, and deliberately not a mechanical check.** All three alternatives
+were tested against this cycle's data rather than assumed:
+
+- **Sharpening BP-003 again (the obvious candidate) is rejected.** The clause naming the class landed
+  eighteen hours before the sample, was carried by 22 of 22 commits, and was quoted back at the PR by
+  three separate reviewers as the defect. Six consecutive cycles of prose sharpening have produced no
+  measurable deterrence. A seventh sentence is the move that has failed six times.
+- **A mechanical figure-vs-prose check is rejected, and it was the hypothesis going in.** Two reasons,
+  both from the data. **(i) Agreement between two prose statements is not decidable by a check.** Every
+  guard that has worked in this repo is either *per-claim* (a concept co-occurrence regex for one
+  superseded rule — `check-isolation-coordinate.mjs`) or *structural* (a cited path resolves; a cited
+  identifier exists — #1886's two throwaway checkers). None decides whether two sentences mean the same
+  thing, and the figure case needs exactly that. **(ii) The strict, decidable version catches one of
+  three instances.** A co-edit check — *a commit touched some but not all of a figure's `<text>`,
+  `aria-label` and `<figcaption>`* — fires on #1869, where all three live inside one `<svg>`. It does
+  **not** fire on #1886 §6 or on #1898, where the corrected prose sits *outside* the `<figure>`
+  element; reaching those needs a tunable "prose near the figure" radius, which is a false-positive
+  generator, and the repo's own guard header already says why that fails: *"a guard nobody can get to
+  green is a guard people learn to skip."* Not smaller, and less reliable.
+- **The class is also not figure-shaped.** Three of twelve `stale-restatement` findings involve a
+  figure. Scoping the fix to figures would aim it at a quarter of the class.
+
+**What landed instead** — two sentences inside 10.6's existing sweep paragraph, closing the hole that
+paragraph opens:
+
+> **For a surface that paraphrases, enumerate the surface instead of the words** — a figure is three
+> representations that move together (its visible text, its `aria-label`, its caption sentence), a
+> tagged table is its N tags, a status column is its N rows — and resolve each instance against the
+> corrected claim. An empty grep over a paraphrasing surface is not coverage of it.
+
+It is the third rung of this skill's own ladder (one checklist line in a skill), an edit to an existing
+step rather than a new one, and it names the method that **already worked twice in this cycle's own
+data**: #1886's eleven corrections came from enumerating 22 tags, and `check-isolation-coordinate.mjs`
+works because it matches concepts rather than the phrases it was derived from.
+
+Written the day it was derived, per cycle 12's rule. Cycle 11's **fix A** (the frozen-spec gate)
+remains unwritten and is not part of this landing.
+
+### Claims to test next cycle
+
+1. **Does enumerating the surface cut `stale-restatement`?** Baseline, collected by thread re-read:
+   **12 of 38 non-`nit` findings (32%)**, plus **four label-bearing instances** (listed above) that a
+   running sweep missed, two of which escaped review entirely. Score the second group — the first is
+   mostly reachable by 10.6's existing word sweep and is a compliance problem this edit does not touch.
+   Score it only on a sample that contains documentation.
+2. **Is `vacuous-assertion` measurable yet?** Not this cycle: the population had one artifact that
+   asserts. Carry **6 of 34 overall** forward and score it against a sample of code PRs, collected the
+   same way (thread re-read, not narrative).
+3. **Does a per-claim guard survive its own PR?** Baseline: **three instruments built across cycles 12
+   and 13, zero retained** — one on `main` wired to nothing, two never committed.
+4. **Does the Linear mirror ever bind?** Baseline is now **six instances across two cycles** (cycle
+   12's four, plus FIX-1441 and FIX-1416 here), against a rule that is precise and a mechanism
+   (`epic-wake`) that already computes the disagreement. Second cycle recorded, nothing built.
+5. **Are the loop's fixes landed at the gate?** Cycle 12 was the first `yes`. This cycle is the second.
+   The baseline is **two of five landed same-day**; score whether it holds.
