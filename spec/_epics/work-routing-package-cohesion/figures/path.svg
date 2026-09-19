@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 388" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path: a ship-fence band under the axis saying FIX-1435 has no pull request and is still Todo, so the W3 ship fence has not lifted, and that four W4 ship PRs merged under the live fence, the last of them pull request 1928 by the owner himself. Below it, eleven lanes against time with a now line at September 19. Two input lanes from W3, TEAM.md and the tools fence, carry bars that reach the now line and read landed on main on September 19. Then the seven lanes of the set. FIX-1408 carries a done bar behind the now line, done by decision. FIX-1405 inventory opens with a short spec-approved bar at the now line and then carries one merged bar running to the end of its lane: done, with pull requests 1920, 1923 and 1928 all merged. FIX-1385 channel boards carries the same spec bar and a merged bar running to the end of its lane: Done, pull request 1922 merged, one full-scope PR rather than the four its plan named. FIX-1394 package cohesion carries an open-PR bar reading matrix pull request 1921, both forks decided, ratify recorded. Its lane stops at the ratify with no dashed continuation, because that is where this epic's work on it ends: the owner answered authorship on 2026-09-19 and documents the same day, and building the ratified format is FIX-1459, which is related to this epic rather than a child of it. FIX-1430, the manager-queue lab, carries its spec bar, then a merged bar for pull request 1929, and then a dashed red gate box reading ER-20 NOT RUN — the code is merged and the exit gate's own run still needs a model credential this epic does not have. The last two lanes of the set each now open with a short PR-open bar at the now line and then a dashed not-started line, because each has a pull request and neither has finished. FIX-1381 seat resource allowlist reads spec pull request 1935 open, in review, not approved — the spec gate is still with the owner. FIX-1451 allowed-tools, a bug, reads fix pull request 1936 open, a bug so no spec — it needs no spec to finish, because a bug routes straight to its implementation PR. Neither bar is a merge, so both lanes plus FIX-1394's ratify are still the wrap's tail, alongside ER-20. Under a divider, two related lanes, catalog manifests and channel-admin, read related, not in the set: they consume FIX-1405 and hold no wrap, and catalog manifests waits for FIX-1405's approved spec. The critical path is drawn in the gutter through the boards and the lab only; the inventory lane sits beside it, not behind it.">
+     aria-label="The path: a ship-fence band under the axis saying FIX-1435 has no pull request and is still Todo, so the W3 ship fence has not lifted, and that four W4 ship PRs merged under the live fence, the last of them pull request 1928 by the owner himself. Below it, eleven lanes against time with a now line at September 19. Two input lanes from W3, TEAM.md and the tools fence, carry bars that reach the now line and read landed on main on September 19. Then the seven lanes of the set. FIX-1408 carries a done bar behind the now line, done by decision. FIX-1405 inventory opens with a short spec-approved bar at the now line and then carries one merged bar running to the end of its lane: done, with pull requests 1920, 1923 and 1928 all merged. FIX-1385 channel boards carries the same spec bar and a merged bar running to the end of its lane: Done, pull request 1922 merged, one full-scope PR rather than the four its plan named. FIX-1394 package cohesion carries an open-PR bar reading matrix pull request 1921, both forks decided, ratify recorded. Its lane stops at the ratify with no dashed continuation, because that is where this epic's work on it ends: the owner answered authorship on 2026-09-19 and documents the same day, and building the ratified format is FIX-1459, which is related to this epic rather than a child of it. FIX-1430, the manager-queue lab, carries its spec bar, then a merged bar for pull request 1929, and then a solid green gate box reading ER-20 PASS times three — the code is merged and the exit gate has now been run and passed, three consecutive times on the model path, with both negative controls going red at their own legs. The last two lanes of the set each now open with a short PR-open bar at the now line and then a dashed not-started line, because each has a pull request and neither has finished. FIX-1381 seat resource allowlist reads spec pull request 1935 open, in review, not approved — the spec gate is still with the owner. FIX-1451 allowed-tools, a bug, reads fix pull request 1936 open, a bug so no spec — it needs no spec to finish, because a bug routes straight to its implementation PR. Neither bar is a merge, so those two lanes are the whole of the wrap's tail now that ER-20 is met. Under a divider, two related lanes, catalog manifests and channel-admin, read related, not in the set: they consume FIX-1405 and hold no wrap, and catalog manifests waits for FIX-1405's approved spec. The critical path is drawn in the gutter through the boards and the lab only; the inventory lane sits beside it, not behind it.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -13,6 +13,7 @@
     .impl  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
     .inp   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
     .gate  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .gpass { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
     .lane  { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
     .axis  { stroke:var(--rule); stroke-width:1; }
     .div   { stroke:var(--rule); stroke-width:1; }
@@ -25,6 +26,8 @@
     .t-ln  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
     .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
     .t-now { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.06em; }
+    .t-pass{ fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
              font-size:9.5px; letter-spacing:.06em; }
     .t-fen { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
   </style>
@@ -80,9 +83,9 @@
     <text class="t-ln" x="16" y="234">FIX-1430 manager-queue lab</text>
     <rect class="live" x="330" y="225" width="52" height="12" rx="2"/>
     <rect class="done" x="386" y="226" width="118" height="10" rx="2"/>
-    <rect class="gate" x="510" y="225" width="96" height="12" rx="2"/>
-    <text class="t-now" x="516" y="234">ER-20 NOT RUN</text>
-    <text class="t-s" x="616" y="234">#1929 merged · the gate needs a model key</text>
+    <rect class="gpass" x="510" y="225" width="96" height="12" rx="2"/>
+    <text class="t-pass" x="516" y="234">ER-20 PASS &#215;3</text>
+    <text class="t-s" x="616" y="234">#1929 merged · gate passed · controls red</text>
     <text class="t-ln" x="16" y="256">FIX-1381 seat resource ACL</text>
     <rect class="impl" x="330" y="247" width="116" height="12" rx="2"/>
     <path class="lane" d="M452 253 L600 253"/>
@@ -115,8 +118,8 @@
     <text class="t-s" x="400" y="384">W3 input</text>
     <path class="lane" d="M455 381 L491 381"/>
     <text class="t-s" x="499" y="384">not started</text>
-    <rect class="gate" x="571" y="375" width="16" height="12" rx="2"/>
-    <text class="t-s" x="595" y="384">gate not run</text>
+    <rect class="gpass" x="571" y="375" width="16" height="12" rx="2"/>
+    <text class="t-s" x="595" y="384">gate passed</text>
     <circle class="critd" cx="672" cy="381" r="3.2"/>
     <path class="crit" d="M672 375 L672 387"/>
     <text class="t-s" x="688" y="384">critical path to the proof</text>

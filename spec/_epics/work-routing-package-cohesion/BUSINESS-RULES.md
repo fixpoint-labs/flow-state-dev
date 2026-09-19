@@ -95,12 +95,29 @@ with the owner, where the recommendation is the epic's and unanswered.
 
 | # | The epic's first cut is done when | Proved by |
 |---|---|---|
-| ER-20 | Work filed on a **channel or org board** wakes a seat that runs it, and a coordinator seat assigns work to **team** seats — on the real path, seats and channels declared in files | **FIX-1430 owns it**, adopted as the proof at the objective gate ([D6](DECISIONS.md#d6)). **FIX-1385 provides the surface it stands on and does not own it** — one row filed and claimed on a board is not ER-20; ER-20 is a coordinator assigning a queue across several seats |
+| ER-20 | Work filed on a **channel or org board** wakes a seat that runs it, and a coordinator seat assigns work to **team** seats — on the real path, seats and channels declared in files. **PASS, 2026-09-19** ([the run](SPEC.md#er-20-passed)) | **FIX-1430 owns it**, adopted as the proof at the objective gate ([D6](DECISIONS.md#d6)). **FIX-1385 provides the surface it stands on and does not own it** — one row filed and claimed on a board is not ER-20; ER-20 is a coordinator assigning a queue across several seats. **Proved by `goals/manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name`** at `GOAL_FILER=model` on `vercel/openai/gpt-5.4-mini`, commit `e6ccb22` of `main` — **three consecutive PASS runs** |
 | ER-21 | The queue a coordinator sees is a **view** over existing task state and seat idle — no new status, no new L1 type | FIX-1430's goal check · ER-11 |
 | ER-22 | The docs teach routing as something a team gets by attaching a board to a channel, **not something it builds** — and teach `assignee` and *seat* as two different things | The epic's docs pass · ER-5 |
 
 **ER-20 is the rule to read twice.** It is the only rule that makes the epic's claim falsifiable.
 Wrapping on ER-1, ER-2 and ER-3 shipping, without ER-20 run on the real path, would be claiming
-routing works rather than having seen it. **As of 2026-09-19 it has not run** — FIX-1430's verdict
-log carries the row as [`NOT RUN`](SPEC.md#er-20-has-not-run) for want of a model credential, and
-the [wrap](PLAN.md#wrap) is enforced against this rule as written.
+routing works rather than having seen it. **On 2026-09-19 it ran, and it passed** — three
+consecutive times, on the model path, and the verdict log's row moved from `NOT RUN` to
+[PASS](SPEC.md#er-20-passed). A coordinator seat whose own file declares `tools: []` chose the desks
+and filed four rows through the eight task tools its kind composes; every row ran on the seat whose
+**own file** answers for that desk.
+
+**And this is the first check in the epic whose negative control was demonstrated on the same path
+as the pass** — which is the fact that makes the row mean anything. This set's recurring defect has
+been the check that could only pass: BR-6 asserted a type and a field rather than arrival, FIX-1394's
+compiler never opened the file it claimed to compare, and its grant-gate probe watched a worker the
+package was never given to. ER-20 is the rule written to stop that happening to the epic's own claim,
+so a `PASS` whose red state was only ever shown on a scripted filer would have been the same defect
+wearing the rule's clothes. It was not: **`repointed-map` produced exactly three leg-(c) identity
+failures with every row still running and completing — only the association moved — and
+`duplicate-filing` produced exactly the two leg-(b) arms and nothing else.** Both on the model path,
+which is stronger than the scripted control logged on
+[#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929): the authoring environment could
+not reach the model path and this one could. The [wrap](PLAN.md#wrap) is still enforced against this
+rule as written — it is now met, and **the wrap's remaining terms are the open children, not this
+row**.

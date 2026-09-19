@@ -36,35 +36,54 @@ document:** read the spec branch's head, or the Linear document on the issue.
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | FIX-1408 | Dispatch / session policy: sub-agent is same-session background, worker assign is a roster seat in a **linked** session, `parentSessionId` at mint, history by opt-in tools | The wire everything else routes over | **Done** · 2026-09-18 · no impl PR ([below](#a-note-on-fix-1408)) |
-| FIX-1394 | **One package format as a Markdown file**, scoped to instructions and tools, two attachment modes, and **not disk-only** ([ER-2](BUSINESS-RULES.md)). POC-first | Half the epic's title. Two overlapping surfaces grow board and tool sugar twice until this settles | **Ratify recorded** · matrix [#1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921) open, never merges · both forks [decided](DECISIONS.md#decided-in-review) — [authorship](DECISIONS.md#authorship-answer), and [documents](DECISIONS.md#documents-answer) · ship tickets next, under ER-8 |
+| FIX-1394 | **One package format as a Markdown file**, scoped to instructions and tools, two attachment modes, and **not disk-only** ([ER-2](BUSINESS-RULES.md)). POC-first | Half the epic's title. Two overlapping surfaces grow board and tool sugar twice until this settles | **Done by decision** · 2026-09-19 · the **ratify is the deliverable** and it is recorded — both forks [decided](DECISIONS.md#decided-in-review), [authorship](DECISIONS.md#authorship-answer) and [documents](DECISIONS.md#documents-answer). Matrix [#1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921) stays open and never merges; the **build is [FIX-1459](#related-not-children), outside the set** |
 | FIX-1405 | Inventory in two layers: a declared roster composed from the existing readers, and the live org resource ChannelFlow updates | The epic's third promise in its own right — *which seats and channels exist* — and what `team.*` addressing calls later ([ER-7](BUSINESS-RULES.md)). It does **not** gate the boards | **Done** · 2026-09-19 · PR-A [#1920](https://github.com/fixpoint-labs/flow-state-dev/pull/1920), S4 [#1923](https://github.com/fixpoint-labs/flow-state-dev/pull/1923) and S5–S7 [#1928](https://github.com/fixpoint-labs/flow-state-dev/pull/1928) all **merged** — terminal by merge |
 | FIX-1385 | A channel holding `0..N` TaskCollections; channel actions and `taskTools` as two doors on one surface. Plus the PR-5 name check over its own diff ([ER-19](BUSINESS-RULES.md)) | **The exit gate's surface** — the board in "channel/org board → seat runs" | **Done** · 2026-09-19 · [#1922](https://github.com/fixpoint-labs/flow-state-dev/pull/1922) **merged** — one full-scope PR, not the spec's four ([the seam it discharged](PLAN.md#coordination-seams-to-watch)) |
-| FIX-1430 | Manager-queue lab: a coordinator seat owns a channel board, assigns to linked seats, shows queue state as **views** over existing task status | The **proof** of the exit gate, and the owner of [ER-20](BUSINESS-RULES.md) | **Done** · 2026-09-19 · [#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) **merged** — but **the gate it exists to run [has not run](#er-20-has-not-run)** |
+| FIX-1430 | Manager-queue lab: a coordinator seat owns a channel board, assigns to linked seats, shows queue state as **views** over existing task status | The **proof** of the exit gate, and the owner of [ER-20](BUSINESS-RULES.md) | **Done** · 2026-09-19 · [#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) **merged**, and **the gate it exists to run [has passed](#er-20-passed)** — three runs, controls red |
 | [FIX-1381](https://linear.app/fixpoint-labs/issue/FIX-1381) | **Seat resource allowlist** — thin seat/kind refs by `ro`/`rw`. The ship ticket for D-11 Ask 1 | Nothing today can control which resources a worker or skill reaches: `resourcesFromDocs` hard-codes `scope: "org"` and `workerConfigSchema` admits only `instructions`, `teamInstructions`, `seatSkills`. **Pulled in by the owner** ([below](#the-sixth-child-pulled-in)) | **In spec review** · spec PR [#1935](https://github.com/fixpoint-labs/flow-state-dev/pull/1935) open on `spec/FIX-1381` · **the spec gate is with the owner and unanswered — nothing here is approved** |
 | [FIX-1451](https://linear.app/fixpoint-labs/issue/FIX-1451) | **Skill `allowed-tools` promises a grant it does not make** — the honesty fix on the seat's tool surface | A seat's package is half of this epic's title, and a promise the loader does not keep is the package lying about what a seat can reach. Parented by the owner as a *soft encounter under package cohesion*, explicitly **not a ship-gate on FIX-1394** ([below](#the-seventh-child)) | **In PR review** · a `Bug`, so [**no spec**](#the-seventh-child) — the PR is the review surface · fix PR [#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936) open on `fix/FIX-1451-allowed-tools-honesty`, 10 files |
 
-**Four of seven children are complete; three are open.** FIX-1408 done by decision, and FIX-1385,
-FIX-1405 and FIX-1430 all merged to `main` on 2026-09-19. Open: **FIX-1394** at its now-unblocked
-ratify, **FIX-1381** at its spec, and **FIX-1451** at its implementation. The last two both joined
-the set today — one pulled in, one confirmed as having been a child all along.
+**Five of seven children are complete; two are open.** FIX-1385, FIX-1405 and FIX-1430 merged to
+`main` on 2026-09-19, and two are done by decision rather than as code — FIX-1408, whose deliverable
+was the dispatch policy, and **FIX-1394, whose deliverable was the ratify** ([the build is downstream](#related-not-children)).
+Open: **FIX-1381** at its spec and **FIX-1451** at its fix. Both joined the set today — one pulled
+in, one confirmed as having been a child all along.
 
-**Read that as four of seven, not as the epic being done.** Two separate things are true and neither
-implies the other: most of what is *built* is merged, and **the thing the set exists to prove has
-never been observed**. Nor is the finish line where it was this morning — the set grew
-[once](#the-sixth-child-pulled-in), then [again](#the-seventh-child).
+**The thing this set exists to prove has now been observed** — [ER-20 passed](#er-20-passed), three
+runs, with both controls red on the same path. That was the one term no amount of work could
+substitute for, and it is met. **It is still not a wrap:** the other term is every child terminal,
+and two are not. What is left is two pull requests, which is a different kind of obstacle from the
+one that stood here this morning.
 
+<a name="er-20-passed"></a>
 <a name="er-20-has-not-run"></a>
-**[ER-20](BUSINESS-RULES.md) is OPEN. Its row reads `NOT RUN`.** The acceptance goal calls a real
-model and no environment reachable from this epic has an inference key, so the check fails loudly by
-name rather than degrading to a scripted filer. Everything around it is green — routing, sessions,
-the waiting row, refusal by name — with controls that go red at the leg they name. **The wrap term
-is enforced against ER-20 as written:** W4 does not wrap until that row says PASS.
-[#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) **has since merged, and it did
-not change this.** A merged proof whose gate never ran is exactly the *claiming routing works rather
-than having seen it* that ER-20 exists to prevent, and it is now the literal state of the set. What
-stands between W4 and its wrap is **a machine with an inference key, and the three open children** —
-FIX-1394's ratify, [FIX-1381](#the-sixth-child-pulled-in)'s spec and
-[FIX-1451](#the-seventh-child)'s fix. Those three are work that can be done. The key is not.
+**[ER-20](BUSINESS-RULES.md) PASSED on 2026-09-19 — the row that read `NOT RUN` all week now reads
+PASS.** The gate is
+`goals/manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name`, run at the default
+`GOAL_FILER=model` on `vercel/openai/gpt-5.4-mini`, against commit `e6ccb22` of `main`. **Three
+consecutive runs passed.** A coordinator seat whose own file declares `tools: []` chose the desks
+and filed four rows through the eight task tools its kind composes; **every row ran on the seat
+whose own file answers for that desk**, proved by the outbox rather than by the board's own report.
+The waiting row was neither re-routed nor dropped, and a row filed for nobody settled `errored`,
+named, and ran nowhere.
+
+**Both controls went red, each at its own leg and nowhere else** — `repointed-map` produced exactly
+three leg-(c) identity failures with every row still running and completing, so only the
+association moved; `duplicate-filing` produced exactly the two leg-(b) arms and nothing else. **Both
+ran on the model path**, which is what makes this row worth more than the scripted control logged on
+[#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) — and it is the first check in
+this epic whose negative control was demonstrated on the same path as its pass
+([why that matters](BUSINESS-RULES.md)). The environment blocker is gone: the project was pointed at
+the FSD environment and a thread ran it there.
+
+**This does not wrap the epic, and nothing here should be read as it doing so.** ER-20 was one of
+two wrap terms; the other is every child terminal, and **two children are still open** —
+[FIX-1381](#the-sixth-child-pulled-in)'s spec, with you on
+[#1935](https://github.com/fixpoint-labs/flow-state-dev/pull/1935), and
+[FIX-1451](#the-seventh-child)'s fix on
+[#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936). Neither is merged. What changed
+is the *kind* of thing standing in the way: for a week it was a fact nobody had observed, and now it
+is two pull requests.
 
 <a name="the-sixth-child-pulled-in"></a>
 **The sixth child, and what it cost.** [FIX-1381](https://linear.app/fixpoint-labs/issue/FIX-1381)
@@ -78,8 +97,9 @@ or `orchestration/src`. It needed no new ticket: **FIX-1381 already covered it e
 ticket for D-11 Ask 1, its own invent-kill naming that `WorkerConfig` gap.
 
 **It moved the wrap out, and that was said before the call was made.** The [wrap](PLAN.md#wrap) now
-needs FIX-1381 terminal **as well as** ER-20 passing, and FIX-1381's spec is only now in review,
-with no implementation — so W4's finish is further away today than it was this morning. The owner made that call with the consequence in
+needed FIX-1381 terminal **as well as** ER-20 passing; ER-20 has since passed, and FIX-1381's spec
+is only now in review with no implementation — so it is now one of the two things W4's finish waits
+on. The owner made that call with the consequence in
 front of him. **It enters cheaper than a cold child:** [D-11 (FIX-1380)](https://linear.app/fixpoint-labs/issue/FIX-1380)
 is **Done** and already decides its direction — Ask 1 the thin allowlist, Ask 3 org `ro` automatic
 and `rw` by permission — so only its spec is outstanding, not its shape.
@@ -109,8 +129,8 @@ cost nothing.
 **It is a `Bug`, so it skips the spec** and enters at implementation with its PR as the review
 surface ([ER-17](BUSINESS-RULES.md)) — there is no spec gate to wait for. That surface now exists:
 [#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936) on
-`fix/FIX-1451-allowed-tools-honesty`. **It holds the wrap like any child**, so the wrap's tail is
-still three open children plus ER-20.
+`fix/FIX-1451-allowed-tools-honesty`. **It holds the wrap like any child**, and with
+[ER-20 met](#er-20-passed) the wrap's tail is now just it and FIX-1381.
 
 **Worth naming, because it is this epic's own recurring defect in miniature:** a remembered decision
 about set membership, contradicted by the ticket, caught only by reading the ticket before acting on
@@ -223,11 +243,14 @@ seat's document being simply a resource under that seat on the org, with per-res
 configurability arriving later on **resource templates**, which do not exist yet. Both bind through
 [ER-2](BUSINESS-RULES.md), and the ratify is unblocked.
 
-**One thing is between W4 and the gate, and it is not work:** **a machine with an inference key.**
-That is the whole of what [ER-20](#er-20-has-not-run) waits for — every line of code it needs is
-merged. Behind the gate, the wrap waits on **three open children** — FIX-1394's ratify,
-[FIX-1381](#the-sixth-child-pulled-in)'s spec and [FIX-1451](#the-seventh-child)'s fix. All three
-sit on open PRs and none is merged; none of them can substitute for the key.
+**The gate is met.** [ER-20 passed](#er-20-passed) on 2026-09-19 — three runs on the model path,
+both controls red at their own legs. The inference key that was the whole of what it waited for
+arrived when the project was pointed at the FSD environment. **Behind the gate, the wrap now waits
+on two open children** — [FIX-1381](#the-sixth-child-pulled-in)'s spec, which is with you on
+[#1935](https://github.com/fixpoint-labs/flow-state-dev/pull/1935), and
+[FIX-1451](#the-seventh-child)'s fix on
+[#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936). Both are open, neither is
+merged, and **W4 does not wrap until they are**.
 
 **Settled since the last refresh, and it was the epic that had it wrong:** **FIX-1451 is a child**,
 parented deliberately and documented as such on the ticket ([above](#the-seventh-child)) — the

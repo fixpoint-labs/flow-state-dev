@@ -19,12 +19,12 @@ merged is what the wrap's tail looks like.
 
 **The critical path ran boards → the proof, and all of it is behind us.** FIX-1385 merged on
 2026-09-19 and FIX-1430's build followed it onto `main` the same day
-([#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929)). **What stands between the epic
-and its gate is not work**: it is [ER-20's own run](SPEC.md#er-20-has-not-run), which needs a model
-credential this epic has never had — which is why the proof's lane ends in a gate box rather than at
-its bar. **Behind the gate, the wrap has a tail of three:** FIX-1394's ratify, FIX-1381's spec and
-FIX-1451's fix. None is on the critical path — package cohesion runs *beside* it, and the two new
-children come *after* it — but all three are terms of the wrap.
+([#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929)). **The gate has since been met**:
+[ER-20 passed](SPEC.md#er-20-passed) on 2026-09-19, three runs on the model path with both controls
+red, once the project was pointed at an environment that could reach a model. The proof's lane ends
+in a passed gate rather than an unrun one. **Behind the gate, the wrap has a tail of two:**
+FIX-1381's spec and FIX-1451's fix. Neither is on the critical path — they came *after* it — but
+both are terms of the wrap.
 
 ## What each issue entails
 
@@ -36,7 +36,7 @@ children come *after* it — but all three are terms of the wrap.
 | **FIX-1394** package cohesion | **POC matrix → ratify, recorded** → ship tickets | FIX-1377's team layer · FIX-1416's `tools:` fence — **both landed** at `d8e4c99`, and the code wins over either spec (ER-18) · D4 | One format as a Markdown file, instructions and tools, two attachment modes, **not disk-only**, **documents org-scoped** (ER-2). Its POC also carries the evidence for **one** of FIX-1408's walls (ER-15) | Ship tickets, once the ratify completes (ER-8) — **not** the proof | Large |
 | **FIX-1381** seat resource allowlist | spec → impl · **spec PR [#1935](https://github.com/fixpoint-labs/flow-state-dev/pull/1935) open**, in review, gate unanswered | **D-11's settled direction** (FIX-1380, Done): Ask 1 the thin allowlist, Ask 3 org `ro` automatic / `rw` by permission · today's `resourcesFromDocs` org hard-code and the `WorkerConfig` gap its invent-kill names | Thin seat/kind resource refs by `ro`/`rw` — the first control over which resources a worker or skill reaches | **The wrap** — it is now a term of it | Not sized · direction settled, spec in review |
 | **FIX-1451** allowed-tools honesty · *a bug* | **no spec** → impl · fix PR [#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936) open on `fix/FIX-1451-allowed-tools-honesty` | FIX-1416's landed `tools:` fence at `d8e4c99` — the promise the bug is about (ER-18) | A seat's skill no longer promising a tool grant the loader does not make | **The wrap** — a term of it like any child. Explicitly **not** a ship-gate on FIX-1394 | Not sized · a bug, scoped by its PR rather than a spec |
-| **FIX-1430** manager-queue lab · *the proof* | spec → **impl, merged** — but the goal check is **NOT RUN** | ER-1 · **ER-2 as a fence, not an input** · ER-4 · ER-5 — consumes four, owns none | A coordinator seat assigning over a channel board to linked seats, queue columns as views. Plus the drain-width comparison ER-15 called for ([width 1](DECISIONS.md#drain-width)) | The epic's wrap, **once ER-20 runs** — merging did not release it | Medium · [#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) merged |
+| **FIX-1430** manager-queue lab · *the proof* | spec → **impl, merged** → **goal check PASS**, three runs | ER-1 · **ER-2 as a fence, not an input** · ER-4 · ER-5 — consumes four, owns none | A coordinator seat assigning over a channel board to linked seats, queue columns as views. Plus the drain-width comparison ER-15 called for ([width 1](DECISIONS.md#drain-width)) | The epic's wrap, **once ER-20 runs** — merging did not release it | Medium · [#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) merged |
 
 **Size is a read, not an estimate.** Three of the original five are exploration tickets whose own
 scope is the thing being explored — FIX-1394 most of all, whose ship tickets are not in this set
@@ -67,10 +67,11 @@ the graph because they do not block, not because the code is missing.
 4. **FIX-1385's implementation landed** ([#1922](https://github.com/fixpoint-labs/flow-state-dev/pull/1922))
    → the proof's build ran, and has since merged too. The set's only true blocking edge is
    discharged, and **four of the seven children are on `main`**.
-5. **ER-20 runs on the real path** → the epic's *claim* is proved. It is blocked on an
-   **environment**, not on work: every line of code it needs is merged, and
-   [the gate has not run](SPEC.md#er-20-has-not-run). It is not the last thing in front of the wrap
-   — [three open children](#wrap) are the rest — but it is the only one nobody can work around.
+5. **ER-20 ran on the real path and passed** → the epic's *claim* is proved, 2026-09-19. It was
+   blocked on an **environment** rather than on work, and that blocker is gone — the project was
+   pointed at the FSD environment and a thread ran the gate there, three consecutive passes with
+   both controls red ([the run](SPEC.md#er-20-passed)). It was the one term nobody could work
+   around; **[two open children](#wrap) are the rest of the wrap**, and those are work.
 6. **W3's last implementing child merges** → the ship fence lifts (ER-14). That is **FIX-1435**,
    still `Todo` with no branch and no PR. Four W4 ship PRs have merged under the live fence, the
    last of them **#1928, by the owner himself** — which settles that PR without answering the rule.
@@ -140,26 +141,33 @@ children, not five** ([amended](DECISIONS.md#d6-extended), then [corrected](DECI
 **Terminal is read from GitHub, not from Linear.** A child is terminal when its **implementation PR
 is merged or closed**, or when this epic-spec records its work as **done by decision rather than as
 code** — which is FIX-1408, and the set table is where that is recorded. Linear is the mirror; a
-merge is what makes code shipped. **Four children are terminal: FIX-1408 by decision, FIX-1385,
-FIX-1405 and FIX-1430 by merge.** Three are not: FIX-1394 at its now-unblocked ratify, **FIX-1381,
-whose spec PR [#1935](https://github.com/fixpoint-labs/flow-state-dev/pull/1935) is open and
-unapproved**, and **FIX-1451, whose fix PR
+merge is what makes code shipped. **Five children are terminal: FIX-1408 and FIX-1394 by
+decision, FIX-1385, FIX-1405 and FIX-1430 by merge.** FIX-1394 counts here because its deliverable
+was the ratify and the ratify is recorded — its matrix PR never merges and its build left the set as
+[FIX-1459](SPEC.md#related-not-children). Two are not terminal: **FIX-1381, whose spec PR
+[#1935](https://github.com/fixpoint-labs/flow-state-dev/pull/1935) is open and unapproved**, and
+**FIX-1451, whose fix PR
 [#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936) is open and unmerged**. Note
 that FIX-1451 needs no spec to become terminal — a bug's route runs straight to its implementation PR
 ([ER-17](BUSINESS-RULES.md)) — so a missing spec there is not a missing step.
 
-**ER-20 has not run, so the gate has not been met.** #1929 merged, which made FIX-1430 terminal and
-left the gate exactly as unrun as before — [the row reads `NOT RUN`](SPEC.md#er-20-has-not-run) and
-the term is enforced against the rule as written. **Terminal children are not a met gate**, and
-this set is the clearest possible case of the difference: everything the first cut builds is on
-`main`, and nobody has watched it work. Somebody running that check with a model credential, and
-the verdict log saying PASS, is what meets the gate.
+**ER-20 ran and passed, so the gate is met.** [The row reads PASS](SPEC.md#er-20-passed) — three
+consecutive runs of
+`goals/manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name` at `GOAL_FILER=model` on
+`vercel/openai/gpt-5.4-mini`, against `e6ccb22` of `main`, with both negative controls red at their
+own legs on the same path. **Terminal children were never a met gate**, and for a week this set was
+the clearest case of that difference: everything built was on `main` and nobody had watched it work.
+Somebody has now watched it work. **One caveat on where that is written down:** the `NOT RUN` row
+inside `goal.md` on `main` is still stale and needs its own PR — that is not this branch's to fix,
+and until it lands, `main` does not yet say what this page says.
 
 **And meeting the gate is no longer the same moment as wrapping.** [D6](DECISIONS.md#d6) bought
 exactly that alignment at the objective gate, and the set has since grown twice — the owner
 deliberately pulled **FIX-1381** in at 16:01 with the cost stated to him, and **FIX-1451** turned
-out to have been a child since 12:58, which no call made and no call can undo. So the wrap now needs
-**ER-20 passing *and* three open children terminal**. Only one of those two growths was a choice.
+out to have been a child since 12:58, which no call made and no call can undo. So the wrap needed
+**ER-20 passing *and* every child terminal**. **ER-20 is now met, and the second term is not:**
+FIX-1381 and FIX-1451 are both open. Only one of those two growths was a choice, and they are what
+is left.
 
 **Which children count is no longer open.** The tracker and this document agree on seven
 ([ER-16](BUSINESS-RULES.md)), and there is no unconfirmed remainder. That agreement was reached by

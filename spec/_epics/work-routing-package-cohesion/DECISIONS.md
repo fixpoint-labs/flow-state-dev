@@ -106,7 +106,7 @@ page is the other kind and must not be confused with this one.
 
 **What the amendment costs, stated before the call and restated here.** D6 existed to stop the epic
 outliving its own gate, and this extension knowingly spends some of that: FIX-1381 has no spec and
-no implementation, so the [wrap](PLAN.md#wrap) now waits on it **as well as** on ER-20 passing, and
+no implementation, so the [wrap](PLAN.md#wrap) waited on it **as well as** on ER-20 passing, and
 W4's finish moved further out. That was the owner's call to make and he made it with the consequence
 in front of him. **It is a cheaper child than a cold one:** its direction is already decided by
 **D-11 ([FIX-1380](https://linear.app/fixpoint-labs/issue/FIX-1380)), which is Done** — Ask 1 the
@@ -125,7 +125,8 @@ was never made — which is the whole of why it cost nothing.
 
 **It is a `Bug`, so no spec.** It enters at implementation with its PR as the review surface
 ([ER-17](BUSINESS-RULES.md)), and it **holds the wrap** like any child. Counting FIX-1381, the
-wrap's tail is now three open children plus ER-20.
+wrap's tail was then three open children plus ER-20; with ER-20 since
+[passed](SPEC.md#er-20-passed) and FIX-1394's ratify recorded, it is this bug and FIX-1381.
 
 **The defect is worth more than the correction.** Twice on 2026-09-19 a remembered decision about
 set membership disagreed with the ticket — [FIX-817](SPEC.md#related-not-children) out of a set the
