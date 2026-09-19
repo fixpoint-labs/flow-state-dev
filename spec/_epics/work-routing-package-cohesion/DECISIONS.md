@@ -97,6 +97,14 @@ FIX-817 on, stated there.
 **Re-homed is not descoped.** Both stay filed and keep their dependency edges. What changed is
 which epic's wrap they hold: none.
 
+**The tracker is at six, not five, as of 2026-09-19.**
+[FIX-1451](https://linear.app/fixpoint-labs/issue/FIX-1451) was filed and parented under FIX-1407
+after this card was ratified. D6 is an owner call and a refresh does not reopen it — but the count
+it fixed and the count Linear now holds disagree, and the [wrap term](PLAN.md#wrap) reads the
+tracker. Either D6 extends to six deliberately, or FIX-1451 re-homes the way FIX-817 and FIX-1415
+did. **Not decided here**, and not re-parented here: it is [an open question](#open) for the owner,
+and the same evidence bar applies as it did to the first two.
+
 <a name="who-owns-what"></a>
 ## Who owns what
 
@@ -123,8 +131,9 @@ re-decide it either.
 | **The objective gate**: the exit gate stands as one hop · **the set is five**, FIX-1430 the proof · the compose helper's public export approved · the ship fence as written | The owner, 2026-09-19, ratifying the three-item ask as recommended | [D1](#d1) · [D6](#d6) · [D5](#d5) · [D2](#d2) |
 | FIX-1394's POC keeps **one** of FIX-1408's walls — *which opt-in history packs are v1*; the other four return to the epic | A history pack **is** a library package with opt-in attachment, so the matrix already probes it. The other four are session policy with no package content, and loading them leaves the probe set unfixable | ER-15 · [Open](#open) |
 | The **inventory → boards** sequencing edge the epic asserted does not exist; dropped | FIX-1385's `SPEC.md`, `DECISIONS.md` and `BUSINESS-RULES.md` name FIX-1405 and *inventory* **zero** times; its `PLAN.md`'s two mentions are an optional read and a collision note. Its BR-7 carries the caller's `assignee` with no seat resolution, and `team.*` addressing is ER-7's, built by no child at first ship. **The set's one blocking edge is FIX-1385's implementation before FIX-1430** | [the graph](SPEC.md#how-the-issues-flow-into-each-other) · [PLAN](PLAN.md#what-unblocks-what-from-here) · `figures/path.svg` |
-| What replaces it is a **merge order**: FIX-1385's PR-A lands before FIX-1405's PR-B | Both edit `defineChannelFlow` and the binder. It orders two *merges*, not two starts — neither spec waits on the other, and FIX-1385's plan already names the seam | [the seams table](PLAN.md#coordination-seams-to-watch) |
-| **ER-2 binds whatever the ratify records**, *don't collapse* included. It no longer pre-names the collapse | FIX-1394's BR-16 makes *don't collapse* a result with the same force as any other, and ER-8 and ER-13 reserve the answer to the ratify — an epic rule naming it first is the second authority ER-15 exists to stop. It costs nothing operationally: FIX-1430 already reads ER-2 as a fence compatible with all four answers | ER-2 · `figures/end-state.svg` |
+| What replaces it is a **merge order**: FIX-1385's PR-A lands before FIX-1405's PR-B | Both edit `defineChannelFlow` and the binder. It orders two *merges*, not two starts — neither spec waits on the other, and FIX-1385's plan already names the seam. **Discharged 2026-09-19:** FIX-1385 shipped whole in [#1922](https://github.com/fixpoint-labs/flow-state-dev/pull/1922), so the order held and FIX-1405's S5/S6 rebase onto it | [the seams table](PLAN.md#coordination-seams-to-watch) |
+| **ER-2 binds whatever the ratify records**, *don't collapse* included. It no longer pre-names the collapse | FIX-1394's BR-16 makes *don't collapse* a result with the same force as any other, and ER-8 and ER-13 reserve the answer to the ratify — an epic rule naming it first is the second authority ER-15 exists to stop. It costs nothing operationally: FIX-1430 already reads ER-2 as a fence compatible with all four answers. **Superseded in part on 2026-09-19** by the row below — the ratify now *has* recorded the authorship half | ER-2 · `figures/end-state.svg` |
+| **A package is authored in Markdown**, as the new file, scoped to **instructions and tools** — and the format **may not be designed disk-only** | The owner, 2026-09-19, taking the recommendation on FIX-1394's first ratify fork. *Don't collapse* is therefore no longer a live result. His own direction came with it and is the load-bearing half: eventually anyone will have an LLM write a package for them, and **those are stored as a resource, never saved to disk** — so a format that can only be read off the filesystem is wrong on arrival, not wrong later | [ER-2](BUSINESS-RULES.md) · [Open](#open) |
 | **ER-19 is a check over this set's own diff**, not a repo-wide rename | FIX-1385's BR-14 scopes it to the vocabulary this issue mints, citing the project's **PD-4**: running it early pays the rename twice. The narrowing is accepted rather than argued. The repo-wide pass stays the **project's**, with **no owner inside W4** — named out so the wrap cannot close by confirming a pass nobody ran | ER-19 · [the wrap](PLAN.md#wrap) |
 | ER-3 means **(a)** a contrast with the declared tree — **not (b)** relocating ChannelFlow's post fence onto an org resource | A channel's `members` is already live, read on the refusal path in the session the post lands in; (b) would put one fact in two places and tax every post | ER-3 · ER-12 |
 
@@ -154,46 +163,80 @@ answer: are the package format and the board's assign surface really two issues?
 ## Open
 
 **The set question is closed** at the objective gate as [D6](#d6), and the compose helper's public
-export with it ([D5](#d5)). What is open is **FIX-1394's two ratify decisions, which are with the
-owner now**, and the four walls below them.
+export with it ([D5](#d5)). **One of FIX-1394's two ratify decisions closed on 2026-09-19** and is
+recorded [above](#decided-in-review). What is open is the second, the sixth-child question, and the
+four walls.
 
-### Two product decisions, parked with the owner — they block FIX-1394
+### One product decision still parked with the owner — it blocks FIX-1394
 
 *(Decides: the owner. Blocks: FIX-1394's ratify, and the ship tickets behind it ([ER-8](BUSINESS-RULES.md)).
-Written in full, six parts each, on the matrix PR
+Written in full, six parts, on the matrix PR
 [#1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921) — summarized here so the block is
 visible without opening a child's PR.)*
 
-- **Who authors a package — a team in Markdown, or an engineer in TypeScript?** The capability
-  already works; what a file format adds is that a non-engineer can write one. Recommendation on
-  #1921 is *build it, as the new file, scoped to instructions and tools*; what would change it is
-  whether anyone outside the app's engineers will actually write one — if not, the honest answer is
-  *don't collapse*, which [ER-2](BUSINESS-RULES.md) already binds as a real result.
 - **Are documents in v1, or left out?** Nothing in the framework can carry a document to a *single*
   seat today, so a package that advertises one delivers prompt text re-sent every turn.
-  Recommendation on #1921 is *leave it out and say so in the format*; adding a document slot later
-  is additive, shipping one that quietly means something else is not.
+  Recommendation on #1921 is *leave it out and say so in the format*, **unchanged**; adding a
+  document slot later is additive, shipping one that quietly means something else is not.
+  [FIX-1454](https://linear.app/fixpoint-labs/issue/FIX-1454) now files the underlying gap — a
+  resource cannot be scoped to one seat — which is the fact this recommendation rests on, not a
+  reason to reopen it.
 
-**Why these are here and the four below are not.** These two are business calls the owner owns and
-nothing else can settle; the four are engineering walls that *building* answers
+**Answered, and what it changed.** *Who authors a package* closed as recommended: the Markdown file,
+scoped to instructions and tools. The direction that came with it is the part that binds — packages
+an LLM writes will be **stored as a resource, not saved to disk** — so [ER-2](BUSINESS-RULES.md) now
+carries a shape constraint the ship tickets inherit, and *don't collapse* is no longer a live
+result.
+
+### Does FIX-1451 belong under this epic?
+
+*(Decides: the owner. Blocks: nothing today. Bites: the wrap.)*
+[FIX-1451](https://linear.app/fixpoint-labs/issue/FIX-1451) is a filed, parented sixth child against
+a ratified set of five ([D6](#d6)) — stated in full at
+[the spec](SPEC.md#the-sixth-child). Recommendation: **re-home it as related-not-child**, the way
+FIX-817 and FIX-1415 went, because the epic's exit gate does not depend on it and a `Backlog` child
+holds the wrap open indefinitely. What would change my mind: if skill-context honesty is part of
+what *package cohesion* is supposed to deliver, it is a child and the wrap waits for it.
+
+**Why the two above are here and the four below are not.** Those are business calls the owner owns
+and nothing else can settle; the four are engineering walls that *building* answers
 ([ER-15](BUSINESS-RULES.md)).
 
 ### Four of FIX-1408's walls, returned to the epic
 
-*(Decides: the epic, as EM calls, on evidence. Blocks: nothing today. Bites: FIX-1385, the first
-child that builds over the wire.)*
+*(Decides: the epic, as EM calls, on evidence. Blocks: nothing today. **Re-derived 2026-09-19:**
+three of the four named FIX-1385 as their settler. FIX-1385 is now merged and closed, and settled
+**none** of them — it built the board and the claim path, not a coordinator assign, and its PR
+routes the one question it did touch back here under [ER-15](BUSINESS-RULES.md). So the settler for
+all four is now FIX-1430, the first and only child left that assigns.)*
 
 | Wall | What it decides | What would settle it |
 |---|---|---|
-| **Reuse-vs-create session policy** | Whether assigning a seat that is already running reuses its session or mints a second | FIX-1385's first real assign. Also on the Architect's Still-open list ([ER-13](BUSINESS-RULES.md)) |
-| **Auto-scale / busy-copy** | Whether a busy seat gets a second copy under load, or work queues on the board | FIX-1430 running a queue deep enough to make it matter |
-| **Hire-or-dispatch-with-parent naming** | What the call that mints a linked child is *called*, given [D4](#d4) fixed what it does | FIX-1385's board → seat call site — the first place the name is read by someone who did not write it |
-| **A sub-agent's background work on a board row** | Whether same-session background work is visible on the row at all, and as what | FIX-1385, which owns the row, with [ER-11](BUSINESS-RULES.md) binding: a view, never a new status |
+| **Reuse-vs-create session policy** | Whether assigning a seat that is already running reuses its session or mints a second | **FIX-1430** — its lab reports which dispatcher `session` knob it ran, `per-task` or `per-worker`. Was FIX-1385's first real assign; that never arrived. Also on the Architect's Still-open list ([ER-13](BUSINESS-RULES.md)) |
+| **Auto-scale / busy-copy** | Whether a busy seat gets a second copy under load, or work queues on the board | FIX-1430 running a queue deep enough to make it matter — unchanged, and now the only lane |
+| **Hire-or-dispatch-with-parent naming** | What the call that mints a linked child is *called*, given [D4](#d4) fixed what it does | **FIX-1430's** board → seat call site. FIX-1385 shipped no such call site, so the name has still not been read by anyone who did not write it |
+| **A sub-agent's background work on a board row** | Whether same-session background work is visible on the row at all, and as what | **Unowned.** It was FIX-1385's, as the owner of the row; FIX-1385 closed without deciding it. [ER-11](BUSINESS-RULES.md) still binds whoever takes it — a view, never a new status |
 
-**Why parked rather than asked.** None is a business call, and three of the four are answered by
-*building* FIX-1385 rather than by deciding in advance. **What being wrong costs:** if they are
-still open when FIX-1385 reaches its assign surface, that child stalls or decides one locally —
-which [ER-15](BUSINESS-RULES.md) forbids. Settle them on FIX-1385's spec review at the latest.
+**Why parked rather than asked.** None is a business call; all four are answered by *building* an
+assign surface rather than by deciding in advance. **What being wrong costs, restated now that the
+plan they assumed has changed:** the bet was that FIX-1385 would force three of them. It did not,
+and it is closed. Everything now rides on FIX-1430 — so if the proof runs and nobody reads what it
+reports, the four leave W4 unanswered with no child left to force them. Settle them on FIX-1430's
+evidence, which is the last cheap moment.
+
+<a name="the-cross-flow-board-residue"></a>
+**One more question FIX-1385 closed over, recorded so it is not lost.** Its Linear description
+carried an open wall from FIX-1426: cross-flow work-capable seats must declare *the same logical
+board*, and is that a file-convention teach? **Most of it shipped, answered.** A board's id is
+derived from the channel that holds it (`channelBoardId`), never written in a file, so two flows
+reach one logical board by both naming the same channel and board name — a file-convention teach,
+and FIX-1385's goal check makes the mismatch its red control. The recipient-side gate it worried
+about already existed on `main`: a dispatch addressed to another board is refused by schema, and a
+handed-off board with no stable `boardId` is refused at build. **What did not ship:** a seat naming
+a board id **no channel minted** is not refused — it silently resolves a second, empty ledger, with
+only `warnUnattendedBoards` as a signal (FIX-1385's BR-15: *there is no registry of legal board ids
+and this issue doesn't add one*). That residue has **no owner and no filed ticket**, and FIX-1385
+being Done does not give it one.
 
 Not this epic's to close: the Architect's **Still open** list
 ([ER-13](BUSINESS-RULES.md)) — exact package schema, reuse-vs-create, nested cascade timing, how
