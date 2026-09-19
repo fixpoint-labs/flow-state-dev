@@ -1,0 +1,89 @@
+<svg viewBox="0 0 940 322" role="img"
+     aria-label="Today, every seat in an org reaches every org document and can write all of them. After, a seat reaches only the documents its own file names, read-only unless it names rw; the documents it did not name are out of reach entirely."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .org  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .doc  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .seat { fill:var(--surface); stroke:var(--accent); stroke-width:1.4; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+            font-size:9.5px; letter-spacing:.1em; }
+    .t-b  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .e-all{ stroke:var(--gone); stroke-width:1; fill:none; opacity:.75; }
+    .e-ro { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .e-rw { stroke:var(--accent); stroke-width:1.6; fill:none; }
+    .t-ro { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:600; font-size:9px; }
+    .t-rw { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:600; font-size:9px; }
+    .t-no { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:600; font-size:9px; }
+    .fence{ stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+  </style>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="20">TODAY</text>
+    <rect class="org" x="16" y="30" width="420" height="96" rx="5"/>
+    <text class="t-s" x="30" y="48">org documents</text>
+    <rect class="doc" x="30" y="58" width="122" height="52" rx="4"/>
+    <text class="t-b" x="42" y="80">handbook</text>
+    <text class="t-s" x="42" y="96">team doc</text>
+    <rect class="doc" x="164" y="58" width="122" height="52" rx="4"/>
+    <text class="t-b" x="176" y="80">forecast</text>
+    <text class="t-s" x="176" y="96">finance doc</text>
+    <rect class="doc" x="298" y="58" width="122" height="52" rx="4"/>
+    <text class="t-b" x="310" y="80">payroll</text>
+    <text class="t-s" x="310" y="96">finance doc</text>
+
+    <path class="e-all" d="M100 232 L 91 110"/>
+    <path class="e-all" d="M100 232 L 225 110"/>
+    <path class="e-all" d="M100 232 L 359 110"/>
+    <path class="e-all" d="M330 232 L 91 110"/>
+    <path class="e-all" d="M330 232 L 225 110"/>
+    <path class="e-all" d="M330 232 L 359 110"/>
+    
+    <rect class="seat" x="30" y="232" width="140" height="48" rx="5"/>
+    <text class="t-b" x="42" y="254">engineering.lead</text>
+    <text class="t-s" x="42" y="270">reaches all 3</text>
+    <rect class="seat" x="260" y="232" width="140" height="48" rx="5"/>
+    <text class="t-b" x="272" y="254">finance.cfo</text>
+    <text class="t-s" x="272" y="270">reaches all 3</text>
+    <text class="t-no" x="30" y="304">every seat reaches every document, read and write</text>
+  </g>
+
+  <line class="fence" x1="470" y1="14" x2="470" y2="312"/>
+
+  <g id="after">
+    <text class="t-lbl" x="504" y="20">AFTER</text>
+    <rect class="org" x="504" y="30" width="420" height="96" rx="5"/>
+    <text class="t-s" x="518" y="48">org documents — unchanged, still org-scoped</text>
+    <rect class="doc" x="518" y="58" width="122" height="52" rx="4"/>
+    <text class="t-b" x="530" y="80">handbook</text>
+    <text class="t-s" x="530" y="96">team doc</text>
+    <rect class="doc" x="652" y="58" width="122" height="52" rx="4"/>
+    <text class="t-b" x="664" y="80">forecast</text>
+    <text class="t-s" x="664" y="96">finance doc</text>
+    <rect class="doc" x="786" y="58" width="122" height="52" rx="4"/>
+    <text class="t-b" x="798" y="80">payroll</text>
+    <text class="t-s" x="798" y="96">finance doc</text>
+
+    <text class="t-no" x="798" y="146">no seat named it</text>
+
+    <path class="e-ro" d="M588 232 L 579 110"/>
+    <text class="t-ro" x="504" y="180">ro — named it</text>
+    <path class="e-rw" d="M818 232 L 713 110"/>
+    <text class="t-rw" x="636" y="180">rw — asked for it</text>
+
+    <rect class="seat" x="518" y="232" width="150" height="48" rx="5"/>
+    <text class="t-b" x="530" y="254">engineering.lead</text>
+    <text class="t-s" x="530" y="270">reaches 1 of 3</text>
+    <rect class="seat" x="748" y="232" width="150" height="48" rx="5"/>
+    <text class="t-b" x="760" y="254">finance.cfo</text>
+    <text class="t-s" x="760" y="270">reaches 1 of 3</text>
+    <text class="t-ro" x="518" y="304">a seat reaches what its own file names, and no more</text>
+  </g>
+</svg>
