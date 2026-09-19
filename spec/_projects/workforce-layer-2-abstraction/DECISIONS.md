@@ -88,6 +88,7 @@ Answers settled at project altitude, so no later epic reopens them.
 | Does the propagation pass run before the vocabulary locks? | No (PD-4) | Same |
 | Is a channel an L1 type, and is *room* a second thing? | No to both — a channel is L2 opinion, a replaceable flow kind (W3 D1), and it replaced room | W3's objective and floor recut, Sep 11 |
 | Does W4 wait for W3's vocabulary lock before it starts? | No — it starts; only its **ship** PRs wait. PD-4's rename-twice risk is held by W4's ship fence, not by keeping the epic shut | W4's objective gate, Sep 19 |
+| How many children does W4 carry? | Five — FIX-1394, FIX-1405, FIX-1385, FIX-1408, FIX-1430. FIX-817 and FIX-1415 are related-not-child | [#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905) sign-off 2, approved Sep 19 02:49 ET; re-homed in Linear 03:04 UTC |
 
 ## Open
 
@@ -97,11 +98,6 @@ D3/D7. It binds W3 and W4, so it is named here rather than left inside one epic.
 
 *An earlier version asked whether rooms had a declaration surface. The zero it found was the
 `room` → `channel` fold (PD-5) working, not a gap.*
-
-**W4's set size is [#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905)'s sign-off 2,
-not a project call.** This table briefly carried *five* as decided; it is not, and the six-part ask
-lives on the epic. Answering it here would settle it at two altitudes. The table adopts whichever
-number closes there — see [Spec](SPEC.md).
 
 ### Is W1 in scope, or held off the path? — needs the owner
 

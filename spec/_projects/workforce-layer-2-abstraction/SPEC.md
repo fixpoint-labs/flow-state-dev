@@ -29,7 +29,7 @@ under this project is checked against.
 | [FIX-1332](https://linear.app/fixpoint-labs/issue/FIX-1332) · **W2 foundation** | Conventions, seat factory, thin Agent | **done** | 5/5 |
 | [FIX-1359](https://linear.app/fixpoint-labs/issue/FIX-1359) · **default agent flow** | OOTB replaceable `agent` flow kind | **done** | 7/11 |
 | [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351) · **W3 file surface** | Channels, resources, skills + a thin pentest lab | **in flight** | 19/22 |
-| [FIX-1407](https://linear.app/fixpoint-labs/issue/FIX-1407) · **W4 routing** | Work routing & package cohesion | **in flight** | 1/7 — **set size pending** |
+| [FIX-1407](https://linear.app/fixpoint-labs/issue/FIX-1407) · **W4 routing** | Work routing & package cohesion | **in flight** | 1/5 |
 | [FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333) · **W1 MCP door** | Client door over intake, boards, dispatcher | *not started* — **scope disputed** | — |
 
 2 done · 2 in flight · 1 not started — the first time this project has run two epics at once.
@@ -42,13 +42,12 @@ and leaves its Linear state alone. W2 and the agent flow read *done* that way
 [#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905), open and labelled *spec
 approved*.
 
-**W4's set size is open; the row shows the tracker.** The gate cleared Sep 19 and W4 is in flight —
-that part is settled. How many children it carries is not:
-[#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905) names *"seven children, or
-five?"* as its one unsettled sign-off and recommends five, re-homing FIX-817 and FIX-1415 so they
-cannot hold W4 open past its exit gate. Linear still has seven parented, so the derivation returns
-`1/7`. **A gate clearing is not its sign-offs closing**, so this row follows the tracker until the
-owner answers there.
+**W4 is five children, not seven — approved, then executed.** The owner answered
+[#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905)'s sign-off 2 on Sep 19 (02:49
+ET): five — FIX-1394, FIX-1405, FIX-1385, FIX-1408 (done) and FIX-1430 as the proof. FIX-817 and
+FIX-1415 were re-homed to **related-not-child** in Linear at 03:04 UTC, keeping their dependency on
+FIX-1405 without holding W4 open past its exit gate. The live derivation returns `1/5` and agrees.
+Three specs run in parallel — FIX-1394, FIX-1405, FIX-1385 — with FIX-1430 to follow.
 
 **W1's status is derived from the issue; a second surface disagrees with it.** FIX-1333 has sat in
 **Todo** since Sep 8 — one state-history entry, never moved, nothing blocking it, priority still
