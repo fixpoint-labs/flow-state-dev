@@ -217,6 +217,11 @@ describe("fsd-coding flow wiring — Claude", () => {
     expect(result.status).toBe("completed");
     expect(scripted.rec.cwd).toEqual([HOST_CWD]);
     expect(scripted.rec.resume).toEqual([undefined]);
+    expect(scripted.rec.options[0]).toMatchObject({
+      permissionMode: "bypassPermissions",
+      disallowedTools: expect.arrayContaining(["Agent"]),
+      sandbox: { enabled: true, filesystem: { allowWrite: [HOST_CWD] } },
+    });
     expect(scripted.rec.prompts[0]).toContain(DOOR_PREFIX.implement);
     expect(scripted.rec.prompts[0]).toContain("add a smoke test");
     expect(result.output).toMatchObject({
@@ -268,5 +273,31 @@ describe("fsd-coding flow wiring — Claude", () => {
     });
 
     expect(scripted.rec.options[0]).toMatchObject({ model: "claude-sonnet-4-6" });
+  });
+
+  it("lets trusted Claude host options override the headless defaults", async () => {
+    const scripted = scriptedClaude();
+    const result = await testFlow({
+      flow: createFsdCodingFlow({
+        cwd: HOST_CWD,
+        harness: "claude",
+        claude: {
+          resolveClaudeAgent: scripted.resolve,
+          permissionMode: "default",
+          disallowedTools: ["WebFetch"],
+          sandbox: { enabled: false },
+        },
+      }),
+      action: "implement",
+      userId: USER,
+      input: { task: "use the host policy" },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(scripted.rec.options[0]).toMatchObject({
+      permissionMode: "default",
+      disallowedTools: ["WebFetch"],
+      sandbox: { enabled: false },
+    });
   });
 });

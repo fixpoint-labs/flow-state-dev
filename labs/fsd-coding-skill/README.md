@@ -49,8 +49,11 @@ copies. A terminal claim is not proof that files changed or checks passed.
 The raw NDJSON is retained incrementally; the full `--capture` JSON is written
 only at completion. Inspect bounded raw excerpts for a specific failure, not
 the whole transcript on every poll. Raw traces may contain sensitive task/tool
-data; keep them local. Surface permission failures immediately, and stop
-unproductive work when the worker is blocked.
+data; keep them local. A permission-denial-shaped failed tool result also emits
+`{ event: "tool_denied", name, id, detail }`, alongside `tool_finished`.
+On `tool_denied` for `Write`, `Edit`, or `Bash`, the outer supervisor must stop
+the managed process immediately (`hub stop` in OMP); do not wait for completion,
+more discovery, or another denied attempt. Inspect the raw failure after stopping.
 
 Resolve the target checkout before running from this lab; it may be a different
 repository or linked worktree. The lab directory is not a safe target default.
@@ -65,6 +68,11 @@ signed-in Claude Code / Anthropic credentials. OMP is an outer harness, not
 one of these target adapters. Codex and Cursor keep their SDK version gates.
 Claude uses `@flow-state-dev/claude-code/sdk` (`claudeCodeAgent`), with the
 optional peer `@anthropic-ai/claude-agent-sdk`.
+Coding doors default to `permissionMode: "bypassPermissions"` for headless
+execution and `disallowedTools: ["Agent"]` to prevent background subagent fan-out.
+The default sandbox is enabled with the checkout in `filesystem.allowWrite`;
+this SDK setting adds a writable path, not an exclusive filesystem fence.
+Trusted hosts can override these defaults through `options.claude`.
 
 For a model override, add `FSD_CODING_MODEL=<supported-target-model-id>`.
 

@@ -28,7 +28,12 @@ describe("coding progress stream", () => {
         child.on("exit", (code) => reject(new Error(`Exited before live progress: ${code}; ${stderr}`)));
         child.stdout.on("data", (chunk) => {
           text += chunk;
-          if (text.includes("\n")) resolve(JSON.parse(text.slice(0, text.indexOf("\n"))));
+          let newline: number;
+          while ((newline = text.indexOf("\n")) !== -1) {
+            const event = JSON.parse(text.slice(0, newline));
+            text = text.slice(newline + 1);
+            if (event.event === "tool_denied") resolve(event);
+          }
         });
       });
       child.stdin.write(JSON.stringify({
@@ -40,7 +45,7 @@ describe("coding progress stream", () => {
         },
       }) + "\n");
       expect(await line).toMatchObject({
-        event: "tool_finished", name: "Write", status: "failed",
+        event: "tool_denied", name: "Write", id: "write-1",
         detail: "Claude requested permissions to write, but you haven't granted it yet.",
       });
       expect(child.stdin.writableEnded).toBe(false);
@@ -50,6 +55,53 @@ describe("coding progress stream", () => {
       child.stdin.end();
       child.kill();
     }
+  });
+
+  it("adds denial signals for failed approval results while preserving tool outcomes", () => {
+    const denials = [
+      { name: "Write", status: "failed", output: "Claude requested permissions to write, but you haven't granted it yet." },
+      { name: "Edit", status: "completed", isError: true, output: { message: "This tool requires approval." } },
+      { name: "Bash", status: "completed", output: { isError: true, content: [{ type: "text", text: "The command WAS BLOCKED." }] } },
+      { name: "Write", status: "failed", error: { message: "Writing requires approval." } },
+    ];
+    const lines = project(denials.map(({ name, ...item }, index) => ({
+      type: "item_done",
+      item: { type: "tool_output", toolCall: { name, callId: `denied-${index}` }, ...item },
+    })));
+
+    expect(lines.map((line) => line.event)).toEqual(denials.flatMap(() => ["tool_finished", "tool_denied"]));
+    expect(lines.filter((line) => line.event === "tool_finished").map((line) => line.status)).toEqual(denials.map(() => "failed"));
+    expect(lines.filter((line) => line.event === "tool_denied")).toEqual([
+      { event: "tool_denied", name: "Write", id: "denied-0", detail: denials[0].output },
+      { event: "tool_denied", name: "Edit", id: "denied-1", detail: "This tool requires approval." },
+      { event: "tool_denied", name: "Bash", id: "denied-2", detail: "The command WAS BLOCKED." },
+      { event: "tool_denied", name: "Write", id: "denied-3", detail: "Writing requires approval." },
+    ]);
+  });
+
+  it("does not flag ordinary failures or successful output that mentions approval", () => {
+    const lines = project([
+      { type: "item_done", item: { type: "tool_output", status: "failed", output: "No such file or directory" } },
+      { type: "item_done", item: { type: "tool_output", status: "completed", output: "The documented operation requires approval." } },
+    ]);
+    expect(lines).toEqual([
+      { event: "tool_finished", name: "tool", id: "", status: "failed", detail: "No such file or directory" },
+      { event: "tool_finished", name: "tool", id: "", status: "completed" },
+    ]);
+  });
+
+  it("detects denials beyond the displayed excerpt without emitting large details", () => {
+    const lines = project([{
+      type: "item_done",
+      item: {
+        type: "tool_output", status: "failed",
+        toolCall: { name: "Bash", callId: "long-denial" },
+        output: "context ".repeat(100) + "This command requires approval.",
+      },
+    }]);
+    expect(lines.map((line) => line.event)).toEqual(["tool_finished", "tool_denied"]);
+    expect(lines[1]).toMatchObject({ name: "Bash", id: "long-denial", detail: lines[0].detail });
+    expect(String(lines[1].detail).length).toBeLessThanOrEqual(480);
   });
 
   it("omits token deltas, payloads and duplicate lifecycle snapshots", () => {
