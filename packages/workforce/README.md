@@ -94,6 +94,11 @@ Each record is plain data:
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
 lowercase letters, digits and single hyphens, at most 64 characters.
 
+A `WORKER.md` may also carry `resources:`, a list of the [file-declared
+documents](#reading-documents-from-files) that seat may touch. The loader carries it through onto `declared` untouched, the way it carries every key it does
+not name; [the hire step](#the-documents-a-seat-may-touch) is where a ref meets the documents it
+could match.
+
 ### The optional team file
 
 A team may also carry a `TEAM.md` at `<root>/teams/<teamId>/TEAM.md`: a required `description`,
@@ -338,10 +343,87 @@ const seats = hireWorkforce(workers, { kinds: { "custom-agent": customAgentFlow,
 flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
-The factory reads **`flow`**, which names the kind to instantiate, and **`description`**, the roster
-label. Everything else is that worker's settings, handed to the flow
+The factory reads three keys of its own: **`flow`**, which names the kind to instantiate,
+**`description`**, the roster label, and **[`resources`](#the-documents-a-seat-may-touch)**, the
+documents this seat may touch. Everything else is that worker's settings, handed to the flow
 verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
 declared is refused by name at the hire.
+
+### The documents a seat may touch
+
+A `WORKER.md` may list the [file-declared documents](#reading-documents-from-files) that seat is
+allowed to reach, chosen from the ones its kind was installed with:
+
+```md
+---
+description: Holds the engineering board and breaks work into tasks.
+flow: custom-agent
+resources:
+  - teams/engineering/handbook
+  - teams/engineering/board-notes: rw
+---
+```
+
+A ref on its own is read-only: the seat reads the document, and a write is refused both at the
+resource handle and through the model's own write tool. `<ref>: rw` grants writes, and
+`<ref>: ro` spells the default out.
+
+**Absent and empty are different answers.** A seat whose file has no `resources:` key reaches every
+document its kind installed, and writes the ones that allow writes. `resources: []` is how a file
+says a seat gets none.
+
+**Only documents are narrowed.** The stores, boards and anything else the kind declares at flow
+level stay reachable and writable whatever a seat's list says, and so do the resources the kind's
+own blocks declare.
+
+For a ref to resolve, the hire step has to be told which entries in the kind's map are documents.
+Hand it the same catalog you spread into the flow:
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { hireWorkforce, resourcesFromDocs, workerConfigSchema } from "@flow-state-dev/workforce";
+import { readResourcesDirectory } from "@flow-state-dev/workforce/loader";
+import { inputSchema, runTurn } from "./blocks";
+import { boardResource } from "./resources";
+
+const { documents } = await readResourcesDirectory("./workforce");
+const catalog = resourcesFromDocs(documents);
+
+const customAgentFlow = defineFlow({
+  kind: "custom-agent",
+  cardinality: "collection",
+  configSchema: workerConfigSchema(),
+  resources: { board: boardResource, ...catalog },
+  actions: { run: { inputSchema, block: runTurn } },
+});
+
+const seats = hireWorkforce(workers, {
+  kinds: { "custom-agent": customAgentFlow },
+  documents: catalog,
+});
+```
+
+One catalog, spread into the flow and passed to the hire. Which entries in that map are documents
+is what the `documents` option answers: `board` above is not one, and no seat's list governs it.
+
+`documents` is consulted only for a seat that declares `resources:`. A roster where none does hires
+the same whether it is passed or not, and a seat that does declare one while `documents` is absent
+is refused, naming what is missing.
+
+Every problem with a list refuses the whole roster, naming the seat: a ref no document matches, a
+ref naming a document the app declared but did not install on this seat's kind, a mode that is
+neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says
+`writable: false`, and a ref colliding with a name the kind's own blocks already declare.
+
+One more is checked on the seat after it is built rather than on the list: if a document the seat
+did **not** name is reachable anyway — because one of the kind's blocks declares that same document,
+and a block's declaration is merged back in after a seat's narrowed map replaces the flow-level one
+— the hire refuses, naming the ref and the kind. Keep such a document at flow level and let the
+block reach it from there, or grant it to the seat deliberately.
+
+`resources:` never reaches the kind's settings. It is the factory's key, like `flow` and
+`description`, so a kind that declares a `resources` setting of its own does not receive one from a
+file.
 
 ### What a hireable kind must admit
 
@@ -751,6 +833,13 @@ This holds for a worker's folder too, and it is the thing most worth being clear
 document under `workers/recon/` addresses it to that seat, it does not keep it from the others. Every
 seat hired into one kind shares that kind's flow definition, so by default all of them read the same
 row.
+
+**Filtering decides what a kind installs; a seat's own file decides what that seat reaches.** A
+`resources:` list in a `WORKER.md` narrows one seat within a kind and can take a document
+read-only — see [The documents a seat may touch](#the-documents-a-seat-may-touch). A ref for a
+document this kind was not installed with is refused at the hire, so the filter above holds. Pass
+the map this section builds to `hireWorkforce` as `documents`, so a ref in that list has something
+to match.
 
 **To make a document that seat's alone, say so in the document.** A file whose frontmatter carries
 `flowIsolation: true` gets one row per seat: the seat that writes it reads it back, and a sibling
@@ -1283,7 +1372,7 @@ membershipPrefix("");
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
 | `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, and every `resources/` folder the convention reads, returning what they hold on `files` and `resourceModules`, each ordered by path. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules)` | Render a discovery's `files` and its `resourceModules` as a module of static imports exporting `kinds`, `channelKinds`, `blocks` and `resourceModules`. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
-| `hireWorkforce(manifests, { kinds, seatBlocks })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, and `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`. |
+| `hireWorkforce(manifests, { kinds, seatBlocks, documents })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. |
 | `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills` and `seatTools`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
 | `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
@@ -1345,7 +1434,7 @@ membershipPrefix("");
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
-| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource or `requireOrg`, a skill name reaching one seat from both the app's `skills` and its own folders, `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:` key. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource or `requireOrg`, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a ref no document matches, a ref naming a document the app declared but did not install on this seat's kind, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, or the key itself with no `documents` passed), `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:` key. Collected: one error names every bad worker |
 | A `resources/` slot, `org/`, `teams/`, a team folder, a `workers/` level or a worker folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
 | Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |
