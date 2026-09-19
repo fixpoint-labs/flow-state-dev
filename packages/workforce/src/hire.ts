@@ -93,6 +93,26 @@ export interface HireOptions {
    * Optional. Omitted, every seat hires exactly as it did before this existed.
    */
   seatBlocks?: Record<string, Record<string, BlockDefinition<any, any>>>;
+
+  /**
+   * The ledger ids this app's channels declared — `channelBoardIds(channels)`.
+   *
+   * Handed over so this step can say when a channel holds a board **no flow
+   * hired here declares**: the rows would sit `pending` forever with nothing
+   * said, which is the one failure a declared board can produce silently. Each
+   * unattended id gets a `console.warn` naming the channel and the id.
+   *
+   * **A warning, never a refusal**, and the reason is in the evidence rather
+   * than in a preference: a seat may legitimately live in another process, and
+   * this check cannot see it. So a missing declaration is *probably* a mistake
+   * and cannot be proved to be one, which is exactly the shape a warning is
+   * for.
+   *
+   * Optional. Omitted, nothing is checked and nothing is said — the check
+   * cannot invent a roster's ids, and every caller that predates boards hires
+   * exactly as it did.
+   */
+  channelBoards?: readonly string[];
 }
 
 /** A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere. */
@@ -554,5 +574,41 @@ export function hireWorkforce(
     );
   }
 
+  // After the refusals, deliberately: a roster that did not hire has nothing
+  // to be unattended by, and a warning printed beside a fatal error is noise.
+  warnUnattendedBoards(options.channelBoards ?? [], seats);
+
   return seats;
+}
+
+/**
+ * Say which channel boards nobody hired here drains.
+ *
+ * Read off the hired instances' merged `resources` rather than off the kinds:
+ * a board reaches a flow either as a flow-level declaration or by bubbling up
+ * from a capability, and only the minted instance has both.
+ */
+function warnUnattendedBoards(
+  boardIds: readonly string[],
+  seats: readonly FlowInstance[]
+): void {
+  if (boardIds.length === 0) return;
+
+  const declared = new Set<string>();
+  for (const seat of seats) {
+    for (const key of Object.keys(seat.resources ?? {})) declared.add(key);
+  }
+
+  for (const boardId of boardIds) {
+    if (declared.has(boardId)) continue;
+    // A board id is its channel's id, a dot, and a name carrying no dot.
+    const channelId = boardId.slice(0, boardId.lastIndexOf("."));
+    console.warn(
+      `[workforce] channel "${channelId}" holds board "${boardId}", and no flow hired in this ` +
+        `call declares it. Rows filed there will sit pending until something drains them — ` +
+        `declare the board on the seat that runs the work ` +
+        `(\`resources: { [board.id]: board }\` with \`channelBoard("${channelId}", "${boardId.slice(channelId.length + 1)}")\`), ` +
+        `or ignore this if that seat runs in another process.`
+    );
+  }
 }

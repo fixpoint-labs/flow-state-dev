@@ -22,8 +22,15 @@
  */
 
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import { taskSchema } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
+import {
+  channelBoardId,
+  channelBoardLedger,
+  channelBoardNamesFor,
+  resolveChannelBoard
+} from "./channel-board";
 
 /** The built-in kind's name, and so the built-in instance's address. */
 export const CHANNEL_KIND = "channel";
@@ -90,13 +97,30 @@ export const channelReadOutputSchema = z.object({
   id: z.string(),
   description: z.string().optional(),
   members: z.array(z.string()),
+  /**
+   * The board NAMES this channel declared — never the rows, which are a board
+   * read. **Absent, not `[]`, on a channel that declares none**, so a channel
+   * without boards projects exactly what it projected before boards existed.
+   */
+  boards: z.array(z.string()).optional(),
   transcript: z.array(channelTranscriptLineSchema)
 });
 
 export type ChannelReadOutput = z.infer<typeof channelReadOutputSchema>;
 
-/** Why a post was refused. Both are per-request refusals; the transcript is untouched. */
-export type ChannelRefusalReason = "channel-not-bound" | "author-not-a-member";
+/**
+ * Why a call on a channel was refused. Every one is a per-request refusal that
+ * leaves the transcript — and the ledger — untouched.
+ *
+ * `board-not-declared` is the file path's own: a caller naming a board this
+ * channel's `CHANNEL.md` did not declare. It is never another channel's board
+ * being reached and refused, because the ledger id is minted from the
+ * session's own identity and a name can only ever address this channel's.
+ */
+export type ChannelRefusalReason =
+  | "channel-not-bound"
+  | "author-not-a-member"
+  | "board-not-declared";
 
 /**
  * A post refused on the channel's own terms, as opposed to by the substrate.
@@ -188,29 +212,220 @@ const appendPost = handler({
   }
 });
 
-/** The clean projection. Deliberately not `ctx.session.items.client()`. */
-const readChannel = handler({
-  name: "channel-read",
-  inputSchema: z.object({}).strict(),
-  outputSchema: channelReadOutputSchema,
-  execute: async (_input, ctx): Promise<ChannelReadOutput> => {
-    const channel = boundChannel(ctx.session.state);
-    if (channel === undefined) {
-      throw new ChannelPostRefusedError(
-        "channel-not-bound",
-        `session "${ctx.session.identity.id}" is not an open channel.`
-      );
+/**
+ * The clean projection. Deliberately not `ctx.session.items.client()`.
+ *
+ * A factory because the declared board names come from the roster the KIND was
+ * built with, filtered to this session's own id — not from session state. That
+ * is what makes an edited `CHANNEL.md` reach a channel that is already open:
+ * the list is re-derived from the file on the next bind, and the transcript,
+ * which is the only thing a channel cannot re-derive, is never written to.
+ */
+const readChannelFor = (boardIds: readonly string[]) =>
+  handler({
+    name: "channel-read",
+    inputSchema: z.object({}).strict(),
+    outputSchema: channelReadOutputSchema,
+    execute: async (_input, ctx): Promise<ChannelReadOutput> => {
+      const channel = boundChannel(ctx.session.state);
+      if (channel === undefined) {
+        throw new ChannelPostRefusedError(
+          "channel-not-bound",
+          `session "${ctx.session.identity.id}" is not an open channel.`
+        );
+      }
+      const boards = channelBoardNamesFor(ctx.session.identity.id, boardIds);
+      return {
+        id: ctx.session.identity.id,
+        ...(ctx.session.metadata.description === undefined
+          ? {}
+          : { description: ctx.session.metadata.description }),
+        members: channel.members,
+        // Omitted rather than `[]` when this channel holds none — see the
+        // schema. The rows never come back here either way: reading a board is
+        // a board read.
+        ...(boards.length === 0 ? {} : { boards }),
+        transcript: channel.transcript
+      };
     }
-    return {
-      id: ctx.session.identity.id,
-      ...(ctx.session.metadata.description === undefined
-        ? {}
-        : { description: ctx.session.metadata.description }),
-      members: channel.members,
-      transcript: channel.transcript
-    };
-  }
+  });
+
+/** The ledger shape the two board actions use: the substrate's ref. */
+type ChannelTaskLedger = Exclude<Awaited<ReturnType<typeof resolveChannelBoard>>, undefined>;
+
+/** What filing one row takes. Closed, as the post input is. */
+export const channelFileTaskInputSchema = z
+  .object({
+    /** The board's LOCAL name, as the `CHANNEL.md` declared it. */
+    board: z.string().min(1),
+    goal: z.string().min(1),
+    /** Caller-chosen row id. Minted when omitted. */
+    id: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
+    context: z.string().optional(),
+    /**
+     * The board's routing key for this row. **Not a seat**: which seat it
+     * reaches is the seat-side board's wiring.
+     */
+    assignee: z.string().min(1).optional(),
+    priority: z.number().optional(),
+    maxAttempts: z.number().int().min(1).optional(),
+    labels: z.array(z.string()).optional(),
+    input: z.unknown().optional(),
+    /** Optional, unverified claim about which member is filing. */
+    author: z.string().optional()
+  })
+  .strict();
+
+export type ChannelFileTaskInput = z.infer<typeof channelFileTaskInputSchema>;
+
+/** What filing one row hands back: where it landed, and which row it is. */
+export const channelFileTaskOutputSchema = z.object({
+  board: z.string(),
+  /** The minted ledger id — the same string a seat declares. */
+  boardId: z.string(),
+  taskId: z.string(),
+  status: z.string()
 });
+
+export type ChannelFileTaskOutput = z.infer<typeof channelFileTaskOutputSchema>;
+
+/** What reading one board takes. */
+export const channelReadBoardInputSchema = z.object({ board: z.string().min(1) }).strict();
+
+/** What reading one board gives back: the rows, and nothing about the conversation. */
+export const channelReadBoardOutputSchema = z.object({
+  board: z.string(),
+  boardId: z.string(),
+  tasks: z.array(taskSchema)
+});
+
+export type ChannelReadBoardOutput = z.infer<typeof channelReadBoardOutputSchema>;
+
+/**
+ * Resolve the ledger a caller named, against the channel's OWN declared list.
+ *
+ * Two fences in one place, in the order an author wants to hear them: the
+ * session must be an open channel, and the name must be one this channel
+ * declared. The id is then minted from `ctx.session.identity.id` — never from
+ * the payload — so a caller naming a board another channel declared addresses
+ * this channel's id and simply misses it (BP-031). There is no input through
+ * which another channel's rows can be selected.
+ *
+ * The ledger is resolved ONCE per request and handed to the caller, rather than
+ * re-walking the resource registry per operation for an answer that cannot
+ * change inside a request.
+ */
+async function ledgerNamed(
+  ctx: BlockContext,
+  boardIds: readonly string[],
+  name: string
+): Promise<{ boardId: string; channel: ChannelSessionState; ledger: ChannelTaskLedger }> {
+  const channel = boundChannel(ctx.session.state);
+  if (channel === undefined) {
+    throw new ChannelPostRefusedError(
+      "channel-not-bound",
+      `session "${ctx.session.identity.id}" is not an open channel. A channel's session is ` +
+        `opened by \`openChannels\`; naming an id nobody opened creates an empty session, not a channel.`
+    );
+  }
+
+  const channelId = ctx.session.identity.id;
+  const held = channelBoardNamesFor(channelId, boardIds);
+  if (!held.includes(name)) {
+    throw new ChannelPostRefusedError(
+      "board-not-declared",
+      `channel "${channelId}" declares no board "${name}". ` +
+        `Boards: ${held.length > 0 ? held.join(", ") : "(none)"}. A board is declared in the ` +
+        `channel's own \`CHANNEL.md\`, and its ledger id is minted from this channel's id.`
+    );
+  }
+
+  const boardId = channelBoardId(channelId, name);
+  const ledger = await resolveChannelBoard(ctx, boardId);
+  if (ledger === undefined) {
+    throw new Error(
+      `channel "${channelId}" declares board "${name}", but its ledger "${boardId}" is not ` +
+        `registered on this flow. The channel kind declares every board its roster minted, so ` +
+        `this means the kind was built from a different roster than the one that opened this ` +
+        `channel.`
+    );
+  }
+  return { boardId, channel, ledger };
+}
+
+/**
+ * File one row onto a board this channel holds.
+ *
+ * The roster check on `author` is the **same check a post meets, in the same
+ * words** — and it is a validity check against the declared roster, not
+ * authentication. `author` is optional and unverified, so a caller that omits
+ * it is not checked at all, on this path exactly as on the post path. Filing is
+ * not members-only, and this action does not pretend it is: the per-caller
+ * identity that would make it so does not exist on the channel session
+ * contract.
+ */
+const fileTaskFor = (boardIds: readonly string[]) =>
+  handler({
+    name: "channel-file-task",
+    inputSchema: channelFileTaskInputSchema,
+    outputSchema: channelFileTaskOutputSchema,
+    execute: async (input: ChannelFileTaskInput, ctx): Promise<ChannelFileTaskOutput> => {
+      const { boardId, channel, ledger } = await ledgerNamed(ctx, boardIds, input.board);
+
+      // A validity check against the declared roster, NOT authentication. The
+      // claim stays unverified either way; this only stops a row naming a seat
+      // the channel has never heard of.
+      if (input.author !== undefined && !channel.members.includes(input.author)) {
+        throw new ChannelPostRefusedError(
+          "author-not-a-member",
+          `"${input.author}" is not a member of channel "${ctx.session.identity.id}". ` +
+            `Members: ${channel.members.length > 0 ? channel.members.join(", ") : "(none)"}.`
+        );
+      }
+
+      const task = await ledger.addTask({
+        goal: input.goal,
+        ...(input.id === undefined ? {} : { id: input.id }),
+        ...(input.title === undefined ? {} : { title: input.title }),
+        ...(input.context === undefined ? {} : { context: input.context }),
+        ...(input.assignee === undefined ? {} : { assignee: input.assignee }),
+        ...(input.priority === undefined ? {} : { priority: input.priority }),
+        ...(input.maxAttempts === undefined ? {} : { maxAttempts: input.maxAttempts }),
+        ...(input.labels === undefined ? {} : { labels: input.labels }),
+        ...(input.input === undefined ? {} : { input: input.input }),
+        // Carried with the same disclaimer a transcript line carries, rather
+        // than dropped: a caller that supplied a label should find it again,
+        // and a reader of the row must not mistake it for a proven one.
+        ...(input.author === undefined
+          ? {}
+          : { metadata: { author: input.author, authorVerified: false } })
+      });
+
+      return { board: input.board, boardId, taskId: task.id, status: task.status };
+    }
+  });
+
+/** Read one board this channel holds. */
+const readBoardFor = (boardIds: readonly string[]) =>
+  handler({
+    name: "channel-read-board",
+    inputSchema: channelReadBoardInputSchema,
+    outputSchema: channelReadBoardOutputSchema,
+    execute: async (
+      input: z.infer<typeof channelReadBoardInputSchema>,
+      ctx
+    ): Promise<ChannelReadBoardOutput> => {
+      const { boardId, ledger } = await ledgerNamed(ctx, boardIds, input.board);
+      return {
+        board: input.board,
+        boardId,
+        // `taskSchema` strips the handle's `items()` method, so what comes back
+        // is the row rather than a live handle.
+        tasks: ledger.list().map((task) => taskSchema.parse(task))
+      };
+    }
+  });
 
 /** What the fan-out entry is handed: enough to say which post is being delivered. */
 const channelFanOutInputSchema = z.object({
@@ -312,6 +527,45 @@ export interface DefineChannelFlowOptions {
    * brings its own. Core exports no block-slot type to use instead.
    */
   notify?: BlockDefinition<any, any>;
+
+  /**
+   * The MINTED ledger ids of every board this roster's channels declared —
+   * `<channelId>.<boardName>`, never a local name.
+   *
+   * Supplied by `channelInstances` from the roster it is validating, not by an
+   * app: a board is declared in a `CHANNEL.md`, and an id is minted from where
+   * that file sits. Absent, this kind holds no board and carries neither board
+   * action — which is exactly the shape it had before boards existed.
+   *
+   * One flat list for every channel on the instance, because a channel kind is
+   * a singleton and its sessions are the channels: each session filters the
+   * list down to its own by id, and a board id splits into its channel and its
+   * name unambiguously (a board name carries no dot).
+   */
+  boards?: readonly string[];
+}
+
+/**
+ * What {@link defineChannelFlow} returns: the flow factory, plus the one thing
+ * `channelInstances` needs of it.
+ *
+ * `withBoards` is NOT on {@link ChannelKind}, and that is the point. A kind a
+ * caller wrote is zero-arg and stays zero-arg; handing board ids through the
+ * public kind contract would be a permanent widen bought for no consumer that
+ * exists. Instead, a kind that CAN hold boards is one this function built, and
+ * a record pairing `boards:` with any other kind is refused by name at bind.
+ */
+export type ChannelFlowFactory = ReturnType<typeof defineFlow> & {
+  /** The same kind, rebuilt holding these minted board ids. */
+  withBoards: (boards: readonly string[]) => ChannelFlowFactory;
+};
+
+/** Is this channel kind one {@link defineChannelFlow} built? */
+export function holdsBoards(kind: unknown): kind is ChannelFlowFactory {
+  return (
+    typeof kind === "function" &&
+    typeof (kind as Partial<ChannelFlowFactory>).withBoards === "function"
+  );
 }
 
 /**
@@ -322,10 +576,27 @@ export interface DefineChannelFlowOptions {
  * kind passed through `channelInstances`'s `kinds` map must carry it too.
  *
  * @param options `notify`: the per-member fan-out block, absent by default.
+ *   `boards`: the minted ledger ids this kind holds, supplied by the binder.
  * @returns The flow factory. Call it (no arguments) to mint the one instance.
  */
-export function defineChannelFlow(options: DefineChannelFlowOptions = {}) {
+export function defineChannelFlow(options: DefineChannelFlowOptions = {}): ChannelFlowFactory {
   const notify = options.notify;
+  const boardIds = [...(options.boards ?? [])].sort();
+
+  // One declaration object per minted id, always from the memo. Two separate
+  // `defineTaskCollection` calls sharing an id share ROWS and not POLICY — the
+  // handed-off assignee freeze is a WeakSet on the declaration — so the seat's
+  // board and the channel's own writes must pass one value.
+  const boardResources = Object.fromEntries(
+    boardIds.map((id) => [id, channelBoardLedger(id)])
+  );
+
+  // Built once per kind, not per request, and only when this kind holds a
+  // board: with no board there is nothing to file onto and nothing to read, so
+  // there is no action rather than an action that always refuses.
+  const readChannel = readChannelFor(boardIds);
+  const fileTask = boardIds.length === 0 ? undefined : fileTaskFor(boardIds);
+  const readBoard = boardIds.length === 0 ? undefined : readBoardFor(boardIds);
 
   // Declared ONLY when a slot was supplied. With no slot there is nothing to
   // deliver, so there is no entry to declare and no dispatch to make — rather
@@ -396,12 +667,16 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}) {
             handOff
           );
 
-  return defineFlow({
+  const flow = defineFlow({
     kind: CHANNEL_KIND,
     // Not a preference: it is the declared mechanism for "one kind means one
     // thing". The registry throws `singleton-id-mismatch` unless id === kind.
     cardinality: "singleton",
     session: { stateSchema: channelSessionStateSchema },
+    // The ledgers, and nothing else: no board, no drain, no task entry. A
+    // channel HOLDS rows; running them stays on the seat's side of the fence,
+    // and `defineFlow` asks nothing of a flow that declares only a collection.
+    resources: boardResources,
     actions: {
       post: {
         block: post,
@@ -413,8 +688,28 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}) {
       },
       read: {
         block: readChannel,
-        description: "Read this channel's transcript, members and description."
-      }
+        // Names boards only on a kind that holds one: this string is what a
+        // model is told the action does, and a boardless kind returns no
+        // `boards` key at all.
+        description:
+          boardIds.length === 0
+            ? "Read this channel's transcript, members and description."
+            : "Read this channel's transcript, members, description and declared board names."
+      },
+      ...(fileTask === undefined || readBoard === undefined
+        ? {}
+        : {
+            fileTask: {
+              block: fileTask,
+              description:
+                "File a row onto one of this channel's boards. `author` is an unverified claim, " +
+                "checked against the roster and never proof of who called."
+            },
+            readBoard: {
+              block: readBoard,
+              description: "Read the rows on one of this channel's boards."
+            }
+          })
     },
     internal: {
       actions: {
@@ -428,6 +723,9 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}) {
         // entry it resolved. Sharing the block ref is the whole dedupe there is.
         post: { block: post, concurrency: "queue" },
         read: { block: readChannel },
+        ...(fileTask === undefined || readBoard === undefined
+          ? {}
+          : { fileTask: { block: fileTask }, readBoard: { block: readBoard } }),
         ...(fanOut === undefined
           ? {}
           : {
@@ -438,6 +736,14 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}) {
       }
     }
   });
+
+  // The rebuild seam. `options` is closed over, so a kind configured with a
+  // notify slot keeps it when the binder hands it the roster's board ids —
+  // which is what stops "give this channel a board" and "wake its members"
+  // from being two mutually exclusive ways to configure one kind.
+  return Object.assign(flow, {
+    withBoards: (boards: readonly string[]) => defineChannelFlow({ ...options, boards })
+  }) as ChannelFlowFactory;
 }
 
 /**

@@ -25,9 +25,9 @@ Session state is also why the conversation stays in one place. A post is a reque
 
 1. **One-shot, "go do this" → a dispatch** into that flow's own session. Nothing about it wants a shared transcript.
 2. **Back-and-forth, "keep talking" → a channel**, when you want one durable home for the history and posts that land on the channel rather than on the poster. A DM is the one-member case of the same thing, not a separate mechanism.
-3. **Claim it and settle it → the [task board](../orchestration/task-substrate.md)**, not a channel. Channels are many participants and no claim; a row that somebody takes and finishes is a board's job.
+3. **Claim it and settle it → a [board the channel holds](#holding-a-board).** A row somebody takes and finishes is a [task board](../orchestration/task-substrate.md)'s job, and a channel can keep one so the talk and the work share an address. A board with no conversation around it needs no channel.
 4. **Do not fake a DM by dumping the dialogue into a worker's session.** Session history is machinery: tool calls, refusals, dispatch handles. A channel is what owns a clean transcript.
-5. **Do not put work somebody owns on a channel.** A post runs in the channel's session and waking members is a notification; neither one hands anybody a claim.
+5. **Do not hand somebody work by posting it.** A post runs in the channel's session and waking members is a notification; neither one gives anybody a row to claim. File it on a board.
 
 :::
 
@@ -48,7 +48,106 @@ No line says which kind it runs. An omitted `flow:` selects the built-in, which 
 
 `members` is the channel's roster. It decides who gets woken when somebody posts, and it is checked when a post claims to be from a particular member. It is the declared list and nothing else writes it: there is no join or leave verb yet, so changing who is in a channel means editing the record and opening a fresh channel. An edit does not reach a channel that is already open.
 
-Four keys are declarable: `flow`, `description`, `members`, `instructions`. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
+Five keys are declarable: `flow`, `description`, `members`, `boards`, `instructions`. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
+
+## Holding a board
+
+A channel is where a team talks. A board is where its work sits: rows carrying a goal, an optional assignee, and a status somebody moves. A channel can hold one, declared in the same frontmatter as the members.
+
+```md
+---
+description: Where the engineering team works incidents.
+members: [engineering.lead, engineering.analyst]
+boards: [followups]
+---
+
+Post the timeline here. Anything that outlives the incident goes on the board.
+```
+
+`boards` is a list of plain local names, the way `members` is a list of names. `followups` is what a person types and what a caller names. The ledger's own id is minted from the channel that holds it, so `engineering.incidents` holding `followups` is `engineering.incidents.followups`. No file writes that id.
+
+A board name is a plain local name: not empty, no whitespace, and none of `.` `/` `*` `[` `]`. The dot is the one worth knowing about, because it is the join between a channel and a board, so `feature.work` would address a board on some other channel. A name breaking the rule is refused when you bind the roster, as is a `boards:` that is not a list of names, a name declared twice, and two channels whose boards would mint the same id.
+
+### Filing and reading rows
+
+A channel holding a board answers two more actions, `fileTask` and `readBoard`, beside `post` and `read`.
+
+```ts
+const fileFollowup = dispatcher({
+  name: "file-followup",
+  flowKind: "channel",
+  action: "fileTask",
+  inputSchema: z.object({ goal: z.string() }),
+  session: { id: () => "engineering.incidents" },
+  payload: (input) => ({ board: "followups", goal: input.goal, assignee: "analyst" }),
+});
+```
+
+Both actions take the board's **local** name. Filing says where the row landed:
+
+```ts
+{ board: "followups",
+  boardId: "engineering.incidents.followups",
+  taskId: "task_ktp2n4x1_1_88a0c3",
+  status: "pending" }
+```
+
+`fileTask` also takes `id`, `title`, `context`, `priority`, `maxAttempts`, `labels` and `input`. Its `author` is the same unverified claim a post's is: checked against the declared members, stored beside `authorVerified: false`, and optional. A row filed without one is accepted.
+
+`readBoard` gives back every row on one board. The channel's own `read` lists what it holds, by name:
+
+```ts
+{ id: "engineering.incidents",
+  description: "Where the engineering team works incidents.",
+  members: ["engineering.lead", "engineering.analyst"],
+  boards: ["followups"],
+  transcript: [/* … */] }
+```
+
+A channel holding no board has no `boards` key and answers neither action.
+
+Naming a board the channel does not hold is refused by name, `board-not-declared`, and the message lists the boards it does hold. The ledger id is minted from the session the request is running in, so naming a board another channel declared resolves this channel's own id and misses.
+
+### Working the rows
+
+The channel keeps the ledger. It runs nothing. A worker that claims rows declares the same board and drains it:
+
+```ts
+import { channelBoard } from "@flow-state-dev/workforce";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+
+const followups = channelBoard("engineering.incidents", "followups");
+
+const board = taskBoard({
+  name: "followups",
+  boardId: "followups",
+  collection: followups,
+  workers: { analyst: runFollowup },
+});
+
+defineFlow({
+  kind: "analyst",
+  resources: { [followups.id]: followups },
+  actions: { drain: { block: board.drain } },
+});
+```
+
+`channelBoard` hands back the ledger the channel writes to, and carries its own `id` so the resource key is not a string you retype.
+
+To let a model work the rows itself, compose the board's tools into the worker's kind:
+
+```ts
+import { channelBoardTaskTools } from "@flow-state-dev/workforce";
+
+// in the kind's definition
+uses: [channelBoardTaskTools(followups)],
+```
+
+That gives the model all eight task tools over this board: `addTask`, `assignTask`, `updateTask`, `listTasks`, `completeTask`, `failTask`, `blockTask` and `cancelTask`. The set is fixed: a `tools:` list on the worker can neither grant these nor withhold them. So a worker holding the capability can assign rows and settle them, not only add them. A narrower set means a different capability.
+
+A board that no hired worker declares warns at hire, naming the channel and the board. Nothing is refused: a channel may keep a board that only people read.
+
+The rows themselves are [task substrate](../orchestration/task-substrate.md) rows, with the same fields, statuses and transitions any other board's carry.
 
 ## Channels on disk
 
