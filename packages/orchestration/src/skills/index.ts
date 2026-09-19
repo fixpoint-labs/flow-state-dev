@@ -77,6 +77,8 @@ export {
   type SkillsContextOptions,
 } from "./context-fn";
 
+export { formatAllowedToolsIntentNote } from "./render-skill-body";
+
 export {
   activeSkillStateSchema,
   activeSkillsArraySchema,

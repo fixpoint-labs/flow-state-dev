@@ -23,11 +23,10 @@ Files inside the folder are bundled with the skill when it's seeded into the res
 
 A symlinked skill folder is reported as an error and not loaded. A symlink inside a skill folder is skipped.
 
-A skill folder is the same folder wherever it sits. In an app that keeps skills at several levels —
-shared across the app, per team, beside one worker — where the folder sits is what decides who can
-reach the skill, and the file says nothing about it. There is no `scope:` key; a `SKILL.md` that
-declares one is refused when it's read as part of a worker's set. See
-[Where skills folders live](./overview#where-skills-folders-live).
+A skill folder is the same folder wherever it sits. Where you put it is what decides who can reach
+it: shared across the app, per team, or beside one worker. The file itself says nothing about that,
+and there is no `scope:` key. A `SKILL.md` that declares one is refused when it's read as part of a
+worker's set. See [Where skills folders live](./overview#where-skills-folders-live).
 
 ## SKILL.md frontmatter
 
@@ -56,7 +55,7 @@ Body goes here.
 | `metadata` | no | map of string → string | Extra properties of your own. Keep the key names distinctive so they don't collide with anyone else's. |
 | `keywords` | no | string[] | Lowercased tokens for the up-front router's tier-2 keyword scan. Plain substring matches against the user message. Ignored on the `runSkill` path. See below. |
 | `context` | no | `inline` | Activation mode. Only `inline` is supported — a matched skill's body is injected into the parent generator's prompt. |
-| `allowed-tools` | no | space-separated string, or string[] | The tool names this skill needs. When the skill is preloaded on a generator, its binding limits the tools to this list (see [Binding](./binding)). A delegation skill lists its board tools here, and any tool listed can be [assigned to a task](./delegation#assigning-a-task-to-a-tool). |
+| `allowed-tools` | no | space-separated string, or string[] | The tool names this skill is written around. It never widens access, and it does not decide what a generator can call — [Binding](./binding) covers what a generator actually gets. It does gate delegation: when the skill declares `agents:`, the tools listed here are the ones that can be [assigned to a task](./delegation#assigning-a-task-to-a-tool), and listing none makes the whole catalog assignable. |
 | `agents` | no | map | Agent declarations (inline `prompt`/`prompt-ref`, or `agent-ref`) that turn on delegation. See [Delegation](./delegation). |
 | `when-to-use` | no | string | Extra guidance appended to the description for the classifier and the `runSkill` catalog. Keep it short. |
 | `disable-model-invocation` | no | boolean | When `true`, the skill stays in the collection but every activation path skips it (no slash, no keyword match, hidden from the classifier and the `runSkill` catalog). Useful for drafts or admin-only skills. |
@@ -67,7 +66,7 @@ Unknown frontmatter keys are preserved but not interpreted. A skill that fails v
 
 ### Writing good descriptions
 
-The description is the only thing the model sees in the catalog. It decides whether to invoke `runSkill` based entirely on that string. Two guidelines:
+The description is the only thing the model sees in the catalog. It decides whether to invoke `runSkill` based entirely on that string.
 
 - **Name the trigger, not the implementation.** "Use when the user asks about competitors" is better than "Runs a competitor analysis workflow".
 - **Front-load the match phrase.** The model scans descriptions quickly. Putting the matching intent in the first clause beats burying it.
@@ -85,9 +84,7 @@ keywords: [news, latest, breaking, today, current, happening, recent]
 ---
 ```
 
-Two guidelines:
-
-- **Pick high-precision tokens.** Each keyword is a substring match — `news` matches `newscast`, `news anchor`, but also `newsletter`. Words that read as the trigger phrase in normal speech are usually fine; jargon and unusual punctuation are not.
+- **Pick high-precision tokens.** Each keyword is a substring match: `news` matches `newscast` and `news anchor`, but also `newsletter`. Words that read as the trigger phrase in normal speech are usually fine; jargon and unusual punctuation are not.
 - **Keep the list short.** Five to ten tokens covers the obvious matches. Anything subtler should fall through to the classifier — that's what it's for.
 
 Skipping `keywords` is fine. The classifier still picks up the skill from its description; you just pay the LLM call when nothing else matched. Adding them is a cost optimization on common phrasings, not a correctness requirement.
@@ -107,7 +104,7 @@ Two variables are substituted into the body at runtime:
 
 Both substitutions run on the body after frontmatter is stripped. If a variable isn't used, nothing changes.
 
-`${CLAUDE_SKILL_DIR}` is preserved as an alias for `${SKILL_DIR}`. It exists so skill folders authored against [Claude Code's skill format](https://docs.claude.com/en/docs/claude-code/skills) drop in here without edits — the two systems share the same SKILL.md shape and the same substitution token under a different name. New skills should use `${SKILL_DIR}`; the alias is documented for the import case.
+`${CLAUDE_SKILL_DIR}` is an alias for `${SKILL_DIR}`, so a skill folder authored against [Claude Code's skill format](https://docs.claude.com/en/docs/claude-code/skills) drops in without edits: the two systems share the same SKILL.md shape and the same substitution token under different names. Use `${SKILL_DIR}` in new skills.
 
 Example:
 

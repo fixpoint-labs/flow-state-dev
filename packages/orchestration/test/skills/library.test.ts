@@ -189,7 +189,7 @@ describe("createSkillsLibrary — static active binding", () => {
   it("registers the whole catalog as a safe superset for a bound skill", async () => {
     // Registration is a superset (like the legacy capability): the reader renders
     // the live manifest, so a per-skill declared-tools subset can't be frozen at
-    // build time. The `allowed-tools` note scopes the model softly. A skill
+    // build time. The `allowed-tools` note states intent, not access. A skill
     // declaring only `search` still gets the whole catalog registered.
     const mk = (name: string) =>
       handler({ name, inputSchema: z.object({}), outputSchema: z.object({}), execute: async () => ({}) });

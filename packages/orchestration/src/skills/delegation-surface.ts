@@ -684,7 +684,8 @@ function buildRosterPurposes(
  * Three filters, each dropping a key rather than throwing:
  *
  *   - **Not in the catalog.** `allowed-tools` is additive-not-restrictive
- *     everywhere else (`resolveTools`, the rendered restriction note), and a
+ *     everywhere else (it registers nothing, and the rendered note states it
+ *     as intent rather than access — FIX-1451), and a
  *     static binding's misses already fail loud at build time in
  *     `validateDeclaredTools`. Only a runtime skill reaches here with a miss,
  *     and there is nothing to seat. `Object.hasOwn` per BP-031: the catalog is
