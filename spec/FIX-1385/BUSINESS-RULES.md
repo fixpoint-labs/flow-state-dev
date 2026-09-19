@@ -60,4 +60,4 @@ Everything about a **declaration** is fatal at boot and collected: a bad `boards
 
 ## Acceptance criteria this issue owns
 
-A team declared entirely in files — seats, a channel, and one `boards:` line — has work filed onto that channel's board by one seat and run to completion by another, which claimed it rather than being handed it. That is the goal check the plan runs last, and it is the epic's exit gate standing on this issue's surface.
+A team declared entirely in files — seats, a channel, and one `boards:` line — has work filed onto that channel's board by one seat and run to completion by another, which claimed it rather than being handed it. That is the goal check the plan runs last: it exercises the surface the epic's exit gate stands on, end to end, for a **single row** — the queue proof of ER-20, a coordinator assigning across several seats with more rows than seats so one waits, is FIX-1430's.

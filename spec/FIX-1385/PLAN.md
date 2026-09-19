@@ -59,7 +59,7 @@ B and C are independent: one adds actions to the kind, the other a resolver, a h
 | V8 | S3 S7 | BR-21: a seat board that hands off freezes the ledger, and a channel-side `setAssignee` on the same id then **declines**. **Negative control:** give the seat helper its own `defineTaskCollection` call, watch the decline turn into a silent success. That is the bug this surface exists for |
 | V5 | S3 | BR-1, BR-2, BR-6. BR-2 byte for byte against a recorded roster naming no board |
 | V9 | S9 | BR-16 on a roster with one attended and one unattended board: one warning, naming the unattended one, and the hire **succeeds** |
-| VG | S7 | **Goal, real path:** a tree declaring two seats and one channel holding one board. One seat files a row, the other's board drains it, it completes, nothing dispatched by hand. Under `goals/` — the epic's exit gate on this surface |
+| VG | S7 | **Goal, real path:** a tree declaring two seats and one channel holding one board. One seat files a row, the other's board drains it, it completes, nothing dispatched by hand. Under `goals/` — one row over the surface the exit gate stands on. The multi-seat queue proof (ER-20) is FIX-1430's, and builds on this |
 | V6 | S8 | BR-14: a check over this issue's diff for the superseded names, run rather than read |
 
 ## Pinned names · the only two
