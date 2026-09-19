@@ -30,17 +30,10 @@
 
 import { createFlowState, runAction } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { hireWorkforce, resourcesFromDocs } from "@flow-state-dev/workforce";
 import {
-  hireWorkforce,
-  resourcesFromDocs,
-  type ChannelManifest,
-  type ResourceDoc,
-  type WorkerManifest,
-} from "@flow-state-dev/workforce";
-import {
-  readChannelsDirectory,
-  readResourcesDirectory,
-  readWorkforce,
+  readDeclaredRoster,
+  type DeclaredRoster,
 } from "@flow-state-dev/workforce/loader";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { fileURLToPath } from "node:url";
@@ -63,40 +56,27 @@ export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 export const LAB_USER_ID = "u_devforce_lab";
 export const LAB_ORG_ID = "org_devforce_lab";
 
-/** What the tree produced, before anything was built from it. */
-export interface LabRoster {
-  workers: WorkerManifest[];
-  documents: ResourceDoc[];
-  channels: ChannelManifest[];
-}
-
 /**
  * Read a workforce tree into records, refusing a tree that did not load
  * cleanly.
  *
- * The loaders collect rather than throw, which is right for them and wrong
- * here: a seat that failed to load is a seat this lab does not have, and a
- * short roster that still runs is the failure BR-2 exists to exclude.
+ * The shared reader collects rather than throws, which is right for a library
+ * and wrong here: a seat that failed to load is a seat this lab does not have,
+ * and a short roster that still runs is the failure BR-2 exists to exclude. The
+ * refusal is this lab's own policy, which is why it lives here and not behind
+ * the export.
  */
-export async function readLabTree(root: string): Promise<LabRoster> {
-  const roster = await readWorkforce(root);
-  const resources = await readResourcesDirectory(root);
-  const channels = await readChannelsDirectory(root);
-
-  const problems = [
-    ...roster.errors.map((e) => `worker slot ${e.path}: ${e.error.message}`),
-    ...roster.skillErrors.flatMap((entry) =>
-      entry.errors.map((e) => `seat ${entry.worker} skill ${e.path}: ${e.error.message}`),
-    ),
-    ...roster.teamErrors.map((e) => `team file ${e.path}: ${e.error.message}`),
-    ...resources.errors.map((e) => `document ${e.path}: ${e.error.message}`),
-    ...channels.errors.map((e) => `channel ${e.path}: ${e.error.message}`),
-  ];
-  if (problems.length > 0) {
-    throw new Error(`the tree at ${root} did not load cleanly:\n  - ${problems.join("\n  - ")}`);
+async function loadTree(root: string): Promise<DeclaredRoster> {
+  const roster = await readDeclaredRoster(root);
+  if (roster.problems.length > 0) {
+    const lines = roster.problems.map((p) =>
+      p.worker === undefined
+        ? `${p.layer} ${p.path}: ${p.error.message}`
+        : `${p.layer} ${p.path} (seat ${p.worker}): ${p.error.message}`,
+    );
+    throw new Error(`the tree at ${root} did not load cleanly:\n  - ${lines.join("\n  - ")}`);
   }
-
-  return { workers: roster.workers, documents: resources.documents, channels: channels.channels };
+  return roster;
 }
 
 export interface OpenLabOptions {
@@ -151,7 +131,7 @@ export interface SeatSkill {
 
 /** Everything a check needs to drive and observe one lab. */
 export interface Lab {
-  roster: LabRoster;
+  roster: DeclaredRoster;
   /** The hired seats, by id. */
   seats: Record<string, FlowInstance>;
   /** File one row through the EM seat's own action. */
@@ -197,7 +177,7 @@ export interface Lab {
  *   which is BR-2, and deliberately fatal: nothing is hired, nothing registered.
  */
 export async function openLab(options: OpenLabOptions): Promise<Lab> {
-  const roster = await readLabTree(options.root ?? LAB_TREE);
+  const roster = await loadTree(options.root ?? LAB_TREE);
 
   // The documents, as the L1 resource map a flow installs. Org-scoped, which is
   // what makes the seats' `requireOrg: true` reads — and BR-17 — matter.

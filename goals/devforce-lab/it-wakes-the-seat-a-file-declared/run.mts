@@ -42,13 +42,13 @@ import { fileURLToPath } from "node:url";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { checkoutPathFor } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import {
   LAB_ORG_ID,
   LAB_TREE,
   LAB_USER_ID,
   openLab,
-  readLabTree,
   type Lab,
   type OpenLabOptions,
   type SeatSkill,
@@ -656,8 +656,8 @@ await runGoal(async () => {
         "---\nassignees: [eng.reviewer]\n---\n\nA board declared as a file. Nothing walks this.\n",
       );
     });
-    const real = await readLabTree(LAB_TREE);
-    const withDecoy = await readLabTree(decoyed);
+    const real = await readDeclaredRoster(LAB_TREE);
+    const withDecoy = await readDeclaredRoster(decoyed);
     const shape = (tree: typeof real): string =>
       JSON.stringify([
         tree.workers.map((w) => w.id).sort(),
@@ -666,6 +666,15 @@ await runGoal(async () => {
       ]);
     if (shape(real) !== shape(withDecoy)) {
       note(`a boards/ folder changed what the tree produced: ${shape(withDecoy)}`);
+    }
+    // The other half of the same rule: an unwalked folder is neither a record
+    // nor an ERROR. Reading through the shared export rather than a helper that
+    // throws on any problem is what makes this sayable at all.
+    if (withDecoy.problems.length > 0) {
+      note(
+        `a boards/ folder produced ${withDecoy.problems.length} problem(s): ` +
+          withDecoy.problems.map((p) => `${p.layer} ${p.path}`).join(", "),
+      );
     }
     // And the positive half, without which "it changed nothing" is equally
     // true of a loader that reads nothing at all: the channels/ folder beside

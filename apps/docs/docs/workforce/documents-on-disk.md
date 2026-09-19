@@ -1,6 +1,6 @@
 ---
 title: Documents on disk
-sidebar_position: 5
+sidebar_position: 6
 sidebar_label: Documents on disk
 description: "Write a team's shared documents as Markdown files, read the tree at startup, and install them as resources on a flow."
 ---

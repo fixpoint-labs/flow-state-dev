@@ -134,6 +134,14 @@ jobs:
       - name: No removed model-string syntax
         run: node scripts/validate-model-strings.mjs
 
+      # Same shape and the same reason as the step above: a doc teaching the
+      # superseded isolation coordinate is as wrong on main as on a PR. Wired
+      # here rather than left beside the branch that wrote it — an unrun guard
+      # is indistinguishable from one nobody wrote. The script header owns why
+      # it matches co-occurring concepts instead of a phrase list.
+      - name: No doc teaches per-kind flowIsolation
+        run: node scripts/check-isolation-coordinate.mjs
+
   knip:
     name: Knip (unused files & broken imports)
     runs-on: ubuntu-latest
