@@ -1,0 +1,67 @@
+<svg viewBox="0 0 940 324" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box: the three file conventions at org and team scope, with the org door of channels marked as declared but unread, the default ChannelFlow kind, the thin WorkerConfig admission and the optional TEAM.md. Composed in by the app: custom kinds as flow factories, and defineResource in TypeScript. Replaced in one line: flow: names a custom kind. Below a fence, what is not built: no MessageBoard, Channel or Team L1 package type, no Collab roster, MCP held, brief, housekeeper, retirement and CAS out of admission, no ORG.md, no dynamic addresses, no cross-flow.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .in    { fill:var(--code-soft); stroke:var(--code); stroke-width:1; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .fence { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; fill:none; }
+    .t-gap { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-out { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-out-l { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+               font-size:9.5px; letter-spacing:.1em; }
+  </style>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="26" width="560" height="224" rx="5"/>
+    <text class="t-lbl" x="32" y="46">IN THE BOX — WHAT DECLARING FILES GETS YOU</text>
+    <rect class="in" x="32" y="58" width="528" height="50" rx="4"/>
+    <text class="t-b" x="44" y="75">CHANNEL.md · resources/ · skills/</text>
+    <text class="t-s" x="44" y="88">one tree, two scopes: org/ and teams/&lt;teamId&gt;/ — path level is scope</text>
+    <text class="t-gap" x="44" y="101">org/channels/ — declared, read by nothing yet; no owner</text>
+    <rect class="in" x="32" y="114" width="528" height="36" rx="4"/>
+    <text class="t-b" x="44" y="131">the default ChannelFlow kind</text>
+    <text class="t-s" x="44" y="144">subscribe · post by dispatch · clean transcript projection, day one</text>
+    <rect class="in" x="32" y="156" width="528" height="36" rx="4"/>
+    <text class="t-b" x="44" y="173">thin WorkerConfig admission</text>
+    <text class="t-s" x="44" y="186">hire invokes the flow with the skills bag the seat declared</text>
+    <rect class="in" x="32" y="198" width="528" height="36" rx="4"/>
+    <text class="t-b" x="44" y="215">TEAM.md, optional</text>
+    <text class="t-s" x="44" y="228">team instructions, composed under the seat's own</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="box" x="592" y="26" width="332" height="124" rx="5"/>
+    <text class="t-lbl" x="608" y="46">COMPOSED IN BY THE APP</text>
+    <rect class="comp" x="608" y="58" width="300" height="36" rx="4"/>
+    <text class="t-b" x="620" y="75">custom kinds</text>
+    <text class="t-s" x="620" y="88">flow factories under workforce/flows/</text>
+    <rect class="comp" x="608" y="100" width="300" height="36" rx="4"/>
+    <text class="t-b" x="620" y="117">defineResource, in TypeScript</text>
+    <text class="t-s" x="620" y="130">unchanged — the files are a second door</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="box" x="592" y="162" width="332" height="74" rx="5"/>
+    <text class="t-lbl" x="608" y="182">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="608" y="205">flow: names your kind</text>
+    <text class="t-s" x="608" y="221">omit it and you get the built-in one</text>
+  </g>
+
+  <g id="not-built">
+    <path class="fence" d="M16 268 L924 268"/>
+    <text class="t-out-l" x="16" y="290">NOT BUILT</text>
+    <text class="t-out" x="104" y="290">no MessageBoard / Channel / Team L1 package type · no Collab roster (FIX-1341) · MCP held until the lab</text>
+    <text class="t-out" x="104" y="306">brief · housekeeper · retirement · CAS out of ChannelFlow admission · no ORG.md · no dynamic addresses · no cross-flow</text>
+  </g>
+</svg>
