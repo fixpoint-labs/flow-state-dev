@@ -31,6 +31,13 @@ import {
   channelBoardNamesFor,
   resolveChannelBoard
 } from "./channel-board";
+import {
+  defineChannelInventoryCollection,
+  defineMembershipIndexCollection,
+  defineSeatInventoryCollection,
+  membershipKey,
+  seatInventoryRowSchema
+} from "../inventory/collections";
 
 /** The built-in kind's name, and so the built-in instance's address. */
 export const CHANNEL_KIND = "channel";
@@ -585,6 +592,229 @@ const noteHandOffRefusal = handler({
   })
 });
 
+// ---------------------------------------------------------------------------
+// The live inventory's writer half
+// ---------------------------------------------------------------------------
+
+/**
+ * The action the boot binder dispatches into each open channel's OWN session,
+ * so the channel writes its own row.
+ *
+ * **Pinned.** `openInventory` names this string, and a channel kind a caller
+ * hand-rolled must declare an action under it — the same way it must declare
+ * `cardinality: "singleton"`. A kind that does not is a per-channel failure the
+ * binder names, never a channel silently missing from the inventory.
+ */
+export const INVENTORY_REGISTER_CHANNEL = "registerChannelInInventory";
+
+/**
+ * The action the boot binder dispatches ONCE, carrying the roster's seats.
+ *
+ * **Pinned**, for the same reason. One run for the whole roster rather than one
+ * per seat: a seat holds no session, so there is no per-seat place this has to
+ * land, and the rows are a straight copy of what the binder already holds.
+ *
+ * Lives in `internal.actions`, never the public map — its whole input is the
+ * row data, with nothing to check it against. Reachable only by the binder's
+ * own direct, trusted `runAction({ source: "internal", ... })` call.
+ */
+export const INVENTORY_REGISTER_SEATS = "registerSeatsInInventory";
+
+/** Nothing a caller supplies reaches the channel's row. */
+const registerChannelInputSchema = z.object({}).strict();
+
+/** What a registration reports back: the row it wrote, so a caller can read it without a second read. */
+export const inventoryChannelRegisteredSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  members: z.array(z.string())
+});
+
+/** The roster's seats, as the binder holds them. */
+const registerSeatsInputSchema = z
+  .object({ seats: z.array(seatInventoryRowSchema) })
+  .strict();
+
+/** What the seat write reports: how many rows landed. */
+export const inventorySeatsRegisteredSchema = z.object({ written: z.number() });
+
+/**
+ * The two blocks that write the live inventory, built for one channel kind.
+ *
+ * Built per kind rather than once, because a channel row records **which kind
+ * minted it** and a block cannot read its own flow's kind: `ctx.flow` is
+ * narrowed to the create-time config bag and carries no name. So the kind is
+ * closed over here, at the one place that also writes `kind:` onto the flow.
+ *
+ * Both blocks refuse an org-less request by name. The inventory is org-scoped
+ * storage, so without an org there is nothing to write in — and the resource
+ * registry would report the collection as unregistered, which sends a reader to
+ * check a registration that is fine.
+ *
+ * @param kind The kind name the flow declaring these actions was built with.
+ *   `defineChannelFlow` passes its own; a hand-rolled kind passes the same
+ *   string it passed `defineFlow({ kind })`, and a row carrying the wrong one
+ *   is that kind's bug in the same way a mismatched `cardinality` is.
+ * @returns Both entries, keyed by their action name. The blocks declare the
+ *   collections they touch, so installing an entry installs its collection
+ *   too. **Split them across `actions` and `internal.actions` — do not spread
+ *   the whole return into `actions`.** `registerSeats`'s whole input is
+ *   caller-supplied row data with nothing to check it against, so a public
+ *   caller could write fabricated seat rows; `registerChannel` has no such
+ *   risk (empty input, derives its row from the channel's own session state),
+ *   so it is the one safe to leave public. `defineChannelFlow`'s own built-in
+ *   kind makes exactly this split — read it there for the mechanics.
+ *
+ * @example
+ *   const writer = inventoryWriterActions("briefing");
+ *   defineFlow({
+ *     kind: "briefing",
+ *     cardinality: "singleton",
+ *     session: { stateSchema: briefingState },
+ *     actions: { ...myActions, registerChannelInInventory: writer.registerChannelInInventory },
+ *     internal: {
+ *       actions: { registerSeatsInInventory: writer.registerSeatsInInventory }
+ *     }
+ *   });
+ */
+export function inventoryWriterActions(kind: string) {
+  // Fresh per call. Two collections declared from one factory share storage —
+  // a collection is addressed by its pattern and scope, never by object
+  // identity — so this costs nothing and keeps the declaration local to the
+  // flow that installs it.
+  const channels = defineChannelInventoryCollection();
+  const memberships = defineMembershipIndexCollection();
+  const seats = defineSeatInventoryCollection();
+
+  const registerChannel = handler({
+    name: "channel-register-in-inventory",
+    inputSchema: registerChannelInputSchema,
+    outputSchema: inventoryChannelRegisteredSchema,
+    resources: { channels, memberships },
+    execute: async (_input, ctx) => {
+      const channel = boundChannel(ctx.session.state);
+      if (channel === undefined) {
+        throw new ChannelPostRefusedError(
+          "channel-not-bound",
+          `session "${ctx.session.identity.id}" is not an open channel, so there is no ` +
+            `membership to publish. A channel's session is opened by \`openChannels\`, and the ` +
+            `inventory binder runs after it.`
+        );
+      }
+      if (ctx.org === undefined) {
+        throw new Error(
+          `channel "${ctx.session.identity.id}" cannot register in the inventory: it is open ` +
+            `without an organization, and the inventory is org-scoped storage. Open the channel ` +
+            `with an \`orgId\` and it registers.`
+        );
+      }
+
+      const id = ctx.session.identity.id;
+      // The channel's OWN session state, and nothing else. The binder carries
+      // no members, deliberately: a roster's `members:` is what a file said
+      // when it was last read, and an edit to it never reaches a session that
+      // is already open. Copying it here would republish that file-time answer
+      // under a live name.
+      const members = [...channel.members];
+
+      // Every member's key is built up front, before anything is written.
+      // `membershipKey` throws on a member id that can never be one — and
+      // that failure is permanent, not flaky, so it must not land after some
+      // rows are already committed: a caller that retries a boot gets the
+      // same throw on the same member every time, and a run that had already
+      // written part of itself before hitting it would keep re-adding to a
+      // half-written state instead of leaving nothing behind.
+      const membershipKeys = members.map((seatId) => membershipKey(seatId, id));
+
+      // The membership rows go FIRST, and the channel row that names them
+      // goes last. Neither write is transactional with the other — a store
+      // failure partway through the loop below still leaves whatever landed
+      // before it — so the ordering is what stops the channel row from ever
+      // claiming a member the index does not have: the row is only written
+      // once every membership row it will name already exists. What it does
+      // not buy: a membership row from an EARLIER successful run can still
+      // outlive this run's channel row if this run's own loop fails partway
+      // through. That row is stale, not contradictory, and nothing here
+      // prunes stale rows in the first place (see `inventoryWriterActions`'s
+      // header).
+      for (let i = 0; i < members.length; i++) {
+        await ctx.resources.memberships.upsert(membershipKeys[i], {
+          seatId: members[i],
+          channelId: id
+        });
+      }
+
+      // `openedAt` is create-only, so a second boot does not restamp a channel
+      // that has been open since the first one.
+      await ctx.resources.channels.upsert(
+        id,
+        { id, kind, members },
+        { openedAt: new Date().toISOString() }
+      );
+
+      return { id, kind, members };
+    }
+  });
+
+  const registerSeats = handler({
+    name: "inventory-register-seats",
+    inputSchema: registerSeatsInputSchema,
+    outputSchema: inventorySeatsRegisteredSchema,
+    resources: { seats },
+    execute: async (input, ctx) => {
+      if (ctx.org === undefined) {
+        throw new Error(
+          "the seat rows cannot be written: this request carries no organization, and the " +
+            "inventory is org-scoped storage. Run the seat write under the same `orgId` the " +
+            "channels were opened with."
+        );
+      }
+
+      const problems: string[] = [];
+      let written = 0;
+      for (const row of input.seats) {
+        try {
+          await ctx.resources.seats.upsert(row.id, row);
+          written += 1;
+        } catch (error) {
+          problems.push(
+            `seat "${row.id}" — ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      }
+
+      // Every row is attempted before anything is reported: one seat the store
+      // refuses is not an org with no seat inventory. The throw is what carries
+      // the failure back out — a boot door hands back an action's return value
+      // in a shape this package cannot read, so a `problems` field on the
+      // output would reach nobody.
+      if (problems.length > 0) {
+        throw new Error(
+          `${problems.length} of ${input.seats.length} seat rows could not be written:\n  - ` +
+            problems.join("\n  - ")
+        );
+      }
+      return { written };
+    }
+  });
+
+  return {
+    [INVENTORY_REGISTER_CHANNEL]: {
+      block: registerChannel,
+      description:
+        "Publish this channel's row and its membership rows into the org's live inventory, " +
+        "from the channel's own session state. Boot machinery: takes no input, and re-running " +
+        "it writes the same rows."
+    },
+    [INVENTORY_REGISTER_SEATS]: {
+      block: registerSeats,
+      description:
+        "Write the org's seat rows into the live inventory. Boot machinery, called once by " +
+        "`openInventory` with the roster it was hired from."
+    }
+  };
+}
+
 export interface DefineChannelFlowOptions {
   /**
    * The fan-out slot: a block run once per declared member per post, outside
@@ -618,6 +848,20 @@ export interface DefineChannelFlowOptions {
    * name unambiguously (a board name carries no dot).
    */
   boards?: readonly string[];
+
+  /**
+   * Carry the live inventory's writer half — the two actions
+   * {@link inventoryWriterActions} builds, and the collections they write.
+   *
+   * Absent by default, and absent means absent: no collection is declared, no
+   * action exists, and a channel behaves exactly as it did before the inventory
+   * existed. An entry that is only there to do nothing is worse than none,
+   * which is how the fan-out slot beside it works too.
+   *
+   * Supplied by `channelInstances({ inventory: true })` for the built-in, so an
+   * app turns the inventory on at one call rather than by rebuilding the kind.
+   */
+  inventory?: boolean;
 }
 
 /**
@@ -672,6 +916,13 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   const readChannel = readChannelFor(boardIds);
   const fileTask = boardIds.length === 0 ? undefined : fileTaskFor(boardIds);
   const readBoard = boardIds.length === 0 ? undefined : readBoardFor(boardIds);
+
+  // Built on the FACTORY, never behind a `kind === "channel"` test inside the
+  // block: what the inventory promises is that EVERY open channel has a row,
+  // and a kind check in there would make that false for every kind but this
+  // one. What decides whether the rows are written is whether the app asked.
+  const inventoryActions =
+    options.inventory === true ? inventoryWriterActions(CHANNEL_KIND) : undefined;
 
   // Declared ONLY when a slot was supplied. With no slot there is nothing to
   // deliver, so there is no entry to declare and no dispatch to make — rather
@@ -784,7 +1035,20 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
               block: readBoard,
               description: "Read the rows on one of this channel's boards."
             }
-          })
+          }),
+      // `registerChannel` only. It takes a closed, empty input and derives the
+      // row entirely from `ctx.session.state` — the channel's own,
+      // already-open state — so a caller cannot make it write anything but
+      // that channel's true members, and calling it early or twice is
+      // harmless. Public because the door that reaches it is the app's own
+      // action client at boot, and an internal dispatch resolves from a
+      // different map.
+      //
+      // `registerSeats` is deliberately NOT here — see `internal.actions`
+      // below for why.
+      ...(inventoryActions === undefined
+        ? {}
+        : { [INVENTORY_REGISTER_CHANNEL]: inventoryActions[INVENTORY_REGISTER_CHANNEL] })
     },
     internal: {
       actions: {
@@ -801,6 +1065,24 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         ...(fileTask === undefined || readBoard === undefined
           ? {}
           : { fileTask: { block: fileTask }, readBoard: { block: readBoard } }),
+        // `registerSeats` lives ONLY here, never in the public `actions` map
+        // above. Unlike `registerChannel`, it has no session state to derive
+        // from — a seat has no session — so its whole input IS the row data,
+        // with nothing in this package to check it against. Public
+        // reachability would let any principal that can reach this flow write
+        // fabricated `{ id, kind }` pairs into the org's seat inventory.
+        // `internal.actions` resolves from its own map (`resolveEntry`,
+        // `@flow-state-dev/engine`) that a caller-addressed dispatch can never
+        // reach — `dispatchTypeOf` maps every caller-facing transport source
+        // to `public`, never to `internal` — so the only way in is a direct,
+        // trusted `runAction({ source: "internal", ... })` call, which is
+        // exactly what `openInventory`'s `run` door makes for this one
+        // request (see `open-inventory.ts`). A hand-rolled kind that spreads
+        // `inventoryWriterActions(kind)` must do the same split itself — see
+        // that function's own doc comment.
+        ...(inventoryActions === undefined
+          ? {}
+          : { [INVENTORY_REGISTER_SEATS]: inventoryActions[INVENTORY_REGISTER_SEATS] }),
         ...(fanOut === undefined
           ? {}
           : {

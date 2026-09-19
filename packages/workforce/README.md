@@ -1069,53 +1069,135 @@ The inventory holds those answers as data: three org-scoped resource collections
 one row per open channel, and one row per seat-in-channel. They are ordinary collections, so a block
 reads them the way it reads any other resource.
 
-**Nothing in the framework writes these rows yet.** Install the collections and your app is their
-only writer.
-
 | Factory | One row per | Fields |
 |---------|-------------|--------|
 | `defineSeatInventoryCollection()` | registered seat, at `inventory/seats/<seatId>` | `id`, `kind` (the worker kind the seat was hired into) |
 | `defineChannelInventoryCollection()` | open channel, at `inventory/channels/<channelId>` | `id`, `kind` (the channel kind that opened it), `members` (seat ids, `[]` when absent), `openedAt` (ISO string, or `null` when absent) |
 | `defineMembershipIndexCollection()` | seat-in-channel, at `inventory/members/<seatId>/<channelId>` | `seatId`, `channelId` |
 
+### Writing the inventory at boot
+
+The rows are written by `openInventory`, which runs after `openChannels`:
+
+```ts
+import {
+  channelInstances,
+  hireWorkforce,
+  openChannels,
+  openInventory,
+} from "@flow-state-dev/workforce";
+
+const seats = hireWorkforce(roster.workers);
+const instances = channelInstances(roster.channels, { inventory: true });
+
+flowRegistry.registerMany([...seats, ...instances]);
+// server starts here
+
+await openChannels(roster.channels, { client, userId: "u_boot", orgId: "org_acme" });
+
+await openInventory(
+  { seats, channels: roster.channels },
+  {
+    run,
+    seatWriter: { flowKind: "channel" },
+    userId: "u_boot",
+    orgId: "org_acme",
+  }
+);
+```
+
+The writer needs both halves. `channelInstances(roster.channels, { inventory: true })` builds the
+built-in channel kind carrying the registration actions and the three collections.
+`openInventory(...)` runs those actions: once per channel, once for all seats.
+
+Leave both out and channels work without an inventory. Nothing is declared, nothing is written.
+
+**What `openInventory` writes:**
+
+- One row per seat at `inventory/seats/<seatId>`, carrying `{ id, kind }`.
+- One row per channel at `inventory/channels/<channelId>`, carrying `{ id, kind, members, openedAt }`.
+- One row per member per channel at `inventory/members/<seatId>/<channelId>`.
+
+**The `run` door.** `run` is your app's door into a flow: it takes the request `openInventory`
+builds, runs it through your runtime, and rejects when the action fails. A door that hands back a
+failed run as an ordinary value reports every channel registered while writing nothing. **It must
+also forward `request.source` into `runAction`'s own `source` option** —
+`runAction({ ..., source: request.source })` — because the seat write sets `source: "internal"` on
+its request and needs that value carried through. A door that drops it does not become insecure, it
+becomes unable to write seats at all: the seat write shows up named in `problems` instead.
+
+**Where the seat rows go.** Seat rows need a flow to run in, because a resource collection can only
+be written from inside a flow. `seatWriter: { flowKind: "channel" }` names the built-in, which
+carries the writer when built with `inventory: true`. Any flow that spreads `inventoryWriterActions`
+will do.
+
+**`registerSeatsInInventory` is boot machinery, not a caller-addressed action.** Unlike channel
+registration, which is public because its empty input and the channel's own already-open session
+state make it harmless from any caller, the seat write has no session to derive from — its whole
+input IS the row data. It lives only in the flow's `internal.actions` map, which a caller-addressed
+HTTP or MCP request can never resolve into (`resolveEntry` reads one map per dispatch type with no
+fallback); the only way in is the trusted, direct `runAction({ source: "internal", ... })` call
+`openInventory`'s own request makes. A hand-rolled kind that spreads `inventoryWriterActions(kind)`
+must make the same split itself — see that function's own doc comment for the shape.
+
+**What the channel rows hold.** `members` is the seat ids the channel's session holds, read by the
+channel itself. An edit to `members:` in a `CHANNEL.md` does not reach a channel that is already
+open, so it does not reach the row either. The `post` and `fileTask` blocks check membership against
+the channel's session state, not the inventory; the row is a copy for finding things, not the check.
+
+**Running it twice.** Every write is an upsert keyed by the record's id. Nothing duplicates, and a
+channel that has been open since an earlier boot keeps its original `openedAt`.
+
+**Nothing is deleted.** A row stays where it is when a later roster no longer names the seat or
+channel.
+
+**What lands in `problems`.** `openInventory` returns `{ seats, channels, problems }`. A channel
+whose session is not open, or whose kind declares no registration action, is named in `problems` and
+the rest of the roster is still attempted.
+
+### Custom channel kinds
+
+A channel kind you wrote yourself gets rows when it spreads `inventoryWriterActions` into its
+`actions`. The string it passes is the value that appears as `kind` on that channel's rows.
+
+```ts
+defineFlow({
+  kind: "briefing",
+  cardinality: "singleton",
+  session: { stateSchema: channelSessionStateSchema },
+  actions: { ...myActions, ...inventoryWriterActions("briefing") },
+});
+```
+
+A kind passed under `channelInstances`'s `kinds` option is yours to build. The `inventory: true`
+flag reaches the built-in only.
+
+### Reading the inventory
+
 Each factory takes no options. Install what it returns under any block's `resources` map:
 
 ```ts
-import { handler } from "@flow-state-dev/core";
 import {
   defineChannelInventoryCollection,
   defineMembershipIndexCollection,
   defineSeatInventoryCollection,
-  membershipKey,
+  membershipPrefix,
 } from "@flow-state-dev/workforce";
+import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const seats = defineSeatInventoryCollection();
 const channels = defineChannelInventoryCollection();
 const memberships = defineMembershipIndexCollection();
 
-const recordChannelOpened = handler({
-  name: "record-channel-opened",
-  inputSchema: z.object({ channelId: z.string(), members: z.array(z.string()) }),
-  outputSchema: z.object({ memberCount: z.number() }),
-  resources: { seats, channels, memberships },
+const seatChannels = handler({
+  name: "seat-channels",
+  inputSchema: z.object({ seatId: z.string() }),
+  outputSchema: z.object({ channelIds: z.array(z.string()) }),
+  resources: { memberships },
   execute: async (input, ctx) => {
-    await ctx.resources.channels.upsert(input.channelId, {
-      id: input.channelId,
-      kind: "channel",
-      members: input.members,
-      openedAt: new Date().toISOString(),
-    });
-
-    for (const seatId of input.members) {
-      await ctx.resources.seats.upsert(seatId, { id: seatId, kind: "agent" });
-      await ctx.resources.memberships.upsert(membershipKey(seatId, input.channelId), {
-        seatId,
-        channelId: input.channelId,
-      });
-    }
-
-    return { memberCount: input.members.length };
+    const rows = await ctx.resources.memberships.list(membershipPrefix(input.seatId));
+    return { channelIds: rows.map((row) => row.state.channelId) };
   },
 });
 ```
@@ -1123,7 +1205,7 @@ const recordChannelOpened = handler({
 Keys are relative to each collection's own prefix, so `upsert("engineering.lead", row)` on the seat
 inventory lands at `inventory/seats/engineering.lead`. `list()` hands back resource refs, and the row
 itself is on `ref.state`. The membership index takes a two-segment key, which is what `membershipKey`
-builds above; the next section covers it.
+builds; the next section covers it.
 
 A row joins back to the declared record on the id and nothing else. The `id` on a seat row is the
 `id` the `WORKER.md` folder minted, and the `id` on a channel row is the `"<teamId>.<channelName>"`
@@ -1217,7 +1299,7 @@ membershipPrefix("");
 | `SeatCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that seat wants. Read by the built-in `agent` kind; validated at the hire. |
 | `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
-| `channelInstances(manifests, { kinds? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Register these. |
+| `channelInstances(manifests, { kinds?, inventory? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in channel kind. Register these. |
 | `openChannels(manifests, { client, userId, orgId? })` | Runtime. One named session per record, carrying its members, charter and description, opened under `orgId` when one is given. Idempotent. |
 | `readChannelsDirectory(root)` | Read a `teams/<id>/channels/<name>/` tree into one `ChannelManifest` per channel. Ships from the `./loader` subpath (Node only). |
 | `ChannelManifest` | One channel record: `{ id, declared, body }`. |
@@ -1237,6 +1319,13 @@ membershipPrefix("");
 | `membershipPrefix(seatId)` | The prefix that lists one seat's memberships, trailing slash included, relative to the collection's prefix. Refuses the same ids `membershipKey` does. |
 | `SeatInventoryRow` / `ChannelInventoryRow` / `MembershipIndexRow` | One row of each of the three collections. |
 | `seatInventoryRowSchema` / `channelInventoryRowSchema` / `membershipIndexRowSchema` | The Zod schema behind each row type. Closed: an undeclared key is dropped on the way in. |
+| `openInventory(roster, options)` | Write the inventory at boot: one row per seat, one row per channel, one row per membership. Takes `InventoryRoster` (the seats and channels to register) and `OpenInventoryOptions` (the `run` door, `seatWriter`, `userId`, `orgId`). Returns `{ seats, channels, problems }`. |
+| `inventoryWriterActions(kind)` | The two blocks a custom channel kind installs to get inventory rows, keyed by action name. Split them: `registerChannelInInventory` into `actions` (public, safe — empty input), `registerSeatsInInventory` into `internal.actions` (its input is the row data, with nothing to check it against). The string is the `kind` value those rows carry. |
+| `INVENTORY_REGISTER_CHANNEL` / `INVENTORY_REGISTER_SEATS` | The action names the writer runs: `"registerChannelInInventory"` and `"registerSeatsInInventory"`. |
+| `INVENTORY_SEAT_WRITER_SESSION` | The session id the seat-registration action runs under when `seatWriter` names none: `"inventory-binder"`. |
+| `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, channels }`), one seat (`{ id, kind }`), and which flow writes the seat rows (`{ flowKind }`). |
+| `InventoryActionRequest` / `InventoryBinding` | What the `run` door receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the seat request and must reach `runAction`), and what one boot of `openInventory` returns (`{ seats, channels, problems }`). |
+| `OpenInventoryOptions` | The options `openInventory` takes: `run`, `seatWriter`, `userId`, `orgId`. |
 
 ## Error Semantics
 
@@ -1274,6 +1363,9 @@ membershipPrefix("");
 | `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |
 | `external-dispatcher` | A flow-to-flow post on a host whose dispatcher hands work to an external queue. The public action route is unaffected |
 | Inventory id is not one path segment | `membershipKey` and `membershipPrefix` throw, naming the offending argument: an empty id, one containing `/` or `\`, or `.` and `..` |
+| Inventory write with no org | `openInventory` throws before writing anything — the three collections are org-scoped |
+| Seat inventory write with no seatWriter | `openInventory` throws when passed seats and no `seatWriter` — a seat has no session of its own, so its row needs a flow to run in |
+| Channel or seat registration failed | Collected in `openInventory`'s `problems`: a channel whose session is not open, whose kind declares no registration action, or whose action failed; a seat write that failed. The rest of the roster is still attempted |
 
 ## Scripts
 
