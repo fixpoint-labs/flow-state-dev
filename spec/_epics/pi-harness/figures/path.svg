@@ -1,0 +1,93 @@
+<svg viewBox="0 0 940 272" role="img"
+     aria-label="The path, as of 2026-09-16: four lanes against time. The now line sits before the objective gate, so every bar in the set is still ahead of it and none has started. LAB-154, manager-side session association, is shipped and available throughout. LAB-162's objective gate comes first. LAB-163 is specced then implements the OMP harness. LAB-164 runs the joint feasibility check early, before either affected interface is finalized, is specced alongside, and implements plus proves the full path only after LAB-163 delivers."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .band  { fill:var(--surface); }
+    .band2 { fill:var(--surface-2); }
+    .done  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .todo  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.1; stroke-dasharray:4 3; }
+    .axis  { stroke:var(--rule); stroke-width:1.2; }
+    .tick  { stroke:var(--ink-3); stroke-width:1; }
+    .now   { stroke:var(--gone); stroke-width:1.6; }
+    .link  { stroke:var(--ink-3); stroke-width:1.1; fill:none; }
+    .arw   { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.06em; }
+    .t-bar { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-don { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-now { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-ax  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+
+  <g id="lanes">
+    <rect class="band"  x="16" y="38"  width="908" height="44"/>
+    <rect class="band2" x="16" y="82"  width="908" height="44"/>
+    <rect class="band"  x="16" y="126" width="908" height="44"/>
+    <rect class="band2" x="16" y="170" width="908" height="44"/>
+    <text class="t-lbl" x="24" y="56">LAB-154 · input</text>
+    <text class="t-lbl" x="24" y="69">session association</text>
+    <text class="t-lbl" x="24" y="107">LAB-162 · the epic</text>
+    <text class="t-lbl" x="24" y="144">LAB-163 · OMP harness</text>
+    <text class="t-lbl" x="24" y="188">LAB-164 · questions</text>
+    <text class="t-lbl" x="24" y="201">and the proof</text>
+  </g>
+
+  <g id="bars">
+    <rect class="done" x="200" y="49" width="700" height="22" rx="3"/>
+    <text class="t-don" x="212" y="64">shipped · available throughout</text>
+
+    <rect class="todo" x="200" y="93" width="90" height="22" rx="3"/>
+    <text class="t-bar" x="212" y="108">gate</text>
+
+    <rect class="todo" x="300" y="137" width="170" height="22" rx="3"/>
+    <text class="t-bar" x="312" y="152">spec</text>
+    <rect class="todo" x="500" y="137" width="160" height="22" rx="3"/>
+    <text class="t-bar" x="512" y="152">implement the harness</text>
+
+    <rect class="todo" x="300" y="181" width="140" height="22" rx="3"/>
+    <text class="t-bar" x="310" y="196">feasibility check</text>
+    <rect class="todo" x="460" y="181" width="170" height="22" rx="3"/>
+    <text class="t-bar" x="472" y="196">spec</text>
+    <rect class="todo" x="680" y="181" width="220" height="22" rx="3"/>
+    <text class="t-bar" x="692" y="196">implement · full-path proof</text>
+  </g>
+
+  <g id="links">
+    <path class="link" d="M290 104 H296 V137 H292"/>
+    <path class="arw"  d="M292 133 L300 137 L292 141 z"/>
+    <path class="link" d="M290 104 H296 V181 H292"/>
+    <path class="arw"  d="M292 177 L300 181 L292 185 z"/>
+    <path class="link" d="M660 148 H670 V181 H672"/>
+    <path class="arw"  d="M672 177 L680 181 L672 185 z"/>
+  </g>
+
+  <g id="now">
+    <path class="now" d="M192 30 V228"/>
+    <text class="t-now" x="200" y="24">now · 2026-09-16 · nothing has started</text>
+  </g>
+
+  <g id="axis">
+    <path class="axis" d="M192 228 H924"/>
+    <path class="tick" d="M200 228 V234"/>
+    <path class="tick" d="M300 228 V234"/>
+    <path class="tick" d="M500 228 V234"/>
+    <path class="tick" d="M680 228 V234"/>
+    <path class="tick" d="M900 228 V234"/>
+    <text class="t-ax" x="200" y="248">objective</text>
+    <text class="t-ax" x="200" y="260">gate</text>
+    <text class="t-ax" x="300" y="248">the joint check</text>
+    <text class="t-ax" x="300" y="260">and the two specs</text>
+    <text class="t-ax" x="500" y="248">LAB-163</text>
+    <text class="t-ax" x="500" y="260">delivers</text>
+    <text class="t-ax" x="680" y="248">LAB-164 proves</text>
+    <text class="t-ax" x="680" y="260">the full path</text>
+    <text class="t-ax" x="900" y="248" text-anchor="end">wrap</text>
+  </g>
+</svg>
