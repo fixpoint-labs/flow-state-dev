@@ -989,8 +989,8 @@ A row joins back to the declared record on the id and nothing else. The `id` on 
 also the channel's session id. There is no mapping table to keep in step.
 
 The rows are org-scoped and shared across flows. Every flow running under the same `orgId` reads the
-same rows, whichever flow wrote them, and a flow under a different `orgId` reads none of them. That
-holds whether or not the app sets
+same rows, whichever flow wrote them and whichever tenant it runs under, and a flow under a different
+`orgId` reads none of them. That holds whether or not the app sets
 [`isolateOrgState`](https://flow-state.dev/docs/advanced/flow-isolation).
 
 Each row schema is closed, so a key it does not declare is dropped on the way in rather than stored.
