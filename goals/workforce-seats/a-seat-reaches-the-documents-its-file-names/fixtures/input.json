@@ -1,0 +1,28 @@
+{
+  "userId": "u_seat_resource_allowlist_goal",
+  "note": "Who is allowed to read payroll?",
+  "documents": ["handbook", "payroll"],
+  "store": "audit-log",
+  "seats": {
+    "lead": {
+      "id": "engineering.lead",
+      "reaches": ["handbook"],
+      "writes": []
+    },
+    "cfo": {
+      "id": "engineering.cfo",
+      "reaches": ["payroll"],
+      "writes": ["payroll"]
+    },
+    "chief": {
+      "id": "engineering.chief",
+      "reaches": ["handbook", "payroll"],
+      "writes": ["handbook", "payroll"]
+    }
+  },
+  "control": {
+    "dir": "typo",
+    "id": "engineering.typo",
+    "ref": "hanbdook"
+  }
+}

@@ -30,6 +30,7 @@ import type {
   SessionConfig,
   UserConfig
 } from "@flow-state-dev/core/types";
+import type { DeclaredResources } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
 import {
   INSTRUCTIONS_KEY,
@@ -47,10 +48,23 @@ import {
   type WorkerManifest
 } from "./manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
+import {
+  SEAT_RESOURCES_KEY,
+  parseSeatResources,
+  resolveSeatResources
+} from "./seat-resources";
 import { workerConfigSchema } from "./worker-config";
 
-/** The two keys the factory itself reads. Everything else is the worker's settings. */
-const RESERVED_KEYS = ["flow", "description"] as const;
+/**
+ * The keys the factory itself reads. Everything else is the worker's settings.
+ *
+ * `resources` joins them rather than travelling to the kind as a setting: it
+ * is an instruction to THIS step about which documents to mint the seat with,
+ * not a value any kind declares. A kind that happened to declare a `resources`
+ * setting of its own no longer receives an authored one — the key is public
+ * and pinned here, and a seat file cannot mean both things at once.
+ */
+const RESERVED_KEYS = ["flow", "description", SEAT_RESOURCES_KEY] as const;
 
 /**
  * The stock `agent` kind, built once for the life of the module.
@@ -113,6 +127,28 @@ export interface HireOptions {
    * exactly as it did.
    */
   channelBoards?: readonly string[];
+
+  /**
+   * The documents this app declared, keyed by ref — the map
+   * `resourcesFromDocs(documents)` returns, handed over unchanged.
+   *
+   * **Handed over, never worked out.** A seat's `resources:` grant narrows the
+   * DOCUMENTS in the map its kind declares at flow level and leaves the rest of
+   * that map — the app's boards, its stores — standing. Telling a document from
+   * a board is what this answers, and the app is the only party that knows:
+   * inferring it from an entry's shape would make the boundary of a permission
+   * feature rest on a heuristic, and a board that happened to look like a
+   * document would become grantable.
+   *
+   * The same list the app already spreads into its own flow-level map, so there
+   * is one catalog and not a second table describing the same documents.
+   *
+   * Optional, and consulted only for a seat that declares `resources:`. A
+   * roster where no seat does hires exactly as it did before this existed. A
+   * seat that DOES declare one while this is absent refuses, rather than
+   * resolving every ref to nothing — a lockout that reads like a typo.
+   */
+  documents?: DeclaredResources;
 }
 
 /** A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere. */
@@ -152,8 +188,14 @@ type AnyFlowType = FlowOf<ZodTypeAny> | FlowOf<undefined>;
  * it at the mint, per worker, so a type here would only restate a guarantee
  * made somewhere else.
  */
-function minter(flow: AnyFlowType): (options: { id: string; config?: Record<string, unknown> }) => FlowInstance {
-  return flow as unknown as (options: { id: string; config?: Record<string, unknown> }) => FlowInstance;
+function minter(
+  flow: AnyFlowType
+): (options: { id: string; config?: Record<string, unknown>; resources?: DeclaredResources }) => FlowInstance {
+  return flow as unknown as (options: {
+    id: string;
+    config?: Record<string, unknown>;
+    resources?: DeclaredResources;
+  }) => FlowInstance;
 }
 
 /** The worker's settings bag: what the record declared, minus the reserved keys. */
@@ -536,13 +578,53 @@ export function hireWorkforce(
     if (Object.hasOwn(settings, "tools")) settings["tools"] = catalogNames;
     settings[SEAT_TOOLS_KEY] = seatTools;
 
+    // The seat's document allowlist, resolved against what the app declared.
+    //
+    // **Only for a record that DECLARES the key**, and the map is passed only
+    // then. A flow instance's `resources` option REPLACES the definition's
+    // flow-level map, so a seat that restricted nothing must be minted with no
+    // map at all: passing an empty one locks every existing seat out of every
+    // document, and reconstructing "everything" diverges the moment the kind's
+    // map changes. Absent is not empty here, at either end.
+    let seatResources: DeclaredResources | undefined;
+    if (Object.hasOwn(manifest.declared, SEAT_RESOURCES_KEY)) {
+      const parsed = parseSeatResources(manifest.declared[SEAT_RESOURCES_KEY]);
+      if (parsed.problems.length > 0) {
+        for (const problem of parsed.problems) refuse(problem);
+        continue;
+      }
+      const kindResources = (factory.resources ?? {}) as DeclaredResources;
+      const resolved = resolveSeatResources({
+        grants: parsed.grants ?? [],
+        catalog: options.documents,
+        kindResources,
+        // The kind's own flow-level keys, which is the subset a seat's map
+        // replaces. Falling back to every key would read the kind's BLOCK
+        // resources as flow-level ones and copy them onto the seat's map,
+        // where they would override the blocks that declared them.
+        kindFlowLevelKeys: factory.flowLevelResourceKeys ?? new Set<string>(),
+        kind
+      });
+      if (resolved.problems.length > 0) {
+        for (const problem of resolved.problems) refuse(problem);
+        continue;
+      }
+      seatResources = resolved.resources;
+    }
+
     try {
       // Always a bag, so always admitted. The branch that stood here passed no
       // bag at all for a record that declared nothing — which is admission
       // SKIPPED, not admission passed: a thin seat minted without its kind's
       // schema ever seeing it. Every record meets the schema now, including the
       // thinnest one there is.
-      seats.push(minter(factory)({ id: manifest.id, config: settings }));
+      seats.push(
+        minter(factory)({
+          id: manifest.id,
+          config: settings,
+          ...(seatResources !== undefined ? { resources: seatResources } : {})
+        })
+      );
     } catch (error) {
       // The flow's own refusal, with the worker's id in front of it, and — when
       // the kind's shape says what most likely went wrong — one sentence naming
