@@ -47,7 +47,7 @@ elif .type == "item_done" then
       | {event: "tool_finished", name: tool_name,
          id: (.toolCall.callId | bounded(100)),
          status: (if $failed then "failed" else (.status // "unknown" | bounded(40)) end)}
-        + (if $failed then {detail: (.output | excerpt | bounded(480))} else {} end)
+        + (if $failed then {detail: ((.error.message // (.output | excerpt)) | bounded(480))} else {} end)
     elif .type == "error" then
       {event: "error", text: (.message | bounded(480))}
     else empty end
