@@ -16,7 +16,7 @@ variant passing a probe). A human reviews this page; the plan turns it into work
 | BR-3 | A block sits in the seat's own `blocks/` folder and the seat's `tools:` does not name it | It is registered and not callable. Registration is what a folder does; granting use is the seat's `tools:` line | C4-blocks |
 | BR-4 | An author writes a convention file | There are **seven** conventions across three doors. Door A's five are Markdown and share one frontmatter dialect; Doors B and C are TypeScript modules (`resources/*.ts`, `blocks/*.ts`) and share none of it | C1, C1-total, C2, C2-typescript |
 | BR-5 | A single resource is declared at **flow** level with `prefetchMode: "lazy"` | Refused — a flow-level declaration has no per-block load trigger. **The refusal's own message names the remedy**: declare it on the block that needs it. Lazy *is* available at block level, so an opt-in document is a design problem, not an impossibility | C3-lazy-scope · C3-lazy-remedy |
-| BR-6 | A package travels opt-in and wants to carry a document | A skill folder already carries supporting files beside its `SKILL.md`. One opt-in-attachable unit that ships a document therefore already exists | C3-skill-files |
+| BR-6 | ~~A package travels opt-in and wants to carry a document~~ | ~~A skill folder already carries supporting files beside its `SKILL.md`. One opt-in-attachable unit that ships a document therefore already exists~~ **SUPERSEDED — this rule is false.** See the note below | ~~C3-skill-files~~ |
 | BR-7 | A skill reaches a seat from more than one of its levels | The name is refused entirely. There is no precedence rule | Existing suite (`read-seat-skills`) |
 | BR-8 | A capability declares `controlTools` | They cross the fence, because the block composing the capability *is* the declaration and a control is built inside it and never exported | C4-controls |
 
@@ -26,8 +26,31 @@ implementation identifiers were present; it now anchors on the four behavioural 
 exercise each tool source against a restricted seat, including the capability-side fence in
 `packages/core/src/blocks/generator.ts` that the first version did not reach at all.
 
-**BR-5 and BR-6 replace a claim this spec got wrong.** The draft said a document had no opt-in mode
-anywhere. The restriction is narrower, and two ways to satisfy the opt-in half already exist.
+**BR-5 and BR-6 replaced a claim this spec got wrong.** The draft said a document had no opt-in
+mode anywhere; the restriction is narrower, and BR-5's block-level remedy is real. ~~Two ways to
+satisfy the opt-in half already exist.~~ **One does.** BR-6's second way does not — see below.
+
+> ### BR-6 is superseded: it is false
+>
+> Building the matrix disproved it. A skill's supporting files are stored in the skills
+> collection and **never rendered into the holding seat's context**, before activation or
+> after — only the delegation surface and the worker materializer read them. The carrying is
+> real; the arriving is not, so no opt-in-attachable unit that ships a document to a seat
+> exists today. There is in fact **no per-seat document channel in this framework at all**:
+> all three candidate routes were run and all three fail.
+>
+> `C3-skill-files` did not catch it because it asserted that the `SkillFile` type exists and
+> that `InitialSkill` has a `files?` field — both true, and neither the claim. It has been
+> narrowed to `C3-skill-files-type` and now says only what a source regex can say.
+>
+> **BR-12 still stands**, because it states P3 as an observable behaviour and leaves the
+> mechanism to the candidate. What changes is the price of the document half of any package
+> format: BR-6 said one of the two mechanisms already existed, and it does not.
+>
+> Full finding and evidence: `spec/FIX-1394/RATIFY.md` on
+> [PR #1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921), section
+> *The finding that outranks the matrix*. **Do not build package-document assumptions on
+> `C3-skill-files`.**
 
 ## What counts as a variant passing a probe
 
@@ -36,7 +59,7 @@ anywhere. The restriction is narrower, and two ways to satisfy the opt-in half a
 | BR-9 | A variant is built | It is judged only on the six probes fixed before any variant existed. A probe added mid-matrix is applied to every variant or to none | The matrix's own record (`PLAN.md → Checks`) |
 | BR-10 | **P1** · a package carries instructions, attached to a seat | Its text reaches the prompt through the framework's existing prompt slot, in a position the variant states and holds. The slot is an array that drops absent entries, so **adding an entry is not a contract change**; what a variant may not do is reorder, displace or add a second way to configure the reserved `default` layer, or merge the team's text into the seat's | Goal check on the real path |
 | BR-11 | **P2** · a package carries a tool | The tool is registered and callable **only** when the receiving seat's `tools:` names it (D1). A variant that makes it callable without that has failed P5, not passed P2 | Goal check |
-| BR-12 | **P3** · a package carries a document | Attached always-on, the document is installed and readable. Held opt-in, it arrives when the package activates and not before. A variant may reach the opt-in half through block-level lazy declaration (BR-5) or through the bundled-files path a skill already uses (BR-6) — **the probe states the behaviour and does not prescribe the mechanism** | Goal check, both modes |
+| BR-12 | **P3** · a package carries a document | Attached always-on, the document is installed and readable. Held opt-in, it arrives when the package activates and not before. A variant may reach the opt-in half through block-level lazy declaration (BR-5) or through ~~the bundled-files path a skill already uses (BR-6)~~ (superseded — see the BR-6 note) — **the probe states the behaviour and does not prescribe the mechanism**, which is why the rule itself still stands | Goal check, both modes |
 | BR-13 | **P4** · the same package is attached to a seat and held in a library | Byte-identical contents; the only difference is when it is in context. A variant needing two authored forms has failed | Goal check on both modes |
 | BR-14 | **P5** · the grant gate | BR-1, BR-2 and BR-3 still hold with the variant's package attached. A variant that widens the gate fails, whatever else it passes | The four grant-gate suites, run against the variant's fixture tree |
 | BR-15 | **P6** · an existing workforce tree | Loads and hires unchanged, with today's seven conventions present and no package authored | The existing workforce suite, once per matrix |
