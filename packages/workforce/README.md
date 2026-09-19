@@ -982,11 +982,12 @@ const recordChannelOpened = handler({
 
 Keys are relative to each collection's own prefix, so `upsert("engineering.lead", row)` on the seat
 inventory lands at `inventory/seats/engineering.lead`. `list()` hands back resource refs, and the row
-itself is on `ref.state`.
+itself is on `ref.state`. The membership index takes a two-segment key, which is what `membershipKey`
+builds above; the next section covers it.
 
 A row joins back to the declared record on the id and nothing else. The `id` on a seat row is the
-`id` the `WORKER.md` folder minted, and the `id` on a channel row is the `"<teamId>.<name>"` that is
-also the channel's session id.
+`id` the `WORKER.md` folder minted, and the `id` on a channel row is the `"<teamId>.<channelName>"`
+that is also the channel's session id.
 
 The rows are org-scoped and shared across flows. Every flow running under the same `orgId` reads the
 same rows, whichever flow wrote them and whichever
@@ -995,17 +996,16 @@ under, and a flow under a different `orgId` reads none of them. That holds wheth
 sets [`isolateOrgState`](https://flow-state.dev/docs/advanced/flow-isolation).
 
 Each row schema is closed, so a key it does not declare is dropped on the way in rather than stored.
-`id` and `kind` are required and the schema rejects a row without them. `members` and `openedAt` fill
-themselves in when absent, so a row written before your app started setting them still parses. The
-schemas ship as `seatInventoryRowSchema`, `channelInventoryRowSchema` and `membershipIndexRowSchema`
-alongside the row types, for checking what you are about to write.
+`id` and `kind` are required and the schema rejects a row without them. `members` and `openedAt` are
+optional, and a row without them parses. The schemas ship as `seatInventoryRowSchema`,
+`channelInventoryRowSchema` and `membershipIndexRowSchema` alongside the row types, for checking what
+you are about to write.
 
 ### Listing one seat's channels
 
-The membership index is the channel inventory turned around. Rather than one row holding a list of
-members, there is one row per membership, keyed seat first, which makes a seat's channels something
-you can ask for by key. `membershipKey` builds the key for a single row; `membershipPrefix` builds
-the prefix for the list.
+The channel inventory answers who is in a channel. The membership index answers the reverse: one row
+per membership, keyed seat first, so a seat's channels are something you can list by prefix.
+`membershipKey` builds the key for a single row; `membershipPrefix` builds the prefix for the list.
 
 ```ts
 import { membershipPrefix } from "@flow-state-dev/workforce";
@@ -1025,12 +1025,13 @@ const seatChannels = handler({
 Both helpers return keys relative to the collection's prefix, which is what `upsert`, `get` and
 `list` take. `membershipKey("engineering.lead", "engineering.standup")` is
 `"engineering.lead/engineering.standup"`, and `membershipPrefix("engineering.lead")` is
-`"engineering.lead/"`. That trailing slash is why to reach for the helper rather than build the
+`"engineering.lead/"`. That trailing slash is the reason to use the helper rather than build the
 string yourself: without it, `"engineering.lead"` also matches `"engineering.leadership"`, and one
 seat reads another seat's channels.
 
-**The prefix is applied in memory.** `list(membershipPrefix(seatId))` loads every membership row in
-the org and filters them afterwards.
+**Listing a seat's channels reads every membership row.** `list(membershipPrefix(seatId))` fetches
+every membership row under the org before the prefix narrows it, so the cost grows with the org
+rather than with the seat.
 
 Both helpers throw when an id cannot be one whole path segment, naming the argument at fault:
 
@@ -1083,7 +1084,7 @@ membershipPrefix("");
 | `channelSessionStateSchema` / `channelTranscriptLineSchema` | A channel session's state, and one transcript line. |
 | `defineSeatInventoryCollection()` | The seat inventory: one org-scoped row per registered seat, at `inventory/seats/<seatId>`. Takes no options; install what it returns under a block's `resources`. |
 | `defineChannelInventoryCollection()` | The channel inventory: one org-scoped row per open channel, at `inventory/channels/<channelId>`, carrying the channel's `members` and `openedAt`. Takes no options. |
-| `defineMembershipIndexCollection()` | The membership index: one org-scoped row per seat-in-channel, at `inventory/members/<seatId>/<channelId>`, so one seat's channels can be asked for by key. Takes no options. |
+| `defineMembershipIndexCollection()` | The membership index: one org-scoped row per seat-in-channel, at `inventory/members/<seatId>/<channelId>`, so one seat's channels can be listed by prefix. Takes no options. |
 | `membershipKey(seatId, channelId)` | The membership index key for one row, relative to the collection's prefix. Throws when either id is not one whole path segment. |
 | `membershipPrefix(seatId)` | The prefix that lists one seat's memberships, trailing slash included, relative to the collection's prefix. Refuses the same ids `membershipKey` does. |
 | `SeatInventoryRow` / `ChannelInventoryRow` / `MembershipIndexRow` | One row of each of the three collections. |
