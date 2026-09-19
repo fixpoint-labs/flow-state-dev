@@ -991,9 +991,8 @@ also the channel's session id.
 The rows are org-scoped and shared across flows. Every flow running under the same `orgId` reads the
 same rows, whichever flow wrote them and whichever
 [tenant](https://flow-state.dev/docs/fundamentals/state-and-scopes#multi-tenant-isolation) it runs
-under, and a flow under a different
-`orgId` reads none of them. That holds whether or not the app sets
-[`isolateOrgState`](https://flow-state.dev/docs/advanced/flow-isolation).
+under, and a flow under a different `orgId` reads none of them. That holds whether or not the app
+sets [`isolateOrgState`](https://flow-state.dev/docs/advanced/flow-isolation).
 
 Each row schema is closed, so a key it does not declare is dropped on the way in rather than stored.
 `id` and `kind` are required and the schema rejects a row without them. `members` and `openedAt` fill
@@ -1004,9 +1003,9 @@ alongside the row types, for checking what you are about to write.
 ### Listing one seat's channels
 
 The membership index is the channel inventory turned around. Rather than one row holding a list of
-members, there is one row per membership, keyed seat first, so the seat a membership belongs to is
-part of the key rather than a field inside the value. `membershipKey` builds the key for a single row;
-`membershipPrefix` builds the prefix for the list.
+members, there is one row per membership, keyed seat first, which makes a seat's channels something
+you can ask for by key. `membershipKey` builds the key for a single row; `membershipPrefix` builds
+the prefix for the list.
 
 ```ts
 import { membershipPrefix } from "@flow-state-dev/workforce";
@@ -1030,11 +1029,8 @@ Both helpers return keys relative to the collection's prefix, which is what `ups
 string yourself: without it, `"engineering.lead"` also matches `"engineering.leadership"`, and one
 seat reads another seat's channels.
 
-**A seat prefix does not make the read smaller.** `list(membershipPrefix(seatId))` loads every
-membership row in the org and filters them afterwards, so the index is not the cheaper way to
-answer the question today. What its key shape buys is a read that can get narrower later: a
-`members` array lives inside a channel row's value, where no prefix reaches it, while a seat id in
-the key is something a storage layer could push down.
+**The prefix is applied in memory.** `list(membershipPrefix(seatId))` loads every membership row in
+the org and filters them afterwards.
 
 Both helpers throw when an id cannot be one whole path segment, naming the argument at fault:
 
@@ -1087,7 +1083,7 @@ membershipPrefix("");
 | `channelSessionStateSchema` / `channelTranscriptLineSchema` | A channel session's state, and one transcript line. |
 | `defineSeatInventoryCollection()` | The seat inventory: one org-scoped row per registered seat, at `inventory/seats/<seatId>`. Takes no options; install what it returns under a block's `resources`. |
 | `defineChannelInventoryCollection()` | The channel inventory: one org-scoped row per open channel, at `inventory/channels/<channelId>`, carrying the channel's `members` and `openedAt`. Takes no options. |
-| `defineMembershipIndexCollection()` | The membership index: one org-scoped row per seat-in-channel, at `inventory/members/<seatId>/<channelId>`, so the seat is part of the key rather than a field inside the value. Takes no options. |
+| `defineMembershipIndexCollection()` | The membership index: one org-scoped row per seat-in-channel, at `inventory/members/<seatId>/<channelId>`, so one seat's channels can be asked for by key. Takes no options. |
 | `membershipKey(seatId, channelId)` | The membership index key for one row, relative to the collection's prefix. Throws when either id is not one whole path segment. |
 | `membershipPrefix(seatId)` | The prefix that lists one seat's memberships, trailing slash included, relative to the collection's prefix. Refuses the same ids `membershipKey` does. |
 | `SeatInventoryRow` / `ChannelInventoryRow` / `MembershipIndexRow` | One row of each of the three collections. |
