@@ -20,14 +20,19 @@ model: openai/gpt-5.4-mini
 You are the engineering lead. You break work into tasks and report what came back.
 ```
 
+`readDeclaredRoster` reads that tree — every worker, team, document and channel declared in it —
+and lists whatever failed to load on `problems`.
+
 ```ts
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { hireWorkforce } from "@flow-state-dev/workforce";
 
-const { workers, errors } = await readWorkforce("./workforce");
-if (errors.length) throw new Error(`workforce: ${errors.length} worker(s) failed to load`);
+const roster = await readDeclaredRoster("./workforce");
+if (roster.problems.length) {
+  throw new Error(`workforce: ${roster.problems.map((p) => `${p.layer} ${p.path}`).join(", ")}`);
+}
 
-const seats = hireWorkforce(workers);
+const seats = hireWorkforce(roster.workers);
 flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
@@ -37,8 +42,8 @@ argument. Its body becomes its instructions and steers its answers.
 The built-in stores each worker's skills at org scope, so **a request to one of these workers has
 to resolve to an org**. One that resolves to a `userId` alone fails with `Resource "skills" is not
 registered` before the model is reached. On the default principal resolver, send an `orgId` with
-the request; if you configure your own `resolvePrincipal`, return the org from there — the route
-reads the resolved principal and ignores a body `orgId`, so a caller cannot name its own org.
+the request; if you configure your own `resolvePrincipal`, return the org from there. Either way,
+a caller cannot name its own org.
 
 To run a worker on a flow you wrote, name that flow's `kind` in the record's `flow:` and pass the
 flow under the same key:
@@ -109,6 +114,11 @@ const { workers, teams, errors, skillErrors, teamErrors } = await readWorkforce(
 |-------|-------------|
 | `teams` | One `TeamManifest` per team that has a `TEAM.md` — `id`, `description`, `declared`, and `instructions` (absent when the body is empty or whitespace). |
 | `teamErrors` | One entry per `TEAM.md` that failed, keyed by its path. The team's workers still load, without the layer. |
+| `errors` | One entry per worker slot that failed: a seat the app does not have. |
+| `skillErrors` | One entry per seat whose skills loaded short, carrying that seat's id and its own error list. |
+
+`errors` and `skillErrors` are collected rather than thrown. Treating either as fatal is the
+caller's call.
 
 A `TEAM.md` refuses `id:`, `flow:`, `instructions:` and `teamInstructions:` — the first two because
 the convention derives them, the last two because the body is already the instructions.
@@ -225,34 +235,86 @@ there and be missing from a seat's set. Drop the key and both readers agree.
 
 The reader registers nothing and starts nothing. Wiring the records into a running seat is the
 caller's job: pass `skills` as the `initialSkills` of the skills capability or library you build
-for that worker — or let `readWorkforce` do it, below.
+for that worker — or let [`readWorkforce`](#reading-a-workforce-from-files) do it.
 
-### Reading the whole roster at once
+## Reading the whole roster at once
 
-`readWorkforce` does both walks and hands back records that already carry their skills, which is
-what `hireWorkforce` needs to give each seat its own catalog:
+`readDeclaredRoster` reads one workforce tree — the folder holding `org/` and `teams/` — and hands
+back everything declared in it, plus one list of what failed to load.
 
 ```ts
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 
-const { workers, errors, skillErrors } = await readWorkforce("./workforce");
-// workers[0].skills — that seat's org ∪ team ∪ own union, resolved
-const seats = hireWorkforce(workers);
+const roster = await readDeclaredRoster("./workforce");
+const seats = hireWorkforce(roster.workers);
 ```
 
-Two error channels, because they are different severities: `errors` is a worker slot that failed
-(a seat the app does not have), `skillErrors` is a seat that loaded short, one entry per affected
-seat. Both are collected rather than thrown; treating either as fatal is the caller's call.
+| Field | What it holds |
+|-------|---------------|
+| `workers` | One `WorkerManifest` per worker, each carrying its own resolved skills. The records `hireWorkforce` takes. |
+| `teams` | One `TeamManifest` per team that wrote a [`TEAM.md`](#the-optional-team-file). A team without one is absent, not present-and-empty. |
+| `documents` | One `ResourceDoc` per [document](#reading-documents-from-files), from every `resources/` folder the convention reads. |
+| `channels` | One `ChannelManifest` per [channel](#declaring-channels-in-files) under `teams/<id>/channels/`. There is no `org/channels/` level, the way there is for documents. |
+| `problems` | Everything that did not load. Empty for a tree that loads cleanly. |
 
-The record's `skills` reaches the built-in `agent` kind as its `seatSkills` setting, imposed by
+Each list arrives in tree order.
+
+Each record's `skills` reaches the built-in `agent` kind as its `seatSkills` setting, imposed by
 the hire step the way a body is imposed as `instructions`. A `WORKER.md` declaring `seatSkills:`
 itself is refused by name at both the loader and the hire step — where a skill folder sits is
 what decides who can see it.
 
-**Every hireable kind receives it**, because every hireable kind composes `workerConfigSchema()`,
-which declares the key. There is no opting in and no opting out: hiring hands the same settings to
-every seat, and a kind whose schema cannot take them refuses the whole roster at startup. Reading
-them is still optional — a kind that ignores `seatSkills` runs exactly as it did before.
+For seats alone, without documents or channels, read the worker half with
+[`readWorkforce`](#reading-a-workforce-from-files).
+
+### What did not load
+
+Every record that loaded is in the roster whether or not others failed, so a tree with problems
+resolves rather than throwing:
+
+```ts
+roster.problems;
+// [{ layer: "worker",
+//    path: "teams/qa/workers/broken",
+//    error: Error('Worker folder "broken" has no WORKER.md. ...') },
+//  { layer: "skill",
+//    path: "org/skills/house-style",
+//    worker: "qa.tester",
+//    error: Error('Missing SKILL.md in "house-style/"') },
+//  { layer: "document",
+//    path: "org/resources/loose.md",
+//    error: Error('"loose.md" has no frontmatter — a resource file needs at least a
+//                  `description`') },
+//  { layer: "channel",
+//    path: "teams/qa/channels/standup",
+//    error: Error('CHANNEL.md in "standup/" must declare a non-empty `description`') }]
+```
+
+`layer` is one of `worker`, `skill`, `team`, `document` or `channel`, and the entries arrive in that
+order: worker slots, then each seat's skills, then team files, then documents, then channels. `path`
+is the path that failed, relative to the root. `error` is the original `Error`, `cause` chain
+intact.
+
+`worker` is set on the `skill` layer and nowhere else. A skills level that several seats read fails
+once per seat that read it, each entry naming its seat.
+
+An entry carries no `kind`. To branch on one exact condition, call that layer's own reader and
+match on the codes under [Error Semantics](#error-semantics).
+
+Nothing here decides what is fatal. Refuse the boot on any problem, or on the layers you care
+about:
+
+```ts
+const missingSeats = roster.problems.filter((p) => p.layer === "worker");
+if (missingSeats.length) {
+  throw new Error(`workforce: no seat at ${missingSeats.map((p) => p.path).join(", ")}`);
+}
+```
+
+It throws on the root and nothing else: a path that cannot be read, a path that is a symlink, or
+one spelled with an interior `..` that steps back through an earlier segment (pass the path that
+resolves to). Everything below the root is collected, including a team, worker, channel or document
+whose name breaks the naming rules.
 
 ## Hiring a workforce
 
@@ -320,11 +382,9 @@ data, give it one declared key whose own schema is a record, rather than a neste
 did name.
 
 Reading any of it is optional. A kind that composes the contract and never looks at `seatSkills`
-runs exactly as it did before — ignoring the bag is not an error. What is not optional is the door:
-the factory hands every seat a bag, so a kind whose schema cannot take it refuses at the hire, for
-the whole roster, with a message naming the worker and the fix. That is a one-line change per kind,
-and it is what replaces a seat that used to hire, run, and silently hold none of what its author's
-files declared.
+is not an error. What is not optional is the door: the factory hands every seat a bag, so a kind
+whose schema cannot take it refuses at the hire, for the whole roster, with a message naming the
+worker and the fix. That is a one-line change per kind.
 
 What is checked is what your schema accepts, not which function built it — so a kind that declares
 these keys by hand hires just the same. Composing is what keeps it current: when a key is added to
@@ -927,7 +987,8 @@ leaves an empty session there, and re-running binds it.
 | `AGENT_KIND` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
-| `readWorkforce(root)` | Read the tree into records that already carry their own skills — `readWorkforceDirectory` joined with `readSeatSkills` per seat. What most apps want. Ships from the `./loader` subpath (Node only). |
+| `readDeclaredRoster(root)` | Read the whole tree in one call — workers with their skills, teams, documents and channels — plus one list of everything that failed to load, each entry tagged with the layer that reported it. Collects rather than throws, so the boot policy stays yours. Ships from the `./loader` subpath (Node only). |
+| `readWorkforce(root)` | Read the tree into worker records that already carry their own skills — `readWorkforceDirectory` joined with `readSeatSkills` per seat. Reach for it when seats are all you need. Ships from the `./loader` subpath (Node only). |
 | `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker, without their skills. Ships from the `./loader` subpath (Node only). |
 | `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Ships from the `./loader` subpath (Node only). |
 | `openRoot(root)` / `walkTeams(root, report)` | The walk every reader above shares: open the configured root (throwing on a symlinked or unreadable one, with or without a trailing separator, and on one spelled with a `..` that steps back through an earlier segment — pass the path it resolves to; a `.` segment and anything above the root are not checked), then enumerate `teams/`, reporting a team folder that is refused or unreadable and yielding the rest. `report` may be `async` and is awaited before the walk moves on. What a reader does *inside* a team stays its own. Ships from the `./loader` subpath (Node only). |
@@ -943,6 +1004,7 @@ leaves an empty session there, and re-running binds it.
 | `readResourcesDirectory(root)` | Read every `resources/` folder in the tree — org, team, and each worker's own — into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
 | `resourcesFromDocs(documents)` | Turn document records into the flow resource map, keyed by each document's ref. Spread it into your own `resources`. |
 | `splitResourceModules(resourceModules)` | Split the generated map into `{ capabilities, resources }` — the capabilities a worker kind installs through `uses`, and the resources that merge into the one resource map. Installs nothing: you pass both on, at your own call site. Throws naming the ref when an entry can be neither. |
+| `DeclaredRoster` / `DeclaredProblem` | What `readDeclaredRoster` returns: `{ workers, teams, documents, channels, problems }`, and one problem: `{ layer, path, error, worker? }`, where `layer` is `worker`, `skill`, `team`, `document` or `channel`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body, skills? }`. |
 | `ResourceDoc` | One document record: `{ ref, declared, body }`. |
 | `mintResourceRef(teamId, workerName, name)` | The one rule that names a resource, whichever door read it — the ref a document or a module called `name` in that folder gets. Throws naming the segment that breaks the rules. Ships from the `./loader` subpath (Node only). |
@@ -966,6 +1028,8 @@ leaves an empty session there, and re-running binds it.
 | Duplicate agent name | `createWorkforceCapability` construction |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable or symlinked | `readWorkforceDirectory` and `readWorkforce` throw — the root is never followed through a link |
+| Anything below the root, read as one tree | Collected in `readDeclaredRoster`'s `problems`, one entry per thing that did not load, tagged with the layer that reported it — never thrown |
+| Workforce root unreadable, symlinked, or spelled with an interior `..`, read as one tree | `readDeclaredRoster` throws, naming the path — its only throw |
 | One seat's skills failed to load | Collected in `readWorkforce`'s `skillErrors`, one entry per affected seat, each carrying that seat's id and `readSeatSkills`' own error list |
 | Bad `team` or `worker` name | `readSeatSkills` throws |
 | Skills root unreadable or symlinked | `readSeatSkills` throws — the root is never followed through a link |
