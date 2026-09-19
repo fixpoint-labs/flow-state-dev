@@ -1,0 +1,70 @@
+<svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The arc: five epic lanes against twelve days. W2 ran Sep 8 to Sep 12 and is done. The default agent flow ran Sep 12 to Sep 16 and is done. W3 started Sep 16 and is in flight at the now line, Sep 19, with 19 of 22 issues closed. W4 stood up its epic-spec on Sep 18, cleared its objective gate on Sep 19, and is in flight with three child specs running in parallel and one of five issues done. W1 was created Sep 8 and has not started.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .axis   { stroke:var(--rule); stroke-width:1; }
+    .tick   { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
+    .done   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .now    { stroke:var(--gone); stroke-width:1.6; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-lane { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-now  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
+  </style>
+
+  <g id="axis">
+    <text class="t-lbl" x="16" y="20">EPIC</text>
+    <text class="t-lbl" x="180" y="20">SEP 8</text>
+    <text class="t-lbl" x="428" y="20">SEP 12</text>
+    <text class="t-lbl" x="676" y="20">SEP 16</text>
+    <path class="axis" d="M180 30 H924"/>
+    <path class="tick" d="M180 30 V268 M428 30 V268 M676 30 V268"/>
+  </g>
+
+  <g id="w2">
+    <text class="t-lane" x="16" y="56">W2 · foundation</text>
+    <text class="t-s"    x="16" y="70">FIX-1332 · 5/5</text>
+    <rect class="done" x="180" y="42" width="248" height="26" rx="4"/>
+    <text class="t-s" x="192" y="59">conventions, seat factory, thin Agent</text>
+  </g>
+
+  <g id="agent-flow">
+    <text class="t-lane" x="16" y="104">agent flow</text>
+    <text class="t-s"    x="16" y="118">FIX-1359 · 7/11</text>
+    <rect class="done" x="428" y="90" width="248" height="26" rx="4"/>
+    <text class="t-s" x="440" y="107">OOTB replaceable `agent` flow kind</text>
+  </g>
+
+  <g id="w3">
+    <text class="t-lane" x="16" y="152">W3 · file surface</text>
+    <text class="t-s"    x="16" y="166">FIX-1351 · 19/22</text>
+    <rect class="flight" x="676" y="138" width="186" height="26" rx="4"/>
+    <text class="t-s" x="668" y="155" text-anchor="end">channels · resources · skills · pentest lab</text>
+  </g>
+
+  <g id="w4">
+    <text class="t-lane" x="16" y="200">W4 · routing</text>
+    <text class="t-s"    x="16" y="214">FIX-1407 · 1/5</text>
+    <rect class="flight" x="800" y="186" width="62" height="26" rx="4"/>
+    <text class="t-s" x="792" y="203" text-anchor="end">spec Sep 18 · approved Sep 19 · 3 specs running</text>
+  </g>
+
+  <g id="w1">
+    <text class="t-lane" x="16" y="244">W1 · MCP door</text>
+    <text class="t-s"    x="16" y="258">FIX-1333 · not started</text>
+    <text class="t-s" x="180" y="246">filed Sep 8, before W2 — the numbering is not the order</text>
+  </g>
+
+  <g id="now">
+    <path class="now" d="M862 30 V280"/>
+    <text class="t-now" x="856" y="28" text-anchor="end">NOW · SEP 19</text>
+  </g>
+</svg>
