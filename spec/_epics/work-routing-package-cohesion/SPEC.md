@@ -37,22 +37,29 @@ document:** read the spec branch's head, or the Linear document on the issue.
 |---|---|---|---|
 | FIX-1408 | Dispatch / session policy: sub-agent is same-session background, worker assign is a roster seat in a **linked** session, `parentSessionId` at mint, history by opt-in tools | The wire everything else routes over | **Done** · 2026-09-18 · no impl PR ([below](#a-note-on-fix-1408)) |
 | FIX-1394 | **One package format as a Markdown file**, scoped to instructions and tools, two attachment modes, and **not disk-only** ([ER-2](BUSINESS-RULES.md)). POC-first | Half the epic's title. Two overlapping surfaces grow board and tool sugar twice until this settles | **Ratify · half answered** · matrix [#1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921) open, never merges · authorship [decided](DECISIONS.md#decided-in-review), documents still open |
-| FIX-1405 | Inventory in two layers: a declared roster composed from the existing readers, and the live org resource ChannelFlow updates | The epic's third promise in its own right — *which seats and channels exist* — and what `team.*` addressing calls later ([ER-7](BUSINESS-RULES.md)). It does **not** gate the boards | **In review** · PR-A [#1920](https://github.com/fixpoint-labs/flow-state-dev/pull/1920) and S4 [#1923](https://github.com/fixpoint-labs/flow-state-dev/pull/1923) **merged** · S5–S7 [#1928](https://github.com/fixpoint-labs/flow-state-dev/pull/1928) **open**, CI green, mergeable, findings closed |
+| FIX-1405 | Inventory in two layers: a declared roster composed from the existing readers, and the live org resource ChannelFlow updates | The epic's third promise in its own right — *which seats and channels exist* — and what `team.*` addressing calls later ([ER-7](BUSINESS-RULES.md)). It does **not** gate the boards | **Done** · 2026-09-19 · PR-A [#1920](https://github.com/fixpoint-labs/flow-state-dev/pull/1920), S4 [#1923](https://github.com/fixpoint-labs/flow-state-dev/pull/1923) and S5–S7 [#1928](https://github.com/fixpoint-labs/flow-state-dev/pull/1928) all **merged** — terminal by merge |
 | FIX-1385 | A channel holding `0..N` TaskCollections; channel actions and `taskTools` as two doors on one surface. Plus the PR-5 name check over its own diff ([ER-19](BUSINESS-RULES.md)) | **The exit gate's surface** — the board in "channel/org board → seat runs" | **Done** · 2026-09-19 · [#1922](https://github.com/fixpoint-labs/flow-state-dev/pull/1922) **merged** — one full-scope PR, not the spec's four ([the seam it discharged](PLAN.md#coordination-seams-to-watch)) |
-| FIX-1430 | Manager-queue lab: a coordinator seat owns a channel board, assigns to linked seats, shows queue state as **views** over existing task status | The **proof** of the exit gate, and the owner of [ER-20](BUSINESS-RULES.md) | **In review** · [#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) **open**, CI green, mergeable, findings closed · **the gate itself [has not run](#er-20-has-not-run)** |
+| FIX-1430 | Manager-queue lab: a coordinator seat owns a channel board, assigns to linked seats, shows queue state as **views** over existing task status | The **proof** of the exit gate, and the owner of [ER-20](BUSINESS-RULES.md) | **Done** · 2026-09-19 · [#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) **merged** — but **the gate it exists to run [has not run](#er-20-has-not-run)** |
 
-**All four specs are approved and every child now has its PR.** 2 done · 3 in review · 0 not
-started. That is the whole set, and it is not the epic's finish.
+**Four of five children are complete; one is open and blocked.** FIX-1408 done by decision, and
+FIX-1385, FIX-1405 and FIX-1430 all merged to `main` on 2026-09-19. **FIX-1394 is the only child
+still open** — its matrix [#1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921) never
+merges, and its ratify waits on the owner's documents question.
+
+**Read that as four of five, not as the epic being done.** Every child in this set can be complete
+while the thing the set exists to prove has never been observed — which is exactly the state W4 is
+in now.
 
 <a name="er-20-has-not-run"></a>
 **[ER-20](BUSINESS-RULES.md) is OPEN. Its row reads `NOT RUN`.** The acceptance goal calls a real
 model and no environment reachable from this epic has an inference key, so the check fails loudly by
 name rather than degrading to a scripted filer. Everything around it is green — routing, sessions,
 the waiting row, refusal by name — with controls that go red at the leg they name. **The wrap term
-is enforced against ER-20 as written:** W4 does not wrap until that row says PASS. Merging
-[#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) would not change that; a merged
-proof whose gate never ran is exactly the *claiming routing works rather than having seen it* ER-20
-exists to prevent.
+is enforced against ER-20 as written:** W4 does not wrap until that row says PASS.
+[#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) **has since merged, and it did
+not change this.** A merged proof whose gate never ran is exactly the *claiming routing works rather
+than having seen it* that ER-20 exists to prevent — and it is now the literal state of the set, so
+the only thing standing between W4 and its wrap is a machine with an inference key.
 
 <a name="the-sixth-child"></a>
 **The tracker has moved to six.** [FIX-1451](https://linear.app/fixpoint-labs/issue/FIX-1451) — a
@@ -153,10 +160,14 @@ writes are **stored as a resource rather than saved to disk**, so the format may
 disk-only ([decided](DECISIONS.md#decided-in-review), binding through
 [ER-2](BUSINESS-RULES.md)).
 
-**Open: three with you, three with the epic.** **With you:** *are documents in v1?* — parked on
+**Two things are between W4 and its wrap, and both are yours.** *Are documents in v1?* — parked on
 [#1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921), recommendation unchanged
-(*leave them out*); **whether FIX-1451 belongs under this epic** ([above](#the-sixth-child)); and a
-**[pending re-gate on ER-14](DECISIONS.md#er-14-re-gate)** — #1928 is a ship PR under a fence that
-has not lifted, and narrowing that fence reopens what you ratified as item 3 above, so only you can
-do it. **With the epic:** FIX-1408's three remaining session-policy walls
-([Open](DECISIONS.md#open)) — none blocks a start.
+(*leave them out*); it is the only thing holding FIX-1394. And **a machine with an inference key**,
+which is the whole of what [ER-20](#er-20-has-not-run) is waiting for. Nothing in the set is waiting
+on the epic.
+
+**Also open with you, blocking nothing today:** **whether FIX-1451 belongs under this epic**
+([above](#the-sixth-child)), and a **[pending re-gate on ER-14](DECISIONS.md#er-14-re-gate)** — you
+merged #1928 through the fence, which settles that PR but says nothing about the rule; narrowing it
+reopens what you ratified as item 3 above, so only you can do it. **With the epic:** FIX-1408's
+three remaining session-policy walls ([Open](DECISIONS.md#open)).

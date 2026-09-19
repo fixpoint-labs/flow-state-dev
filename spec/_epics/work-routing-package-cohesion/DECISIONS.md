@@ -128,13 +128,17 @@ rather than a matrix row, and **FIX-1385 provides the surface ER-20 stands on wi
 | **A package is authored in Markdown**, as the new file, scoped to **instructions and tools** — and the format **may not be designed disk-only** | The owner, 2026-09-19, on FIX-1394's first ratify fork. His own direction is the load-bearing half: packages an LLM writes are **stored as a resource, never saved to disk**, so a format readable only off the filesystem is wrong on arrival. *Don't collapse* is no longer a live result | [ER-2](BUSINESS-RULES.md) · [Open](#open) |
 | ER-3 means **(a)** a contrast with the declared tree — **not (b)** relocating ChannelFlow's post fence onto an org resource | A channel's `members` is already live, read on the refusal path in the session the post lands in; (b) would put one fact in two places and tax every post | ER-3 · ER-12 |
 | <a name="drain-width"></a>**Drain width is 1.** Work queues behind a busy seat; a busy seat never takes a second row concurrently | Closes FIX-1408's *auto-scale / busy-copy* wall on FIX-1430's evidence, the way [ER-15](BUSINESS-RULES.md) says such a wall closes: the lab ran at **both** widths and wrote the comparison out, rather than a number being picked. **Reversible** — the `MANAGER_QUEUE_DRAIN_WIDTH` knob stays, which is how the other case remains reachable | FIX-1430's `lab/README.md` · [Open](#open), one wall lighter |
+| <a name="fence-default"></a>**The epic treats the W3 ship fence as narrowed to per-PR file overlap**, from 2026-09-19 | **An operating default, not a ruling, and not the owner's.** He merged #1928 through the live fence; the epic reads that action — not any statement, because there was none — as licence to stop parking W4 ship PRs whose diffs do not touch an unlanded W3 child's files. Recorded so the epic's behaviour is predictable and attributable rather than improvised per PR. **[The re-gate](#er-14-re-gate) is still open and still the owner's**, and **he can countermand this in a sentence**, at which point the default reverts to the rule as written | [ER-14](BUSINESS-RULES.md)'s note · [the re-gate](#er-14-re-gate) |
 | <a name="refuted-mechanisms"></a>**Two of FIX-1430's approved rules had their stated mechanism refuted by the code.** Both texts are corrected; both rules stand and are graded | **BR-5:** a row does run in its own session, with a parent bound at mint and none of the coordinator's transcript — but the parent is the **draining seat's** session, not the filer's, because the dispatch that mints the child happens at the seat, after the filing. **BR-11:** `adoptLapsedLease` (`packages/orchestration/src/task-board/task-entry.ts`) **renews** a lapsed lease so a successor *can* take the row back; `StaleTaskClaimError` fires only when a reclaim genuinely won. The substance — a lapsed row is really back in the queue — now grades the stronger true claim: the next drain takes it and runs it on the seat whose own file answers for the desk it was filed for | ER-4 · FIX-1430's `BUSINESS-RULES.md` and `lab/README.md` |
 
 The first four rows are round 1 (2026-09-18, five reviewers on
 [#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905)); the rest are 2026-09-19, raised
-up from a child rather than decided locally ([ER-15](BUSINESS-RULES.md) working). **The last two
-rows are a child's PR correcting the epic** — the same mechanism as the cross-spec pass above it,
-pointed at a fact rather than a scope. None reopens an approved decision.
+up from a child rather than decided locally ([ER-15](BUSINESS-RULES.md) working). **The drain-width
+and refuted-mechanism rows are a child's PR correcting the epic** — the same mechanism as the
+cross-spec pass above them, pointed at a fact rather than a scope. **[The fence
+default](#fence-default) is the one row that is neither**: it is how the epic behaves while a
+question with the owner stays open, and it decides nothing that question will decide. None of them
+reopens an approved decision.
 
 **Two stay falsifiable.** ER-3's reading flips on evidence that a channel's `members` is *not*
 current on the refusal path; the ER-15 split flips if those walls turn out to carry package content
@@ -178,26 +182,35 @@ the wrap open indefinitely. **What would change my mind:** if skill-context hone
 ### Does the W3 ship fence narrow to per-PR overlap? — a pending re-gate
 
 *(Decides: the owner, and only the owner — this document records him ratifying **the ship fence as
-written** at the objective gate, so narrowing it is a re-gate, not an epic call. Blocks: whether
-[#1928](https://github.com/fixpoint-labs/flow-state-dev/pull/1928) may merge. The recommendation
-below is **mine**, and unanswered.)*
+written** at the objective gate, so narrowing it is a re-gate, not an epic call. Blocks: now
+**FIX-1394's eventual ship PR** and the [wrap term](PLAN.md#wrap); no longer #1928. The
+recommendation below is **the epic's**, and **unanswered**.)*
 
 **The facts.** #1928 publishes `@flow-state-dev/workforce` and carries a changeset, so it is a
 **ship PR** by [ER-14](BUSINESS-RULES.md)'s letter. FIX-1435 — a W3 child carrying an
-implementation, hoisting the duplicated slot-descent walk in the resources loaders — is still
-`Todo`, so the fence has not lifted and it parks a finished PR. **By substance the overlap is
-empty:** #1928's 13 paths sit under `packages/workforce/src/channel/`, `src/inventory/`, `test/`,
-the README, `apps/docs/` and a changeset — **none** under `packages/workforce/src/loader/`, where
-FIX-1435 lands. Same package, disjoint files.
+implementation, hoisting the duplicated slot-descent walk in the resources loaders — is `Todo` with
+**no branch and no PR at all**, so the fence was live. **By substance the overlap is empty:**
+#1928's 13 paths sit under `packages/workforce/src/channel/`, `src/inventory/`, `test/`, the README,
+`apps/docs/` and a changeset — **none** under `packages/workforce/src/loader/`, where FIX-1435
+lands. Same package, disjoint files.
 
-**My recommendation: narrow ER-14 to per-PR overlap** — a W4 ship PR is fenced only when its diff
-touches files an unlanded W3 child will edit. The rule's own stated risk is W4 shipping onto
-unlanded W3 *code*, and a fence that parks on package identity rather than file overlap costs merges
-it was never aimed at. **What would change my mind:** evidence that FIX-1435's hoist changes the
-*behaviour* of a loader #1928's code calls — then the package is the right unit and #1928 waits.
-**What being wrong costs:** a W4 change merged onto a floor still moving under it, so a conflict or
-a silent behavioural change surfaces on `main` rather than in a rebase. **Nothing is narrowed
-here:** ER-14's row stands exactly as written, and three W4 ship PRs have already merged under it.
+**The owner merged #1928 through the fence** on 2026-09-19 (`merged_by: jhoffner`, merge commit
+`8428614`). That is his act and it **settles #1928** — nothing about that PR is outstanding and
+nothing here asks for it to be undone. **It is not an answer to this question.** He has said
+nothing about the rule, and a merge is not a rewrite: reading one as the other is how a fence gets
+narrowed by accident and nobody can say when.
+
+**The recommendation stands, and stays the epic's: narrow ER-14 to per-PR overlap** — a W4 ship PR
+is fenced only when its diff touches files an unlanded W3 child will edit. ER-14's own stated risk
+is W4 shipping onto unlanded W3 *code*, and a fence that parks on package identity rather than file
+overlap costs merges it was never aimed at. **What would change my mind:** evidence that FIX-1435's
+hoist changes the *behaviour* of a loader a W4 child's code calls — then the package is the right
+unit. **What being wrong costs:** a W4 change merged onto a floor still moving under it, so a
+conflict or a silent behavioural change surfaces on `main` rather than in a rebase. **Nothing is
+narrowed here:** ER-14's row stands exactly as written.
+
+**What the epic does in the meantime** is [its own operating default](#fence-default), not a
+decision on this question — and the owner can countermand it in a sentence.
 
 **Why the three above are here and the three below are not.** Those are business calls the owner
 owns and nothing else can settle; the three below are engineering walls that *building* answers
@@ -215,8 +228,9 @@ auto-scale / busy-copy — closed on 2026-09-19 as [drain width is 1](#drain-wid
 | **A sub-agent's background work on a board row** | Whether same-session background work is visible on the row at all, and as what | **Unowned, and orphaned.** It was FIX-1385's as the owner of the row; FIX-1385 closed without building a coordinator assign, so nothing left in the set will force it. [ER-11](BUSINESS-RULES.md) binds whoever takes it — a view, never a new status. **Named out at [the wrap](PLAN.md#wrap)**, so the epic cannot close by confirming a pass nobody ran |
 
 **What being wrong costs.** The bet was that FIX-1385 would force three of these; it did not. The
-two still settleable ride on FIX-1430 — so if the proof runs and nobody reads what it reports, they
-leave W4 unanswered with no child left to force them. The third has no owner at all.
+two still settleable ride on FIX-1430 — **which has now merged**, so the evidence is on `main` to be
+read rather than waited for, and **this is the last cheap moment**: no child is left to force them,
+and once the epic wraps nobody is looking. The third has no owner at all.
 
 <a name="the-cross-flow-board-residue"></a>
 **A second unowned residue, from FIX-1385.** A seat naming a board id **no channel minted** is not

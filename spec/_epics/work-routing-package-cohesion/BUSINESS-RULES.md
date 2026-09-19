@@ -43,16 +43,25 @@ FIX-1351's 22 children, exactly two are non-terminal: **FIX-1435** (`Todo`) and 
 carries an implementation** — it collapses two copies of the slot-descent walk in the resources
 loaders, framework code W4 children read. FIX-1449 is Atlas HTML staleness and carries none.
 
-**So the fence has not lifted. Three W4 ship PRs merged under it** — FIX-1385's
-[#1922](https://github.com/fixpoint-labs/flow-state-dev/pull/1922) and FIX-1405's
-[#1920](https://github.com/fixpoint-labs/flow-state-dev/pull/1920) and
-[#1923](https://github.com/fixpoint-labs/flow-state-dev/pull/1923), all shipping
-`packages/workforce` with changesets — **and a fourth,
-[#1928](https://github.com/fixpoint-labs/flow-state-dev/pull/1928), is open and parked by it.**
-Recorded, not re-decided: ER-14 derives from [D2](DECISIONS.md#d2), which the owner ratified at the
-objective gate, so the epic cannot narrow it here. Whether the fence's unit should be the package or
-the files a PR touches is **[a pending re-gate](DECISIONS.md#er-14-re-gate)** with the owner, where
-the overlap evidence for #1928 is written out.
+**So the fence has not lifted, and four W4 ship PRs have merged under it** — FIX-1385's
+[#1922](https://github.com/fixpoint-labs/flow-state-dev/pull/1922), FIX-1405's
+[#1920](https://github.com/fixpoint-labs/flow-state-dev/pull/1920),
+[#1923](https://github.com/fixpoint-labs/flow-state-dev/pull/1923) and
+[#1928](https://github.com/fixpoint-labs/flow-state-dev/pull/1928), all shipping
+`packages/workforce` with changesets. **The owner merged the last of them himself**, on 2026-09-19.
+That settles #1928; it is not a change to this rule, and he has said nothing about one.
+
+**What is still fenced.** Only two things in this set remain subject to ER-14: **FIX-1394's
+eventual ship PR** — not started, and behind the documents question and the ratify (ER-8) —
+and **the [wrap term](PLAN.md#wrap)**, which cannot complete while a W4 ship PR is parked. Nothing
+else in the set is still waiting on this fence.
+
+**How the epic behaves meanwhile.** ER-14 derives from [D2](DECISIONS.md#d2), which the owner
+ratified, so the epic cannot narrow the rule — and it has not. What it has adopted is an
+[operating default](DECISIONS.md#fence-default): treat the fence as narrowed to per-PR file
+overlap, read from the owner's action rather than his words, and **countermandable by him at any
+time**. Whether the rule itself narrows is still **[a pending re-gate](DECISIONS.md#er-14-re-gate)**
+with the owner, where the recommendation is the epic's and unanswered.
 
 ## How the set is run
 
