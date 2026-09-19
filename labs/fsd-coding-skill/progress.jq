@@ -44,10 +44,15 @@ elif .type == "item_done" then
     elif .type == "tool_output" then
       (.status == "failed" or .isError == true
        or (if (.output | type) == "object" then .output.isError == true else false end)) as $failed
-      | {event: "tool_finished", name: tool_name,
-         id: (.toolCall.callId | bounded(100)),
-         status: (if $failed then "failed" else (.status // "unknown" | bounded(40)) end)}
-        + (if $failed then {detail: (.output | excerpt | bounded(480))} else {} end)
+      | (if $failed then (.output // .error | excerpt) else "" end) as $detail
+      | ({event: "tool_finished", name: tool_name,
+          id: (.toolCall.callId | bounded(100)),
+          status: (if $failed then "failed" else (.status // "unknown" | bounded(40)) end)}
+         + (if $failed then {detail: ($detail | bounded(480))} else {} end)),
+        (if $failed and ($detail | test("haven't granted it yet|requires approval|was blocked"; "i")) then
+           {event: "tool_denied", name: tool_name,
+            id: (.toolCall.callId | bounded(100)), detail: ($detail | bounded(480))}
+         else empty end)
     elif .type == "error" then
       {event: "error", text: (.message | bounded(480))}
     else empty end
