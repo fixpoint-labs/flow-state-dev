@@ -1,10 +1,10 @@
 /**
  * FIX-1381 spec POC — characterization, not a proposal.
  *
- * The spec's approach rests on two claims about how the framework ALREADY
- * behaves. Neither is documented, both are load-bearing, and prose cannot
- * settle either. This pins them on the real path so the reviewer and the owner
- * can see the answer rather than take mine.
+ * The spec's approach rests on claims about how the framework ALREADY behaves.
+ * None is documented, all are load-bearing, and prose cannot settle any of
+ * them. This pins them on the real path so the reviewer and the owner can see
+ * the answer rather than take mine.
  *
  *   P1  A flow instance minted with its own `resources` map REPLACES the
  *       definition's flow-level map — so a per-seat narrowed map is a real
@@ -21,7 +21,17 @@
  *       replaces only the flow-level map; block resources merge in underneath
  *       (`defineFlow.ts` -> `mergeFlowResourceMap`). If this test ever goes
  *       green in the other direction, the allowlist's fence has moved and
- *       BUSINESS-RULES.md R-4 is wrong.
+ *       BUSINESS-RULES.md BR-7 is wrong.
+ *
+ *   P4  The grant is readable off the hired seat, which is the seam FIX-1382
+ *       projects mounts from.
+ *
+ * P5 was added in review round 1, and it is the one that changed the design:
+ *
+ *   P5  Because P1's replace is a REPLACE, a documents-only narrowed map also
+ *       drops whatever non-document resources the app declared at flow level.
+ *       P1-P4 could not show this — their fixture's flow-level map holds
+ *       nothing but documents, which is not what a real app looks like.
  *
  * Throwaway. Lives on the never-merged spec branch, under `spec-poc/`, which
  * CI ignores. Nothing here is a proposed API — the seat-facing surface is
@@ -31,10 +41,11 @@
  *
  *   pnpm exec vitest run --config spec-poc/FIX-1381-seat-resource-allowlist/vitest.config.ts
  *
- * Expect: 5 passed. Every assertion here has been watched go red — the mode
+ * Expect: 9 passed. Every assertion here has been watched go red — the mode
  * flags were un-flipped (P2 fails), and the mint was made to ignore the
- * narrowed map (P1 and P3 fail). A green run of a check nobody has seen fail
- * is not evidence (tenet 7).
+ * narrowed map (P1 and P3 fail). P5's first case IS a red state, kept green by
+ * asserting the loss. A green run of a check nobody has seen fail is not
+ * evidence (tenet 7).
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -221,7 +232,7 @@ describe("FIX-1381 P3 (negative control) — block-declared resources escape the
     expect(ctx.resources.get("inbox")).toBeDefined();
 
     // And it is writable — the narrowing took nothing away from it. This is
-    // the fence the spec states as R-4, and the reason the allowlist is
+    // the fence the spec states as BR-7, and the reason the allowlist is
     // honestly scoped to DECLARED DOCUMENTS rather than sold to the owner as
     // "everything a seat can touch".
     await expect(
@@ -274,5 +285,101 @@ describe("FIX-1381 P4 — the grant is READABLE off the seat, which is what FIX-
 
     expect(roEntry?.writable).toBe(false);
     expect(rwEntry?.writable).not.toBe(false);
+  });
+});
+
+/**
+ * P5 — added in review round 1, to settle a reviewer's claim rather than argue
+ * it (PR #1935, "Document resources lack provenance").
+ *
+ * P1-P4 above were all run against a kind whose flow-level map holds NOTHING
+ * BUT documents. Real apps do not look like that: `resourcesFromDocs` returns a
+ * map the APP spreads into its own flow-level map, beside whatever else that
+ * flow declares at flow level. So the narrowing that P1 celebrates also
+ * replaces the app's flow-level machinery, and the four premises said nothing
+ * about it because the fixture could not show it.
+ *
+ * This is the red state the reviewer described. It is not a bug in the
+ * framework — it is `options.resources` REPLACES working exactly as P1 says —
+ * but it is a hole in the spec's approach as written, and folding it is what
+ * round 1 spent.
+ */
+describe("FIX-1381 P5 — narrowing replaces the app's flow-level map, machinery included", () => {
+  /** Not a document: an app-level store, declared at FLOW level beside the docs. */
+  const auditLog = defineResource({
+    ref: "audit-log",
+    scope: "org",
+    stateSchema: z.object({ entries: z.array(z.string()).default([]) }),
+    default: { entries: [] },
+    writable: true,
+  });
+
+  /** The realistic shape: documents AND machinery in one flow-level map. */
+  const mixedKind = defineFlow({
+    kind: "fix1381-seat-mixed",
+    resources: {
+      [handbook.ref!]: handbook,
+      [payroll.ref!]: payroll,
+      "audit-log": auditLog,
+    } as DeclaredResources,
+    actions: {
+      run: { inputSchema: z.object({}), block: readsEverything },
+    },
+  });
+
+  it("a documents-only grant silently drops a flow-level resource the seat still needs", async () => {
+    // Exactly what PLAN.md's sketch said to mint: the granted documents, and
+    // nothing else.
+    const seat = mixedKind({
+      id: "engineering.lead",
+      resources: { [handbook.ref!]: handbook } as DeclaredResources,
+    });
+
+    const ctx = await createExecutionContext({
+      flow: seat,
+      actionName: "run",
+      requestId: "req_p5_mixed",
+      sessionId: "sess_p5_mixed",
+      userId: USER,
+      orgId: ORG,
+      stores: createInMemoryStores(),
+    });
+
+    // The grant landed.
+    expect(ctx.resources.get(handbook.ref!)).toBeDefined();
+
+    // The document it did not name is gone, which is the feature.
+    expect(() => ctx.resources.get(payroll.ref!)).toThrow(/not registered/i);
+
+    // And so is the audit log, which is NOT a feature: no seat file mentioned
+    // it, no grant excluded it, and nothing warned. This is why the resolver
+    // must preserve non-document flow-level entries, and why it needs to be
+    // TOLD which entries are documents instead of inferring it.
+    expect(() => ctx.resources.get("audit-log")).toThrow(/not registered/i);
+  });
+
+  it("preserving the non-document entries alongside the grant restores it", async () => {
+    // The corrected construction: machinery kept, documents narrowed.
+    const seat = mixedKind({
+      id: "engineering.lead",
+      resources: {
+        "audit-log": auditLog,
+        [handbook.ref!]: handbook,
+      } as DeclaredResources,
+    });
+
+    const ctx = await createExecutionContext({
+      flow: seat,
+      actionName: "run",
+      requestId: "req_p5_fixed",
+      sessionId: "sess_p5_fixed",
+      userId: USER,
+      orgId: ORG,
+      stores: createInMemoryStores(),
+    });
+
+    expect(ctx.resources.get(handbook.ref!)).toBeDefined();
+    expect(ctx.resources.get("audit-log")).toBeDefined();
+    expect(() => ctx.resources.get(payroll.ref!)).toThrow(/not registered/i);
   });
 });

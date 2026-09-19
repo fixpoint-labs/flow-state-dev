@@ -58,6 +58,13 @@ The grant is applied where a seat is minted, so it sits **below** every worker k
 built-in one and anybody's custom one get it without declaring anything. Nothing new is
 stored, and the seat's own map is what the sandbox ticket later reads to decide mounts.
 
+One thing the app has to hand over for this to be honest: **which of its resources are
+documents**. The app already builds that list when it turns its `resources/` folder into a
+resource map — it passes the same list to the hire step, which is how a grant can narrow the
+documents without also deleting the boards and stores sitting in the same map
+([D4](DECISIONS.md#d4)). Nothing guesses what a document is, and nothing takes that answer
+from a seat file.
+
 ## What stays as it is
 
 - **Where documents are defined.** They stay on `flow.resources` and the `resources/` file
@@ -68,8 +75,10 @@ stored, and the seat's own map is what the sandbox ticket later reads to decide 
 - **The seat contract.** `instructions`, `teamInstructions`, `seatSkills`, `seatTools` —
   unchanged, and no fifth key. Resource access is not a `WorkerConfig` declaration.
 - **The kind's own machinery.** A board, an inbox, a store the kind's blocks declare stays
-  reachable and writable; the allowlist governs declared documents, not a seat's own wiring
-  ([BR-7](BUSINESS-RULES.md)).
+  reachable and writable, and so does anything else the app declared at flow level beside
+  its documents. The allowlist governs **declared documents**, not a seat's own wiring
+  ([BR-7](BUSINESS-RULES.md), [BR-15](BUSINESS-RULES.md)). This is the fence worth reading
+  twice: "this seat reaches one document" means one *document*, not one resource.
 - **Sandboxes and bash.** No provider, no mounts, no filesystem projection here. That is
   [FIX-1382](https://linear.app/fixpoint-labs/issue/FIX-1382), and this ticket's job is to
   give it something to read.

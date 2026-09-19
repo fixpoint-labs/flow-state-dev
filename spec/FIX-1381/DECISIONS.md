@@ -36,6 +36,14 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 breaking flip is affordable now. Then deny-by-default ships here instead, and the migration
 is one `resources:` line per seat rather than a second decision later.
 
+**The evidence we have, since this is the factor the decision turns on.** Every
+`hireWorkforce(` call site in this repository is our own: `packages/workforce/` (source and
+tests), the `goals/*` labs, and `apps/kitchen-sink`. Nothing in this monorepo would break
+under a deny-by-default flip. That is **not proof** — it cannot see a private or downstream
+deployment, and that is exactly where a boot-time outage would land instead of here. So it
+does not change the recommendation on its own; it is the fact to weigh against whatever you
+know about who is running this that a grep cannot.
+
 <a name="d2"></a>
 ## D2 · Naming a document grants read; write takes the extra word `rw`
 
@@ -64,6 +72,26 @@ is one `resources:` line per seat rather than a second decision later.
 - **No new readable allowlist object.** The seat's own narrowed map already records which
   refs are its and what each permits; that is what FIX-1382 reads.
 
+Added in round 1, after a reviewer found that the first three did not survive contact with
+a realistic resource map:
+
+- <a name="d4"></a>**D4 · The hire step is told which resources are documents; it does not
+  work it out.** The app already calls `resourcesFromDocs(...)` and spreads the result into
+  its own flow-level map, so it can hand the same map over. The alternative — inferring
+  "document" from an entry's shape — would make the boundary of a permission feature depend
+  on a heuristic, and a board that happened to look like a document would become grantable.
+  *Locks in:* a new public option on `hireWorkforce`, and a refusal for a seat that declares
+  `resources:` when no catalog was supplied (BR-18).
+- **The grant narrows documents and leaves the rest of the flow-level map standing.** A map
+  built from the grants alone would delete the app's own boards and stores silently, because
+  the instance option replaces rather than merges (BR-15).
+- **A grant never widens what a document declared.** `writable` is not a derived key, so a
+  document can declare itself unwritable; an `rw` grant on one refuses at hire rather than
+  quietly failing at the first write (BR-16).
+- **A grant that collides with a name the kind's blocks declare refuses.** Flow-level wins
+  that merge, so the alternative is a seat file replacing the kind's machinery with a
+  document (BR-8).
+
 ## Considered and dropped
 
 | Alternative | Why not |
@@ -76,9 +104,9 @@ is one `resources:` line per seat rather than a second decision later.
 
 ## Settled
 
-A characterization test on this branch (`spec-poc/FIX-1381-seat-resource-allowlist/`) ran
-four premises on the real path. **All four CONFIRMED**, so nothing in the approach changed —
-which is the result worth recording, not a silent pass.
+A characterization test on this branch (`spec-poc/FIX-1381-seat-resource-allowlist/`) runs
+these on the real path. The cases and how to run them are in
+[PLAN.md](PLAN.md); what they *decided* is here.
 
 - **A seat can be minted with its own narrowed map, and two seats of one kind can differ.**
   The excluded document is absent from the registry lookup *and* from direct property access.
@@ -87,11 +115,20 @@ which is the result worth recording, not a silent pass.
 - **A resource the kind's own blocks declare escapes the narrowing and stays writable.** A
   fence rather than a win: it is why [BR-7](BUSINESS-RULES.md) is stated out loud.
 - **The grant is readable off the hired seat** — the seat's flow-level resource keys are
-  exactly the granted refs, excluding the kind's machinery. That is FIX-1382's seam.
+  exactly the granted refs. That is FIX-1382's seam.
+- **A documents-only narrowed map also deletes the app's non-document flow-level
+  resources** (P5, added in round 1). This one did **not** confirm the approach — it broke
+  it, and [D4](#d4) and BR-15 are the repair.
 
 Every assertion was watched fail before it was trusted: the mode flags were un-flipped and
 the mint was made to ignore the grant. A green check nobody has seen go red is not evidence
 (tenet 7).
+
+**What the first four missed, and why it matters more than what they found.** All four ran
+against a fixture whose flow-level map held nothing but documents. Real apps put boards and
+stores in that same map. So the premises were true and the conclusion drawn from them was
+not — the checks were aimed at a neighbour of the claim. A reviewer caught it; the POC
+should have. The fixture was the bug.
 
 ## How it got here
 
@@ -99,5 +136,13 @@ the mint was made to ignore the grant. A green check nobody has seen go red is n
   declared*; the grant resolved at the mint and enforced through the framework's existing
   unwritable-document path, so the ticket adds an authoring surface and no new gate. Scoped
   opt-in after the four premises above were pinned.
+
+- **Review round 1** — three automated reviewers. Two findings changed the approach: the
+  hire step has no way to tell a document from a board in the flow-level map, and narrowing
+  to documents alone deletes the rest of it (now [D4](#d4), BR-15, BR-18, V7). Two were
+  factual corrections to this spec, fixed inline and costing no round: BR-8 stated the
+  substrate's precedence backwards, and BR-14 claimed the model's write tool is withheld for
+  a `ro` document when in fact it is offered and refuses at the call. The rest is recorded in
+  [PLAN.md](PLAN.md) → *Notes from review*. **Nothing moved D1**, D2 or D3.
 
 **Open: none.**
