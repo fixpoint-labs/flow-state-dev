@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 324" role="img"
-     aria-label="A matrix of four queue columns against the row facts each is computed from. Queued reads status pending and the assignee. Running reads status in progress and a live claim. Waiting on you reads status parked or blocked and the reason already on the row. Done reads the terminal statuses. A fifth strip beneath shows seat idle derived from the absence of a live claim against the seats the lab hired. A heavy fence runs under the whole matrix, labelled nothing below this line is written, with the task status enum and the row fields drawn underneath it untouched."
+     aria-label="A matrix of four queue columns against the row facts each is computed from. Queued reads the rows the claim path would admit — status pending, or in progress with a lapsed lease, which is a row whose worker died — grouped by assignee. Running reads status in progress and a live claim. Waiting on you reads status parked or blocked and the reason already on the row. Done reads the terminal statuses. A fifth strip beneath shows seat idle derived from the absence of a live claim against the seats the lab hired. A heavy fence runs under the whole matrix, labelled nothing below this line is written, with the task status enum and the row fields drawn underneath it untouched."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -35,7 +35,7 @@
 
   <g id="facts">
     <rect class="n-box" x="16" y="80" width="218" height="30" rx="4"/>
-    <text class="t-s" x="30" y="99">status: pending</text>
+    <text class="t-s" x="30" y="99">pending · or lapsed lease</text>
     <rect class="n-box" x="16" y="114" width="218" height="30" rx="4"/>
     <text class="t-s" x="30" y="133">assignee</text>
 

@@ -14,6 +14,7 @@ flowchart TD
   D2 -.->|"rejected"| X2["FIX-1385's check with a third seat<br/>proves the half nobody doubted"]
   I --> D3["D3 · a busy seat's behaviour is shown"]
   D3 -.->|"rejected"| X3["pick a drain width and move on<br/>settles an epic wall in a goals folder"]
+  D3 -.->|"rejected"| X4["run both widths in this issue's CI<br/>a second deliverable on the exit gate"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -43,7 +44,9 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Picking a drain width for the lab and letting that choice read as the recommended shape |
 | **Because** | Whether a busy seat gets a second copy or work queues behind it is one of four session-policy walls the epic took back from FIX-1408 — and the epic named *this lab, running a queue deep enough to matter*, as what would settle it. Deciding it inside `goals/` settles an epic wall where nobody reads decisions ([ER-15](https://github.com/fixpoint-labs/flow-state-dev/pull/1905)) |
-| **Locks in** | Two runs of one queue where one would do, and a reader looking for the recommended setting gets a comparison instead. When the epic rules, the lab is revisited to keep the ruled shape — the evidence costs a second visit, on purpose |
+| **What "shown" means, exactly** | The lab is **wired so either width runs from one documented switch** — no edit to the tree, none to the checks. It does **not** mean this issue's CI runs the whole queue twice. Running both and writing out the comparison is evidence the epic asks for when it wants to rule, and it is off this issue's merge bar (BR-17). The decision is unchanged; only the work it implies moved |
+| **And what the lab may therefore not assert** | If the lab must not choose the busy-seat policy, it cannot require the waiting row to read `pending` either — that reading *is* one of the two candidate policies. BR-6 keeps what holds at every width (nothing re-routes, nothing drops, the assignee is held) and records the status rather than requiring it. A hand-off leaves a claimed row `in_progress` while its child is still queued (`docs/architecture/dispatched-work.md` -> "The claim gate and the fence ticket"), so requiring `pending` would have pinned the gate to a state the landed path need not produce |
+| **Locks in** | A reader looking for the recommended setting gets a comparison instead, and the epic owes a ruling before anyone can copy this lab as a shape. When it rules, the lab is revisited to keep the ruled width — the evidence costs a second visit, on purpose |
 
 ## Decided, not asked
 
@@ -78,6 +81,10 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 **What would change my mind.** If the promise will be read publicly as *declare a team in Markdown and it ships code*, the two halves have to meet in one run at least once, and this is the cheapest place to make them meet.
 
 **What being wrong costs.** Narrow when it was wide: the epic wraps on a claim narrower than it reads, and someone builds the wide check afterwards — a few days, nothing already built thrown away. Wide when it was narrow: the gate is slow and intermittently red from the day it lands, which is worse because it is permanent.
+
+**Still open, and not settled here.** This is the product owner's call and it is with them.
+
+**What is fenced while they decide.** Both reviewers asked for the same thing underneath the question, and it costs nothing to give: the *narrow* shape is now a hard requirement of the plan rather than a recommendation waiting on an answer — stub worker handlers doing small deterministic work, one model surface (the coordinator, and nothing else), and pentest-style poll and timeout fixtures ([PLAN](PLAN.md) -> Guardrails, and V-G). So the gate cannot widen toward devforce economics while the question is open. If the answer comes back wide, that is a change to make then, with the cost visible — not a door left open now.
 
 **Settled: none.** No claim here has been argued twice.
 

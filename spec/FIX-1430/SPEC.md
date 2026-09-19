@@ -70,6 +70,6 @@ One hop. The coordinator names no session, flow or seat instance — only an ass
 
 1. **[D1](DECISIONS.md#d1) · The lab ships no package code — the queue columns stay lab-local.** *If wrong:* a view surface is designed from one example, exported, then redesigned when a second consumer disagrees.
 2. **[D2](DECISIONS.md#d2) · The proof is a queue, not a hand-off: more rows than seats, the coordinator assigning through the tools it declared.** *If wrong:* we re-run FIX-1385's own check with an extra seat, call it the exit gate, and prove the half of ER-20 nobody doubted.
-3. **[D3](DECISIONS.md#d3) · What a busy seat does is shown, not chosen: the same queue runs twice and the comparison goes to the epic.** *If wrong:* a lab settles a policy the epic owns, in a folder nobody reads as a decision.
+3. **[D3](DECISIONS.md#d3) · What a busy seat does is shown, not chosen: the lab is wired to run at either drain width, and the comparison goes to the epic when it asks for it.** *If wrong:* a lab settles a policy the epic owns, in a folder nobody reads as a decision.
 
 **Open: one** — how much realism ER-20 closes on ([Q1](DECISIONS.md#q1)). Number 2 is the one to weigh: it is what separates this from a second copy of a check that already exists. Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
