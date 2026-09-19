@@ -16,19 +16,16 @@ architecture cohesion
 
 **Why now.** W3 made a Workforce *describable*. Nothing yet says how **work reaches** one of those
 declared seats: no shared place to file it, no runtime answer to "which seats exist", and three
-unreconciled meanings of *assign*. That gap is why a declared team is still a demo. W3 proved a
-seat is described; W4 proves a seat is given work. It does not move the corpus-wide goal count on
-its own — the lead measure moves when a child ships a goal check.
+unreconciled meanings of *assign*. W3 proved a seat is described; W4 proves a seat is given work.
 
 ## What's in the box
 
 ![What's in the box: the W4 first cut is a channel or org board that routes work to a seat run and assigns team seats — the exit gate, one hop — plus one package format with two attachment modes, a runtime inventory in two layers (a declared roster composed at read time and a live org resource ChannelFlow updates), and the shipped dispatch and session policy. Composed in by the app: custom kinds as flow factories, and defaultWorker triage. A phase-2 panel inside W4, off the exit gate and holding no wrap, holds just two items: the nested personal and request board cascade, and the manager-queue lab's nested half. Below a fence, what is not built: no Agent, Channel, Team, MessageBoard, TeamFlow or SessionBoard L1 type, no Collab RC, no silent parent transcript, no nested or shadow session substrate as a work hierarchy, no merged board-assignee and seat registry, no team wildcards as first ship, no second WorkerRegistry or mega-loader, no assignable-channel routing, no BoardFlow as the only mint, no Graft rebuild.](figures/end-state.svg)
 
-The **exit gate is the top row and only the top row** ([D1](DECISIONS.md#d1)). The strip under it
-is phase-2 *inside* W4 — named so nobody reads it as refused, and fenced off the gate so the gate
-is reachable on a schedule. Since the set cut to five ([D6](DECISIONS.md#d6)), nothing on that
-strip holds the epic's wrap. The bottom strip is what the set refuses to build, every item named
-out by the Architect rather than forgotten.
+The **exit gate is the top row and only the top row** ([D1](DECISIONS.md#d1)). The strip under it is
+phase-2 *inside* W4 — named so nobody reads it as refused, and since the set cut to five
+([D6](DECISIONS.md#d6)) nothing on it holds the wrap. The bottom strip is what the set refuses to
+build, each item named out rather than forgotten.
 
 ## The set · as of 2026-09-19
 
@@ -44,30 +41,25 @@ The live table. Refreshed on the epic PR as issues move; the plan and the figure
 
 1 done · 3 in flight · 1 not started.
 
-**Five, settled at the objective gate** (2026-09-19). The epic body named four — FIX-1408,
-FIX-1394, FIX-1405, FIX-1385 — and three more were parented afterwards. The gate kept those four
-and adopted FIX-1430 as the proof ([D6](DECISIONS.md#d6)). It was not bookkeeping, because **the
-epic's exit gate and its wrap are different moments.** The wrap term in
-`.agents/workflows/epic-wake.js` requires every child to be Linear-terminal, merged or `DONE`, and
-`TERMINAL_LINEAR` matches only done / closed / cancelled / duplicate / dropped / won't-do. A
-Backlog or Todo child is none of those — so a parented phase-2 child would not have gated the exit
-gate, it would have held the epic open past it, indefinitely. At five, W4 wraps when it meets its
-own gate.
+**Five, settled at the objective gate** (2026-09-19). The epic body named four; three more were
+parented afterwards. The gate kept the four and adopted FIX-1430 as the proof
+([D6](DECISIONS.md#d6)). Not bookkeeping: **the exit gate and the wrap are different moments**, and
+a parented phase-2 child would not have gated the exit gate — it would have held the epic open past
+it, indefinitely. At five, W4 wraps when it meets its own gate.
 
 <a name="related-not-children"></a>
 **Related, not children.** [FIX-817](https://linear.app/fixpoint-labs/issue/FIX-817) (catalog
-manifests) and [FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415) (channel-admin verbs)
-are real work in the same area that this epic's promise does not need. Both **keep their dependency
-on FIX-1405**, and both still obey this set's rules where they touch it: FIX-817 does not start
-until FIX-1405's spec is **approved** ([ER-23](BUSINESS-RULES.md)), and neither may re-decide
-[ER-3](BUSINESS-RULES.md). They are drawn outside the set in the graph below.
+manifests) and [FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415) (channel-admin verbs) are
+real work in the same area that this epic's promise does not need. Both **keep their dependency on
+FIX-1405** and still obey this set's rules where they touch it: FIX-817 does not start until
+FIX-1405's spec is **approved** ([ER-23](BUSINESS-RULES.md)), and neither may re-decide
+[ER-3](BUSINESS-RULES.md).
 
 <a name="a-note-on-fix-1408"></a>
 **A note on FIX-1408.** Backlog → Done on 2026-09-18 with no implementation PR: what shipped is the
-**decision** ([D4](DECISIONS.md#d4), [ER-4](BUSINESS-RULES.md)). Its own open walls are not closed
-by that. **One** of them — which opt-in history packs are v1 — is evidenced by FIX-1394's POC; the
-other **four** came back to the epic on 2026-09-19 and are parked in [Open](DECISIONS.md#open)
-([ER-15](BUSINESS-RULES.md)).
+**decision** ([D4](DECISIONS.md#d4)). Its open walls are not closed by that — **one** is evidenced
+by FIX-1394's POC, and the other **four** came back to the epic and are parked in
+[Open](DECISIONS.md#open) ([ER-15](BUSINESS-RULES.md)).
 
 ## How the issues flow into each other
 
@@ -91,20 +83,18 @@ flowchart LR
   class DP done
 ```
 
-A **solid** edge blocks: what it carries does not exist until it lands. A **dashed** edge does not,
-and its label says what makes starting safe anyway — **landed code** to write against (the two W3
-inputs, merged 2026-09-19, [ER-18](BUSINESS-RULES.md)), a ratified contract rather than a shipped
-surface (below), or a fence the child holds itself to (FIX-1415). A heavy border is done. Every node is filed. The two
-in the box are [related, not children](#related-not-children): the FIX-1405 edges they depend on
-are unchanged, and neither holds this epic's wrap.
+A **solid** edge blocks; a **dashed** edge does not, and its label says what makes starting safe
+anyway — **landed code** to write against (the two W3 inputs, merged 2026-09-19,
+[ER-18](BUSINESS-RULES.md)), a ratified contract rather than a shipped surface (below), or a fence
+the child holds itself to. A heavy border is done. The two in the box are
+[related, not children](#related-not-children).
 
 <a name="what-the-proof-consumes"></a>
 **The proof consumes package cohesion's contract, not its implementation.** FIX-1430's seats can
-carry instructions and tools on today's surfaces — both existing labs already do. What the proof
-may not do is invent a *third* shape the ratified format would contradict; that is
-[ER-2](BUSINESS-RULES.md) binding it. Binding the proof to a shipped package instead would hang the
-exit gate on ship tickets that are cut only after a POC ratify and do not exist yet — the
-unreachable gate [D1](DECISIONS.md#d1) exists to prevent.
+carry instructions and tools on today's surfaces — both existing labs already do. What the proof may
+not do is invent a *third* shape the ratified format would contradict
+([ER-2](BUSINESS-RULES.md)). Binding it to a shipped package instead would hang the exit gate on
+ship tickets that do not exist yet — the unreachable gate [D1](DECISIONS.md#d1) exists to prevent.
 
 ## What stays as it is
 
@@ -113,8 +103,7 @@ unreachable gate [D1](DECISIONS.md#d1) exists to prevent.
 - **The W3 floor ([FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351))** — a sibling epic,
   soft-*after* for ship and never a parent ([D2](DECISIONS.md#d2)).
 - **Session substrate ([FIX-1440](https://linear.app/fixpoint-labs/issue/FIX-1440))** — linked
-  dispatch does not re-legitimize nested, child or shadow sessions as a work hierarchy
-  ([D4](DECISIONS.md#d4)).
+  dispatch does not re-legitimize nested sessions as a work hierarchy ([D4](DECISIONS.md#d4)).
 - **The OOTB agent kind ([FIX-1359](https://linear.app/fixpoint-labs/issue/FIX-1359))** — shipped.
   Package cohesion flags drift against it; it is not redesigned from zero.
 - **The board's claim system** — `assignee` stays optional, `TaskStatus` does not grow
@@ -124,22 +113,19 @@ unreachable gate [D1](DECISIONS.md#d1) exists to prevent.
 
 ## Signed off · 2026-09-19
 
-The owner ratified all three items of this section's ask at the objective gate, each with the
-recommendation it carried. What each one killed is in the card behind it.
+The owner ratified all three items of this section's ask, each with the recommendation it carried.
+What each one killed is in the card behind it.
 
 1. **[D1](DECISIONS.md#d1) · The exit gate is channel/org board → seat runs / assign team seats.**
    The nested cascade is phase-2 inside W4.
-2. **[D6](DECISIONS.md#d6) · The set is five.** FIX-1430 is adopted as the proof — which gives
-   [ER-20](BUSINESS-RULES.md) its owner — and FIX-817 and FIX-1415 are re-homed as
-   [related-not-child](#related-not-children), dependency on FIX-1405 preserved.
+2. **[D6](DECISIONS.md#d6) · The set is five.** FIX-1430 adopted as the proof — which gives
+   [ER-20](BUSINESS-RULES.md) its owner — and FIX-817 / FIX-1415 re-homed as
+   [related-not-child](#related-not-children), dependency preserved.
 3. **[D2](DECISIONS.md#d2) · W4 *ship* PRs are soft-after W3**, as written: the fence lifts when
-   **every W3 child that carries an implementation is merged to main**; children completed by
-   decision, duplicated or cancelled do not hold it. Filing, specs and POCs run now.
+   every W3 child that carries an implementation is merged to main. Filing, specs and POCs run now.
 
-Also approved at the same gate: **the public export of the compose helper on
-`@flow-state-dev/workforce`** ([D5](DECISIONS.md#d5), [ER-3](BUSINESS-RULES.md)).
+Also approved: **the public export of the compose helper on `@flow-state-dev/workforce`**
+([D5](DECISIONS.md#d5)).
 
 **Open: four** — FIX-1408's returned session-policy walls, epic-owned and parked in
-[Open](DECISIONS.md#open). None of them blocks a start; they bite when FIX-1385 reaches its assign
-surface. Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md). Sequencing and what each issue entails:
-[PLAN.md](PLAN.md).
+[Open](DECISIONS.md#open). None blocks a start; they bite when FIX-1385 reaches its assign surface.
