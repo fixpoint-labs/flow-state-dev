@@ -151,10 +151,6 @@ For Codex only, pass `FSD_CODING_NETWORK_ACCESS=1` when an authorized sandboxed 
 - Surface a denied tool immediately. Read the specific raw failure if needed,
   then stop repeated denied work; do not leave discovery running after the
   worker declares itself blocked. Never bypass permissions to restore progress.
-- Assistant completion, flow termination, and artifact acceptance are different.
-  A `finished` event reports a claim; obtain the process exit status and verify
-  the requested artifact. If the process remains alive after a terminal event,
-  inspect shutdown rather than claiming the process exited.
 - `--capture` is written at completion, so it is not a live channel. Use the
   incrementally written `.ndjson` for bounded, targeted diagnosis; it retains
   token deltas too, so long turns can produce large traces. Read the final
@@ -186,6 +182,8 @@ These apply on a local machine or Grok box, where this skill is the path. On a C
 
 After each supervised run, inspect the compact terminal event, the process exit
 status, and the relevant final result in `--capture` (or the targeted raw event).
+If the process remains alive after a terminal event, inspect shutdown rather
+than claiming the process exited.
 
 `outcome: "finished"` only means the vendor turn ended. It is not success by itself.
 

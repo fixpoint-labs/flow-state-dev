@@ -15,13 +15,7 @@ All four doors run through a **supervised live stream**. From this directory
 (`fsdev` config search is cwd-only), follow the canonical
 [launch instructions](../../.agents/skills/fsd-coding/SKILL.md#pass-values-on-each-invocation)
 for the managed process, host environment, and `bash -o pipefail` pipeline with
-`tee` and `jq --unbuffered`. In OMP, use `hub start`, not a completion-only
-background command.
-
-Pass `FSDEV_TRACE_OBSERVABILITY=true` in the supervisor's command-local
-environment on every door, including `fixFsd` and retries. It must override an
-inherited `false`/`0`: readiness depends on the real root-block trace, which is
-otherwise disabled under `NODE_ENV=production`. Do not change `NODE_ENV`.
+`tee` and `jq --unbuffered`.
 
 `progress.jq` projects bounded live events while `tee` retains the raw NDJSON
 locally; `--capture` is completion-only. Follow the skill's
