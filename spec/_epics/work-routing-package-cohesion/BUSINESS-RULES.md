@@ -27,7 +27,7 @@ are stable ids, not an order. ER-1 to ER-5 and ER-19 are the rows of the ownersh
 |---|---|---|
 | ER-6 | No **Agent, Channel, Team, MessageBoard, TeamFlow, ChannelAdmin or SessionBoard as an L1 package type**; no revived `materializeAgent` or `AgentRegistry` | D3. Agent is an opinionated default *kind*; the rest are L2 opinion or nothing |
 | ER-7 | No `team.*` (or other) wildcards before the inventory lands, and none blocking the channels convention | D5. Wildcards call the live layer later |
-| ER-8 | No shipping the package collapse from FIX-1394's exploration alone, without a ratify | That ticket's posture: matrix → ratify → then ship tickets |
+| ER-8 | No shipping the package collapse from FIX-1394's exploration alone, without a ratify. **Discharged 2026-09-19:** the ratify is recorded ([both forks](DECISIONS.md#authorship-answer)) and the ship ticket is cut — **FIX-1459**, which is [related, not a child](SPEC.md#related-not-children). Nothing is held behind this row any more; ER-14 still fences FIX-1459 when it is picked up, on its own terms | That ticket's posture: matrix → ratify → then ship tickets |
 | ER-9 | No dumping a parent's full transcript, or its private seat history, into a child by default | D4. Channel transcript passes only when both are on that channel |
 | ER-10 | Boards are not the mint door for sessions, DMs, posts or sub-agents. No assignable-channel routing, no Project-as-required | D1, D3. Conversation stays off the board |
 | ER-11 | No expanding the L1 `TaskStatus` enum. Queue columns — idle, ready-for-review, waiting-on-you — are **L2 views** over status plus claim, assignee, park reason and seat idle | A second hold status was already refused |
@@ -51,8 +51,8 @@ loaders, framework code W4 children read. FIX-1449 is Atlas HTML staleness and c
 `packages/workforce` with changesets. **The owner merged the last of them himself**, on 2026-09-19.
 That settles #1928; it is not a change to this rule, and he has said nothing about one.
 
-**What is still fenced.** **FIX-1394's ship tickets**, now reachable since the ratify unblocked
-(ER-8); **FIX-1381's eventual implementation**, which edits `packages/workforce` and so will be a
+**What is still fenced.** **FIX-1459**, the ratified format's ship ticket — outside the set, but it
+edits `packages/workforce`, so the fence reaches it when it is picked up; **FIX-1381's eventual implementation**, which edits `packages/workforce` and so will be a
 ship PR when it exists; and **the
 [wrap term](PLAN.md#wrap)**, which cannot complete while a W4 ship PR is parked.
 

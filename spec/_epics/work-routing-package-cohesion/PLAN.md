@@ -113,6 +113,11 @@ bound by ER-3 and ER-23: [FIX-817](https://linear.app/fixpoint-labs/issue/FIX-81
 manifests) and [FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415) (channel-admin verbs).
 Neither holds this epic's wrap; both remain filed.
 
+**Re-homed 2026-09-19:** [FIX-1459](https://linear.app/fixpoint-labs/issue/FIX-1459), the ship
+ticket for the ratified package format, for the same reason — the build is downstream of W4's
+objective, not inside it ([the spec](SPEC.md#related-not-children)). ER-8's hold is discharged by
+it being cut; ER-14 fences it when it starts.
+
 **Related to FIX-1381, and not absorbed by it:**
 [FIX-1454](https://linear.app/fixpoint-labs/issue/FIX-1454) is the scope-*existence* half — that a
 resource cannot be scoped to a single seat at all — which is a different question from which

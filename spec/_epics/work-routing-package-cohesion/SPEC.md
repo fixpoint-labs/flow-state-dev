@@ -124,6 +124,15 @@ real work in the same area the epic's promise does not need. Both **keep their F
 and still obey this set's rules: FIX-817 waits on FIX-1405's **approved** spec
 ([ER-23](BUSINESS-RULES.md)), and neither may re-decide [ER-3](BUSINESS-RULES.md).
 
+**And the format's build is downstream, not inside.**
+[FIX-1459](https://linear.app/fixpoint-labs/issue/FIX-1459) — *ship `PACKAGE.md`, the ratified
+worker-package format* — is FIX-1394's ship ticket, **re-homed to related-not-child** on
+2026-09-19. W4's objective is the exploration and the decisions it produced; building the ratified
+format is downstream of that objective, and parenting it would stop this epic wrapping until a
+fresh multi-week feature landed. **So the format is ratified inside W4 and shipped outside it** —
+said plainly here because a later reader could otherwise conclude it shipped in this epic. It holds
+no wrap; [ER-14](BUSINESS-RULES.md) still fences it when it is picked up.
+
 <a name="a-note-on-fix-1408"></a>
 **A note on FIX-1408.** Done with no implementation PR: what shipped is the **decision**
 ([D4](DECISIONS.md#d4)). Of its five open walls, **one** is evidenced by FIX-1394's POC, **one**
