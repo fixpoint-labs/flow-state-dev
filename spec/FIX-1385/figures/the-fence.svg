@@ -1,0 +1,71 @@
+<svg viewBox="0 0 940 214" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A dashed vertical fence. On the left, the channel side: filing a row and reading the board both reach the ledger, which sits on the channel's side of the fence. One arrow crosses the fence to the right, the seat side, where a row is claimed or assigned and run under a lease and a start gate. A fourth path, a claim reaching back to the channel, is drawn stopped at the fence with a cross. Nothing on the channel side claims, leases or dispatches.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-led { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-run { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .fence { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .stop  { stroke:var(--gone); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+    .xmark { stroke:var(--gone); stroke-width:1.6; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-red { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; font-style:italic; }
+  </style>
+
+  <g id="labels">
+    <text class="t-lbl" x="16" y="20">THE CHANNEL SIDE, HOLDS</text>
+    <text class="t-lbl" x="644" y="20">THE SEAT SIDE, RUNS</text>
+  </g>
+
+  <g id="left">
+    <rect class="n-box" x="16" y="36" width="190" height="52" rx="5"/>
+    <text class="t-b" x="30" y="60">file a row</text>
+    <text class="t-s" x="30" y="78">a member, or taskTools</text>
+
+    <rect class="n-box" x="16" y="108" width="190" height="52" rx="5"/>
+    <text class="t-b" x="30" y="132">read the board</text>
+    <text class="t-s" x="30" y="150">rows, as they stand</text>
+
+    <path class="arrow" d="M210 62 L288 62 L288 122 L320 122"/>
+    <path class="head" d="M316 117 L326 122 L316 127 Z"/>
+    <path class="arrow" d="M210 142 L320 142"/>
+    <path class="head" d="M316 137 L326 142 L316 147 Z"/>
+  </g>
+
+  <g id="ledger">
+    <rect class="n-led" x="330" y="104" width="252" height="56" rx="5"/>
+    <text class="t-b" x="344" y="128">the ledger · eng.feature.work</text>
+    <text class="t-s" x="344" y="148">one TaskCollection, org scope</text>
+  </g>
+
+  <g id="right">
+    <path class="arrow" d="M586 132 L664 132"/>
+    <path class="head" d="M658 127 L668 132 L658 137 Z"/>
+    <rect class="n-run" x="672" y="94" width="240" height="76" rx="5"/>
+    <text class="t-b" x="686" y="118">claim it, or be assigned it</text>
+    <text class="t-s" x="686" y="138">the lease, the start gate,</text>
+    <text class="t-s" x="686" y="156">the hand-off, the run</text>
+  </g>
+
+  <g id="blocked">
+    <path class="stop" d="M700 188 L642 188"/>
+    <path class="xmark" d="M622 182 L634 194 M634 182 L622 194"/>
+    <text class="t-red" x="606" y="192" text-anchor="end">a claim never crosses back</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M628 28 L628 126"/>
+    <path class="fence" d="M628 140 L628 176"/>
+    <path class="fence" d="M628 200 L628 208"/>
+  </g>
+</svg>

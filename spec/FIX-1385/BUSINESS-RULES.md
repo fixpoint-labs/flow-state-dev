@@ -1,0 +1,57 @@
+# FIX-1385 · Business rules
+
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md)
+
+The cases as rules: what someone does, what happens, and which check proves it. A human reviews this page; the plan turns it into work.
+
+## Declaring a board
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-1 | A `CHANNEL.md` declares `boards: [work]` | The channel holds one ledger, minted `<channelId>.work`, at `org` scope. The transcript is untouched | CI |
+| BR-2 | A `CHANNEL.md` declares no `boards:` | It holds none, and opens, reads and posts exactly as today | CI, against a recorded roster |
+| BR-3 | `boards:` is not a list of plain names — an object, a number, a nested id | The whole roster is refused, naming the channel and the rule. Nothing registers partially | CI |
+| BR-4 | A board name repeats inside one channel, or would mint an id another channel already minted | Refused at bind, naming both. An id is a storage key, and a duplicate is two teams' work in one ledger | CI |
+| BR-5 | A board name is unusable as a collection id — empty, a path separator, a pattern token, a prototype member | Refused at bind, with the rule, rather than at first write | CI |
+| BR-6 | A `CHANNEL.md` declares a board *and* a custom `flow:` kind | Both hold. The named kind gets the same board ids the built-in would | CI |
+
+## Filing and reading
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-7 | A member files a row naming a board the channel declared | The row lands there `pending`, carrying the caller's `assignee` if it gave one | CI · goal check |
+| BR-8 | A caller names a board the channel did not declare | Refused by name, listing what this channel holds. No ledger is created | CI |
+| BR-9 | A caller names a board another channel declared | Unreachable rather than refused: the ledger resolves from the session's own identity, so the name can only address this channel's. Caller-controllable input selects no storage (BP-031) | CI · asserted on the resolved id, not on the refusal |
+| BR-10 | A non-member files a row claiming to be a member | Refused with the channel's own `author-not-a-member` reason and wording — the fence a post already meets | CI |
+| BR-11 | A model calls `addTask` through `taskTools` pointed at a channel board | The same row, on the same ledger, as the channel action would have written. Both paths resolve one `TaskCollectionRef` | CI · asserted by writing through one door and reading through the other |
+| BR-12 | Anyone reads the channel | The declared board names come back beside members and the transcript. The rows do not — reading a board is a board read | CI |
+
+## What does not move
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-13 | A channel session opened before this shipped is read | It is still a bound channel and still accepts posts. An absent board list reads as none, never as unparseable state (BP-030) | CI · a recorded pre-upgrade session, and the negative control below |
+| BR-14 | This issue names a Layer 2 concept on any new surface — a key, an action, an error, a doc heading | It uses the settled name and never the superseded one: *Channel* not *room*, *Role* not *Worker*, *Strategy* not *Pattern*, *Instructions* not *prompt template*, *stream visibility* not `agentType` | CI · a check over the diff, not a reading |
+| BR-15 | A seat declares a board id no channel minted | Nothing here refuses it. A seat's board is the seat's, and this issue adds no registry of legal board ids | Existing suite |
+| BR-16 | A channel declares a board and no seat drains it | The rows sit `pending`. Nothing reports it, because nothing is watching — [D2](DECISIONS.md#d2) | Documented, not checked |
+| BR-17 | A seat is to reach a channel board with a model | It names the task tools in its own `tools:`. The fence is not widened here: registration makes a name resolvable, declaration grants use. A board tool colocated in a seat's folder stays refused at hire, because it declares an org-scoped resource | CI · asserted on a seat that registers the tools and declares none of them |
+
+![A dashed vertical fence. Left of it, the channel side: filing a row and reading the board both reach the ledger, which sits on the channel's side. One arrow crosses to the right, the seat side, where a row is claimed or assigned and run under a lease and a start gate. A fourth path, a claim reaching back to the channel, is drawn stopped at the fence with a cross.](figures/the-fence.svg)
+
+Left of the line is everything a channel does with a board, the ledger included. One arrow crosses, and what it carries is a ledger id rather than a call. The mermaid below is the same paths by name.
+
+```mermaid
+flowchart LR
+  A["file a row"] -->|"writes"| L["the ledger"]
+  B["read the board"] -->|"reads"| L
+  L -->|"same id, seat side"| C["claim and run"]
+  C -.->|"never crosses back"| A
+```
+
+## Failure taxonomy
+
+Everything about a **declaration** is fatal at boot and collected: a bad `boards:` refuses the whole roster and names every bad channel, because a roster that boots short is a team missing a board with nothing said. Everything about a **call** is a per-request refusal leaving the ledger untouched — an undeclared name, a non-member filing — reported with the channel's existing refusal shape, so a caller branches on a reason rather than on message text. Nothing retries.
+
+## Acceptance criteria this issue owns
+
+A team declared entirely in files — seats, a channel, and one `boards:` line — has work filed onto that channel's board by one seat and run to completion by another, which claimed it rather than being handed it. That is the goal check the plan runs last, and it is the epic's exit gate standing on this issue's surface.

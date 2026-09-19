@@ -1,0 +1,96 @@
+<svg viewBox="0 0 940 388" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Today and after, side by side. Today a channel folder declares description and members only; a board exists only as about forty lines of app code declaring a ledger, a board and a dispatcher seat, and nothing links the two, so a seat has nothing shared to claim from. After, the channel folder adds one boards key, the framework mints the ledger from the channel's own identity and attaches it to the channel session, and a seat declares the same ledger id to drain it. A dashed vertical fence separates what holds rows from what runs them; the channel stays left of the fence.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-app  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-dead { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .band   { fill:var(--surface-2); }
+    .pad    { fill:var(--surface-2); }
+    .pad2   { fill:var(--surface); }
+    .fence  { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arrow  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .dash   { stroke:var(--ink-3); stroke-width:1.1; fill:none; stroke-dasharray:4 3; }
+    .head   { fill:var(--ink-3); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-style:italic; }
+    .t-edge { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+
+  <g id="today">
+    <rect class="band" x="0" y="0" width="940" height="162" rx="4"/>
+    <text class="t-lbl" x="16" y="22">TODAY</text>
+
+    <rect class="n-box" x="16" y="34" width="236" height="108" rx="5"/>
+    <text class="t-lbl" x="30" y="54">CHANNEL.md</text>
+    <text class="t-b"   x="30" y="77">description, members</text>
+    <text class="t-s"   x="30" y="98">four declarable keys</text>
+    <text class="t-gone" x="30" y="124">no way to say "holds work"</text>
+
+    <rect class="n-dead" x="352" y="34" width="252" height="108" rx="5"/>
+    <text class="t-lbl" x="366" y="54">APP CODE, BY HAND</text>
+    <text class="t-b"   x="366" y="77">defineTaskCollection</text>
+    <text class="t-b"   x="366" y="98">taskBoard + dispatcher</text>
+    <text class="t-s"   x="366" y="124">~40 lines, per team</text>
+
+    <rect class="n-box" x="688" y="34" width="236" height="108" rx="5"/>
+    <text class="t-lbl" x="702" y="54">A SEAT</text>
+    <text class="t-b"   x="702" y="77">runs what it is handed</text>
+    <text class="t-s"   x="702" y="98">addressed one at a time</text>
+    <text class="t-gone" x="702" y="124">nothing shared to claim from</text>
+
+    <path class="dash" d="M256 96 L348 96"/>
+    <rect class="pad" x="272" y="78" width="60" height="13"/>
+    <text class="t-gone" x="302" y="88" text-anchor="middle">no link</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="196">AFTER</text>
+
+    <rect class="n-new" x="16" y="208" width="236" height="140" rx="5"/>
+    <text class="t-lbl" x="30" y="228">CHANNEL.md</text>
+    <text class="t-b"   x="30" y="251">description, members,</text>
+    <text class="t-b"   x="30" y="271">boards: [work]</text>
+    <text class="t-s"   x="30" y="295">one plain name, like members</text>
+    <text class="t-s"   x="30" y="315">identity is minted, not written</text>
+    <text class="t-s"   x="30" y="335">five declarable keys</text>
+
+    <rect class="n-box" x="316" y="208" width="276" height="140" rx="5"/>
+    <text class="t-lbl" x="330" y="228">THE CHANNEL SESSION</text>
+    <text class="t-b"   x="330" y="251">holds ledger eng.feature.work</text>
+    <text class="t-s"   x="330" y="275">file a row / read the board</text>
+    <text class="t-s"   x="330" y="295">taskTools over the same ref</text>
+    <text class="t-s"   x="330" y="315">members decides who may file</text>
+    <text class="t-gone" x="330" y="338">no drain, no claim, no lease</text>
+
+    <rect class="n-app" x="688" y="208" width="236" height="140" rx="5"/>
+    <text class="t-lbl" x="702" y="228">A SEAT, IN APP CODE</text>
+    <text class="t-b"   x="702" y="251">declares the same id</text>
+    <text class="t-b"   x="702" y="271">taskBoard().drain</text>
+    <text class="t-s"   x="702" y="295">claims a row, or is assigned</text>
+    <text class="t-s"   x="702" y="315">one, and runs it</text>
+
+    <path class="arrow" d="M256 278 L308 278"/>
+    <path class="head" d="M302 273 L312 278 L302 283 Z"/>
+    <path class="arrow" d="M596 278 L680 278"/>
+    <path class="head" d="M674 273 L684 278 L674 283 Z"/>
+    <rect class="pad2" x="590" y="260" width="96" height="13"/>
+    <text class="t-edge" x="638" y="270" text-anchor="middle">same ledger id</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M638 182 L638 256"/>
+    <path class="fence" d="M638 276 L638 360"/>
+    <text class="t-lbl" x="628" y="376" text-anchor="end">HOLDS ROWS</text>
+    <text class="t-lbl" x="650" y="376">RUNS THEM</text>
+  </g>
+</svg>
