@@ -3,11 +3,14 @@
  * accepts.
  *
  * Declared and imposed are different sets, and this file is where they are
- * easiest to confuse. The contract DECLARES four keys. The seat factory
- * IMPOSES three of them — `instructions` when the record has a body, and
- * `seatSkills` and `seatTools` on every record. `teamInstructions` is reserved:
- * nothing populates it until the team-level layer lands, so a kind that reads
- * it today gets `undefined` however many instructions a team has written.
+ * easiest to confuse. The contract DECLARES four keys, and the seat factory
+ * IMPOSES each on its own condition: `instructions` when the record has a
+ * body, `teamInstructions` when the record's team wrote a `TEAM.md`, and
+ * `seatSkills` and `seatTools` on every record. Those last two are the
+ * unconditional ones — present and empty is a real answer for a seat's skills
+ * and for what its own folders register, and there is no equivalent answer for
+ * a team layer, so a seat whose team wrote none carries no such key at all
+ * rather than an empty string.
  *
  * A worker kind is an ordinary flow. What makes it *hireable* is that its
  * `configSchema` accepts what the factory imposes, and composing this contract
@@ -24,7 +27,7 @@
  * composed kind gets it for free, and a hand-rolled one refuses — loudly, at
  * boot, naming the key — until its author adds it too.
  *
- * **Three keys, and that is the whole bag.** A kind's own settings sit at the
+ * **Four keys, and that is the whole bag.** A kind's own settings sit at the
  * TOP LEVEL beside them, where the framework closes the set and an undeclared
  * key refuses by name. There is no nested bag for a kind's own settings: known
  * keys belong in the closed set, and genuinely open-ended data gets one

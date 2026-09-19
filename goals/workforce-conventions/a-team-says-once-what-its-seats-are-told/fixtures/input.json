@@ -1,0 +1,31 @@
+{
+  "userId": "u_team_instructions_goal",
+  "note": "A customer asks whether we may scan a host the brief does not mention.",
+  "teamLayer": "Stay inside the engagement's scope. Never touch a host the brief does not name. SCOPE-FENCE-7741\n",
+  "teamDescription": "Red-team operations for the customer pentest lab.",
+  "withLayer": {
+    "team": "pentest",
+    "seats": [
+      {
+        "id": "pentest.recon",
+        "desk": "mezzanine",
+        "own": "Sweep the named hosts and report what is open. RECON-MARKER-3318\n"
+      },
+      {
+        "id": "pentest.scout",
+        "desk": "balcony",
+        "own": "Read what recon found and pick what to look at next. SCOUT-MARKER-5502\n"
+      }
+    ]
+  },
+  "withoutLayer": {
+    "team": "billing",
+    "seats": [
+      {
+        "id": "billing.desk",
+        "desk": "ground",
+        "own": "Answer billing questions and never refund without a ticket. DESK-MARKER-9064\n"
+      }
+    ]
+  }
+}

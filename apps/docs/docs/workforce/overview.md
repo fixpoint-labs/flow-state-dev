@@ -33,13 +33,17 @@ You are the engineering lead. You break work into tasks and report what came bac
 import { hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
-// `errors` is a worker that failed to load; `skillErrors` is one that loaded
-// without a skill it should have had. Both are collected, never thrown.
-const { workers, errors, skillErrors } = await readWorkforce("./workforce");
-if (errors.length || skillErrors.length) {
+// Three channels, three severities. `errors` is a worker that failed to load;
+// `skillErrors` is one that loaded without a skill it should have had;
+// `teamErrors` is a team file that failed, leaving that whole team's workers
+// without instructions their author wrote. All three are collected, never
+// thrown — so a channel you forget to check is one that reports nowhere.
+const { workers, errors, skillErrors, teamErrors } = await readWorkforce("./workforce");
+if (errors.length || skillErrors.length || teamErrors.length) {
   throw new Error(
     `workforce: ${errors.length} worker(s) failed to load, ` +
-      `${skillErrors.length} loaded short`,
+      `${skillErrors.length} loaded short, ` +
+      `${teamErrors.length} team file(s) failed`,
   );
 }
 

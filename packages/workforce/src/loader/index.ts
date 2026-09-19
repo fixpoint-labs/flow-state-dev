@@ -7,11 +7,13 @@
  * scans `teams/<id>/workers/<name>/` and returns one neutral `WorkerManifest`
  * per worker, and `readSeatSkills` reads the skills one seat can see across the
  * three levels it draws from; both stay exported for a caller that wants one
- * half on its own. Alongside them, `readResourcesDirectory` scans
- * `org/resources/` and `teams/<id>/resources/` and returns one `ResourceDoc` per
- * document, and `readChannelsDirectory` scans `teams/<id>/channels/<name>/` and
- * returns one `ChannelManifest` per channel. All five stop there — nothing here
- * builds a flow, an agent, a resource, a channel instance or a registry.
+ * half on its own. Alongside them, `readTeamsDirectory` reads each team's own
+ * optional `TEAM.md` — what a team is, and the instructions every seat on it
+ * carries — `readResourcesDirectory` scans `org/resources/` and
+ * `teams/<id>/resources/` and returns one `ResourceDoc` per document, and
+ * `readChannelsDirectory` scans `teams/<id>/channels/<name>/` and returns one
+ * `ChannelManifest` per channel. All six stop there — nothing here builds a
+ * flow, an agent, a resource, a channel instance or a registry.
  *
  * Under all of them sit the walk primitives the readers share, published for
  * the next convention to build on rather than copy: `openRoot` opens the
@@ -53,6 +55,13 @@ export {
 } from "./read-seat-skills";
 
 export {
+  readTeamsDirectory,
+  type ReadTeamsDirectoryResult,
+  type TeamManifestError,
+  type TeamManifestErrorKind,
+} from "./read-teams-directory";
+
+export {
   readResourcesDirectory,
   type ReadResourcesDirectoryResult,
   type ResourceDocError,
@@ -90,4 +99,4 @@ export {
   mintResourceRef,
 } from "./resource-convention";
 
-export type { WorkerManifest, ResourceDoc, ChannelManifest } from "../manifest";
+export type { WorkerManifest, TeamManifest, ResourceDoc, ChannelManifest } from "../manifest";

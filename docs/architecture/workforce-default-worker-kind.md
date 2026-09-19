@@ -46,7 +46,7 @@ flowchart TD
   K["kinds map<br/>built-in merged underneath"] --> H
   H -->|absent flow:| A[built-in worker kind]
   H -->|unregistered name| X[refuse, by name]
-  A --> P["prompt: [default, instructions]"]
+  A --> P["prompt: [default, teamInstructions, instructions]"]
   A --> S["skills: org ∪ team ∪ seat<br/>stored per seat"]
   A --> M["memory: existing scopes<br/>composed in by the app"]
   A --> T[model + tools from configSchema]
@@ -93,18 +93,40 @@ is not worth the second authority it would create. That replaces a branch whose 
 whose folders declared skills used to mint, run, and hold none, with nothing said anywhere.
 
 **Imposed and never-authored are two different properties, and the contract's keys do not line up
-on them.** `instructions`, `seatSkills` and `seatTools` are what hire puts in the bag — the first
-when the body is non-empty, the other two on every record. `seatSkills`, `seatTools` and
-`teamInstructions` are the ones no file may author, refused by name at the worker loader and at the
-hire, from the shared constants in `manifest.ts` that every door references rather than
-re-spelling. `seatSkills` and `seatTools` are both.
+on them.** All four are what hire puts in the bag — `instructions` when the body is non-empty,
+`teamInstructions` when the seat's team wrote a `TEAM.md`, and `seatSkills` and `seatTools` on
+every record. `seatSkills`, `seatTools` and `teamInstructions` are the ones no file may author,
+refused by name at the worker loader and at the hire, from the shared constants in `manifest.ts`
+that every door references rather than re-spelling. Those three are both; `instructions` is the
+one key that is imposed and authored all the same — as the file's body.
 
-`teamInstructions` is a declared door with nothing coming through it until the team-level file
-lands; the point of declaring it here is that a kind composes the contract once and does not change
-again when that layer arrives.
+`teamInstructions` is imposed the same way and refused at **three** doors rather than two — a
+`TEAM.md`, a `WORKER.md`, and the hire — all reading one exported constant
+(`TEAM_INSTRUCTIONS_KEY`) rather than a literal, so a rename moves every refusal with it instead
+of leaving one door open with nothing said.
+
+`teamInstructions` carries the instructions a seat's TEAM wrote — read from that team's
+`TEAM.md` by the loader (`packages/workforce/src/loader/read-teams-directory.ts`), joined onto
+each of that team's worker records, and imposed by the hire step **only when the record carries
+one**. A team that wrote none, and a team with no file at all, both leave the key ABSENT rather
+than empty: an empty layer would be a value every kind's schema could see, and a different bag
+for every team in every tree that has no file.
 
 Generator slots stay `prompt` / `context` / `history` / `user`. Instructions compose as
-`prompt: [default, instructions]`.
+`prompt: [default, teamInstructions, instructions]` — the framework's default first, then the
+seat's team, then the seat's own, with absent layers dropped rather than joined as blanks. (The
+default is still unshipped; the slot is two entries today and gains the third at the front when
+it lands.)
+
+**What that order buys, and what it does not.** The position is fixed and checkable: a seat's own
+text is always last. That is the whole promise. It is **not** a precedence rule. Assembly on this
+path is plain concatenation, with no override, precedence or conflict-resolution mechanism
+anywhere in it — so if a team says *never touch production* and a seat says *restart the
+production queue*, what happens is whatever the **model** does with two contradictory sentences.
+The framework does not adjudicate that, and no check on the composed prompt can show otherwise: a
+check there proves order, which is a neighbour of precedence rather than precedence itself. Making
+a seat's line genuinely win would mean resolving contradictions before the prompt is sent, which
+is a different and much larger feature.
 
 `tools` is a hard runtime fence over the app's catalog, not a hint: a seat may call exactly the
 catalog keys it names, and an empty list means no catalog tools, regardless of what the app's

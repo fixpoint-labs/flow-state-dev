@@ -138,6 +138,9 @@ export const noContractFlow = defineFlow({
   configSchema: z.object({
     instructions: z.string().optional(),
     teamInstructions: z.string().optional(),
+    // Declared so `seatSkills` stays the SINGLE missing key: the contract grew a
+    // fourth, and a control that omitted two would no longer isolate one cause.
+    seatTools: z.array(z.any()).default([]),
     // `seatSkills` is absent — the one key that makes the bag unacceptable.
     desk: z.string().default("front")
   }),

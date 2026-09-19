@@ -115,16 +115,6 @@ const DEFAULT_MODEL = "intent/chat";
 const ACTIVE_SKILLS_STATE = { scope: "session", field: "activeSkills" } as const;
 
 /**
- * The prompt seam, named so it is greppable when FIX-1344 part 2 lands.
- *
- * Today it is the worker's own instructions and nothing else. It is one
- * binding, not a helper — see the note at the generator's `prompt` slot.
- */
-function composeWorkerPrompt(config: { instructions?: string }): string {
-  return config.instructions ?? "";
-}
-
-/**
  * The parts of a seat's settings bag this file reads off a running block's
  * context, where the bag's type is erased.
  *
@@ -137,6 +127,16 @@ interface SeatConfig {
   seatSkills: InitialSkill[];
   skills: { active: string[]; activateTool: boolean; enableLlmClassifier: boolean };
   capabilities: SeatCapabilitySelection;
+  /**
+   * The seat's own instructions — its file's body. Optional: a bodyless worker
+   * is a weak seat, not a failed hire, so the key is absent rather than empty.
+   */
+  instructions?: string;
+  /**
+   * The seat's TEAM-level instructions, imposed by the hire when its team wrote
+   * any. Absent — never `""` — when the team wrote none or has no file at all.
+   */
+  teamInstructions?: string;
 }
 
 /**
@@ -264,8 +264,9 @@ export interface AgentWorkerFlowOptions {
  * What one worker of this kind configures, in its file.
  *
  * **Composed from the admission contract rather than written beside it.** The
- * three settings a seat's bag may carry — a worker's own instructions, its
- * team's (reserved), and the skills its folders resolved — come from
+ * four settings a seat's bag may carry — a worker's own instructions, its
+ * team's, the skills its folders resolved, and the blocks those folders
+ * registered that its `tools:` named — come from
  * `workerConfigSchema()`, and this kind's own settings are extended on at the
  * top level. That is the move every hireable kind makes, so the one kind that
  * ships with the framework teaches the rule rather than standing outside it.
@@ -721,16 +722,43 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       // The skills binding stays FIRST and is never displaced: an app's own
       // capabilities compose beside it. That is what the `uses` option is for.
       uses: [binding, ...usesEntries],
-      // The prompt seam — a MARKED INSERTION POINT, NOT AN ABSTRACTION.
+      // The prompt seam — A MARKED INSERTION POINT, NOT AN ABSTRACTION.
       //
-      // The shared default worker system prompt (FIX-1344 part 2) is not shipped.
-      // Per contract C1 this kind consumes it and defines no second one, so today
-      // the slot resolves to the worker's own instructions alone. When part 2
-      // lands this becomes `[defaultWorkerPrompt, composeWorkerPrompt(...)]` and
-      // nothing else moves. Do not grow it into a compose helper, a registry or a
-      // type — if it ever needs more than this one binding, the seam should be
-      // re-decided rather than widened.
-      prompt: (_input, ctx) => composeWorkerPrompt(ctx.flow.config),
+      // Two layers, in this order every time: the seat's TEAM speaks first,
+      // the seat's own file last. The array is the framework's own prompt
+      // slot, which resolves each entry, drops the absent ones and joins the
+      // rest — so the filter and the join stay the framework's single rule
+      // instead of a second copy of it living here.
+      //
+      // Each resolver returns `undefined` rather than `""` for an absent
+      // layer, and that is load-bearing rather than stylistic: the slot drops
+      // `null`/`undefined` but keeps `""`, so an empty string would survive
+      // the filter and show up as a leading blank line in the prompt of every
+      // seat whose team wrote nothing.
+      //
+      // WHAT THE ORDER BUYS, AND WHAT IT DOES NOT. The position is fixed and
+      // checkable, and that is the whole promise. It is NOT a precedence rule.
+      // Assembly on this path is plain concatenation with no override,
+      // precedence or conflict-resolution mechanism anywhere in it, so if a
+      // team says *never touch production* and a seat says *restart the
+      // production queue*, what happens is whatever the MODEL does with two
+      // contradictory sentences. No doc line, test or PR sentence here should
+      // claim the seat's text "wins": a check on the composed string proves
+      // order, which is a neighbour of precedence and not precedence. Making
+      // the seat's line genuinely win would mean resolving contradictions
+      // before the prompt is sent — a different and much larger feature.
+      //
+      // The shared default worker system prompt is still unshipped and still
+      // owned elsewhere; per contract C1 this kind consumes it and defines no
+      // second one. When it lands it goes at the FRONT of this array — the
+      // framework, then the team, then the seat — and nothing else moves. Do
+      // not grow this into a compose helper, a registry or a type: an org-wide
+      // fourth layer is the point at which the seam should be re-decided
+      // rather than widened a second time.
+      prompt: [
+        (_input, ctx) => ctx.flow.config.teamInstructions,
+        (_input, ctx) => ctx.flow.config.instructions
+      ],
       model: (_input, ctx) => ctx.flow.config.model,
       // The seat's declared tools, both halves. `tools` holds the names that
       // resolved to the app's CATALOG; `seatTools` holds the blocks that

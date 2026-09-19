@@ -447,8 +447,10 @@ describe("hireWorkforce", () => {
     ]);
     expect(message).toContain('worker "engineering.lead"');
     expect(message).toContain("teamInstructions");
-    expect(message).toContain("not a setting a worker declares");
-    expect(message).toContain("belong to its team");
+    expect(message).toContain("not a setting any file declares");
+    // The route, not just the refusal: the text belongs in the team's own
+    // file, and this is where the author of a hand-built record finds that out.
+    expect(message).toContain("body of its TEAM.md");
   });
 
   // The hint must never accuse a kind that is demonstrably fine. This kind
