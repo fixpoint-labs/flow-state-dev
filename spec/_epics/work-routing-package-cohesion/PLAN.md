@@ -8,22 +8,23 @@ which is each issue's own plan. IDs cross-reference [DECISIONS.md](DECISIONS.md)
 
 ## The path
 
-![The path: a ship-fence band, two W3 input lanes, the six lanes of the set against time with a now line at September 19, and two related lanes under a divider. The figure's aria-label carries every lane and bar.](figures/path.svg)
+![The path: a ship-fence band, two W3 input lanes, the seven lanes of the set against time with a now line at September 19, and two related lanes under a divider. The figure's aria-label carries every lane and bar.](figures/path.svg)
 
-Ten lanes: two W3 inputs, the **six** children of the set, and — under the divider — the two
+Eleven lanes: two W3 inputs, the **seven** children of the set, and — under the divider — the two
 [related issues](SPEC.md#related-not-children) that still consume FIX-1405. Four lanes are merged;
-FIX-1394 sits at its now-unblocked ratify, and **FIX-1381's lane opens at the now line with no bar
-behind it**, which is what a child pulled in at 16:01 looks like. The lane the tracker holds and
-this figure does not is [FIX-1451](SPEC.md#the-unconfirmed-child) — deliberately, until it is
-confirmed a child or re-homed.
+FIX-1394 sits at its now-unblocked ratify, and the last two open at the now line with no bar behind
+them — **FIX-1381**, pulled in at 16:01, and **[FIX-1451](SPEC.md#the-seventh-child)**, which was a
+child all along and is only now drawn. Two empty lanes at the right edge is what the wrap's tail
+looks like.
 
 **The critical path ran boards → the proof, and all of it is behind us.** FIX-1385 merged on
 2026-09-19 and FIX-1430's build followed it onto `main` the same day
 ([#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929)). **What stands between the epic
 and its gate is not work**: it is [ER-20's own run](SPEC.md#er-20-has-not-run), which needs a model
 credential this epic has never had — which is why the proof's lane ends in a gate box rather than at
-its bar. **Behind the gate, the wrap now has a new tail:** FIX-1381 must also finish, and it has not
-started. Package cohesion is *beside* the critical path; FIX-1381 is *after* it.
+its bar. **Behind the gate, the wrap has a tail of three:** FIX-1394's ratify, FIX-1381's spec and
+FIX-1451's fix. None is on the critical path — package cohesion runs *beside* it, and the two new
+children come *after* it — but all three are terms of the wrap.
 
 ## What each issue entails
 
@@ -34,12 +35,15 @@ started. Package cohesion is *beside* the critical path; FIX-1381 is *after* it.
 | **FIX-1385** channel boards | spec → POC → **impl, merged** | The ChannelFlow floor · ER-5 · ER-3, which it may not re-decide and reads only **if** the roster has landed | A channel holding `0..N` TaskCollections; two doors, one surface. Plus the PR-5 name check over its own diff (ER-19) | The proof · FIX-1430 — **released 2026-09-19** | Large · shipped in one PR, not four |
 | **FIX-1394** package cohesion | **POC matrix → ratify, now unblocked** → ship tickets | FIX-1377's team layer · FIX-1416's `tools:` fence — **both landed** at `d8e4c99`, and the code wins over either spec (ER-18) · D4 | One format as a Markdown file, instructions and tools, two attachment modes, **not disk-only**, **documents org-scoped** (ER-2). Its POC also carries the evidence for **one** of FIX-1408's walls (ER-15) | Ship tickets, once the ratify completes (ER-8) — **not** the proof | Large |
 | **FIX-1381** seat resource allowlist | spec → impl · **spec being written**, no PR yet | **D-11's settled direction** (FIX-1380, Done): Ask 1 the thin allowlist, Ask 3 org `ro` automatic / `rw` by permission · today's `resourcesFromDocs` org hard-code and the `WorkerConfig` gap its invent-kill names | Thin seat/kind resource refs by `ro`/`rw` — the first control over which resources a worker or skill reaches | **The wrap** — it is now a term of it | Not sized · direction settled, spec outstanding |
+| **FIX-1451** allowed-tools honesty · *a bug* | **no spec** → impl · dispatched on `fix/FIX-1451-allowed-tools-honesty`, no PR yet | FIX-1416's landed `tools:` fence at `d8e4c99` — the promise the bug is about (ER-18) | A seat's skill no longer promising a tool grant the loader does not make | **The wrap** — a term of it like any child. Explicitly **not** a ship-gate on FIX-1394 | Not sized · a bug, scoped by its PR rather than a spec |
 | **FIX-1430** manager-queue lab · *the proof* | spec → **impl, merged** — but the goal check is **NOT RUN** | ER-1 · **ER-2 as a fence, not an input** · ER-4 · ER-5 — consumes four, owns none | A coordinator seat assigning over a channel board to linked seats, queue columns as views. Plus the drain-width comparison ER-15 called for ([width 1](DECISIONS.md#drain-width)) | The epic's wrap, **once ER-20 runs** — merging did not release it | Medium · [#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) merged |
 
 **Size is a read, not an estimate.** Three of the original five are exploration tickets whose own
 scope is the thing being explored — FIX-1394 most of all, whose ship tickets are not in this set
-yet. **FIX-1381 is deliberately unsized:** its direction is settled by D-11 but its spec is being
-written, and a number before the spec would be a guess wearing an estimate's clothes.
+yet. **The two newest children are deliberately unsized, for opposite reasons:** FIX-1381's
+direction is settled by D-11 but its spec is still being written, and a number before the spec would
+be a guess wearing an estimate's clothes; FIX-1451 is a bug and will never have a spec, so its scope
+is whatever its PR turns out to be.
 
 ## Where it is
 
@@ -62,26 +66,31 @@ the graph because they do not block, not because the code is missing.
    caller's `assignee` verbatim rather than resolving a seat ([ER-5](BUSINESS-RULES.md)).
 4. **FIX-1385's implementation landed** ([#1922](https://github.com/fixpoint-labs/flow-state-dev/pull/1922))
    → the proof's build ran, and has since merged too. The set's only true blocking edge is
-   discharged, and **four of the six children are on `main`**.
+   discharged, and **four of the seven children are on `main`**.
 5. **ER-20 runs on the real path** → the epic's *claim* is proved. It is blocked on an
    **environment**, not on work: every line of code it needs is merged, and
-   [the gate has not run](SPEC.md#er-20-has-not-run). It is no longer the last thing in front of
-   the wrap — [FIX-1381](#wrap) is the other — but it is the only one nobody can work around.
+   [the gate has not run](SPEC.md#er-20-has-not-run). It is not the last thing in front of the wrap
+   — [three open children](#wrap) are the rest — but it is the only one nobody can work around.
 6. **W3's last implementing child merges** → the ship fence lifts (ER-14). That is **FIX-1435**,
    still `Todo` with no branch and no PR. Four W4 ship PRs have merged under the live fence, the
    last of them **#1928, by the owner himself** — which settles that PR without answering the rule.
-   What is still fenced is **FIX-1394's eventual ship PR**, **FIX-1381's eventual implementation**
-   and the [wrap](#wrap) — the fence's bite **grew** when the set did. Whether the rule
+   What is still fenced is **FIX-1394's eventual ship PR**, **FIX-1381's eventual implementation**,
+   **FIX-1451's fix if it ships a package** (that changeset call has not been made) and the
+   [wrap](#wrap) — the fence's bite **grew** when the set did. Whether the rule
    narrows is [a re-gate with the owner](DECISIONS.md#er-14-re-gate), not an epic call; how the
    epic behaves until he answers is [an operating default](DECISIONS.md#fence-default).
 7. **FIX-1394's ratify completes** → ship tickets are cut (ER-8). **Both forks are now answered** —
    authorship, and [documents as org-scoped](DECISIONS.md#documents-answer) — so nothing external
    holds it. Those tickets are new children and will need this path redrawn. It does **not** unblock
    the proof ([the spec](SPEC.md#what-the-proof-consumes)).
-8. **FIX-1381's spec lands, then its implementation** → the last wrap term other than ER-20 clears.
-   It starts with its direction already decided by D-11 (FIX-1380, Done), so the spec is describing
-   a settled shape rather than choosing one. Its implementation will be a **ship PR** and therefore
-   sits under [ER-14](BUSINESS-RULES.md).
+8. **FIX-1381's spec lands, then its implementation** → one of the three remaining wrap terms
+   clears. It starts with its direction already decided by D-11 (FIX-1380, Done), so the spec is
+   describing a settled shape rather than choosing one. Its implementation will be a **ship PR** and
+   therefore sits under [ER-14](BUSINESS-RULES.md).
+9. **FIX-1451's fix merges** → the last of the three clears. **No spec gate on this one** — it is a
+   `Bug`, so its PR is the review surface ([ER-17](BUSINESS-RULES.md)) and it goes straight to
+   implementation on `fix/FIX-1451-allowed-tools-honesty`. It is fenced by ER-14 only **if** it
+   ships a package; that call has not been made.
 
 ## Coordination seams to watch
 
@@ -89,6 +98,7 @@ the graph because they do not block, not because the code is missing.
 |---|---|---|
 | The inventory surface | FIX-1405 and FIX-817 *(related, not a child)* | 1405 owns both layers; 817 reads them, and specs only after 1405's reader contract is approved (ER-23) |
 | The seat's `tools:` fence | FIX-1394 · FIX-1415, outside the set · FIX-1416, **landed** | Three edits on one fence, in that order (ER-23). None widens past seat `tools:`, and FIX-1416's merged code is the fence's actual shape, not its spec |
+| The skill's tool promise | **FIX-1451** and FIX-1394 · FIX-1416, **landed** | The bug is that a skill's `allowed-tools` promises a grant the loader does not make, on the same surface FIX-1394's format scopes to *instructions and tools*. **Explicitly not a ship-gate on FIX-1394** — the owner filed it as a soft encounter, so 1394's ratify never waits on it. Both write against FIX-1416's merged fence at `d8e4c99`, not its spec (ER-18) |
 | The seat's prompt compose | FIX-1394 and FIX-1377 | Composes framework default → team → seat. No fourth layer; the team's text does not merge into the seat's |
 | The board's claim / assign surface | FIX-1385 (**merged**) and FIX-1430 (**#1929, merged**) | 1385 owned it and shipped it; the lab consumes what landed. Two of 1385's rules about that surface were read back by the lab and [corrected](DECISIONS.md#refuted-mechanisms) rather than worked around. What 1385 did **not** settle is named in [DECISIONS](DECISIONS.md#the-cross-flow-board-residue) and has no owner |
 | The same surface, again | FIX-1385 and FIX-1415 *(related, not a child)* | 1415's invite verbs land on the channel 1385 hangs a board on. Re-homing moved the wrap, not the collision |
@@ -118,16 +128,18 @@ FIX-1410, FIX-1373, FIX-957.
 
 ## Wrap
 
-When **[ER-20](BUSINESS-RULES.md) holds** and every remaining child is terminal — **now six
-children, not five** ([D6 as amended](DECISIONS.md#d6-extended)).
+When **[ER-20](BUSINESS-RULES.md) holds** and every remaining child is terminal — **now seven
+children, not five** ([amended](DECISIONS.md#d6-extended), then [corrected](DECISIONS.md#d6-seventh)).
 
 <a name="terminal"></a>
 **Terminal is read from GitHub, not from Linear.** A child is terminal when its **implementation PR
 is merged or closed**, or when this epic-spec records its work as **done by decision rather than as
 code** — which is FIX-1408, and the set table is where that is recorded. Linear is the mirror; a
 merge is what makes code shipped. **Four children are terminal: FIX-1408 by decision, FIX-1385,
-FIX-1405 and FIX-1430 by merge.** Two are not: FIX-1394, at its now-unblocked ratify, and
-**FIX-1381, which has no spec yet**.
+FIX-1405 and FIX-1430 by merge.** Three are not: FIX-1394 at its now-unblocked ratify, **FIX-1381,
+which has no spec yet**, and **FIX-1451, which has no PR yet**. Note that FIX-1451 needs no spec to
+become terminal — a bug's route runs straight to its implementation PR
+([ER-17](BUSINESS-RULES.md)) — so a missing spec there is not a missing step.
 
 **ER-20 has not run, so the gate has not been met.** #1929 merged, which made FIX-1430 terminal and
 left the gate exactly as unrun as before — [the row reads `NOT RUN`](SPEC.md#er-20-has-not-run) and
@@ -136,16 +148,17 @@ this set is the clearest possible case of the difference: everything the first c
 `main`, and nobody has watched it work. Somebody running that check with a model credential, and
 the verdict log saying PASS, is what meets the gate.
 
-**And meeting the gate is no longer the same moment as wrapping.** [D6](DECISIONS.md#d6-extended)
-bought exactly that alignment at the objective gate, and the owner deliberately spent part of it on
-2026-09-19 by pulling **FIX-1381** into the set — a child with no spec and no implementation. So the
-wrap now needs **ER-20 passing *and* FIX-1381 terminal**, and the second of those has not started.
-**This was not a side effect:** the consequence was stated before the call, and the call was his.
+**And meeting the gate is no longer the same moment as wrapping.** [D6](DECISIONS.md#d6) bought
+exactly that alignment at the objective gate, and the set has since grown twice — the owner
+deliberately pulled **FIX-1381** in at 16:01 with the cost stated to him, and **FIX-1451** turned
+out to have been a child since 12:58, which no call made and no call can undo. So the wrap now needs
+**ER-20 passing *and* three open children terminal**. Only one of those two growths was a choice.
 
-**Which children count is still partly open.** The tracker holds a **seventh**,
-[FIX-1451](SPEC.md#the-unconfirmed-child), parented but never confirmed, and this term reads *every
-remaining child*. Until it is confirmed in or re-homed out, the wrap has an input nothing here
-sequences — and confirming it would extend the tail a second time.
+**Which children count is no longer open.** The tracker and this document agree on seven
+([ER-16](BUSINESS-RULES.md)), and there is no unconfirmed remainder. That agreement was reached by
+reading the tickets rather than trusting this document, which is the only reason it is worth
+stating — [the epic had FIX-1451 wrong](DECISIONS.md#d6-seventh), and a wrap computed from the
+wrong membership is a wrap that closes over unbuilt work.
 
 **Three things must be named out at the wrap, not confirmed.** None has an owner inside W4, and each
 would otherwise close as a pass nobody ran:

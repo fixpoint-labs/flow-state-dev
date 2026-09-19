@@ -51,11 +51,12 @@ loaders, framework code W4 children read. FIX-1449 is Atlas HTML staleness and c
 `packages/workforce` with changesets. **The owner merged the last of them himself**, on 2026-09-19.
 That settles #1928; it is not a change to this rule, and he has said nothing about one.
 
-**What is still fenced.** Three things: **FIX-1394's ship tickets**, now reachable since the ratify
-unblocked (ER-8); **FIX-1381's eventual implementation**, which edits `packages/workforce` and so
-will be a ship PR when it exists; and **the [wrap term](PLAN.md#wrap)**, which cannot complete while
-a W4 ship PR is parked. The fence's bite therefore **grew** with the set rather than shrinking as
-the merges landed.
+**What is still fenced.** **FIX-1394's ship tickets**, now reachable since the ratify unblocked
+(ER-8); **FIX-1381's eventual implementation**, which edits `packages/workforce` and so will be a
+ship PR when it exists; **[FIX-1451](SPEC.md#the-seventh-child)'s fix, if it ships a package** — the
+changeset call on that bug has not been made, so it is fenced conditionally, not certainly; and **the
+[wrap term](PLAN.md#wrap)**, which cannot complete while a W4 ship PR is parked. The fence's bite
+therefore **grew** with the set rather than shrinking as the merges landed.
 
 **How the epic behaves meanwhile.** ER-14 derives from [D2](DECISIONS.md#d2), which the owner
 ratified, so the epic cannot narrow the rule — and it has not. What it has adopted is an
@@ -69,8 +70,8 @@ with the owner, where the recommendation is the epic's and unanswered.
 | # | Rule | Because |
 |---|---|---|
 | ER-15 | A cross-cutting question is commented **up** on the epic PR, never decided locally. FIX-1408's unclosed walls are **epic-owned**, and their current standing is in [Open](DECISIONS.md#open) | A local answer is a second authority. A wall closes on evidence a child produced and folded up here — never on a child's own say-so |
-| ER-16 | A child's Linear state is mirrored the moment it changes. **Holding as of 2026-09-19**, the egress outage over and the queued backlog written | The epic wake derives blocked-by from Linear, so stale state silently mis-orders the set. The wrap term is **not** re-coupled to Linear by this — it stays [derived from GitHub](PLAN.md#terminal), because what makes code shipped is a merge. What Linear *does* decide is which children exist: the set is **six** since the owner pulled FIX-1381 in ([D6](DECISIONS.md#d6-extended)), and the tracker lists a **seventh**, [FIX-1451](SPEC.md#the-unconfirmed-child), that was never confirmed |
-| ER-17 | Every child routes to *spec* by default; only a `Bug` label re-routes | Fail-closed. The original five carry `Design` + `Feature`, and **FIX-1381 is routing to spec** like any other child — its spec is being written now |
+| ER-16 | A child's Linear state is mirrored the moment it changes. **Holding as of 2026-09-19**, the egress outage over and the queued backlog written | The epic wake derives blocked-by from Linear, so stale state silently mis-orders the set. The wrap term is **not** re-coupled to Linear by this — it stays [derived from GitHub](PLAN.md#terminal), because what makes code shipped is a merge. What Linear *does* decide is which children exist, and it decided it twice on 2026-09-19: the set is **seven** — FIX-1381 pulled in by the owner ([D6](DECISIONS.md#d6-extended)), and [FIX-1451](SPEC.md#the-seventh-child) confirmed as having been parented all along ([the correction](DECISIONS.md#d6-seventh)). **No unconfirmed remainder.** The second of those is the rule earning its place: the tracker was right and this spec was wrong |
+| ER-17 | Every child routes to *spec* by default; only a `Bug` label re-routes | Fail-closed. The original five carry `Design` + `Feature`, and **FIX-1381 is routing to spec** like any other child — its spec is being written now. **[FIX-1451](SPEC.md#the-seventh-child) is the first child to take the other branch:** labelled `Bug`, so it skips the spec and enters at implementation with its PR as the review surface. There is no spec gate to wait for on it, and its absence is not a gap |
 | ER-18 | A child depending on FIX-1377 or FIX-1416 writes against the **landed code** at `d8e4c99` and names it. Where a W3 spec and that code disagree, **the code wins** | **FIX-1416 shipped stricter than its spec**, which said a seat's own `blocks/` folder is callable without being listed anywhere. `resolveDeclaredTools` (`packages/workforce/src/hire.ts`) promotes only names declared in `tools:`, so a child carrying the spec's sentence forward builds against behaviour that does not exist |
 | ER-19 | The project's **PR-5** — a new surface uses the settled Layer 2 name, never the superseded one — is met here as **a check over this set's own diff**, owned by **FIX-1385**. It is **not** a repo-wide rename | The repo-wide pass waits on the project's vocabulary lock (**PD-4** — running it early pays the rename twice), so it stays the project's and has **no owner inside W4**: named out here rather than dropped, so nobody wraps this epic believing it ran |
 | ER-23 | **A shared contract's spec is approved before the next child specs against it.** FIX-1405's reader contract — **`readDeclaredRoster(root)`** on `@flow-state-dev/workforce/loader`, collecting rather than throwing, joining the layers on **`id` alone** — closes before FIX-817 starts; the `tools:` fence settles across FIX-1416 → FIX-1394 → FIX-1415 in that order | Two issues designing one discovery API at once is how you ship two of them. It outlives FIX-817 leaving the set: the dependency is on the contract, not the parent |
