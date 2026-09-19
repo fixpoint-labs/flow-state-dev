@@ -15,21 +15,12 @@ All four doors run through a **supervised live stream**. From this directory
 (`fsdev` config search is cwd-only), follow the canonical
 [launch instructions](../../.agents/skills/fsd-coding/SKILL.md#pass-values-on-each-invocation)
 for the managed process, host environment, and `bash -o pipefail` pipeline with
-`tee` and `jq --unbuffered`. In OMP, use `hub start`, not a completion-only
-background command.
-
-Pass `FSDEV_TRACE_OBSERVABILITY=true` in the supervisor's command-local
-environment on every door, including `fixFsd` and retries. It must override an
-inherited `false`/`0`: readiness depends on the real root-block trace, which is
-otherwise disabled under `NODE_ENV=production`. Do not change `NODE_ENV`.
+`tee` and `jq --unbuffered`.
 
 `progress.jq` projects bounded live events while `tee` retains the raw NDJSON
 locally; `--capture` is completion-only. Follow the skill's
 [progress and evidence rules](../../.agents/skills/fsd-coding/SKILL.md#follow-progress-without-filling-the-context)
 for incremental log reads, permission failures, and artifact verification.
-
-The filter only reports denials: it does not cancel the provider. The provider may continue
-work before the supervisor observes the event and stops the process.
 
 Resolve the target checkout before running from this lab; it may be a different
 repository or linked worktree. The lab directory is not a safe target default.
@@ -44,14 +35,12 @@ signed-in Claude Code / Anthropic credentials. OMP is an outer harness, not
 one of these target adapters. Codex and Cursor keep their SDK version gates.
 Claude uses `@flow-state-dev/claude-code/sdk` (`claudeCodeAgent`), with the
 optional peer `@anthropic-ai/claude-agent-sdk`.
-Coding doors default to `permissionMode: "bypassPermissions"` for headless
-execution and `disallowedTools: ["Agent", "Task"]` to prevent background subagent
-fan-out. Bypass mode is rejected on root/sudo hosts before vendor startup; use a
-non-root signed-in host or explicitly configure a supported host permission policy.
-The default sandbox refuses unsandboxed commands and fails if sandboxing is
-unavailable. The checkout must exist; its physical path is used for both cwd and
-`filesystem.allowWrite`. This SDK setting adds a writable path, not an exclusive
-filesystem fence. Trusted hosts can override these defaults through `options.claude`.
+Follow the skill's
+[Claude permission policy](../../.agents/skills/fsd-coding/SKILL.md#claude-permission-policy)
+for operation. Trusted programmatic callers of `createFsdCodingFlow` may use
+`options.claude` to **replace** `disallowedTools` or `sandbox` and choose
+`permissionMode`; the factory owns `cwd`, `detached`, and `name`. These are
+programmatic configuration options, not an `FSD_CODING_*` environment escape.
 
 For a model override, add `FSD_CODING_MODEL=<supported-target-model-id>`.
 

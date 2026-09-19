@@ -214,6 +214,37 @@ describe("fsd-coding flow wiring — Claude", () => {
     });
   }
 
+  it.skipIf(!process.getuid || !process.geteuid).each([
+    { uid: 0, euid: 1000 },
+    { uid: 1000, euid: 0 },
+  ])("rejects default Claude creation with uid=$uid and euid=$euid", ({ uid, euid }) => {
+    vi.spyOn(process as Required<typeof process>, "getuid").mockReturnValue(uid);
+    vi.spyOn(process as Required<typeof process>, "geteuid").mockReturnValue(euid);
+
+    expect(() => flowWithClaude(scriptedClaude().resolve)).toThrow();
+  });
+
+  it.skipIf(!process.getuid || !process.geteuid)("runs a Claude door on root with an explicit supported non-bypass host mode", async () => {
+    vi.spyOn(process as Required<typeof process>, "getuid").mockReturnValue(0);
+    vi.spyOn(process as Required<typeof process>, "geteuid").mockReturnValue(0);
+    const scripted = scriptedClaude();
+    const result = await testFlow({
+      flow: createFsdCodingFlow({
+        cwd: claudeCwd,
+        harness: "claude",
+        claude: { resolveClaudeAgent: scripted.resolve, permissionMode: "default" },
+      }),
+      action: "implement",
+      userId: USER,
+      input: { task: "inspect this checkout" },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.output).toMatchObject({
+      outcome: "finished",
+    });
+  });
+
   it("implement sends the task through Claude in the host cwd", async () => {
     const scripted = scriptedClaude();
     const result = await testFlow({
