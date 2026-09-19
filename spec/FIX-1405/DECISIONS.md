@@ -76,20 +76,26 @@ by construction — this decision is about **who writes membership**, not about 
 ever gets re-derived.
 
 <a name="the-membership-index"></a>
-**Why a third collection.** A collection's only narrowing is `list(prefix)`. Membership is a
-*field*, not a key, so "which channels is this seat in" over the channel collection means loading
-every channel row and scanning each one's member array — the list-then-discard shape BP-033
-refuses. Keying the fact — `inventory/members/<seatId>/<channelId>` — turns the question into a key
-match over rows that are one fact each.
+**Why a third collection — and not because it reads less.** Measured, it reads *more*. A
+collection's only narrowing is `list(prefix)`, and that is not a source-side filter: the runtime
+loads the **collection's** own prefix from the store and applies the caller's narrower prefix in
+memory afterwards, so `list("eng.lead/")` on `inventory/members/**` issues exactly one store read,
+`getByPrefix("inventory/members/")`. Both shapes are therefore list-then-discard today, and the
+index is the bigger of the two: for C channels and M memberships it loads 2M strings against the
+channel scan's M + 2C.
 
-**What `list(prefix)` does not do, measured rather than assumed.** It is not a source-side filter.
-The runtime loads the **collection's** prefix from the store and applies the caller's narrower
-prefix in memory afterwards: a `list("eng.lead/")` on `inventory/members/**` issues exactly one
-store read, `getByPrefix("inventory/members/")`. So the index's win is the shape of the rows and of
-the predicate, not a smaller store read. Pushing the narrower prefix down is a framework change,
-filed as a follow-up; nothing in this spec depends on it having happened. It is a **projection of the channel row, not a second source of truth**: same writer,
-same upsert, same session state. ER-12 forbids a parallel index *that can disagree*; this one cannot
-be written without the row it derives from.
+What it buys is that the question becomes answerable **by key**. Over the channel collection,
+membership is a *field* — `members` sits inside the value, so no prefix, now or later, can narrow
+that read at the store; the scan is list-then-discard permanently. Keying the fact —
+`inventory/members/<seatId>/<channelId>` — puts the seat in the key, which is the precondition for
+the store read itself ever getting narrower. Pushing the caller's prefix down is a framework change,
+filed as a follow-up; nothing in this spec depends on it having happened, and when it lands this
+collection is the only one of the two shapes it can help. That is the BP-033 argument here: not a
+smaller read today, but the only row shape that can ever have one.
+
+The index is a **projection of the channel row, not a second source of truth**: same writer, same
+upsert, same session state. ER-12 forbids a parallel index *that can disagree*; this one cannot be
+written without the row it derives from.
 
 ![A three-by-two grid of write moments against what exists. Columns are the three candidate write moments: at boot through a binder, lazily on the first post, and never. Rows are two states: a channel that has been posted to, and a channel that is open but untouched. At boot both rows are present. Lazily, the posted channel is present and the untouched one is missing, which is the cell that rules it out. Never, both are missing.](figures/write-moment.svg)
 
@@ -138,7 +144,7 @@ second "was never the intent". **What would reopen it** is evidence that a chann
 |---|---|
 | Ship the inventory as a capability | A capability earns its place carrying tools or context. This carries neither yet; FIX-817 adds the tools and can wrap these then |
 | One collection, a discriminated row schema | Saves an export, costs a union schema, forces a consumer wanting channels to read seats too (BP-033) |
-| Filter membership in memory over the channel collection | What round 1 caught. `list()` narrows by key prefix only, so it loads every channel and discards most — BP-033, and it degrades with org size rather than at a threshold a test would notice |
+| Filter membership in memory over the channel collection | What round 1 caught, though the reason is narrower than it first looked. Both shapes list-then-discard today and the index is the bigger read; what rules this one out is that `members` is a field, so no prefix could ever narrow it at the store — see [Why a third collection](#the-membership-index) |
 | A resource collection over `SessionStore.list` instead of rows | Checked in review: `handleListSessions` in `session-routes.ts` does not forward `orgId`, so there is no org-narrowed session listing to build on |
 | Ship the channel collection only, and let a later child add seats | Round 1's second look, and a fair challenge — no rule here read a seat row. The rules were incomplete, not the collection: ER-3 names membership and fan-out, both of which start from *which seats exist*, and a block cannot walk folders to find out. [BR-21](BUSINESS-RULES.md) is the missing rule, [two writers](#two-writers) the missing trigger |
 | An `assert…` helper beside the reader | A second export whose body is a throw, saving each caller one line. The line is policy; the flattening is what was worth sharing |
