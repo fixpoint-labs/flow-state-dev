@@ -70,7 +70,8 @@ know about who is running this that a grep cannot.
 - **`ro` closes the model's write tool too.** A mode holding against the implementer but not
   the model is backwards on a ticket about what a seat may do.
 - **No new readable allowlist object.** The seat's own narrowed map already records which
-  refs are its and what each permits; that is what FIX-1382 reads.
+  refs it holds and what each permits. FIX-1382 reads that map **intersected with the
+  document catalog** — see the seam pin below; still no second object.
 
 Added in round 1, after a reviewer found that the first three did not survive contact with
 a realistic resource map:
@@ -91,6 +92,11 @@ a realistic resource map:
 - **A grant that collides with a name the kind's blocks declare refuses.** Flow-level wins
   that merge, so the alternative is a seat file replacing the kind's machinery with a
   document (BR-8).
+- <a name="seam"></a>**The seam FIX-1382 mounts from is the seat's flow-level map
+  intersected with the document catalog** — equivalently, the entries a seat's `resources:`
+  selected. Not the whole key set: after BR-15 that set carries the app's boards and stores,
+  and mounting those is the failure this pin exists to prevent. The catalog is the one D4
+  already requires the hire step to hold, so this adds no object and no second allowlist.
 
 ## Considered and dropped
 
@@ -114,8 +120,10 @@ these on the real path. The cases and how to run them are in
   document granted writable still writes.
 - **A resource the kind's own blocks declare escapes the narrowing and stays writable.** A
   fence rather than a win: it is why [BR-7](BUSINESS-RULES.md) is stated out loud.
-- **The grant is readable off the hired seat** — the seat's flow-level resource keys are
-  exactly the granted refs. That is FIX-1382's seam.
+- **The grant is readable off the hired seat** — but it is **not** the seat's whole
+  flow-level key set. After BR-15 that set is the app's non-document entries *plus* the
+  granted documents, so FIX-1382 takes the intersection with the document catalog. Pinned
+  in the POC's third P5 case, which reads a store out of that key set on purpose.
 - **A documents-only narrowed map also deletes the app's non-document flow-level
   resources** (P5, added in round 1). This one did **not** confirm the approach — it broke
   it, and [D4](#d4) and BR-15 are the repair.

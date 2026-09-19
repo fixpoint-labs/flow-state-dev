@@ -51,12 +51,13 @@ flowchart LR
   A["the app's resource map · flow.resources"] --> H
   H -->|"this seat's narrowed map"| S["the seat's flow instance"]
   S -->|"only what was granted"| B["blocks · ctx.resources"]
-  S -->|"the same map, as a mount list"| M["sandbox mounts · FIX-1382"]
+  S -->|"the documents it granted, as a mount list"| M["sandbox mounts · FIX-1382"]
 ```
 
 The grant is applied where a seat is minted, so it sits **below** every worker kind: the
 built-in one and anybody's custom one get it without declaring anything. Nothing new is
-stored, and the seat's own map is what the sandbox ticket later reads to decide mounts.
+stored, and the documents in the seat's own map are what the sandbox ticket later reads to
+decide mounts — the documents, not everything else that map carries.
 
 One thing the app has to hand over for this to be honest: **which of its resources are
 documents**. The app already builds that list when it turns its `resources/` folder into a

@@ -106,7 +106,7 @@ at the hire step, per seat record:
 refusals collect across the roster and throw once
 ```
 
-**POC:** `spec-poc/FIX-1381-seat-resource-allowlist/`, nine cases, run with
+**POC:** `spec-poc/FIX-1381-seat-resource-allowlist/`, ten cases, run with
 `pnpm exec vitest run --config spec-poc/FIX-1381-seat-resource-allowlist/vitest.config.ts`.
 Five premises pinned; the evidentiary story is in [DECISIONS.md](DECISIONS.md) → *Settled*
 rather than repeated here. P5 was added in round 1 and is the one that changed the plan.
@@ -124,7 +124,10 @@ rather than repeated here. P5 was added in round 1 and is the one that changed t
 - **[FIX-1368](https://linear.app/fixpoint-labs/issue/FIX-1368)** (worker-level definitions)
   may have landed. Its refs should be just more refs; if they need a special case, say so.
 - **[FIX-1382](https://linear.app/fixpoint-labs/issue/FIX-1382) is the consumer** — it reads
-  the grant, it does not re-declare one. If this makes that awkward, raise it there.
+  the grant, it does not re-declare one. **Hand it the seam as pinned in
+  [DECISIONS.md](DECISIONS.md), not the seat's whole flow-level key set:** that set carries
+  the app's boards and stores too (BR-15), and mounting those is the concrete way this goes
+  wrong downstream. If this makes that ticket awkward, raise it there.
 - **[FIX-1454](https://linear.app/fixpoint-labs/issue/FIX-1454) is a different issue** —
   whether a resource can be *scoped* to one seat. This adds no scope; drifting toward one
   means you have left the spec.

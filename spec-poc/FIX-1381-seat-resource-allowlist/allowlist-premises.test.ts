@@ -41,7 +41,7 @@
  *
  *   pnpm exec vitest run --config spec-poc/FIX-1381-seat-resource-allowlist/vitest.config.ts
  *
- * Expect: 9 passed. Every assertion here has been watched go red — the mode
+ * Expect: 10 passed. Every assertion here has been watched go red — the mode
  * flags were un-flipped (P2 fails), and the mint was made to ignore the
  * narrowed map (P1 and P3 fail). P5's first case IS a red state, kept green by
  * asserting the loss. A green run of a check nobody has seen fail is not
@@ -263,8 +263,13 @@ describe("FIX-1381 P4 — the grant is READABLE off the seat, which is what FIX-
     // allowlist needs no second object to be readable.
     expect(grantOf(seat)).toEqual([handbook.ref!]);
 
-    // The kind's own machinery is NOT in the grant set, which is what makes
-    // this usable as a mount list rather than "everything the seat has".
+    // BLOCK-declared machinery is not in this set. That is true generally.
+    //
+    // Round-1 correction: it does NOT follow that this set is the mount list.
+    // It holds here only because this fixture's flow-level map is all
+    // documents; P5's third case shows the same accessor carrying an app's
+    // store once the map is realistic. The mount list is this set intersected
+    // with the document catalog.
     expect(grantOf(seat)).not.toContain("inbox");
   });
 
@@ -356,6 +361,34 @@ describe("FIX-1381 P5 — narrowing replaces the app's flow-level map, machinery
     // must preserve non-document flow-level entries, and why it needs to be
     // TOLD which entries are documents instead of inferring it.
     expect(() => ctx.resources.get("audit-log")).toThrow(/not registered/i);
+  });
+
+  it("so the seam FIX-1382 mounts from is NOT the seat's whole flow-level key set", () => {
+    // P4 claimed the seat's flow-level keys ARE the granted refs. On P1-P4's
+    // fixture that was true, because the fixture's flow-level map held nothing
+    // but documents. Here it is false, and it matters downstream: FIX-1382
+    // projects mounts off this seam, so reading the whole key set would mount
+    // the app's audit log.
+    const seat = mixedKind({
+      id: "engineering.lead",
+      resources: {
+        "audit-log": auditLog,
+        [handbook.ref!]: handbook,
+      } as DeclaredResources,
+    });
+
+    const keys = [
+      ...(seat as unknown as { flowLevelResourceKeys: Set<string> }).flowLevelResourceKeys,
+    ].sort();
+
+    // The whole key set carries machinery alongside the grant.
+    expect(keys).toEqual(["audit-log", handbook.ref!].sort());
+
+    // The mountable set is the intersection with the app's document catalog —
+    // the same catalog D4 already requires the hire step to be given. No
+    // second allowlist object is needed to get it.
+    const catalog = new Set([handbook.ref!, payroll.ref!]);
+    expect(keys.filter((k) => catalog.has(k))).toEqual([handbook.ref!]);
   });
 
   it("preserving the non-document entries alongside the grant restores it", async () => {
