@@ -1,6 +1,6 @@
 ---
 title: Capabilities on disk
-sidebar_position: 6
+sidebar_position: 7
 sidebar_label: Capabilities on disk
 description: "Put a TypeScript capability in a team's resources/ folder, run one command, and let each worker's own file say which of its presets that worker wants."
 ---
