@@ -91,7 +91,7 @@ writing quietly reports the org short.
 |---|---|
 | **Instead of** | Moving membership, the author check and the fan-out roster onto the inventory — the literal reading of the epic's ER-3 |
 | **Because** | A channel's `members` is already live: written when it opens, read on the refusal path, in the same session the post lands in. Moving it to an org resource puts one fact in two places that can disagree, and makes every post pay a lookup for what the session already holds. What a session cannot answer is anything *across* channels — which exist, which ones a seat is in, whether a pair already has somewhere to talk. That is the gap, and the whole gap |
-| **Locks in** | The inventory is a **discovery** surface, never an authorization one. FIX-1385 assigns from the inventory and posts through the channel; FIX-817 reads the inventory and never the fence |
+| **Locks in** | The inventory is a **discovery** surface, never an authorization one. FIX-817 reads it and never the fence (ER-23). **FIX-1385 is not a caller** — it takes an assignee from the caller (its BR-7) and resolves no seat through here; its plan names an *optional* read of the declared roster and says "No decision here changes". Nothing in this issue waits on it, and it is not one of the two callers that prove this surface — those are the two labs (S2, S3) |
 
 **Confirmed by the Architect, 2026-09-19.** Raised as an ER-15 item rather than decided locally,
 because ER-3 admits two readings: a contrast with the **declared** layer, or an instruction to
