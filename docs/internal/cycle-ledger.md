@@ -2628,6 +2628,37 @@ session on this class. That is the most favourable condition available and it is
 has to work in. **Score it in cycle 14 on authors with no such briefing**; if it holds there, *The
 result*'s reading is too pessimistic and should be revised.
 
+**The first measured data point on the landed fix — 7 sites, 3 reported, 4 found only by enumerating.**
+The FIX-1377 agent ran 10.6's surface sweep over `teamInstructions` in `packages/workforce`. Seven
+sites asserted the key was inert and were false as of that PR. **Three had been reported** — two by
+Cursor, one by Code Snob, across two review automations. **Four were found only by the sweep**: a
+README exports-table row, a `manifest.ts` constant TSDoc, a `worker-config.ts` file header, and an
+`agent-worker-flow.ts` settings TSDoc. All four verified present on `fix/FIX-1377-team-md`. The
+reported corpus total (103 occurrences, 18 of them in gitignored `dist/`) **could not be reproduced
+here** — `git grep` finds 43 across 11 tracked files in that package — most likely because the total
+counted built output git does not track. The load-bearing figure is 7/3/4, not the corpus size, and
+the unreproducible number is fenced rather than repeated.
+
+**What it does and does not establish.** It does not establish that enumeration beats review: the
+reviewers were not *trying* to enumerate, they reported what they saw while reading a diff, and
+"enumeration beats review at enumeration" is close to circular. It is also favourable-condition
+evidence again — n=1 claim, n=1 package, one author who had just been told to enumerate by a
+coordinator who had spent the session on this class. **What it does establish is the assumption the
+10.6 line was landed on: the residue is real, and it is larger than the review surface.** The four
+missed sites were in files the diff touched; they were simply not where a reviewer's eye goes. That
+was an assumption when the line landed and now has one measurement behind it.
+
+**The author's own note, and it is the sharpest line written about this class:**
+
+> my PR body has a section about catching stale claims before review does, and this class got past me
+> in seven places. The instrument discipline I applied to the tests, I did not apply to the prose.
+
+Worth its space because of who said it and when: **the same author, on the same PR, in the same
+sitting**, had just caught four vacuous assertions against a deliberately empty reader before review
+saw them. Caught the class on the tests; shipped seven instances of it in the prose. **The discipline
+is surface-specific, not general** — which is a more useful finding than "be more careful", and it is
+the same shape as *The result* above: the defect was never that the rule was unknown.
+
 ### Upstream fix — one checklist line, in `issue-implement` 10.6
 
 **No BP change, no tenet change, and deliberately not a mechanical check.** All three alternatives
@@ -2751,3 +2782,15 @@ remains unwritten and is not part of this landing.
    for any reasoning attributed to a person, check it against what they actually wrote. Watch the
    attributed-reasoning form first: a wrong citation is falsifiable by any reader, invented reasoning
    only by the person quoted.
+8. **Does enumeration find what review does not, on a claim nobody chose for it?** Now has a concrete
+   shape to score, from the `teamInstructions` measurement above: **pick a claim, count its sites,
+   compare what review reported against what enumeration finds.** Baseline **7 / 3 / 4** on one claim in
+   one package, by an author who had been told to enumerate. Run it next cycle on a claim picked
+   *before* anyone sweeps, by an author who was not briefed, and on a package nobody chose — otherwise
+   it measures the briefing.
+9. **Candidate, not acted on: a shipped record is not a stale claim.** The FIX-1377 author declined to
+   rewrite `CHANGELOG.md`'s entry for the release that reserved the key, on the grounds that it was true
+   of that release and rewriting it falsifies history. That is the same distinction drawn independently
+   about cycle 4's ledger row earlier in this cycle — **two agents reaching it separately in one day
+   suggests it wants stating once rather than rediscovering.** Where it belongs (10.6's sweep, which
+   already carries an `EXCLUDE` instinct, or the changelog workflow) is not settled here.
