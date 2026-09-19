@@ -72,7 +72,7 @@ description: Red-team operations for the customer pentest lab.
 Stay inside the engagement's scope. Never touch a host the brief does not name.
 ```
 
-The file is optional. A team without one behaves exactly as it does today, and nothing is
+The file is optional. A team without one loads normally, and nothing is
 reported.
 
 `description` is required when the file exists. Nothing reads it yet — it is there so the team can
@@ -201,16 +201,17 @@ What lands in `errors`:
 #### Treat a non-empty `errors` as fatal
 
 ```ts
-const { workers, errors } = await readWorkforceDirectory("./workforce");
-if (errors.length) {
+const { workers, errors, skillErrors, teamErrors } = await readWorkforce("./workforce");
+if (errors.length || teamErrors.length || skillErrors.length) {
   throw new Error(
-    `workforce: ${errors.length} worker(s) failed to load\n` +
+    `workforce: ${errors.length} worker(s), ${teamErrors.length} team file(s) and ` +
+      `${skillErrors.length} seat(s)' skills failed to load\n` +
       errors.map(({ path, error }) => `  ${path}: ${error.message}`).join("\n"),
   );
 }
 ```
 
-Logging a warning and carrying on is the tempting alternative, and it fails quietly. A reported folder is a worker your app was supposed to have, so the app boots one worker short and says nothing about it. Fail on `errors` at startup unless you have a specific reason to run a short roster.
+Logging a warning and carrying on is the tempting alternative, and it fails quietly. A reported folder is a worker your app was supposed to have, so the app boots one worker short and says nothing about it. A reported team file or skill costs a seat its instructions instead of costing you the seat, which is quieter still. Fail on all three at startup unless you have a specific reason to run a short roster.
 
 ### What is passed over in silence
 
@@ -448,7 +449,7 @@ There is a file convention for the code half too. Put a flow kind in `workforce/
 ## What this does not do
 
 - Reading the **Markdown** does not resolve tool or capability names. `tools: [board, search]` comes off the file as two strings; whether anything backs those names is checked at the hire, by the kind the worker runs on. The code walk is what registers the names a worker's list can resolve to. The built-in checks them [against its catalog](./built-in-worker.md#tools). A kind you write decides for itself.
-- It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the three skills folders each worker draws from ([Skills](./built-in-worker.md#skills)). A team's `resources/` folder is read by a separate walk, [`readResourcesDirectory`](./documents-on-disk.md), and its `blocks/` folder by a third. A `tools/` folder is not a slot this convention reads, and `fsdev gen` says so rather than passing it over.
+- It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the three skills folders each worker draws from ([Skills](./built-in-worker.md#skills)). A team's `resources/` documents are read by a separate loader at startup, [`readResourcesDirectory`](./documents-on-disk.md). Its `blocks/` folder is not read at startup at all — that folder is scanned when you build, by [`fsdev gen`](./code-on-disk.md). A `tools/` folder is not a slot this convention reads, and `fsdev gen` says so rather than passing it over.
 - It does not follow symlinks inside the tree. A team, a worker slot, a `WORKER.md`, a skill folder — any of these that is a shortcut to somewhere else is refused rather than read. The root you hand it is refused too, with or without a trailing slash. Two things it does not cover: a root named through a `.` segment, and anything above the root, so a path that passes through a shortcut on its way in still reads. If you keep the tree behind a symlink on purpose, hand over the path it points at.
 - It does not watch the tree. Read it once, at startup, and re-run `fsdev gen` when the code folders change.
 - It does not staff a [task board](../orchestration/task-board.md). A hired seat is an address you open a session against; a board's workers are in-process and claim tasks from a collection. A board calls its registry entries seats too. Same idea, different mechanism.

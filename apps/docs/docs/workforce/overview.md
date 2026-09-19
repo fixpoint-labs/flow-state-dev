@@ -35,7 +35,7 @@ import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
 // `errors` is a worker that failed to load; `skillErrors` is one that loaded
 // without a skill it should have had; `teamErrors` is a team file that failed.
-// Each is collected rather than thrown, so a channel you forget to check is
+// Each is collected rather than thrown, so an array you forget to check is
 // one that reports nowhere.
 const { workers, errors, skillErrors, teamErrors } = await readWorkforce("./workforce");
 if (errors.length || skillErrors.length || teamErrors.length) {

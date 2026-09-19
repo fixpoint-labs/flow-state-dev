@@ -30,7 +30,7 @@ flowRegistry.registerMany(seats);
 
 No `kinds` argument, no flow of your own. The body becomes the worker's instructions and steers its answers; `description` is a label for the roster and never reaches the model.
 
-Its settings are `instructions`, `model`, `tools`, the `skills` switches below, and `capabilities` — which picks presets from the capabilities the kind carries, covered in [Capabilities on disk](./capabilities-on-disk.md). `flow: agent` names the same kind explicitly, and hires the same way.
+The settings a worker writes for itself are `instructions`, `model`, `tools`, the `skills` switches below, and `capabilities` — which picks presets from the capabilities the kind carries, covered in [Capabilities on disk](./capabilities-on-disk.md). Three more reach the seat in the same bag, put there by the hire rather than by the file: the team's instructions, the skills the worker's folders hold, and the blocks its `tools:` resolved out of its own levels. A file that declares one of those three is refused by name. `flow: agent` names the same kind explicitly, and hires the same way.
 
 ## A request needs an org
 
@@ -40,11 +40,11 @@ A worker's **skills** — the folders of instructions it can pull into a turn, c
 Resource "skills" is not registered
 ```
 
-The request has to resolve to an org. An app on the default principal resolver does that by sending an `orgId` with the request; an app that configures its own `resolvePrincipal` has to return the org from there, because the route reads the resolved principal and ignores a body `orgId` — a caller cannot name its own org. [The client reference](/docs/configuration/client) covers how a request carries one.
+The request has to resolve to an org. An app on the default principal resolver does that by sending an `orgId` with the request; an app that configures its own `resolvePrincipal` has to return the org from there, because the route reads the resolved principal and ignores a body `orgId`. A caller cannot name its own org. [The client reference](/docs/configuration/client) covers how a request carries one.
 
 ## Tools
 
-A worker names its tools by key in `tools:`, and each key is resolved against what is registered for that worker: its own `blocks/` folder first, then its team's, then the kind's **catalog** — a map from key to tool that your app passes when it builds the kind, since a file on disk can only carry a name. The first match wins. A key nothing registers is refused at the hire, by name, and the refusal names both doors. An empty `tools:`, or none at all, means no tools, whatever is registered.
+A worker names its tools by key in `tools:`, and each key is resolved against what is registered for that worker: its own `blocks/` folder first, then its team's, then the kind's **catalog**. That last one is a map from key to tool your app passes when it builds the kind, since a file on disk can only carry a name. The first match wins. A key nothing registers is refused at the hire, by name, and the refusal names both doors. An empty `tools:`, or none at all, means no tools, whatever is registered.
 
 **Registering a name is not granting it.** Dropping a block into a worker's own folder makes the name resolvable for that worker and nothing more; until the file lists it, the model is never handed it. [Blocks a worker can call](./code-on-disk.md#blocks-a-worker-can-call) covers where a folder may sit and the two rules that keep a registered name honest.
 
@@ -58,9 +58,9 @@ A worker's own settings can still put a **control** on it. A control is a piece 
 - **The delegation controls**, when a skill the worker holds declares `agents:`. Activating that skill puts the task board's eight tools and `runBoard` on the worker, so it can create tasks and run them.
 - **The controls a capability preset declares**, when the worker selects that preset in its [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool) key. A preset's `controlTools` reach the worker; its `tools` do not.
 
-A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's catalog tools, so a worker with `tools: []` reaches nothing through a delegate — it can command the board, but the workers it commands are fenced. A block from a worker's own folder does not travel that way either: a delegated worker is its own seat, with its own folder and its own list.
+A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's catalog tools, so a worker with `tools: []` reaches nothing through a delegate. It can command the board, but the workers it commands are fenced. A block from a worker's own folder does not travel that way either: a delegated worker is its own seat, with its own folder and its own list.
 
-Checking `tools:` against a catalog is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so what a `tools:` name is checked against is that kind's business — and so is whether it declares `tools` at all.
+Checking `tools:` against a catalog is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so what a `tools:` name is checked against is that kind's business. So is whether it declares `tools` at all.
 
 What the key *means* is not. `tools` is reserved across hireable kinds for one thing: the names of tools that seat may call. Hiring resolves each name against what is registered for that seat before your kind ever sees the bag, so the key is not available for unrelated configuration of your own — give that its own name.
 
@@ -130,7 +130,7 @@ workforce/
 
 The `tester` worker holds all three. The `qa` lead next door holds the first two. Nobody on another team holds `regression` at all, and no one anywhere else holds `write-regression`.
 
-`readWorkforce` resolves that union per worker — [Reading the tree](./workers-on-disk.md#reading-the-tree) covers the walk and what it reports.
+`readWorkforce` resolves that union per worker. [Reading the tree](./workers-on-disk.md#reading-the-tree) covers the walk and what it reports.
 
 A skill sitting beside a worker needs no list: the folder already says whose it is. Listing it in `skills:` does something different. It decides how the worker *uses* what it holds.
 
@@ -138,7 +138,7 @@ A skill sitting beside a worker needs no list: the folder already says whose it 
 
 Holding a skill is not the same as running with it. A skill a worker merely holds costs nothing until something activates it, and a worker that uses no skill on a turn pays for none of them.
 
-Three things activate one:
+Four things activate one. Three of them need nothing but a setting or a message:
 
 ```md
 ---
@@ -156,7 +156,7 @@ You write regression tests for reported bugs.
 - **A slash message.** Someone typing `/write-regression fix the flake` activates that skill for the turn. This always works, needs no setting, and only responds to what a person typed — a model emitting the same text does not trigger it.
 - **`activateTool`** lets the model pull a skill in partway through a turn, once it knows what it is dealing with. Off by default, because turning it on puts a listing of everything the worker holds into every prompt.
 
-A fourth path is off by default. `skills.enableLlmClassifier` adds a small model call that decides whether a skill applies. It catches cases a slash and an always-on list miss. A slash match settles the turn before it runs, so it costs a provider round trip on every message that isn't one.
+The fourth is off by default. `skills.enableLlmClassifier` adds a small model call that decides whether a skill applies. It catches cases a slash and an always-on list miss. A slash match settles the turn before it runs, so it costs a provider round trip on every message that isn't one.
 
 [Activation paths](../skills/activation.md) covers the same mechanisms for a flow of your own, where you wire them up yourself.
 
@@ -168,7 +168,7 @@ Pulling an edit through is a separate, explicit act — `refreshSeededSkills` fr
 
 ### Custom worker kinds
 
-Skills reach every hireable kind the same way, this one included: they arrive in the settings bag as `seatSkills`, because the kind's `configSchema` composed `workerConfigSchema()`. The built-in is built that way, and so is [a kind you define yourself](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare) — that page has the contract and what it holds. Your kind is free to ignore the skills it receives; what it cannot do is skip the door, since hiring hands the same settings to every seat.
+Skills reach every hireable kind the same way, this one included: they arrive in the settings bag as `seatSkills`, because the kind's `configSchema` composed `workerConfigSchema()`. The built-in is built that way, and so is [a kind you define yourself](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare). That page has the contract and what it holds. Your kind is free to ignore the skills it receives; what it cannot do is skip the door, since hiring hands the same settings to every seat.
 
 ## Giving workers memory
 
@@ -176,10 +176,11 @@ The built-in forgets everything between turns. Memory costs tokens on every turn
 
 You turn it on by composing it into your own copy of the kind. A *capability* is a bundle you attach to a block — the context it injects, the tools it adds, the storage it needs — and memory ships as one. [Memory](../memory/overview.md) covers the system itself: its tiers, what each one stores, and every knob `system()` takes. What follows is how a roster of workers picks it up.
 
-It rides on the last three options in the table above — `uses`, `afterAnswer` and `isolateUserState`. Here is the whole recipe:
+It rides on the last three options in the table above: `uses`, `afterAnswer` and `isolateUserState`. Here is the whole recipe:
 
 ```ts
 import { AGENT_KIND, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { system } from "@flow-state-dev/memory";
 import { boardTool, searchTool } from "./tools";
 
@@ -208,6 +209,8 @@ const remembers = defineAgentWorkerFlow({
   // The write side. Without this, nothing is ever recorded.
   afterAnswer: mem.captureFromItems,
 });
+
+const { workers } = await readWorkforce("./workforce");
 
 const seats = hireWorkforce(workers, { kinds: { [AGENT_KIND]: remembers } });
 ```

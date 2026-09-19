@@ -49,6 +49,9 @@ A capability lives at the organization level or in a team. One inside a single *
 `fsdev gen` walks every `resources/` folder the convention reads, along with the rest of the tree's code folders, and writes what it found onto `workforce.gen.ts`. The capabilities and resources land in one export:
 
 ```ts
+import type { ResourceModules } from "@flow-state-dev/workforce";
+import resource_teams__support__research from "./teams/support/resources/research";
+
 export const resourceModules = {
   "teams/support/research": resource_teams__support__research,
 } satisfies ResourceModules;
@@ -56,7 +59,7 @@ export const resourceModules = {
 
 The key is the same [ref](./documents-on-disk.md#a-documents-ref) a document of that name in that folder would get, so a `.md` and a `.ts` of one name in one folder are refused at generation rather than one quietly winning.
 
-Run it again after adding or removing a file, and give `fsdev gen --check` its own CI step: a stale generated file means a worker silently misses a capability. [Code on disk](./code-on-disk.md) covers the command, the rest of what it generates, and why it is a command rather than a startup scan.
+Run it again after adding or removing a file, and give `fsdev gen --check` its own CI step: a stale generated file means a worker silently misses a capability. [Code on disk](./code-on-disk.md) covers the command, the rest of what it generates, and when it runs.
 
 ## Installing what it found
 
