@@ -2,10 +2,11 @@
  * The seat resource allowlist — a `WORKER.md`'s `resources:` key, from the
  * words an author writes to what the seat can actually reach.
  *
- * The rule matrix is `spec/FIX-1381/BUSINESS-RULES.md` (BR-n); the checks are
- * its PLAN's V1-V8. Two of them carry most of the weight and are worth naming
- * here, because a suite without them is green for an implementation that has
- * quietly broken every app in the monorepo:
+ * `BR-n` and `V-n` are the issue's own rule and check numbers, kept so a
+ * finding can be cited by one; each case states the rule it owns, so nothing
+ * here needs a second document to read. Two of the checks carry most of the
+ * weight and are worth naming up front, because a suite without them is green
+ * for an implementation that has quietly broken every app in the monorepo:
  *
  * - **V5, the second path.** A seat that declares NO `resources:` must reach
  *   and write every document, exactly as before. That is the case nobody
@@ -16,8 +17,11 @@
  *   ways: the second construction is the red state, and it is what makes the
  *   first mean anything.
  *
- * Every refusal is asserted on its own wording, from the constants, so a
- * renamed key moves the check with it instead of leaving a door open.
+ * Every refusal is asserted on the distinctive part of its own wording, so a
+ * message that stops naming what actually went wrong fails its own case. The
+ * wordings stay private to `seat-resources.ts`; a permission module does not
+ * widen its surface for its tests. The key and the two modes are imported,
+ * so renaming one moves its checks with it instead of leaving a door open.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
