@@ -9,9 +9,18 @@ against landed code at `d8e4c99`, the whole comparison under
 
 ## The answer, in one line
 
-**A collapse works, and it costs less than it looks — because most of it already ships.** The
-part that does *not* work is documents: no variant delivered one as anything but prompt text,
-because there is no per-seat document channel in the framework at all.
+**This is not designing a format. It is adding an authoring surface to a package mechanism
+that already ships.** A worker can already opt into a named bundle of instructions and tools,
+and its own `tools:` still decides what it may call. What a file format adds is that a team
+could write one in Markdown instead of an engineer writing it in TypeScript.
+
+**The one part that does not already work is documents, and it does not work for anybody.**
+There is no per-seat document channel in the framework at all. Every candidate that passed the
+document probe passed it by putting the document's text in the prompt.
+
+Two things follow, and they outrank the choice of format:
+[the document finding](#the-finding-that-outranks-the-matrix) and
+[a correction to BR-6 on the approved spec](#correction-to-br-6-approved-spec).
 
 ## The matrix
 
@@ -24,10 +33,57 @@ because there is no per-seat document channel in the framework at all.
 | **P5** the grant gate | PASS | PASS | PASS | PASS |
 | **P6** nothing breaks | PASS | PASS | PASS | PASS |
 
-\* passes as prompt text. See *The asterisk* below — it is the most important line on this page.
+\* passes as prompt text, because there is no other way to pass it. See
+[The finding that outranks the matrix](#the-finding-that-outranks-the-matrix) directly below —
+it is the most important line on this page.
 
 `n/a` is a recorded result, not a blank: D authors no package, so four probes presuppose
 something it says should not exist (BR-16).
+
+## The finding that outranks the matrix
+
+**There is no per-seat document channel in this framework.** Not a weak one, not an awkward
+one — none. It is not in any cell, because the probe set deliberately states behaviour and
+leaves mechanism to the candidates (BR-12), and it matters more than which format wins.
+
+Three ways a document could reach one seat. All three were run:
+
+| Route | What happens |
+|---|---|
+| A capability preset carrying `resources` | Cannot be selected by a seat at all. `resources` is build-time only, and naming such a preset is refused at the mint |
+| The file-declared documents convention | Installs at **flow** level, which is the kind's. Every sibling seat of that kind receives it, held package or not |
+| A skill's supporting files (`files[]`) | Stored in the collection and **never rendered into the holding seat's context** — before activation or after. Only the delegation surface reads them |
+
+So every variant that passed P3 passed it by putting the document's text in the prompt: on
+every turn when attached, on activation when held. That is readable, and it is what P3 asks
+for. **It is not a document you can address, update at run time, or leave out of a turn's
+tokens.** Any format that claims to carry documents is claiming something the framework cannot
+do for it.
+
+<a name="correction-to-br-6-approved-spec"></a>
+### Correction to BR-6 (approved spec)
+
+**BR-6 is false as written, and it is on an approved spec.** Recorded here as a correction by
+name so it cannot be read past.
+
+> **BR-6** — *"A package travels opt-in and wants to carry a document · A skill folder already
+> carries supporting files beside its `SKILL.md`. One opt-in-attachable unit that ships a
+> document therefore already exists."*
+
+The carrying is real. **The arriving is not.** A skill's supporting files are stored in the
+skills collection and read only by the delegation surface and the worker materializer; they
+never render into the holding seat's own context, before activation or after. Run, not read:
+the skill's body appears on `/handover` and the supporting file's body appears on neither turn.
+
+**How it survived review.** `evidence/check-conventions.mjs`'s `C3-skill-files` asserts that
+the `SkillFile` type exists and that `InitialSkill` has a `files?` field. Both are true. Neither
+is the claim. That is a check aimed at a neighbour of the claim — the same BP-003 defect round 1
+caught on the grant gate and fixed there, sitting unre-checked in a different row of the same
+document.
+
+**What it changes.** BR-12 already states P3 as an observable behaviour and leaves the mechanism
+open, so no cell moves. What moves is the cost of the *document* half of any package format:
+BR-6 said one of the two mechanisms already existed, and it does not.
 
 ## The three cells that decided it
 
@@ -68,30 +124,6 @@ anything else.
 **Why scoped.** P1 and P2 pass because both have a real per-seat channel. P3 does not have one.
 Shipping documents in v1 would freeze a design around a document that is prompt text wearing a
 resource's name.
-
-## The asterisk · there is no per-seat document channel
-
-The single most load-bearing thing this matrix found, and it is not in any cell, because the
-probe set deliberately states behaviour and leaves mechanism to the candidates (BR-12).
-
-Three ways a document could reach one seat. All three were run:
-
-| Route | What happens |
-|---|---|
-| A capability preset carrying `resources` | Cannot be selected by a seat at all. `resources` is build-time only, and naming such a preset is refused at the mint |
-| The file-declared documents convention | Installs at **flow** level, which is the kind's. Every sibling seat of that kind receives it, held package or not |
-| A skill's supporting files (`files[]`) | Stored in the collection and **never rendered into the holding seat's context** — before activation or after. Only the delegation surface reads them |
-
-So every variant that passed P3 passed it by putting the document's text in the prompt: on
-every turn when attached, on activation when held. That is readable, and it is what P3 asks
-for. It is not a document you can address, update at run time, or leave out of a turn's tokens.
-
-**This corrects a claim in the spec.** BR-6 reads *"a skill folder already carries supporting
-files beside its `SKILL.md`. One opt-in-attachable unit that ships a document therefore already
-exists."* The carrying is real; the arriving is not. `evidence/check-conventions.mjs`'s
-`C3-skill-files` asserts the `SkillFile` type exists and `InitialSkill` has a `files?` field —
-which is a neighbour of the claim, the same defect round 1 caught on the grant gate, in a row
-nobody re-checked.
 
 ## What C actually adds, and what already ships
 
