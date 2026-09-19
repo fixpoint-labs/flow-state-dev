@@ -135,8 +135,12 @@ Point `readWorkforce` at the root:
 ```ts
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
-const { workers, errors, skillErrors } = await readWorkforce("./workforce");
+const { workers, errors, skillErrors, teamErrors } = await readWorkforce("./workforce");
 ```
+
+Three error channels, not one — `teamErrors` is the third, and a team file that failed is reported
+there rather than in `errors`. Check all three; see [Treat a non-empty `errors` as
+fatal](#treat-a-non-empty-errors-as-fatal).
 
 You get one record per worker:
 
@@ -315,6 +319,8 @@ Settings are spelled the way the flow declares them.
 
 A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. Hiring imposes three settings in all: `instructions`, when the body is not empty; `seatSkills`, always; and `teamInstructions`, when the record carries what its team's [`TEAM.md`](#what-a-teammd-says) said.
 
+What the refusals cover is what a **file** declares. `teamInstructions` and `seatSkills` are the framework's to fill, so no frontmatter may set them — refused in a `TEAM.md`, in a `WORKER.md`, and at hiring for a record built by hand. The record *fields* of the same name are the channel the loader fills, and hiring reads them: if you build records yourself rather than reading a tree, you are the loader, and what you put there is what the seat gets. That is the same arrangement `skills` has, and it is why the refusals talk about frontmatter rather than about the record.
+
 The two instruction settings stay apart. A worker's own text is never merged into its team's, so a kind can read one without the other. On the [built-in worker kind](./built-in-worker.md) both go into the prompt, the team's first and the worker's own last. That order is fixed, and it is an order rather than a ranking: nothing resolves a contradiction between the two, so a team rule and a worker rule that genuinely disagree are left to the model that reads them.
 
 Every hireable kind has that setting, because `workerConfigSchema()` declares it — so a worker's body always has somewhere to arrive, and no worker flow has to check for one. A kind whose schema will not take what hiring imposes is the one that refuses, and it refuses every record on the roster rather than just the ones with a body:
@@ -356,7 +362,7 @@ A record is refused when it:
 - names a flow kind whose schema will not take what hiring imposes, leaving it nowhere to receive a seat's skills and instructions — composing `workerConfigSchema()` is the fix. That one refuses the whole roster, not just this record;
 - declares `instructions:` and carries a body;
 - declares `persona:`, `seatSkills:` or `teamInstructions:`, none of which is a setting a worker declares;
-- was hand-built carrying `teamInstructions` — a team's instructions come from its [`TEAM.md`](#what-a-teammd-says), read by the loader;
+- declares `teamInstructions:` in its frontmatter, wherever that frontmatter came from — a team's instructions come from its [`TEAM.md`](#what-a-teammd-says) body, read by the loader;
 - shares an id with another record in the same call, which is two workers claiming one address.
 
 `kinds` itself is checked too. A flow passed under a key that is not its own `kind` is refused. The copy would otherwise come back carrying the right worker's id, and run the other kind's graph once you registered it.

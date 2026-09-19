@@ -289,12 +289,13 @@ A worker kind is an ordinary flow. What makes it *hireable* is that its `configS
 | Setting | What it holds |
 | --- | --- |
 | `instructions?` | The worker's own instructions — its file body, or the frontmatter key. Imposed when the body is not empty, absent when it has none. |
-| `teamInstructions?` | **Reserved: nothing populates it yet.** It is here so a kind composes the contract once and does not change again when the team-level layer arrives. Always absent today. |
+| `teamInstructions?` | The instructions its team wrote — read from that team's [`TEAM.md`](#the-optional-team-file). Imposed when its team wrote any, absent when the team wrote none or has no file. Never merged with `instructions`. |
 | `seatSkills` | The skills its folders resolved for it, in level order. Imposed on every seat, present and empty when there are none. |
 
-So hiring imposes `instructions` and `seatSkills` today. `teamInstructions` is a declared door with
-nothing coming through it, and a kind that reads it gets `undefined` regardless of what any team has
-written.
+So hiring imposes all three: `instructions` when the body is not empty, `seatSkills` always, and
+`teamInstructions` when the seat's team wrote a `TEAM.md`. A kind that reads `teamInstructions` for
+a seat whose team wrote none gets `undefined` — absent, never an empty string, which is what keeps
+"this team said nothing" and "this team said nothing *yet*" from being the same value in the bag.
 
 Add your kind's own settings on top, at the same level:
 
@@ -328,7 +329,9 @@ until you add it.
 
 Two of the three are never authored. A worker file that writes `seatSkills:` or `teamInstructions:`
 is refused by name, at the loader and at the hire: a seat's skills are the folders it can see, and
-a team's instructions are its team's.
+a team's instructions come from its team's `TEAM.md` body. That third key is refused in a `TEAM.md`
+too — the file an author would most reasonably try it in — so all three doors refuse it, from one
+exported constant rather than a literal spelled into each.
 
 **A record that leaves `flow:` out is hired into the built-in `agent` kind** — it talks, its body
 arrives as its instructions, and it reads the skills its own folders hold plus any the app seeded
@@ -920,7 +923,7 @@ leaves an empty session there, and re-running binds it.
 | `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, and every `resources/` folder the convention reads, returning what they hold on `files` and `resourceModules`, each ordered by path. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules)` | Render a discovery's `files` and its `resourceModules` as a module of static imports exporting `kinds`, `channelKinds`, `blocks` and `resourceModules`. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(manifests, { kinds })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`. |
-| `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?` (reserved) and `seatSkills`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
+| `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?` and `seatSkills`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
 | `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
 | `readResourcesDirectory(root)` | Read every `resources/` folder in the tree — org, team, and each worker's own — into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |

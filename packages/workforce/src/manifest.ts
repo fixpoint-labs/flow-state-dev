@@ -189,10 +189,12 @@ export const SEAT_SKILLS_KEY = "seatSkills";
  * `teamInstructions` — where a seat's TEAM-level instructions will arrive in
  * its flow's settings bag.
  *
- * **Nothing imposes it yet.** The factory imposes `instructions` and
- * `seatSkills`; this key is declared by the contract and reserved, so a kind
- * reading it today gets `undefined` however many instructions a team has
- * written. What fills it is the team-level file, which FIX-1377 reads.
+ * Filled from the team's own {@link TEAM_MD}: the loader reads that file once
+ * per team, joins its body onto every worker record under it, and the factory
+ * imposes this key for the records that carry one. A kind reading it for a
+ * seat whose team wrote none gets `undefined` — the key is ABSENT, never an
+ * empty string, so "this team said nothing" is not a value every team without
+ * a file hands its seats.
  *
  * Declared here, beside {@link INSTRUCTIONS_KEY} and {@link SEAT_SKILLS_KEY},
  * because it is the same sort of thing as both — a value the framework will
@@ -204,11 +206,9 @@ export const SEAT_SKILLS_KEY = "seatSkills";
  * name this constant rather than a literal, so a rename moves every refusal
  * with it instead of leaving a door open with nothing said.
  *
- * The contract declares the key ({@link workerConfigSchema}) and the doors
- * refuse an authored one from today. What FILLS it is a team's own file, which
- * FIX-1377 reads — so until that lands the key is a declared door with nothing
- * coming through it, which is the point: a kind composes the contract once and
- * does not change again when the layer arrives.
+ * The contract declared this key before anything filled it, and that was the
+ * point: a kind composes the contract once and did not have to change again
+ * when the team-level file arrived to fill it.
  */
 export const TEAM_INSTRUCTIONS_KEY = "teamInstructions";
 

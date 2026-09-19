@@ -133,6 +133,39 @@ describe("three doors, one constant", () => {
   });
 
   /**
+   * **What the three doors do NOT cover, pinned so the docs cannot drift from
+   * it again.**
+   *
+   * All three refuse what a FILE declares — a key in frontmatter. They do not
+   * refuse the record *field* of the same name, and they must not: that field
+   * is the channel `readWorkforce` itself fills, so a blanket refusal would
+   * reject the loader's own output.
+   *
+   * So a caller hand-building records is in the loader's seat, and what it puts
+   * on the record is what the seat receives. That is exactly the arrangement
+   * `skills` already has. It is worth a spec rather than a comment because the
+   * docs claimed the stronger thing for a while, and a fence documented wider
+   * than it is gets trusted at the width it was documented.
+   */
+  it("does not refuse the record FIELD, which is the loader's own channel", () => {
+    const [seat] = hireWorkforce([record({ teamInstructions: "Built by hand, not read." })]);
+
+    expect((seat!.config as Record<string, unknown>)[TEAM_INSTRUCTIONS_KEY]).toBe(
+      "Built by hand, not read.",
+    );
+    // The sibling field behaves the same way, which is what makes the line
+    // above a convention rather than an oversight in this one key.
+    const [withSkills] = hireWorkforce([
+      record({ id: "engineering.scribe", skills: [{ name: "hand-built", skillMd: "---\n---\n" }] }),
+    ]);
+    expect(
+      ((withSkills!.config as { seatSkills: Array<{ name: string }> }).seatSkills ?? []).map(
+        (skill) => skill.name,
+      ),
+    ).toEqual(["hand-built"]);
+  });
+
+  /**
    * The spec the other three rest on: **every door answers to the constant,
    * and none answers to anything else.**
    *
