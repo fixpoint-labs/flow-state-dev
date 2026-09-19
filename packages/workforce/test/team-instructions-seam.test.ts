@@ -146,6 +146,20 @@ describe("three doors, one constant", () => {
    * `skills` already has. It is worth a spec rather than a comment because the
    * docs claimed the stronger thing for a while, and a fence documented wider
    * than it is gets trusted at the width it was documented.
+   *
+   * **Asked and answered: should the field be refused, with provenance marking
+   * loader-produced records?** No — recorded here so the next reader who spots
+   * this gets the answer rather than re-filing it.
+   *
+   * It is not a privilege boundary: whoever calls `hireWorkforce` with a
+   * hand-built record already controls the app and could put any text in a
+   * prompt by other means. Narrowing the docs to what is enforced buys the same
+   * honesty that provenance would, without the machinery. And the deciding
+   * reason is the pair: `manifest.skills` → `seatSkills` has exactly this
+   * shape and has shipped for months without anyone calling it a hole, so
+   * adding provenance to one half would leave the two inconsistent and the
+   * next reader rightly asking which one is wrong. If provenance is ever worth
+   * having it is worth having for both, as its own change.
    */
   it("does not refuse the record FIELD, which is the loader's own channel", () => {
     const [seat] = hireWorkforce([record({ teamInstructions: "Built by hand, not read." })]);
