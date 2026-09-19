@@ -231,3 +231,48 @@ describe("FIX-1381 P3 (negative control) — block-declared resources escape the
     ).resolves.toBeUndefined();
   });
 });
+
+describe("FIX-1381 P4 — the grant is READABLE off the seat, which is what FIX-1382 needs", () => {
+  /** The grant set as the sandbox ticket would read it off a hired seat. */
+  const grantOf = (seat: ReturnType<typeof hireSeat>) =>
+    [...((seat as unknown as { flowLevelResourceKeys: Set<string> }).flowLevelResourceKeys)].sort();
+
+  it("flowLevelResourceKeys is exactly the granted set — a STRICT subset of the kind's map", () => {
+    // Deliberately ONE of the two documents. Granting both would make the
+    // narrowed set equal the definition's own set, and the assertion would
+    // pass just as happily against a mint that ignored the grant entirely —
+    // a check that cannot fail on the thing it is checking.
+    const seat = hireSeat("engineering.lead", {
+      [handbook.ref!]: readOnly(handbook),
+    } as DeclaredResources);
+
+    // The narrowed map's OWN keys — not the block resources merged in
+    // underneath. This is the seam the sandbox ticket projects mounts from,
+    // and it already exists (`FlowInstance.flowLevelResourceKeys`), so the
+    // allowlist needs no second object to be readable.
+    expect(grantOf(seat)).toEqual([handbook.ref!]);
+
+    // The kind's own machinery is NOT in the grant set, which is what makes
+    // this usable as a mount list rather than "everything the seat has".
+    expect(grantOf(seat)).not.toContain("inbox");
+  });
+
+  it("each granted entry carries its own mode, so ro/rw is read off the grant", () => {
+    const reader = hireSeat("engineering.lead", {
+      [handbook.ref!]: readOnly(handbook),
+    } as DeclaredResources);
+    const writer = hireSeat("finance.cfo", {
+      [payroll.ref!]: payroll,
+    } as DeclaredResources);
+
+    const roEntry = (reader.resources as unknown as Record<string, { writable?: boolean }>)[
+      handbook.ref!
+    ];
+    const rwEntry = (writer.resources as unknown as Record<string, { writable?: boolean }>)[
+      payroll.ref!
+    ];
+
+    expect(roEntry?.writable).toBe(false);
+    expect(rwEntry?.writable).not.toBe(false);
+  });
+});
