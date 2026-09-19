@@ -142,9 +142,11 @@ holds the write, a `problems` entry's fields beyond `layer`.
 - **EXTEND** `packages/workforce/README.md` — Exports rows for the five new exports, Error
   Semantics rows for BR-5, BR-11, BR-12, and **limitation rows for BR-15a, BR-23 and BR-10** (an org
   boundary, not a tenant one; rows outlive what declared them; a row reports what the open channel
-  holds, which is not what the file says once the file has been edited). The limitation the README
-  already states at the channels section — that an edit does not reach an open channel — **stays
-  true and stays there**; this change does not fix it and must not read as though it will. What the
+  holds, which is not what the file says once the file's `members:` has been edited). The limitation
+  the README already states at the channels section — that the membership a channel was opened with
+  does not follow a file edit — **stays true and stays there**; this change does not fix it and must
+  not read as though it will. Keep that row scoped to the fields the binder writes at create
+  (`members`, the charter, the description); do not widen it to `CHANNEL.md` as a whole. What the
   row adds is that the disagreement becomes visible. "What channels do not do yet" stays true and is
   not edited: this adds no join or leave verb.
 - **A `patch` changeset per PR** for `@flow-state-dev/workforce` (BP-022) — PR-A's included, ruled
@@ -205,14 +207,21 @@ and no less conclusive.
 - **The FIX-1385 seam, and who rebases.** **PR-A lands first; PR-B here rebases onto it.** FIX-1385
   is the critical path and its spec already names this seam one-directionally; this is the other
   half. **Read against what FIX-1385 has actually built, not against its spec.** Its S4, S4b, BR-18
-  and V7 are still written in `spec/FIX-1385/` and nobody has retired them; what implementation
-  found is that the session-state write they assume does not exist on `SessionClient`, so that
-  surface is **not built and not on `main`**. Plan against the landed shape and re-read the sibling
-  spec if it lands later:
-  - **`openChannels` is untouched.** Every hunk of FIX-1385's `channel-binder.ts` diff is on the
-    **bind** path — the imports, `validate`, and `channelInstances`. Nothing lands below them.
-    Verified against `origin/fix/FIX-1385-channel-boards`; re-verify before the rebase, since that
-    branch is still moving.
+  and V7 are still written in `spec/FIX-1385/` and nobody has retired them; the session-state write
+  they assume does not exist on `SessionClient`, so that surface is **not built and not on `main`**.
+  That gap was visible in landed code all along — `openChannels`' own doc comment on `main` already
+  says no public route writes state into a session that already exists — so it was discoverable at
+  spec review, not something implementation turned up. Plan against the
+  landed shape and re-read the sibling spec if it lands later:
+  - **`openChannels` is no longer untouched** — corrected; the earlier "every hunk is on the bind
+    path" reading is stale. FIX-1385's round 1 (`73dabbb5d`) adds a refusal guard as the **first
+    statement of `openChannels`**: no `orgId` plus any channel declaring `boards:` throws, naming
+    them. It is purely additive and sits **above** the `for` loop and every session call, so S5 and
+    S6 land underneath it rather than against it. Read it before planning the merge; do not assume
+    either way, and re-verify — that branch is still moving.
+  - **The guard is also a precedent for BR-11.** It refuses a no-org boot at the binder rather than
+    letting each request fail, which is the same call S6 makes. Cite it if the placement is
+    questioned; it does not change what S6 does.
   - **`defineChannelFlow` is where the two meet**, and it is not a near miss. FIX-1385 gives the
     factory a `resources:` map (`boardResources`) it did not have, and adds entries to both
     `actions` and `internal.actions`. S5 here adds to all three of those. The merge is a real one:

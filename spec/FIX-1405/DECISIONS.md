@@ -63,12 +63,20 @@ for any channel whose session holds something else — one a bind refused, one a
 one minted by a kind this roster does not describe. That is the declared layer's copy of membership
 wearing a live name, which [D3](#d3) refuses and [BR-10](BUSINESS-RULES.md) forbids.
 
-The two copies do not converge on their own **today**. `openChannels` leaves an already-open channel
-exactly as it is — `channel-binder.ts`'s already-open branch says so in as many words — so an
-edited `CHANNEL.md` does not reach the session; only deleting it and opening it again does.
-**Nothing in this wave changes that**, and this spec does not promise that anything will. What it
-changes is that the drift stops being silent: the row reports the channel's own answer, so a
-consumer comparing it against the tree can see the two disagree.
+The two copies do not converge on their own **today**. What `openChannels` writes into a session at
+create — a channel's `members`, its charter and its description — is never rewritten: the
+already-open branch returns the moment it finds a bound channel
+(`channel-binder.ts`, and its doc comment says so in as many words). So editing `members:` in a
+`CHANNEL.md` does not reach an open channel; only deleting the session and opening it again does.
+**Nothing in this wave changes that**, and this spec does not promise that anything will.
+
+That is a statement about the fields the binder writes at create, not about `CHANNEL.md` as a whole.
+A field a channel kind reads from the declared record rather than from session state is not
+governed by this branch and may well track edits — which costs D2 nothing either way, because the
+only field D2 turns on is `members`, and `members` is session state.
+
+What this wave changes is that the drift stops being silent: the row reports the channel's own
+answer, so a consumer comparing it against the tree can see the two disagree.
 
 If a later change does refresh an open channel's declared projection, nothing here moves. The
 channel still writes its own row from its own session state, so the row would follow that refresh
