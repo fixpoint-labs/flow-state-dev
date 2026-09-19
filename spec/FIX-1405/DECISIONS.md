@@ -84,13 +84,17 @@ by construction — this decision is about **who writes membership**, not about 
 ever gets re-derived.
 
 <a name="the-membership-index"></a>
-**Why a third collection — and not because it reads less.** Measured, it reads *more*. A
-collection's only narrowing is `list(prefix)`, and that is not a source-side filter: the runtime
-loads the **collection's** own prefix from the store and applies the caller's narrower prefix in
-memory afterwards, so `list("eng.lead/")` on `inventory/members/**` issues exactly one store read,
-`getByPrefix("inventory/members/")`. Both shapes are therefore list-then-discard today, and the
-index is the bigger of the two: for C channels and M memberships it loads 2M strings against the
-channel scan's M + 2C.
+**Why a third collection — and not because it reads less.** It does not. A collection's only
+narrowing is `list(prefix)`, and that is not a source-side filter: the runtime loads the
+**collection's** own prefix from the store and applies the caller's narrower prefix in memory
+afterwards, so `list("eng.lead/")` on `inventory/members/**` issues exactly one store read,
+`getByPrefix("inventory/members/")`. Both shapes are therefore list-then-discard today.
+
+On volume the index is usually the **worse** of the two, though not always, and the exact claim
+matters: for C channels and M total memberships it loads 2M strings against the channel scan's
+M + 2C. So it reads more once M > 2C — channels averaging more than about two members, which is
+every real roster — and *less* below that. Stating it as a flat "the index loads more" is an
+overstatement a reader with small channels can falsify, so do not.
 
 What it buys is that the question becomes answerable **by key**. Over the channel collection,
 membership is a *field* — `members` sits inside the value, so no prefix, now or later, can narrow
@@ -152,7 +156,7 @@ second "was never the intent". **What would reopen it** is evidence that a chann
 |---|---|
 | Ship the inventory as a capability | A capability earns its place carrying tools or context. This carries neither yet; FIX-817 adds the tools and can wrap these then |
 | One collection, a discriminated row schema | Saves an export, costs a union schema, forces a consumer wanting channels to read seats too (BP-033) |
-| Filter membership in memory over the channel collection | What round 1 caught, though the reason is narrower than it first looked. Both shapes list-then-discard today and the index is the bigger read; what rules this one out is that `members` is a field, so no prefix could ever narrow it at the store — see [Why a third collection](#the-membership-index) |
+| Filter membership in memory over the channel collection | What round 1 caught, though the reason is narrower than it first looked. Both shapes list-then-discard today, and on volume the index is usually the worse of the two; what rules this one out is that `members` is a field, so no prefix could ever narrow it at the store — see [Why a third collection](#the-membership-index) |
 | A resource collection over `SessionStore.list` instead of rows | Checked in review: `handleListSessions` in `session-routes.ts` does not forward `orgId`, so there is no org-narrowed session listing to build on |
 | Ship the channel collection only, and let a later child add seats | Round 1's second look, and a fair challenge — no rule here read a seat row. The rules were incomplete, not the collection: ER-3 names membership and fan-out, both of which start from *which seats exist*, and a block cannot walk folders to find out. [BR-21](BUSINESS-RULES.md) is the missing rule, [two writers](#two-writers) the missing trigger |
 | An `assert…` helper beside the reader | A second export whose body is a throw, saving each caller one line. The line is policy; the flattening is what was worth sharing |
