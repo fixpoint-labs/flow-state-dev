@@ -360,6 +360,28 @@ export function hireWorkforce(
     // that distinction stays on the record, where it belongs.
     settings[SEAT_SKILLS_KEY] = manifest.skills ?? [];
 
+    // The seat's TEAM-level instructions — and **only when the record carries
+    // them**, which is the opposite of the line above and deliberately so.
+    //
+    // `seatSkills` is imposed on every record because present-and-empty is a
+    // real answer for a seat's skills: the folders were read and held nothing.
+    // A team layer has no such answer. A team that wrote no instructions and a
+    // team with no file at all both mean *this seat is told nothing extra*, and
+    // handing `""` over would make them a value every kind's schema can see —
+    // a different bag for every team in every tree that has no file, and the
+    // trap the body rule above already names.
+    //
+    // Whitespace is not instructions here either. The loader will not produce
+    // such a record, but a hand-built roster never passes the loader, and this
+    // is the same one-line rule its neighbour applies to a body.
+    if (
+      typeof manifest.teamInstructions === "string" &&
+      manifest.teamInstructions.trim().length > 0
+    ) {
+      // Verbatim: the check is on the trimmed value, the value is the value.
+      settings[TEAM_INSTRUCTIONS_KEY] = manifest.teamInstructions;
+    }
+
     try {
       // Always a bag, so always admitted. The branch that stood here passed no
       // bag at all for a record that declared nothing — which is admission

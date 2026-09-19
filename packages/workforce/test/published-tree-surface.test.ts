@@ -65,6 +65,8 @@ interface Readout {
   documents: string[];
   /** Channel ids that loaded. */
   channels: string[];
+  /** Ids of teams whose `TEAM.md` loaded. */
+  teams: string[];
   /** Resource-module refs the codegen walk found. */
   resourceModules: string[];
   /** `<slot>:<name>` for every file in a locked code folder. */
@@ -412,6 +414,22 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.workers.includes("alpha.lead") || out.reported.includes("teams/alpha/workers/lead"),
   },
   {
+    shape: "teams/<team>/TEAM.md",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      quote:
+        "A `TEAM.md` at the top of a team's folder describes the team and holds the instructions every",
+    },
+    write: (root) =>
+      writeFile(
+        root,
+        "teams/alpha/TEAM.md",
+        "---\ndescription: The alpha team.\n---\n\nStay inside the brief.\n",
+      ),
+    accountedFor: (out) =>
+      out.teams.includes("alpha") || out.reported.includes("teams/alpha/TEAM.md"),
+  },
+  {
     shape: "teams/<team>/channels/<channel>/CHANNEL.md",
     publishedIn: {
       file: "apps/docs/docs/workforce/channels.md",
@@ -650,6 +668,7 @@ async function readEverything(root: string): Promise<Readout> {
   for (const seat of workforce.skillErrors) {
     for (const error of seat.errors) reported.push(error.path);
   }
+  for (const error of workforce.teamErrors) reported.push(error.path);
 
   const resources = await readResourcesDirectory(root);
   for (const error of resources.errors) reported.push(error.path);
@@ -699,6 +718,7 @@ async function readEverything(root: string): Promise<Readout> {
     workers: workforce.workers.map((worker) => worker.id),
     documents: resources.documents.map((document) => document.ref),
     channels: channels.channels.map((channel) => channel.id),
+    teams: workforce.teams.map((team) => team.id),
     resourceModules,
     code,
     teamSeatSkills: seat.skills.map((skill) => skill.name),
