@@ -64,21 +64,20 @@ the [seams table](PLAN.md#coordination-seams-to-watch) ordered *FIX-1385's PR-A*
 FIX-1405's PR-B: that seam is discharged in the order it named — the whole of FIX-1385 landed
 first, and FIX-1405's S5/S6 rebase onto it.
 
-<a name="the-sixth-child"></a>
-**The tracker now carries a sixth child, and [D6](DECISIONS.md#d6) ratified five.**
-[FIX-1451](https://linear.app/fixpoint-labs/issue/FIX-1451) — a `Bug`, *skill `allowed-tools`
-promises a grant it does not make* — was filed on 2026-09-19 and parented under FIX-1407. It is real
-work in this epic's area and nothing here disputes it. But the [wrap](PLAN.md#wrap) requires every
-remaining child to be terminal, so a sixth child sitting in `Backlog` holds this epic open past its
-own exit gate — the exact shape D6 was taken to prevent. **Not re-parented here:** re-parenting is a
-deliberate act with its own evidence, never a side effect of a status refresh. Carried to the owner
-as [an open question](DECISIONS.md#open).
-
 **Five, settled at the objective gate** (2026-09-19). The epic body named four; three more were
 parented afterwards. The gate kept the four and adopted FIX-1430 as the proof
 ([D6](DECISIONS.md#d6)). Not bookkeeping: **the exit gate and the wrap are different moments**, and
 a parented phase-2 child would not have gated the exit gate — it would have held the epic open past
 it, indefinitely. At five, W4 wraps when it meets its own gate.
+
+<a name="the-sixth-child"></a>
+**The tracker has since moved to six.** [FIX-1451](https://linear.app/fixpoint-labs/issue/FIX-1451)
+— a `Bug`, *skill `allowed-tools` promises a grant it does not make* — was filed on 2026-09-19 and
+parented under FIX-1407. It is real work in this epic's area and nothing here disputes it. But the
+[wrap](PLAN.md#wrap) requires every remaining child to be terminal, so a sixth child sitting in
+`Backlog` reintroduces exactly what the paragraph above bought: an epic held open past its own exit
+gate. **Not re-parented here:** re-parenting is a deliberate act with its own evidence, never a side
+effect of a status refresh. Carried to the owner as [an open question](DECISIONS.md#open).
 
 <a name="related-not-children"></a>
 **Related, not children.** [FIX-817](https://linear.app/fixpoint-labs/issue/FIX-817) (catalog
