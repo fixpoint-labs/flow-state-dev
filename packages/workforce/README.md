@@ -474,8 +474,9 @@ workforce/
 ```
 
 `fsdev gen` walks those folders and writes `workforce/workforce.gen.ts` beside them, exporting
-`kinds`, `channelKinds`, `blocks` and `seatBlocks` — four parameters `hireWorkforce`,
-`channelInstances`, a task board and a worker kind's tool catalog already take.
+`kinds`, `channelKinds`, `blocks` and `seatBlocks` — parameters `hireWorkforce`,
+`channelInstances`, a task board and a worker kind's tool catalog already take. The same file
+carries `resourceModules`, covered in [Resource modules from files](#resource-modules-from-files).
 
 ```ts
 import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
@@ -935,7 +936,7 @@ leaves an empty session there, and re-running binds it.
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
 | `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, and every `resources/` folder the convention reads, returning what they hold on `files` and `resourceModules`, each ordered by path. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
-| `renderWorkforceCode(files, modules)` | Render a discovery's `files` and its `resourceModules` as a module of static imports exporting `kinds`, `channelKinds`, `blocks` and `resourceModules`. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
+| `renderWorkforceCode(files, modules)` | Render a discovery's `files` and its `resourceModules` as a module of static imports exporting `kinds`, `channelKinds`, `blocks`, `seatBlocks` and `resourceModules`. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(manifests, { kinds, seatBlocks })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, and `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`. |
 | `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills` and `seatTools`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |

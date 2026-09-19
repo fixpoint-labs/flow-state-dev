@@ -104,8 +104,7 @@ that way: booting past it runs those workers short of instructions someone wrote
 
 ### What a team folder does, and does not, keep to itself
 
-Two things live in a team's folder and they scope differently. It is worth being plain about,
-because the folder looks like one rule and is two.
+A team's folder looks like one rule and is two. What sits in it scopes two different ways.
 
 **Instructions written in a `TEAM.md` reach only that team's workers.** They ride each worker's own
 configuration, so a worker on another team never sees them.
@@ -124,9 +123,13 @@ A worker's id is its team folder and its own folder joined with a dot. `teams/en
 
 The team qualifier means every team can have a `lead` without checking what the other teams called theirs. The dot matters because the id is also the address: a hired worker is a flow instance, reached at `POST /api/flows/engineering.lead/actions/run`, and an id containing a `/` registers fine and then fails to route.
 
-Both folder names must be lowercase letters, digits, and single hyphens, at most 64 characters each. So `api-designer` is fine. `API_Designer` and `api.designer` are refused when the tree is read, with the rule in the message.
+### Names in the tree {#names-in-the-tree}
 
-A handful of otherwise-legal names are refused as well: `con`, `prn`, `aux`, `nul`, `com1` through `com9`, and `lpt1` through `lpt9`. Windows treats these as device names rather than filenames, whatever extension follows, so a tree containing one cannot be checked out on a Windows machine at all. The rule covers every name in the tree, not just these two folders — teams, workers, channels, documents, and the files that declare your own flow kinds and blocks.
+The same rule governs every name the convention reads, not just these two folders: teams, workers, channels, documents, skills, and the files that declare your own flow kinds and blocks.
+
+A name must be lowercase letters, digits, and single hyphens, at most 64 characters. So `api-designer` is fine. `API_Designer` and `api.designer` are refused when the tree is read, with the rule in the message.
+
+A handful of otherwise-legal names are refused as well: `con`, `prn`, `aux`, `nul`, `com1` through `com9`, and `lpt1` through `lpt9`. Windows treats these as device names rather than filenames, whatever extension follows, so a tree containing one cannot be checked out on a Windows machine at all.
 
 ## Reading the tree
 
@@ -138,9 +141,9 @@ import { readWorkforce } from "@flow-state-dev/workforce/loader";
 const { workers, errors, skillErrors, teamErrors } = await readWorkforce("./workforce");
 ```
 
-Three error channels, not one — `teamErrors` is the third, and a team file that failed is reported
-there rather than in `errors`. Check all three; see [Treat a non-empty `errors` as
-fatal](#treat-a-non-empty-errors-as-fatal).
+A team file that failed is reported in `teamErrors` rather than in `errors`, and a worker that
+loaded without a skill it should have had in `skillErrors`. Check each of them; see [Treat a
+non-empty `errors` as fatal](#treat-a-non-empty-errors-as-fatal).
 
 You get one record per worker:
 
@@ -364,7 +367,7 @@ A record is refused when it:
 - declares a setting its flow never declared, or omits one its flow requires;
 - names a flow kind whose schema will not take what hiring imposes, leaving it nowhere to receive a seat's skills and instructions — composing `workerConfigSchema()` is the fix. That one refuses the whole roster, not just this record;
 - declares `instructions:` and carries a body;
-- declares `persona:`, `seatSkills:` or `teamInstructions:`, none of which is a setting a worker declares;
+- declares `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:`, none of which is a setting a worker declares;
 - declares `teamInstructions:` in its frontmatter, wherever that frontmatter came from — a team's instructions come from its [`TEAM.md`](#what-a-teammd-says) body, read by the loader;
 - shares an id with another record in the same call, which is two workers claiming one address.
 
@@ -438,153 +441,9 @@ const seats = hireWorkforce(workers, {
 
 The snippet above names `request-triage` twice: once in the flow, once in the `kinds` map at startup. Add a third kind and you edit two places. Forget the second, and the app boots and then refuses every worker that named it.
 
-There is a file convention for the code half too. Put a flow kind in `workforce/flows/workers/`, and the basename is the kind name:
+There is a file convention for the code half too. Put a flow kind in `workforce/flows/workers/`, a block in a `blocks/` folder, and run `fsdev gen`: it writes a module of static imports that your app passes straight to `hireWorkforce`. Adding a kind becomes adding a file.
 
-```
-workforce/
-  flows/
-    workers/
-      request-triage.ts       ← a worker kind
-    channels/
-      standup.ts              ← a channel kind
-  blocks/
-    triage.ts                 ← a block any worker may name
-  teams/
-    engineering/
-      blocks/
-        build-status.ts       ← a block this team's workers may name
-      workers/
-        triage/
-          WORKER.md           ← flow: request-triage
-          blocks/
-            page-oncall.ts    ← a block this one worker may name
-```
-
-Each file default-exports one thing: a flow for the two `flows/` folders, a `BlockDefinition` for `blocks/`. A worker kind needs `cardinality: "collection"`, because a seat mints its own copy under its own id. A channel kind needs the default, `singleton`, because a channel is a session on one shared copy.
-
-`fsdev gen` reads those three folders and writes `workforce/workforce.gen.ts` beside them:
-
-```ts
-// Generated by `fsdev gen`. Do not edit.
-
-import type { BlockDefinition } from "@flow-state-dev/core";
-import type { ChannelInstancesOptions, HireOptions } from "@flow-state-dev/workforce";
-import block_triage from "./blocks/triage";
-import channel_standup from "./flows/channels/standup";
-import worker_request_triage from "./flows/workers/request-triage";
-
-export const kinds = {
-  "request-triage": worker_request_triage,
-} satisfies NonNullable<HireOptions["kinds"]>;
-
-export const channelKinds = {
-  "standup": channel_standup,
-} satisfies NonNullable<ChannelInstancesOptions["kinds"]>;
-
-export const blocks = {
-  "triage": block_triage,
-} satisfies Record<string, BlockDefinition>;
-
-export const seatBlocks = {
-  "engineering.triage": {
-    "build-status": teamblock_engineering__build_status,
-    "page-oncall": seatblock_engineering__triage__page_oncall,
-  },
-} satisfies Record<string, Record<string, BlockDefinition>>;
-```
-
-Imports are ordered by path, and a binding is its folder and its basename with hyphens as underscores. Both are so the committed file has a stable diff: a name you can predict, and an order a directory listing cannot move.
-
-Four exports, each feeding a parameter that already exists: `kinds` for `hireWorkforce`, `channelKinds` for `channelInstances`, `blocks` for a task board's `workers` or a worker kind's tool catalog, `seatBlocks` for `hireWorkforce` again.
-
-```ts
-import { hireWorkforce } from "@flow-state-dev/workforce";
-import { kinds, seatBlocks } from "./workforce/workforce.gen";
-
-const seats = hireWorkforce(workers, { kinds, seatBlocks });
-```
-
-The startup line no longer names a kind. Adding one means adding a file.
-
-### Blocks a worker can call
-
-A `blocks/` folder registers a name. Whether a worker can *call* that block is a separate question, answered by its own `tools:` list — so a file appearing in a folder never quietly widens what an agent can do.
-
-Where the folder sits decides **who can resolve the name**:
-
-| The folder | Registers the name for |
-| --- | --- |
-| `workforce/blocks/` | every worker, once the app hands the map over as a tool catalog |
-| `workforce/teams/<team>/blocks/` | every worker on that team |
-| `workforce/teams/<team>/workers/<worker>/blocks/` | that one worker |
-
-A name is resolved nearest first: the worker's own folder, then its team's, then the catalog. The first match wins, so a worker can keep a private `summarize` without renaming the team's.
-
-The org-level half is one line in your app, on the option the built-in kind already takes:
-
-```ts
-import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
-import { blocks, kinds, seatBlocks } from "./workforce/workforce.gen";
-
-const agent = defineAgentWorkerFlow({ catalog: blocks });
-const seats = hireWorkforce(workers, { kinds: { ...kinds, agent }, seatBlocks });
-```
-
-The other two ride `seatBlocks`, which needs no option on the kind: a worker's registered blocks are that worker's, so they travel with the rest of what the hire step already gives one seat at a time.
-
-Then a worker names what it wants:
-
-```yaml
----
-description: Triages inbound reports.
-tools: [triage, page-oncall]
----
-```
-
-Two rules keep a registered name honest, and both are checked before any worker runs:
-
-- **One tool has one name.** The file's basename, the map key and the block's own `name` must agree. A worker authorises by the key and the model is handed the block's `name`, so a disagreement is a worker authorising one tool and a model calling another. Refused when the kind is built for the catalog, at the hire for a worker's own folder.
-- **A block in a worker's own folder may read a store, not declare one.** Resources belong to the kind, and every worker of a kind shares them, so a store declared from inside one worker's folder would arrive for all of its siblings. Declare the store on the kind — through `defineAgentWorkerFlow`'s `uses` — and the block reads it as usual. The refusal names the block and both fixes.
-
-### It is a command, not a watcher
-
-Run `fsdev gen` when you add, rename or delete a file in one of the three folders. Nothing regenerates while `next dev` is running, and nothing scans the tree while your app runs.
-
-That second part is deliberate. A framework that walked those folders at startup would work on a Node host and find nothing on a bundled one, because after a Next or Vercel build those files are no longer separate modules. What `fsdev gen` emits is static imports, which every bundler already resolves, so a deployed app registers exactly what a local one does.
-
-Put it in front of your build, and commit the file it writes:
-
-```json
-{
-  "scripts": {
-    "build": "fsdev gen && next build"
-  }
-}
-```
-
-`fsdev gen --check` regenerates nothing and exits non-zero when the committed file and the tree disagree. Give it its own CI step. Inside a build script it would regenerate the file first and always pass.
-
-### What it checks, and when
-
-The generator reads the tree. It never opens the files it finds, so what it can refuse is what a walker can see:
-
-- A basename that is not lowercase letters, digits and single hyphens. The name becomes a kind name and part of a flow instance id.
-- A basename Windows reserves for a device: `con`, `prn`, `aux`, `nul`, `com1` through `com9`, `lpt1` through `lpt9`. Windows refuses these whatever the extension, so a committed tree holding one cannot be checked out there.
-- A directory inside one of the code folders. Refused by name rather than skipped, so a folder you meant as a kind cannot be passed over in silence.
-- One basename in both `flows/workers/` and `flows/channels/`.
-- A `blocks/` folder at a level no worker reads — beside `org/`, or beside an org-level worker. The refusal names the three places one may sit.
-- A `tools/` folder, anywhere in the tree. There is one folder name for code that can be called, and it is `blocks/`.
-- A folder that is there and cannot be read. A folder that is simply absent is fine, and means you have no custom code of that kind.
-
-Files that are not TypeScript are skipped: a README, a JSON sample, a note beside the code.
-
-**TypeScript files are not.** Every `.ts` and `.tsx` file in one of the three folders is a declaration, so these folders are for declarations only. A `fixture.ts` sitting beside a kind registers a kind called `fixture`. A file whose name carries a second dot — `request-triage.test.ts`, `helpers.fixture.ts` — is refused outright, because the basename becomes the kind name and a dot is not legal in one. Keep tests and fixtures beside the code they exercise, outside `workforce/flows/` and `workforce/blocks/`.
-
-Two checks land later, and neither disappears. A file that exports the wrong shape fails your own `tsc`, naming the generated module and the assignment, because the maps are typed. A flow whose declared `kind` disagrees with its basename is refused at the hire, naming both.
-
-### A hand-written map still works
-
-Passing `kinds` yourself is not deprecated and not second-class. An app that never runs `fsdev gen` behaves exactly as it did. You can also do both: compose a generated map with a hand-written one and pass the result. Nothing is told which came from where, and there is no precedence rule to learn.
+[Code on disk](./code-on-disk.md) covers that tree, the command, what it generates, and where a `blocks/` folder may sit.
 
 ## What this does not do
 
@@ -599,6 +458,7 @@ Passing `kinds` yourself is not deprecated and not second-class. An app that nev
 
 - [Workforce](./overview) — what a hired roster is, and when to reach for it instead of a task board.
 - [The built-in worker](./built-in-worker.md) — the `agent` kind a record with no `flow:` runs on, its tools, its skills, and its memory.
+- [Code on disk](./code-on-disk.md) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Skills](../skills/overview) — what a `SKILL.md` is and what goes in one.
 - [Channels](./channels.md) — several agents on one topic, with one durable transcript and nobody owning a row.
 - [Orchestration](../orchestration/overview) — coordinating units of work on a board.

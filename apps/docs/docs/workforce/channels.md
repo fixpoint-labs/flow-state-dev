@@ -97,7 +97,7 @@ The subpath matters. `@flow-state-dev/workforce/loader` imports `node:fs`, so it
 
 The team folder and the channel folder, joined with a dot. `teams/engineering/channels/standup/` becomes `engineering.standup`, which is the channel's session id: the id you address when you post to it. The team qualifier means marketing can have a `standup` of its own without checking what engineering called theirs.
 
-Both folder names must be lowercase letters, digits, and single hyphens, at most 64 characters each. So `daily-standup` is fine. `Stand Up` and `stand.up` are reported when the tree is read, with the rule in the message.
+Both folder names follow [the tree's name rule](./workers-on-disk.md#names-in-the-tree): lowercase letters, digits and single hyphens, at most 64 characters. So `daily-standup` is fine. `Stand Up` and `stand.up` are reported when the tree is read, with the rule in the message.
 
 ### What the file is checked for
 
