@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 420" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two layers over one workforce tree. Left of a vertical fence, at boot and off the request path, a declared tree of teams, workers, channels and documents is read once by readDeclaredRoster into records plus one problems list; it derives state and registers nothing. Right of the fence, on the request path, ChannelFlow writes an org-scoped live inventory as each channel opens; the inventory holds one row per registered seat and one per open channel, and any flow in the same org reads it as an ordinary resource. One arrow crosses the fence, at boot, carrying the records; nothing crosses back. A strip along the bottom names what is not built: no second WorkerRegistry, no mega-loader that re-walks the tree, and no DM verb.">
+<svg viewBox="0 0 940 480" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two layers over one workforce tree. Left of a vertical fence, at boot and off the request path, a declared tree of teams, workers, channels and documents is read once by readDeclaredRoster into records plus one problems list; it derives state and registers nothing. One arrow crosses the fence, at boot, carrying those records to openInventory, the boot binder, which carries no member data. Right of the fence the inventory has two writers: the binder upserts one seat row per seat straight from the roster, because a seat holds no session; and each open channel writes its own row and its membership index rows from its own session state, so an edited file never reaches an already-open channel. The org-scoped inventory holds one row per registered seat, one per open channel, and a membership index keyed by seat so that asking which channels a seat is in narrows by key prefix instead of loading the whole collection. Any flow in the same org reads it as an ordinary resource. Nothing crosses back to the tree. A strip along the bottom names what is not built: no second WorkerRegistry, no mega-loader that re-walks the tree, and no DM verb.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -32,7 +32,7 @@
 
   <g id="fence">
     <path class="fence" d="M478 24 L478 60"/>
-    <path class="fence" d="M478 100 L478 330"/>
+    <path class="fence" d="M478 100 L478 410"/>
     <text class="t-lbl" x="478" y="16" text-anchor="middle">THE FENCE</text>
   </g>
 
@@ -46,17 +46,17 @@
 
     <path class="edge" d="M134 90 L158 90" marker-end="url(#a)"/>
 
-    <rect class="n-code" x="166" y="52" width="152" height="76" rx="5"/>
+    <rect class="n-code" x="166" y="52" width="166" height="76" rx="5"/>
     <text class="t-lbl" x="178" y="70">NEW</text>
     <text class="t-b" x="178" y="92">readDeclaredRoster</text>
     <text class="t-s" x="178" y="112">three readers, no walk</text>
 
-    <path class="edge" d="M318 90 L342 90" marker-end="url(#a)"/>
+    <path class="edge" d="M332 90 L348 90" marker-end="url(#a)"/>
 
-    <rect class="n-box" x="350" y="52" width="70" height="76" rx="5"/>
-    <text class="t-s" x="360" y="80">records</text>
-    <text class="t-s" x="360" y="96">+</text>
-    <text class="t-s" x="360" y="112">problems</text>
+    <rect class="n-box" x="356" y="52" width="64" height="76" rx="5"/>
+    <text class="t-s" x="364" y="80">records</text>
+    <text class="t-s" x="364" y="96">+</text>
+    <text class="t-s" x="364" y="112">problems</text>
 
     <text class="t-s" x="16" y="152">derives per read · registers nothing · Node only</text>
   </g>
@@ -67,38 +67,55 @@
   </g>
 
   <g id="live">
-    <text class="t-lbl" x="540" y="42">LIVE · THE REQUEST PATH</text>
+    <text class="t-lbl" x="540" y="42">LIVE · WHAT IS ACTUALLY OPEN</text>
 
-    <rect class="n-box" x="540" y="68" width="384" height="44" rx="5"/>
-    <text class="t-b" x="556" y="88">ChannelFlow</text>
-    <text class="t-s" x="556" y="104">the one writer</text>
+    <rect class="n-code" x="540" y="68" width="384" height="46" rx="5"/>
+    <text class="t-b" x="556" y="88">openInventory · the boot binder</text>
+    <text class="t-s" x="556" y="105">names seats and channels · carries no member data</text>
 
-    <path class="edge" d="M732 112 L732 140" marker-end="url(#a)"/>
-    <text class="t-s" x="742" y="131">as a channel opens</text>
+    <path class="edge" d="M600 114 L600 226" marker-end="url(#a)"/>
+    <text class="t-s" x="610" y="148">seat rows,</text>
+    <text class="t-s" x="610" y="162">straight from</text>
+    <text class="t-s" x="610" y="176">the roster</text>
+    <text class="t-s" x="610" y="196">a seat holds</text>
+    <text class="t-s" x="610" y="210">no session</text>
 
-    <rect class="n-acc" x="540" y="144" width="384" height="100" rx="5"/>
-    <text class="t-lbl" x="556" y="164">ORG-SCOPED · ONE PER ORG</text>
-    <text class="t-b" x="556" y="186">the live inventory</text>
-    <rect class="n-flat" x="556" y="198" width="150" height="22" rx="3"/>
-    <text class="t-s" x="566" y="213">inventory/seats/*</text>
-    <rect class="n-flat" x="556" y="224" width="150" height="14" rx="3"/>
-    <text class="t-s" x="566" y="235">inventory/channels/*</text>
-    <text class="t-s" x="722" y="213">what is actually open,</text>
-    <text class="t-s" x="722" y="229">not what the files say</text>
+    <path class="edge" d="M812 114 L812 146" marker-end="url(#a)"/>
+    <text class="t-s" x="822" y="136">channel ids only</text>
 
-    <path class="edge" d="M732 244 L732 272" marker-end="url(#a)"/>
-    <text class="t-s" x="742" y="263">an ordinary resource read</text>
+    <rect class="n-box" x="700" y="150" width="224" height="56" rx="5"/>
+    <text class="t-b" x="714" y="170">the channel itself</text>
+    <text class="t-s" x="714" y="186">one run per open channel,</text>
+    <text class="t-s" x="714" y="200">in its own session</text>
 
-    <rect class="n-box" x="540" y="276" width="384" height="44" rx="5"/>
-    <text class="t-b" x="556" y="296">any flow in the same org</text>
-    <text class="t-s" x="556" y="312">a seat · a board · a catalog</text>
+    <path class="edge" d="M812 206 L812 226" marker-end="url(#a)"/>
+
+    <rect class="n-acc" x="540" y="230" width="384" height="112" rx="5"/>
+    <text class="t-lbl" x="556" y="250">ORG-SCOPED · ONE PER ORG</text>
+    <text class="t-b" x="556" y="272">the live inventory</text>
+    <rect class="n-flat" x="556" y="280" width="172" height="15" rx="3"/>
+    <text class="t-s" x="564" y="291">inventory/seats/*</text>
+    <rect class="n-flat" x="556" y="298" width="172" height="15" rx="3"/>
+    <text class="t-s" x="564" y="309">inventory/channels/*</text>
+    <rect class="n-flat" x="556" y="316" width="172" height="15" rx="3"/>
+    <text class="t-s" x="564" y="327">inventory/members/&lt;seat&gt;/*</text>
+    <text class="t-s" x="742" y="291">what is actually open,</text>
+    <text class="t-s" x="742" y="309">not what the files say</text>
+    <text class="t-s" x="742" y="327">members narrow by prefix</text>
+
+    <path class="edge" d="M732 342 L732 366" marker-end="url(#a)"/>
+    <text class="t-s" x="742" y="358">an ordinary resource read</text>
+
+    <rect class="n-box" x="540" y="370" width="384" height="44" rx="5"/>
+    <text class="t-b" x="556" y="390">any flow in the same org</text>
+    <text class="t-s" x="556" y="406">a seat · a board · a catalog</text>
   </g>
 
   <g id="not-built">
-    <path class="fence" d="M16 352 L924 352"/>
-    <text class="t-lbl" x="16" y="374">NOT BUILT</text>
-    <text class="t-gone" x="16" y="396">no second WorkerRegistry</text>
-    <text class="t-gone" x="260" y="396">no mega-loader that re-walks the tree</text>
-    <text class="t-gone" x="600" y="396">no DM verb · no join or leave</text>
+    <path class="fence" d="M16 434 L924 434"/>
+    <text class="t-lbl" x="16" y="454">NOT BUILT</text>
+    <text class="t-gone" x="16" y="472">no second WorkerRegistry</text>
+    <text class="t-gone" x="260" y="472">no mega-loader that re-walks the tree</text>
+    <text class="t-gone" x="600" y="472">no DM verb · no join or leave</text>
   </g>
 </svg>

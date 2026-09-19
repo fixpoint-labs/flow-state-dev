@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 280" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="A vertical fence between two planes. On the left, the channel session, holding its members list and the post fence that reads it. On the right, the org inventory, holding one row per open channel. Three paths approach the fence: a consumer asking which channels exist crosses over into the inventory; a post checking its author stops at the channel session and never crosses; and ChannelFlow crosses once, at the moment a channel opens, to write the row.">
+     aria-label="A vertical fence between two planes. On the left, the channel session, holding its members list and the post fence that reads it. On the right, the org inventory, holding one row per open channel. Three paths approach the fence: a consumer asking which channels exist crosses over into the inventory; a post checking its author stops at the channel session and never crosses; and the channel itself crosses once, at the moment it opens, to write its row from its own session state. Any channel kind does this, not only the built-in one.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -73,8 +73,8 @@
 
   <g id="path-write">
     <rect class="n-box" x="300" y="180" width="232" height="40" rx="5"/>
-    <text class="t-b" x="316" y="197">ChannelFlow, as a channel opens</text>
-    <text class="t-s" x="316" y="213">the one writer</text>
+    <text class="t-b" x="316" y="197">the channel, as it opens</text>
+    <text class="t-s" x="316" y="213">writes its row from its own state</text>
     <path class="write" d="M532 200 L700 200 L700 154" marker-end="url(#w)"/>
     <text class="t-lbl" x="602" y="194">CROSSES ONCE</text>
   </g>
