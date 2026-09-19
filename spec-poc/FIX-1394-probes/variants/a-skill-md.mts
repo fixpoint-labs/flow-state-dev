@@ -20,7 +20,15 @@ import path from "node:path";
 import { hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { CAPABILITY, type Build, type Candidate, type Mode } from "../harness/contract.mts";
-import { HOLDER, BYSTANDER, skillMd, writeBaseTree, writeFile } from "../harness/capability-fixture.mts";
+import {
+  BYSTANDER,
+  FENCED,
+  HOLDER,
+  NO_ATTACHMENT,
+  skillMd,
+  writeBaseTree,
+  writeFile,
+} from "../harness/capability-fixture.mts";
 
 /**
  * What the framework says when a seat names a tool this package cannot supply.
@@ -30,7 +38,7 @@ import { HOLDER, BYSTANDER, skillMd, writeBaseTree, writeFile } from "../harness
  */
 async function refusalIfTheSeatNamesIt(): Promise<string> {
   const probe = fs.mkdtempSync(path.join(os.tmpdir(), "fix1394-A-refusal-"));
-  writeBaseTree(probe, `tools: [${CAPABILITY.toolName}]\n`);
+  writeBaseTree(probe, { ...NO_ATTACHMENT, holder: `tools: [${CAPABILITY.toolName}]\n` });
   const loaded = await readWorkforce(probe);
   try {
     hireWorkforce(loaded.workers);
@@ -43,9 +51,15 @@ async function refusalIfTheSeatNamesIt(): Promise<string> {
   }
 }
 
-/** Where the folder sits in each mode. Same folder, two levels of the tree. */
+/**
+ * Where the folder sits in each mode. Same folder, two levels of the tree.
+ *
+ * `%s` is the seat: attached, a skill folder lives under a seat, so A has to
+ * write it once per seat that holds the package. Held in a library it is one
+ * folder at the org level, reachable by both.
+ */
 const LOCATION: Record<Mode, string> = {
-  attached: "teams/support/workers/holder/skills/handover",
+  attached: "teams/support/workers/%s/skills/handover",
   library: "org/skills/handover",
 };
 
@@ -61,8 +75,19 @@ export const variantA: Candidate = {
     // anyway is refused at the hire — for the whole roster, not just itself.
     // The refusal is captured rather than described, so P2's cell carries what
     // the framework actually said.
-    writeBaseTree(root, "");
-    const bytes = writeFile(root, `${LOCATION[mode]}/SKILL.md`, skillMd());
+    writeBaseTree(root, NO_ATTACHMENT);
+    // The holder and the fenced seat both HOLD the package, which for A means
+    // the folder sits under each of them. They differ in the same one line
+    // every other candidate's pair differs in — neither names the tool, because
+    // for A naming it is refused at the hire, and that refusal IS P2's cell.
+    const bytes =
+      mode === "attached"
+        ? ["holder", "fenced"]
+            .map((seat) =>
+              writeFile(root, `${LOCATION[mode].replace("%s", seat)}/SKILL.md`, skillMd()),
+            )
+            .at(0)!
+        : writeFile(root, `${LOCATION[mode]}/SKILL.md`, skillMd());
     const refusal = await refusalIfTheSeatNamesIt();
 
     return {
@@ -72,6 +97,7 @@ export const variantA: Candidate = {
       // block, so there is nothing to put here without inventing one.
       seatBlocks: {},
       holder: HOLDER,
+      fenced: FENCED,
       bystander: BYSTANDER,
       document: { kind: "skill-body", skill: "handover" },
       activationMessage: "/handover",

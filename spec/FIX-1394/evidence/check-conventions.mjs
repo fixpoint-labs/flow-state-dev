@@ -166,14 +166,22 @@ assert(
   "the refusal's own message points at block-level declaration — lazy IS available there",
 );
 
-// A skill folder already carries supporting files alongside SKILL.md, so a
-// package travelling opt-in can already ship a document today.
+// A skill folder carries supporting files alongside SKILL.md — at the TYPE
+// level, which is all this check can see.
+//
+// It used to be worded "an opt-in unit can ship a document today", and that is
+// false: the probe run in spec-poc/FIX-1394-probes shows those files are stored
+// in the skills collection and never rendered into the holding seat's context,
+// before activation or after. Only the delegation surface reads them. A source
+// regex cannot tell the difference between a field existing and its contents
+// arriving somewhere, so the claim is narrowed to the thing it does check.
+// See RATIFY.md -> "Correction to BR-6 (approved spec)".
 const skillTypes = read("packages/core/src/types/skill.ts");
 assert(
-  "C3-skill-files",
+  "C3-skill-files-type",
   skillTypes.includes("interface SkillFile") &&
     /interface InitialSkill[\s\S]{0,400}files\?: SkillFile\[\]/.test(skillTypes),
-  "a skill package already carries supporting files — an opt-in unit can ship a document today",
+  "a skill CARRIES supporting files: `SkillFile` exists and `InitialSkill.files?` declares them. Whether they reach a seat's context is a runtime claim this check cannot make — they do not",
 );
 
 // The file-declared resources convention is still flow-level, which is the real

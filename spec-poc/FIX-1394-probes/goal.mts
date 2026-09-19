@@ -56,16 +56,26 @@ for (const mode of ["attached", "library"] as const) {
 
   // The seat that holds nothing is the control in both modes: same tree, same
   // kind, no attachment, and it must come out of this unchanged.
+  //
+  // The error is part of the predicate, not a detail. A sibling whose turn
+  // throws returns an empty prompt and no tools, which reads as "untouched" on
+  // the three checks below — so without this line VG went green in exactly the
+  // case it exists to catch, a candidate that made the sibling unusable.
   const bystander = await runSeat(seats.find((s) => s.id === build.bystander)!, {
     message,
     callTool: CAPABILITY.toolName,
   });
   const clean =
+    bystander.error === undefined &&
+    bystander.promptText.includes("SEAT CHARTER") &&
     !bystander.promptText.includes(CAPABILITY.instructions) &&
     bystander.toolsOffered.length === 0 &&
     !bystander.toolRan;
-  note(`${clean ? "PASS" : "FAIL"}  a sibling seat that holds nothing is untouched`);
-  if (!clean) failures.push(`${mode}: a sibling seat that holds nothing was touched`);
+  note(`${clean ? "PASS" : "FAIL"}  a sibling seat that holds nothing still works and is untouched`);
+  if (!clean)
+    failures.push(
+      `${mode}: a sibling seat that holds nothing was touched (error=${bystander.error ?? "none"}, tools=[${bystander.toolsOffered.join(", ")}])`,
+    );
 }
 
 console.log(

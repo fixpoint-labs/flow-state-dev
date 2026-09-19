@@ -11,7 +11,7 @@ deleted once the ratify is recorded. The answer it produced lives in
 node_modules/.bin/tsx --tsconfig spec-poc/FIX-1394-probes/tsconfig.json \
   spec-poc/FIX-1394-probes/run.mts
 
-# V1 — six violating fixtures, each red in exactly one row
+# V1 — six violating fixtures, each red in exactly one row, plus the reader control
 node_modules/.bin/tsx --tsconfig spec-poc/FIX-1394-probes/tsconfig.json \
   spec-poc/FIX-1394-probes/run.mts --fixtures
 
@@ -34,11 +34,25 @@ package. It adds no workspace member and no lockfile entry, so CI is untouched.
 | `harness/contract.mts` | The six probes and the one capability, **fixed before any variant** (D2) |
 | `harness/real-path.mts` | One turn of one seat: real loader, real `hireWorkforce`, real engine, and a recording model that reports the tool list and the messages the provider received |
 | `harness/probes.mts` | The six probes. Imports no candidate |
+| `harness/package-reader.mts` | The parser: two authored dialects (`WORKER.md`, `PACKAGE.md`) read off disk into one result, plus the byte-level corruptions V1's fixtures author |
 | `harness/compile.mts` | The stand-in for the codegen a ship ticket would write — shared by B and C, because they differ in what an author writes and not in what it compiles to |
 | `variants/` | The four candidates |
 | `fixtures/` | V1: the control package with one deliberate defect, six times |
 
-## Two things worth knowing before reading a cell
+## Four things worth knowing before reading a cell
+
+**Nothing installed comes from a constant.** The instructions, the document, the package's name
+and the block all come out of the file the variant authored; the `CAPABILITY` constants live
+only on the probes' assertion side, where they are what the probe is looking FOR. Round 1 had
+this backwards — the compiler took all four from the constants and never opened the file — so
+`run.mts --fixtures` ends with a control asserting that an empty `PACKAGE.md` turns P1, P2 and
+P3 red and a malformed one is refused. If that control is green, the parse is on the path.
+
+**P5's subject holds the package.** Every candidate's tree has three seats, not two: a holder
+that names the tool, a *fenced* seat that holds the same package and names nothing, and a
+bystander that holds nothing at all. P5 reads the fenced seat and asserts it is genuinely
+carrying the package before it reads the fence — round 1 read the bystander, whose empty tool
+list said nothing about the gate.
 
 **Every observation is taken at the model.** Not at a resolver, not at a config key. "Can this
 seat call that tool" is a claim about the tool list the provider is handed, so that is what is

@@ -107,7 +107,17 @@ export interface Build {
   kinds?: Record<string, unknown>;
   /** The seat that holds the package and names its tool. */
   holder: string;
-  /** A sibling seat of the same kind holding nothing — P5's control. */
+  /**
+   * A seat that holds the package exactly as the holder does and names NO tool
+   * — P5's subject.
+   *
+   * It differs from `holder` in one line. A candidate that cannot produce this
+   * seat cannot be checked against the grant gate in the package-attached case,
+   * which is the only case the gate is at risk in: round 1 read the bystander
+   * here, and an unattached seat has no tools whatever a reader does.
+   */
+  fenced: string;
+  /** A sibling seat of the same kind holding nothing — P1's and P3's leak control. */
   bystander: string;
   /** How (and whether) the document reaches a seat. */
   document: DocumentDelivery;

@@ -75,11 +75,14 @@ skills collection and read only by the delegation surface and the worker materia
 never render into the holding seat's own context, before activation or after. Run, not read:
 the skill's body appears on `/handover` and the supporting file's body appears on neither turn.
 
-**How it survived review.** `evidence/check-conventions.mjs`'s `C3-skill-files` asserts that
-the `SkillFile` type exists and that `InitialSkill` has a `files?` field. Both are true. Neither
-is the claim. That is a check aimed at a neighbour of the claim — the same BP-003 defect round 1
+**How it survived review.** `evidence/check-conventions.mjs`'s `C3-skill-files` asserted that
+the `SkillFile` type exists and that `InitialSkill` has a `files?` field, then concluded *"an
+opt-in unit can ship a document today"*. Both halves of the regex are true. Neither is the
+claim. That is a check aimed at a neighbour of the claim — the same BP-003 defect round 1
 caught on the grant gate and fixed there, sitting unre-checked in a different row of the same
-document.
+document. The claim is now `C3-skill-files-type` and says only what a source regex can say: a
+skill *carries* supporting files, and whether they reach a seat's context is a runtime question
+it cannot answer — they do not.
 
 **What it changes.** BR-12 already states P3 as an observable behaviour and leaves the mechanism
 open, so no cell moves. What moves is the cost of the *document* half of any package format:
@@ -99,14 +102,39 @@ So a `SKILL.md` package can carry a tool's *name* and never its code, and the se
 it does not start. A also fails P1 and P3 for one reason: a skill is in context only while it
 is active, so the format has exactly one attachment mode and cannot express *always on*.
 
-**B and C are identical in all twenty-four cells.** Not similar — identical, including the
-evidence lines, because they compile through the same reader. Whatever reuse-vs-create is, the
-matrix says it is not a capability difference. That question stays the owner's (ER-13); the
-lean below is a lean.
+**B and C return the same verdict in all twenty-four cells**, with both files genuinely
+parsed. The two dialects are read by one parser and compiled by one compiler, and the parse is
+where their differences actually live:
+
+| | B · `WORKER.md` | C · `PACKAGE.md` |
+|---|---|---|
+| `tools:` holds | bare NAMES; code found by walking `blocks/`, as a seat's colocated blocks are | PATHS to the modules |
+| which modes it supports | the seat dialect has no key for it — a seat has no modes | `attach: [seat, library]`, and the reader is held to it |
+
+Neither difference reaches what the package can DO — same instructions, same registered block,
+same gate, same two modes. So capability still cannot settle reuse-vs-create; that question
+stays the owner's (ER-13), and the lean below is a lean.
+
+**This claim was wrong in round 1 and is corrected here.** Round 1's compiler took the
+instructions, the document and the tool from the harness's own constants and never opened the
+file either variant authored, so "identical" was a statement about the compiler rather than
+about the two formats — P1, P3 and VG would all have stayed green against an empty
+`PACKAGE.md`. Both reviewers caught it. The reader now parses the authored bytes, the fixtures
+corrupt those bytes rather than switching a flag, and a new reader control asserts that an
+empty manifest turns P1, P2 and P3 red. The verdicts did not move; the reason to believe them
+did.
 
 **D holds its ground on P5 and P6**, measured rather than assumed: today's hand-written seat
 calls the tool it names and the sibling that registered the same block and named nothing
 reaches the model with zero tools.
+
+**P5 was also wrong in round 1, for the same class of reason.** It read the *bystander* — a
+seat no package was attached to — so its empty tool list proved only that an unattached seat
+has no tools, and a reader that widened the fence for every package-holding seat would have
+passed. There is now a third seat in every candidate's tree that holds the package exactly as
+the holder does and differs in one line, the `tools:` grant; the probe asserts it is genuinely
+holding the package *before* it reads the fence, so the cell cannot go green vacuously. The
+verdicts did not move here either.
 
 ## Recommended: **C**, scoped to instructions and tools
 
@@ -234,8 +262,9 @@ ER-2 previously pre-named the answer. It should now bind what this page records:
 |---|---|
 | V0 · the evidence base | 26 claims green at `d8e4c99`, including `C4-run` — the four grant-gate suites, 62 tests, all pass |
 | V0 · negative control | PASS — a planted eighth convention reader in Door C turns C1 and C1-total red |
-| V1 · the harness can say no | PASS — six violating fixtures, each red in exactly its own row and green in the other five |
-| V2 · no blanks | 24 cells recorded — 17 `PASS`, 3 `FAIL` (all A's), 4 `n/a` (all D's) |
+| V1 · the harness can say no | PASS — six violating fixtures, each red in exactly its own row and green in the other five. Three now corrupt the authored file's BYTES rather than the reader |
+| V1 · the reader control | PASS — an empty `PACKAGE.md` turns P1, P2 and P3 red, and a manifest the parser cannot read is refused rather than compiled |
+| V2 · no blanks, and no drift | 24 cells recorded — 17 `PASS`, 3 `FAIL` (all A's), 4 `n/a` (all D's). `run.mts` now ASSERTS this table and exits non-zero on any cell that moves |
 | V4 · the off state | The workforce suite unmodified: 32 files, 527 tests, all pass |
 | VG · the goal | PASS — one authored capability, attached then held and activated, the same working seat both times, sibling seat untouched in both |
 
@@ -248,8 +277,8 @@ the four suites are run unmodified to show the gate itself did not move. Both ar
 ## What this POC did not prove
 
 - **That anyone wants to author one.** The fork above; no build can answer it.
-- **That the reader is cheap.** `compile.mts` is 187 lines, most of them comments, because it
-  reads one fixed tree shape and trusts it. A real `fsdev gen` reader owes refusals, symlink
+- **That the reader is cheap.** `package-reader.mts` plus `compile.mts` parse one manifest
+  dialect pair and trust the result. A real `fsdev gen` reader owes refusals, symlink
   containment and name validation like every other reader in the loader, plus a row in
   `published-tree-surface.test.ts` — call it a week, not an afternoon.
 - **Anything about migration.** No existing tree was converted. Four conventions are in daily

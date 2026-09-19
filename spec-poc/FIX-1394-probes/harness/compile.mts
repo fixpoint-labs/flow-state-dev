@@ -2,16 +2,24 @@
  * The POC's stand-in for the codegen a ship ticket would write.
  *
  * Variants B and C both propose a package tree that nothing in the framework
- * reads today, so each needs a reader. That reader is this function, shared by
- * both, because the two variants differ in the SHAPE an author writes and not
- * in what it compiles to — and writing two readers that emit the same thing
- * would have hidden exactly that.
+ * reads today, so each needs a reader. The reading half is
+ * {@link readPackage} — one parser, two dialects — and this file is the
+ * compiling half, shared by both because the two variants differ in the SHAPE
+ * an author writes and not in what it compiles to. Writing two compilers that
+ * emit the same thing would have hidden exactly that.
+ *
+ * **Everything installed here comes out of the authored file.** The instruction
+ * text, the document text, the package's name and the block itself are read off
+ * disk; nothing is taken from the `CAPABILITY` constants, which now live only
+ * on the probes' assertion side. That is the fix for round 2's first P1: before
+ * it, P1, P3 and VG stayed green against an empty `PACKAGE.md`, so the matrix
+ * could not have measured that B and C compile equivalently.
  *
  * What it compiles to is the only per-seat channel the framework actually has
- * for all three content kinds at once:
+ * for both content kinds at once:
  *
  *   instructions -> a capability preset's `context` entry
- *   a tool       -> that preset's `tools` entry, plus the seat's block registry
+ *   a tool       -> the seat's block registry, still gated by the seat's `tools:`
  *   a document   -> the same `context` entry (see the note below)
  *
  * **The document is prompt text, not a resource, and that is forced.** A
@@ -27,7 +35,8 @@ import { defineCapability } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { AGENT_KIND, defineAgentWorkerFlow } from "@flow-state-dev/workforce";
 import { CAPABILITY } from "./contract.mts";
-import { HOLDER, BYSTANDER } from "./capability-fixture.mts";
+import { FENCED, HOLDER, type SeatFrontmatter } from "./capability-fixture.mts";
+import { readPackage, type ParsedPackage } from "./package-reader.mts";
 
 /** Repo root, from this file: `spec-poc/FIX-1394-probes/harness/` is three down. */
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
@@ -41,7 +50,7 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
  * of binding a block it built itself — the difference between P2 proving the
  * format can carry code and P2 proving this file can.
  */
-function linkModules(root: string): void {
+export function linkModules(root: string): void {
   const target = path.join(root, "node_modules");
   if (!fs.existsSync(target)) {
     fs.symlinkSync(path.join(REPO_ROOT, "packages/workforce/node_modules"), target, "dir");
@@ -78,65 +87,53 @@ export const ledgerAppend = handler({
 export interface Compiled {
   kinds: Record<string, unknown>;
   seatBlocks: Record<string, Record<string, BlockDefinition>>;
-  /** What the holder's `WORKER.md` frontmatter has to say to attach it. */
-  holderFrontmatter: string;
-  /** Normally empty — a package that edits a seat it was not attached to (V1). */
-  bystanderFrontmatter: string;
+  /** What each seat's `WORKER.md` frontmatter has to say for this attachment. */
+  frontmatter: SeatFrontmatter;
+  /** The parse the compile ran on, so a cell's evidence can quote the file. */
+  parsed: ParsedPackage;
 }
 
 /**
- * Deliberate defects, used ONLY by the V1 fixtures.
+ * Defects in the READER, used only by the V1 fixtures.
  *
- * Every field is a real way a package format could be wrong, and each one is
- * how a fixture produces a red cell in exactly one row. They live here rather
- * than in the fixtures so a fixture cannot reach past the reader and break
- * something the probes were not watching.
+ * Distinct from `AuthoringDefects`, which corrupt the authored file itself. The
+ * split is the point: P1, P2 and P3's fixtures now go through the parse on bad
+ * bytes, and only P5's and P6's — which are about what a reader installs, not
+ * about what an author wrote — switch behaviour here.
  */
-export interface CompileDefects {
-  /** Drop the instructions from the context entry (breaks P1 only). */
-  omitInstructions?: boolean;
-  /** Drop the document from the context entry (breaks P3's attached half). */
-  omitDocument?: boolean;
-  /**
-   * The package carries the tool's NAME and no code (P2).
-   *
-   * The seat's `tools:` drops it too, and that is forced rather than a second
-   * defect: naming a tool nothing registers refuses the whole roster at the
-   * hire, which would take every other probe down with it. So the isolatable
-   * shape of this defect is the one variant A actually has — a package whose
-   * tool the seat cannot name.
-   */
-  carryNoTool?: boolean;
-  /** Write the tool into the BYSTANDER's own file too — a package that edits a seat (P5). */
-  grantBystander?: boolean;
-  /** Add a second preset that is on by default, so the kind changes a package-free tree (P6). */
+export interface ReaderDefects {
+  /** Grant the package-attached seat that named no tool (P5). */
+  grantFenced?: boolean;
+  /** Add a second preset with no `default:` gate, so it reaches every seat (P6). */
   alwaysOnPreset?: boolean;
 }
 
 /**
- * Compile an authored package into the framework inputs, for one mode.
+ * Compile one authored package into the framework inputs, for one mode.
  *
- * @param root        the workforce tree
- * @param blockFile   path, relative to `root`, of the package's authored block
- * @param packageName the name a seat's `capabilities:` key would use
- * @param defects     V1 only — see {@link CompileDefects}
+ * @param root     the workforce tree
+ * @param manifest path, relative to `root`, of the authored `WORKER.md`/`PACKAGE.md`
+ * @param mode     which attachment mode this build is for
+ * @param defects  V1 only — see {@link ReaderDefects}
  */
 export async function compilePackage(
   root: string,
-  blockFile: string,
-  packageName: string,
+  manifest: string,
   mode: "attached" | "library",
-  defects: CompileDefects = {},
+  defects: ReaderDefects = {},
 ): Promise<Compiled> {
   linkModules(root);
-  const module = (await import(path.join(root, blockFile))) as { ledgerAppend: BlockDefinition };
-  const block = module.ledgerAppend;
+  const parsed = await readPackage(path.join(root, manifest));
 
-  const contextText = [
-    defects.omitInstructions === true ? undefined : CAPABILITY.instructions,
-    defects.omitDocument === true ? undefined : CAPABILITY.documentBody,
-  ]
-    .filter((line) => line !== undefined)
+  // `attach:` is honoured rather than decorative: a dialect that can name its
+  // modes is held to them. B's dialect cannot (`declaredModes === null`), which
+  // is a real difference between the two formats and one the matrix could not
+  // see while the files went unread.
+  if (parsed.declaredModes !== null && !parsed.declaredModes.includes(seatOrLibrary(mode)))
+    throw new Error(`the package does not declare the "${seatOrLibrary(mode)}" mode`);
+
+  const contextText = [parsed.instructions, parsed.documentBody]
+    .filter((line) => line.length > 0)
     .join("\n\n");
 
   // `default: []` is what makes the preset opt-in per seat. Without it every
@@ -155,7 +152,7 @@ export async function compilePackage(
   if (defects.alwaysOnPreset === true) {
     presets["ambient"] = { context: [() => "PACKAGE RUNTIME NOTICE: installed."] };
   }
-  const capability = defineCapability({ name: packageName, presets: presets as never });
+  const capability = defineCapability({ name: parsed.name, presets: presets as never });
 
   // No app catalog either: a package attached to ONE seat registers for that
   // seat. The catalog is app-wide, and compiling into it would make the package
@@ -163,23 +160,36 @@ export async function compilePackage(
   // surface than the attachment asked for.
   const kind = defineAgentWorkerFlow({ uses: [capability] });
 
-  const registry: Record<string, BlockDefinition> =
-    defects.carryNoTool === true ? {} : { [CAPABILITY.toolName]: block };
+  const carried = parsed.blocks;
+  const toolNames = Object.keys(carried);
+  const selection = mode === "attached" ? `capabilities:\n  ${parsed.name}: [package]\n` : "";
 
   return {
     kinds: { [AGENT_KIND]: kind },
     seatBlocks: {
-      [HOLDER]: registry,
-      // Normally empty: the bystander was attached nothing, so nothing of the
-      // package's is registered for it. The defect is a reader that registers
-      // the package for every seat and edits their files to match.
-      ...(defects.grantBystander === true ? { [BYSTANDER]: registry } : {}),
+      // The FENCED seat is registered the same blocks as the holder on purpose.
+      // It holds the package and differs from the holder in one line — the
+      // `tools:` grant — which is what makes P5 a statement about the gate in
+      // the package-attached case rather than about an unattached seat.
+      [HOLDER]: carried,
+      [FENCED]: carried,
     },
-    holderFrontmatter: [
-      mode === "attached" ? `capabilities:\n  ${packageName}: [package]\n` : "",
-      defects.carryNoTool === true ? "" : `tools: [${CAPABILITY.toolName}]\n`,
-    ].join(""),
-    bystanderFrontmatter:
-      defects.grantBystander === true ? `tools: [${CAPABILITY.toolName}]\n` : "",
+    frontmatter: {
+      holder: selection + (toolNames.length > 0 ? `tools: [${toolNames.join(", ")}]\n` : ""),
+      fenced:
+        selection +
+        // The defect: a reader that grants whatever the package carries to every
+        // seat it is attached to, instead of leaving the grant to the seat.
+        (defects.grantFenced === true && toolNames.length > 0
+          ? `tools: [${toolNames.join(", ")}]\n`
+          : ""),
+      bystander: "",
+    },
+    parsed,
   };
+}
+
+/** The mode names a package file uses, which are not the harness's internal ones. */
+function seatOrLibrary(mode: "attached" | "library"): string {
+  return mode === "attached" ? "seat" : "library";
 }

@@ -9,12 +9,12 @@
  * returns six cells or throws.
  */
 import { PROBES, PROBE_QUESTIONS, type Candidate, type Cell } from "./harness/contract.mts";
-import { runCandidate } from "./harness/probes.mts";
+import { runCandidate, scratchRoot } from "./harness/probes.mts";
 import { variantA } from "./variants/a-skill-md.mts";
 import { variantB } from "./variants/b-seat-folder.mts";
 import { variantC } from "./variants/c-new-file.mts";
 import { variantD } from "./variants/d-dont-collapse.mts";
-import { FIXTURES } from "./fixtures/index.mts";
+import { EMPTY_PACKAGE, FIXTURES, malformedPackageThrows } from "./fixtures/index.mts";
 
 const MARK = { pass: "PASS", fail: "FAIL", "n/a": "n/a " } as const;
 
@@ -72,13 +72,69 @@ if (process.argv.includes("--fixtures")) {
       for (const cell of cells) console.log(`          ${cell.probe} ${cell.verdict}  ${cell.evidence}`);
     }
   }
+  // The reader control. Not one of the six, because it is not about a probe: it
+  // asks whether the authored file reaches the compile at all, which is the
+  // defect review round 2 found in round 1's harness.
+  console.log("\n  the reader control — is the authored file actually on the path?");
+  const empty = await runCandidate(EMPTY_PACKAGE);
+  const red = empty.filter((c) => c.verdict === "fail").map((c) => c.probe);
+  const emptyOk = ["P1", "P2", "P3"].every((p) => red.includes(p as never));
+  if (!emptyOk) bad += 1;
+  console.log(
+    `  ${emptyOk ? "PASS" : "FAIL"}  an empty \`PACKAGE.md\` fails P1, P2 and P3 — failed [${red.join(", ") || "nothing"}]`,
+  );
+
+  const thrown = await malformedPackageThrows(scratchRoot("malformed"));
+  const malformedOk = thrown !== null;
+  if (!malformedOk) bad += 1;
+  console.log(
+    `  ${malformedOk ? "PASS" : "FAIL"}  a \`PACKAGE.md\` the parser cannot read is refused: ${thrown ?? "it compiled anyway"}`,
+  );
+
   console.log(
     bad === 0
-      ? "\nV1 PASS — every probe has a red state, and only its own fixture produces it."
-      : `\nV1 FAIL — ${bad} fixture(s) did not isolate their probe.`,
+      ? "\nV1 PASS — every probe has a red state, only its own fixture produces it, and the authored file is on the path."
+      : `\nV1 FAIL — ${bad} check(s) did not hold.`,
   );
   process.exit(bad === 0 ? 0 : 1);
 }
 
+/**
+ * The matrix the ratify records, as an assertion rather than a transcription.
+ *
+ * V2 used to be "run it and read the output", so a regression could change a
+ * cell while the documented command still exited zero and the ratify's table
+ * quietly stopped describing the code. These are the recorded verdicts; the run
+ * fails loudly on any drift and prints both sides. They are checked, never
+ * consulted — no probe can see this table.
+ */
+const RECORDED: Record<string, Record<string, Cell["verdict"]>> = {
+  A: { P1: "fail", P2: "fail", P3: "fail", P4: "pass", P5: "pass", P6: "pass" },
+  B: { P1: "pass", P2: "pass", P3: "pass", P4: "pass", P5: "pass", P6: "pass" },
+  C: { P1: "pass", P2: "pass", P3: "pass", P4: "pass", P5: "pass", P6: "pass" },
+  D: { P1: "n/a", P2: "n/a", P3: "n/a", P4: "n/a", P5: "pass", P6: "pass" },
+};
+
 const candidates = [variantA, variantB, variantC, variantD];
-printMatrix(candidates, await runAll(candidates));
+const columns = await runAll(candidates);
+printMatrix(candidates, columns);
+
+const drift: string[] = [];
+const tally: Record<Cell["verdict"], number> = { pass: 0, fail: 0, "n/a": 0 };
+for (const candidate of candidates) {
+  for (const cell of columns.get(candidate.id)!) {
+    tally[cell.verdict] += 1;
+    const expected = RECORDED[candidate.id]?.[cell.probe];
+    if (expected !== cell.verdict)
+      drift.push(`${candidate.id}/${cell.probe}: recorded ${expected ?? "nothing"}, ran ${cell.verdict} — ${cell.evidence}`);
+  }
+}
+
+console.log(
+  `\nV2 tally: ${tally.pass} PASS, ${tally.fail} FAIL, ${tally["n/a"]} n/a across ${tally.pass + tally.fail + tally["n/a"]} cells.`,
+);
+if (drift.length > 0) {
+  console.log(`\nV2 FAIL — the matrix no longer matches what the ratify records:\n  ${drift.join("\n  ")}`);
+  process.exit(1);
+}
+console.log("V2 PASS — every cell matches the verdict recorded in spec/FIX-1394/RATIFY.md.");

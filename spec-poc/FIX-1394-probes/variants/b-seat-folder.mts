@@ -11,10 +11,18 @@
  * loader's published-surface rule says a declared entry is consumed or refused
  * loudly (`test/published-tree-surface.test.ts`), so B spends its ambiguity at
  * exactly the place that rule is strictest.
+ *
+ * Two things show up only once the file is actually parsed, and neither moves
+ * a cell: the seat dialect's `tools:` holds bare NAMES, so the reader has to
+ * walk `blocks/` to find code the way a seat's own colocated blocks are found;
+ * and the dialect has no key for which attachment modes the package supports,
+ * because a seat does not have modes. Recorded in `mechanism` rather than
+ * argued.
  */
 import { CAPABILITY, type Build, type Candidate, type Mode } from "../harness/contract.mts";
 import {
   BYSTANDER,
+  FENCED,
   HOLDER,
   skillMd,
   writeBaseTree,
@@ -35,8 +43,10 @@ export const variantB: Candidate = {
       "WORKER.md": writeFile(
         root,
         `${PACKAGE_DIR}/WORKER.md`,
-        `---\ndescription: The handover capability.\ntools: [${CAPABILITY.toolName}]\n---\n\n` +
-          `${CAPABILITY.instructions}\n\n${CAPABILITY.documentBody}\n`,
+        `---\nname: handover\ndescription: The handover capability.\n` +
+          `tools: [${CAPABILITY.toolName}]\n---\n\n` +
+          `${CAPABILITY.instructions}\n\n` +
+          `## ${CAPABILITY.documentName}\n\n${CAPABILITY.documentBody}\n`,
       ),
       "blocks/ledger-append.ts": writeFile(
         root,
@@ -45,13 +55,8 @@ export const variantB: Candidate = {
       ),
     };
 
-    const compiled = await compilePackage(
-      root,
-      `${PACKAGE_DIR}/blocks/ledger-append.ts`,
-      "handover",
-      mode,
-    );
-    writeBaseTree(root, compiled.holderFrontmatter);
+    const compiled = await compilePackage(root, `${PACKAGE_DIR}/WORKER.md`, mode);
+    writeBaseTree(root, compiled.frontmatter);
 
     // Held in a library, the same authored package is compiled into the seat's
     // skills instead of into its capability selection — the one channel the
@@ -59,7 +64,9 @@ export const variantB: Candidate = {
     // GENERATED, so it is not in `packageFiles`: P4 compares what the author
     // wrote, not what a build step emitted.
     if (mode === "library") {
-      writeFile(root, "teams/support/workers/holder/skills/handover/SKILL.md", skillMd());
+      for (const seat of ["holder", "fenced"]) {
+        writeFile(root, `teams/support/workers/${seat}/skills/handover/SKILL.md`, skillMd());
+      }
     }
 
     return {
@@ -68,6 +75,7 @@ export const variantB: Candidate = {
       seatBlocks: compiled.seatBlocks,
       kinds: compiled.kinds,
       holder: HOLDER,
+      fenced: FENCED,
       bystander: BYSTANDER,
       document:
         mode === "attached"
@@ -75,10 +83,10 @@ export const variantB: Candidate = {
           : { kind: "skill-body", skill: "handover" },
       activationMessage: mode === "library" ? "/handover" : null,
       mechanism: {
-        P1: "compiled to a capability preset's `context`, selected by the seat's `capabilities:`",
-        P2: "the authored `blocks/*.ts` is imported and registered for the seat; `tools:` still grants",
+        P1: `parsed out of the authored ${compiled.parsed.dialect} and compiled to a capability preset's \`context\`, selected by the seat's \`capabilities:\``,
+        P2: `\`tools: [${CAPABILITY.toolName}]\` names a block found by walking \`blocks/\`, as a seat's colocated blocks are; the seat's own \`tools:\` still grants`,
         P3: "prompt text on both paths — there is no per-seat resource channel to compile into",
-        P4: "one authored folder; the build step picks the channel",
+        P4: `one authored folder, the build step picks the channel; the seat dialect declares no modes (\`attach:\` absent, so the reader assumes both)`,
       },
     };
   },

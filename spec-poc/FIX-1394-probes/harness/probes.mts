@@ -159,17 +159,58 @@ export function probeP4(attached: Build, library: Build | null): Cell {
  * Two seats that hold the package and differ only in their `tools:` line. The
  * one that names the tool may call it; the one that does not may not. That is
  * BR-1 through BR-3 stated as one observation on the tool list the model sees.
+ *
+ * **The holding is checked before the fence is.** Round 1 ran this on the
+ * bystander, a seat nothing was attached to, so its empty tool list said
+ * nothing about the gate: a reader that granted the tool to every seat holding
+ * the package would still have passed. The first assertion below is what makes
+ * the cell unable to go green vacuously — if the subject is not actually
+ * carrying the package, P5 fails rather than reporting a fence it never tested.
  */
 export async function probeP5(build: Build): Promise<Cell> {
   const { by } = await hire(build);
-  const bystander = await runSeat(by(build.bystander), {
-    message: "log the handover",
-    callTool: CAPABILITY.toolName,
-  });
+  // Whichever turn puts the package in context for this candidate: every turn
+  // when it is attached, the activation turn when it is held.
+  const message = build.activationMessage ?? "log the handover";
+  const fenced = await runSeat(by(build.fenced), { message, callTool: CAPABILITY.toolName });
+  const holder = await runSeat(by(build.holder), { message, callTool: CAPABILITY.toolName });
+
+  if (fenced.error !== undefined)
+    return cell("P5", "fail", `the package-holding seat's turn errored: ${fenced.error}`);
+  // EITHER payload, deliberately. Asking for the instructions alone would tie
+  // this check to P1's content, and the P1 fixture — which deletes exactly that
+  // paragraph — would then go red here too, for a reason that is not about the
+  // gate. A seat holding the package has one of the two; a seat holding nothing
+  // has neither.
+  const holdsPackage =
+    fenced.promptText.includes(CAPABILITY.instructions) ||
+    fenced.promptText.includes(CAPABILITY.documentBody);
+  if (!holdsPackage)
+    return cell("P5", "fail", "P5's subject is not actually holding the package, so its tool list says nothing about the gate");
+  if (fenced.toolsOffered.length !== 0)
+    return cell("P5", "fail", `a seat holding the package whose \`tools:\` names nothing was offered [${fenced.toolsOffered.join(", ")}]`);
+  if (fenced.toolRan) return cell("P5", "fail", "a seat that never named the tool executed it");
+
+  const bystander = await runSeat(by(build.bystander), { message, callTool: CAPABILITY.toolName });
   if (bystander.toolsOffered.length !== 0)
-    return cell("P5", "fail", `a seat whose \`tools:\` names nothing was offered [${bystander.toolsOffered.join(", ")}]`);
-  if (bystander.toolRan) return cell("P5", "fail", "a seat that never named the tool executed it");
-  return cell("P5", "pass", "a seat holding the package but naming no tool reaches the model with zero tools");
+    return cell("P5", "fail", `a seat holding nothing was offered [${bystander.toolsOffered.join(", ")}]`);
+
+  // The other half of the pair. A candidate that carries no code has nothing
+  // for the gate to hold back, and saying so is the honest cell — the failure
+  // is P2's and double-counting it here would make A look wrong twice for one
+  // reason. A candidate that DOES carry code has to show the grant working,
+  // otherwise "the fenced seat was offered nothing" could just mean the
+  // package never installed anything for anybody.
+  const carriesCode = Object.keys(build.seatBlocks[build.holder] ?? {}).length > 0;
+  if (!carriesCode)
+    return cell("P5", "pass", "the package registers no block for any seat, so nothing crossed the gate to be held back (see P2)");
+  if (!holder.toolsOffered.includes(CAPABILITY.toolName))
+    return cell("P5", "fail", "the sibling that DOES name the tool was not offered it either — the pair differs by more than the grant");
+  return cell(
+    "P5",
+    "pass",
+    `two seats hold the package and differ by one line: the one naming the tool is offered [${holder.toolsOffered.join(", ")}], the one naming nothing is offered none`,
+  );
 }
 
 /**

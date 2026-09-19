@@ -5,17 +5,22 @@
  * and which attachment modes it supports. Present because reuse-vs-create is
  * the owner's to close (ER-13), not because it is recommended.
  *
- * It compiles through the SAME reader B does, on purpose. If a new file
+ * It compiles through the SAME compiler B does, on purpose. If a new file
  * compiled to something B could not reach, that difference would be the
- * argument for creating one; the matrix should be able to see that it does
- * not. What C buys is authoring clarity — a `PACKAGE.md` is unambiguously a
- * package, where B's `WORKER.md` outside `workers/` is not. What it costs is
- * an eighth convention and an eighth reader, against a tree whose totality
- * check counts seven (`check-conventions.mjs` C1).
+ * argument for creating one, and the matrix should be able to see it. The two
+ * dialects are genuinely parsed — `tools:` here holds PATHS and `attach:` names
+ * the modes, where B's seat dialect holds bare names and cannot say — and they
+ * still arrive at the same installed capability.
+ *
+ * What C buys is authoring clarity: a `PACKAGE.md` is unambiguously a package,
+ * where B's `WORKER.md` outside `workers/` is not. What it costs is an eighth
+ * convention and an eighth reader, against a tree whose totality check counts
+ * seven (`check-conventions.mjs` C1).
  */
 import { CAPABILITY, type Build, type Candidate, type Mode } from "../harness/contract.mts";
 import {
   BYSTANDER,
+  FENCED,
   HOLDER,
   skillMd,
   writeBaseTree,
@@ -38,7 +43,8 @@ export const variantC: Candidate = {
         `${PACKAGE_DIR}/PACKAGE.md`,
         `---\nname: handover\ndescription: The handover capability.\n` +
           `tools: [./blocks/ledger-append.ts]\nattach: [seat, library]\n---\n\n` +
-          `${CAPABILITY.instructions}\n\n${CAPABILITY.documentBody}\n`,
+          `${CAPABILITY.instructions}\n\n` +
+          `## ${CAPABILITY.documentName}\n\n${CAPABILITY.documentBody}\n`,
       ),
       "blocks/ledger-append.ts": writeFile(
         root,
@@ -47,15 +53,13 @@ export const variantC: Candidate = {
       ),
     };
 
-    const compiled = await compilePackage(
-      root,
-      `${PACKAGE_DIR}/blocks/ledger-append.ts`,
-      "handover",
-      mode,
-    );
-    writeBaseTree(root, compiled.holderFrontmatter);
+    const compiled = await compilePackage(root, `${PACKAGE_DIR}/PACKAGE.md`, mode);
+    writeBaseTree(root, compiled.frontmatter);
+
     if (mode === "library") {
-      writeFile(root, "teams/support/workers/holder/skills/handover/SKILL.md", skillMd());
+      for (const seat of ["holder", "fenced"]) {
+        writeFile(root, `teams/support/workers/${seat}/skills/handover/SKILL.md`, skillMd());
+      }
     }
 
     return {
@@ -64,6 +68,7 @@ export const variantC: Candidate = {
       seatBlocks: compiled.seatBlocks,
       kinds: compiled.kinds,
       holder: HOLDER,
+      fenced: FENCED,
       bystander: BYSTANDER,
       document:
         mode === "attached"
@@ -71,10 +76,10 @@ export const variantC: Candidate = {
           : { kind: "skill-body", skill: "handover" },
       activationMessage: mode === "library" ? "/handover" : null,
       mechanism: {
-        P1: "compiled to a capability preset's `context`, selected by the seat's `capabilities:`",
-        P2: "the authored `blocks/*.ts` is imported and registered for the seat; `tools:` still grants",
+        P1: `parsed out of the authored ${compiled.parsed.dialect} and compiled to a capability preset's \`context\`, selected by the seat's \`capabilities:\``,
+        P2: "`tools:` names the authored `blocks/*.ts` by path; the module is imported and registered for the seat, and the seat's own `tools:` still grants",
         P3: "prompt text on both paths — there is no per-seat resource channel to compile into",
-        P4: "one authored `PACKAGE.md` plus its folder; `attach:` names both modes",
+        P4: `one authored \`PACKAGE.md\` plus its folder; \`attach: [${(compiled.parsed.declaredModes ?? []).join(", ")}]\` names both modes and the reader is held to it`,
       },
     };
   },
