@@ -13,7 +13,8 @@ Written against landed code at `d8e4c99`, which carries both W3 inputs: the team
 | **has work for a team of seats** | Nowhere shared to put it. Every piece is dispatched by hand, from code, at one seat at a time | Names a board in the channel the team already talks in. Work goes on it, and a seat claims it or is assigned it |
 | **wires a board for a team today** | Around forty lines of app code per team, invisible to the team itself | One line in the channel's own file. The code left is the seat's: which rows it runs, and how |
 | **asks a model to file and triage work** | Gets a private board nobody else can see, or hand-writes tools over a shared one | The eight task tools it already has, pointed at the channel's board. Same rows a person sees |
-| **is not a member of the channel** | A post claiming to be them is refused | Filing a row is refused the same way, for the same reason, in the same words |
+| **is not on the channel's roster** | A post *labelled* with their name is refused — a roster check on an unverified label, not a lock | Filing behaves identically: same check, same words, same limits. Filing is **not** members-only, and neither is posting |
+| **adds a board to a channel that already exists** | — | The next bind picks it up. The board list is re-read from the file; the transcript is not touched |
 | **already has channels open** | — | Nothing moves. A channel naming no board holds none, and reads and posts byte for byte as today |
 | **renames a channel's folder** | The transcript moves with it | The rows do not. A rename is a re-key, and rows filed under the old name are orphaned |
 
@@ -72,6 +73,8 @@ Nothing new carries the row. Both sides name one ledger id, so both read and wri
 - **Posting.** Still a post: it lands a line and wakes members, and hands nobody a claim.
 - **The claim system.** One task board, unchanged. `assignee` stays optional and `TaskStatus` gains no member.
 - **`assignee` is not a seat.** It is a routing key on a row; which seat it reaches is the seat-side board's wiring.
+- **Who may file.** Exactly who may post: the channel checks a label against its roster, and the label is unverified by design. This issue does not add an identity the channel does not have, and does not pretend to — [what would](DECISIONS.md#not-closing-here) is named and parked.
+- **Custom channel kinds.** A channel with its own `flow:` cannot hold a board, and says so at bind rather than holding none in silence.
 - **The nested cascade** — personal boards, request boards — is phase-2 inside W4, not built here.
 - **Channel create, delete and invite** stay with FIX-1415. A board is written into a file, never called into being.
 
@@ -81,4 +84,6 @@ Nothing new carries the row. Both sides name one ledger id, so both read and wri
 2. **[D2](DECISIONS.md#d2) · The channel holds the board and never drains it.** If wrong: a channel becomes something that executes work, and a team can file rows no seat is pointed at and see nothing wrong until nobody does them.
 3. **[D3](DECISIONS.md#d3) · A model reaches a channel board through the `taskTools` it already has.** If wrong: two tool surfaces over one ledger, drifting apart on what they refuse.
 
-**Open: none.** Number 2 is the one to weigh — it decides whether a team's work can go unnoticed. Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
+Number 2 is the one to weigh — it decides whether a team's work can go unnoticed, and review has softened it: an unattended board now warns at startup instead of sitting silent.
+
+**Open here: none. Parked on the epic: five** — a per-caller identity, capability selection, and three of FIX-1408's returned walls. None is reached by this cut, and a later PR that reaches one escalates rather than deciding. The list, with what would reach each: [Not closing here](DECISIONS.md#not-closing-here). Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
