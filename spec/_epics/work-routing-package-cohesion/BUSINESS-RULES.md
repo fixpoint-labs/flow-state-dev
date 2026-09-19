@@ -2,6 +2,10 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md)
 
+<!-- EDITING NOTE. ER-22's "not something it builds" is the rule, not emphasis: the
+     contrast is the whole point. An editorial pass on 2026-09-19 cut it and restored it
+     on review. Cut derivation here freely; do not cut that clause. -->
+
 What every child spec and implementation must satisfy, and what a cross-spec review checks. Numbers
 are stable ids, not an order. ER-1 to ER-5 and ER-19 are the rows of the ownership matrix in
 [DECISIONS.md](DECISIONS.md#who-owns-what).

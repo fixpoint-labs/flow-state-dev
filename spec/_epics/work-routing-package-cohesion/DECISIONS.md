@@ -2,6 +2,14 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
+<!-- EDITING NOTE. Three phrases in this set read like colour and are load-bearing; an
+     editorial pass on 2026-09-19 cut all three and had to restore them on review.
+     In this file: D3's "and there are no thin/fat seat labels" (a lock, not a flourish)
+     and D5's two concrete paths goals/devforce-lab/lab/host.mts and
+     goals/pentest-lab/lab/host.mts (what an implementer actually deletes).
+     In BUSINESS-RULES.md: ER-22's "not something it builds".
+     Cut derivation here freely. Do not cut these. -->
+
 The calls above any single issue: what was chosen, what lost, what each locks in. D1 to D5 are
 **Architect locks carried into this document** — FIX-1407's *FSD Architect — EM guidance* section
 and each child's own fences are the source. [D6](#d6) is the one call taken here: the owner's, at
