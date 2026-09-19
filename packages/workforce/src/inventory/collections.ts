@@ -50,9 +50,9 @@ import { z } from "zod";
  */
 export const seatInventoryRowSchema = z.object({
   /** The seat's id — the same id the declared record carries. The join key. */
-  id: z.string(),
+  id: z.string().min(1),
   /** The flow kind this seat was hired into, e.g. the built-in `"agent"`. */
-  kind: z.string(),
+  kind: z.string().min(1),
 });
 
 /** One row of the seat inventory. @see seatInventoryRowSchema */

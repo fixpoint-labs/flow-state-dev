@@ -661,4 +661,27 @@ describe("the registration action itself", () => {
       await lab.dispose();
     }
   });
+
+  it("leaves nothing written when a member id cannot become a membership key, on every attempt", async () => {
+    // "bad/id" can never pass `membershipKey`'s one-path-segment rule, so this
+    // is not a flaky write — it fails the same way on every boot until the
+    // member id itself is fixed.
+    const roster = [record("eng.standup", { members: ["eng.lead", "bad/id"] })];
+    const lab = await host(roster, { inventory: true, open: roster });
+    try {
+      const first = await lab.act("eng.standup", INVENTORY_REGISTER_CHANNEL, {});
+      expect(first.error).toBeDefined();
+      // A channel row with no matching membership row would disagree with the
+      // index for as long as the process runs, since nothing here retries or
+      // prunes. So a permanently-failing member must leave nothing behind,
+      // not a channel row committed ahead of the membership it names.
+      expect(await lab.keys()).toEqual([]);
+
+      const second = await lab.act("eng.standup", INVENTORY_REGISTER_CHANNEL, {});
+      expect(second.error).toBeDefined();
+      expect(await lab.keys()).toEqual([]);
+    } finally {
+      await lab.dispose();
+    }
+  });
 });

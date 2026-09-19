@@ -676,7 +676,7 @@ export function inventoryWriterActions(kind: string) {
     inputSchema: registerChannelInputSchema,
     outputSchema: inventoryChannelRegisteredSchema,
     resources: { channels, memberships },
-    execute: async (_input: Record<string, never>, ctx: BlockContext) => {
+    execute: async (_input, ctx) => {
       const channel = boundChannel(ctx.session.state);
       if (channel === undefined) {
         throw new ChannelPostRefusedError(
@@ -702,21 +702,40 @@ export function inventoryWriterActions(kind: string) {
       // under a live name.
       const members = [...channel.members];
 
+      // Every member's key is built up front, before anything is written.
+      // `membershipKey` throws on a member id that can never be one — and
+      // that failure is permanent, not flaky, so it must not land after some
+      // rows are already committed: a caller that retries a boot gets the
+      // same throw on the same member every time, and a run that had already
+      // written part of itself before hitting it would keep re-adding to a
+      // half-written state instead of leaving nothing behind.
+      const membershipKeys = members.map((seatId) => membershipKey(seatId, id));
+
+      // The membership rows go FIRST, and the channel row that names them
+      // goes last. Neither write is transactional with the other — a store
+      // failure partway through the loop below still leaves whatever landed
+      // before it — so the ordering is what stops the channel row from ever
+      // claiming a member the index does not have: the row is only written
+      // once every membership row it will name already exists. What it does
+      // not buy: a membership row from an EARLIER successful run can still
+      // outlive this run's channel row if this run's own loop fails partway
+      // through. That row is stale, not contradictory, and nothing here
+      // prunes stale rows in the first place (see `inventoryWriterActions`'s
+      // header).
+      for (let i = 0; i < members.length; i++) {
+        await ctx.resources.memberships.upsert(membershipKeys[i], {
+          seatId: members[i],
+          channelId: id
+        });
+      }
+
       // `openedAt` is create-only, so a second boot does not restamp a channel
       // that has been open since the first one.
-      const resources = ctx.resources as Record<string, any>;
-      await resources.channels.upsert(
+      await ctx.resources.channels.upsert(
         id,
         { id, kind, members },
         { openedAt: new Date().toISOString() }
       );
-
-      // The index is a projection of the row above, written from the same read
-      // of the same session state in the same run. It is never written alone,
-      // which is what stops the two from ever disagreeing.
-      for (const seatId of members) {
-        await resources.memberships.upsert(membershipKey(seatId, id), { seatId, channelId: id });
-      }
 
       return { id, kind, members };
     }
@@ -727,7 +746,7 @@ export function inventoryWriterActions(kind: string) {
     inputSchema: registerSeatsInputSchema,
     outputSchema: inventorySeatsRegisteredSchema,
     resources: { seats },
-    execute: async (input: { seats: { id: string; kind: string }[] }, ctx: BlockContext) => {
+    execute: async (input, ctx) => {
       if (ctx.org === undefined) {
         throw new Error(
           "the seat rows cannot be written: this request carries no organization, and the " +
@@ -736,12 +755,11 @@ export function inventoryWriterActions(kind: string) {
         );
       }
 
-      const resources = ctx.resources as Record<string, any>;
       const problems: string[] = [];
       let written = 0;
       for (const row of input.seats) {
         try {
-          await resources.seats.upsert(row.id, row);
+          await ctx.resources.seats.upsert(row.id, row);
           written += 1;
         } catch (error) {
           problems.push(
@@ -1005,9 +1023,24 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
           }),
       // Public rather than internal, because the door that reaches them is the
       // app's own action client at boot, and an internal dispatch resolves from
-      // a different map. Neither reads anything a caller supplies to decide
-      // what it writes: one takes no input at all, and the other writes only
-      // rows keyed by the ids it was handed.
+      // a different map. That is a stronger claim for one of the two than the
+      // other:
+      //
+      // - `registerChannel` takes a closed, empty input and derives the row
+      //   entirely from `ctx.session.state` — the channel's own, already-open
+      //   state. A caller cannot make it write anything but that channel's
+      //   true members, so calling it early or twice is harmless.
+      // - `registerSeats` has no such anchor: a seat has no session, so its
+      //   whole input IS the row data, and this package has nothing to check
+      //   it against. Any principal that can reach this flow's public actions
+      //   — not just the boot process — can call it with fabricated
+      //   `{ id, kind }` pairs and have them land as real seat rows. An app
+      //   that exposes this flow to callers other than its own boot code and
+      //   cares about that must add its own gate, e.g. refusing to resolve a
+      //   principal for `envelope.action === "registerSeatsInInventory"`
+      //   (`defineFlow({ authentication: { resolvePrincipal } })`,
+      //   `PrincipalResolutionContext.envelope.action`) unless the caller is
+      //   the boot process. Nothing in this package closes that gap today.
       ...(inventoryActions ?? {})
     },
     internal: {

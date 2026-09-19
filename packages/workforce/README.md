@@ -1127,6 +1127,15 @@ be written from inside a flow. `seatWriter: { flowKind: "channel" }` names the b
 carries the writer when built with `inventory: true`. Any flow that spreads `inventoryWriterActions`
 will do.
 
+**`registerSeatsInInventory` is a public action, and its input is the row data.** Unlike channel
+registration — which takes empty input and reads the channel's own already-open session state —
+seats have no session to read from, so whatever a caller passes in `seats` is written as-is. This
+package has nothing to check those rows against, so any principal that can reach the flow's public
+actions can write fabricated seat rows, not only your boot process. If that flow is reachable by
+callers other than your own boot code and you need to close that off, gate it in your own
+`authentication.resolvePrincipal` by refusing to resolve a principal when
+`envelope.action === "registerSeatsInInventory"` and the caller is not the boot process.
+
 **What the channel rows hold.** `members` is the seat ids the channel's session holds, read by the
 channel itself. An edit to `members:` in a `CHANNEL.md` does not reach a channel that is already
 open, so it does not reach the row either. The `post` and `fileTask` blocks check membership against
@@ -1309,9 +1318,9 @@ membershipPrefix("");
 | `openInventory(roster, options)` | Write the inventory at boot: one row per seat, one row per channel, one row per membership. Takes `InventoryRoster` (the seats and channels to register) and `OpenInventoryOptions` (the `run` door, `seatWriter`, `userId`, `orgId`). Returns `{ seats, channels, problems }`. |
 | `inventoryWriterActions(kind)` | The actions a custom channel kind spreads to get inventory rows: `registerChannelInInventory` and `registerSeatsInInventory`. The string is the `kind` value those rows carry. |
 | `INVENTORY_REGISTER_CHANNEL` / `INVENTORY_REGISTER_SEATS` | The action names the writer runs: `"registerChannelInInventory"` and `"registerSeatsInInventory"`. |
-| `INVENTORY_SEAT_WRITER_SESSION` | The session id the seat-registration action runs under: `"__inventory_seat_writer__"`. |
+| `INVENTORY_SEAT_WRITER_SESSION` | The session id the seat-registration action runs under when `seatWriter` names none: `"inventory-binder"`. |
 | `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, channels }`), one seat (`{ id, kind }`), and which flow writes the seat rows (`{ flowKind }`). |
-| `InventoryActionRequest` / `InventoryBinding` | What the `run` door receives (`{ flowKind, action, input, userId, orgId, sessionId }`), and what registering one channel returns (`{ channelId, ok, error? }`). |
+| `InventoryActionRequest` / `InventoryBinding` | What the `run` door receives (`{ action, input, userId, orgId, flowKind, sessionId }`), and what one boot of `openInventory` returns (`{ seats, channels, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `seatWriter`, `userId`, `orgId`. |
 
 ## Error Semantics
