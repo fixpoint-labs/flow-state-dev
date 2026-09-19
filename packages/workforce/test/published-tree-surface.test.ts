@@ -592,7 +592,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "flows/workers/<kind>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      file: "apps/docs/docs/workforce/code-on-disk.md",
       quote: "request-triage.ts       ← a worker kind",
     },
     write: (root) =>
@@ -604,7 +604,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "flows/channels/<kind>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      file: "apps/docs/docs/workforce/code-on-disk.md",
       quote: "standup.ts              ← a channel kind",
     },
     write: (root) => writeFile(root, "flows/channels/standup.ts", "export default {};\n"),
@@ -615,7 +615,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "blocks/<name>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      file: "apps/docs/docs/workforce/code-on-disk.md",
       quote: "triage.ts                 ← a block any worker may name",
     },
     write: (root) => writeFile(root, "blocks/triage.ts", "export default {};\n"),
@@ -625,7 +625,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/blocks/<name>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      file: "apps/docs/docs/workforce/code-on-disk.md",
       quote: "| `workforce/teams/<team>/blocks/` | every worker on that team |",
     },
     write: (root) =>
@@ -641,7 +641,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/workers/<worker>/blocks/<name>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      file: "apps/docs/docs/workforce/code-on-disk.md",
       quote:
         "| `workforce/teams/<team>/workers/<worker>/blocks/` | that one worker |",
     },
@@ -663,8 +663,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "flows/workers/<kind>.tsx",
     publishedIn: {
-      file: "apps/docs/docs/workforce/workers-on-disk.md",
-      quote: "Every `.ts` and `.tsx` file in one of the three folders is a declaration",
+      file: "apps/docs/docs/workforce/code-on-disk.md",
+      quote: "Every `.ts` and `.tsx` file in one of the code folders is a declaration",
     },
     write: (root) => writeFile(root, "flows/workers/intake.tsx", "export default {};\n"),
     accountedFor: (out) =>
@@ -673,8 +673,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/resources/<name>.tsx",
     publishedIn: {
-      file: "apps/docs/docs/workforce/workers-on-disk.md",
-      quote: "Every `.ts` and `.tsx` file in one of the three folders is a declaration",
+      file: "apps/docs/docs/workforce/code-on-disk.md",
+      quote: "Every `.ts` and `.tsx` file in one of the code folders is a declaration",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/resources/panel.tsx", "export default {};\n"),

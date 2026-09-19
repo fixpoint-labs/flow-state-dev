@@ -90,7 +90,7 @@ The ref is also the key the document is installed under, and a resource's [acces
 const handbook = await ctx.resources["teams/engineering/handbook"].readContent();
 ```
 
-Document, team and worker folder names must be lowercase letters, digits, and single hyphens, at most 64 characters each. So `on-call.md` is fine. `On Call.md` and `on.call.md` are reported when the tree is read, with the rule in the message.
+Document, team and worker names follow [the tree's name rule](./workers-on-disk.md#names-in-the-tree): lowercase letters, digits and single hyphens, at most 64 characters. So `on-call.md` is fine. `On Call.md` and `on.call.md` are reported when the tree is read, with the rule in the message.
 
 A worker folder's documents load whether or not the folder holds a `WORKER.md`. This reader is answering a question about a file; whether the folder also describes a seat is [the roster reader's](./workers-on-disk.md) question, and it reports a folder missing its `WORKER.md` separately.
 
@@ -153,7 +153,7 @@ errors;
 
 `readResourcesDirectory` throws only about the root you passed: when it cannot be read at all, and when it is a symlink. Links are never followed at any level of the walk, and the root is no exception, so a linked root is refused rather than read from wherever it points. A root with neither `org/` nor `teams/` comes back as `{ documents: [], errors: [] }`, and a team with no `resources/` folder is not an error either.
 
-A file in a `resources/` folder that is not a `.md` is passed over in silence by this reader, as are OS and editor droppings such as `.DS_Store`. A `.ts` file is passed over here too, and picked up by the other door ([Capabilities on disk](./capabilities-on-disk.md)).
+A file in a `resources/` folder that is not a `.md` is passed over in silence by this reader, as are OS and editor droppings such as `.DS_Store`. A `.ts` file is passed over here too, and picked up by the other door: [`fsdev gen`](./code-on-disk.md) writes it onto the generated file, and [Capabilities on disk](./capabilities-on-disk.md) covers what it then gives a worker.
 
 #### Treat a non-empty `errors` as fatal
 

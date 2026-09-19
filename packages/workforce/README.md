@@ -117,8 +117,9 @@ const { workers, teams, errors, skillErrors, teamErrors } = await readWorkforce(
 | `errors` | One entry per worker slot that failed: a seat the app does not have. |
 | `skillErrors` | One entry per seat whose skills loaded short, carrying that seat's id and its own error list. |
 
-`errors` and `skillErrors` are collected rather than thrown. Treating either as fatal is the
-caller's call.
+All three are collected rather than thrown. Treating any of them as fatal is the caller's call.
+`errors` and `teamErrors` are flat `{ path, error }` lists; `skillErrors` is one entry per affected
+seat, `{ worker, errors }`, so it needs flattening before it reads like the other two.
 
 A `TEAM.md` refuses `id:`, `flow:`, `instructions:` and `teamInstructions:` — the first two because
 the convention derives them, the last two because the body is already the instructions.
@@ -534,8 +535,9 @@ workforce/
 ```
 
 `fsdev gen` walks those folders and writes `workforce/workforce.gen.ts` beside them, exporting
-`kinds`, `channelKinds`, `blocks` and `seatBlocks` — four parameters `hireWorkforce`,
-`channelInstances`, a task board and a worker kind's tool catalog already take.
+`kinds`, `channelKinds`, `blocks` and `seatBlocks` — parameters `hireWorkforce`,
+`channelInstances`, a task board and a worker kind's tool catalog already take. The same file
+carries `resourceModules`, covered in [Resource modules from files](#resource-modules-from-files).
 
 ```ts
 import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
@@ -1281,9 +1283,9 @@ membershipPrefix("");
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
-| `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, and every `resources/` folder the convention reads, returning what they hold on `files` and `resourceModules`, each ordered by path. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
-| `renderWorkforceCode(files, modules)` | Render a discovery's `files` and its `resourceModules` as a module of static imports exporting `kinds`, `channelKinds`, `blocks` and `resourceModules`. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
-| `hireWorkforce(manifests, { kinds, seatBlocks })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, and `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`. |
+| `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, every `resources/` folder the convention reads, and every `blocks/` folder inside the team tree, returning what they hold on `files`, `resourceModules` and `seatBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
+| `renderWorkforceCode(files, modules, seatBlocks?)` | Render a discovery's `files`, `resourceModules` and `seatBlocks` as a module of static imports exporting `kinds`, `channelKinds`, `blocks`, `seatBlocks` and `resourceModules`. Pass all three: the third parameter defaults to `[]`, so omitting it renders an empty `seatBlocks` map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
+| `hireWorkforce(manifests, { kinds, seatBlocks, channelBoards })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, and `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`. `channelBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
 | `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills` and `seatTools`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
 | `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
