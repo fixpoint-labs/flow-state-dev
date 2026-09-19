@@ -1,5 +1,6 @@
 ---
 description: Fields questions about how the desk is running this week.
+tools: [desk-summary]
 capabilities:
   research: [briefing]
 ---

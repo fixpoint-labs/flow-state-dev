@@ -69,6 +69,8 @@ interface Readout {
   teams: string[];
   /** Resource-module refs the codegen walk found. */
   resourceModules: string[];
+  /** `<seat>:<name>` for every per-seat block registration the codegen walk found. */
+  seatBlocks: string[];
   /** `<slot>:<name>` for every file in a locked code folder. */
   code: string[];
   /**
@@ -591,7 +593,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "flows/workers/<kind>.ts",
     publishedIn: {
       file: "apps/docs/docs/workforce/workers-on-disk.md",
-      quote: "request-triage.ts     ← a worker kind",
+      quote: "request-triage.ts       ← a worker kind",
     },
     write: (root) =>
       writeFile(root, "flows/workers/request-triage.ts", "export default {};\n"),
@@ -603,7 +605,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "flows/channels/<kind>.ts",
     publishedIn: {
       file: "apps/docs/docs/workforce/workers-on-disk.md",
-      quote: "standup.ts            ← a channel kind",
+      quote: "standup.ts              ← a channel kind",
     },
     write: (root) => writeFile(root, "flows/channels/standup.ts", "export default {};\n"),
     accountedFor: (out) =>
@@ -614,11 +616,40 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "blocks/<name>.ts",
     publishedIn: {
       file: "apps/docs/docs/workforce/workers-on-disk.md",
-      quote: "triage.ts               ← a block a task board assigns by name",
+      quote: "triage.ts                 ← a block any worker may name",
     },
     write: (root) => writeFile(root, "blocks/triage.ts", "export default {};\n"),
     accountedFor: (out) =>
       out.code.includes("block:triage") || out.reported.includes("blocks/triage.ts"),
+  },
+  {
+    shape: "teams/<team>/blocks/<name>.ts",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      quote: "| `workforce/teams/<team>/blocks/` | every worker on that team |",
+    },
+    write: (root) =>
+      writeFile(root, "teams/alpha/blocks/build-status.ts", "export default {};\n"),
+    // A team's block is registered for every seat on the team, so the seat
+    // fixture beside it is what accounts for this one. A team with no workers
+    // registers it for nobody, which is why the WORKER.md row's seat is the
+    // one looked for.
+    accountedFor: (out) =>
+      out.seatBlocks.includes("alpha.lead:build-status") ||
+      out.reported.includes("teams/alpha/blocks/build-status.ts"),
+  },
+  {
+    shape: "teams/<team>/workers/<worker>/blocks/<name>.ts",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      quote:
+        "| `workforce/teams/<team>/workers/<worker>/blocks/` | that one worker |",
+    },
+    write: (root) =>
+      writeFile(root, "teams/alpha/workers/lead/blocks/page-oncall.ts", "export default {};\n"),
+    accountedFor: (out) =>
+      out.seatBlocks.includes("alpha.lead:page-oncall") ||
+      out.reported.includes("teams/alpha/workers/lead/blocks/page-oncall.ts"),
   },
   // `.tsx` is published in a sentence and written in no tree on any page, so
   // nothing above exercises it — a declaration the suite reported full coverage
@@ -685,10 +716,12 @@ async function readEverything(root: string): Promise<Readout> {
   let codeWalkThrew = false;
   let code: string[] = [];
   let resourceModules: string[] = [];
+  let seatBlocks: string[] = [];
   try {
     const discovered = await discoverWorkforceCode(root);
     code = discovered.files.map((file) => `${file.slot}:${file.name}`);
     resourceModules = discovered.resourceModules.map((module) => module.ref);
+    seatBlocks = discovered.seatBlocks.map((entry) => `${entry.seat}:${entry.name}`);
   } catch (err) {
     // The codegen walk refuses loudly, by throwing once with every problem
     // named. That is the policy working — but every predicate here asks
@@ -720,6 +753,7 @@ async function readEverything(root: string): Promise<Readout> {
     channels: channels.channels.map((channel) => channel.id),
     teams: workforce.teams.map((team) => team.id),
     resourceModules,
+    seatBlocks,
     code,
     teamSeatSkills: seat.skills.map((skill) => skill.name),
     workerAddressedRefs: resources.documents.flatMap((document) => {

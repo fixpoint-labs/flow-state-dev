@@ -1,15 +1,16 @@
 /**
- * The admission contract: the three settings every hireable worker kind
+ * The admission contract: the four settings every hireable worker kind
  * accepts.
  *
  * Declared and imposed are different sets, and this file is where they are
- * easiest to confuse. The contract DECLARES three keys, and the seat factory
+ * easiest to confuse. The contract DECLARES four keys, and the seat factory
  * IMPOSES each on its own condition: `instructions` when the record has a
- * body, `seatSkills` on every record, and `teamInstructions` when the record's
- * team wrote a `TEAM.md`. Only `seatSkills` is unconditional — present and
- * empty is a real answer for a seat's skills, and there is no equivalent
- * answer for a team layer, so a seat whose team wrote none carries no such key
- * at all rather than an empty string.
+ * body, `teamInstructions` when the record's team wrote a `TEAM.md`, and
+ * `seatSkills` and `seatTools` on every record. Those last two are the
+ * unconditional ones — present and empty is a real answer for a seat's skills
+ * and for what its own folders register, and there is no equivalent answer for
+ * a team layer, so a seat whose team wrote none carries no such key at all
+ * rather than an empty string.
  *
  * A worker kind is an ordinary flow. What makes it *hireable* is that its
  * `configSchema` accepts what the factory imposes, and composing this contract
@@ -26,7 +27,7 @@
  * composed kind gets it for free, and a hand-rolled one refuses — loudly, at
  * boot, naming the key — until its author adds it too.
  *
- * **Three keys, and that is the whole bag.** A kind's own settings sit at the
+ * **Four keys, and that is the whole bag.** A kind's own settings sit at the
  * TOP LEVEL beside them, where the framework closes the set and an undeclared
  * key refuses by name. There is no nested bag for a kind's own settings: known
  * keys belong in the closed set, and genuinely open-ended data gets one
@@ -40,7 +41,13 @@
  */
 
 import { z } from "zod";
-import { INSTRUCTIONS_KEY, SEAT_SKILLS_KEY, TEAM_INSTRUCTIONS_KEY } from "./manifest";
+import type { BlockDefinition } from "@flow-state-dev/core";
+import {
+  INSTRUCTIONS_KEY,
+  SEAT_SKILLS_KEY,
+  SEAT_TOOLS_KEY,
+  TEAM_INSTRUCTIONS_KEY
+} from "./manifest";
 
 /**
  * One skill as it rides into the bag.
@@ -128,9 +135,44 @@ export function workerConfigSchema() {
      * that is sometimes authored and sometimes imposed is the collision this
      * package refuses rather than resolves.
      */
-    [SEAT_SKILLS_KEY]: z.array(seatSkillSchema).default([])
+    [SEAT_SKILLS_KEY]: z.array(seatSkillSchema).default([]),
+
+    /**
+     * The blocks this seat's `tools:` resolved to **from its own levels** — its
+     * own `blocks/` folder, then its team's — already resolved, in the order
+     * the file named them.
+     *
+     * **Imposed by the factory on every record, never authored**, and present
+     * even when empty, exactly as {@link SEAT_SKILLS_KEY} is. A worker file
+     * that declares `seatTools:` is refused by name.
+     *
+     * The one contract key that carries live blocks rather than strings. It is
+     * NOT the seat's registry: a folder REGISTERS a name, and the file's
+     * `tools:` is what grants its use, so what rides here is the intersection
+     * — the subset of the registry the seat actually declared. Names that fell
+     * through to the app's catalog stay in the kind's own `tools` setting.
+     */
+    [SEAT_TOOLS_KEY]: z.array(seatToolSchema).default([])
   });
 }
+
+/**
+ * One already-resolved block as it rides into the bag.
+ *
+ * Structural and shallow, like {@link seatSkillSchema} and for its reason: the
+ * value is a live `BlockDefinition` the hire step took off a map the app
+ * imported, so this checks the shape arrived intact rather than re-deriving
+ * what a block is. Anything stricter would be a second definition of a block
+ * beside `@flow-state-dev/core`'s, and anything that TRANSFORMED would change
+ * the bag — which `defineFlow` refuses for a block's `flowConfigSchema`.
+ */
+export const seatToolSchema = z.custom<BlockDefinition<any, any>>(
+  (value) =>
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { name?: unknown }).name === "string",
+  { message: "must be a block definition" }
+);
 
 /**
  * What a hireable kind receives, as a type — the parsed shape of

@@ -29,8 +29,10 @@ import {
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
   REFUSED_SEAT_SKILLS_KEY_MESSAGE,
+  REFUSED_SEAT_TOOLS_KEY_MESSAGE,
   REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
   SEAT_SKILLS_KEY,
+  SEAT_TOOLS_KEY,
   TEAM_INSTRUCTIONS_KEY,
   type WorkerManifest,
 } from "../manifest";
@@ -265,9 +267,19 @@ function parseWorkerMd(
  * nobody ever read, and reading a file that still uses one as if it simply held
  * an unknown key is how a worker boots with no instructions and no complaint.
  *
- * Checked in the order the two keys were added, so a file using both names the
- * first of them — the same sentence a reader saw before this became its own
+ * Checked in the order the keys were added, so a file using two of them names
+ * the first — the same sentence a reader saw before this became its own
  * condition.
+ *
+ * **Hand-maintained, and knowingly so.** This is not `hire.ts`'s
+ * `CONTRACT_KEYS`, which is now read off `workerConfigSchema()` precisely
+ * because a second copy of that membership drifts. The set here is a different
+ * set — the contract's keys MINUS `instructions`, which a file may legitimately
+ * declare, PLUS `persona`, which the contract does not carry at all — and each
+ * member answers with its own wording. A shared list would have to unify those
+ * wordings to exist, which would cost more than it saves. So a fifth imposed
+ * key needs a fifth condition here, deliberately, and the test beside each one
+ * is what notices when it is missing.
  */
 function refusedDeclaration(
   declared: Record<string, unknown>,
@@ -287,6 +299,14 @@ function refusedDeclaration(
   // of them open with nothing said.
   if (Object.hasOwn(declared, TEAM_INSTRUCTIONS_KEY)) {
     return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE}`);
+  }
+
+  // The fourth. A file that reaches a caller carrying this key is a file whose
+  // seat would run holding tools no folder of its registers — and a key refused
+  // at the hire but accepted here is the same file getting two answers
+  // depending on which door read it.
+  if (Object.hasOwn(declared, SEAT_TOOLS_KEY)) {
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_TOOLS_KEY_MESSAGE}`);
   }
 
   return undefined;

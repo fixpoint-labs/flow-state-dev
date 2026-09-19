@@ -33,4 +33,12 @@ export {
 
 export { type DiscoveredResourceModule } from "./discover-resource-modules";
 
+export {
+  BLOCKS_SLOT,
+  SEAT_BLOCK_SLOT_PATTERNS,
+  discoverSeatBlocks,
+  type DiscoveredSeatBlock,
+  type SeatBlockDiscovery,
+} from "./discover-seat-blocks";
+
 export { GENERATED_FILE_NAME, renderWorkforceCode } from "./render";

@@ -360,6 +360,30 @@ Body.
       expect(message).toContain("body of its TEAM.md");
     });
 
+    // The fourth. Refused here and not only at the hire, because this door is
+    // the one an author's file meets first — and because a key that is refused
+    // at one door and accepted at the other is how the same file gets two
+    // answers depending on who read it.
+    it("refuses a worker file that declares the seat-tools key", async () => {
+      const { workers, errors } = await readWorkforceDirectory(
+        tree({
+          "teams/engineering/workers/intake/WORKER.md":
+            "---\ndescription: The front door.\nseatTools: []\n---\nBody.\n",
+        }),
+      );
+
+      expect(workers).toEqual([]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/engineering/workers/intake");
+
+      const { message } = errors[0]!.error;
+      expect(message).toContain("WORKER.md");
+      expect(message).toContain("intake/");
+      expect(message).toContain("seatTools");
+      expect(message).toContain("not a setting a worker declares");
+      expect(message).toContain("tools:");
+    });
+
     it("reports a worker segment breaking the name rules, with the rule in the message", async () => {
       const { workers, errors } = await readWorkforceDirectory(
         tree({ ...HEALTHY, "teams/engineering/workers/Platform_Eng/WORKER.md": LEAD_MD }),

@@ -20,7 +20,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
-import { kinds, resourceModules } from "./workforce.gen";
+import { blocks, kinds, resourceModules, seatBlocks } from "./workforce.gen";
 
 /**
  * What a `.ts` file in a `resources/` folder turned into.
@@ -39,8 +39,13 @@ const { capabilities } = splitResourceModules(resourceModules);
  * is hired into. The app decides WHICH capabilities the roster may reach; each
  * seat's own file decides which of their presets it wants, and a seat that
  * names none carries the kind's defaults.
+ *
+ * `catalog: blocks` is the whole of the custom-tool recipe on the app's side:
+ * the scanned `workforce/blocks/` map IS a tool catalog, so a seat naming one
+ * of its keys in `tools:` can call it. The app decides what the catalog holds;
+ * each seat decides which of it to use, and a key nobody names reaches nobody.
  */
-const agent = defineAgentWorkerFlow({ uses: capabilities });
+const agent = defineAgentWorkerFlow({ uses: capabilities, catalog: blocks });
 
 /** This directory — the workforce root, read at run time the way Markdown always is. */
 export const workforceRoot = dirname(fileURLToPath(import.meta.url));
@@ -76,7 +81,10 @@ export interface HiredWorkforce {
 export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
   const { workers, errors, skillErrors, teamErrors } = await readWorkforce(workforceRoot);
   return {
-    seats: hireWorkforce(workers, { kinds: { ...kinds, agent } }),
+    // `seatBlocks` registers what each worker's own folder holds, for that
+    // worker alone. It grants nothing: a seat still names the block in its
+    // `tools:` before the model can call it.
+    seats: hireWorkforce(workers, { kinds: { ...kinds, agent }, seatBlocks }),
     errors: [
       ...errors.map((e) => e.path),
       ...skillErrors.flatMap((seat) => seat.errors.map((e) => e.path)),

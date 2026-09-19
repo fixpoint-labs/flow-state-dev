@@ -37,6 +37,11 @@ import {
   discoverResourceModules,
   type DiscoveredResourceModule,
 } from "./discover-resource-modules";
+import {
+  SEAT_BLOCK_SLOT_PATTERNS,
+  discoverSeatBlocks,
+  type DiscoveredSeatBlock,
+} from "./discover-seat-blocks";
 
 /** Which locked folder a discovered file came from. */
 export type CodeSlotId = "worker" | "channel" | "block";
@@ -98,7 +103,15 @@ export interface DiscoveryResult {
   files: DiscoveredFile[];
   /** Every module found in a `resources/` folder, ordered by path. Door B's half. */
   resourceModules: DiscoveredResourceModule[];
-  /** Where it looked — the locked folders, then the `resources/` slot patterns, so the command can say. */
+  /**
+   * Every block a team-tree `blocks/` folder registers, per seat, ordered by
+   * path then seat. Door C's half.
+   *
+   * A REGISTRATION, not a grant: a seat's `tools:` is still what decides which
+   * of these it may call.
+   */
+  seatBlocks: DiscoveredSeatBlock[];
+  /** Where it looked — the locked folders, then the `resources/` and `blocks/` slot patterns, so the command can say. */
   searched: string[];
 }
 
@@ -282,10 +295,29 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
   problems.push(...doorB.problems);
   searched.push(...RESOURCE_SLOT_PATTERNS);
 
-  if (problems.length > 0) throw new WorkforceCodeError(problems);
+  // Door C, over the same root and before anything is thrown, for Door B's
+  // reason: an author holding a bad block file AND a stray `tools/` folder sees
+  // both in one run.
+  const doorC = await discoverSeatBlocks(root);
+  problems.push(...doorC.problems);
+  searched.push(...SEAT_BLOCK_SLOT_PATTERNS);
+
+  // Two doors descend into the same worker folders, so a STRUCTURAL refusal —
+  // a symlinked or unreadable seat — is met twice and worded identically by
+  // both. One refusal, reported once: an author fixing a tree counts the list,
+  // and the same sentence twice reads as two problems. Only exact duplicates
+  // collapse, and a refusal names its own path, so nothing distinct can hide
+  // behind another.
+  const reported = [...new Set(problems)];
+  if (reported.length > 0) throw new WorkforceCodeError(reported);
 
   // Ordered by path rather than by the order a directory listed, so a tree that
   // has not changed renders byte-identically on any machine.
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { files, resourceModules: doorB.modules, searched };
+  return {
+    files,
+    resourceModules: doorB.modules,
+    seatBlocks: doorC.seatBlocks,
+    searched,
+  };
 }
