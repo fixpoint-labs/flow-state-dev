@@ -41,6 +41,7 @@ import {
   SEAT_SKILLS_KEY,
   SEAT_TOOLS_KEY,
   TEAM_INSTRUCTIONS_KEY,
+  colocatedRequiresOrgMessage,
   colocatedResourceMessage,
   oneNameMessage,
   type WorkerManifest
@@ -252,6 +253,12 @@ function seatBlockProblems(registry: Record<string, BlockDefinition<any, any>>):
     const declared = (block as { declaredResources?: Record<string, unknown> }).declaredResources;
     const accessors = declared === undefined ? [] : Object.keys(declared);
     if (accessors.length > 0) problems.push(colocatedResourceMessage(key, accessors));
+    // The second axis. `requiresOrg` is aggregated onto a composite block from
+    // its children, so this catches a sequencer whose leaf asked for it as well
+    // as a handler that asked directly.
+    if ((block as { requiresOrg?: boolean }).requiresOrg === true) {
+      problems.push(colocatedRequiresOrgMessage(key));
+    }
   }
   return problems;
 }
@@ -323,8 +330,6 @@ export function hireWorkforce(
   const problems: string[] = [];
   const seen = new Set<string>();
   const seatBlocks = options.seatBlocks ?? {};
-  /** Every id on the roster, so a `seatBlocks` entry addressed to nobody can be named. */
-  const rosterIds = new Set(ordered.map((manifest) => manifest.id));
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
@@ -506,20 +511,19 @@ export function hireWorkforce(
     }
   }
 
-  // A `seatBlocks` entry addressed to a worker the roster does not carry.
-  // Reported rather than passed over: the generated map cannot make this
-  // mistake, but a hand-built one and a stale generated file both can, and the
-  // symptom otherwise is a seat that cannot reach a block sitting in its folder
-  // with nothing said anywhere. Named after the per-worker problems so the
-  // roster's own failures read first.
-  for (const id of Object.keys(seatBlocks).sort()) {
-    if (rosterIds.has(id)) continue;
-    problems.push(
-      `\`seatBlocks\` carries an entry for "${id}", which this roster has no worker for. ` +
-        `Re-run \`fsdev gen\`, or drop the entry: a seat's own blocks are registered for one ` +
-        `worker id, and an entry nothing reads is a block nobody can call.`
-    );
-  }
+  // **An entry addressed to a worker this call is not hiring is not a problem.**
+  // A short roster is a supported mode — `readWorkforce` reports a folder that
+  // produced no worker and loads the rest, and a caller may hire what loaded —
+  // while `seatBlocks` is generated from the WHOLE tree. So the two sets
+  // legitimately differ, and refusing the difference broke the documented mode:
+  // one skipped worker turned every other seat's hire into a refusal, which is
+  // how `refused 2 of 1 worker` became a sentence this function could print.
+  //
+  // Nothing is lost by staying quiet. The generated map cannot address a worker
+  // the tree does not hold, because one walk produces both; a hand-built map is
+  // the caller's business in the same way a hand-built roster is. What is
+  // validated is every registry belonging to a manifest actually being hired,
+  // which happens in the loop above.
 
   if (problems.length > 0) {
     throw new Error(

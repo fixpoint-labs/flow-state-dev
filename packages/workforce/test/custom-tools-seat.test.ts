@@ -316,6 +316,34 @@ describe("what a seat's own map is refused for", () => {
     expect(outcome).toBe("handle worked");
   });
 
+  // The same axis as the resource refusal, and refused for the same reason: a
+  // seat's folder is one seat's, and `requiresOrg` is the KIND's — raising it
+  // from inside one worker's folder changes the admission rule for every
+  // sibling seat of that kind. The supported route is the one BR-16 already
+  // names for stores: the kind declares it, and the colocated block reads it.
+  it("refuses a registered block that declares `requireOrg`, naming the fix", () => {
+    const needsOrg = handler({
+      name: "needs-org",
+      description: "Wants org context.",
+      requireOrg: true,
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+    }) as BlockDefinition;
+
+    // The premise the refusal rests on.
+    expect((needsOrg as { requiresOrg?: boolean }).requiresOrg).toBe(true);
+
+    const message = refusalOf([record({ id: "support.org", body: "Org." })], {
+      kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      seatBlocks: { "support.org": { "needs-org": needsOrg } },
+    });
+
+    expect(message).toContain('worker "support.org"');
+    expect(message).toContain("needs-org");
+    expect(message).toContain("requireOrg");
+  });
+
   it("refuses a worker file that writes `seatTools:` itself", () => {
     const message = refusalOf(
       [record({ id: "support.sneaky", declared: { seatTools: [] }, body: "Sneaky." })],
@@ -331,15 +359,56 @@ describe("what a seat's own map is refused for", () => {
     expect(seat!.config).toMatchObject({ seatTools: [] });
   });
 
-  // A map entry for a worker who is not on the roster is a wiring mistake the
-  // generated map cannot make on its own, but a hand-built one can. It must not
-  // silently do nothing.
-  it("refuses a `seatBlocks` entry naming a worker the roster does not carry", () => {
+  // **A short roster is a supported mode**, and the map is generated from the
+  // whole tree. `readWorkforce` reports a folder that produced no worker and
+  // loads the rest, and the README permits hiring what loaded — so a
+  // `seatBlocks` entry for a worker absent from THIS call is the ordinary shape
+  // of that mode, not a mistake. The registry is validated for the manifests
+  // actually being hired; entries addressed to anyone else are not this call's
+  // business.
+  it("hires a subset without objecting to map entries for the workers left out", () => {
+    const [seat] = hireWorkforce(
+      [record({ id: "support.clerk", declared: { tools: ["check-inventory"] }, body: "Clerk." })],
+      {
+        kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        seatBlocks: {
+          "support.clerk": { "check-inventory": countingBlock("check-inventory") },
+          // Not on this roster — a sibling that failed to load, or a
+          // deliberately short hire.
+          "support.absent": { "check-inventory": countingBlock("check-inventory") },
+        },
+      },
+    );
+
+    expect(seat!.id).toBe("support.clerk");
+    expect((seat!.config as { seatTools: BlockDefinition[] }).seatTools).toHaveLength(1);
+  });
+
+  // The other half: a bad registry is still refused for a worker that IS being
+  // hired, so ignoring the rest does not turn into ignoring everything.
+  it("still refuses a bad registry for a worker on this roster", () => {
+    const ledger = defineResource({
+      scope: "session",
+      stateSchema: z.object({ entries: z.number() }),
+    });
+    const needsAStore = handler({
+      name: "read-ledger",
+      description: "Reads the ledger.",
+      uses: [defineCapability({ name: "ledger-cap", resources: { ledger } })],
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+    }) as BlockDefinition;
+
     const message = refusalOf([record({ id: "support.clerk", body: "Clerk." })], {
       kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
-      seatBlocks: { "support.ghost": { "check-inventory": countingBlock("check-inventory") } },
+      seatBlocks: {
+        "support.clerk": { "read-ledger": needsAStore },
+        "support.absent": { "read-ledger": needsAStore },
+      },
     });
-    expect(message).toContain("support.ghost");
+    expect(message).toContain('worker "support.clerk"');
+    expect(message).not.toContain("support.absent");
   });
 });
 

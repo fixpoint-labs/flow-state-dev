@@ -63,7 +63,7 @@ at boot:
 
 | | Keys | Whose |
 |---|---|---|
-| **The admission contract** | `instructions?`, `teamInstructions?`, `seatSkills` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
+| **The admission contract** | `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
 | **This kind's own** | `model`, `tools`, `skills` (the switches) | The default kind's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. |
 
 It declares **no memory switch** — per C5 memory is composed into a kind at definition time, not
@@ -89,10 +89,11 @@ is not worth the second authority it would create. That replaces a branch whose 
 whose folders declared skills used to mint, run, and hold none, with nothing said anywhere.
 
 **Imposed and never-authored are two different properties, and the contract's keys do not line up
-on them.** `instructions` and `seatSkills` are what hire puts in the bag — the first when the body
-is non-empty, the second on every record. `seatSkills` and `teamInstructions` are the ones no file
-may author, refused by name at the worker loader and at the hire, from the shared constants in
-`manifest.ts` that every door references rather than re-spelling. Only `seatSkills` is both.
+on them.** `instructions`, `seatSkills` and `seatTools` are what hire puts in the bag — the first
+when the body is non-empty, the other two on every record. `seatSkills`, `seatTools` and
+`teamInstructions` are the ones no file may author, refused by name at the worker loader and at the
+hire, from the shared constants in `manifest.ts` that every door references rather than
+re-spelling. `seatSkills` and `seatTools` are both.
 
 `teamInstructions` is a declared door with nothing coming through it until the team-level file
 lands; the point of declaring it here is that a kind composes the contract once and does not change

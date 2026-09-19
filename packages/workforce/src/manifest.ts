@@ -311,6 +311,25 @@ export const colocatedResourceMessage = (key: string, accessors: string[]): stri
   `it in this worker's \`tools:\`.`;
 
 /**
+ * The one wording for a block that arrives on a seat's own map and declares
+ * that it needs org context.
+ *
+ * The second axis of {@link colocatedResourceMessage}, refused for its reason.
+ * `requiresOrg` is the KIND's — it is what the transport checks before a
+ * request is admitted — so raising it from inside one worker's folder would
+ * change the admission rule for every sibling seat of that kind. The supported
+ * route is the one a store already takes: the kind declares it, and the
+ * colocated block runs inside a flow that has it.
+ */
+export const colocatedRequiresOrgMessage = (key: string): string =>
+  `registers block "${key}" in its own folder, and that block declares ` +
+  `\`requireOrg\`. Whether a seat's flow needs org context is the kind's to ` +
+  `declare — the transport reads it before a request is admitted — so one ` +
+  `worker's folder cannot raise it without raising it for every other seat of ` +
+  `this kind. Declare it on the kind, or move the block to \`workforce/blocks/\` ` +
+  `and name it in this worker's \`tools:\`.`;
+
+/**
  * One file-declared document, as read off disk or hand-built. The resources
  * convention's record, mirroring {@link WorkerManifest}'s three fields.
  *

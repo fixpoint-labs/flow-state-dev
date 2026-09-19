@@ -107,6 +107,49 @@ describe("what a seat's blocks folder registers", () => {
     expect(found.seatBlocks).toEqual([]);
   });
 
+  // The sibling doors both refuse a basename claimed twice, and this one has to
+  // as well — not for symmetry, but because the failure is silent: two files
+  // reduce to one name and one extensionless import path, so `fsdev gen` exits
+  // 0 and emits a module with a duplicate binding and a duplicate map key that
+  // no bundler can compile.
+  //
+  // Asserted on the EMITTED MODULE, not on the exit code, because the exit code
+  // was already 0 when this was broken.
+  it("refuses one basename claimed by two files in a blocks folder", async () => {
+    await write("teams/support/workers/clerk/blocks/foo.ts");
+    await write("teams/support/workers/clerk/blocks/foo.tsx");
+
+    const problems = await problemsOf();
+    const message = problems.join("\n");
+    expect(message).toContain("foo.ts");
+    expect(message).toContain("foo.tsx");
+    expect(message).toContain("one basename");
+  });
+
+  it("refuses the same duplicate at the team level", async () => {
+    await write("teams/support/blocks/foo.ts");
+    await write("teams/support/blocks/foo.tsx");
+    expect((await problemsOf()).join("\n")).toContain("one basename");
+  });
+
+  // Falsifiability: one name per folder must still pass, and the SAME basename
+  // in two different folders is the shadow rule rather than a duplicate.
+  it("does not refuse one basename per folder, or a shadowed name across levels", async () => {
+    await write("teams/support/blocks/foo.ts");
+    await write("teams/support/workers/clerk/blocks/foo.ts");
+    await write("teams/support/workers/clerk/blocks/bar.tsx");
+    expect(await problemsOf()).toEqual([]);
+  });
+
+  it("emits a module with no repeated import binding or map key", async () => {
+    await write("teams/support/workers/clerk/blocks/only.ts");
+    const found = await discoverWorkforceCode(root);
+    const module = renderWorkforceCode(found.files, found.resourceModules, found.seatBlocks);
+
+    const bindings = [...module.matchAll(/^import (\w+) from/gm)].map((m) => m[1]!);
+    expect(new Set(bindings).size).toBe(bindings.length);
+  });
+
   it("refuses a basename that breaks the segment rules", async () => {
     await write("teams/support/workers/clerk/blocks/CheckInventory.ts");
     const problems = await problemsOf();
@@ -165,6 +208,28 @@ describe("the folders that are refused rather than passed over", () => {
       expect(message).toContain(`"${at}"`);
     }
     expect(message).toContain("blocks/");
+  });
+
+
+  // `classify` answers for a symlink separately from a directory, which is
+  // exactly where a refusal hides: the mistaken layout ships in its symlink
+  // form with nothing said. Same lesson as the symlink-containment work earlier
+  // in this convention.
+  it("refuses a symlinked `tools/` folder rather than passing it over", async () => {
+    await write("teams/support/workers/clerk/blocks/real.ts");
+    await fs.symlink(
+      path.join(root, "teams", "support", "workers", "clerk", "blocks"),
+      path.join(root, "teams", "support", "workers", "clerk", "tools"),
+    );
+    const message = (await problemsOf()).join("\n");
+    expect(message).toContain("teams/support/workers/clerk/tools");
+  });
+
+  it("refuses a symlinked `blocks/` folder at a level no seat reads", async () => {
+    await fs.mkdir(path.join(root, "elsewhere"), { recursive: true });
+    await fs.mkdir(path.join(root, "org"), { recursive: true });
+    await fs.symlink(path.join(root, "elsewhere"), path.join(root, "org", "blocks"));
+    expect((await problemsOf()).join("\n")).toContain("org/blocks");
   });
 
   // Falsifiability for the pair above: the supported folders must NOT be

@@ -119,6 +119,8 @@ async function readBlocksSlot(
   if (slot.entries === undefined) return [];
 
   const files: SlotFile[] = [];
+  /** basename → the entry that already claimed it, within THIS folder. */
+  const claimed = new Map<string, string>();
   for (const entryName of [...slot.entries].sort()) {
     if (IGNORED_ENTRIES.has(entryName)) continue;
 
@@ -158,6 +160,24 @@ async function readBlocksSlot(
       continue;
     }
 
+    // `foo.ts` beside `foo.tsx` reduces to ONE name and one extensionless
+    // import path. Left alone the walk reports success and the render emits a
+    // repeated binding and a repeated map key — a module no bundler compiles,
+    // produced by a command that said it worked. The sibling doors refuse the
+    // same collision in the same words; this is not symmetry for its own sake,
+    // it is the silent-success class this convention exists to remove.
+    //
+    // Scoped to the folder, because the SAME basename at two levels is the
+    // shadow rule and is deliberate.
+    const already = claimed.get(name);
+    if (already !== undefined) {
+      problems.push(
+        `"${entryPath}" and "${already}" both declare "${name}" — one basename, one block`,
+      );
+      continue;
+    }
+    claimed.set(name, entryPath);
+
     files.push({ name, path: entryPath, importPath: `./${slotPath}/${name}` });
   }
   return files;
@@ -171,6 +191,13 @@ async function refuseStrayBlocksFolder(
 ): Promise<void> {
   const at = `${parentPath}/${BLOCKS_SLOT}`;
   const found = await classify(path.join(parentDir, BLOCKS_SLOT));
+  // A symlink is classified separately from a directory, so a bare
+  // `!== "directory"` lets the mistaken layout through in its symlink form with
+  // nothing said — which is where a refusal hides.
+  if (found.kind === "symlink") {
+    problems.push(refusedSymlink(`${BLOCKS_SLOT}/ folder`, at).message);
+    return;
+  }
   if (found.kind !== "directory") return;
   problems.push(
     `"${at}" is a ${BLOCKS_SLOT}/ folder at a level no seat reads. A block is registered for ` +
@@ -188,6 +215,12 @@ async function refuseToolsFolder(
 ): Promise<void> {
   const at = parentPath === "" ? REFUSED_SLOT : `${parentPath}/${REFUSED_SLOT}`;
   const found = await classify(path.join(parentDir, REFUSED_SLOT));
+  // Same reason as the stray-`blocks/` check above: a symlinked `tools/` is
+  // still a `tools/` folder an author wrote and still reaches nothing.
+  if (found.kind === "symlink") {
+    problems.push(refusedSymlink(`${REFUSED_SLOT}/ folder`, at).message);
+    return;
+  }
   if (found.kind !== "directory") return;
   problems.push(
     `"${at}" is a ${REFUSED_SLOT}/ folder, which this convention does not read. A tool is an ` +

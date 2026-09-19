@@ -499,6 +499,28 @@ function assertOneNamePerCatalogEntry(catalog: ToolCatalog): void {
  * name the tool. That is the same bill `uses` already presents, and it is why
  * this is safe where collecting a SEAT's declarations would not be.
  */
+/**
+ * Whether any catalog tool declared that it needs org context.
+ *
+ * The SECOND axis of the gap {@link catalogDeclaredResources} closes, and it
+ * has to be closed the same way: `defineFlow` collects `requiresOrg` from the
+ * flow's action blocks, and nothing a per-turn `tools:` resolver returns was
+ * ever one. Left alone, a block that DECLARED it needs an org runs without one,
+ * and the transport that would have refused the request is told the flow has no
+ * such requirement — a declaration that silently does not bind, which is the
+ * defect class this whole seam exists to remove.
+ *
+ * Raised on the kind, for every seat of it, for the reason the resources are:
+ * the catalog is already kind-wide, so this installs no requirement the kind
+ * was not already scoped for.
+ */
+function catalogRequiresOrg(catalog: ToolCatalog): boolean {
+  for (const tool of Object.values(catalog)) {
+    if ((tool as { requiresOrg?: boolean }).requiresOrg === true) return true;
+  }
+  return false;
+}
+
 function catalogDeclaredResources(catalog: ToolCatalog): DeclaredResources | undefined {
   const merged: DeclaredResources = {};
   /** Accessor key → the catalog key that claimed it, so a clash can name both. */
@@ -554,6 +576,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   // function's note: without this a catalog tool that declares a store is
   // advertised with nothing behind it.
   const catalogResources = catalogDeclaredResources(catalog);
+  const catalogNeedsOrg = catalogRequiresOrg(catalog);
   // Read once, here: it is what a seat's `capabilities:` is validated against
   // at the mint AND what the per-seat entry below resolves through, and two
   // readings of one `uses` array is how the two halves drift apart.
@@ -691,6 +714,10 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       // entirely when the catalog declares nothing, so a kind built without one
       // is byte-for-byte the block it was before this existed.
       ...(catalogResources !== undefined ? { resources: catalogResources } : {}),
+      // The second axis, declared on the same block and for the same reason —
+      // see `catalogRequiresOrg`. Omitted entirely when no catalog tool asks
+      // for it, so a kind built without one is the block it was before.
+      ...(catalogNeedsOrg ? { requireOrg: true as const } : {}),
       // The skills binding stays FIRST and is never displaced: an app's own
       // capabilities compose beside it. That is what the `uses` option is for.
       uses: [binding, ...usesEntries],

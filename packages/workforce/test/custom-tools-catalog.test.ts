@@ -110,6 +110,51 @@ describe("one tool, one name — the app's catalog", () => {
   });
 });
 
+describe("a catalog tool's `requireOrg` binds on the kind", () => {
+  // The SAME hole as the resource gap, along a second axis. A seat reaches its
+  // tools through a per-turn resolver, so a tool block is outside
+  // `defineFlow`'s static walk — and `requiresOrg` is collected by that walk
+  // exactly as `declaredResources` is. Left alone, a block that DECLARED it
+  // needs org context runs without one, and the transport that would have
+  // refused the request is told the flow has no such requirement.
+  //
+  // Asserted on the flow's computed requirement, not on whether a call throws.
+  const needsOrg = handler({
+    name: "needs-org",
+    description: "Wants org context.",
+    requireOrg: true,
+    inputSchema: z.object({}),
+    outputSchema: z.object({ ok: z.boolean() }),
+    execute: () => ({ ok: true }),
+  });
+
+  it("raises the kind's `requiresOrg` when a catalog tool declares it", () => {
+    // The premise, so the check cannot pass for the wrong reason.
+    expect((needsOrg as { requiresOrg?: boolean }).requiresOrg).toBe(true);
+
+    const kind = defineAgentWorkerFlow({ catalog: { "needs-org": needsOrg } }) as unknown as {
+      requiresOrg?: boolean;
+    };
+    expect(kind.requiresOrg).toBe(true);
+  });
+
+  // Falsifiability: a catalog of blocks that need nothing must NOT raise it,
+  // or the check above would pass for any non-empty catalog.
+  it("leaves `requiresOrg` false for a catalog that declares none", () => {
+    const plain = handler({
+      name: "desk-note",
+      description: "Answers a note.",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+    });
+    const kind = defineAgentWorkerFlow({ catalog: { "desk-note": plain } }) as unknown as {
+      requiresOrg?: boolean;
+    };
+    expect(kind.requiresOrg).toBe(false);
+  });
+});
+
 describe("a catalog tool's declared stores are installed on the kind", () => {
   const auditLog = defineResource({
     scope: "session",
