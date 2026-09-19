@@ -1059,6 +1059,130 @@ usable the next time you run.
 It does repair a channel whose id was claimed before it was opened — a post that arrives first
 leaves an empty session there, and re-running binds it.
 
+## The live inventory
+
+The tree tells you what a workforce is meant to be. A `WORKER.md` declares a seat, a `CHANNEL.md`
+declares a channel, and both are read once at boot. Neither answers what is open right now, or which
+channels a given seat is in, and a block cannot walk folders to find out.
+
+The inventory holds those answers as data: three org-scoped resource collections, one row per seat,
+one row per open channel, and one row per seat-in-channel. They are ordinary collections, so a block
+reads them the way it reads any other resource.
+
+**Nothing in the framework writes these rows yet.** Install the collections and your app is their
+only writer.
+
+| Factory | One row per | Fields |
+|---------|-------------|--------|
+| `defineSeatInventoryCollection()` | registered seat, at `inventory/seats/<seatId>` | `id`, `kind` (the worker kind the seat was hired into) |
+| `defineChannelInventoryCollection()` | open channel, at `inventory/channels/<channelId>` | `id`, `kind` (the channel kind that opened it), `members` (seat ids, `[]` when absent), `openedAt` (ISO string, or `null` when absent) |
+| `defineMembershipIndexCollection()` | seat-in-channel, at `inventory/members/<seatId>/<channelId>` | `seatId`, `channelId` |
+
+Each factory takes no options. Install what it returns under any block's `resources` map:
+
+```ts
+import { handler } from "@flow-state-dev/core";
+import {
+  defineChannelInventoryCollection,
+  defineMembershipIndexCollection,
+  defineSeatInventoryCollection,
+  membershipKey,
+} from "@flow-state-dev/workforce";
+import { z } from "zod";
+
+const seats = defineSeatInventoryCollection();
+const channels = defineChannelInventoryCollection();
+const memberships = defineMembershipIndexCollection();
+
+const recordChannelOpened = handler({
+  name: "record-channel-opened",
+  inputSchema: z.object({ channelId: z.string(), members: z.array(z.string()) }),
+  outputSchema: z.object({ memberCount: z.number() }),
+  resources: { seats, channels, memberships },
+  execute: async (input, ctx) => {
+    await ctx.resources.channels.upsert(input.channelId, {
+      id: input.channelId,
+      kind: "channel",
+      members: input.members,
+      openedAt: new Date().toISOString(),
+    });
+
+    for (const seatId of input.members) {
+      await ctx.resources.seats.upsert(seatId, { id: seatId, kind: "agent" });
+      await ctx.resources.memberships.upsert(membershipKey(seatId, input.channelId), {
+        seatId,
+        channelId: input.channelId,
+      });
+    }
+
+    return { memberCount: input.members.length };
+  },
+});
+```
+
+Keys are relative to each collection's own prefix, so `upsert("engineering.lead", row)` on the seat
+inventory lands at `inventory/seats/engineering.lead`. `list()` hands back resource refs, and the row
+itself is on `ref.state`. The membership index takes a two-segment key, which is what `membershipKey`
+builds above; the next section covers it.
+
+A row joins back to the declared record on the id and nothing else. The `id` on a seat row is the
+`id` the `WORKER.md` folder minted, and the `id` on a channel row is the `"<teamId>.<channelName>"`
+that is also the channel's session id.
+
+The rows are org-scoped and shared across flows. Every flow running under the same `orgId` reads the
+same rows, whichever flow wrote them and whichever
+[tenant](https://flow-state.dev/docs/fundamentals/state-and-scopes#multi-tenant-isolation) it runs
+under, and a flow under a different `orgId` reads none of them. That holds whether or not the app
+sets [`isolateOrgState`](https://flow-state.dev/docs/advanced/flow-isolation).
+
+Each row schema is closed, so a key it does not declare is dropped on the way in rather than stored.
+`id` and `kind` are required and the schema rejects a row without them. `members` and `openedAt` are
+optional, and a row without them parses. The schemas ship as `seatInventoryRowSchema`,
+`channelInventoryRowSchema` and `membershipIndexRowSchema` alongside the row types, for checking what
+you are about to write.
+
+### Listing one seat's channels
+
+The channel inventory answers who is in a channel. The membership index answers the reverse: one row
+per membership, keyed seat first, so a seat's channels are something you can list by prefix.
+`membershipKey` builds the key for a single row; `membershipPrefix` builds the prefix for the list.
+
+```ts
+import { membershipPrefix } from "@flow-state-dev/workforce";
+
+const seatChannels = handler({
+  name: "seat-channels",
+  inputSchema: z.object({ seatId: z.string() }),
+  outputSchema: z.object({ channelIds: z.array(z.string()) }),
+  resources: { memberships },
+  execute: async (input, ctx) => {
+    const rows = await ctx.resources.memberships.list(membershipPrefix(input.seatId));
+    return { channelIds: rows.map((row) => row.state.channelId) };
+  },
+});
+```
+
+Both helpers return keys relative to the collection's prefix, which is what `upsert`, `get` and
+`list` take. `membershipKey("engineering.lead", "engineering.standup")` is
+`"engineering.lead/engineering.standup"`, and `membershipPrefix("engineering.lead")` is
+`"engineering.lead/"`. That trailing slash is the reason to use the helper rather than build the
+string yourself: without it, `"engineering.lead"` also matches `"engineering.leadership"`, and one
+seat reads another seat's channels.
+
+**Listing a seat's channels reads every membership row.** `list(membershipPrefix(seatId))` fetches
+every membership row under the org before the prefix narrows it, so the cost grows with the org
+rather than with the seat.
+
+Both helpers throw when an id cannot be one whole path segment, naming the argument at fault:
+
+```ts
+membershipKey("engineering/lead", "engineering.standup");
+// Error: Inventory seatId "engineering/lead" must not contain a path separator …
+
+membershipPrefix("");
+// Error: Inventory seatId must not be empty
+```
+
 ## Exports
 
 | Export | Description |
@@ -1106,6 +1230,13 @@ leaves an empty session there, and re-running binds it.
 | `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
 | `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |
 | `channelSessionStateSchema` / `channelTranscriptLineSchema` | A channel session's state, and one transcript line. |
+| `defineSeatInventoryCollection()` | The seat inventory: one org-scoped row per registered seat, at `inventory/seats/<seatId>`. Takes no options; install what it returns under a block's `resources`. |
+| `defineChannelInventoryCollection()` | The channel inventory: one org-scoped row per open channel, at `inventory/channels/<channelId>`, carrying the channel's `members` and `openedAt`. Takes no options. |
+| `defineMembershipIndexCollection()` | The membership index: one org-scoped row per seat-in-channel, at `inventory/members/<seatId>/<channelId>`, so one seat's channels can be listed by prefix. Takes no options. |
+| `membershipKey(seatId, channelId)` | The membership index key for one row, relative to the collection's prefix. Throws when either id is not one whole path segment. |
+| `membershipPrefix(seatId)` | The prefix that lists one seat's memberships, trailing slash included, relative to the collection's prefix. Refuses the same ids `membershipKey` does. |
+| `SeatInventoryRow` / `ChannelInventoryRow` / `MembershipIndexRow` | One row of each of the three collections. |
+| `seatInventoryRowSchema` / `channelInventoryRowSchema` / `membershipIndexRowSchema` | The Zod schema behind each row type. Closed: an undeclared key is dropped on the way in. |
 
 ## Error Semantics
 
@@ -1142,6 +1273,7 @@ leaves an empty session there, and re-running binds it.
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |
 | `external-dispatcher` | A flow-to-flow post on a host whose dispatcher hands work to an external queue. The public action route is unaffected |
+| Inventory id is not one path segment | `membershipKey` and `membershipPrefix` throw, naming the offending argument: an empty id, one containing `/` or `\`, or `.` and `..` |
 
 ## Scripts
 
