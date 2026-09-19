@@ -8,7 +8,7 @@ which is each issue's own plan. IDs cross-reference [DECISIONS.md](DECISIONS.md)
 
 ## The path
 
-![The path: a ship fence band across the top naming FIX-1435 and FIX-1449 as the two W3 children still non-terminal on a relayed read, with no W4 ship PR merging until every implementation-carrying W3 child is on main, then two W3 input lanes for TEAM.md and the tools fence, both landed on main on September 19, then the five lanes of the set against time. FIX-1408 has a done bar behind the now line at September 19. The three first-cut lanes — runtime inventory, channel boards and package cohesion — carry spec bars that start at the now line, all three specified in parallel from September 19 — channel boards' spec approved, the other two in review. The manager-queue lab lane carries a spec bar at the now line too, marked the proof, adopted, with its build following the board surface. Below a divider two related lanes, catalog manifests and channel-admin, are marked related, not in the set: they consume FIX-1405 and hold no wrap, and catalog manifests waits for FIX-1405's approved spec. The critical path is drawn in the gutter through the boards and the lab only — the inventory sits beside it, not behind it.](figures/path.svg)
+![The path: a ship fence band across the top naming FIX-1435 and FIX-1449 as the two W3 children still non-terminal on a relayed read, with no W4 ship PR merging until every implementation-carrying W3 child is on main, then two W3 input lanes for TEAM.md and the tools fence, both landed on main on September 19, then the five lanes of the set against time. FIX-1408 has a done bar behind the now line at September 19. All four specs are approved, so each remaining lane opens with a short spec-approved bar at the now line. FIX-1405 inventory then shows a merged segment for PR-A (#1920) and an implementing bar for S4 (#1923), still open. FIX-1385 channel boards shows an implementing bar: in implementation, #1922, review round 1 folded. FIX-1394 package cohesion shows an implementing bar reading spec approved, matrix #1921, awaiting ratify, which sits with the owner. FIX-1430, the manager-queue lab, shows its spec bar and then a dashed lane only: the build has not started and runs last, after the boards. Below a divider two related lanes, catalog manifests and channel-admin, are marked related, not in the set: they consume FIX-1405 and hold no wrap, and catalog manifests waits for FIX-1405's approved spec. The critical path is drawn in the gutter through the boards and the lab only — the inventory sits beside it, not behind it.](figures/path.svg)
 
 Nine lanes: two W3 inputs, the **five** children, and — under the divider — the two
 [related issues](SPEC.md#related-not-children) that still consume FIX-1405. Five bars exist:
@@ -39,6 +39,10 @@ the thing being explored — FIX-1394 most of all, whose ship tickets are not in
 
 Status lives in one place: [the set table](SPEC.md#the-set--as-of-2026-09-19). The lanes above are
 the same state as a picture of time.
+
+**And it lives there alone.** Linear has not been writable from any session on this epic, so the
+set table and this path are the record rather than a projection of one — the reasoning, the count
+of queued writes, and what it does to the wrap term are in [ER-16](BUSINESS-RULES.md).
 
 **Both W3 inputs have landed** — FIX-1377 and FIX-1416, merged 2026-09-19
 ([#1911](https://github.com/fixpoint-labs/flow-state-dev/pull/1911),

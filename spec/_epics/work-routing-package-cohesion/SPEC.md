@@ -31,15 +31,23 @@ build, each item named out rather than forgotten.
 
 The live table. Refreshed on the epic PR as issues move; the plan and the figures point here.
 
+**Where the record lives — the branch, not Linear.** `api.linear.app` is unreachable from every
+session that has touched this epic (403 at the egress proxy), so roughly **eight status writes are
+queued and unwritten** and no child's Linear state has moved. Our convention hands the durable copy
+to Linear the moment a spec PR closes ([ER-16](BUSINESS-RULES.md)) — so right now the durable copy
+of all four approved specs is a **retained git branch** (`spec/FIX-1385`, `spec/FIX-1394`,
+`spec/FIX-1405`, `spec/FIX-1430`), and this table is the only current picture of the set. Read the
+tracker as stale until someone re-derives it.
+
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | FIX-1408 | Dispatch / session policy: sub-agent is same-session background, worker assign is a roster seat in a **linked** session, `parentSessionId` at mint, history by opt-in tools | The wire everything else routes over | **Done** · 2026-09-18 · no impl PR ([below](#a-note-on-fix-1408)) |
-| FIX-1394 | Whatever the ratify records: one package format with two attachment modes, or a ruled *don't collapse* ([ER-2](BUSINESS-RULES.md)). POC-first | Half the epic's title. Two overlapping surfaces grow board and tool sugar twice until this settles — **either way**, once the answer is on the record | **In spec** · [#1915](https://github.com/fixpoint-labs/flow-state-dev/pull/1915) · in review |
-| FIX-1405 | Inventory in two layers: a declared roster composed from the existing readers, and the live org resource ChannelFlow updates | The epic's third promise in its own right — *which seats and channels exist*, answered from the tree and from what is open — and what `team.*` addressing calls later ([ER-7](BUSINESS-RULES.md)). It does **not** gate the boards | **In spec** · [#1916](https://github.com/fixpoint-labs/flow-state-dev/pull/1916) · in review |
-| FIX-1385 | A channel holding `0..N` TaskCollections; channel actions and `taskTools` as two doors on one surface. Also the PR-5 name check over its own diff ([ER-19](BUSINESS-RULES.md)) | **The exit gate's surface** — the board in "channel/org board → seat runs" | **Spec approved** · [#1917](https://github.com/fixpoint-labs/flow-state-dev/pull/1917) · 2026-09-19 |
-| FIX-1430 | Manager-queue lab: a coordinator seat owns a channel board, assigns to linked seats, shows queue state as **views** over existing task status | The **proof** of the exit gate — adopted at the objective gate, and the owner of [ER-20](BUSINESS-RULES.md) | **Spec approved** · [#1919](https://github.com/fixpoint-labs/flow-state-dev/pull/1919) · 2026-09-19 · build follows FIX-1385 |
+| FIX-1394 | Whatever the ratify records: one package format with two attachment modes, or a ruled *don't collapse* ([ER-2](BUSINESS-RULES.md)). POC-first | Half the epic's title. Two overlapping surfaces grow board and tool sugar twice until this settles — **either way**, once the answer is on the record | **Ratify · with the owner** · spec approved, [#1915](https://github.com/fixpoint-labs/flow-state-dev/pull/1915) closed unmerged · matrix [#1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921) open, never merges |
+| FIX-1405 | Inventory in two layers: a declared roster composed from the existing readers, and the live org resource ChannelFlow updates | The epic's third promise in its own right — *which seats and channels exist*, answered from the tree and from what is open — and what `team.*` addressing calls later ([ER-7](BUSINESS-RULES.md)). It does **not** gate the boards | **In implementation** · spec approved, [#1916](https://github.com/fixpoint-labs/flow-state-dev/pull/1916) closed unmerged · PR-A [#1920](https://github.com/fixpoint-labs/flow-state-dev/pull/1920) **merged** · S4 [#1923](https://github.com/fixpoint-labs/flow-state-dev/pull/1923) open |
+| FIX-1385 | A channel holding `0..N` TaskCollections; channel actions and `taskTools` as two doors on one surface. Also the PR-5 name check over its own diff ([ER-19](BUSINESS-RULES.md)) | **The exit gate's surface** — the board in "channel/org board → seat runs" | **In implementation** · spec approved, [#1917](https://github.com/fixpoint-labs/flow-state-dev/pull/1917) closed unmerged · [#1922](https://github.com/fixpoint-labs/flow-state-dev/pull/1922) open, review round 1 folded |
+| FIX-1430 | Manager-queue lab: a coordinator seat owns a channel board, assigns to linked seats, shows queue state as **views** over existing task status | The **proof** of the exit gate — adopted at the objective gate, and the owner of [ER-20](BUSINESS-RULES.md) | **Spec approved** · [#1919](https://github.com/fixpoint-labs/flow-state-dev/pull/1919) closed unmerged · build **not started** — runs last, after FIX-1385 |
 
-1 done · 2 specs approved · 2 in spec review.
+**All four specs are approved.** 1 done · 2 in implementation · 1 awaiting ratify · 1 not started.
 
 **Five, settled at the objective gate** (2026-09-19). The epic body named four; three more were
 parented afterwards. The gate kept the four and adopted FIX-1430 as the proof
