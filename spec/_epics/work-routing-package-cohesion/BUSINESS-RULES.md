@@ -16,7 +16,7 @@ are stable ids, not an order. ER-1 to ER-5 and ER-19 are the rows of the ownersh
 | # | Rule | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | Work for a team lives as a row on a **channel or org board** — `0..N` TaskCollections on a channel — and a seat claims it or is assigned it. Channel actions and `taskTools` are **two doors on one mutation surface** | FIX-1385 | FIX-1385's spec · the proof |
-| ER-2 | **A seat's package format is whatever FIX-1394's ratify records**, and no child may pre-name what is still open. **The authorship half is still open and is the owner's** ([corrected 2026-09-19](DECISIONS.md#authorship-correction) — this row previously recorded the collapse as answered; it is not, and *don't collapse* is still live). **Recorded as a constraint on whatever lands, not a choice:** the format **may not be disk-only** — packages an LLM writes are stored as a **resource**, never saved to disk. **Documents settled 2026-09-19 — all org-scoped for now:** a seat's document is a resource under that seat on the org, and v1 carries no per-seat document slot. Per-resource configurability is deferred to **resource templates** ("used to define the resource, but isn't the resource itself"), which do not exist yet — so a child that builds one now is building against nothing. **The documents half is closed; the authorship half is not** — so no ship ticket may be cut (ER-8) and no child may name a package shape | FIX-1394, at the ratify | FIX-1394's POC matrix · the proof, which may not invent a shape outside the recorded one · every ship ticket's review, on the not-disk-only and org-scoped halves |
+| ER-2 | **A seat's package format is whatever FIX-1394's ratify records**, and no child may pre-name what is still open. **Recorded 2026-09-19 — the collapse is the answer:** one format, **authored in Markdown**, scoped to **instructions and tools**, two attachment modes — seat **always-on**, library **opt-in**. *Don't collapse* is no longer a live result. **The format may not be disk-only:** the owner's direction is that packages will eventually be LLM-authored and stored as a **resource**, never saved to disk — binding on the design, though v1 ships the file. **Documents settled 2026-09-19 — all org-scoped for now:** a seat's document is a resource under that seat on the org, and v1 carries no per-seat document slot. Per-resource configurability is deferred to **resource templates** ("used to define the resource, but isn't the resource itself"), which do not exist yet — so a child that builds one now is building against nothing. **Nothing in ER-2 is open any more**, and the ratify is unblocked | FIX-1394, at the ratify | FIX-1394's POC matrix · the proof, which may not invent a shape outside the recorded one · every ship ticket's review, on the not-disk-only and org-scoped halves |
 | ER-3 | Inventory is **two layers**: a **declared roster** composed at read time from the existing readers, and the **live org resource** ChannelFlow updates. The live layer answers membership, author check, fan-out and DM find-or-create **at inventory level** — who exists and is open. It **does not own or mirror a channel's session-local `members`, nor its post-refusal fence**; that stays ChannelFlow-on-channel. The declared layer answers what the tree says exists, and never substitutes for the live one | FIX-1405 | FIX-1405's two prove-pressure callers — the **devforce and pentest labs**, both off their private copies · FIX-817's and FIX-1415's spec review, from outside the set. **Not FIX-1385**, which reads through the roster only if it has landed |
 | ER-4 | Dispatch always passes `parentSessionId`; the child binds its parent **for life at mint**. Parent history reaches a child only by **opt-in tools**; the default payload is the brief — `goal` / `constraints` / `acceptance` / `links`. **Linked is not nested** | FIX-1408 (D4) — **shipped as a decision**, so the first child over the wire is where it first gets tested | Every child's spec review. **First read on the wire, 2026-09-19:** the parent a child binds is the **draining seat's** session, not the filer's ([the corrected mechanisms](DECISIONS.md#refuted-mechanisms)) |
 | ER-5 | A board `assignee` is a **board-worker key**, not a Workforce seat; the two map by composition. `assignee` stays optional, and a registry board's "must be assigned" is discipline, not schema | FIX-1385 | FIX-1385's spec · FIX-1430's wiring |
@@ -51,12 +51,27 @@ loaders, framework code W4 children read. FIX-1449 is Atlas HTML staleness and c
 `packages/workforce` with changesets. **The owner merged the last of them himself**, on 2026-09-19.
 That settles #1928; it is not a change to this rule, and he has said nothing about one.
 
-**What is still fenced.** **FIX-1394's ship tickets**, which ER-8 holds until the ratify's
-authorship fork lands, and ER-14 would fence in any case; **FIX-1381's eventual implementation**, which edits `packages/workforce` and so will be a
-ship PR when it exists; **[FIX-1451](SPEC.md#the-seventh-child)'s fix, if it ships a package** — the
-changeset call on that bug has not been made, so it is fenced conditionally, not certainly; and **the
-[wrap term](PLAN.md#wrap)**, which cannot complete while a W4 ship PR is parked. The fence's bite
-therefore **grew** with the set rather than shrinking as the merges landed.
+**What is still fenced.** **FIX-1394's ship tickets**, now reachable since the ratify unblocked
+(ER-8); **FIX-1381's eventual implementation**, which edits `packages/workforce` and so will be a
+ship PR when it exists; and **the
+[wrap term](PLAN.md#wrap)**, which cannot complete while a W4 ship PR is parked.
+
+**[FIX-1451](SPEC.md#the-seventh-child)'s fix resolved out of the conditional, and it is the first
+real test of [the operating default](DECISIONS.md#fence-default).** The changeset call was made:
+[#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936) carries one
+(`@flow-state-dev/orchestration`, patch), and **it stays** — the fix changes prompt text a
+consumer's generator receives and adds a public export, so dropping it to escape the fence would be
+gaming the rule. **On ER-14 as written it is fenced. On the default — per-PR file overlap — it is
+clear:** FIX-1435's scope is the workforce **resources loader** (`walkResourceSlots`) plus a
+TypeScript-extension dedupe in Door B's two codegen files, and its Out excludes widening the walk;
+#1936 touches `packages/orchestration/src/skills/*`, a `packages/core` doc comment, `apps/docs`,
+two tests and the changeset, with `packages/workforce` appearing **only** as a test file. **No
+overlap, not one file.** This is the first time the default has decided a PR the owner did not merge
+himself — the rule and the default disagree here, which is what makes it a test of the default
+rather than a restatement. **It narrows nothing:** [the re-gate](DECISIONS.md#er-14-re-gate) is
+still pending and unanswered, and if the owner countermands the default this fix goes back behind
+the fence with everything else. **No merge is authorised by it** — the epic has no objection to
+#1936 merging when it is otherwise ready; the merge is the owner's.
 
 **How the epic behaves meanwhile.** ER-14 derives from [D2](DECISIONS.md#d2), which the owner
 ratified, so the epic cannot narrow the rule — and it has not. What it has adopted is an
