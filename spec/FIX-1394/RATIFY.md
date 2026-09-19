@@ -13,8 +13,9 @@ against landed code at `d8e4c99`, the whole comparison under
 
 **This is not designing a format. It is adding an authoring surface to a package mechanism
 that already ships.** A worker can already opt into a named bundle of instructions and tools,
-and its own `tools:` still decides what it may call. What a file format adds is that a team
-could write one in Markdown instead of an engineer writing it in TypeScript.
+and its own `tools:` still decides what it may call. What a file format adds is that someone
+could write one in Markdown instead of an engineer writing it in TypeScript — eventually anyone,
+with an LLM writing it for them, which is the owner's ruling and the reason to build it.
 
 **The one part a package cannot carry is a document, and it cannot for anybody.** There is no
 per-seat document channel in the framework at all — every candidate that passed the document probe
@@ -26,10 +27,11 @@ Two things follow, and they outrank the choice of format:
 [the document finding](#the-finding-that-outranks-the-matrix) and
 [a correction to BR-6 on the approved spec](#correction-to-br-6-approved-spec).
 
-**The documents fork is now decided by the owner** — org-scoped, out of the format in v1, with
-per-seat reach routed to FIX-1381:
-[Decided · documents are org-scoped, and out of v1](#decided-documents). **One fork is left**,
-and it is the one that decides the issue: [who writes a package](#need-your-sign-off).
+**Both forks are now decided by the owner, and nothing on this page is waiting on anybody.**
+Documents are org-scoped and out of the format, with per-seat reach routed to FIX-1381
+([the decision](#decided-documents)). The format is approved and **C is ratified**, with the
+authorship answer carrying a constraint that shapes the build
+([the decision](#decided-authorship)).
 
 ## The matrix
 
@@ -203,10 +205,12 @@ the holder does and differs in one line, the `tools:` grant; the probe asserts i
 holding the package *before* it reads the fence, so the cell cannot go green vacuously. The
 verdicts did not move here either.
 
-## Recommended: **C**, scoped to instructions and tools
+## Ratified: **C**, scoped to instructions and tools
 
 One new file, `PACKAGE.md`, with its own frontmatter, and its `blocks/` beside it. **Documents
-out** — settled by the owner, not deferred ([the decision](#decided-documents)).
+out** — settled by the owner, not deferred ([the decision](#decided-documents)). The owner has
+approved building it ([the decision](#decided-authorship)); what follows is the reasoning that was
+put to him, kept as written.
 
 **Why C over B.** They can do the same things, so the tiebreak is what an author writes wrong.
 B's package file is a `WORKER.md` sitting somewhere that is not `teams/<id>/workers/<name>/` —
@@ -250,15 +254,84 @@ tool list."* So the reader compiles instructions into the preset and the tool in
 seat's block registry — not into the app's catalog, which is app-wide and would make a package
 attached to one seat nameable by every seat of the kind.
 
-So **C is an authoring surface, not a capability.** What it buys is that a team can write a
+So **C is an authoring surface, not a capability.** What it buys is that someone can write a
 package in Markdown instead of an engineer writing a capability in TypeScript. That is a real
-thing to buy. It is a much smaller thing than "one package format" sounds like, and it is the
-fork below.
+thing to buy, and it is a much smaller thing than "one package format" sounds like. Who that
+someone is was the second fork, and it is decided directly below: eventually anyone, with an LLM
+writing it for them.
 
-## Need your sign-off
+<a name="decided-authorship"></a>
+## Decided · build it, and who writes one
 
-**One fork, and it decides the issue.** The documents question that stood here is
-[decided above](#decided-documents) and is no longer an ask.
+The owner answered the authorship fork. In his words:
+
+> We are moving to a place where eventually we will allow anyone to write their own through an LLM
+> creating it for them, but those won't be saved to disk, but as a resource. I think for now (if I
+> understand correctly) your recommendation is fine.
+
+**Build it, as C, scoped to instructions and tools.** The fork asked whether a package would in
+practice be written by a team or only by the app's engineers. The answer is neither option as
+posed: the direction is *anyone*, with an LLM writing the file for them. That is a stronger reason
+to build than the one the recommendation rested on.
+
+### The constraint that comes with the answer
+
+**Eventually those packages are not files.** They are generated at run time and stored as a
+resource. That is not a delivery detail, it is a different lifecycle, and it lands unevenly on the
+two halves of the format:
+
+| Half | On disk today | Arriving as a resource |
+|---|---|---|
+| **Instructions** | Markdown body, compiled into a capability preset | Text is text. A new caller, not a new design |
+| **A tool** | a module in `blocks/`, found by a build-time walk, rendered into a typed map the app typechecks | **No route today.** A block is registered before the app runs, and model-authored code becoming a registered block is a far larger question than a file format |
+
+**That asymmetry is worth more to whoever builds this than the format is.**
+`packages/workforce/src/codegen/discover-seat-blocks.ts` — the reader that walks `blocks/` — states
+the invariant at its own door: *"nothing scans a folder while an app runs — a bundled deploy has to
+register exactly what a local one does"*, and *"it reads the **tree**, never the modules in it"*. A
+package arriving at run time is in no rendered map and was typechecked against nothing. So the
+resource path is not a second source for one reader: for instructions it is nearly free, and for
+tools it is a lifecycle question nobody has opened.
+
+*Source-shaped claim, named as one.* This is the design invariant written at that reader, not a
+runtime behaviour this page ran. That is the right altitude for a constraint on a design and the
+wrong one for a claim about what a running app does — the distinction BR-6 got wrong.
+
+### The engineering call: a recorded constraint, not a v1 requirement
+
+**Mine to make, and I took the narrow one.** v1 does **not** build for the resource path. What v1
+owes is one line of hygiene: **keep the parse separate from the walk** — whatever turns package
+bytes into a manifest takes the bytes, and finding packages on disk is a separate caller. That is
+not an abstraction layer, it is declining to conflate two jobs, and it is the shape the neighbouring
+reader already has (*"a separate reader over the shared walk primitives ... rather than a parameter
+on either"*). It costs no surface and is better practice regardless.
+
+**Why v1 does not build the resource path**, in order of weight:
+
+1. **It would not buy what it appears to buy.** The expensive half is tools, and a pluggable source
+   does nothing for it. Shipping the seam would make the format *look* ready for a path it cannot
+   carry — the same failure this page already rejected for documents, where a format declaring it
+   carried a document would have delivered prompt text. Same mistake, different noun.
+2. **There is nothing to build against.** No issue, no spec, no timeline; and the repo's standing
+   rule is that we do not add flexibility nobody asked for.
+3. **The owner scoped it himself** — *"for now"*. Eventually is not a deliverable.
+
+**Cost of being wrong.** If the resource path arrives sooner than expected, the instructions half is
+a new caller against an already-separated parse, and the tool half needs its own design either way
+— which is true whether or not a seam is built now. The asymmetry above is recorded precisely so
+that work starts from the real blocker instead of rediscovering it.
+
+### One thing to check, not a fork
+
+His answer carries *"if I understand correctly"*, so it is worth stating plainly what was approved:
+**a package an author writes as Markdown on disk, scoped to instructions and tools, documents out.**
+"Anyone, through an LLM, stored as a resource" is where his own words put the future —
+*"eventually"*, *"won't be saved to disk"* — and it is not in v1. If he read the recommendation as
+already delivering that, then v1 is narrower than he thinks. That is worth one sentence back to
+him; it is not a re-opened gate.
+
+<details>
+<summary><b>The ask as it was put, and the reasoning he approved</b></summary>
 
 ### Who writes a package — a team in Markdown, or an engineer in TypeScript?
 
@@ -293,9 +366,12 @@ quarter of people working around it, and the format stays available. Building it
 wrong ships an eighth convention into a tree that already has seven, and a published file
 format is expensive to take back.
 
+</details>
+
 ## What this means for ER-2
 
-ER-2 previously pre-named the answer. It should now bind what this page records:
+ER-2 previously pre-named the answer. Both forks are now decided, so it binds what this page
+records, unconditionally:
 
 > **ER-2.** The package format is one file, `PACKAGE.md`, with colocated `blocks/`, compiled to
 > a capability preset a seat opts into by name plus that seat's own block registry. It carries
@@ -305,11 +381,16 @@ ER-2 previously pre-named the answer. It should now bind what this page records:
 > what a seat may call — the seat's `tools:` is still the only grant (D1, unchanged and
 > re-verified in every column).
 >
-> **The documents clause is settled** by the owner's ruling
-> ([above](#decided-documents)) and is not conditional. **The rest is conditional on the one
-> remaining fork.** If the answer is that app engineers are the only realistic authors, ER-2
-> binds *don't collapse*: the placement rule is written down, the silent `allowed-tools` failure
-> is fixed, and no format ships.
+> **v1 is authored on disk, and is not designed disk-only.** The eventual path is a package an
+> LLM writes for someone and stores as a **resource** rather than a file. v1 does not build that
+> path; it owes only that the parse is separable from the walk, so the instructions half is later
+> a new caller rather than a rewrite. The tool half has no run-time registration route at all and
+> needs its own design whenever that arrives — recorded here so it is not discovered late
+> ([the constraint](#decided-authorship)).
+>
+> **Both clauses are settled** by the owner's rulings ([documents](#decided-documents),
+> [build it](#decided-authorship)). Nothing in ER-2 is now conditional, and *don't collapse* is
+> no longer a live branch of it.
 
 ## Verification
 
@@ -324,6 +405,7 @@ ER-2 previously pre-named the answer. It should now bind what this page records:
 | VG · the goal | PASS — one authored capability, attached then held and activated, the same working seat both times, sibling seat untouched in both |
 | V5 · documents are org-scoped | PASS — `pnpm exec vitest run packages/workforce/test/resources-from-docs.test.ts`, 21 tests, all pass. Three of them are what the decision rests on: the body arrives *at org scope*; a document declaring `scope:` is refused *naming the ref*; a document resolves only on a request that carries an org |
 | V5 · negative control | PASS — deleting the `scope: "org"` literal from `resources-from-docs.ts` turns **8 of the 21 red** (13 stay green), including all three cells above. Two things the red state showed that reading the source would not have: `defineResource()` **refuses** a document with no scope at all — *"requires an explicit scope of `session`, `user`, or `org` (got undefined)"* — so there is no silent default to land in; and all eleven derived-key refusal cases stay **green**, correctly, because the literal and the `DERIVED_RESOURCE_KEYS` refusal are two independent mechanisms rather than one check counted twice. Source restored, re-verified by hash and by a clean `git status` |
+| V6 · the resource-path constraint | **Source-shaped, and labelled as such — not a run.** The claim that a package's tool half is registered before an app runs is the invariant `packages/workforce/src/codegen/discover-seat-blocks.ts` states at its own door (*"nothing scans a folder while an app runs"*, *"it reads the tree, never the modules in it"*). No probe was built for it: it constrains a design that does not exist yet, and a runtime claim is not what is being made. `published-tree-surface.test.ts` was checked for a guard that pins it behaviourally and does not contain one — so this row is provenance, not evidence, and is written that way on purpose |
 
 **V3 reads differently than the plan wrote it.** The plan says to re-run the four grant-gate
 suites *with the variant's package attached*. Those suites live under `packages/`, and editing
@@ -333,7 +415,10 @@ the four suites are run unmodified to show the gate itself did not move. Both ar
 
 ## What this POC did not prove
 
-- **That anyone wants to author one.** The fork above; no build can answer it.
+- **That anyone wants to author one.** No build could answer it, and none tried. The owner
+  answered it directly ([above](#decided-authorship)): eventually anyone, with an LLM writing it
+  for them. That is a statement of direction, not evidence, and it is recorded as his call rather
+  than as a finding of this POC.
 - **That the reader is cheap.** `package-reader.mts` plus `compile.mts` parse one manifest
   dialect pair and trust the result. A real `fsdev gen` reader owes refusals, symlink
   containment and name validation like every other reader in the loader, plus a row in
