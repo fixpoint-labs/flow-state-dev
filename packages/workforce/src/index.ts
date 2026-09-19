@@ -33,6 +33,12 @@
  * channel record look alike and bind differently, and the difference is worth
  * holding on to: hiring a worker MINTS a flow copy per record, while opening a
  * channel opens a SESSION per record on a shared one.
+ *
+ * Beside the channel floor sits the **inventory**: three org-scoped resource
+ * collections holding what is actually open — which seats exist, which channels
+ * are open and who is in them, and which channels one seat is in. A folder of
+ * files answers none of those at run time, because a block does not walk
+ * folders. The rows and the declared records join on the record's `id`.
  */
 
 export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
@@ -50,3 +56,4 @@ export type { SeatCapabilitySelection } from "./seat-capabilities";
 export { workerConfigSchema, seatSkillSchema, type WorkerConfig } from "./worker-config";
 export type { WorkerManifest, TeamManifest, ResourceDoc } from "./manifest";
 export * from "./channel";
+export * from "./inventory";
