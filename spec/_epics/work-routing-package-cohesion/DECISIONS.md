@@ -91,7 +91,7 @@ FIX-817 on, stated there.
 | | |
 |---|---|
 | **Instead of** | Keeping all seven parented — an epic that meets its own exit gate and then stays open, indefinitely, on two children it does not need |
-| **Because** | **The exit gate and the wrap are different moments.** The wrap term requires every child to be Linear-terminal, and a Backlog or Todo phase-2 child is not. An epic that cannot close after proving what it set out to prove has the wrong boundary — and both re-homed issues fence themselves off a ship by their own Architect sections anyway |
+| **Because** | **The exit gate and the wrap are different moments.** The wrap term requires every child to be [terminal](PLAN.md#terminal), and a phase-2 child that has never been built is not. An epic that cannot close after proving what it set out to prove has the wrong boundary — and both re-homed issues fence themselves off a ship by their own Architect sections anyway |
 | **Locks in** | Five children: FIX-1394, FIX-1405, FIX-1385, FIX-1408 (done), and **FIX-1430 adopted as the proof**, which gives [ER-20](BUSINESS-RULES.md) its owner. FIX-817 and FIX-1415 are **related-not-child**, keeping their FIX-1405 dependency. Re-homing does not release them from this set's rules: FIX-817 still waits for FIX-1405's approved spec ([ER-23](BUSINESS-RULES.md)), and neither may re-decide [ER-3](BUSINESS-RULES.md) |
 
 **Re-homed is not descoped.** Both stay filed and keep their dependency edges. What changed is
@@ -154,7 +154,29 @@ answer: are the package format and the board's assign surface really two issues?
 ## Open
 
 **The set question is closed** at the objective gate as [D6](#d6), and the compose helper's public
-export with it ([D5](#d5)). What is open is the four walls below.
+export with it ([D5](#d5)). What is open is **FIX-1394's two ratify decisions, which are with the
+owner now**, and the four walls below them.
+
+### Two product decisions, parked with the owner — they block FIX-1394
+
+*(Decides: the owner. Blocks: FIX-1394's ratify, and the ship tickets behind it ([ER-8](BUSINESS-RULES.md)).
+Written in full, six parts each, on the matrix PR
+[#1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921) — summarized here so the block is
+visible without opening a child's PR.)*
+
+- **Who authors a package — a team in Markdown, or an engineer in TypeScript?** The capability
+  already works; what a file format adds is that a non-engineer can write one. Recommendation on
+  #1921 is *build it, as the new file, scoped to instructions and tools*; what would change it is
+  whether anyone outside the app's engineers will actually write one — if not, the honest answer is
+  *don't collapse*, which [ER-2](BUSINESS-RULES.md) already binds as a real result.
+- **Are documents in v1, or left out?** Nothing in the framework can carry a document to a *single*
+  seat today, so a package that advertises one delivers prompt text re-sent every turn.
+  Recommendation on #1921 is *leave it out and say so in the format*; adding a document slot later
+  is additive, shipping one that quietly means something else is not.
+
+**Why these are here and the four below are not.** These two are business calls the owner owns and
+nothing else can settle; the four are engineering walls that *building* answers
+([ER-15](BUSINESS-RULES.md)).
 
 ### Four of FIX-1408's walls, returned to the epic
 

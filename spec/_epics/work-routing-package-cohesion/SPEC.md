@@ -39,6 +39,14 @@ of all four approved specs is a **retained git branch** (`spec/FIX-1385`, `spec/
 `spec/FIX-1405`, `spec/FIX-1430`), and this table is the only current picture of the set. Read the
 tracker as stale until someone re-derives it.
 
+**Read the branch head, not the closed PR's diff.** A closed spec PR's diff is frozen at the commit
+it closed on; the branch is not. **`spec/FIX-1405` has moved since #1916 closed** — five commits at
+the last check, still landing, each a correction to the spec itself — so #1916's diff is already a
+stale copy of FIX-1405's spec. The other three branches currently match their PRs' closing heads,
+but that is a fact with a short shelf life, not a property. While Linear is unwritten the branch is
+the record: **read the branch head in every case**, and treat a closed PR as the review history
+rather than as the document.
+
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | FIX-1408 | Dispatch / session policy: sub-agent is same-session background, worker assign is a roster seat in a **linked** session, `parentSessionId` at mint, history by opt-in tools | The wire everything else routes over | **Done** · 2026-09-18 · no impl PR ([below](#a-note-on-fix-1408)) |
@@ -146,5 +154,9 @@ What each one killed is in the card behind it.
 Also approved: **the public export of the compose helper on `@flow-state-dev/workforce`**
 ([D5](DECISIONS.md#d5)).
 
-**Open: four** — FIX-1408's returned session-policy walls, epic-owned and parked in
-[Open](DECISIONS.md#open). None blocks a start; they bite when FIX-1385 reaches its assign surface.
+**Open: two with you, four with the epic.** **With you:** FIX-1394's two ratify decisions — *who
+authors a package, a team in Markdown or an engineer in TypeScript*, and *whether documents are in
+v1* — parked on [#1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921) and **blocking
+that child**; both written in full there and summarized in [Open](DECISIONS.md#open). **With the
+epic:** FIX-1408's four returned session-policy walls, also in [Open](DECISIONS.md#open) — none
+blocks a start, and they bite when FIX-1385 reaches its assign surface.

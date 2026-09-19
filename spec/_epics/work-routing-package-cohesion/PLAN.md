@@ -105,8 +105,27 @@ fence, never a ship child). Consumed, not owned:
 
 ## Wrap
 
-When ER-20 holds **and every remaining child is Linear-terminal** — now the same moment, which is
-what [D6](DECISIONS.md#d6) bought. Run the lessons pass over the set's review rounds, then dispatch
+When ER-20 holds **and every remaining child is terminal** — now the same moment, which is
+what [D6](DECISIONS.md#d6) bought.
+
+<a name="terminal"></a>
+**Terminal is read from GitHub, not from Linear** (re-derived 2026-09-19). A child is terminal when
+its **implementation PR is merged or closed**, or when this epic-spec records its work as **done by
+decision rather than as code** — which is FIX-1408, and the set table is where that is recorded.
+This replaces *"Linear-terminal"*, which was always a proxy for *finished*: Linear is our mirror,
+not the thing that makes code shipped, and with the egress gone
+([ER-16](BUSINESS-RULES.md)) the proxy stopped tracking the thing it stood for. The wrap now turns
+on the same source the set table is derived from, so an epic that has proved what it set out to
+prove cannot be held open by an unreachable tracker.
+
+**The Linear writes are still owed.** They are queued, not forgiven, and get made when the egress is
+restored — the mirror is deferred, not abandoned, and ER-16 still binds.
+
+**A post-approval change to a mechanism, not to the objective or the box.** The owner approved *what
+W4 proves* and *what is in the box*; which tracker records a child's finish is neither. The exit
+gate ([D1](DECISIONS.md#d1)), the set ([D6](DECISIONS.md#d6)) and ER-20 are untouched.
+
+Run the lessons pass over the set's review rounds, then dispatch
 the docs polish over the Workforce pages the children each edited in isolation. It owes the sentence
 nobody else will write: a board **assignee** and a Workforce **seat** are two different things that
 map by composition (ER-5, ER-22). Confirm FIX-1385's PR-5 name check ran **over its own diff**
