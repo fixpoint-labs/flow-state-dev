@@ -131,6 +131,8 @@ A name must be lowercase letters, digits, and single hyphens, at most 64 charact
 
 A handful of otherwise-legal names are refused as well: `con`, `prn`, `aux`, `nul`, `com1` through `com9`, and `lpt1` through `lpt9`. Windows treats these as device names rather than filenames, whatever extension follows, so a tree containing one cannot be checked out on a Windows machine at all.
 
+That last refusal covers every name above except a **skill** folder. Skills are read by their own loader, which checks the lowercase-hyphen rule and not the device list, so a skill called `con` loads on macOS and Linux and then breaks the checkout for anyone on Windows. Nothing stops you naming one that way; don't.
+
 ## Reading the tree
 
 Point `readWorkforce` at the root:
@@ -203,13 +205,24 @@ What lands in `errors`:
 ```ts
 const { workers, errors, skillErrors, teamErrors } = await readWorkforce("./workforce");
 if (errors.length || teamErrors.length || skillErrors.length) {
+  const reported = [
+    ...errors.map(({ path, error }) => `  ${path}: ${error.message}`),
+    ...teamErrors.map(({ path, error }) => `  ${path}: ${error.message}`),
+    // One entry per seat, each carrying its own list — so this one is nested.
+    ...skillErrors.flatMap(({ worker, errors }) =>
+      errors.map(({ path, error }) => `  ${worker} — ${path}: ${error.message}`),
+    ),
+  ];
   throw new Error(
     `workforce: ${errors.length} worker(s), ${teamErrors.length} team file(s) and ` +
-      `${skillErrors.length} seat(s)' skills failed to load\n` +
-      errors.map(({ path, error }) => `  ${path}: ${error.message}`).join("\n"),
+      `${skillErrors.length} seat(s)' skills failed to load\n${reported.join("\n")}`,
   );
 }
 ```
+
+`errors` and `teamErrors` are flat lists of `{ path, error }`. `skillErrors` is not: it is one entry
+per affected seat, `{ worker, errors }`, carrying that seat's own list — so it needs flattening
+before it reads like the other two.
 
 Logging a warning and carrying on is the tempting alternative, and it fails quietly. A reported folder is a worker your app was supposed to have, so the app boots one worker short and says nothing about it. A reported team file or skill costs a seat its instructions instead of costing you the seat, which is quieter still. Fail on all three at startup unless you have a specific reason to run a short roster.
 

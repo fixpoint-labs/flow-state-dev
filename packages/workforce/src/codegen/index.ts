@@ -4,9 +4,10 @@
  * The convention's other half. Where `./loader` reads the Markdown that
  * describes a team, this reads the **tree** under `workforce/flows/workers/`,
  * `workforce/flows/channels/` and `workforce/blocks/` — and the TypeScript in
- * every `resources/` folder beside the documents — and renders one module of
- * static imports: `kinds`, `channelKinds`, `blocks` and `resourceModules`, each
- * feeding a parameter the framework already takes. `fsdev gen` is a thin
+ * every `resources/` folder beside the documents, and every `blocks/` folder
+ * inside the team tree — and renders one module of static imports: `kinds`,
+ * `channelKinds`, `blocks`, `seatBlocks` and `resourceModules`, each feeding a
+ * parameter the framework already takes. `fsdev gen` is a thin
  * command over these two calls — it resolves the root, writes the file, and
  * prints what it found.
  *

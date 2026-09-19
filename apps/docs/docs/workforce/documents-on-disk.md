@@ -153,7 +153,7 @@ errors;
 
 `readResourcesDirectory` throws only about the root you passed: when it cannot be read at all, and when it is a symlink. Links are never followed at any level of the walk, and the root is no exception, so a linked root is refused rather than read from wherever it points. A root with neither `org/` nor `teams/` comes back as `{ documents: [], errors: [] }`, and a team with no `resources/` folder is not an error either.
 
-A file in a `resources/` folder that is not a `.md` is passed over in silence by this reader, as are OS and editor droppings such as `.DS_Store`. A `.ts` file is passed over here too, and picked up by the other door ([Capabilities on disk](./capabilities-on-disk.md)).
+A file in a `resources/` folder that is not a `.md` is passed over in silence by this reader, as are OS and editor droppings such as `.DS_Store`. A `.ts` file is passed over here too, and picked up by the other door: [`fsdev gen`](./code-on-disk.md) writes it onto the generated file, and [Capabilities on disk](./capabilities-on-disk.md) covers what it then gives a worker.
 
 #### Treat a non-empty `errors` as fatal
 

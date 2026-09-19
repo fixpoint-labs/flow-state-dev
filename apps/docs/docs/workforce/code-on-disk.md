@@ -89,7 +89,7 @@ export const seatBlocks = {
 } satisfies Record<string, Record<string, BlockDefinition>>;
 ```
 
-A binding is where the file was found plus its name, with hyphens as underscores: `worker_`, `channel_` and `block_` for the three top-level folders, `resource_` and the document ref for a module in a `resources/` folder, and `teamblock_` or `seatblock_` with the team or the seat for a block folder inside the team tree. Imports arrive in those three groups, each ordered by path. Both keep the committed file's diff stable: a name you can predict, and an order a directory listing cannot move.
+A binding is where the file was found plus its name, with hyphens as underscores: `worker_`, `channel_` and `block_` for the three top-level folders, `resource_` and the document ref for a module in a `resources/` folder, and `teamblock_` or `seatblock_` with the team or the seat for a block folder inside the team tree. The imports arrive in one group per walk — the three top-level folders first, then the resource modules, then the blocks in the team tree — each group ordered by path, under the type imports the maps need. Both keep the committed file's diff stable: a name you can predict, and an order a directory listing cannot move.
 
 Each export feeds a parameter that already exists:
 
@@ -128,7 +128,7 @@ Run `fsdev gen` when you add, rename or delete a file in one of those folders. P
 
 The generator reads the tree. It never opens the files it finds, so what it can refuse is what a walker can see:
 
-- A basename that breaks [the tree's name rule](./workers-on-disk.md#names-in-the-tree), including one Windows reserves for a device. The basename becomes a kind name and part of a flow instance id.
+- A basename that breaks [the tree's name rule](./workers-on-disk.md#names-in-the-tree), including one Windows reserves for a device. The basename is the name the file registers under — a kind, a block, or a document [ref](./documents-on-disk.md#a-documents-ref).
 - A directory inside one of the code folders. Refused by name rather than skipped, so a folder you meant as a kind cannot be passed over in silence.
 - One basename in both `flows/workers/` and `flows/channels/`.
 - A `.md` and a `.ts` of one name in one `resources/` folder, which would claim one [ref](./documents-on-disk.md#a-documents-ref) twice.
@@ -138,7 +138,7 @@ The generator reads the tree. It never opens the files it finds, so what it can 
 
 Files that are not TypeScript are skipped: a README, a JSON sample, a note beside the code.
 
-**TypeScript files are not.** Every `.ts` and `.tsx` file in one of the code folders is a declaration, so these folders are for declarations only. A `fixture.ts` sitting beside a kind registers a kind called `fixture`. A file whose name carries a second dot — `request-triage.test.ts`, `helpers.fixture.ts` — is refused outright, because the basename becomes the kind name and a dot is not legal in one. Keep tests and fixtures beside the code they exercise, outside `workforce/flows/` and `workforce/blocks/`.
+**TypeScript files are not.** Every `.ts` and `.tsx` file in one of the code folders is a declaration, so these folders are for declarations only. A `fixture.ts` sitting beside a kind registers a kind called `fixture`. A file whose name carries a second dot — `request-triage.test.ts`, `helpers.fixture.ts` — is refused outright, because the basename becomes the kind name and a dot is not legal in one. Keep tests and fixtures beside the code they exercise, outside every folder on this page: the two `flows/` folders, every `blocks/` folder, and every `resources/` folder.
 
 Not everything is caught by the walk, and what it misses is caught later rather than not at all. A file that exports the wrong shape fails your own `tsc`, naming the generated module and the assignment, because the maps are typed. A flow whose declared `kind` disagrees with its basename is refused at the hire, naming both.
 
