@@ -1,5 +1,13 @@
 # @flow-state-dev/mcp
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [bff5e06]
+  - @flow-state-dev/core@0.2.0
+  - @flow-state-dev/engine@0.1.3
+
 ## 0.1.2
 
 ### Patch Changes

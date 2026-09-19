@@ -1,5 +1,15 @@
 # @flow-state-dev/patterns
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [8faf08e]
+- Updated dependencies [218de72]
+- Updated dependencies [bff5e06]
+  - @flow-state-dev/orchestration@0.3.0
+  - @flow-state-dev/core@0.2.0
+
 ## 0.1.2
 
 ### Patch Changes
