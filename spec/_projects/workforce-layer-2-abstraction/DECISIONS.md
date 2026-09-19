@@ -87,6 +87,8 @@ Answers settled at project altitude, so no later epic reopens them.
 | Is an Agent decomposable by its consumer? | No (PD-3) | Same |
 | Does the propagation pass run before the vocabulary locks? | No (PD-4) | Same |
 | Is a channel an L1 type, and is *room* a second thing? | No to both — a channel is L2 opinion, a replaceable flow kind (W3 D1), and it replaced room | W3's objective and floor recut, Sep 11 |
+| Does W4 wait for W3's vocabulary lock before it starts? | No — it starts; only its **ship** PRs wait. PD-4's rename-twice risk is held by W4's ship fence, not by keeping the epic shut | W4's objective gate, Sep 19 |
+| How many children does W4 carry? | Five — FIX-1394, FIX-1405, FIX-1385, FIX-1408, FIX-1430. FIX-817 and FIX-1415 are related-not-child | Same |
 
 ## Open
 

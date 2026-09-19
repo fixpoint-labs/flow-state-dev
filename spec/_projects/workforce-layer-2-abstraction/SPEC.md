@@ -13,7 +13,7 @@ epics that establish it.
 |---|---|
 | **Winning when** | Someone stands up a working team of agents from files alone — no TypeScript to declare a channel, a resource, or a skill — and Layer 1 stays fully available to anyone who wants past the conventions |
 | **The read** | Layer 2 nouns that still require code to declare. Five at the start, and the count only moves when a convention ships with a reader and a proof |
-| **Now** | 2 epics done · 1 in flight · 1 standing up its spec · 1 not started. 91 work issues, of which **40 still sit under no epic** — the vocabulary era this project began in, before the epic structure existed |
+| **Now** | 2 epics done · **2 in flight** · 1 not started. W4 cleared its objective gate on Sep 19 with three child specs running. 91 work issues, of which **40 sat under no epic** at the last Linear read — the vocabulary era this project began in |
 | **Kill line** | If real apps turn out to want to assemble Layer 2 themselves, this project is mis-shaped rather than unfinished: what changes is that the conventions become examples, not the remaining epic list |
 
 ![The territory](figures/territory.svg)
@@ -22,25 +22,30 @@ Above the fence is what this project owns; below it is the substrate it assemble
 own. The fence is one question — *is there exactly one of it?* — and it is the test every epic
 under this project is checked against.
 
-## The epics — as of 2026-09-18
+## The epics — as of 2026-09-19
 
 | Epic | What it owns | State | Issues |
 |---|---|---|---|
 | [FIX-1332](https://linear.app/fixpoint-labs/issue/FIX-1332) · **W2 foundation** | Conventions, seat factory, thin Agent | **done** | 5/5 |
 | [FIX-1359](https://linear.app/fixpoint-labs/issue/FIX-1359) · **default agent flow** | OOTB replaceable `agent` flow kind | **done** | 7/11 |
 | [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351) · **W3 file surface** | Channels, resources, skills + a thin pentest lab | **in flight** | 16/21 |
-| [FIX-1407](https://linear.app/fixpoint-labs/issue/FIX-1407) · **W4 routing** | Work routing & package cohesion | *spec in progress* | 1/7 |
+| [FIX-1407](https://linear.app/fixpoint-labs/issue/FIX-1407) · **W4 routing** | Work routing & package cohesion | **in flight** | 1/5 |
 | [FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333) · **W1 MCP door** | Client door over intake, boards, dispatcher | *not started* — **scope disputed** | — |
 
-2 done · 1 in flight · 1 standing up its spec · 1 not started.
+2 done · 2 in flight · 1 not started — the first time this project has run two epics at once.
 
 **The epic PRs are the other half of this table**, because an epic wraps by closing its PR unmerged
 and leaves its Linear state alone. W2 and the agent flow read *done* that way
 ([#1664](https://github.com/fixpoint-labs/flow-state-dev/pull/1664),
 [#1730](https://github.com/fixpoint-labs/flow-state-dev/pull/1730)); W3 is *in flight* on
-[#1718](https://github.com/fixpoint-labs/flow-state-dev/pull/1718). W4's epic-spec is being written
-on `epic/work-routing-package-cohesion` and **its PR number is not in yet** — the next refresh fills
-that cell rather than guessing it.
+[#1718](https://github.com/fixpoint-labs/flow-state-dev/pull/1718), and W4 on
+[#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905), open and labelled *spec
+approved*.
+
+**W4 is five children, not seven.** Its objective gate (Sep 19) cut the set to FIX-1394, FIX-1405,
+FIX-1385, FIX-1408 (done) and FIX-1430 as the proof. FIX-817 and FIX-1415 are now
+**related-not-child**: they keep their dependency on FIX-1405 without holding W4 open past its own
+exit gate. Three specs run in parallel — FIX-1394, FIX-1405, FIX-1385 — with FIX-1430 to follow.
 
 **W1's status is derived from the issue; a second surface disagrees with it.** FIX-1333 has sat in
 **Todo** since Sep 8 — one state-history entry, never moved, nothing blocking it, priority still
@@ -51,11 +56,10 @@ feature-complete path."** Linear carries no hold — the team has an **On Hold**
 not in it. *Not started* and *deliberately out of scope* are different answers, so the disagreement
 is left standing as an ask: [Decisions](DECISIONS.md) → Open.
 
-**Two things in that table are worth reading twice.** The numbering is not the order — W1 was filed
-the same day as W2 and has not started, while W2 finished in four days. And **FIX-1359 is marked
-done with 7 of 11 issues closed**, which is either a wrap that outran its children or four issues
-that should have moved out of it; it is recorded here as Linear has it rather than tidied, because
-the discrepancy is the useful signal.
+**One number in that table is recorded rather than tidied.** **FIX-1359 is marked done with 7 of
+11 issues closed** — either a wrap that outran its children, or four issues that should have moved
+out of it. It is left as Linear has it, because the discrepancy is the useful signal. (The arc
+carries the other oddity: the numbering is not the order.)
 
 ```mermaid
 flowchart LR

@@ -12,7 +12,7 @@ is a wish.
 | **PR-2** | When a convention needs behaviour, then it **composes Layer 1 primitives** and never introduces a parallel primitive — Layer 2 stays transparently implemented, no black box | FIX-1332 | Package-boundary review |
 | **PR-3** | When a convention ships, then it ships with a **reader and a consumer that exercises it**, not a format alone | FIX-1351 | The thin pentest lab |
 | **PR-4** | When a file declares a thing, then every key the convention **derives** is refused by name — a file may not say where it lives, what its identity is, or what its state shape is | FIX-1351 | Reader tests, per-convention |
-| **PR-5** | When a new surface names a Layer 2 concept, then it uses the **settled name** (Role, Strategy, Instructions, stream visibility), never the superseded one | FIX-1407 | The propagation pass |
+| **PR-5** | When a new surface names a Layer 2 concept, then it uses the **settled name** (Role, Strategy, Instructions, stream visibility), never the superseded one | FIX-1407 | The propagation pass, carried by FIX-1385 (W4 ER-19) |
 
 **No epic may:**
 
@@ -20,7 +20,9 @@ is a wish.
 - Expose the **agent bundle** — Persona, Skills, Memory, Instructions, Strategy — as the public
   API. An Agent is invoked or assigned work, not decomposed (PD-3).
 - Run the **propagation pass** before the vocabulary locks (PD-4). Renaming an unratified model
-  costs the rename twice.
+  costs the rename twice. W4 going in flight does not start it: the pass rides FIX-1385, a ship
+  ticket, and W4's ship fence holds every W4 ship PR until every W3 child that carries an
+  implementation is merged to main (W4 ER-14).
 - Put a concept here **because it is convenient**. PR-1 is a test, not a preference.
 
 ---

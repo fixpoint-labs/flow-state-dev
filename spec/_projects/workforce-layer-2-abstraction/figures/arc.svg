@@ -1,18 +1,17 @@
 <svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The arc: five epic lanes against eleven days. W2 ran Sep 8 to Sep 12 and is done. The default agent flow ran Sep 12 to Sep 16 and is done. W3 started Sep 16 and is in flight at the now line, Sep 18, with 16 of 21 issues closed. W4 is standing up its epic-spec at the now line, the first time two epics overlap. W1 was created Sep 8 and has not started.">
+     aria-label="The arc: five epic lanes against twelve days. W2 ran Sep 8 to Sep 12 and is done. The default agent flow ran Sep 12 to Sep 16 and is done. W3 started Sep 16 and is in flight at the now line, Sep 19, with 16 of 21 issues closed. W4 stood up its epic-spec on Sep 18, cleared its objective gate on Sep 19, and is in flight with three child specs running in parallel and one of five issues done. W1 was created Sep 8 and has not started.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
-            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+            --gone:#A9544F; }
     @media (prefers-color-scheme: dark) {
       :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
               --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
-              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+              --gone:#DE8A84; } }
     .axis   { stroke:var(--rule); stroke-width:1; }
     .tick   { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
     .done   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
     .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
-    .spec   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
     .now    { stroke:var(--gone); stroke-width:1.6; }
     .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
               font-size:9.5px; letter-spacing:.1em; }
@@ -47,15 +46,15 @@
   <g id="w3">
     <text class="t-lane" x="16" y="152">W3 · file surface</text>
     <text class="t-s"    x="16" y="166">FIX-1351 · 16/21</text>
-    <rect class="flight" x="676" y="138" width="124" height="26" rx="4"/>
+    <rect class="flight" x="676" y="138" width="186" height="26" rx="4"/>
     <text class="t-s" x="668" y="155" text-anchor="end">channels · resources · skills · pentest lab</text>
   </g>
 
   <g id="w4">
     <text class="t-lane" x="16" y="200">W4 · routing</text>
-    <text class="t-s"    x="16" y="214">FIX-1407 · 1/7</text>
-    <rect class="spec" x="800" y="186" width="48" height="26" rx="4"/>
-    <text class="t-s" x="792" y="203" text-anchor="end">epic-spec standing up — the first overlap</text>
+    <text class="t-s"    x="16" y="214">FIX-1407 · 1/5</text>
+    <rect class="flight" x="800" y="186" width="62" height="26" rx="4"/>
+    <text class="t-s" x="792" y="203" text-anchor="end">spec Sep 18 · approved Sep 19 · 3 specs running</text>
   </g>
 
   <g id="w1">
@@ -65,7 +64,7 @@
   </g>
 
   <g id="now">
-    <path class="now" d="M800 30 V280"/>
-    <text class="t-now" x="806" y="28">NOW · SEP 18</text>
+    <path class="now" d="M862 30 V280"/>
+    <text class="t-now" x="856" y="28" text-anchor="end">NOW · SEP 19</text>
   </g>
 </svg>

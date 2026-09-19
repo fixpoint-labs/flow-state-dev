@@ -7,10 +7,11 @@ deliberately not next. Each epic's own plan owns its checks.
 
 ![The arc](figures/arc.svg)
 
-Eleven days, not three months. The project opened in June, but every epic here was filed from
-**Sep 8** onward; the vocabulary era before it left 40 issues that still sit under no epic. Until
-now only one epic had ever been in flight at a time — **W3 and W4 are the first overlap**, and it is
-a narrow one: W4 is standing up its epic-spec while W3 runs out its last four issues.
+Twelve days, not three months. The project opened in June, but every epic here was filed from
+**Sep 8** onward; the vocabulary era before it left 40 issues under no epic. Until this week only
+one epic had ever been in flight at a time — **W3 and W4 are the first overlap**, and since Sep 19
+it is a real one rather than a narrow one: W4 cleared its objective gate and has three child specs
+running while W3 runs out its last issues.
 
 ## What each epic consumes and releases
 
@@ -30,8 +31,13 @@ issue says only *Todo* ([Decisions](DECISIONS.md) → Open).
 
 ## Coordination seams
 
-- **W3 → W4.** W4's propagation pass (PR-5) cannot run until W3 locks the file-surface vocabulary.
-  Starting W4 early buys nothing and risks renaming twice (PD-4).
+- **W3 → W4 — the deferral ended on Sep 19; PD-4's concern did not.** This plan said starting W4
+  early bought nothing and risked renaming twice. The objective gate went the other way, so the
+  reasoning was not overturned — it was **re-aimed from the start to the ship**. W4's D2 lets
+  filing, specs and POCs run now and fences every *ship* PR until every W3 child that carries an
+  implementation is merged to main (W4 ER-14); the PR-5 propagation pass rides FIX-1385 (W4 ER-19),
+  which is a ship ticket and therefore behind that fence. The rename-twice risk is held by a
+  mechanism, not retired.
 - **W3's lab is the proof for PR-3**, so any epic that ships a convention before the lab exists is
   asserting the rule rather than checking it.
 - **The `org/channels/` door in [Decisions](DECISIONS.md) → Open binds W3 and W4 both.** It is
