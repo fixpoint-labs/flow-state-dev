@@ -108,10 +108,26 @@ export function channelBoardNameProblem(name: unknown): string | undefined {
 /**
  * The process-wide declaration registry — one object per minted id.
  *
- * Keyed by the id rather than by object identity, which is exactly what D1
- * buys: the id is minted from where the channel sits and the binder refuses a
- * collision, so one id means one logical ledger and an id-keyed memo cannot
- * merge two unrelated boards.
+ * Keyed by the id rather than by object identity, which is what D1 buys: the
+ * channel's own actions and a seat's {@link channelBoard} call reach the same
+ * object without either passing the other a reference, so the assignee freeze
+ * — a `WeakSet` keyed on this object — is read the same way on both sides.
+ *
+ * **The boundary is the process, and within one roster that is exact**: the id
+ * is minted from where the channel sits and the binder refuses a collision, so
+ * two boards of one roster never share an entry. What it does NOT separate is
+ * two independent applications in one process whose rosters both declare the
+ * same channel id and board name. They get one declaration object, and because
+ * the freeze is one-way and keyed on it, one app building a handed-off board
+ * makes the other's board decline reassignment with `immutable-assignee`.
+ *
+ * Nothing here can tell those two apart: the id is everything the call site
+ * has, and `channelBoard` is a module-scope declaration made before any
+ * runtime exists. Separating them means a declaration that takes a runtime,
+ * which is a different public shape from the one-thing-a-seat-declares the
+ * spec settled on. Documented as a limitation rather than half-solved — a memo
+ * keyed on something weaker would break the coupling above, which is the case
+ * that actually happens.
  */
 const ledgers = new Map<string, ChannelBoardCollection>();
 
