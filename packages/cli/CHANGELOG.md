@@ -1,5 +1,41 @@
 # @flow-state-dev/fsdev
 
+## 0.2.0
+
+### Minor Changes
+
+- 17e9748: Workers can call custom tools written as files. A `blocks/` folder registers a block name for the workers that can see it — the app's own folder for everyone, a team's for that team, a worker's own for that one seat — and a worker's `tools:` resolves a name nearest first. Registering does not grant use: the worker still names the block. `fsdev gen` exports the per-seat map as `seatBlocks`, which `hireWorkforce` now takes.
+
+  Migration: a worker kind that hand-declares the admission contract instead of composing `workerConfigSchema()` must add the new `seatTools` key, or it refuses its roster at startup naming that key (FIX-1416).
+
+- 8bfb08c: `fsdev gen` now finds the TypeScript in a workforce tree's `resources/` folders and exports it as a fourth map, `resourceModules` (FIX-1388).
+
+  **Your committed `workforce.gen.ts` goes stale on upgrade**, whether or not your tree has any `resources/` modules: the file gains the fourth map and a line of its header. `fsdev gen --check` stays red until you run `fsdev gen` and commit the result.
+
+  `renderWorkforceCode` takes the discovered modules as a second argument.
+
+### Patch Changes
+
+- Updated dependencies [8faf08e]
+- Updated dependencies [68fb69c]
+- Updated dependencies [17e9748]
+- Updated dependencies [0508765]
+- Updated dependencies [4cd4f13]
+- Updated dependencies [d49f255]
+- Updated dependencies [1a3a009]
+- Updated dependencies [8291951]
+- Updated dependencies [f7e98d9]
+- Updated dependencies [8bfb08c]
+- Updated dependencies [caffe1c]
+- Updated dependencies [bff5e06]
+  - @flow-state-dev/workforce@0.3.0
+  - @flow-state-dev/core@0.2.0
+  - @flow-state-dev/devtool@0.1.3
+  - @flow-state-dev/engine@0.1.3
+  - @flow-state-dev/node@0.1.3
+  - @flow-state-dev/store-sqlite@0.1.3
+  - @flow-state-dev/testing@0.1.3
+
 ## 0.1.2
 
 ### Patch Changes

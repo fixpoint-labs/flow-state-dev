@@ -1,5 +1,12 @@
 # @flow-state-dev/cursor
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [bff5e06]
+  - @flow-state-dev/core@0.2.0
+
 ## 0.0.3
 
 ### Patch Changes
