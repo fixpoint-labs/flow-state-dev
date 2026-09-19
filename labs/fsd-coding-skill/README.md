@@ -12,49 +12,23 @@ scope.
 ## Run
 
 All four doors run through a **supervised live stream**. From this directory
-(`fsdev` config search is cwd-only), use the managed-process invocation in
-[the skill](../../.agents/skills/fsd-coding/SKILL.md#pass-values-on-each-invocation).
-In OMP this is `hub start`, followed by bounded incremental `hub logs` reads with
-the returned cursor, not a completion-only background command.
+(`fsdev` config search is cwd-only), follow the canonical
+[launch instructions](../../.agents/skills/fsd-coding/SKILL.md#pass-values-on-each-invocation)
+for the managed process, host environment, and `bash -o pipefail` pipeline with
+`tee` and `jq --unbuffered`. In OMP, use `hub start`, not a completion-only
+background command.
 
-The command inside that supervisor is:
+Pass `FSDEV_TRACE_OBSERVABILITY=true` in the supervisor's command-local
+environment on every door, including `fixFsd` and retries. It must override an
+inherited `false`/`0`: readiness depends on the real root-block trace, which is
+otherwise disabled under `NODE_ENV=production`. Do not change `NODE_ENV`.
 
-```bash
-bash -o pipefail -c 'mkdir -p .fsdev/runs &&
-  pnpm --silent fsdev run fsd-coding "$FSD_DOOR" -i "$FSD_INPUT" \
-    --session "$FSD_SESSION" --quiet --capture "$FSD_CAPTURE" |
-  tee "$FSD_TRACE" |
-  jq --unbuffered -c -f progress.jq'
-```
+`progress.jq` projects bounded live events while `tee` retains the raw NDJSON
+locally; `--capture` is completion-only. Follow the skill's
+[progress and evidence rules](../../.agents/skills/fsd-coding/SKILL.md#follow-progress-without-filling-the-context)
+for incremental log reads, permission failures, and artifact verification.
 
-Pass the host flags and the quoted command arguments through the supervisor's
-`env`; no shell exports are required. `FSD_DOOR` is `implement`, `fix`, `openPr`,
-or `fixFsd`; `FSD_INPUT` is the JSON input string. `FSD_SESSION` stays the same
-across doors. Use unique `.fsdev/runs/<session>-<door>-<attempt>.ndjson` and `.json`
-paths for `FSD_TRACE` and `FSD_CAPTURE`. With adapter-default models, launch via
-`env -u FSD_CODING_MODEL bash ...`; for a resolved override, pass it explicitly.
-
-The pipeline requires Bash, `tee`, and `jq` supporting `--unbuffered`. Keep
-`pipefail`: a successful filter does not make a failed upstream run successful.
-Keep stderr visible for bootstrap failures. `pnpm --silent` removes script
-banners from stdout; `--quiet` suppresses routine runtime logs, not the stream.
-
-`progress.jq` prints bounded JSON lines for start/status, completed messages,
-tool starts/outcomes, errors, and terminal claims. It does not print token
-deltas, reasoning, raw task input, full tool arguments, or successful tool
-stdout. Failed tool results include a bounded excerpt immediately. It selects
-one lifecycle boundary per item kind rather than repeating added/updated/done
-copies. A terminal claim is not proof that files changed or checks passed.
-
-The raw NDJSON is retained incrementally; the full `--capture` JSON is written
-only at completion. Inspect bounded raw excerpts for a specific failure, not
-the whole transcript on every poll. Raw traces may contain sensitive task/tool
-data; keep them local. A permission-denial-shaped failed tool result also emits
-`{ event: "tool_denied", name, id, detail }`, alongside `tool_finished`.
-On observing `tool_denied` for `Write`, `Edit`, or `Bash`, the outer supervisor
-must stop the managed process (`hub stop` in OMP), without waiting for completion
-or another denied attempt. Inspect the raw failure after stopping. The filter
-only reports denials: it does not cancel the provider. The provider may continue
+The filter only reports denials: it does not cancel the provider. The provider may continue
 work before the supervisor observes the event and stops the process.
 
 Resolve the target checkout before running from this lab; it may be a different

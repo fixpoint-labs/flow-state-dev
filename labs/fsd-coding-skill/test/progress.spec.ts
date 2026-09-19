@@ -162,6 +162,41 @@ describe("coding progress stream", () => {
     expect(JSON.stringify(lines)).not.toContain("DO_NOT_ECHO_");
   });
 
+  it("reports a failed tool whose diagnostic exists only in error.message", () => {
+    const lines = project([
+      {
+        type: "item_done",
+        item: {
+          type: "tool_output", status: "failed",
+          toolCall: { name: "Write", callId: "write-error-1" },
+          error: { message: "Permission denied: cannot write the target file." },
+        },
+      },
+    ]);
+    expect(lines).toEqual([{
+      event: "tool_finished", name: "Write", id: "write-error-1", status: "failed",
+      detail: "Permission denied: cannot write the target file.",
+    }]);
+  });
+
+  it("prefers the tool error over output while keeping the diagnostic bounded and single-line", () => {
+    const lines = project([
+      {
+        type: "item_done",
+        item: {
+          type: "tool_output", status: "failed",
+          toolCall: { name: "Bash", callId: "check-error-1" },
+          error: { message: "Permission denied:\n\t" + "x".repeat(600) },
+          output: "Incidental tool output must not replace the failure.",
+        },
+      },
+    ]);
+    expect(lines).toEqual([{
+      event: "tool_finished", name: "Bash", id: "check-error-1", status: "failed",
+      detail: "Permission denied:  " + "x".repeat(459) + "…",
+    }]);
+  });
+
   it("bounds large failure details and preserves structured error signals", () => {
     const lines = project([
       { type: "item_done", item: { type: "tool_output", status: "failed", output: "denied ".repeat(20_000) } },
