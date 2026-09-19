@@ -344,6 +344,65 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
     expect(result.error).toBeUndefined();
     expect(calls()).toBe(0);
   });
+
+  // The honesty half of the fence (FIX-1451). The test above pins that the
+  // seat CANNOT call `board`; this one pins what its prompt says about that.
+  // Both halves have to be in one run, because either alone passes vacuously:
+  // a prompt assertion with no seat proves nothing about a grant, and a fence
+  // assertion with no prompt is the check that has been green all along while
+  // the seat was being told the opposite.
+  function systemPromptOf(gen: ReturnType<typeof mockGenerator>): string {
+    const messages = gen.calls[0]?.input as
+      | Array<{ role: string; content: string }>
+      | undefined;
+    return messages?.find((m) => m.role === "system")?.content ?? "";
+  }
+
+  it("does not tell a seat a tool is available when the seat's `tools:` cannot reach it", async () => {
+    const { tool: board, calls } = countedBoard();
+    const kind = defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard });
+    const [seat] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
+      [AGENT_KIND]: kind
+    });
+
+    const answer = mockGenerator({
+      name: "agent-answer",
+      script: [callTool("board"), { text: "done" }]
+    });
+    const runtime = await contextFor(seat!, { "agent-answer": answer });
+
+    // `/uses-board` activates the skill, so its body — and the note about its
+    // `allowed-tools` — renders into this turn's system prompt.
+    const result = await executeBlock({
+      block: seat!.actions.run.block,
+      input: { message: "/uses-board check the board" },
+      ctx: runtime.ctx
+    });
+    expect(result.error).toBeUndefined();
+
+    // Premise: this seat declares no `tools:`, so `board` is genuinely
+    // out of reach — the model asking for it never reaches the tool.
+    expect(calls()).toBe(0);
+
+    const system = systemPromptOf(answer);
+
+    // The skill's intent still reaches the model: it names the tool it was
+    // written around. Removing the lie must not cost the author that signal.
+    expect(system).toContain("board");
+
+    // ...but never as a claim about what this seat can call. The renderer is
+    // in `@flow-state-dev/orchestration` and cannot see `ctx.flow.config.tools`
+    // (nor the seat's colocated blocks, which are not catalog keys at all), so
+    // any sentence it writes about availability is a guess — and here it would
+    // be a wrong one.
+    expect(system).not.toMatch(/tools are available/i);
+    expect(system).not.toMatch(/you (can|may) call/i);
+    expect(system).not.toMatch(/access to/i);
+
+    // And it says which it is, out loud, so the next reader of the prompt
+    // does not re-derive the grant reading from a bare list of tool names.
+    expect(system).toMatch(/not a grant/i);
+  });
 });
 
 describe("replacing the built-in agent kind", () => {

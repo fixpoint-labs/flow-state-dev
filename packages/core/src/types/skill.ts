@@ -132,7 +132,20 @@ export interface SkillState {
   /** Optional spec `metadata`: a string → string map for client-defined properties. */
   metadata?: Record<string, string>;
 
-  /** From `allowed-tools`. Both additive (introduces) and restrictive (gates). */
+  /**
+   * From `allowed-tools`. The tools the skill is written around — neither a
+   * grant nor a gate (FIX-1451).
+   *
+   * It introduces nothing: registration is a consuming generator's own job,
+   * and no path anywhere registers this subset — `createSkillsLibrary`
+   * validates these names against the catalog and then registers the whole
+   * catalog, or, under `registerCatalogTools: false`, registers none of it.
+   * It gates nothing either: no runtime code narrows a generator's tools to
+   * this list. Where it does decide something — the delegation surface's tool
+   * seats — it only ever narrows the catalog the holder already reached.
+   *
+   * Treat it as authoring metadata. A seat's `tools:` is the access boundary.
+   */
   allowedTools?: string[];
 
   /** From `context:` frontmatter. Defaults to `inline` when omitted. */

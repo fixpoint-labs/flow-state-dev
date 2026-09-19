@@ -378,9 +378,10 @@ export function createSkillsLibrary(
   // registration is a safe superset (the whole catalog), like the legacy
   // capability: the reader renders the LIVE manifest, which an admin can edit
   // after seeding, so freezing a per-skill tool subset at build time would let
-  // the rendered `allowed-tools` restriction note reference a tool the
-  // generator never registered. The per-skill restriction stays a soft,
-  // prompt-level scope via the rendered note.
+  // the rendered `allowed-tools` note name a tool the generator never
+  // registered. The declared list never becomes a restriction: the rendered
+  // note states it as the skill's intent and explicitly disclaims any read as
+  // a grant (FIX-1451), because nothing here narrows the generator to it.
   const validateDeclaredTools = (name: string): void => {
     const declared = index.get(name)?.allowedTools;
     if (!declared) return;
@@ -461,9 +462,9 @@ export function createSkillsLibrary(
     // Whenever a skill body can render — statically preloaded (`active`) or
     // activated at runtime (load tool / upstream matcher / code) — register the
     // whole catalog as a safe superset. The skill's own `allowed-tools` scopes
-    // the model softly via the rendered restriction note; registering the
-    // superset keeps a live post-seeding edit to that list from pointing the
-    // model at an unregistered tool.
+    // nothing here — it renders as an intent note (FIX-1451), not a fence;
+    // registering the superset keeps a live post-seeding edit to that list
+    // from pointing the model at an unregistered tool.
     //
     // `registerCatalogTools: false` opts out of this registration only —
     // `validateDeclaredTools` above still runs unconditionally, so a caller
@@ -728,7 +729,7 @@ export function createSkillsLibrary(
  * activation of a bundled skill materializes without a manifest read.
  *
  * `allowedTools` rides along because it is the skill's **tool seats**
- * (FIX-925), not only the rendered restriction note — a bundled activation must
+ * (FIX-925), not only the rendered intent note — a bundled activation must
  * carry the same seat scope a manifest read would give it.
  */
 function buildBundledAgentIndex(
