@@ -41,7 +41,8 @@
  */
 
 import { defineFlow, generator, handler } from "@flow-state-dev/core";
-import type { BlockContext, GeneratorTool } from "@flow-state-dev/core/types";
+import type { GeneratorTool } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { buildTaskToolsList } from "@flow-state-dev/orchestration";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {

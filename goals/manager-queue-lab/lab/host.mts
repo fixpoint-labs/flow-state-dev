@@ -309,22 +309,26 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     return { ...worker, declared };
   });
 
+  // Every builder record that declares a desk, in tree order. A record whose
+  // `answersFor` is missing is left out here rather than coerced: it would
+  // refuse at the mint anyway (the kind's schema requires the key), and
+  // inventing a desk for it would hide that refusal behind a routing failure.
+  const builderRecords = workers.filter(
+    (worker) =>
+      worker.declared.flow === BUILDER_KIND && typeof worker.declared.answersFor === "string",
+  );
+
   // The board's desk vocabulary, read off the tree: which keys have a body.
   // Distinct from the seat map below — one stub runs every desk, so this
-  // associates no key with any seat.
-  const desks = workers
-    .filter((worker) => worker.declared.flow === BUILDER_KIND)
-    .map((worker) => String(worker.declared.answersFor))
-    .filter((desk) => desk !== "undefined");
+  // associates no key with any seat and is not the thing under test.
+  const desks = builderRecords.map((worker) => String(worker.declared.answersFor));
 
   // THE MAP UNDER TEST. Its default agrees with the tree, which is what a
   // correct app would wire; the control passes one that does not.
   const assignees =
     options.assignees ??
     Object.fromEntries(
-      workers
-        .filter((worker) => worker.declared.flow === BUILDER_KIND)
-        .map((worker) => [worker.id, String(worker.declared.answersFor)]),
+      builderRecords.map((worker) => [worker.id, String(worker.declared.answersFor)]),
     );
 
   const drainWidth = options.drainWidth ?? drainWidthFromEnv();

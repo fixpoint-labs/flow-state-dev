@@ -379,9 +379,21 @@ await runGoal(async () => {
 
     // The coordinator settling a row it never claimed IS allowed. Recorded as
     // observed behaviour, not defended as a design.
-    const freshHold = await lab.hold(lab.builderIds[1]);
-    let unclaimedSettle = "(no row to settle)";
-    if (freshHold.taskId !== null) {
+    //
+    // A row is filed for this leg rather than reused from above: the recovery
+    // drain settles everything it can reach, and a leg that quietly found
+    // nothing to settle would report nothing while reading as green.
+    await lab.fileThroughChannel({
+      board: lab.boardName,
+      goal: "a row for somebody else to hold",
+      assignee: lab.desks[2],
+    });
+    const freshHold = await lab.hold(lab.builderIds[2]);
+    let unclaimedSettle: string;
+    if (freshHold.taskId === null) {
+      unclaimedSettle = "(not graded)";
+      note(`no row was left for ${lab.builderIds[2]} to hold, so the unclaimed settle graded nothing`);
+    } else {
       const settled = await lab.coordinatorSettle(freshHold.taskId);
       unclaimedSettle = settled.settled ? "allowed" : `refused: ${settled.refusal}`;
       if (!settled.settled) {
@@ -445,8 +457,9 @@ await runGoal(async () => {
       `channel refused a filing naming a non-member and accepted the same call with no author. ` +
       `Reading the queue left the ledger byte-identical; a blocked row carried its own reason ` +
       `into "waiting on you"; a real claim on the ${held.leaseMs}ms minimum lease read running ` +
-      `with its seat busy, and once it lapsed read queued with its seat idle and refused to ` +
-      `resume. An unclaimed settle by the coordinator: ${unclaimedSettle}. The status set is ` +
+      `with its seat busy, and once it lapsed read queued with its seat idle and was then taken ` +
+      `back and run by the next drain — on the seat its own file names. An unclaimed settle by ` +
+      `the coordinator: ${unclaimedSettle}. The status set is ` +
       `unchanged at ${statuses.length} members. The diff gate ran over ${diff}, all inside ` +
       `${LAB_ROOT}. The drain-width switch booted at ${widths.join(" and ")}.`;
   } finally {
