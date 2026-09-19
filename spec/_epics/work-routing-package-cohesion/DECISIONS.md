@@ -24,7 +24,7 @@ flowchart TD
   E -->|"kills one noun for two registries"| D3["D3 · workers do, channels hold"]
   E -->|"kills the ambient transcript dump"| D4["D4 · the wire and the payload"]
   E -->|"kills a second index, and the fork between the layers"| D5["D5 · inventory is two layers"]
-  E -->|"kills an epic that outlives its own gate"| D6["D6 · the set is five"]
+  E -->|"kills an epic that outlives its own gate"| D6["D6 · the set is six, extended from five"]
 ```
 
 Each edge names what the decision killed. The alternative that lost is in the card.
@@ -86,32 +86,54 @@ Layer 1's **public export is approved** (objective gate), and FIX-1405 specified
 `readDeclaredRoster(root)` — the contract [ER-23](BUSINESS-RULES.md) blocks FIX-817 on.
 
 <a name="d6"></a>
-## D6 · The set is five children; two related issues are re-homed rather than parented
+## D6 · The set is six children; two related issues are re-homed rather than parented
 
 | | |
 |---|---|
 | **Instead of** | Keeping all seven parented — an epic that meets its own exit gate and then stays open, indefinitely, on two children it does not need |
 | **Because** | **The exit gate and the wrap are different moments.** The wrap term requires every child to be [terminal](PLAN.md#terminal), and a phase-2 child that has never been built is not. An epic that cannot close after proving what it set out to prove has the wrong boundary |
-| **Locks in** | Five children: FIX-1394, FIX-1405, FIX-1385, FIX-1408 (done), and **FIX-1430 adopted as the proof**, which gives [ER-20](BUSINESS-RULES.md) its owner. FIX-817 and FIX-1415 are **related-not-child**, keeping their FIX-1405 dependency and this set's rules — FIX-817 still waits for FIX-1405's approved spec ([ER-23](BUSINESS-RULES.md)), and neither may re-decide [ER-3](BUSINESS-RULES.md) |
+| **Locks in** | **Originally five:** FIX-1394, FIX-1405, FIX-1385, FIX-1408 (done), and **FIX-1430 adopted as the proof**, which gives [ER-20](BUSINESS-RULES.md) its owner. **Extended to six** — see below. FIX-817 and FIX-1415 are **related-not-child**, keeping their FIX-1405 dependency and this set's rules — FIX-817 still waits for FIX-1405's approved spec ([ER-23](BUSINESS-RULES.md)), and neither may re-decide [ER-3](BUSINESS-RULES.md) |
 
 **Re-homed is not descoped.** Both stay filed and keep their dependency edges; what changed is which
 epic's wrap they hold: none.
 
-**The tracker is at six, not five.** [FIX-1451](https://linear.app/fixpoint-labs/issue/FIX-1451) was
-parented after this card was ratified, so the count it fixed and the count Linear holds disagree —
-and the [wrap term](PLAN.md#wrap) reads the tracker. A refresh does not reopen an owner call: it is
-[an open question](#open), on the evidence bar the first two met.
+<a name="d6-extended"></a>
+**Amended 2026-09-19, 16:01 — the set is six.** The owner said **"pull it in"** of
+[FIX-1381](https://linear.app/fixpoint-labs/issue/FIX-1381), answering a direct question about
+whether to take it into the epic's tail or leave it in backlog. **His own word, not a reading of an
+action** — the distinction matters here, because [the fence default](#fence-default) on this same
+page is the other kind and must not be confused with this one.
+
+**What the amendment costs, stated before the call and restated here.** D6 existed to stop the epic
+outliving its own gate, and this extension knowingly spends some of that: FIX-1381 has no spec and
+no implementation, so the [wrap](PLAN.md#wrap) now waits on it **as well as** on ER-20 passing, and
+W4's finish moved further out. That was the owner's call to make and he made it with the consequence
+in front of him. **It is a cheaper child than a cold one:** its direction is already decided by
+**D-11 ([FIX-1380](https://linear.app/fixpoint-labs/issue/FIX-1380)), which is Done** — Ask 1 the
+thin allowlist, Ask 3 org `ro` automatic and `rw` by permission — so what is outstanding is its
+spec, not its shape.
+
+**FIX-1451 is a separate, still-open question**, and this amendment does not touch it: it was
+parented but never confirmed, so the tracker now holds **seven** against a set of six. A refresh
+does not reopen an owner call, and does not make one either — it stays [an open
+question](#open).
 
 <a name="who-owns-what"></a>
 ## Who owns what
 
-![A matrix of six cross-cutting rules against the five issues in the set, each rule with exactly one builds-or-decides cell and any number of consumes cells. The figure's aria-label carries every cell.](figures/ownership.svg)
+![A matrix of six cross-cutting rules against the five original issues in the set, each rule with exactly one builds-or-decides cell and any number of consumes cells. The figure's aria-label carries every cell.](figures/ownership.svg)
 
 A *consumes* cell is a place a child must not re-decide. **It is not a sequencing edge** — ER-3 is
 FIX-1385's to obey, not to wait on. FIX-1430 consumes four rows and owns none, which is what makes
 it a proof rather than a surface; what it owns is [ER-20](BUSINESS-RULES.md), a done-condition
 rather than a matrix row, and **FIX-1385 provides the surface ER-20 stands on without owning it**.
 [FIX-817 and FIX-1415](SPEC.md#related-not-children) consume ER-3 from outside the set.
+
+**The matrix is drawn against the original five and has deliberately not been redrawn.**
+[FIX-1381](#d6-extended) joined after it was drawn and **owns no cross-cutting rule here**. It has
+no spec yet, so which ER rows it consumes is not yet knowable — and inventing cells for a child
+whose scope nobody has written is a worse defect than a missing column. It gets its column when its
+spec says what it touches.
 
 <a name="decided-in-review"></a>
 ## Decided in review, recorded so no child reopens them
@@ -128,6 +150,8 @@ rather than a matrix row, and **FIX-1385 provides the surface ER-20 stands on wi
 | **A package is authored in Markdown**, as the new file, scoped to **instructions and tools** — and the format **may not be designed disk-only** | The owner, 2026-09-19, on FIX-1394's first ratify fork. His own direction is the load-bearing half: packages an LLM writes are **stored as a resource, never saved to disk**, so a format readable only off the filesystem is wrong on arrival. *Don't collapse* is no longer a live result | [ER-2](BUSINESS-RULES.md) · [Open](#open) |
 | ER-3 means **(a)** a contrast with the declared tree — **not (b)** relocating ChannelFlow's post fence onto an org resource | A channel's `members` is already live, read on the refusal path in the session the post lands in; (b) would put one fact in two places and tax every post | ER-3 · ER-12 |
 | <a name="drain-width"></a>**Drain width is 1.** Work queues behind a busy seat; a busy seat never takes a second row concurrently | Closes FIX-1408's *auto-scale / busy-copy* wall on FIX-1430's evidence, the way [ER-15](BUSINESS-RULES.md) says such a wall closes: the lab ran at **both** widths and wrote the comparison out, rather than a number being picked. **Reversible** — the `MANAGER_QUEUE_DRAIN_WIDTH` knob stays, which is how the other case remains reachable | FIX-1430's `lab/README.md` · [Open](#open), one wall lighter |
+| <a name="documents-answer"></a>**Documents are org-scoped for now** — a seat's document is simply a resource under that seat on the org, and there is no per-seat document slot in v1 | The owner, 2026-09-19, answering FIX-1394's second ratify fork **in his own words rather than by taking the recommendation**. Per-resource configurability is not refused, it is *deferred to a mechanism that does not exist yet*: **resource templates** — "used to define the resource, but isn't the resource itself". Until those exist there is nothing to configure against, which is why v1 gets the org scope and no slot. **This unblocks the ratify**, and with it the ship tickets ER-8 gates | [ER-2](BUSINESS-RULES.md) · FIX-1394's ratify |
+| <a name="d6-six"></a>**The set is six.** [FIX-1381](https://linear.app/fixpoint-labs/issue/FIX-1381) — the seat resource allowlist — is pulled in as a child | The owner, 2026-09-19 16:01, **"pull it in"**, answering whether to take it into the epic's tail or leave it in backlog. **His word, not an inference from an action.** It exists because he asked whether resource access inside workers and skills could be controlled yet and it cannot — `resourcesFromDocs` hard-codes `scope: "org"`, `workerConfigSchema` admits only `instructions` / `teamInstructions` / `seatSkills`, and no access gate exists in `workforce/src` or `orchestration/src`. No new ticket was needed: FIX-1381 already covers it as D-11 Ask 1's ship ticket. **It moves the wrap out**, knowingly | [D6](#d6-extended) · [the wrap](PLAN.md#wrap) |
 | <a name="fence-default"></a>**The epic treats the W3 ship fence as narrowed to per-PR file overlap**, from 2026-09-19 | **An operating default, not a ruling, and not the owner's.** He merged #1928 through the live fence; the epic reads that action — not any statement, because there was none — as licence to stop parking W4 ship PRs whose diffs do not touch an unlanded W3 child's files. Recorded so the epic's behaviour is predictable and attributable rather than improvised per PR. **[The re-gate](#er-14-re-gate) is still open and still the owner's**, and **he can countermand this in a sentence**, at which point the default reverts to the rule as written | [ER-14](BUSINESS-RULES.md)'s note · [the re-gate](#er-14-re-gate) |
 | <a name="refuted-mechanisms"></a>**Two of FIX-1430's approved rules had their stated mechanism refuted by the code.** Both texts are corrected; both rules stand and are graded | **BR-5:** a row does run in its own session, with a parent bound at mint and none of the coordinator's transcript — but the parent is the **draining seat's** session, not the filer's, because the dispatch that mints the child happens at the seat, after the filing. **BR-11:** `adoptLapsedLease` (`packages/orchestration/src/task-board/task-entry.ts`) **renews** a lapsed lease so a successor *can* take the row back; `StaleTaskClaimError` fires only when a reclaim genuinely won. The substance — a lapsed row is really back in the queue — now grades the stronger true claim: the next drain takes it and runs it on the seat whose own file answers for the desk it was filed for | ER-4 · FIX-1430's `BUSINESS-RULES.md` and `lab/README.md` |
 
@@ -146,45 +170,38 @@ after all.
 
 ## What the end-state POC showed
 
-**None built.** The division came from the Architect's ownership carve, three of the five children
+**None built.** The division came from the Architect's ownership carve, three of the original five
 are themselves POC-first, and the gate approved it without one. The question a POC would still
 answer: are the package format and the board's assign surface really two issues?
 
 <a name="open"></a>
 ## Open
 
-The set question is closed ([D6](#d6)), the compose helper's public export with it ([D5](#d5)), and
-one of FIX-1394's two ratify decisions closed on 2026-09-19. What is open is the second, the
-sixth-child question, **a re-gate on ER-14**, and three of FIX-1408's walls.
-
-### Are documents in v1, or left out? — it blocks FIX-1394
-
-*(Decides: the owner. Blocks: FIX-1394's ratify and the ship tickets behind it
-([ER-8](BUSINESS-RULES.md)). Six parts in full on the matrix PR
-[#1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921).)*
-
-Nothing in the framework can carry a document to a *single* seat today, so a package advertising one
-delivers prompt text re-sent every turn. **Recommendation, unchanged:** *leave it out and say so in
-the format* — adding a document slot later is additive, shipping one that quietly means something
-else is not. [FIX-1454](https://linear.app/fixpoint-labs/issue/FIX-1454) files the underlying gap,
-which is the fact this rests on rather than a reason to reopen it.
+**Both of FIX-1394's ratify forks are now closed** — authorship, and
+[documents](#documents-answer) on 2026-09-19 — so nothing here blocks a child any more. The set
+question is closed and [extended](#d6-extended); the compose helper's public export closed with it
+([D5](#d5)). What remains open is the FIX-1451 question, **a re-gate on ER-14**, and three of
+FIX-1408's walls. **None of them blocks work today.**
 
 ### Does FIX-1451 belong under this epic?
 
 *(Decides: the owner. Blocks: nothing today. Bites: the wrap.)*
-A filed, parented sixth child against a ratified set of five — stated in full at
-[the spec](SPEC.md#the-sixth-child). **Recommendation: re-home it as related-not-child**, the way
-FIX-817 and FIX-1415 went, because the exit gate does not depend on it and a `Backlog` child holds
-the wrap open indefinitely. **What would change my mind:** if skill-context honesty is part of what
-*package cohesion* is supposed to deliver, it is a child and the wrap waits for it.
+Parented but never confirmed, so the tracker holds seven against a set of six — stated in full at
+[the spec](SPEC.md#the-unconfirmed-child). **Recommendation: re-home it as related-not-child**, the
+way FIX-817 and FIX-1415 went, because the exit gate does not depend on it. **What would change my
+mind:** if skill-context honesty is part of what *package cohesion* is supposed to deliver, it is a
+child and the wrap waits for it. **Note this is now the second thing added to the wrap's tail** —
+FIX-1381 was [pulled in deliberately](#d6-extended), and confirming FIX-1451 would push the finish
+out again, which is worth weighing as a pair rather than one at a time.
 
 <a name="er-14-re-gate"></a>
 ### Does the W3 ship fence narrow to per-PR overlap? — a pending re-gate
 
 *(Decides: the owner, and only the owner — this document records him ratifying **the ship fence as
 written** at the objective gate, so narrowing it is a re-gate, not an epic call. Blocks: now
-**FIX-1394's eventual ship PR** and the [wrap term](PLAN.md#wrap); no longer #1928. The
-recommendation below is **the epic's**, and **unanswered**.)*
+**FIX-1394's eventual ship PR**, **FIX-1381's eventual implementation** and the [wrap
+term](PLAN.md#wrap); no longer #1928 — the bite **grew** with the set rather than shrinking as the
+merges landed. The recommendation below is **the epic's**, and **unanswered**.)*
 
 **The facts.** #1928 publishes `@flow-state-dev/workforce` and carries a changeset, so it is a
 **ship PR** by [ER-14](BUSINESS-RULES.md)'s letter. FIX-1435 — a W3 child carrying an
@@ -212,7 +229,7 @@ narrowed here:** ER-14's row stands exactly as written.
 **What the epic does in the meantime** is [its own operating default](#fence-default), not a
 decision on this question — and the owner can countermand it in a sentence.
 
-**Why the three above are here and the three below are not.** Those are business calls the owner
+**Why the two above are here and the three below are not.** Those are business calls the owner
 owns and nothing else can settle; the three below are engineering walls that *building* answers
 ([ER-15](BUSINESS-RULES.md)).
 
