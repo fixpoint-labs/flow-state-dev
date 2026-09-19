@@ -1,12 +1,16 @@
+import { mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
-import { scanFigureDrift, scanLines } from "../../../scripts/check-isolation-coordinate.mjs";
+import { missingRoots, scanClaims, scanFigureDrift } from "../../../scripts/check-isolation-coordinate.mjs";
 
 type LineHit = { line: number; text: string };
 type DriftHit = { line: number; label: string };
 
-const lines = (text: string): LineHit[] => (scanLines as (t: string) => LineHit[])(text);
+const lines = (text: string): LineHit[] => (scanClaims as (t: string) => LineHit[])(text);
 const drift = (src: string): DriftHit[] => (scanFigureDrift as (s: string) => DriftHit[])(src);
+const roots = (root?: string): string[] => (missingRoots as (r?: string) => string[])(root);
 
 /**
  * The guard exists because FIX-1420's first scan was a phrase list generalised
@@ -41,6 +45,39 @@ describe("per-kind isolation — concepts co-occurring, not a phrase list", () =
   });
 });
 
+/**
+ * The window is a sentence, not a physical line. Scanning lines meant ordinary
+ * prose wrapping walked through the guard untouched, and every control above
+ * uses a one-line fixture, so the suite stayed green over the hole. The corpus
+ * wraps — 2,986 mid-sentence breaks across 40 of 53 scanned files — so this is
+ * a live gap, not a theoretical one.
+ *
+ * Both halves are pinned here, because widening a window is how a guard starts
+ * crying wolf: it must catch the claim the wrap split, AND stay quiet when the
+ * concepts merely neighbour each other in the same wrapped paragraph.
+ */
+describe("wrapped prose — a claim is a sentence, not a line", () => {
+  // Split where wrapping actually splits it: neither physical line carries all
+  // three concepts, so the pre-change line scan matched nothing here.
+  const wrapped = "Each user-scoped resource is namespaced\nby the flow kind, so two seats share a row.";
+
+  it("fires on a stale claim that ordinary wrapping split across two lines", () => {
+    expect(lines(wrapped)).toHaveLength(1);
+  });
+
+  it("names the line the offending words landed on, not the top of the paragraph", () => {
+    expect(lines(wrapped)[0]?.line).toBe(2);
+  });
+
+  it("stays silent when two correct sentences merely neighbour each other", () => {
+    // Every concept is present in the paragraph and none of them form one
+    // claim. A paragraph-wide window reports this; a sentence window must not.
+    expect(
+      lines("Rows are stored at the resolved instance\nid. The registry looks up a handler per\nflow kind.")
+    ).toEqual([]);
+  });
+});
+
 const figure = (label: string, visible: string) =>
   `<figure><svg role="img" aria-label="${label}"><text>${visible}</text></svg><figcaption>c</figcaption></figure>`;
 
@@ -60,5 +97,30 @@ describe("figure drift — the label must name the coordinate its diagram commit
 
   it("stays silent on a figure committing to no storage coordinate at all", () => {
     expect(drift(figure("One child session per seat", "ONE CHILD PER SEAT"))).toEqual([]);
+  });
+
+  it("recognises a keying word the figure gate only knows through the shared constant", () => {
+    // `namespac` lives in KEYING and was absent from the gate's old
+    // hand-written list — the exact duplication that let the two scanners
+    // diverge. Deriving the gate from KEYING is what makes this fire.
+    expect(drift(figure("Rows land under a member handle", "ROWS NAMESPACED PER SEAT"))).toHaveLength(1);
+  });
+});
+
+/**
+ * A guard that scans nothing reports the same green as a guard that scanned
+ * everything. The walk used to swallow a missing root, so a renamed docs
+ * directory would have passed CI silently.
+ */
+describe("scan surface — a missing root must be loud, not empty", () => {
+  it("names a configured root that is not there", () => {
+    const base = mkdtempSync(join(tmpdir(), "isolation-roots-"));
+    mkdirSync(join(base, "docs/architecture"), { recursive: true });
+    mkdirSync(join(base, "docs/contributing"), { recursive: true });
+    expect(roots(base)).toEqual(["docs/atlas"]);
+  });
+
+  it("finds every configured root present in this repo", () => {
+    expect(roots()).toEqual([]);
   });
 });

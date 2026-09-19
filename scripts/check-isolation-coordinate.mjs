@@ -11,8 +11,28 @@
  * flowKind` in the same file, and an `aria-label` paraphrasing the old rule as
  * "keyed by member identity". A phrase list derived from known hits can only
  * confirm the list; it cannot extend it. So this matches on the CONCEPTS
- * co-occurring on a line — an isolation/keying word near a kind word — which
- * catches wordings nobody has written yet.
+ * co-occurring in one sentence — an isolation/keying word near a kind word —
+ * which catches wordings nobody has written yet.
+ *
+ * ## The match window is a SENTENCE, not a physical line
+ *
+ * The first version tested each physical line for all three concepts, which
+ * meant ordinary prose wrapping walked straight through it: a claim broken
+ * across two lines matched nothing, and every control used a one-line fixture,
+ * so the suite stayed green over the hole. That is the same defect as a phrase
+ * list — a check that cannot fail for the reason it claims.
+ *
+ * The corpus wraps, and that is measured, not assumed: 2,986 mid-sentence line
+ * breaks across 40 of the 53 scanned files. So wrapped lines are rejoined and
+ * the scan runs per sentence.
+ *
+ * A sentence, specifically, and not a paragraph. Widening to the paragraph is
+ * what makes a guard cry wolf — three concepts can sit in one paragraph without
+ * forming one claim. Measured on the current (correct) corpus: a paragraph
+ * window reports 3 false positives and a two-line sliding window reports 3,
+ * each of which would need an allowlist entry. The sentence window reports 0
+ * and still catches the wrapped claim, because a sentence is the unit a claim
+ * is actually made in and a line break inside one is a rendering artifact.
  *
  * Run: node scripts/check-isolation-coordinate.mjs
  * Exits non-zero and prints every offending line when the rule reappears.
@@ -35,7 +55,7 @@ const EXTS = [".html", ".md", ".mdx"];
 const EXCLUDE = [/docs\/internal\//, /CHANGELOG\.md$/];
 
 /**
- * A line is a candidate when a STORAGE-KEYING word and a kind word co-occur.
+ * A sentence is a candidate when a STORAGE-KEYING word and a kind word co-occur.
  *
  * The keying list is deliberately about where a row lands, not about isolation
  * as a topic. A looser first version matched bare `isolated` / `isolation` and
@@ -48,7 +68,7 @@ const KEYING = /flowisolation|isolateuserstate|isolateorgstate|namespac|keyed (?
 const KIND = /flowkind|flow kind|per[- ]kind|per flow kind/i;
 
 /**
- * The line must also be talking about a stored user/org ROW. Without this the
+ * The sentence must also be talking about a stored user/org ROW. Without this the
  * check fires on `registry.get(flowKind)` route lookups and on child sessions
  * "keyed under" a parent — three standing false positives that would have
  * needed an allowlist entry each, and a guard nobody can get to green is a
@@ -57,7 +77,7 @@ const KIND = /flowkind|flow kind|per[- ]kind|per flow kind/i;
 const STORAGE_SUBJECT = /resource|user[- ]?scoped|org[- ]?scoped|flowisolation|isolate(?:user|org)state|scopeid|storage|cell|row/i;
 
 /**
- * Lines that pair the two words while saying something TRUE. Each needs a
+ * Sentences that pair the two words while saying something TRUE. Each needs a
  * reason, because every entry here is a hole in the guard.
  */
 const ALLOW = [
@@ -78,18 +98,83 @@ const ALLOW = [
   /\(type, target, flowKind\)/
 ];
 
+/**
+ * No `catch` here, deliberately. An unreadable subtree used to scan as zero
+ * files and the guard printed OK — a green meaning "found nothing to check",
+ * which is the instrument failure this guard exists to close, one level down.
+ * Every directory reached here was already seen as a directory, so a throw is
+ * genuinely exceptional and `main` turns it into a loud non-zero exit.
+ */
 function walk(dir, out = []) {
-  let entries;
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return out;
-  }
-  for (const e of entries) {
+  for (const e of readdirSync(dir)) {
     const p = join(dir, e);
     if (statSync(p).isDirectory()) walk(p, out);
     else if (EXTS.some((x) => p.endsWith(x))) out.push(p);
   }
+  return out;
+}
+
+/**
+ * The configured roots that are not there. A renamed or moved docs root would
+ * otherwise walk to zero files and pass; exported so the control can put a root
+ * out of reach and watch this go red, rather than trusting the argument.
+ */
+export function missingRoots(root = ROOT) {
+  return ROOTS.filter((base) => {
+    try {
+      return !statSync(join(root, base)).isDirectory();
+    } catch {
+      return true;
+    }
+  });
+}
+
+/**
+ * The corpus as sentences, with wrapped lines rejoined.
+ *
+ * A block is a run of non-blank lines — the unit prose wrapping happens inside.
+ * Each sentence carries the physical line its offending word sits on, so a
+ * failure still names one place to look rather than the top of a paragraph.
+ */
+function claims(text) {
+  const out = [];
+  let block = [];
+  let blockStart = 1;
+
+  const flush = () => {
+    if (block.length === 0) return;
+    const starts = [];
+    let joined = "";
+    block.forEach((l, i) => {
+      starts.push(joined.length + (i === 0 ? 0 : 1));
+      joined += i === 0 ? l : ` ${l}`;
+    });
+    const lineAt = (offset) => {
+      let i = starts.length - 1;
+      while (i > 0 && starts[i] > offset) i--;
+      return blockStart + i;
+    };
+
+    let start = 0;
+    const sentenceEnd = /[.!?](?=\s|$)/g;
+    let m;
+    while ((m = sentenceEnd.exec(joined)) !== null) {
+      out.push({ offset: start, text: joined.slice(start, m.index + 1), lineAt });
+      start = m.index + 1;
+    }
+    if (start < joined.length) out.push({ offset: start, text: joined.slice(start), lineAt });
+    block = [];
+  };
+
+  text.split("\n").forEach((l, i) => {
+    if (l.trim() === "") {
+      flush();
+    } else {
+      if (block.length === 0) blockStart = i + 1;
+      block.push(l);
+    }
+  });
+  flush();
   return out;
 }
 
@@ -99,18 +184,41 @@ function walk(dir, out = []) {
  * guard; the negative controls live in
  * `packages/core/test/isolation-coordinate-check.test.ts`.
  */
-export function scanLines(text) {
+export function scanClaims(text) {
   const out = [];
-  text.split("\n").forEach((line, i) => {
-    if (!KEYING.test(line) || !KIND.test(line) || !STORAGE_SUBJECT.test(line)) return;
-    if (ALLOW.some((rx) => rx.test(line))) return;
-    out.push({ line: i + 1, text: line.trim().slice(0, 240) });
-  });
+  for (const claim of claims(text)) {
+    const t = claim.text;
+    if (!KEYING.test(t) || !KIND.test(t) || !STORAGE_SUBJECT.test(t)) continue;
+    if (ALLOW.some((rx) => rx.test(t))) continue;
+    const kind = KIND.exec(t);
+    out.push({
+      line: claim.lineAt(claim.offset + (kind === null ? 0 : kind.index)),
+      text: t.trim().slice(0, 240)
+    });
+  }
   return out;
 }
 
 const COORDINATE = /\bseats?\b|\binstances?\b/i;
 const VISIBLE_COMMITS = /per seat|per-seat|flow instance id|instance id,/i;
+
+/**
+ * Whether a figure is about stored rows at all — derived from `KEYING` rather
+ * than restated, because a second hand-written list is how the line scan and
+ * the aria-label drifted apart in the first place.
+ *
+ * `STORAGE_SUBJECT` is deliberately NOT unioned in, and that is measured, not
+ * assumed: its `row` and `cell` are prose subjects that mean something else in
+ * a diagram label. Unioning it fires on `docs/atlas/workforce.html:2039`, a
+ * dispatch figure reading "ONE CHILD PER ROW" beside "ONE CHILD PER SEAT",
+ * which commits to no storage coordinate at all. `resource` is taken across as
+ * the one storage noun a figure uses the same way prose does.
+ *
+ * Two bare words are added, and only here: a figure's text is labels, not
+ * prose, so it says `isolation` and `keyed` where a sentence says
+ * `flowIsolation` or `keyed by`. Both were in the gate before it was derived.
+ */
+const FIGURE_SUBJECT = new RegExp(`${KEYING.source}|resource|isolat|keyed`, "i");
 
 /**
  * A figure's `aria-label` must not drift from its own visible text. The token
@@ -134,7 +242,7 @@ export function scanFigureDrift(src) {
       .join(" ");
     // Only figures actually about stored rows. "ONE CHILD PER SEAT" on a
     // dispatch diagram commits to no storage coordinate.
-    if (!/flowisolation|isolat|resource|stored at|keyed/i.test(visible + label)) continue;
+    if (!FIGURE_SUBJECT.test(visible + label)) continue;
     if (!VISIBLE_COMMITS.test(visible)) continue;
     if (COORDINATE.test(label)) continue;
     out.push({ line: src.slice(0, svg.index).split("\n").length, label: label.slice(0, 160) });
@@ -143,7 +251,16 @@ export function scanFigureDrift(src) {
 }
 
 /** Every in-scope file in the docs corpus, as {rel, src}. */
-export function corpusFiles() {
+function corpusFiles() {
+  const missing = missingRoots();
+  if (missing.length > 0) {
+    throw new Error(
+      `configured docs root(s) not found: ${missing.join(", ")}. ` +
+        `The scan would otherwise read nothing and report OK — restore the ` +
+        `directories, or update ROOTS in this script.`
+    );
+  }
+
   const files = [];
   for (const base of ROOTS) {
     for (const file of walk(join(ROOT, base))) {
@@ -156,10 +273,18 @@ export function corpusFiles() {
 }
 
 function main() {
+  let files;
+  try {
+    files = corpusFiles();
+  } catch (err) {
+    console.error(`\n[isolation-coordinate] cannot scan the corpus — ${err.message}\n`);
+    process.exit(1);
+  }
+
   const hits = [];
   const drift = [];
-  for (const { rel, src } of corpusFiles()) {
-    for (const h of scanLines(src)) hits.push({ file: rel, ...h });
+  for (const { rel, src } of files) {
+    for (const h of scanClaims(src)) hits.push({ file: rel, ...h });
     for (const d of scanFigureDrift(src)) drift.push({ file: rel, ...d });
   }
 
