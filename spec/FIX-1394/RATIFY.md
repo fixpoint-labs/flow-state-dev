@@ -1,6 +1,8 @@
 # FIX-1394 · The ratify
 
-[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Ratify**
+[Spec](https://github.com/fixpoint-labs/flow-state-dev/blob/6fb3633cf683957483f2bc72e6920db7c798e8a5/spec/FIX-1394/SPEC.md) · [Decisions](https://github.com/fixpoint-labs/flow-state-dev/blob/6fb3633cf683957483f2bc72e6920db7c798e8a5/spec/FIX-1394/DECISIONS.md) · [Rules](https://github.com/fixpoint-labs/flow-state-dev/blob/6fb3633cf683957483f2bc72e6920db7c798e8a5/spec/FIX-1394/BUSINESS-RULES.md) · [Plan](https://github.com/fixpoint-labs/flow-state-dev/blob/6fb3633cf683957483f2bc72e6920db7c798e8a5/spec/FIX-1394/PLAN.md) · **Ratify**
+
+*(The four spec documents live on the approved branch `spec/FIX-1394`, pinned above at its reviewed commit. This branch carries the ratify and its evidence.)*
 
 Four variants, six probes fixed before any of them was built, every cell recorded. Built
 against landed code at `d8e4c99`, the whole comparison under
@@ -14,13 +16,20 @@ that already ships.** A worker can already opt into a named bundle of instructio
 and its own `tools:` still decides what it may call. What a file format adds is that a team
 could write one in Markdown instead of an engineer writing it in TypeScript.
 
-**The one part that does not already work is documents, and it does not work for anybody.**
-There is no per-seat document channel in the framework at all. Every candidate that passed the
-document probe passed it by putting the document's text in the prompt.
+**The one part a package cannot carry is a document, and it cannot for anybody.** There is no
+per-seat document channel in the framework at all — every candidate that passed the document probe
+passed it by putting the document's text in the prompt. That turned out to be a design, not a gap:
+documents are **org-scoped**, and the owner has now ruled that they stay that way
+([the decision](#decided-documents)).
 
 Two things follow, and they outrank the choice of format:
 [the document finding](#the-finding-that-outranks-the-matrix) and
 [a correction to BR-6 on the approved spec](#correction-to-br-6-approved-spec).
+
+**The documents fork is now decided by the owner** — org-scoped, out of the format in v1, with
+per-seat reach routed to FIX-1381:
+[Decided · documents are org-scoped, and out of v1](#decided-documents). **One fork is left**,
+and it is the one that decides the issue: [who writes a package](#need-your-sign-off).
 
 ## The matrix
 
@@ -60,6 +69,14 @@ for. **It is not a document you can address, update at run time, or leave out of
 tokens.** Any format that claims to carry documents is claiming something the framework cannot
 do for it.
 
+**The middle row is not a broken route — it is the design, and the owner has now said so.** Rows
+one and three are mechanisms that fail to deliver. Row two delivers exactly what it was built to:
+a document is an **org-level** thing a seat reaches, not a seat-level thing a package hands over.
+So the framework is not missing a per-seat document channel the way the other two rows are missing
+one; it declines to have one. What it *is* missing is **reach control** — every seat in the org
+reaches every org document today. That gap is real, it is not this issue's, and it is filed. Both
+halves are settled directly below.
+
 <a name="correction-to-br-6-approved-spec"></a>
 ### Correction to BR-6 (approved spec)
 
@@ -87,6 +104,56 @@ it cannot answer — they do not.
 **What it changes.** BR-12 already states P3 as an observable behaviour and leaves the mechanism
 open, so no cell moves. What moves is the cost of the *document* half of any package format:
 BR-6 said one of the two mechanisms already existed, and it does not.
+
+<a name="decided-documents"></a>
+## Decided · documents are org-scoped, and out of v1
+
+The owner has ruled the documents fork. In his words:
+
+> For documents, all docs are org scoped for now. Later we might decide to make that configurable,
+> once we provide resource templates (used to define the resource, but isn't the resource itself).
+> For now though, a seat is just a resource under that seat on the org. Security wise, the other
+> workers technically have the ability to access those documents, but we should be giving them
+> specific access to what resources they can actually work with. If thats not done yet (the ability
+> to control resource access within workers/skills) then we will need to file it.
+
+**The call and the shipped behaviour agree** — which is the half worth checking rather than
+assuming, given what this page already had to correct once. `resources-from-docs.ts` builds every
+file-declared document with `scope: "org"` as a literal, written *after* the frontmatter
+passthrough so no file can reach it, and `scope` is one of `DERIVED_RESOURCE_KEYS`, so a document
+that names it is refused **by name** rather than silently overridden. Two independent mechanisms,
+both pinned by behaviour and both watched failing: [V5](#verification). A third guard showed up
+only by watching them fail: with the literal gone, `defineResource()` refuses the document outright
+instead of defaulting, so there is no quiet non-org state to land in.
+
+**So the format carries no documents in v1, and the reason is now structural rather than
+provisional.** The earlier reason was *"no per-seat document channel exists"* — which reads as a
+gap someone might fill, and invited a fork about whether to pay for one. There is no gap to fill. A
+package attaches to **one seat**; a document installs at **org** scope. Those are different
+altitudes, and a format that declared a document would be a seat-level unit minting an org-level
+resource: it lands in the app's document namespace, and until reach control ships every other seat
+in the org can read it. That holds whichever format wins, so it is not a tiebreak
+between B and C — it is a reason to keep documents out of both.
+
+**The security half is a separate issue, and it is filed.** The conditional in the owner's last
+sentence fired: nothing today lets a seat or a skill declare which resources it may read — a seat's
+`tools:` names blocks, and a block grant is not a resource grant. The route is **FIX-1381, "seat
+resource allowlist"**, which the owner pulled into this epic. Its spec is on
+[#1935](https://github.com/fixpoint-labs/flow-state-dev/pull/1935) and is **still converging a
+review round**, so it is named here as the route and not as behaviour anyone can build on; nothing
+on this page is written against its design.
+
+**One near-miss worth recording, because it will look like a fourth route.** Once FIX-1381 lands, a
+package's document *could* be installed as an ordinary org document and then named in exactly one
+seat's allowlist — org storage, one-seat reach, composed from two mechanisms. It was considered and
+it does not change v1: the document still occupies the org namespace, the composition rests on a
+spec still in review, and what it actually nets depends on that spec's default for a seat that
+names nothing, which is theirs to settle and not this page's. Revisit once FIX-1381 has shipped and
+been used, not before.
+
+**The configurable future stays a future.** Resource templates, and a document scope that is not
+always `org`, are named here so the ratify is not read as closing them. They are not a deliverable
+of this issue, and v1 binds nothing about them.
 
 ## The three cells that decided it
 
@@ -138,8 +205,8 @@ verdicts did not move here either.
 
 ## Recommended: **C**, scoped to instructions and tools
 
-One new file, `PACKAGE.md`, with its own frontmatter, and its `blocks/` beside it. Documents
-out of v1, with the reason recorded.
+One new file, `PACKAGE.md`, with its own frontmatter, and its `blocks/` beside it. **Documents
+out** — settled by the owner, not deferred ([the decision](#decided-documents)).
 
 **Why C over B.** They can do the same things, so the tiebreak is what an author writes wrong.
 B's package file is a `WORKER.md` sitting somewhere that is not `teams/<id>/workers/<name>/` —
@@ -149,9 +216,11 @@ and B spends its one ambiguity at exactly the place that rule is strictest. C co
 convention against a tree that counts seven; it buys a file that cannot be mistaken for
 anything else.
 
-**Why scoped.** P1 and P2 pass because both have a real per-seat channel. P3 does not have one.
-Shipping documents in v1 would freeze a design around a document that is prompt text wearing a
-resource's name.
+**Why scoped.** P1 and P2 pass because both have a real per-seat channel. P3 does not have one,
+and now will not: a document is an org-level resource, so a seat-level package is the wrong thing
+to declare one from. Shipping documents here would freeze a design around prompt text wearing a
+resource's name, and would put the format in the way of FIX-1381, which is where per-seat reach
+over org documents actually belongs.
 
 ## What C actually adds, and what already ships
 
@@ -188,6 +257,9 @@ fork below.
 
 ## Need your sign-off
 
+**One fork, and it decides the issue.** The documents question that stood here is
+[decided above](#decided-documents) and is no longer an ask.
+
 ### Who writes a package — a team in Markdown, or an engineer in TypeScript?
 
 **Plain terms.** The thing we were going to build is a file format so that one team can hand
@@ -207,8 +279,8 @@ worth its own small fix either way.
 already there and already enforced, so this is the cheapest version of this feature we will
 ever get — it is a reader and a file, not a subsystem. Two siblings in this epic grow surfaces
 on top of whichever answer lands, and "whoever builds first settles it by accident" is the risk
-the issue was opened for. Scoping documents out costs nothing today, because nothing can carry
-one to a single seat regardless.
+the issue was opened for. Scoping documents out is settled above and costs this fork nothing
+either way.
 
 **What would change my mind:** whether anyone outside the app's engineers is actually going to
 author one of these. If packages will in practice be written by the same people who write the
@@ -221,52 +293,37 @@ quarter of people working around it, and the format stays available. Building it
 wrong ships an eighth convention into a tree that already has seven, and a published file
 format is expensive to take back.
 
-### Documents in v1: leave them out, or pay for a per-seat document channel?
-
-**Plain terms.** A package can carry instructions and a tool to one worker. It cannot carry a
-*document* — a reference page the worker reads — to one worker. Today a document is installed
-for a whole category of workers at once, or it is pasted into the prompt on every turn.
-
-**The trade-off.** Leaving it out means a package's "document" is prompt text, re-sent every
-turn and counted against every turn's cost, and nobody can update one while the system runs.
-Paying for it means a framework change to give a single worker its own documents — a real
-piece of work, and not a file format.
-
-**My recommendation: leave it out of v1 and say so in the format.** A package that declares it
-carries documents and delivers prompt text is the kind of promise that is discovered by a
-customer rather than by us.
-
-**What would change my mind:** if one of the siblings in this epic is planning on per-worker
-documents. Then it is one framework change serving two issues rather than one serving none.
-
-**Cost of being wrong: low.** Adding a document slot to a format later is additive. Shipping
-one that quietly means something else is not.
-
 ## What this means for ER-2
 
 ER-2 previously pre-named the answer. It should now bind what this page records:
 
 > **ER-2.** The package format is one file, `PACKAGE.md`, with colocated `blocks/`, compiled to
 > a capability preset a seat opts into by name plus that seat's own block registry. It carries
-> **instructions and tools**; it does not carry documents in v1, because no per-seat document
-> channel exists. Attaching a package never widens what a seat may call — the seat's `tools:`
-> is still the only grant (D1, unchanged and re-verified in every column).
+> **instructions and tools**; it does **not** carry documents, in v1 or as a deferred slot,
+> because a document is org-scoped by design and a package attaches to one seat. Per-seat reach
+> over org documents belongs to FIX-1381, not to this format. Attaching a package never widens
+> what a seat may call — the seat's `tools:` is still the only grant (D1, unchanged and
+> re-verified in every column).
 >
-> **This is conditional on the authorship fork above.** If the answer is that app engineers are
-> the only realistic authors, ER-2 binds *don't collapse*: the placement rule is written down,
-> the silent `allowed-tools` failure is fixed, and no format ships.
+> **The documents clause is settled** by the owner's ruling
+> ([above](#decided-documents)) and is not conditional. **The rest is conditional on the one
+> remaining fork.** If the answer is that app engineers are the only realistic authors, ER-2
+> binds *don't collapse*: the placement rule is written down, the silent `allowed-tools` failure
+> is fixed, and no format ships.
 
 ## Verification
 
 | Check | Result |
 |---|---|
-| V0 · the evidence base | 26 claims green at `d8e4c99`, including `C4-run` — the four grant-gate suites, 62 tests, all pass |
+| V0 · the evidence base | 26 claims green at `d8e4c99`, including `C4-run` — the four grant-gate suites, 62 tests, all pass. **Re-run at this head** when V5 was added: same 26, same 4 files, same 62 tests |
 | V0 · negative control | PASS — a planted eighth convention reader in Door C turns C1 and C1-total red |
 | V1 · the harness can say no | PASS — six violating fixtures, each red in exactly its own row and green in the other five. Three now corrupt the authored file's BYTES rather than the reader |
 | V1 · the reader control | PASS — an empty `PACKAGE.md` turns P1, P2 and P3 red, and a manifest the parser cannot read is refused rather than compiled |
 | V2 · no blanks, and no drift | 24 cells recorded — 17 `PASS`, 3 `FAIL` (all A's), 4 `n/a` (all D's). `run.mts` now ASSERTS this table and exits non-zero on any cell that moves |
 | V4 · the off state | The workforce suite unmodified: 32 files, 527 tests, all pass |
 | VG · the goal | PASS — one authored capability, attached then held and activated, the same working seat both times, sibling seat untouched in both |
+| V5 · documents are org-scoped | PASS — `pnpm exec vitest run packages/workforce/test/resources-from-docs.test.ts`, 21 tests, all pass. Three of them are what the decision rests on: the body arrives *at org scope*; a document declaring `scope:` is refused *naming the ref*; a document resolves only on a request that carries an org |
+| V5 · negative control | PASS — deleting the `scope: "org"` literal from `resources-from-docs.ts` turns **8 of the 21 red** (13 stay green), including all three cells above. Two things the red state showed that reading the source would not have: `defineResource()` **refuses** a document with no scope at all — *"requires an explicit scope of `session`, `user`, or `org` (got undefined)"* — so there is no silent default to land in; and all eleven derived-key refusal cases stay **green**, correctly, because the literal and the `DERIVED_RESOURCE_KEYS` refusal are two independent mechanisms rather than one check counted twice. Source restored, re-verified by hash and by a clean `git status` |
 
 **V3 reads differently than the plan wrote it.** The plan says to re-run the four grant-gate
 suites *with the variant's package attached*. Those suites live under `packages/`, and editing
