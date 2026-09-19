@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "strict": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@flow-state-dev/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@flow-state-dev/core/types": [
+        "../../packages/core/src/types/index.ts"
+      ],
+      "@flow-state-dev/engine": [
+        "../../packages/engine/src/index.ts"
+      ],
+      "@flow-state-dev/testing": [
+        "../../packages/testing/src/index.ts"
+      ],
+      "@flow-state-dev/orchestration": [
+        "../../packages/orchestration/src/index.ts"
+      ],
+      "@flow-state-dev/workforce": [
+        "../../packages/workforce/src/index.ts"
+      ],
+      "@flow-state-dev/workforce/loader": [
+        "../../packages/workforce/src/loader/index.ts"
+      ],
+      "@flow-state-dev/workforce/codegen": [
+        "../../packages/workforce/src/codegen/index.ts"
+      ]
+    },
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  }
+}
