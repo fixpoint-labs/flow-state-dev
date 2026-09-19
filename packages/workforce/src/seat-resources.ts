@@ -185,6 +185,22 @@ const seatResourceSurvivedNarrowingMessage = (ref: string, kind: string): string
   `seat's map replaces the flow-level one. Remove that declaration from the block and keep the ` +
   `document at flow level, or grant \`${ref}\` to this seat deliberately.`;
 
+/**
+ * The wording for a kind holding something OTHER than the app's document under
+ * that document's own ref.
+ *
+ * Refused rather than guessed at, because the two readings need opposite
+ * treatment and nothing distinguishes them: if it is the document, narrowing it
+ * is the whole feature; if it is an unrelated store the app happened to name
+ * the same thing, narrowing it quietly breaks the kind's own machinery — and a
+ * `ro` grant would make that store read-only, which this feature promises never
+ * to do. The app renames one of the two and the ambiguity is gone.
+ */
+const catalogRefHoldsSomethingElseMessage = (ref: string, kind: string): string =>
+  `cannot be resolved: the "${kind}" kind declares \`${ref}\` at flow level, but what it declares ` +
+  `there is not the document the app passed under that ref. A seat's grants narrow documents and ` +
+  `nothing else, and these two cannot be told apart. Rename one of them.`;
+
 /** A value as a refusal names it: short, quoted, and never a sprawling dump. */
 function describe(value: unknown): string {
   if (value === undefined) return "undefined";
@@ -360,6 +376,22 @@ export function resolveSeatResources(input: ResolveSeatResourcesInput): Resolved
   );
 
   const problems: string[] = [];
+
+  // **Before anything is narrowed: the kind's map must agree with the catalog
+  // on what a document's ref holds.** The subtraction below removes a
+  // flow-level key that names a document, and a grant installs one; both read
+  // the ref as meaning the document. A kind that declares something else there
+  // makes both wrong at once, and in the direction this feature promises never
+  // to move — a seat's list is supposed to leave the app's stores and boards
+  // alone. Refused for the whole kind rather than per grant, because the
+  // ambiguity is in the app's wiring and not in anything the seat wrote.
+  for (const key of kindFlowLevelKeys) {
+    if (!Object.hasOwn(catalog, key)) continue;
+    if (!Object.hasOwn(kindResources, key)) continue;
+    if (kindResources[key] === catalog[key]) continue;
+    problems.push(catalogRefHoldsSomethingElseMessage(key, kind));
+  }
+
   for (const { ref, mode } of grants) {
     if (!Object.hasOwn(catalog, ref)) {
       problems.push(unmatchedSeatResourceMessage(ref));

@@ -630,6 +630,50 @@ describe("V9 · the narrowing is checked on the seat that was BUILT", () => {
   });
 });
 
+describe("a document's ref must hold that document on the kind", () => {
+  it("a kind declaring something else under a document's ref refuses rather than narrowing it", () => {
+    // Without this the subtraction reads the store as a document and deletes
+    // it, and a `ro` grant on that ref would make the kind's own store
+    // read-only — the one thing a seat's list promises never to touch.
+    const impostorFlow = defineFlow({
+      kind: "impostor-desk",
+      cardinality: "collection",
+      configSchema: workerConfigSchema(),
+      // `PAYROLL` is a document's ref, and what sits there is the app's store.
+      resources: { [HANDBOOK]: CATALOG[HANDBOOK]!, [PAYROLL]: auditLog } as DeclaredResources,
+      actions: { run: { inputSchema: z.object({}), block: work } }
+    });
+    const hireImpostor = (refs: unknown) =>
+      hireWorkforce(
+        [{ id: "eng.lead", declared: { flow: "impostor-desk", description: "d", [SEAT_RESOURCES_KEY]: refs }, body: "" }],
+        { kinds: { "impostor-desk": impostorFlow as never }, documents: CATALOG }
+      );
+
+    // Even the empty list, because the subtraction is what would drop the store.
+    expect(() => hireImpostor([])).toThrow(new RegExp(`${PAYROLL}[\\s\\S]*not the document`));
+    expect(() => hireImpostor([HANDBOOK])).toThrow(/not the document/);
+  });
+
+  it("the same kind with the document actually installed there hires", async () => {
+    // The control: only the impostor entry refuses, not this kind's shape.
+    const honestFlow = defineFlow({
+      kind: "honest-desk",
+      cardinality: "collection",
+      configSchema: workerConfigSchema(),
+      resources: { [HANDBOOK]: CATALOG[HANDBOOK]!, [PAYROLL]: CATALOG[PAYROLL]!, "audit-log": auditLog } as DeclaredResources,
+      actions: { run: { inputSchema: z.object({}), block: work } }
+    });
+    const [lead] = hireWorkforce(
+      [{ id: "eng.lead", declared: { flow: "honest-desk", description: "d", [SEAT_RESOURCES_KEY]: [HANDBOOK] }, body: "" }],
+      { kinds: { "honest-desk": honestFlow as never }, documents: CATALOG }
+    );
+
+    const ctx = await contextFor(lead!, "sess_honest");
+    expect(() => ctx.resources.get(PAYROLL)).toThrow(/not registered/i);
+    await expect(handleFor(ctx, "audit-log").setState({ entries: ["kept"] })).resolves.toBeUndefined();
+  });
+});
+
 describe("a refusal counts workers, not reasons", () => {
   it("one worker with two bad grants is one refused worker", () => {
     // `refused 2 of 1 worker` is not a sentence this function may print.

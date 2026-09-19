@@ -40,8 +40,8 @@ declared nothing reaches and writes both.
 (e) No two of the three reached the same set.
 
 (f) A seat file granting a ref no document matches refuses the whole roster at the hire, naming the
-seat and the ref, and nothing is registered — a good seat's address 404s on a host built from what
-came back.
+seat and the ref, and saying that nothing was hired against the count of the WHOLE roster — the
+good workers in the same call included.
 
 **Anti-game:** a hollow pass would assert the hires returned and the requests completed — true even
 when every seat holds the same map. So the check MUST read what the seat reached back through
@@ -52,8 +52,10 @@ rebuild the host first, so nothing is served from a live context; MUST probe wri
 **actually writing**, since asserting `writable === false` passes for a flag nothing consults; MUST
 assert the app's own store survives every grant (d), since a resolver that narrows to the granted
 documents alone is otherwise fully green; MUST assert no two seats saw the same set (e), since one
-shared map is always right for somebody; and MUST assert the control refusal left **nothing**
-registered, since a refusal after a partial hire is not a refusal.
+shared map is always right for somebody; and MUST read the control's all-or-nothing claim off the
+refusal itself rather than off a host built from what came back, since
+`hireWorkforce` returns its seats: when it throws there is no array, so such a host is empty
+whatever happened and a 404 from it is a check that cannot fail.
 
 **Model:** n/a — handlers only, by construction. What is graded is which resources reached a running
 block and which of them it could write.

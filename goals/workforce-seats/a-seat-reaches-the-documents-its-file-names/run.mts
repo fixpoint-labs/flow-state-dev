@@ -228,16 +228,25 @@ await runGoal(async () => {
         for (const name of [fixture.control.id, fixture.control.ref]) {
           if (!refusal.includes(name)) failures.push(`the refusal does not name "${name}": ${refusal}`);
         }
-        // A refusal after a partial hire is not a refusal: the good seats are
-        // gone too, so nothing can be registered.
-        const emptied = host(stores, hired ?? []);
-        const res = await act(emptied, fixture.seats.chief.id, "s_refused");
-        if (res.status !== 404) {
-          failures.push(`a seat was registered anyway (${fixture.seats.chief.id} answered ${res.status})`);
+        // A refusal after a partial hire is not a refusal. Asserted on the
+        // refusal itself, which is the only place the fact is observable:
+        // `hireWorkforce` returns its seats, so when it throws there is no
+        // array to inspect and a host built from one would be empty whatever
+        // happened. The message says how many of how many, and that nothing
+        // was hired — both of which change the moment the whole roster stops
+        // being the unit.
+        const total = declared.workers.length + typo.workers.length;
+        if (!refusal.includes("nothing was hired")) {
+          failures.push(`the refusal does not say nothing was hired: ${refusal}`);
+        }
+        if (!refusal.includes(`of ${total} workers`)) {
+          failures.push(
+            `the refusal is not against the whole roster of ${total}: ${refusal}`
+          );
         }
       }
       evidence.push(
-        "a seat file granting a ref no document matches refuses the whole roster at the hire, naming the seat and the ref, and nothing is registered"
+        "a seat file granting a ref no document matches refuses the whole roster at the hire, naming the seat and the ref, and reports nothing hired against the whole roster's count"
       );
     }
   }

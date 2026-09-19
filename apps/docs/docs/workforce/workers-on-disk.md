@@ -362,7 +362,7 @@ Declaring `instructions:` in the frontmatter *and* writing a body is refused, na
 
 ### Supplying the documents a seat may name
 
-A worker's `resources:` list selects from the documents its kind was installed with, so the hire step has to be told which entries in a kind's resource map are documents. Pass it the same map you spread into the flow. Here is [the `custom-agent` kind](#the-flow-decides-what-a-worker-may-declare) with its documents installed:
+A worker's `resources:` list selects from the documents its kind was installed with, so the hire step has to be told which entries in a kind's resource map are documents. Pass it the same map you spread into the flow. Here is [the `custom-agent` kind](#the-flow-decides-what-a-worker-may-declare) again with its documents installed — the action's `inputSchema` and `runTurn`, and the `workers` you loaded, are the same ones as there:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
