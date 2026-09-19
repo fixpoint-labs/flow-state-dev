@@ -1,0 +1,127 @@
+<svg viewBox="0 0 940 388" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path: a ship-fence band under the axis saying FIX-1435 has no pull request and is still Todo, so the W3 ship fence has not lifted, and that four W4 ship PRs merged under the live fence, the last of them pull request 1928 by the owner himself. Below it, eleven lanes against time with a now line at September 19. Two input lanes from W3, TEAM.md and the tools fence, carry bars that reach the now line and read landed on main on September 19. Then the seven lanes of the set. FIX-1408 carries a done bar behind the now line, done by decision. FIX-1405 inventory opens with a short spec-approved bar at the now line and then carries one merged bar running to the end of its lane: done, with pull requests 1920, 1923 and 1928 all merged. FIX-1385 channel boards carries the same spec bar and a merged bar running to the end of its lane: Done, pull request 1922 merged, one full-scope PR rather than the four its plan named. FIX-1394 package cohesion carries an open-PR bar reading matrix pull request 1921, both forks decided, ratify recorded. Its lane stops at the ratify with no dashed continuation, because that is where this epic's work on it ends: the owner answered authorship on 2026-09-19 and documents the same day, and building the ratified format is FIX-1459, which is related to this epic rather than a child of it. FIX-1430, the manager-queue lab, carries its spec bar, then a merged bar for pull request 1929, and then a solid green gate box reading ER-20 PASS times three — the code is merged and the exit gate has now been run and passed, three consecutive times on the model path, with both negative controls going red at their own legs. The last two lanes of the set each now open with a short PR-open bar at the now line and then a dashed not-started line, because each has a pull request and neither has finished. FIX-1381 seat resource allowlist reads spec pull request 1935 open, in review, not approved — the spec gate is still with the owner. FIX-1451 allowed-tools, a bug, reads fix pull request 1936 open, a bug so no spec — it needs no spec to finish, because a bug routes straight to its implementation PR. Neither bar is a merge, so those two lanes are the whole of the wrap's tail now that ER-20 is met. Under a divider, two related lanes, catalog manifests and channel-admin, read related, not in the set: they consume FIX-1405 and hold no wrap, and catalog manifests waits for FIX-1405's approved spec. The critical path is drawn in the gutter through the boards and the lab only; the inventory lane sits beside it, not behind it.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .done  { fill:var(--code); stroke:none; }
+    .live  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .impl  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .inp   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .gate  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .gpass { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .lane  { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
+    .axis  { stroke:var(--rule); stroke-width:1; }
+    .div   { stroke:var(--rule); stroke-width:1; }
+    .now   { stroke:var(--gone); stroke-width:1.4; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:6 4; }
+    .crit  { fill:none; stroke:var(--ink-3); stroke-width:1.2; }
+    .critd { fill:var(--ink-3); stroke:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-ln  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.06em; }
+    .t-pass{ fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.06em; }
+    .t-fen { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+
+  <text class="t-lbl" x="16" y="18">THE PATH — ONE LANE PER ISSUE, AGAINST TIME</text>
+
+  <g id="axis">
+    <path class="axis" d="M200 42 L924 42"/>
+    <text class="t-s" x="200" y="34">Sep 16</text>
+    <text class="t-now" x="300" y="34">now · Sep 19</text>
+    <text class="t-s" x="632" y="34">ahead · no dates set</text>
+  </g>
+
+  <g id="ship-fence">
+    <text class="t-fen" x="16" y="62">SHIP FENCE</text>
+    <rect class="fence" x="200" y="50" width="724" height="16" rx="2"/>
+    <text class="t-fen" x="212" y="62">W3: FIX-1435 has no PR and is still Todo — four W4 ship PRs merged under the live fence, #1928 by the owner himself</text>
+  </g>
+
+  <path class="now" d="M330 74 L330 290"/>
+
+  <g id="critical-path">
+    <path class="crit" d="M190 187 L190 231"/>
+    <circle class="critd" cx="190" cy="187" r="3.2"/>
+    <circle class="critd" cx="190" cy="231" r="3.2"/>
+  </g>
+
+  <g id="lanes-inputs">
+    <text class="t-ln" x="16" y="92">FIX-1377 TEAM.md · W3</text>
+    <rect class="inp" x="200" y="83" width="130" height="12" rx="2"/>
+    <text class="t-s" x="616" y="92">landed on main · Sep 19 · #1911</text>
+    <text class="t-ln" x="16" y="114">FIX-1416 tools fence · W3</text>
+    <rect class="inp" x="200" y="105" width="130" height="12" rx="2"/>
+    <text class="t-s" x="616" y="114">landed on main · Sep 19 · #1909</text>
+  </g>
+
+  <g id="lanes-set">
+    <text class="t-ln" x="16" y="146">FIX-1408 dispatch policy</text>
+    <rect class="done" x="270" y="137" width="48" height="12" rx="2"/>
+    <text class="t-s" x="616" y="146">done by decision — no impl PR</text>
+    <text class="t-ln" x="16" y="168">FIX-1405 inventory</text>
+    <rect class="live" x="330" y="159" width="52" height="12" rx="2"/>
+    <rect class="done" x="386" y="160" width="184" height="10" rx="2"/>
+    <text class="t-s" x="616" y="168">Done · #1920, #1923, #1928 all merged</text>
+    <text class="t-ln" x="16" y="190">FIX-1385 channel boards</text>
+    <rect class="live" x="330" y="181" width="52" height="12" rx="2"/>
+    <rect class="done" x="386" y="182" width="134" height="10" rx="2"/>
+    <text class="t-s" x="616" y="190">Done · #1922 merged Sep 19 — one full-scope PR</text>
+    <text class="t-ln" x="16" y="212">FIX-1394 package cohesion</text>
+    <rect class="live" x="330" y="203" width="52" height="12" rx="2"/>
+    <rect class="impl" x="386" y="203" width="134" height="12" rx="2"/>
+    <text class="t-s" x="616" y="212">matrix #1921 — both forks decided, ratify recorded</text>
+    <text class="t-ln" x="16" y="234">FIX-1430 manager-queue lab</text>
+    <rect class="live" x="330" y="225" width="52" height="12" rx="2"/>
+    <rect class="done" x="386" y="226" width="118" height="10" rx="2"/>
+    <rect class="gpass" x="510" y="225" width="96" height="12" rx="2"/>
+    <text class="t-pass" x="516" y="234">ER-20 PASS &#215;3</text>
+    <text class="t-s" x="616" y="234">#1929 merged · gate passed · controls red</text>
+    <text class="t-ln" x="16" y="256">FIX-1381 seat resource ACL</text>
+    <rect class="impl" x="330" y="247" width="116" height="12" rx="2"/>
+    <path class="lane" d="M452 253 L600 253"/>
+    <text class="t-s" x="616" y="256">spec PR #1935 open · in review · not approved</text>
+    <text class="t-ln" x="16" y="278">FIX-1451 allowed-tools · bug</text>
+    <rect class="impl" x="330" y="269" width="116" height="12" rx="2"/>
+    <path class="lane" d="M452 275 L600 275"/>
+    <text class="t-s" x="616" y="278">fix PR #1936 open · a bug, so no spec</text>
+  </g>
+
+  <g id="related">
+    <path class="div" d="M16 296 L924 296"/>
+    <text class="t-lbl" x="16" y="312">RELATED — NOT IN THE SET</text>
+    <text class="t-ln" x="16" y="330">FIX-817 catalog manifests</text>
+    <path class="lane" d="M400 327 L600 327"/>
+    <text class="t-s" x="616" y="330">consumes FIX-1405 · after its approved spec (ER-23)</text>
+    <text class="t-ln" x="16" y="352">FIX-1415 channel-admin</text>
+    <path class="lane" d="M400 349 L600 349"/>
+    <text class="t-s" x="616" y="352">consumes FIX-1405 · holds no wrap here</text>
+  </g>
+
+  <g id="legend">
+    <rect class="done" x="90" y="376" width="16" height="10" rx="2"/>
+    <text class="t-s" x="114" y="384">done / merged</text>
+    <rect class="live" x="196" y="375" width="16" height="12" rx="2"/>
+    <text class="t-s" x="220" y="384">spec approved</text>
+    <rect class="impl" x="302" y="375" width="16" height="12" rx="2"/>
+    <text class="t-s" x="326" y="384">PR open</text>
+    <rect class="inp" x="376" y="375" width="16" height="12" rx="2"/>
+    <text class="t-s" x="400" y="384">W3 input</text>
+    <path class="lane" d="M455 381 L491 381"/>
+    <text class="t-s" x="499" y="384">not started</text>
+    <rect class="gpass" x="571" y="375" width="16" height="12" rx="2"/>
+    <text class="t-s" x="595" y="384">gate passed</text>
+    <circle class="critd" cx="672" cy="381" r="3.2"/>
+    <path class="crit" d="M672 375 L672 387"/>
+    <text class="t-s" x="688" y="384">critical path to the proof</text>
+  </g>
+</svg>
