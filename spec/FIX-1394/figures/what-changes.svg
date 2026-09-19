@@ -1,0 +1,108 @@
+<svg viewBox="0 0 940 340" role="img" aria-label="Today, five separate file conventions each supply a seat one thing, and only skills can be held without being active; every one of them still passes through a single grant gate, the tools key in the seat's own WORKER.md. After a ratify, one package format supplies all of it in two attachment modes, attached to a seat as always-on or held in a library as opt-in, and the same grant gate is unchanged."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-soft { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-opt  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-seat { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:5 4; fill:none; }
+    .flow   { stroke:var(--ink-3); stroke-width:1; fill:none; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-f    { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10.5px; }
+  </style>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · FIVE CONVENTIONS</text>
+    <rect class="n-box" x="16" y="36" width="188" height="34" rx="4"/>
+    <text class="t-b" x="28" y="52">WORKER.md</text>
+    <text class="t-s" x="28" y="64">instructions · always-on</text>
+
+    <rect class="n-box" x="16" y="78" width="188" height="34" rx="4"/>
+    <text class="t-b" x="28" y="94">TEAM.md</text>
+    <text class="t-s" x="28" y="106">team instructions · always-on</text>
+
+    <rect class="n-opt" x="16" y="120" width="188" height="34" rx="4"/>
+    <text class="t-b" x="28" y="136">SKILL.md</text>
+    <text class="t-s" x="28" y="148">held · the one opt-in</text>
+
+    <rect class="n-box" x="16" y="162" width="188" height="34" rx="4"/>
+    <text class="t-b" x="28" y="178">resources/*.md</text>
+    <text class="t-s" x="28" y="190">documents · always-on, never lazy</text>
+
+    <rect class="n-box" x="16" y="204" width="188" height="34" rx="4"/>
+    <text class="t-b" x="28" y="220">blocks/*.ts</text>
+    <text class="t-s" x="28" y="232">registers a name · always-on</text>
+
+    <text class="t-s" x="16" y="262">five readers · one frontmatter dialect</text>
+    <text class="t-s" x="16" y="276">five refusal vocabularies</text>
+  </g>
+
+  <g id="today-flows">
+    <path class="flow" d="M204 53 H300"/>
+    <path class="flow" d="M204 95 H300"/>
+    <path class="flow" d="M204 137 H300"/>
+    <path class="flow" d="M204 179 H300"/>
+    <path class="flow" d="M204 221 H300"/>
+  </g>
+
+  <g id="gate-left">
+    <path class="fence" d="M300 30 V250"/>
+    <text class="t-f" x="308" y="150">THE GRANT GATE</text>
+    <text class="t-s" x="308" y="164">the seat's own</text>
+    <text class="t-s" x="308" y="176">WORKER.md `tools:`</text>
+    <text class="t-s" x="308" y="194">nothing crosses</text>
+    <text class="t-s" x="308" y="206">unless the file names it</text>
+  </g>
+
+  <g id="seat-left">
+    <rect class="n-seat" x="430" y="110" width="118" height="64" rx="5"/>
+    <text class="t-lbl" x="442" y="130">SEAT</text>
+    <text class="t-b" x="442" y="148">what it may</text>
+    <text class="t-b" x="442" y="162">actually call</text>
+    <path class="flow" d="M300 142 H430"/>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="596" y="24">AFTER A RATIFY · ONE FORMAT</text>
+    <rect class="n-soft" x="596" y="36" width="188" height="72" rx="5"/>
+    <text class="t-b" x="608" y="56">one package</text>
+    <text class="t-s" x="608" y="70">instructions · tools</text>
+    <text class="t-s" x="608" y="82">documents · skills</text>
+    <text class="t-s" x="608" y="98">one reader, one refusal set</text>
+
+    <rect class="n-box" x="596" y="128" width="188" height="34" rx="4"/>
+    <text class="t-b" x="608" y="144">attached to a seat</text>
+    <text class="t-s" x="608" y="156">mode 1 · always-on</text>
+
+    <rect class="n-opt" x="596" y="170" width="188" height="34" rx="4"/>
+    <text class="t-b" x="608" y="186">held in a library</text>
+    <text class="t-s" x="608" y="198">mode 2 · opt-in</text>
+
+    <path class="flow" d="M690 108 V128"/>
+    <path class="flow" d="M690 162 V170"/>
+  </g>
+
+  <g id="gate-right">
+    <path class="fence" d="M860 30 V250"/>
+    <text class="t-f" x="808" y="232">SAME GATE</text>
+    <text class="t-s" x="790" y="246">unchanged by this issue</text>
+    <path class="flow" d="M784 145 H860"/>
+    <path class="flow" d="M784 187 H860"/>
+  </g>
+
+  <g id="caption">
+    <path class="flow" d="M16 296 H924"/>
+    <text class="t-s" x="16" y="316">The gate is the same line in both halves. What moves is the left column collapsing into one box with two modes —</text>
+    <text class="t-s" x="16" y="330">and whether a package may ever cross that gate on its own is the decision this issue exists to put to you.</text>
+  </g>
+</svg>
