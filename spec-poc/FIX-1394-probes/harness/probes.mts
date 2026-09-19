@@ -10,8 +10,11 @@
  * the verdict.
  *
  * P5's fourth enforcement point and P6's regression suite are not run here:
- * they are whole vitest suites, run once per matrix by `run.mts`, because
- * re-running them per variant measures nothing new (V3, V4).
+ * they are whole vitest suites, and re-running them per variant measures
+ * nothing new (V3, V4). Nothing in this harness spawns vitest — they are two
+ * separate commands the README lists and the ratify's Verification table
+ * records: `check-conventions.mjs --run-tests` for the four grant-gate suites,
+ * and `pnpm --filter @flow-state-dev/workforce test` for the off state.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -224,7 +227,8 @@ export async function probeP5(build: Build): Promise<Cell> {
  * cheap one: no vitest suite runs here.
  *
  * The heavy half of V4, the existing workforce suite, still runs once per
- * matrix, from `run.mts`.
+ * matrix — as its own command, `pnpm --filter @flow-state-dev/workforce test`,
+ * not from anything in this harness.
  *
  * @param kinds the candidate's compiled kind, or `undefined` for the baseline.
  */
