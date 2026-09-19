@@ -146,10 +146,10 @@ rather than a matrix row, and **FIX-1385 provides the surface ER-20 stands on wi
 
 **The matrix is drawn against the original five and has deliberately not been redrawn.** Both later
 children — [FIX-1381](#d6-extended) and [FIX-1451](#d6-seven) — **own no cross-cutting rule here**.
-FIX-1381 has no spec yet, so which ER rows it consumes is not yet knowable; FIX-1451 is a bug and
-will never have a spec, so its column would be read off its PR rather than a scope document.
+FIX-1381's spec is in review and unapproved, so which ER rows it consumes is not yet settled;
+FIX-1451 is a bug and will never have a spec, so its column would be read off its PR rather than a scope document.
 Inventing cells for either is a worse defect than a missing column. FIX-1381 gets its column when
-its spec says what it touches; FIX-1451 gets one only if its fix turns out to touch a rule.
+its approved spec says what it touches; FIX-1451 gets one only if its fix turns out to touch a rule.
 
 <a name="decided-in-review"></a>
 ## Decided in review, recorded so no child reopens them

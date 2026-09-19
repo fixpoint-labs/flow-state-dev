@@ -34,16 +34,16 @@ children come *after* it — but all three are terms of the wrap.
 | **FIX-1405** runtime inventory | spec → POC → **impl, merged** | The three existing readers · hire · `channelInstances` · open sessions (D5) | Two layers: a declared roster composed at read time (replacing both labs' private `LabRoster`), and the live org resource | FIX-817, on its approved reader contract (ER-23) · FIX-1415 · `team.*` wildcards, later. **Not FIX-1385** | Medium · all three PRs on `main` — PR-A [#1920](https://github.com/fixpoint-labs/flow-state-dev/pull/1920), S4 [#1923](https://github.com/fixpoint-labs/flow-state-dev/pull/1923), S5–S7 [#1928](https://github.com/fixpoint-labs/flow-state-dev/pull/1928) |
 | **FIX-1385** channel boards | spec → POC → **impl, merged** | The ChannelFlow floor · ER-5 · ER-3, which it may not re-decide and reads only **if** the roster has landed | A channel holding `0..N` TaskCollections; two doors, one surface. Plus the PR-5 name check over its own diff (ER-19) | The proof · FIX-1430 — **released 2026-09-19** | Large · shipped in one PR, not four |
 | **FIX-1394** package cohesion | **POC matrix → ratify, now unblocked** → ship tickets | FIX-1377's team layer · FIX-1416's `tools:` fence — **both landed** at `d8e4c99`, and the code wins over either spec (ER-18) · D4 | One format as a Markdown file, instructions and tools, two attachment modes, **not disk-only**, **documents org-scoped** (ER-2). Its POC also carries the evidence for **one** of FIX-1408's walls (ER-15) | Ship tickets, once the ratify completes (ER-8) — **not** the proof | Large |
-| **FIX-1381** seat resource allowlist | spec → impl · **spec being written**, no PR yet | **D-11's settled direction** (FIX-1380, Done): Ask 1 the thin allowlist, Ask 3 org `ro` automatic / `rw` by permission · today's `resourcesFromDocs` org hard-code and the `WorkerConfig` gap its invent-kill names | Thin seat/kind resource refs by `ro`/`rw` — the first control over which resources a worker or skill reaches | **The wrap** — it is now a term of it | Not sized · direction settled, spec outstanding |
-| **FIX-1451** allowed-tools honesty · *a bug* | **no spec** → impl · dispatched on `fix/FIX-1451-allowed-tools-honesty`, no PR yet | FIX-1416's landed `tools:` fence at `d8e4c99` — the promise the bug is about (ER-18) | A seat's skill no longer promising a tool grant the loader does not make | **The wrap** — a term of it like any child. Explicitly **not** a ship-gate on FIX-1394 | Not sized · a bug, scoped by its PR rather than a spec |
+| **FIX-1381** seat resource allowlist | spec → impl · **spec PR [#1935](https://github.com/fixpoint-labs/flow-state-dev/pull/1935) open**, in review, gate unanswered | **D-11's settled direction** (FIX-1380, Done): Ask 1 the thin allowlist, Ask 3 org `ro` automatic / `rw` by permission · today's `resourcesFromDocs` org hard-code and the `WorkerConfig` gap its invent-kill names | Thin seat/kind resource refs by `ro`/`rw` — the first control over which resources a worker or skill reaches | **The wrap** — it is now a term of it | Not sized · direction settled, spec in review |
+| **FIX-1451** allowed-tools honesty · *a bug* | **no spec** → impl · fix PR [#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936) open on `fix/FIX-1451-allowed-tools-honesty` | FIX-1416's landed `tools:` fence at `d8e4c99` — the promise the bug is about (ER-18) | A seat's skill no longer promising a tool grant the loader does not make | **The wrap** — a term of it like any child. Explicitly **not** a ship-gate on FIX-1394 | Not sized · a bug, scoped by its PR rather than a spec |
 | **FIX-1430** manager-queue lab · *the proof* | spec → **impl, merged** — but the goal check is **NOT RUN** | ER-1 · **ER-2 as a fence, not an input** · ER-4 · ER-5 — consumes four, owns none | A coordinator seat assigning over a channel board to linked seats, queue columns as views. Plus the drain-width comparison ER-15 called for ([width 1](DECISIONS.md#drain-width)) | The epic's wrap, **once ER-20 runs** — merging did not release it | Medium · [#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) merged |
 
 **Size is a read, not an estimate.** Three of the original five are exploration tickets whose own
 scope is the thing being explored — FIX-1394 most of all, whose ship tickets are not in this set
 yet. **The two newest children are deliberately unsized, for opposite reasons:** FIX-1381's
-direction is settled by D-11 but its spec is still being written, and a number before the spec would
-be a guess wearing an estimate's clothes; FIX-1451 is a bug and will never have a spec, so its scope
-is whatever its PR turns out to be.
+direction is settled by D-11 but its spec is still in review, and a number before that spec is
+approved would be a guess wearing an estimate's clothes; FIX-1451 is a bug and will never have a
+spec, so its scope is whatever its PR turns out to be.
 
 ## Where it is
 
@@ -137,8 +137,10 @@ is merged or closed**, or when this epic-spec records its work as **done by deci
 code** — which is FIX-1408, and the set table is where that is recorded. Linear is the mirror; a
 merge is what makes code shipped. **Four children are terminal: FIX-1408 by decision, FIX-1385,
 FIX-1405 and FIX-1430 by merge.** Three are not: FIX-1394 at its now-unblocked ratify, **FIX-1381,
-which has no spec yet**, and **FIX-1451, which has no PR yet**. Note that FIX-1451 needs no spec to
-become terminal — a bug's route runs straight to its implementation PR
+whose spec PR [#1935](https://github.com/fixpoint-labs/flow-state-dev/pull/1935) is open and
+unapproved**, and **FIX-1451, whose fix PR
+[#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936) is open and unmerged**. Note
+that FIX-1451 needs no spec to become terminal — a bug's route runs straight to its implementation PR
 ([ER-17](BUSINESS-RULES.md)) — so a missing spec there is not a missing step.
 
 **ER-20 has not run, so the gate has not been met.** #1929 merged, which made FIX-1430 terminal and

@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
-Epic · 6 issues · Workforce: Layer 2 Abstraction · Goal 1 — Workforce multi-seat real usage /
+Epic · 7 issues · Workforce: Layer 2 Abstraction · Goal 1 — Workforce multi-seat real usage /
 architecture cohesion
 
 ## Four teams, before and after
@@ -40,8 +40,8 @@ document:** read the spec branch's head, or the Linear document on the issue.
 | FIX-1405 | Inventory in two layers: a declared roster composed from the existing readers, and the live org resource ChannelFlow updates | The epic's third promise in its own right — *which seats and channels exist* — and what `team.*` addressing calls later ([ER-7](BUSINESS-RULES.md)). It does **not** gate the boards | **Done** · 2026-09-19 · PR-A [#1920](https://github.com/fixpoint-labs/flow-state-dev/pull/1920), S4 [#1923](https://github.com/fixpoint-labs/flow-state-dev/pull/1923) and S5–S7 [#1928](https://github.com/fixpoint-labs/flow-state-dev/pull/1928) all **merged** — terminal by merge |
 | FIX-1385 | A channel holding `0..N` TaskCollections; channel actions and `taskTools` as two doors on one surface. Plus the PR-5 name check over its own diff ([ER-19](BUSINESS-RULES.md)) | **The exit gate's surface** — the board in "channel/org board → seat runs" | **Done** · 2026-09-19 · [#1922](https://github.com/fixpoint-labs/flow-state-dev/pull/1922) **merged** — one full-scope PR, not the spec's four ([the seam it discharged](PLAN.md#coordination-seams-to-watch)) |
 | FIX-1430 | Manager-queue lab: a coordinator seat owns a channel board, assigns to linked seats, shows queue state as **views** over existing task status | The **proof** of the exit gate, and the owner of [ER-20](BUSINESS-RULES.md) | **Done** · 2026-09-19 · [#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) **merged** — but **the gate it exists to run [has not run](#er-20-has-not-run)** |
-| [FIX-1381](https://linear.app/fixpoint-labs/issue/FIX-1381) | **Seat resource allowlist** — thin seat/kind refs by `ro`/`rw`. The ship ticket for D-11 Ask 1 | Nothing today can control which resources a worker or skill reaches: `resourcesFromDocs` hard-codes `scope: "org"` and `workerConfigSchema` admits only `instructions`, `teamInstructions`, `seatSkills`. **Pulled in by the owner** ([below](#the-sixth-child-pulled-in)) | **Spec in progress** · `Backlog`, moving to a spec-writing status · spec being written on `spec/FIX-1381` · **no spec PR yet** |
-| [FIX-1451](https://linear.app/fixpoint-labs/issue/FIX-1451) | **Skill `allowed-tools` promises a grant it does not make** — the honesty fix on the seat's tool surface | A seat's package is half of this epic's title, and a promise the loader does not keep is the package lying about what a seat can reach. Parented by the owner as a *soft encounter under package cohesion*, explicitly **not a ship-gate on FIX-1394** ([below](#the-seventh-child)) | **Implementation in progress** · a `Bug`, so [**no spec**](#the-seventh-child) · `Backlog`, moving to in-progress · dispatched on `fix/FIX-1451-allowed-tools-honesty` · **no PR yet** |
+| [FIX-1381](https://linear.app/fixpoint-labs/issue/FIX-1381) | **Seat resource allowlist** — thin seat/kind refs by `ro`/`rw`. The ship ticket for D-11 Ask 1 | Nothing today can control which resources a worker or skill reaches: `resourcesFromDocs` hard-codes `scope: "org"` and `workerConfigSchema` admits only `instructions`, `teamInstructions`, `seatSkills`. **Pulled in by the owner** ([below](#the-sixth-child-pulled-in)) | **In spec review** · spec PR [#1935](https://github.com/fixpoint-labs/flow-state-dev/pull/1935) open on `spec/FIX-1381` · **the spec gate is with the owner and unanswered — nothing here is approved** |
+| [FIX-1451](https://linear.app/fixpoint-labs/issue/FIX-1451) | **Skill `allowed-tools` promises a grant it does not make** — the honesty fix on the seat's tool surface | A seat's package is half of this epic's title, and a promise the loader does not keep is the package lying about what a seat can reach. Parented by the owner as a *soft encounter under package cohesion*, explicitly **not a ship-gate on FIX-1394** ([below](#the-seventh-child)) | **In PR review** · a `Bug`, so [**no spec**](#the-seventh-child) — the PR is the review surface · fix PR [#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936) open on `fix/FIX-1451-allowed-tools-honesty`, 10 files |
 
 **Four of seven children are complete; three are open.** FIX-1408 done by decision, and FIX-1385,
 FIX-1405 and FIX-1430 all merged to `main` on 2026-09-19. Open: **FIX-1394** at its now-unblocked
@@ -78,8 +78,8 @@ or `orchestration/src`. It needed no new ticket: **FIX-1381 already covered it e
 ticket for D-11 Ask 1, its own invent-kill naming that `WorkerConfig` gap.
 
 **It moved the wrap out, and that was said before the call was made.** The [wrap](PLAN.md#wrap) now
-needs FIX-1381 terminal **as well as** ER-20 passing, and FIX-1381 has no spec yet — so W4's finish
-is further away today than it was this morning. The owner made that call with the consequence in
+needs FIX-1381 terminal **as well as** ER-20 passing, and FIX-1381's spec is only now in review,
+with no implementation — so W4's finish is further away today than it was this morning. The owner made that call with the consequence in
 front of him. **It enters cheaper than a cold child:** [D-11 (FIX-1380)](https://linear.app/fixpoint-labs/issue/FIX-1380)
 is **Done** and already decides its direction — Ask 1 the thin allowlist, Ask 3 org `ro` automatic
 and `rw` by permission — so only its spec is outstanding, not its shape.
@@ -107,9 +107,10 @@ to clear it; that note was wrong and the write was never made, which is the only
 cost nothing.
 
 **It is a `Bug`, so it skips the spec** and enters at implementation with its PR as the review
-surface ([ER-17](BUSINESS-RULES.md)) — there is no spec gate to wait for. Dispatched on
+surface ([ER-17](BUSINESS-RULES.md)) — there is no spec gate to wait for. That surface now exists:
+[#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936) on
 `fix/FIX-1451-allowed-tools-honesty`. **It holds the wrap like any child**, so the wrap's tail is
-now three open children plus ER-20.
+still three open children plus ER-20.
 
 **Worth naming, because it is this epic's own recurring defect in miniature:** a remembered decision
 about set membership, contradicted by the ticket, caught only by reading the ticket before acting on
@@ -215,8 +216,8 @@ ratify is unblocked.
 **One thing is between W4 and the gate, and it is not work:** **a machine with an inference key.**
 That is the whole of what [ER-20](#er-20-has-not-run) waits for — every line of code it needs is
 merged. Behind the gate, the wrap waits on **three open children** — FIX-1394's ratify,
-[FIX-1381](#the-sixth-child-pulled-in)'s spec and [FIX-1451](#the-seventh-child)'s fix. All three
-can start today; none of them can substitute for the key.
+[FIX-1381](#the-sixth-child-pulled-in)'s spec and [FIX-1451](#the-seventh-child)'s fix. Two of the
+three are now on open PRs; none of them can substitute for the key.
 
 **Settled since the last refresh, and it was the epic that had it wrong:** **FIX-1451 is a child**,
 parented deliberately and documented as such on the ticket ([above](#the-seventh-child)) — the
