@@ -93,7 +93,7 @@ await runGoal(async () => {
   // implementation still passes.
   const boardName = (channel.declared.boards as string[])[0]!;
   const boardId = channelBoardIds(channels)[0]!;
-  const work = channelBoard(channel.id, boardName);
+  const triage = channelBoard(channel.id, boardName);
 
   // ---- 0. the tree names a board and never an id ----------------------------
   for (const path of treeFiles(TREE)) {
@@ -143,11 +143,11 @@ await runGoal(async () => {
   // What the SEAT reaches for. On the passing path it is the same mint the
   // channel made; under `by-name` it is another channel's board of the same
   // name, so "the names match" stops being enough.
-  const seatBoard = CONTROL === "by-name" ? channelBoard("other.team", boardName) : work;
+  const seatBoard = CONTROL === "by-name" ? channelBoard("other.team", boardName) : triage;
 
   const board = taskBoard({
-    name: "channel-work",
-    boardId: "channel-work",
+    name: "channel-triage",
+    boardId: "channel-triage",
     collection: seatBoard,
     concurrency: 1,
     workers: { coder: ran }

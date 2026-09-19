@@ -20,13 +20,13 @@ export {
   channelFlow,
   channelNotifyInputSchema,
   channelPostInputSchema,
+  channelBoardRowSchema,
   channelReadBoardInputSchema,
   channelReadBoardOutputSchema,
   channelReadOutputSchema,
   channelSessionStateSchema,
   channelTranscriptLineSchema,
   defineChannelFlow,
-  holdsBoards,
   type ChannelFileTaskInput,
   type ChannelFileTaskOutput,
   type ChannelFlowFactory,
@@ -50,13 +50,8 @@ export {
 } from "./channel-binder";
 
 export {
-  CHANNEL_BOARDS_KEY,
   channelBoard,
-  channelBoardId,
-  channelBoardNameProblem,
-  channelBoardNamesFor,
   channelBoardTaskTools,
-  resolveChannelBoard,
   type ChannelBoardCollection
 } from "./channel-board";
 

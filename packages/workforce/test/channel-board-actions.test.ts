@@ -131,16 +131,34 @@ async function host(roster: ChannelManifest[], adapter: unknown = inMemoryStores
       runtime.stores.resourceState
         .get("org", ORG_ID, `${boardId}/${taskId}`)
         .then((found) => found?.state as Record<string, unknown> | undefined),
+    /**
+     * Put one stored row into a shape a claim would have left it in.
+     *
+     * Written straight to storage rather than by draining a real board: what
+     * is under test is the ACTION's projection, and a drain would add a board,
+     * a worker and a lease to a test whose claim is one field wide.
+     */
+    stamp: async (boardId: string, taskId: string, patch: Record<string, unknown>) => {
+      const key = `${boardId}/${taskId}`;
+      const found = await runtime.stores.resourceState.get("org", ORG_ID, key);
+      await runtime.stores.resourceState.set(
+        "org",
+        ORG_ID,
+        key,
+        { ...(found!.state as Record<string, unknown>), ...patch } as never,
+        "any"
+      );
+    },
     dispose: () => state.dispose()
   };
 }
 
 describe("filing a row onto a channel's board", () => {
   it("lands it pending on the minted ledger, carrying the assignee it was given", async () => {
-    const lab = await host([record("eng.feature", { boards: ["work"] })]);
+    const lab = await host([record("eng.feature", { boards: ["triage"] })]);
     try {
       const filed = await lab.act("eng.feature", "fileTask", {
-        board: "work",
+        board: "triage",
         goal: "ship the reader",
         assignee: "coder",
         author: "eng.em"
@@ -148,13 +166,13 @@ describe("filing a row onto a channel's board", () => {
       expect(filed.error).toBeUndefined();
 
       const out = filed.output as { boardId: string; taskId: string; status: string };
-      expect(out.boardId).toBe("eng.feature.work");
+      expect(out.boardId).toBe("eng.feature.triage");
       expect(out.status).toBe("pending");
 
       // Read back out of storage rather than off the action's own answer: the
       // claim is that a row LANDED on that ledger, and an action echoing its
       // input would satisfy an assertion on the return value alone.
-      const stored = await lab.row("eng.feature.work", out.taskId);
+      const stored = await lab.row("eng.feature.triage", out.taskId);
       expect(stored).toBeDefined();
       expect(stored!.goal).toBe("ship the reader");
       expect(stored!.status).toBe("pending");
@@ -165,7 +183,7 @@ describe("filing a row onto a channel's board", () => {
   });
 
   it("refuses a board this channel did not declare, and writes nothing", async () => {
-    const lab = await host([record("eng.feature", { boards: ["work"] })]);
+    const lab = await host([record("eng.feature", { boards: ["triage"] })]);
     try {
       const refused = await lab.act("eng.feature", "fileTask", {
         board: "review",
@@ -174,11 +192,11 @@ describe("filing a row onto a channel's board", () => {
       expect(String(refused.error)).toContain("board-not-declared");
       // The refusal lists what the channel DOES hold, so an author is told the
       // name rather than that they were wrong.
-      expect(String(refused.error)).toContain("work");
+      expect(String(refused.error)).toContain("triage");
 
       // Nothing was created anywhere: the board this channel DOES hold is
       // still empty, so the refusal did not quietly mint a second ledger.
-      const read = await lab.act("eng.feature", "readBoard", { board: "work" });
+      const read = await lab.act("eng.feature", "readBoard", { board: "triage" });
       expect((read.output as { tasks: unknown[] }).tasks).toHaveLength(0);
     } finally {
       await lab.dispose();
@@ -187,37 +205,37 @@ describe("filing a row onto a channel's board", () => {
 
   /**
    * **BR-9, asserted on the resolved id.** Both channels declare a board
-   * called `work`. Filing into one can only ever reach that one's ledger,
+   * called `triage`. Filing into one can only ever reach that one's ledger,
    * because the id is minted from the session's own identity — there is no
    * payload through which another channel's rows could be selected.
    */
   it("reaches only this channel's ledger, whatever another channel called its board", async () => {
     const lab = await host([
-      record("eng.feature", { boards: ["work"] }),
-      record("eng.platform", { boards: ["work"] })
+      record("eng.feature", { boards: ["triage"] }),
+      record("eng.platform", { boards: ["triage"] })
     ]);
     try {
       const filed = await lab.act("eng.platform", "fileTask", {
-        board: "work",
+        board: "triage",
         goal: "platform work"
       });
       const out = filed.output as { boardId: string; taskId: string };
 
-      expect(out.boardId).toBe("eng.platform.work");
-      expect(await lab.row("eng.platform.work", out.taskId)).toBeDefined();
+      expect(out.boardId).toBe("eng.platform.triage");
+      expect(await lab.row("eng.platform.triage", out.taskId)).toBeDefined();
       // The other channel's ledger is untouched. This is the assertion that
       // would survive deleting every refusal in the module.
-      expect(await lab.row("eng.feature.work", out.taskId)).toBeUndefined();
+      expect(await lab.row("eng.feature.triage", out.taskId)).toBeUndefined();
     } finally {
       await lab.dispose();
     }
   });
 
   it("refuses an `author` the channel does not list, in the post path's own words", async () => {
-    const lab = await host([record("eng.feature", { boards: ["work"] })]);
+    const lab = await host([record("eng.feature", { boards: ["triage"] })]);
     try {
       const refused = await lab.act("eng.feature", "fileTask", {
-        board: "work",
+        board: "triage",
         goal: "ship it",
         author: "eng.stranger"
       });
@@ -233,16 +251,16 @@ describe("filing a row onto a channel's board", () => {
    * Filing is NOT members-only: omit the label and no roster check runs at all.
    */
   it("files a row carrying NO author at all, unchecked", async () => {
-    const lab = await host([record("eng.feature", { boards: ["work"] })]);
+    const lab = await host([record("eng.feature", { boards: ["triage"] })]);
     try {
       const filed = await lab.act("eng.feature", "fileTask", {
-        board: "work",
+        board: "triage",
         goal: "filed by nobody in particular"
       });
       expect(filed.error).toBeUndefined();
 
       const out = filed.output as { taskId: string };
-      const stored = await lab.row("eng.feature.work", out.taskId);
+      const stored = await lab.row("eng.feature.triage", out.taskId);
       expect(stored!.goal).toBe("filed by nobody in particular");
     } finally {
       await lab.dispose();
@@ -252,28 +270,77 @@ describe("filing a row onto a channel's board", () => {
 
 describe("reading", () => {
   it("gives the board's rows back through `readBoard`", async () => {
-    const lab = await host([record("eng.feature", { boards: ["work"] })]);
+    const lab = await host([record("eng.feature", { boards: ["triage"] })]);
     try {
-      await lab.act("eng.feature", "fileTask", { board: "work", goal: "one" });
-      await lab.act("eng.feature", "fileTask", { board: "work", goal: "two" });
+      await lab.act("eng.feature", "fileTask", { board: "triage", goal: "one" });
+      await lab.act("eng.feature", "fileTask", { board: "triage", goal: "two" });
 
-      const read = await lab.act("eng.feature", "readBoard", { board: "work" });
+      const read = await lab.act("eng.feature", "readBoard", { board: "triage" });
       const out = read.output as { boardId: string; tasks: Array<{ goal: string }> };
-      expect(out.boardId).toBe("eng.feature.work");
+      expect(out.boardId).toBe("eng.feature.triage");
+      // Sorted before comparing ON PURPOSE: a board read states no ordering,
+      // so asserting one here would pin a rule the contract does not make and
+      // would turn an unrelated storage change red.
       expect(out.tasks.map((task) => task.goal).sort()).toEqual(["one", "two"]);
     } finally {
       await lab.dispose();
     }
   });
 
-  it("projects the declared board NAMES on a channel read, and not the rows", async () => {
-    const lab = await host([record("eng.feature", { boards: ["work", "review"] })]);
+  it("never hands back `claimedBy`, which is where the work ran and not a caller's to read", async () => {
+    const lab = await host([record("eng.feature", { boards: ["triage"] })]);
     try {
-      await lab.act("eng.feature", "fileTask", { board: "work", goal: "a row" });
+      const filed = await lab.act("eng.feature", "fileTask", {
+        board: "triage",
+        goal: "one",
+        assignee: "coder"
+      });
+      const { taskId } = filed.output as { taskId: string };
+
+      // The row as a claim leaves it. Every field here is an execution
+      // coordinate: the session it ran under, the request that took it, and
+      // the tenant. `readBoard` is a PUBLIC action and its output reaches a
+      // model's context, so none of them may come back.
+      await lab.stamp("eng.feature.triage", taskId, {
+        status: "in_progress",
+        claimedBy: {
+          sessionId: "s_private_worker_session",
+          requestId: "req_private_00000000",
+          tenantId: "org_some_other_tenant"
+        }
+      });
+
+      // The premise: the field really is on the stored row. Without this the
+      // assertion below is green on a row that never had one.
+      const stored = await lab.row("eng.feature.triage", taskId);
+      expect(stored!.claimedBy).toBeDefined();
+
+      const read = await lab.act("eng.feature", "readBoard", { board: "triage" });
+      const out = read.output as { tasks: Array<Record<string, unknown>> };
+      expect(out.tasks).toHaveLength(1);
+      expect(out.tasks[0]!.claimedBy).toBeUndefined();
+      expect("claimedBy" in out.tasks[0]!).toBe(false);
+      // Serialized, because a nested copy elsewhere in the payload would
+      // satisfy the key check above and still publish the ids.
+      expect(JSON.stringify(out)).not.toContain("s_private_worker_session");
+      expect(JSON.stringify(out)).not.toContain("org_some_other_tenant");
+      // The rest of the row still comes back — a redaction that dropped the
+      // task would pass every assertion above.
+      expect(out.tasks[0]!.goal).toBe("one");
+      expect(out.tasks[0]!.assignee).toBe("coder");
+    } finally {
+      await lab.dispose();
+    }
+  });
+
+  it("projects the declared board NAMES on a channel read, and not the rows", async () => {
+    const lab = await host([record("eng.feature", { boards: ["triage", "review"] })]);
+    try {
+      await lab.act("eng.feature", "fileTask", { board: "triage", goal: "a row" });
 
       const read = await lab.act("eng.feature", "read", {});
       const out = read.output as { boards?: string[]; members: string[] };
-      expect(out.boards).toEqual(["review", "work"]);
+      expect(out.boards).toEqual(["review", "triage"]);
       expect(out.members).toEqual(["eng.em", "eng.coder"]);
       // Reading a board is a board read. A channel read that carried rows
       // would make the transcript and the ledger one surface.
@@ -326,7 +393,7 @@ describe("a board added to a channel that is already open", () => {
       await before.act("eng.feature", "post", { body: "line two", author: "eng.coder" });
 
       // No board yet — the actions are not even on the kind.
-      const early = await before.act("eng.feature", "fileTask", { board: "work", goal: "early" });
+      const early = await before.act("eng.feature", "fileTask", { board: "triage", goal: "early" });
       expect(early.error).toBeDefined();
 
       const found = await stores.session.get("eng.feature");
@@ -338,7 +405,7 @@ describe("a board added to a channel that is already open", () => {
 
     // The same storage, re-bound from an edited file. `openChannels` finds the
     // channel already open and leaves its session exactly as it is.
-    const roster = [record("eng.feature", { boards: ["work"] })];
+    const roster = [record("eng.feature", { boards: ["triage"] })];
     const [channel] = channelInstances(roster);
     const state = createFlowState({
       flows: { [channel!.kind]: channel! },
@@ -356,7 +423,7 @@ describe("a board added to a channel that is already open", () => {
       const filed = (await runAction({
         flow: channel!,
         actionName: "fileTask",
-        input: { board: "work", goal: "after the edit" },
+        input: { board: "triage", goal: "after the edit" },
         userId: USER_ID,
         orgId: ORG_ID,
         sessionId: "eng.feature",
@@ -364,7 +431,7 @@ describe("a board added to a channel that is already open", () => {
         runtimeConfig: { ...runtime.runtimeConfig }
       } as never)) as { output?: unknown; error?: unknown };
       expect(filed.error).toBeUndefined();
-      expect((filed.output as { boardId: string }).boardId).toBe("eng.feature.work");
+      expect((filed.output as { boardId: string }).boardId).toBe("eng.feature.triage");
 
       const after = await runtime.stores.session.get("eng.feature");
       expect(JSON.stringify((after!.state as { transcript: unknown }).transcript)).toBe(

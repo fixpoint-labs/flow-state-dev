@@ -365,6 +365,13 @@ function boardNamesOf(declared: Record<string, unknown>): string[] {
  * hire-time unattended-board check read the same answer rather than each
  * joining channel ids to board names themselves.
  *
+ * **Reads only well-formed entries.** A `boards:` this cannot read, or a name
+ * that breaks the rules, counts as NO board here rather than as a guess at
+ * what was meant — `channelInstances` is what refuses those, and it may not
+ * have run yet. So on an unvalidated roster this returns the ids of the
+ * channels that would bind and silently omits the ones that would not. Call it
+ * on a roster you also pass to `channelInstances`, or the set is a subset.
+ *
  * @param manifests The roster — the same records `channelInstances` registers.
  * @returns The minted ids, `<channelId>.<boardName>`, in a stable order.
  */
@@ -448,6 +455,13 @@ export function channelInstances(
       const id = channelBoardId(manifest.id, name);
       const owner = minted.get(id);
       if (owner !== undefined) {
+        // The two arms are not equally reachable, and saying so beats leaving a
+        // reader to assume both fire. A channel id is unique across the roster
+        // (refused above) and a board name carries no dot, so two DIFFERENT
+        // channels cannot mint one id from any roster this package can build.
+        // The second arm covers a hand-built `ChannelManifest`, whose ids are
+        // caller-supplied and which this module cannot constrain — it is a
+        // guard on an input it does not own, not dead code.
         refuse(
           owner === manifest.id
             ? `declares board "${name}" twice; a channel's board names are its ledger ids and ` +
@@ -648,6 +662,25 @@ export async function openChannels(
   manifests: readonly ChannelManifest[],
   options: OpenChannelsOptions
 ): Promise<void> {
+  // A board is org-scoped storage, so a channel that holds one and opens
+  // without an org has nowhere to put a row. Refused here rather than left to
+  // surface per request: every `fileTask` and `readBoard` on that channel would
+  // fail for the life of the process, and an app is better told at startup
+  // than one refusal at a time.
+  if (options.orgId === undefined) {
+    const holding = orderedById(manifests)
+      .filter((manifest) => boardNamesOf(manifest.declared).length > 0)
+      .map((manifest) => manifest.id);
+    if (holding.length > 0) {
+      throw new Error(
+        `channel(s) ${holding.map((id) => `"${id}"`).join(", ")} declare \`${CHANNEL_BOARDS_KEY}:\` ` +
+          `but \`openChannels\` was given no \`orgId\`. A board is org-scoped storage, so there ` +
+          `is nowhere to keep its rows. Pass an \`orgId\`, or drop the \`${CHANNEL_BOARDS_KEY}:\` ` +
+          `line from those channels.`
+      );
+    }
+  }
+
   for (const manifest of orderedById(manifests)) {
     const selected = kindOf(manifest.declared);
     if ("problem" in selected) {

@@ -2,12 +2,12 @@
 title: Channels
 sidebar_position: 4
 sidebar_label: Channels
-description: "A channel is a named session on a flow kind the framework ships: several agents talking about one topic, with one durable transcript, where nobody is assigned the work and nobody closes it out."
+description: "A channel is a named session on a flow kind the framework ships: several agents talking about one topic, with one durable transcript. Posting hands nobody the work; a board the channel holds is where work someone takes and finishes lives."
 ---
 
 # Channels
 
-Several agents working one topic. Each of them reads what the others said. Nobody is assigned the work and nobody closes it out, and the conversation needs somewhere to live that outlasts whoever spoke last.
+Several agents working one topic. Each of them reads what the others said. Posting hands nobody the work, and the conversation needs somewhere to live that outlasts whoever spoke last. When the talk does produce work somebody has to take and finish, the channel can hold a board for it.
 
 That is a channel. The framework ships one kind that runs them, and a channel is a named session on it.
 
@@ -52,7 +52,7 @@ Five keys are declarable: `flow`, `description`, `members`, `boards`, `instructi
 
 ## Holding a board
 
-A channel is where a team talks. A board is where its work sits: rows carrying a goal, an optional assignee, and a status somebody moves. A channel can hold one, declared in the same frontmatter as the members.
+A channel is where a team talks. A board is where its work sits: rows carrying a goal, an optional assignee, and a status somebody moves. A channel can hold one or more, declared in the same frontmatter as the members.
 
 ```md
 ---
@@ -66,7 +66,7 @@ Post the timeline here. Anything that outlives the incident goes on the board.
 
 `boards` is a list of plain local names, the way `members` is a list of names. `followups` is what a person types and what a caller names. The ledger's own id is minted from the channel that holds it, so `engineering.incidents` holding `followups` is `engineering.incidents.followups`. No file writes that id.
 
-A board name is a plain local name: not empty, no whitespace, and none of `.` `/` `*` `[` `]`. The dot is the one worth knowing about, because it is the join between a channel and a board, so `feature.work` would address a board on some other channel. A name breaking the rule is refused when you bind the roster, as is a `boards:` that is not a list of names, a name declared twice, and two channels whose boards would mint the same id.
+A board name is a plain local name: not empty, no whitespace, none of `.` `/` `*` `[` `]`, and not `__proto__`, `prototype` or `constructor`. The dot is the one worth knowing about, because it is the join between a channel and a board, so `feature.triage` would address a board on some other channel. A name breaking the rule is refused when you bind the roster, as is a `boards:` that is not a list of names and a name declared twice.
 
 ### Filing and reading rows
 
@@ -92,7 +92,9 @@ Both actions take the board's **local** name. Filing says where the row landed:
   status: "pending" }
 ```
 
-`fileTask` also takes `id`, `title`, `context`, `priority`, `maxAttempts`, `labels` and `input`. Its `author` is the same unverified claim a post's is: checked against the declared members, stored beside `authorVerified: false`, and optional. A row filed without one is accepted.
+`assignee` is the key of the worker that should run the row, as named in the board's own `workers` map. It is not a channel member, and the two are separate namespaces even when they read alike.
+
+`fileTask` also takes `title`, `context`, `priority`, `maxAttempts`, `labels` and `input`. The row's id is minted, not chosen. Its `author` is the same unverified claim a post's is: checked against the declared members, stored beside `authorVerified: false`, and optional. A row filed without one is accepted.
 
 `readBoard` gives back every row on one board. The channel's own `read` lists what it holds, by name:
 
@@ -106,7 +108,7 @@ Both actions take the board's **local** name. Filing says where the row landed:
 
 A channel holding no board has no `boards` key and answers neither action.
 
-Naming a board the channel does not hold is refused by name, `board-not-declared`, and the message lists the boards it does hold. The ledger id is minted from the session the request is running in, so naming a board another channel declared resolves this channel's own id and misses.
+Naming a board the channel does not hold is refused by name, `board-not-declared`, and the message lists the boards it does hold. Naming a board another channel declared is refused the same way: a channel reaches its own boards and no others.
 
 ### Working the rows
 
@@ -120,7 +122,6 @@ const followups = channelBoard("engineering.incidents", "followups");
 
 const board = taskBoard({
   name: "followups",
-  boardId: "followups",
   collection: followups,
   workers: { analyst: runFollowup },
 });
@@ -134,6 +135,8 @@ defineFlow({
 
 `channelBoard` hands back the ledger the channel writes to, and carries its own `id` so the resource key is not a string you retype.
 
+The channel's id and the board's name *are* retyped here, and nothing checks them against the tree. Get either wrong and you do not get an error: you get a second, empty ledger under a different id, and the only sign is a warning at hire saying the channel's real board is unattended. Read that warning.
+
 To let a model work the rows itself, compose the board's tools into the worker's kind:
 
 ```ts
@@ -143,9 +146,15 @@ import { channelBoardTaskTools } from "@flow-state-dev/workforce";
 uses: [channelBoardTaskTools(followups)],
 ```
 
-That gives the model all eight task tools over this board: `addTask`, `assignTask`, `updateTask`, `listTasks`, `completeTask`, `failTask`, `blockTask` and `cancelTask`. The set is fixed: a `tools:` list on the worker can neither grant these nor withhold them. So a worker holding the capability can assign rows and settle them, not only add them. A narrower set means a different capability.
+That gives the model all eight task tools over this board, each named for the board it reaches: `addTask_engineering_incidents_followups`, and the same for `assignTask`, `updateTask`, `listTasks`, `completeTask`, `failTask`, `blockTask` and `cancelTask`. The set is fixed: a `tools:` list on the worker can neither grant these nor withhold them. So a worker holding the capability can assign rows and settle them, not only add them. A narrower set means a different capability.
+
+Compose it once per board. A worker holding two boards holds sixteen tools, and the names say which board each one writes to.
 
 A board that no hired worker declares warns at hire, naming the channel and the board. Nothing is refused: a channel may keep a board that only people read.
+
+Two things are refused, both when you bind the roster. A channel holding a board must be opened with an `orgId`, because a board's rows are stored at org scope; `openChannels` names the channel and stops if there is none. And `boards:` on a channel running a [kind of your own](#registering-a-kind-of-your-own) is refused by name, because boards belong to the built-in channel kind.
+
+Rename or move a channel's folder and its boards move with it, since a board's id comes from where the channel sits. Rows filed under the old id stay there and nothing migrates them. The unattended-board warning is what makes that visible.
 
 The rows themselves are [task substrate](../orchestration/task-substrate.md) rows, with the same fields, statuses and transitions any other board's carry.
 

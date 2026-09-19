@@ -11,13 +11,15 @@ import { describe, expect, it } from "vitest";
 import {
   CHANNEL_KIND,
   channelBoard,
-  channelBoardId,
   channelBoardIds,
   channelInstances,
   defineChannelFlow,
   type ChannelKind,
   type ChannelManifest
 } from "../src/index";
+// Package-internal, deliberately: `channelBoardId` is the join the framework
+// mints with, not a call an app makes.
+import { channelBoardId, channelBoardNamesFor } from "../src/channel/channel-board";
 
 function record(id: string, declared: Record<string, unknown> = {}): ChannelManifest {
   return { id, declared, body: "Charter." };
@@ -31,14 +33,14 @@ const customKind = Object.assign(
 
 describe("declaring a board", () => {
   it("mints `<channelId>.<name>` and declares it on the built-in kind, at org scope", () => {
-    const instances = channelInstances([record("eng.feature", { boards: ["work"] })]);
+    const instances = channelInstances([record("eng.feature", { boards: ["triage"] })]);
 
     expect(instances).toHaveLength(1);
     const resources = instances[0]!.resources as Record<string, { pattern: string; scope: string }>;
-    expect(Object.keys(resources)).toContain("eng.feature.work");
-    expect(resources["eng.feature.work"]!.scope).toBe("org");
+    expect(Object.keys(resources)).toContain("eng.feature.triage");
+    expect(resources["eng.feature.triage"]!.scope).toBe("org");
     // `<id>/**`, not `<id>/*` — a task id may carry a slash.
-    expect(resources["eng.feature.work"]!.pattern).toBe("eng.feature.work/**");
+    expect(resources["eng.feature.triage"]!.pattern).toBe("eng.feature.triage/**");
   });
 
   it("holds none, and declares no board resource, when the file names no board", () => {
@@ -52,14 +54,14 @@ describe("declaring a board", () => {
     // roster that boots short is a team missing a board with nothing said.
     expect(() =>
       channelInstances([
-        record("eng.a", { boards: { id: "work" } }),
-        record("eng.b", { boards: [{ name: "work" }] }),
+        record("eng.a", { boards: { id: "triage" } }),
+        record("eng.b", { boards: [{ name: "triage" }] }),
         record("eng.c", { boards: 3 })
       ])
     ).toThrow(/eng\.a[\s\S]*eng\.b[\s\S]*eng\.c/);
     // Not the closed-key refusal wearing a disguise: `boards` IS declarable,
     // so what must be named is the shape rule.
-    expect(() => channelInstances([record("eng.a", { boards: { id: "work" } })])).toThrow(
+    expect(() => channelInstances([record("eng.a", { boards: { id: "triage" } })])).toThrow(
       /list of plain names/
     );
   });
@@ -72,21 +74,69 @@ describe("declaring a board", () => {
     }
   });
 
-  it("refuses two channels that would mint one id, naming both", () => {
-    // Only reachable because a board name may not carry a dot; the pair below
-    // is the collision that is left — the same channel declared twice is
-    // already refused one rule earlier.
+  it("refuses one channel that declares the same board name twice, naming the minted id", () => {
+    // Named for what it checks. The cross-channel arm of the same guard is NOT
+    // exercised here and cannot be from a roster this package builds: channel
+    // ids are unique and a board name carries no dot, so two different
+    // channels cannot mint one id. See the note at that arm.
     expect(() =>
-      channelInstances([
-        record("eng.feature", { boards: ["work", "work"] })
-      ])
-    ).toThrow(/eng\.feature\.work/);
+      channelInstances([record("eng.feature", { boards: ["triage", "triage"] })])
+    ).toThrow(/eng\.feature\.triage/);
+  });
+
+  it("keeps one channel's boards out of another's, when one id prefixes the other", () => {
+    // `eng` holding `feature` mints `eng.feature`, which is also the PREFIX of
+    // `eng.feature`'s own boards. The filter that keeps them apart rejects a
+    // remainder carrying a dot; without it `eng` would report `feature.triage`
+    // as one of its own boards and resolve a ledger belonging to a different
+    // channel. Hand-built ids, because a file tree cannot produce this pair.
+    const ids = channelBoardIds([
+      { id: "eng", declared: { members: [], boards: ["feature"] }, body: "b" },
+      { id: "eng.feature", declared: { members: [], boards: ["triage"] }, body: "b" }
+    ]);
+    expect(ids).toEqual(["eng.feature", "eng.feature.triage"]);
+
+    expect(channelBoardNamesFor("eng", ids)).toEqual(["feature"]);
+    expect(channelBoardNamesFor("eng.feature", ids)).toEqual(["triage"]);
+  });
+
+  it("refuses to open a channel holding a board when there is no org, naming it", async () => {
+    const { openChannels } = await import("../src/index");
+    const client = {
+      createSession: async () => ({ id: "x" }),
+      getSession: async () => ({ flowKind: "channel", userId: "u" }),
+      deleteSession: async () => {}
+    };
+
+    // A board is org-scoped storage. Opening without an org would leave every
+    // `fileTask` and `readBoard` on this channel failing for the life of the
+    // process, so it is refused once at startup instead.
+    await expect(
+      openChannels([record("eng.feature", { boards: ["triage"] })], {
+        client: client as never,
+        userId: "u_42"
+      })
+    ).rejects.toThrow(/eng\.feature/);
+
+    // The negative control: the same roster WITH an org opens, and a channel
+    // holding no board opens without one. Without these the refusal above
+    // could be refusing every channel.
+    await expect(
+      openChannels([record("eng.feature", { boards: ["triage"] })], {
+        client: client as never,
+        userId: "u_42",
+        orgId: "org_acme"
+      })
+    ).resolves.toBeUndefined();
+    await expect(
+      openChannels([record("eng.quiet")], { client: client as never, userId: "u_42" })
+    ).resolves.toBeUndefined();
   });
 
   it("refuses `boards:` on a kind the framework did not build, by name", () => {
     let thrown: unknown;
     try {
-      channelInstances([record("eng.feature", { boards: ["work"], flow: "custom-channel" })], {
+      channelInstances([record("eng.feature", { boards: ["triage"], flow: "custom-channel" })], {
         kinds: { "custom-channel": customKind }
       });
     } catch (error) {
@@ -99,7 +149,7 @@ describe("declaring a board", () => {
 
   it("still refuses a key that is not declarable, now that the list has grown", () => {
     // The closed list gained one member; it did not stop being closed.
-    expect(() => channelInstances([record("eng.a", { board: ["work"] })])).toThrow(/`board`/);
+    expect(() => channelInstances([record("eng.a", { board: ["triage"] })])).toThrow(/`board`/);
   });
 });
 
@@ -108,15 +158,15 @@ describe("the minted ledger", () => {
     // The assignee freeze is a WeakSet on the declaration, so two objects
     // sharing an id share rows and not policy. Give the seat helper its own
     // `defineTaskCollection` call and this is the assertion that goes red.
-    const instances = channelInstances([record("eng.feature", { boards: ["work"] })]);
-    const declared = (instances[0]!.resources as Record<string, unknown>)["eng.feature.work"];
-    expect(declared).toBe(channelBoard("eng.feature", "work"));
+    const instances = channelInstances([record("eng.feature", { boards: ["triage"] })]);
+    const declared = (instances[0]!.resources as Record<string, unknown>)["eng.feature.triage"];
+    expect(declared).toBe(channelBoard("eng.feature", "triage"));
   });
 
   it("carries its own minted id, so a caller declares one thing", () => {
-    const work = channelBoard("eng.feature", "work");
-    expect(work.id).toBe(channelBoardId("eng.feature", "work"));
-    expect(work.id).toBe("eng.feature.work");
+    const board = channelBoard("eng.feature", "triage");
+    expect(board.id).toBe(channelBoardId("eng.feature", "triage"));
+    expect(board.id).toBe("eng.feature.triage");
   });
 
   it("refuses a bad name at the seat helper too, not only at bind", () => {
@@ -128,11 +178,11 @@ describe("the roster's minted ids", () => {
   it("are what a hire-time check is handed, one per declared board", () => {
     expect(
       channelBoardIds([
-        record("eng.feature", { boards: ["work", "review"] }),
+        record("eng.feature", { boards: ["triage", "review"] }),
         record("eng.quiet"),
-        record("mkt.launch", { boards: ["work"] })
+        record("mkt.launch", { boards: ["triage"] })
       ])
-    ).toEqual(["eng.feature.review", "eng.feature.work", "mkt.launch.work"]);
+    ).toEqual(["eng.feature.review", "eng.feature.triage", "mkt.launch.triage"]);
   });
 });
 
@@ -141,13 +191,13 @@ describe("the built-in kind's own surface", () => {
     const boardless = defineChannelFlow()();
     expect(Object.keys(boardless.actions)).toEqual(["post", "read"]);
 
-    const holding = defineChannelFlow({ boards: ["eng.feature.work"] })();
+    const holding = defineChannelFlow({ boards: ["eng.feature.triage"] })();
     expect(Object.keys(holding.actions)).toContain("fileTask");
     expect(Object.keys(holding.actions)).toContain("readBoard");
   });
 
   it("is still the singleton kind, whatever it holds", () => {
-    const holding = defineChannelFlow({ boards: ["eng.feature.work"] })();
+    const holding = defineChannelFlow({ boards: ["eng.feature.triage"] })();
     expect(holding.kind).toBe(CHANNEL_KIND);
     expect(holding.id).toBe(CHANNEL_KIND);
   });

@@ -116,11 +116,18 @@ export type ChannelReadOutput = z.infer<typeof channelReadOutputSchema>;
  * channel's `CHANNEL.md` did not declare. It is never another channel's board
  * being reached and refused, because the ledger id is minted from the
  * session's own identity and a name can only ever address this channel's.
+ *
+ * `board-needs-an-org` is the one a channel opened without an `orgId` meets.
+ * A board is org-scoped storage, so there is no scope to read or write in and
+ * the refusal says that rather than letting the resource registry report the
+ * board as unregistered, which sends an author to check a registration that is
+ * fine. Same shape as an org-scoped document read in an org-less channel.
  */
 export type ChannelRefusalReason =
   | "channel-not-bound"
   | "author-not-a-member"
-  | "board-not-declared";
+  | "board-not-declared"
+  | "board-needs-an-org";
 
 /**
  * A post refused on the channel's own terms, as opposed to by the substrate.
@@ -259,8 +266,6 @@ export const channelFileTaskInputSchema = z
     /** The board's LOCAL name, as the `CHANNEL.md` declared it. */
     board: z.string().min(1),
     goal: z.string().min(1),
-    /** Caller-chosen row id. Minted when omitted. */
-    id: z.string().min(1).optional(),
     title: z.string().min(1).optional(),
     context: z.string().optional(),
     /**
@@ -293,11 +298,53 @@ export type ChannelFileTaskOutput = z.infer<typeof channelFileTaskOutputSchema>;
 /** What reading one board takes. */
 export const channelReadBoardInputSchema = z.object({ board: z.string().min(1) }).strict();
 
+/**
+ * One row as this channel publishes it — an **allowlist**, not the task minus a
+ * field.
+ *
+ * `readBoard` is a public action whose output reaches a model's context, so
+ * **schema membership is itself a publication**. An omit-list would publish
+ * every field a later revision adds to `Task` by default, and the field that
+ * prompted this one (`claimedBy`, carrying a session, request and tenant id)
+ * was itself added after the type existed. Naming what goes out inverts that:
+ * a new field stays in until somebody decides otherwise.
+ *
+ * Left out, and why: `claimedBy`, `leaseUntil` and `leaseDurationMs` are
+ * execution coordinates — where an attempt is running, not what the work is.
+ * `retryLedger`, `abandonments` and `incarnationId` are the substrate's own
+ * bookkeeping. `revision`, `writeLog` and `writeLogTruncated` are write
+ * provenance, answered by the substrate's own API rather than by a board read.
+ * `SERVER_ONLY_TASK_FIELDS` in `change-event.ts` is canonical for the first of
+ * those; this covers the one boundary the substrate's emitter does not.
+ */
+export const channelBoardRowSchema = taskSchema.pick({
+  id: true,
+  goal: true,
+  title: true,
+  context: true,
+  status: true,
+  attempts: true,
+  maxAttempts: true,
+  assignee: true,
+  deps: true,
+  priority: true,
+  input: true,
+  output: true,
+  error: true,
+  feedback: true,
+  labels: true,
+  metadata: true,
+  createdAt: true,
+  updatedAt: true,
+  startedAt: true,
+  completedAt: true
+});
+
 /** What reading one board gives back: the rows, and nothing about the conversation. */
 export const channelReadBoardOutputSchema = z.object({
   board: z.string(),
   boardId: z.string(),
-  tasks: z.array(taskSchema)
+  tasks: z.array(channelBoardRowSchema)
 });
 
 export type ChannelReadBoardOutput = z.infer<typeof channelReadBoardOutputSchema>;
@@ -341,14 +388,37 @@ async function ledgerNamed(
     );
   }
 
+  // Before resolving, because an org-less request has no org scope at all and
+  // the registry would report the board as unregistered — true, but it names
+  // the wrong cause. A board is org-scoped storage by construction.
+  if (ctx.org === undefined) {
+    throw new ChannelPostRefusedError(
+      "board-needs-an-org",
+      `channel "${channelId}" holds board "${name}", but this channel is open without an ` +
+        `organization. A board is org-scoped storage, so there is nothing to read or write ` +
+        `in. Open the channel with an \`orgId\` (or as a caller whose verified identity ` +
+        `carries one) and the board resolves.`
+    );
+  }
+
   const boardId = channelBoardId(channelId, name);
-  const ledger = await resolveChannelBoard(ctx, boardId);
+
+  // Caught rather than tested for: the resource registry THROWS on a key it
+  // does not hold, so an `undefined` check alone is a branch that never runs
+  // and a message nobody ever reads. Both outcomes land here and produce the
+  // same refusal.
+  let ledger: ChannelTaskLedger | undefined;
+  try {
+    ledger = await resolveChannelBoard(ctx, boardId);
+  } catch {
+    ledger = undefined;
+  }
   if (ledger === undefined) {
-    throw new Error(
-      `channel "${channelId}" declares board "${name}", but its ledger "${boardId}" is not ` +
-        `registered on this flow. The channel kind declares every board its roster minted, so ` +
-        `this means the kind was built from a different roster than the one that opened this ` +
-        `channel.`
+    throw new ChannelPostRefusedError(
+      "board-not-declared",
+      `channel "${channelId}" declares board "${name}", but its ledger is not registered on ` +
+        `this flow. The channel kind is built holding every board its roster minted, so this ` +
+        `means the kind was built from a different roster than the one that opened this channel.`
     );
   }
   return { boardId, channel, ledger };
@@ -384,9 +454,12 @@ const fileTaskFor = (boardIds: readonly string[]) =>
         );
       }
 
+      // The row id is minted, never supplied — the same call `addTask` makes.
+      // A caller-chosen id would let one caller collide with a row another
+      // already filed, and the substrate reports that collision in the store's
+      // own words, naming the ledger key. Neither door offers it.
       const task = await ledger.addTask({
         goal: input.goal,
-        ...(input.id === undefined ? {} : { id: input.id }),
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(input.context === undefined ? {} : { context: input.context }),
         ...(input.assignee === undefined ? {} : { assignee: input.assignee }),
@@ -420,9 +493,11 @@ const readBoardFor = (boardIds: readonly string[]) =>
       return {
         board: input.board,
         boardId,
-        // `taskSchema` strips the handle's `items()` method, so what comes back
-        // is the row rather than a live handle.
-        tasks: ledger.list().map((task) => taskSchema.parse(task))
+        // The allowlist above is the redaction: `pick` drops `claimedBy` and
+        // every other coordinate with it, and parsing also strips the handle's
+        // `items()` method, so what comes back is the row rather than a live
+        // handle.
+        tasks: ledger.list().map((task) => channelBoardRowSchema.parse(task))
       };
     }
   });

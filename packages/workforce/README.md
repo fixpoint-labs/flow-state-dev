@@ -885,17 +885,20 @@ boards: [followups]
 
 The ledger id is minted from the channel that holds it — `engineering.incidents` holding
 `followups` is `engineering.incidents.followups` — and no record writes it. A board name is a plain
-local name: not empty, no whitespace, none of `.` `/` `*` `[` `]`, and not a JavaScript prototype
-member. The dot is the one that matters, since it is the join and a name carrying one would address
-another channel's board.
+local name: not empty, no whitespace, none of `.` `/` `*` `[` `]`, and not `__proto__`, `prototype`
+or `constructor`. The dot is the one that matters, since it is the join and a name carrying one
+would address another channel's board.
 
-A channel holding at least one board declares two more actions, `fileTask` and `readBoard`, public
+A channel holding one or more boards declares two more actions, `fileTask` and `readBoard`, public
 and internal like `post` and `read`. Both take the board's **local** name; `fileTask` hands back
-`{ board, boardId, taskId, status }`. Naming a board the channel does not hold refuses
-`board-not-declared` and lists what it does hold. The id is minted from the session the request is
-running in, never from the payload, so naming another channel's board resolves this channel's own
-id and misses. `read` gains a `boards` key listing the local names; a channel holding none omits it
-and declares neither action.
+`{ board, boardId, taskId, status }`, and the row's id is minted rather than chosen. Naming a board
+the channel does not hold refuses `board-not-declared` and lists what it does hold; naming another
+channel's board refuses the same way. `read` gains a `boards` key listing the local names; a channel
+holding none omits it and declares neither action.
+
+`readBoard` returns a declared projection of each row, not the whole record: the board's own facts,
+without the execution coordinates (`claimedBy`, the lease) or the substrate's write provenance.
+`channelBoardRowSchema` is that shape.
 
 The channel owns the ledger and runs nothing. A seat that claims rows resolves the same declaration
 with `channelBoard`, declares it as a resource, and drains it:
@@ -908,26 +911,42 @@ const board = taskBoard({ name: "followups", collection: followups, workers });
 
 defineFlow({
   kind: "analyst",
+  // A seat that only drains declares the ledger itself. A seat that composes
+  // `channelBoardTaskTools(followups)` does not — the capability declares it.
   resources: { [followups.id]: followups },
   actions: { drain: { block: board.drain } },
 });
 ```
 
-`channelBoard` returns one canonical `DefinedTaskCollection` per minted id, carrying that `id`, so
-the channel's writes and the seat's board agree on both rows and policy without either side holding
-a string the other typed.
+`channelBoard` returns the same ledger the channel writes to, carrying its `id`, so the two sides
+agree on both the rows and the board's settings.
+
+The channel's id and the board's name are retyped at that call and nothing checks them against the
+tree. A typo does not fail: it resolves a second, empty ledger, and the only signal is the
+unattended-board warning below.
 
 `channelBoardTaskTools(board)` is the model's door onto one. Compose it in the seat kind's `uses`
-and the seat holds all eight task tools over that board — `addTask`, `assignTask`, `updateTask`,
-`listTasks`, `completeTask`, `failTask`, `blockTask`, `cancelTask`. They are capability controls,
-minted per resolver: a seat's `tools:` list can neither grant them nor fence them out, so composing
-the capability is itself the declaration. A narrower set is a different capability. A channel board
-is org-scoped, so it cannot be declared by a block colocated in a seat's own folder; that refuses at
-hire.
+and the seat holds all eight task tools over that board, each name carrying the board's id —
+`addTask_engineering_incidents_followups` and so on for `assignTask`, `updateTask`, `listTasks`,
+`completeTask`, `failTask`, `blockTask` and `cancelTask`. Composing the capability also declares the
+ledger, so the seat's flow does not declare it again. A seat's `tools:` list can neither grant these
+nor fence them out. A narrower set is a different capability.
+
+Compose it once per board; a seat holding two boards holds sixteen tools and the names say which
+board each writes to. A channel board is org-scoped, so it cannot be declared by a block colocated
+in a seat's own folder; that refuses at hire.
+
+A channel holding a board must be opened with an `orgId` — a board's rows live at org scope, so
+`openChannels` names the channel and stops when there is none.
 
 Pass `hireWorkforce` the roster's minted ids as `channelBoards` and it warns on stderr for any board
 no hired seat declares, naming the channel and the board. It never refuses: a channel may keep a
 board that only people read.
+
+Renaming or moving a channel's folder re-keys its boards, because a board id is derived from where
+the channel sits. Rows filed under the old id stay at the old key, nothing migrates them and nothing
+refuses. The unattended-board warning is what makes it visible, since the seat still names the id
+that moved.
 
 ### What a transcript proves
 
@@ -1010,12 +1029,11 @@ leaves an empty session there, and re-running binds it.
 | `openChannels(manifests, { client, userId, orgId? })` | Runtime. One named session per record, carrying its members, charter and description, opened under `orgId` when one is given. Idempotent. |
 | `readChannelsDirectory(root)` | Read a `teams/<id>/channels/<name>/` tree into one `ChannelManifest` per channel. Ships from the `./loader` subpath (Node only). |
 | `ChannelManifest` | One channel record: `{ id, declared, body }`. |
-| `channelBoard(channelId, boardName)` | The one declaration for a channel's board, carrying its minted `id`. Declare it as a flow resource and pass it to `taskBoard({ collection })`. Throws when the name is not a plain local name. |
-| `channelBoardTaskTools(board)` | Capability granting a seat all eight task tools over one channel board. List it in the seat kind's `uses`; the seat must also declare the board as a resource. |
-| `channelBoardId(channelId, boardName)` / `channelBoardIds(manifests)` | Mint one ledger id, and every minted id across a roster (sorted, deduped — what `hireWorkforce`'s `channelBoards` takes). |
-| `channelBoardNamesFor(channelId, boardIds)` / `channelBoardNameProblem(name)` | Which board names one channel holds out of a set of minted ids, and why a name is unusable. |
-| `CHANNEL_BOARDS_KEY` | The frontmatter key (`"boards"`). |
+| `channelBoard(channelId, boardName)` | The one declaration for a channel's board, carrying its minted `id`. Pass it to `taskBoard({ collection })`, and to `channelBoardTaskTools`. Throws when the name is not a plain local name. |
+| `channelBoardTaskTools(board)` | Capability granting a seat all eight task tools over one channel board, board-qualified by name. List it in the seat kind's `uses`; it declares the ledger too. |
+| `channelBoardIds(manifests)` | Every minted id across a roster, sorted and deduped — what `hireWorkforce`'s `channelBoards` takes. |
 | `ChannelBoardCollection` | A `DefinedTaskCollection` carrying its minted `id`. |
+| `channelBoardRowSchema` | One row as `readBoard` publishes it: the board's facts, without execution coordinates or write provenance. |
 | `channelFileTaskInputSchema` / `channelFileTaskOutputSchema` / `channelReadBoardInputSchema` / `channelReadBoardOutputSchema` | The `fileTask` and `readBoard` contracts. |
 | `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
 | `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |
@@ -1049,6 +1067,7 @@ leaves an empty session there, and re-running binds it.
 | `system:` in a `CHANNEL.md` | Collected in `readChannelsDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the channel folder's path |
 | Workforce root unreadable or symlinked, read for channels | `readChannelsDirectory` throws — the root is never followed through a link |
 | Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, a `boards:` that is not a list of plain names, a board name carrying a dot or declared twice, a minted board id two channels would share, or `boards:` on a custom kind that does not support them. Also `instructions:` given both in the frontmatter and as a body. Collected: one error names every bad channel, and nothing is registered |
+| Channel holds a board and no org | `openChannels` throws before opening anything, naming every channel that declares `boards:`, because a board's rows live at org scope |
 | Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |

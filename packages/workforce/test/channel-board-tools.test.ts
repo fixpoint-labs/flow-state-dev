@@ -30,10 +30,12 @@ import {
   defineAgentWorkerFlow,
   hireWorkforce,
   openChannels,
-  resolveChannelBoard,
   workerConfigSchema,
   type ChannelManifest
 } from "../src/index";
+// Package-internal: the board module's joins and resolvers are not public
+// surface, so a test reaches them where they live.
+import { resolveChannelBoard } from "../src/channel/channel-board";
 
 const USER_ID = "u_tools";
 const ORG_ID = "org_tools";
@@ -100,13 +102,13 @@ function sessionApi(stores: any) {
  * a capability's controls are exempt from it by contract.
  */
 async function lab(script: Array<Record<string, unknown>>) {
-  const roster = [record("eng.feature", ["work"])];
+  const roster = [record("eng.feature", ["triage"])];
   const [channel] = channelInstances(roster);
-  const work = channelBoard("eng.feature", "work");
+  const triage = channelBoard("eng.feature", "triage");
 
   const [seat] = hireWorkforce(
     [{ id: "eng.coder", declared: { flow: AGENT_KIND, tools: [] }, body: "Coder." }],
-    { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [channelBoardTaskTools(work)] }) } }
+    { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [channelBoardTaskTools(triage)] }) } }
   );
 
   const state = createFlowState({
@@ -141,13 +143,13 @@ async function lab(script: Array<Record<string, unknown>>) {
   };
 
   return {
-    work,
+    triage,
     channel: (actionName: string, input: unknown) =>
       act(channel!, "eng.feature", actionName, input),
     seat: (message: string) => act(seat!, "s_eng_coder", "run", { message }),
     row: (taskId: string) =>
       runtime.stores.resourceState
-        .get("org", ORG_ID, `eng.feature.work/${taskId}`)
+        .get("org", ORG_ID, `eng.feature.triage/${taskId}`)
         .then((found: { state?: unknown } | undefined) => found?.state as Record<string, unknown>),
     dispose: () => state.dispose()
   };
@@ -155,31 +157,44 @@ async function lab(script: Array<Record<string, unknown>>) {
 
 describe("one ledger, two doors", () => {
   it("settles through the model's tools the row the channel's own action wrote", async () => {
+    // The row id is MINTED — neither door lets a caller choose one — so the
+    // tool call's arguments are filled in once the row exists. The mock copies
+    // the script array but not the entries in it, so the object below is the
+    // same one it reads when the seat runs.
+    const args: { taskId?: string; reason: string } = { reason: "not needed" };
     const run = await lab([
       {
         toolCalls: [
-          { toolCallId: "c1", toolName: "cancelTask", args: { taskId: "r1", reason: "not needed" } }
+          {
+            toolCallId: "c1",
+            // Board-qualified. The eight names are fixed strings, so a seat
+            // holding two boards needs the qualifier to address either.
+            toolName: "cancelTask_eng_feature_triage",
+            args
+          }
         ]
       },
       { text: "settled" }
     ]);
     try {
       const filed = await run.channel("fileTask", {
-        board: "work",
+        board: "triage",
         goal: "ship the reader",
-        id: "r1",
         author: "eng.em"
       });
       expect(filed.error).toBeUndefined();
-      expect((await run.row("r1"))!.status).toBe("pending");
+      const taskId = (filed.output as { taskId: string }).taskId;
+      expect((await run.row(taskId))!.status).toBe("pending");
 
-      const answered = await run.seat("settle r1");
+      args.taskId = taskId;
+
+      const answered = await run.seat("settle it");
       expect(answered.error).toBeUndefined();
 
       // The same row, reached from the other side of the fence. A second
       // `TaskCollectionRef` over a second declaration would have written to a
       // different place and left this one pending.
-      expect((await run.row("r1"))!.status).toBe("cancelled");
+      expect((await run.row(taskId))!.status).toBe("cancelled");
     } finally {
       await run.dispose();
     }
@@ -187,14 +202,22 @@ describe("one ledger, two doors", () => {
 
   it("shows on the channel's board read a row the model filed, carrying no author", async () => {
     const run = await lab([
-      { toolCalls: [{ toolCallId: "c1", toolName: "addTask", args: { goal: "from the model" } }] },
+      {
+        toolCalls: [
+          {
+            toolCallId: "c1",
+            toolName: "addTask_eng_feature_triage",
+            args: { goal: "from the model" }
+          }
+        ]
+      },
       { text: "filed" }
     ]);
     try {
       const answered = await run.seat("file some work");
       expect(answered.error).toBeUndefined();
 
-      const read = await run.channel("readBoard", { board: "work" });
+      const read = await run.channel("readBoard", { board: "triage" });
       const tasks = (read.output as { tasks: Array<{ goal: string; metadata?: unknown }> }).tasks;
       expect(tasks.map((task) => task.goal)).toEqual(["from the model"]);
 
@@ -204,6 +227,105 @@ describe("one ledger, two doors", () => {
       expect(tasks[0]!.metadata).toBeUndefined();
     } finally {
       await run.dispose();
+    }
+  });
+});
+
+describe("a seat holding two boards", () => {
+  it("composes the capability twice and reaches each ledger by its own tools", async () => {
+    const roster = [record("eng.feature", ["triage", "review"])];
+    const [channel] = channelInstances(roster);
+    const triage = channelBoard("eng.feature", "triage");
+    const review = channelBoard("eng.feature", "review");
+
+    // Two boards on one seat is an ordinary shape, not an exotic one. It is
+    // also the shape a fixed capability name and eight fixed tool names make
+    // impossible: the capability collides at build, and the tools collide at
+    // the generator's own uniqueness assert.
+    const [seat] = hireWorkforce(
+      [{ id: "eng.coder", declared: { flow: AGENT_KIND, tools: [] }, body: "Coder." }],
+      {
+        kinds: {
+          [AGENT_KIND]: defineAgentWorkerFlow({
+            uses: [channelBoardTaskTools(triage), channelBoardTaskTools(review)]
+          })
+        }
+      }
+    );
+
+    const state = createFlowState({
+      flows: { [channel!.kind]: channel!, [seat!.id]: seat! },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: createMockModelResolver({
+        generators: {
+          "agent-answer": mockGenerator({
+            name: "agent-answer",
+            script: [
+              {
+                toolCalls: [
+                  {
+                    toolCallId: "c1",
+                    toolName: "addTask_eng_feature_review",
+                    args: { goal: "only on review" }
+                  }
+                ]
+              },
+              { text: "filed" }
+            ]
+          } as never)
+        }
+      })
+    } as never);
+
+    try {
+      const runtime = await state.getRuntime();
+      await openChannels(roster, {
+        client: sessionApi(runtime.stores),
+        userId: USER_ID,
+        orgId: ORG_ID
+      });
+
+      // Both ledgers really are installed — without this the assertions below
+      // could pass on a seat that quietly dropped the second board.
+      const declared = Object.keys((seat as { resources?: object }).resources ?? {});
+      expect(declared).toContain("eng.feature.triage");
+      expect(declared).toContain("eng.feature.review");
+
+      const answered = (await runAction({
+        flow: seat!,
+        actionName: "run",
+        input: { message: "file it on review" },
+        userId: USER_ID,
+        orgId: ORG_ID,
+        sessionId: "s_eng_coder",
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig }
+      } as never)) as { error?: unknown };
+      expect(answered.error).toBeUndefined();
+
+      const act = async (actionName: string, input: unknown) =>
+        (await runAction({
+          flow: channel!,
+          actionName,
+          input,
+          userId: USER_ID,
+          orgId: ORG_ID,
+          sessionId: "eng.feature",
+          stores: runtime.stores,
+          runtimeConfig: { ...runtime.runtimeConfig }
+        } as never)) as { output?: unknown };
+
+      // The row landed on `review` and NOT on `triage`. A suffix that did not
+      // reach the resolver would put both boards' tools over one ledger, and
+      // the second assertion is what catches that.
+      const onReview = await act("readBoard", { board: "review" });
+      expect((onReview.output as { tasks: Array<{ goal: string }> }).tasks.map((t) => t.goal)).toEqual([
+        "only on review"
+      ]);
+      const onTriage = await act("readBoard", { board: "triage" });
+      expect((onTriage.output as { tasks: unknown[] }).tasks).toEqual([]);
+    } finally {
+      await state.dispose();
     }
   });
 });
@@ -218,7 +340,7 @@ describe("the seat's `tools:` fence", () => {
       {
         kinds: {
           [AGENT_KIND]: defineAgentWorkerFlow({
-            uses: [channelBoardTaskTools(channelBoard("eng.fenced-channel", "work"))]
+            uses: [channelBoardTaskTools(channelBoard("eng.fenced-channel", "triage"))]
           })
         }
       }
@@ -226,7 +348,7 @@ describe("the seat's `tools:` fence", () => {
 
     // The ledger reached the flow through the capability alone — nothing
     // declared it beside the `uses` entry.
-    expect(Object.keys(seat!.resources ?? {})).toContain("eng.fenced-channel.work");
+    expect(Object.keys(seat!.resources ?? {})).toContain("eng.fenced-channel.triage");
     expect(seat!.config.tools).toEqual([]);
   });
 });
@@ -277,7 +399,7 @@ describe("a handed-off board's assignee freeze", () => {
             coder: dispatcher<TaskWorkerInput>({
               name: `${boardName}-hand-off`,
               flowKind: "somewhere-else",
-              action: "work",
+              action: "triage",
               session: "per-task"
             })
           }
@@ -346,11 +468,11 @@ describe("a handed-off board's assignee freeze", () => {
 
 describe("a channel-board tool colocated in a seat's own folder", () => {
   it("is refused by name at hire, because the board is an org-scoped resource", () => {
-    const work = channelBoard("eng.colocated", "work");
+    const triage = channelBoard("eng.colocated", "triage");
     const colocated = handler({
-      name: "file-work",
+      name: "file-triage",
       description: "Files a row.",
-      uses: [defineCapability({ name: "colocated-board", resources: { [work.id]: work } })],
+      uses: [defineCapability({ name: "colocated-board", resources: { [triage.id]: triage } })],
       inputSchema: z.object({}),
       outputSchema: z.object({ ok: z.boolean() }),
       execute: () => ({ ok: true })
@@ -358,20 +480,20 @@ describe("a channel-board tool colocated in a seat's own folder", () => {
 
     // The premise the refusal rests on, asserted so this cannot pass for the
     // wrong reason: the block really does declare the ledger.
-    expect(colocated.declaredResources?.["eng.colocated.work"]).toBe(work);
+    expect(colocated.declaredResources?.["eng.colocated.triage"]).toBe(triage);
 
     let message = "";
     try {
       hireWorkforce([{ id: "eng.colo", declared: { flow: AGENT_KIND }, body: "Colo." }], {
         kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
-        seatBlocks: { "eng.colo": { "file-work": colocated } }
+        seatBlocks: { "eng.colo": { "file-triage": colocated } }
       });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
 
     expect(message).toContain('worker "eng.colo"');
-    expect(message).toContain("file-work");
-    expect(message).toContain("eng.colocated.work");
+    expect(message).toContain("file-triage");
+    expect(message).toContain("eng.colocated.triage");
   });
 });

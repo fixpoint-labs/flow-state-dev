@@ -224,13 +224,30 @@ export async function resolveChannelBoard<TInput = unknown, TOutput = unknown>(
  * @param board The declaration {@link channelBoard} handed back.
  * @returns The capability to list in a seat kind's `uses`.
  */
+/**
+ * The qualifier that makes one board's eight task tools distinct from another's.
+ *
+ * Derived from the minted id rather than the local name: two channels may both
+ * declare `triage`, and a seat may hold both, so the local name is not unique
+ * where it has to be. Dots become underscores because providers restrict a
+ * tool name to `[a-zA-Z0-9_-]` — the framework would sanitize it anyway, and
+ * doing it here keeps the name the model is told about equal to the name this
+ * code chose.
+ */
+function boardToolSuffix(boardId: string): string {
+  return boardId.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
 function resolveFor(board: ChannelBoardCollection): TaskCollectionResolver {
   return async (ctx) => resolveChannelBoard(ctx, board.id);
 }
 
 export function channelBoardTaskTools(board: ChannelBoardCollection) {
   return defineCapability({
-    name: "channelBoardTasks",
+    // Per board, not per kind. A seat holding two boards composes this twice,
+    // and a shared name collides at build — `defineCapability` refuses two
+    // declarations under one name.
+    name: `channelBoardTasks:${board.id}`,
     // Declared here, with the tools, rather than left for the consuming flow
     // to remember: a block holding the eight handlers and not the ledger they
     // reach answers every call `no_delegation_board`, which is a working tool
@@ -244,7 +261,12 @@ export function channelBoardTaskTools(board: ChannelBoardCollection) {
         // stable key to fence them out with or to let them back in. Composing
         // the capability IS the declaration — which is why it is all eight or
         // none.
-        controlTools: buildTaskToolsList(resolveFor(board))
+        // Board-qualified, for the same reason the capability name is: a
+        // generator asserts its tool names are unique, and the eight are fixed
+        // strings. Two boards on one seat would collide on every one of them.
+        // The id is the qualifier because it is unique across the roster by
+        // construction, where a local name is not.
+        controlTools: buildTaskToolsList(resolveFor(board), undefined, boardToolSuffix(board.id))
       },
       default: ["tools"]
     }

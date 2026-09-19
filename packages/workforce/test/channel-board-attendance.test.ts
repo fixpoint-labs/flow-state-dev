@@ -12,8 +12,8 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { channelBoard, hireWorkforce, workerConfigSchema } from "../src/index";
 import type { WorkerManifest } from "../src/manifest";
 
-const work = handler({
-  name: "attend-work",
+const noop = handler({
+  name: "attend-triage",
   inputSchema: z.object({ note: z.string() }),
   outputSchema: z.object({ note: z.string() }),
   execute: (input) => input
@@ -28,7 +28,7 @@ function seatKindHolding(boardIds: string[]) {
     resources: Object.fromEntries(
       boardIds.map((id) => [id, channelBoard(...(id.split(/\.(?=[^.]+$)/) as [string, string]))])
     ),
-    actions: { run: { block: work } }
+    actions: { run: { block: noop } }
   });
 }
 
@@ -36,13 +36,42 @@ function seat(id: string): WorkerManifest {
   return { id, declared: { flow: "coder" }, body: "Do the work." };
 }
 
+describe("a channel folder that was renamed", () => {
+  it("re-keys its boards and warns, because the seat still declares the old id", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      // The channel moved from `eng.feature` to `eng.renamed`. A board id is a
+      // storage key derived from where the channel folder sits, so the board
+      // moved with it and the rows filed under the old id are still sitting at
+      // the old key. Nothing migrates them and nothing refuses (BR-23) — the
+      // seat below is the one that did not move.
+      hireWorkforce([seat("eng.coder")], {
+        kinds: { coder: seatKindHolding(["eng.feature.triage"]) as never },
+        channelBoards: ["eng.renamed.triage"]
+      });
+
+      const said = warn.mock.calls.map((call) => String(call[0])).join("\n");
+      // The warning is the whole of what makes the stranding visible: it names
+      // the board the RENAMED channel now holds, which nothing drains.
+      expect(said).toContain("eng.renamed.triage");
+      expect(said).toMatch(/channel "eng\.renamed"/);
+      // And it does not claim the seat's old board is fine — that id is simply
+      // not on the roster any more, so nothing reports on it at all. This is
+      // the line that says the old rows are unreachable rather than migrated.
+      expect(said).not.toContain("eng.feature.triage");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe("a channel board nobody declared", () => {
   it("warns at hire, names the channel and the id, and still hires", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const seats = hireWorkforce([seat("eng.coder")], {
-        kinds: { coder: seatKindHolding(["eng.feature.work"]) as never },
-        channelBoards: ["eng.feature.work", "eng.feature.review"]
+        kinds: { coder: seatKindHolding(["eng.feature.triage"]) as never },
+        channelBoards: ["eng.feature.triage", "eng.feature.review"]
       });
 
       // The hire succeeded — this is not a refusal, and a roster that boots
@@ -51,11 +80,14 @@ describe("a channel board nobody declared", () => {
 
       const said = warn.mock.calls.map((call) => String(call[0])).join("\n");
       expect(said).toContain("eng.feature.review");
-      expect(said).toContain("eng.feature");
+      // The CHANNEL, said as a channel. A bare `toContain("eng.feature")`
+      // cannot fail once the line above has passed, since the board id
+      // contains the channel id — so it asserted nothing.
+      expect(said).toMatch(/channel "eng\.feature"/);
       // The attended one is NOT named. Without this, a check that warned about
       // every board would pass the assertion above and tell an operator
       // nothing.
-      expect(said).not.toContain("eng.feature.work");
+      expect(said).not.toContain("eng.feature.triage");
     } finally {
       warn.mockRestore();
     }
@@ -65,8 +97,8 @@ describe("a channel board nobody declared", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       hireWorkforce([seat("eng.coder")], {
-        kinds: { coder: seatKindHolding(["eng.feature.work"]) as never },
-        channelBoards: ["eng.feature.work"]
+        kinds: { coder: seatKindHolding(["eng.feature.triage"]) as never },
+        channelBoards: ["eng.feature.triage"]
       });
       expect(warn).not.toHaveBeenCalled();
     } finally {

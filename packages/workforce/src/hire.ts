@@ -603,11 +603,16 @@ function warnUnattendedBoards(
     if (declared.has(boardId)) continue;
     // A board id is its channel's id, a dot, and a name carrying no dot.
     const channelId = boardId.slice(0, boardId.lastIndexOf("."));
+    // The LOCAL name in the prose, because that is what the `CHANNEL.md` says
+    // and what an operator goes looking for. The minted id appears once, in
+    // the fix, where it is the thing to copy.
+    const boardName = boardId.slice(channelId.length + 1);
     console.warn(
-      `[workforce] channel "${channelId}" holds board "${boardId}", and no flow hired in this ` +
+      `[workforce] channel "${channelId}" holds board "${boardName}" (ledger "${boardId}"), ` +
+        `and no flow hired in this ` +
         `call declares it. Rows filed there will sit pending until something drains them — ` +
         `declare the board on the seat that runs the work ` +
-        `(\`resources: { [board.id]: board }\` with \`channelBoard("${channelId}", "${boardId.slice(channelId.length + 1)}")\`), ` +
+        `(\`resources: { [board.id]: board }\` with \`channelBoard("${channelId}", "${boardName}")\`), ` +
         `or ignore this if that seat runs in another process.`
     );
   }
