@@ -1,0 +1,108 @@
+<svg viewBox="0 0 940 372" role="img"
+     aria-label="Today and after, side by side. Today a team's board is about forty lines of TypeScript declared twice, once on the coordinator flow and once on the recipient so the claim gate passes, with one assignee key, one row, one hand-off and no queue. After, one boards line in the channel's own file mints the ledger, a coordinator seat files four rows through the task tools its own file grants it, and rows route by assignee to three declared seats while a fourth waits behind a busy seat; four queue columns sit below as a read-time view over rows that already exist."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-code { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-acc  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-dim  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-wait { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-n    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .edge   { stroke:var(--ink-3); stroke-width:1.2; fill:none; marker-end:url(#a); }
+    .line   { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .edge-d { stroke:var(--prose); stroke-width:1.2; fill:none; stroke-dasharray:4 3; marker-end:url(#b); }
+    .split  { stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-3)"/></marker>
+    <marker id="b" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--prose)"/></marker>
+  </defs>
+
+  <line class="split" x1="470" y1="16" x2="470" y2="356"/>
+
+  <g id="today">
+    <text class="t-lbl" x="24" y="30">TODAY</text>
+    <text class="t-b" x="24" y="50">the board is code</text>
+
+    <rect class="n-dim" x="24" y="64" width="270" height="78" rx="5"/>
+    <text class="t-s" x="38" y="84">lab/board.mts</text>
+    <text class="t-n" x="38" y="104">coordinatorBoard()  — hands the row across</text>
+    <text class="t-n" x="38" y="124">recipientBoard()    — interim, drains nobody</text>
+    <text class="t-gone" x="24" y="162">one ledger id, spelled twice · about forty lines per team</text>
+
+    <rect class="n-box" x="24" y="186" width="104" height="42" rx="5"/>
+    <text class="t-n" x="38" y="212">one row</text>
+    <path class="edge" d="M128 207 L164 207"/>
+    <rect class="n-box" x="168" y="186" width="126" height="42" rx="5"/>
+    <text class="t-s" x="182" y="205">assignee</text>
+    <text class="t-n" x="182" y="221">coder</text>
+    <path class="edge" d="M294 207 L330 207"/>
+    <rect class="n-box" x="334" y="186" width="104" height="42" rx="5"/>
+    <text class="t-n" x="348" y="212">the seat</text>
+
+    <text class="t-gone" x="24" y="266">No queue. One row, one hand-off, and nothing the</text>
+    <text class="t-gone" x="24" y="284">team itself can read.</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="494" y="30">AFTER</text>
+    <text class="t-b" x="494" y="50">the board is one line in a file</text>
+
+    <rect class="n-code" x="494" y="64" width="226" height="52" rx="5"/>
+    <text class="t-s" x="508" y="83">channels/queue/CHANNEL.md</text>
+    <text class="t-n" x="508" y="103">boards: [work]</text>
+    <path class="edge" d="M560 116 L560 138"/>
+    <rect class="n-code" x="494" y="142" width="226" height="48" rx="5"/>
+    <text class="t-n" x="508" y="162">eng.queue.work</text>
+    <text class="t-s" x="508" y="180">minted from the channel</text>
+
+    <rect class="n-acc" x="756" y="64" width="168" height="52" rx="5"/>
+    <text class="t-s" x="770" y="83">workers/manager</text>
+    <text class="t-n" x="770" y="103">files four rows</text>
+    <path class="edge" d="M790 116 L790 128 L676 128 L676 138"/>
+
+    <path class="line" d="M607 190 L607 196"/>
+    <path class="line" d="M540 196 L800 196"/>
+    <path class="edge" d="M540 196 L540 203"/>
+    <path class="edge" d="M660 196 L660 203"/>
+    <path class="edge" d="M800 196 L800 203"/>
+    <rect class="n-box" x="494" y="206" width="112" height="44" rx="5"/>
+    <text class="t-n" x="508" y="226">builder-a</text>
+    <text class="t-s" x="508" y="242">running</text>
+    <rect class="n-box" x="614" y="206" width="112" height="44" rx="5"/>
+    <text class="t-n" x="628" y="226">builder-b</text>
+    <text class="t-s" x="628" y="242">running</text>
+    <rect class="n-box" x="734" y="206" width="112" height="44" rx="5"/>
+    <text class="t-n" x="748" y="226">builder-c</text>
+    <text class="t-s" x="748" y="242">running</text>
+
+    <rect class="n-wait" x="614" y="264" width="112" height="28" rx="5"/>
+    <text class="t-s" x="628" y="282">row 4 · waiting</text>
+    <path class="edge-d" d="M670 264 L670 254"/>
+  </g>
+
+  <g id="columns">
+    <text class="t-lbl" x="494" y="318">THE QUEUE · READ, NEVER WRITTEN</text>
+    <rect class="n-dim" x="494" y="326" width="100" height="26" rx="4"/>
+    <text class="t-s" x="506" y="343">queued</text>
+    <rect class="n-dim" x="602" y="326" width="100" height="26" rx="4"/>
+    <text class="t-s" x="614" y="343">running</text>
+    <rect class="n-dim" x="710" y="326" width="112" height="26" rx="4"/>
+    <text class="t-s" x="722" y="343">waiting on you</text>
+    <rect class="n-dim" x="830" y="326" width="94" height="26" rx="4"/>
+    <text class="t-s" x="842" y="343">done</text>
+  </g>
+</svg>

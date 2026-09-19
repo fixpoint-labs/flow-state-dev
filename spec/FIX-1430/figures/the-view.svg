@@ -1,0 +1,83 @@
+<svg viewBox="0 0 940 324" role="img"
+     aria-label="A matrix of four queue columns against the row facts each is computed from. Queued reads status pending and the assignee. Running reads status in progress and a live claim. Waiting on you reads status parked or blocked and the reason already on the row. Done reads the terminal statuses. A fifth strip beneath shows seat idle derived from the absence of a live claim against the seats the lab hired. A heavy fence runs under the whole matrix, labelled nothing below this line is written, with the task status enum and the row fields drawn underneath it untouched."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-acc  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-dim  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-n    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+    .fence  { stroke:var(--gone); stroke-width:2.4; }
+  </style>
+
+  <text class="t-lbl" x="16" y="26">WHAT THE COORDINATOR SEES · EACH COLUMN, AND EVERY FACT IT READS</text>
+
+  <g id="columns">
+    <rect class="n-acc" x="16" y="38" width="218" height="34" rx="5"/>
+    <text class="t-b" x="30" y="60">queued</text>
+    <rect class="n-acc" x="244" y="38" width="218" height="34" rx="5"/>
+    <text class="t-b" x="258" y="60">running</text>
+    <rect class="n-acc" x="472" y="38" width="218" height="34" rx="5"/>
+    <text class="t-b" x="486" y="60">waiting on you</text>
+    <rect class="n-acc" x="700" y="38" width="224" height="34" rx="5"/>
+    <text class="t-b" x="714" y="60">done</text>
+  </g>
+
+  <g id="facts">
+    <rect class="n-box" x="16" y="80" width="218" height="30" rx="4"/>
+    <text class="t-s" x="30" y="99">status: pending</text>
+    <rect class="n-box" x="16" y="114" width="218" height="30" rx="4"/>
+    <text class="t-s" x="30" y="133">assignee</text>
+
+    <rect class="n-box" x="244" y="80" width="218" height="30" rx="4"/>
+    <text class="t-s" x="258" y="99">status: in_progress</text>
+    <rect class="n-box" x="244" y="114" width="218" height="30" rx="4"/>
+    <text class="t-s" x="258" y="133">a live claim</text>
+
+    <rect class="n-box" x="472" y="80" width="218" height="30" rx="4"/>
+    <text class="t-s" x="486" y="99">status: parked · blocked</text>
+    <rect class="n-box" x="472" y="114" width="218" height="30" rx="4"/>
+    <text class="t-s" x="486" y="133">the reason on the row</text>
+
+    <rect class="n-box" x="700" y="80" width="224" height="30" rx="4"/>
+    <text class="t-s" x="714" y="99">completed · errored · cancelled</text>
+    <rect class="n-dim" x="700" y="114" width="224" height="30" rx="4"/>
+    <text class="t-s" x="714" y="133">nothing else</text>
+  </g>
+
+  <g id="idle">
+    <rect class="n-acc" x="16" y="158" width="218" height="30" rx="5"/>
+    <text class="t-b" x="30" y="178">seat idle</text>
+    <rect class="n-box" x="244" y="158" width="446" height="30" rx="4"/>
+    <text class="t-s" x="258" y="177">a hired seat holding no live claim — absence, not a stamp</text>
+    <rect class="n-dim" x="700" y="158" width="224" height="30" rx="4"/>
+    <text class="t-s" x="714" y="177">the seats the lab hired</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="16" y1="212" x2="924" y2="212"/>
+    <text class="t-gone" x="16" y="230">NOTHING BELOW THIS LINE IS WRITTEN</text>
+  </g>
+
+  <g id="substrate">
+    <rect class="n-dim" x="16" y="244" width="446" height="62" rx="5"/>
+    <text class="t-lbl" x="30" y="264">THE STATUS SET · UNCHANGED</text>
+    <text class="t-s" x="30" y="284">pending · in_progress · blocked · parked</text>
+    <text class="t-s" x="30" y="300">completed · errored · cancelled</text>
+
+    <rect class="n-dim" x="478" y="244" width="446" height="62" rx="5"/>
+    <text class="t-lbl" x="492" y="264">THE ROW · UNCHANGED</text>
+    <text class="t-s" x="492" y="284">assignee · claimedBy · leaseUntil · feedback</text>
+    <text class="t-s" x="492" y="300">no field added, no field written by a read</text>
+  </g>
+</svg>
