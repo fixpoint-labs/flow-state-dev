@@ -39,6 +39,7 @@ import {
   CHANNEL_KIND,
   boundChannel,
   channelFlow,
+  defineChannelFlow,
   holdsBoards,
   type ChannelSessionState
 } from "./channel-flow";
@@ -90,6 +91,23 @@ export interface ChannelInstancesOptions {
    * the built-in.
    */
   kinds?: Record<string, ChannelKind>;
+
+  /**
+   * Build the **built-in** kind carrying the live inventory's writer half, so
+   * every channel it opens can publish its own row.
+   *
+   * Off by default: with this absent nothing is declared and nothing is
+   * written, and channels behave exactly as they did before the inventory
+   * existed. Turning it on here is half the wiring — `openInventory` is what
+   * actually runs the write, after `openChannels`.
+   *
+   * It reaches the built-in only. A kind passed under `kinds` is the caller's
+   * to build, and it carries the writer by spreading
+   * `inventoryWriterActions(itsOwnKindName)` into its own actions — the same
+   * way it already carries `cardinality: "singleton"`. There is nowhere to hand
+   * this to one: a custom kind is zero-arg by contract.
+   */
+  inventory?: boolean;
 }
 
 export interface OpenChannelsOptions {
@@ -191,8 +209,28 @@ function isAlreadyOpen(error: unknown): boolean {
   );
 }
 
-/** Records ordered by id, so one run's refusals read in a stable order. */
-function orderedById<T extends { id: string }>(records: readonly T[]): T[] {
+/**
+ * The built-in kind holding the inventory writer, built at most once.
+ *
+ * Memoised rather than rebuilt per call for the same reason the board ledgers
+ * are: a kind is a declaration, and two declarations of one kind in one process
+ * are two objects the registry would have to tell apart. Lazy rather than a
+ * module-level `const`, so an app that never turns the inventory on never
+ * builds it.
+ */
+let inventoryChannelFlowMemo: ReturnType<typeof defineChannelFlow> | undefined;
+function inventoryChannelFlow(): ReturnType<typeof defineChannelFlow> {
+  inventoryChannelFlowMemo ??= defineChannelFlow({ inventory: true });
+  return inventoryChannelFlowMemo;
+}
+
+/**
+ * Records ordered by id, so one run's refusals read in a stable order.
+ *
+ * Exported for the inventory binder, which walks the same records and owes the
+ * same stable order. Not re-exported from the package root.
+ */
+export function orderedById<T extends { id: string }>(records: readonly T[]): T[] {
   return [...records].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
@@ -202,8 +240,14 @@ function orderedById<T extends { id: string }>(records: readonly T[]): T[] {
  * An omitted key selects the built-in — decision 1, and the reason the first
  * file in `channels/` carries no `flow:` line. A key that IS present and names
  * nothing registered is a misconfiguration and says so; it never falls back.
+ *
+ * Exported for the inventory binder, which addresses each channel's session on
+ * the kind that opened it and must read the record the same way `openChannels`
+ * did. A second derivation is a second answer to "which flow is this channel
+ * on", and the two would diverge silently. Not re-exported from the package
+ * root.
  */
-function kindOf(declared: Record<string, unknown>): { kind: string } | { problem: string } {
+export function kindOf(declared: Record<string, unknown>): { kind: string } | { problem: string } {
   if (!Object.hasOwn(declared, "flow")) return { kind: CHANNEL_KIND };
   const named = declared.flow;
   if (typeof named !== "string" || named.trim().length === 0) {
@@ -408,9 +452,15 @@ export function channelInstances(
   options: ChannelInstancesOptions = {}
 ): FlowInstance[] {
   // The seed: the built-in fills the map only where the caller left the key
-  // free, so `kinds: { channel: mine }` replaces it wholesale.
+  // free, so `kinds: { channel: mine }` replaces it wholesale. With the
+  // inventory asked for, the seed is the same built-in rebuilt holding the
+  // writer — a second factory rather than a flag read at run time, because the
+  // collections have to be DECLARED on the flow and a declaration cannot be
+  // made per request.
   const kinds: Record<string, ChannelKind> = {
-    [CHANNEL_KIND]: channelFlow as unknown as ChannelKind,
+    [CHANNEL_KIND]: (options.inventory === true
+      ? inventoryChannelFlow()
+      : channelFlow) as unknown as ChannelKind,
     ...(options.kinds ?? {})
   };
   const available = Object.keys(kinds)

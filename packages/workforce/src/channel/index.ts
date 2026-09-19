@@ -15,6 +15,11 @@
 export {
   CHANNEL_KIND,
   ChannelPostRefusedError,
+  INVENTORY_REGISTER_CHANNEL,
+  INVENTORY_REGISTER_SEATS,
+  inventoryChannelRegisteredSchema,
+  inventorySeatsRegisteredSchema,
+  inventoryWriterActions,
   channelFileTaskInputSchema,
   channelFileTaskOutputSchema,
   channelFlow,
