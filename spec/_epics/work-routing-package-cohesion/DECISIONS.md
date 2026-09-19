@@ -74,12 +74,16 @@ invent-kills its return. No child reads `parentSessionId` as a session tree.
 |---|---|
 | **Instead of** | A second `WorkerRegistry`, a mega-loader that re-walks the tree differently, or a Graft rebuild for membership and DM lookup — **and** treating read-time compose versus an org-scoped resource as a fork to pick one of |
 | **Because** | They answer different questions. The declared tree is what the files say; the live set is what is actually open. A compose helper goes stale the moment a channel mints; a live resource cannot tell you about a seat nobody has opened. Picking one produces the other by accident, badly |
-| **Locks in** | **Layer 1 — declared roster, composed at read time.** The duplicated private `LabRoster` in `goals/devforce-lab/lab/host.mts` and `goals/pentest-lab/lab/host.mts` becomes one package-level export over the three existing readers (`readWorkforce`, `readResourcesDirectory`, `readChannelsDirectory`) — derived per read, no state, registers nothing. Both lab copies deleted. FIX-1405, or a thin sibling, owns it. **Layer 2 — runtime inventory** (Jake's lock, 2026-09-16): ChannelFlow updates an org-scoped resource as seats and channels open. It stays FIX-1405's **primary** runtime shape for DM find-or-create, membership and fan-out, and layer 1 does **not** replace it. `team.*` wildcards call layer 2 later, not at first ship |
+| **Locks in** | **Layer 1 — declared roster, composed at read time.** The duplicated private `LabRoster` in `goals/devforce-lab/lab/host.mts` and `goals/pentest-lab/lab/host.mts` becomes one package-level export over the three existing readers (`readWorkforce`, `readResourcesDirectory`, `readChannelsDirectory`) — derived per read, no state, registers nothing. Both lab copies deleted. FIX-1405, or a thin sibling, owns it. **Layer 2 — runtime inventory** (Jake's lock, 2026-09-16): ChannelFlow updates an org-scoped resource as seats and channels open. It stays FIX-1405's **primary** runtime shape for DM find-or-create, membership and fan-out **as inventory questions — who exists and is open**, and layer 1 does **not** replace it. It does **not** take over a channel's session-local `members` or its post-refusal fence ([ER-3](BUSINESS-RULES.md), [ER-12](BUSINESS-RULES.md)). `team.*` wildcards call layer 2 later, not at first ship |
 
 **Compose is not a registry.** Layer 1 is a function over what the readers already return; the
 invent-kill on a second index of truth ([ER-12](BUSINESS-RULES.md)) is unchanged by it. Layer 1's
 **public export on `@flow-state-dev/workforce` is approved** — the owner's objective gate,
-2026-09-19. FIX-1405 implementation now waits only on its own spec.
+2026-09-19. FIX-1405 has since specified it as **`readDeclaredRoster(root)`** on
+`@flow-state-dev/workforce/loader` (behind `./loader`, because the root is deliberately node-free):
+it joins the three existing readers, walks nothing itself, **collects rather than throws**, and joins
+the two layers on **`id` alone** — no mapping table, no second identity. That is the contract
+[ER-23](BUSINESS-RULES.md) blocks FIX-817 on.
 
 <a name="d6"></a>
 ## D6 · The set is five children; two related issues are re-homed rather than parented
@@ -162,6 +166,26 @@ The worker raised it up rather than deciding locally, which is ER-15 working.
   make its spec unapprovable for the wrong reason.
 - They are **parked visibly** in [Open](#open), not dropped. An unowned wall nobody can see is worse
   than one parked honestly.
+
+**ER-3's two readings · 2026-09-19**, raised from FIX-1405 ([#1916](https://github.com/fixpoint-labs/flow-state-dev/pull/1916)) rather than decided locally
+— ER-15 working again. Ruled by the EM
+([comment 5738908078](https://github.com/fixpoint-labs/flow-state-dev/pull/1905#issuecomment-5738908078)) and confirmed by
+the Architect, whose rule it is ([comment 5738911437](https://github.com/fixpoint-labs/flow-state-dev/pull/1905#issuecomment-5738911437)).
+
+ER-3's sentence admitted two readings: **(a)** a contrast with the declared tree — those questions
+are not answered from the file tree — or **(b)** an instruction to relocate ChannelFlow's post
+fence onto an org resource. **(a) is the rule; (b) was never the intent.**
+
+A channel's `members` is already live: written at open, read on the refusal path, in the same
+session the post lands in. Reading (b) would put one fact in two places and tax every post with a
+second lookup for something the channel already knows. **ER-3 is now worded so only (a) survives**,
+and [ER-12](BUSINESS-RULES.md) carries the matching invent-kill — the ruling lives in a comment, but
+a child reads the document.
+
+**What would flip it:** evidence that a channel's `members` is *not* current on the refusal path —
+that some path posts without the channel's own membership being authoritative. A factual question,
+not a taste one. **What being wrong costs:** FIX-1385 rewrites rather than adjusts, which is why
+this sits on the epic surface with the reasoning exposed.
 
 ## What the end-state POC showed
 
