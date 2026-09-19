@@ -97,8 +97,8 @@ rather than reading one.
 | V7 | S6 | BR-11 — no org refuses. Red state: it writes, and every flow reads back empty |
 | V8 | S5 | **BR-13, the off state (BP-035).** Nothing declared, nothing written, channel tests byte for byte |
 | V9 | S4 S6 | **BR-15, the org boundary (BP-035).** Two orgs in one process, each reading only its own rows |
-| V10 | S5 S6 | **BR-10 and BR-10a, the finding round 1 caught.** Open a channel, then run `openInventory` **alone** over a roster whose record for it names different members: the row holds the **session's** members, not the roster's. Red state is the row taking the roster's — what a binder carrying member data would write. **Not a whole boot, deliberately:** [FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)'s BR-18 makes a re-bind refresh an open channel's declared projection from its file, so running `openChannels` first makes the two copies identical and the check stops discriminating |
-| V11 | S4 S5 | **BR-17, BP-033.** The membership read is one prefix read. Red state: a full-collection read filtered in memory — assert on the store call, not on the returned rows, since both shapes return the same answer |
+| V10 | S5 S6 | **BR-10 and BR-10a, the finding round 1 caught.** Open a channel, then run `openInventory` **alone** over a roster whose record for it names different members: the row holds the **session's** members, not the roster's. Red state is the row taking the roster's — what a binder carrying member data would write. **Not a whole boot, deliberately:** run `openChannels` first and it becomes a second candidate writer of the row's members, so a red result no longer says which of the two carried them. The binder alone leaves exactly one source that could have, which is the claim BR-10a makes |
+| V11 | S4 S5 | **BR-17, BP-033.** The membership read is one prefix read over the index, not a read of the channel collection filtered on the `members` field. Both shapes return the same answer, so assert on **which collection was read** — the store call cannot tell them apart in the way first assumed, because the runtime narrows after loading the collection's own prefix (measured; see DECISIONS) |
 | V12 | S5 | BR-20 — the index and the channel row never disagree, because one write produces both |
 | V13 | S4 | **BR-15a, the tenant limitation.** Two tenants sharing one `orgId` in one process see the same rows. This check *pins* the limitation rather than fixing it — `resolveOrgStorageKey` (`packages/engine/src/stores/scope-keys.ts:151`) has no tenant component, and tenant store-key isolation is deferred (`createFlowApiRouter.ts:81`). It fails the day someone adds one, which is the point |
 | V14 | S4 S5 | **BR-24, the isolation pin.** The same app with `flowIsolateOrgState: true`: a reader flow that is not a channel still sees the rows. Red state is the collections leaving `flowIsolation` undefined — the rows go private per flow and every reader but the writer reads empty |
@@ -113,7 +113,8 @@ rather than reading one.
 | `DeclaredRoster` fields | `workers` · `teams` · `documents` · `channels` · `problems` | The first four are the readers' own spellings — `documents`, not `resources`, was that reader's deliberate choice — and a goal check already asserts on three |
 | Root | `defineSeatInventoryCollection` · `defineChannelInventoryCollection` · `defineMembershipIndexCollection` | Public. `define*Collection` matches `defineSkillsCollection` |
 | Root | `openInventory` | Public, and it sits beside `openChannels` at boot. The pairing is the point |
-| Storage | `inventory/seats/*` · `inventory/channels/*` · `inventory/members/<seatId>/<channelId>` | Public keys, breaking to move. The third's **shape is the feature**: the seat id must be a whole path segment ahead of the channel id, or the prefix read that makes BR-17 source-filtered does not exist |
+| Storage | `inventory/seats/*` · `inventory/channels/*` · `inventory/members/<seatId>/<channelId>` | Public keys, breaking to move. The third's **shape is the feature**: the seat id must be a whole path segment ahead of the channel id, or BR-17's prefix read does not exist |
+| Root | `membershipKey` · `membershipPrefix` | Public. `list()` takes a key **relative to the collection's prefix**, and the trailing slash on the prefix is load-bearing — `"eng.lead"` without it also matches `"eng.leadership"`. Both mistakes are silent, so the spelling is a helper rather than a documented string |
 | Row identity | the record's `id` | D2, and the whole join rule (BR-16) |
 
 Everything else is yours — the rows' remaining fields, the binder's internals, how the channel kind
@@ -127,7 +128,7 @@ holds the write, a `problems` entry's fields beyond `layer`.
 | Each entry carries the reader's wording verbatim | The readers own one wording per refusal, checked in their own tests. Re-phrasing gives one failure two spellings |
 | The inventory is never read on the post or fan-out path | D3, BR-18. The fan-out reads members from session state on purpose (BP-031); a mirror on a delivery path is a staler second answer |
 | Member data is only ever written from a channel's own session state | BR-10a. Anything else republishes the declared layer's file-time copy under a live name, which is D3's whole invent-kill arriving through the back door |
-| Every inventory read narrows at the source (BP-033) | `list()` narrows by key prefix only. A question the keys cannot express needs a key that can, not a loop over the collection |
+| Every inventory read narrows by key (BP-033) | `list()` narrows by key prefix only. A question the keys cannot express needs a key that can, not a loop over the collection. The narrowing runs in the runtime, not in the store — so the win is the row shape and the predicate, not a smaller store read |
 | A declared entry appears only when the app asked for one | The fan-out entry in the same file works this way: an entry that exists to do nothing is worse than none |
 | New nullable row fields are `== null`-guarded, older rows still read (BP-030) | Rows are persisted org state that outlives the process (BR-23), and FIX-817 and FIX-1415 will both add to them |
 | Every collection spells `flowIsolation: false` | Leaving it undefined inherits `flowIsolateOrgState` (`defineFlow.ts` ~953). A shared directory that goes private per flow when an unrelated app flag flips is the failure nobody would trace back here |
@@ -141,11 +142,11 @@ holds the write, a `problems` entry's fields beyond `layer`.
 - **EXTEND** `packages/workforce/README.md` — Exports rows for the five new exports, Error
   Semantics rows for BR-5, BR-11, BR-12, and **limitation rows for BR-15a, BR-23 and BR-10** (an org
   boundary, not a tenant one; rows outlive what declared them; a row reports what the open channel
-  holds, and a re-bind **does** refresh that from the file, so an edited `CHANNEL.md` reaches the row
-  at the next boot rather than at the edit). Do not write the older limitation — that an edit never
-  reaches an open channel — which the README states today at the channels section and which
-  [FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385) makes false. "What channels do not do yet" stays
-  true and is not edited: this adds no join or leave verb.
+  holds, which is not what the file says once the file has been edited). The limitation the README
+  already states at the channels section — that an edit does not reach an open channel — **stays
+  true and stays there**; this change does not fix it and must not read as though it will. What the
+  row adds is that the disagreement becomes visible. "What channels do not do yet" stays true and is
+  not edited: this adds no join or leave verb.
 - **A `patch` changeset per PR** for `@flow-state-dev/workforce` (BP-022) — PR-A's included, ruled
   in review. The labs are private and get none.
 
@@ -201,21 +202,29 @@ and no less conclusive.
 - The two lab copies are **still byte-identical** over the 35 lines this removes — two differing
   lines, a BR number in a comment and a trailing comma. Re-check before deleting; meaningful
   divergence is a finding, not a merge conflict.
-- **The FIX-1385 seam, and who rebases.** Both issues edit the channel flow factory and the binder:
-  [FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)'s PR-A adds re-bind reconciliation
-  (its S4b, on the binder's already-open branch) and the declared-board list on channel session
-  state (its S4). **PR-A lands first; PR-B here rebases onto it.** FIX-1385 is the critical path and
-  its spec already names this seam one-directionally; this is the other half. The two touch
-  different paths on purpose — S4b is the binder's **re-bind** branch, S5 here is the shared
-  **ChannelFlow open** path so every kind's channels get rows — so a diff reaching the other's path
-  should say which of the two it means.
-- **V10 is scoped to `openInventory` alone because of that seam.** Once S4b lands, a whole-boot
-  version of the check goes false-green: `openChannels` refreshes the open channel's members from
-  the file, so the row legitimately takes the file's values and the stated red state becomes
-  indistinguishable from the green. Run the binder alone over a roster that disagrees with the
-  session instead — that still discriminates BR-10a, which is the behaviour V10 exists for.
-- If FIX-1385 has landed a board surface reading the inventory, it is the third caller and D3's
-  boundary is worth re-reading against it.
+- **The FIX-1385 seam, and who rebases.** **PR-A lands first; PR-B here rebases onto it.** FIX-1385
+  is the critical path and its spec already names this seam one-directionally; this is the other
+  half. Read against what FIX-1385 actually built, not against its spec — its S4, S4b and BR-18 are
+  gone, so there is no re-bind reconciliation and nothing writes an open channel's session state:
+  - **`openChannels` is untouched.** Every hunk of FIX-1385's `channel-binder.ts` diff is on the
+    **bind** path — the imports, `validate`, and `channelInstances`. Nothing lands below them.
+    Verified against `origin/fix/FIX-1385-channel-boards`; re-verify before the rebase, since that
+    branch is still moving.
+  - **`defineChannelFlow` is where the two meet**, and it is not a near miss. FIX-1385 gives the
+    factory a `resources:` map (`boardResources`) it did not have, and adds entries to both
+    `actions` and `internal.actions`. S5 here adds to all three of those. The merge is a real one:
+    one `resources` map carrying the boards *and* the inventory collections, not two.
+- **V10 is scoped to `openInventory` alone, and the reason is no longer the seam.** The earlier
+  reason — that FIX-1385's re-bind reconciliation would refresh an open channel's members from the
+  file and make the whole-boot check false-green — died with that reconciliation. The scoping is
+  still right, for a reason that does not depend on FIX-1385 at all: `openChannels` in a whole-boot
+  version is a **second** candidate writer of the row's members, so a red result would not say
+  which of the two carried them. The binder alone leaves exactly one candidate, which is what
+  BR-10a is a claim about. Aim the check at its own claim, not at a neighbour.
+- **FIX-1385's board does not read the inventory.** Checked against its branch: the string
+  `inventory` does not appear anywhere in its `packages/workforce/src` diff. So it is not a third
+  caller and D3's boundary does not move. Re-check if that branch grows a board *discovery* surface
+  before it merges.
 
 ## Watches from review · not findings, but read them before building
 

@@ -63,19 +63,26 @@ for any channel whose session holds something else — one a bind refused, one a
 one minted by a kind this roster does not describe. That is the declared layer's copy of membership
 wearing a live name, which [D3](#d3) refuses and [BR-10](BUSINESS-RULES.md) forbids.
 
-A re-bind now re-derives an open channel's declared projection — board list, **members**, charter —
-from its file ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)'s BR-18, on the same
-`channel-binder.ts` path this spec cites). So the two copies converge once a boot rather than never.
-That narrows the window; it does not move the truth. The channel still writes its own row from its
-own session state, which is why the row follows a file edit at the **next boot** and not at the
-edit.
+The two copies never converge on their own. `openChannels` leaves an already-open channel exactly as
+it is — `channel-binder.ts`'s already-open branch says so in as many words — so an edited
+`CHANNEL.md` does not reach the session, at a re-bind or at any other time; only deleting the
+session and opening it again does. **Nothing in this wave changes that**, and this spec does not
+promise that anything will. What it changes is that the drift stops being silent: the row reports
+the channel's own answer, so a consumer comparing it against the tree can see the two disagree.
 
 <a name="the-membership-index"></a>
-**Why a third collection.** A collection's only narrowing is `list(prefix)`, which the store
-compiles to a key predicate — a real source-side filter. Membership is a *field*, not a key, so
-"which channels is this seat in" over the channel collection loads every channel and discards most,
-which BP-033 refuses. Keying the fact — `inventory/members/<seatId>/<channelId>` — makes it one
-prefix read. It is a **projection of the channel row, not a second source of truth**: same writer,
+**Why a third collection.** A collection's only narrowing is `list(prefix)`. Membership is a
+*field*, not a key, so "which channels is this seat in" over the channel collection means loading
+every channel row and scanning each one's member array — the list-then-discard shape BP-033
+refuses. Keying the fact — `inventory/members/<seatId>/<channelId>` — turns the question into a key
+match over rows that are one fact each.
+
+**What `list(prefix)` does not do, measured rather than assumed.** It is not a source-side filter.
+The runtime loads the **collection's** prefix from the store and applies the caller's narrower
+prefix in memory afterwards: a `list("eng.lead/")` on `inventory/members/**` issues exactly one
+store read, `getByPrefix("inventory/members/")`. So the index's win is the shape of the rows and of
+the predicate, not a smaller store read. Pushing the narrower prefix down is a framework change,
+filed as a follow-up; nothing in this spec depends on it having happened. It is a **projection of the channel row, not a second source of truth**: same writer,
 same upsert, same session state. ER-12 forbids a parallel index *that can disagree*; this one cannot
 be written without the row it derives from.
 
