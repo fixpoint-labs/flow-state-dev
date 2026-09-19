@@ -51,7 +51,9 @@ import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
 import {
   SEAT_RESOURCES_KEY,
   parseSeatResources,
-  resolveSeatResources
+  resolveSeatResources,
+  verifySeatNarrowing,
+  type SeatResourceGrant
 } from "./seat-resources";
 import { workerConfigSchema } from "./worker-config";
 
@@ -390,12 +392,17 @@ export function hireWorkforce(
   const ordered = [...manifests].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const seats: FlowInstance[] = [];
   const problems: string[] = [];
+  // Which WORKERS were refused, which is not `problems.length`: one worker can
+  // contribute several reasons — two unresolved grants, two malformed entries —
+  // and counting sentences is how `refused 2 of 1 worker` gets printed.
+  const refusedWorkers = new Set<string>();
   const seen = new Set<string>();
   const seatBlocks = options.seatBlocks ?? {};
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
       problems.push(`worker "${manifest.id}" — ${reason}`);
+      refusedWorkers.add(manifest.id);
     };
 
     // Caught here as well as at the registry so it reads as a ROSTER problem,
@@ -587,6 +594,7 @@ export function hireWorkforce(
     // document, and reconstructing "everything" diverges the moment the kind's
     // map changes. Absent is not empty here, at either end.
     let seatResources: DeclaredResources | undefined;
+    let seatGrants: readonly SeatResourceGrant[] = [];
     if (Object.hasOwn(manifest.declared, SEAT_RESOURCES_KEY)) {
       const parsed = parseSeatResources(manifest.declared[SEAT_RESOURCES_KEY]);
       if (parsed.problems.length > 0) {
@@ -610,6 +618,7 @@ export function hireWorkforce(
         continue;
       }
       seatResources = resolved.resources;
+      seatGrants = parsed.grants ?? [];
     }
 
     try {
@@ -618,13 +627,33 @@ export function hireWorkforce(
       // SKIPPED, not admission passed: a thin seat minted without its kind's
       // schema ever seeing it. Every record meets the schema now, including the
       // thinnest one there is.
-      seats.push(
-        minter(factory)({
-          id: manifest.id,
-          config: settings,
-          ...(seatResources !== undefined ? { resources: seatResources } : {})
-        })
-      );
+      const seat = minter(factory)({
+        id: manifest.id,
+        config: settings,
+        ...(seatResources !== undefined ? { resources: seatResources } : {})
+      });
+
+      // The narrowing is checked on the seat that was BUILT, not on the map it
+      // was built from. `defineFlow` merges the blocks' own declarations on top
+      // of the instance's map, so a document a block also declares comes back
+      // after the seat's map has removed it — and nothing readable off the kind
+      // distinguishes that document from one no block mentions. Only the
+      // instance knows. Skipped when the seat narrowed nothing, which denies
+      // nothing.
+      if (seatResources !== undefined && options.documents !== undefined) {
+        const escaped = verifySeatNarrowing({
+          minted: seat.resources as DeclaredResources | undefined,
+          grants: seatGrants,
+          catalog: options.documents,
+          kind
+        });
+        if (escaped.length > 0) {
+          for (const problem of escaped) refuse(problem);
+          continue;
+        }
+      }
+
+      seats.push(seat);
     } catch (error) {
       // The flow's own refusal, with the worker's id in front of it, and — when
       // the kind's shape says what most likely went wrong — one sentence naming
@@ -651,7 +680,7 @@ export function hireWorkforce(
 
   if (problems.length > 0) {
     throw new Error(
-      `hireWorkforce refused ${problems.length} of ${ordered.length} worker${ordered.length === 1 ? "" : "s"}; ` +
+      `hireWorkforce refused ${refusedWorkers.size} of ${ordered.length} worker${ordered.length === 1 ? "" : "s"}; ` +
         `nothing was hired:\n  - ${problems.join("\n  - ")}`
     );
   }

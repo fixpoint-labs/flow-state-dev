@@ -170,6 +170,21 @@ const seatResourcesWithoutCatalogMessage = (): string =>
   `against. Pass the app's documents — \`hireWorkforce(workers, { documents: ` +
   `resourcesFromDocs(documents) })\` — so a ref can be matched against what the app declared.`;
 
+/**
+ * The wording for a document a seat did not name that its minted flow reaches
+ * anyway — the one failure no inspection of the kind's map can predict.
+ *
+ * The kind's blocks re-declare it, and a block declaration merges back in
+ * AFTER the seat's map has replaced the flow-level one, so the narrowing is
+ * undone by the build rather than by anything the seat's file said. Fatal:
+ * the alternative is a seat that reads as narrowed and is not.
+ */
+const seatResourceSurvivedNarrowingMessage = (ref: string, kind: string): string =>
+  `was not granted \`${ref}\`, but the flow it is minted with reaches that document anyway: ` +
+  `a block on the "${kind}" kind declares it, and a block declaration merges back in after a ` +
+  `seat's map replaces the flow-level one. Remove that declaration from the block and keep the ` +
+  `document at flow level, or grant \`${ref}\` to this seat deliberately.`;
+
 /** A value as a refusal names it: short, quoted, and never a sprawling dump. */
 function describe(value: unknown): string {
   if (value === undefined) return "undefined";
@@ -368,9 +383,10 @@ export function resolveSeatResources(input: ResolveSeatResourcesInput): Resolved
   if (problems.length > 0) return { problems };
 
   const resources: DeclaredResources = emptyMap();
+  const documents = documentKeys(catalog, kindResources);
   // The subtraction: the kind's flow-level entries that are not documents.
   for (const key of kindFlowLevelKeys) {
-    if (Object.hasOwn(catalog, key)) continue;
+    if (documents.has(key)) continue;
     if (!Object.hasOwn(kindResources, key)) continue;
     resources[key] = kindResources[key]!;
   }
@@ -384,6 +400,94 @@ export function resolveSeatResources(input: ResolveSeatResourcesInput): Resolved
   }
 
   return { resources, problems };
+}
+
+/**
+ * Every accessor on a kind's map that holds one of the app's documents.
+ *
+ * **By name OR by the definition itself**, because a map is an object and an
+ * app may expose one definition under a second key —
+ * `{ ...documents, handbookAlias: documents.handbook }`. Matching names alone
+ * leaves that alias out of the subtraction, so a seat denied the handbook
+ * keeps a writable handle on it under another name. The union never recognises
+ * fewer documents than the names alone would, so closing this cannot silently
+ * widen a seat.
+ *
+ * A key the app overwrote with something that is NOT a document (a store that
+ * happens to share a document's ref) is still dropped by name. That is the safe
+ * direction: a seat loses a resource it can be given back deliberately, rather
+ * than keeping one the narrowing was supposed to take.
+ */
+function documentKeys(
+  catalog: DeclaredResources,
+  kindResources: DeclaredResources,
+): ReadonlySet<string> {
+  const definitions = new Set<unknown>(Object.values(catalog));
+  const keys = new Set<string>();
+  for (const key of Object.keys(kindResources)) {
+    if (Object.hasOwn(catalog, key) || definitions.has(kindResources[key])) keys.add(key);
+  }
+  for (const key of Object.keys(catalog)) keys.add(key);
+  return keys;
+}
+
+/** What {@link verifySeatNarrowing} is asked to check: the seat as it was actually built. */
+export interface VerifySeatNarrowingInput {
+  /** The MERGED map of the minted instance — what a block will really hold. */
+  minted: DeclaredResources | undefined;
+  /** The grants that map was built from, by ref. */
+  grants: readonly SeatResourceGrant[];
+  /** The app's declared documents, keyed by ref. */
+  catalog: DeclaredResources;
+  /** The kind's name, for the refusal. */
+  kind: string;
+}
+
+/**
+ * Check the seat that was actually minted, and refuse if a document it was
+ * denied is reachable anyway.
+ *
+ * **This exists because no inspection of the kind's map can predict the
+ * answer.** A flow instance's `resources` option replaces the definition's
+ * flow-level map, and `defineFlow` then merges the blocks' own declarations
+ * back on top of the result. So a document declared BOTH at flow level and by
+ * one of the kind's blocks is shadowed at definition time — invisible on the
+ * merged map, indistinguishable from a document no block mentions — and comes
+ * back the moment a seat's map removes the flow-level entry that was hiding
+ * it. The seat reads as narrowed, and reaches the document anyway.
+ *
+ * Reading the built instance answers it instead of predicting it, and answers
+ * it for every path the build might take, not the one enumerated here.
+ *
+ * @param input The minted map, the grants it came from, and the catalog. See {@link VerifySeatNarrowingInput}.
+ * @returns Every document that survived a narrowing it should not have. Empty is the pass.
+ */
+export function verifySeatNarrowing(input: VerifySeatNarrowingInput): string[] {
+  const { minted, grants, catalog, kind } = input;
+  if (minted === undefined) return [];
+
+  const granted = new Set(grants.map(({ ref }) => ref));
+  const definitions = new Set<unknown>(Object.values(catalog));
+  const problems: string[] = [];
+
+  // **Identity, not name.** The question here is whether this accessor holds
+  // one of the app's documents, and a block resource that merely shares a
+  // document's ref is not that document — `BR-8`'s collision refusal is what
+  // governs the grant naming it. Flagging by name would refuse the kind that
+  // check exists for. What identity cannot see is a block declaring its own
+  // COPY of a document; there is no sound test for "a copy of", and the
+  // subtraction already drops such an entry by name at flow level.
+  for (const key of Object.keys(minted)) {
+    if (!definitions.has(minted[key])) continue;
+    // Only the DENIAL can be undone this way. A granted `ro` document is
+    // installed at flow level as the read-only copy, and a flow-level entry
+    // wins the merge over a block's, so the pen cannot come back with it —
+    // pinned by V9's read-only case rather than guarded by a branch here that
+    // nothing could make fire.
+    if (!granted.has(key)) problems.push(seatResourceSurvivedNarrowingMessage(key, kind));
+  }
+
+  return problems;
 }
 
 /** A declared entry that says it cannot be written, whatever a grant asks for. */

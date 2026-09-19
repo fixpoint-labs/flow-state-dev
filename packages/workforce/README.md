@@ -415,6 +415,12 @@ ref naming a document the app declared but did not install on this seat's kind, 
 neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says
 `writable: false`, and a ref colliding with a name the kind's own blocks already declare.
 
+One more is checked on the seat after it is built rather than on the list: if a document the seat
+did **not** name is reachable anyway — because one of the kind's blocks declares that same document,
+and a block's declaration is merged back in after a seat's narrowed map replaces the flow-level one
+— the hire refuses, naming the ref and the kind. Keep such a document at flow level and let the
+block reach it from there, or grant it to the seat deliberately.
+
 `resources:` never reaches the kind's settings. It is the factory's key, like `flow` and
 `description`, so a kind that declares a `resources` setting of its own does not receive one from a
 file.

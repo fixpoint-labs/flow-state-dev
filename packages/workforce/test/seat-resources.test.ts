@@ -541,3 +541,100 @@ describe("the grant is the factory's to read, never a setting the kind receives"
     expect(Object.hasOwn(lead!.config as object, SEAT_RESOURCES_KEY)).toBe(false);
   });
 });
+
+describe("V9 · the narrowing is checked on the seat that was BUILT", () => {
+  /**
+   * The kind whose block ALSO declares a document the kind declares at flow
+   * level. Nothing distinguishes it from a kind no block mentions until a seat
+   * narrows: the flow-level entry shadows the block's at definition time, and
+   * the block's comes back the moment a seat's map replaces the flow-level one.
+   */
+  const restoringFlow = defineFlow({
+    kind: "restoring-desk",
+    cardinality: "collection",
+    configSchema: workerConfigSchema(),
+    resources: { ...CATALOG, "audit-log": auditLog } as DeclaredResources,
+    actions: {
+      run: {
+        inputSchema: z.object({}),
+        block: handler({
+          name: "restoring-work",
+          // The same document, declared again by the block.
+          resources: { [HANDBOOK]: CATALOG[HANDBOOK]! },
+          requireOrg: true,
+          inputSchema: z.object({}),
+          outputSchema: z.object({ ok: z.boolean() }),
+          execute: async () => ({ ok: true })
+        })
+      }
+    }
+  });
+
+  const hireRestoring = (refs: unknown) =>
+    hireWorkforce(
+      [{ id: "eng.lead", declared: { flow: "restoring-desk", description: "d", [SEAT_RESOURCES_KEY]: refs }, body: "" }],
+      { kinds: { "restoring-desk": restoringFlow as never }, documents: CATALOG }
+    );
+
+  it("a document a block re-declares does not come back for a seat that was denied it", () => {
+    // Denying everything is the sharpest form: the seat's own file says NO
+    // documents, and without this check it reads and writes the handbook
+    // anyway. The refusal must name the ref and the kind, so an operator knows
+    // which block to look at.
+    expect(() => hireRestoring([])).toThrow(/eng\.lead[\s\S]*teams\/engineering\/handbook/);
+    expect(() => hireRestoring([])).toThrow(/reaches that document anyway/);
+  });
+
+  it("granting the document the block re-declares hires, so the refusal is about the denial", () => {
+    // The control. Without it the refusal above is equally consistent with this
+    // kind being unhireable for a reason that has nothing to do with narrowing.
+    expect(hireRestoring([{ [HANDBOOK]: SEAT_RESOURCE_MODE_WRITE }, PAYROLL, SEALED])).toHaveLength(1);
+  });
+
+  it("a `ro` grant keeps the pen shut even though the block declares the same document writable", async () => {
+    // The other half of the same kind, and the reason the check above only
+    // looks at denials: a granted document is installed at flow level as the
+    // read-only copy, and a flow-level entry wins the merge over a block's.
+    const [lead] = hireRestoring([HANDBOOK, PAYROLL, SEALED]);
+    const ctx = await contextFor(lead!, "sess_restoring_ro");
+
+    await expect(handleFor(ctx, HANDBOOK).readContent()).resolves.toContain("Engineering handbook");
+    await expect(handleFor(ctx, HANDBOOK).writeContent("rewritten")).rejects.toThrow(/read-only/i);
+  });
+
+  it("an alias for a document is narrowed with it, not left behind as a second door", async () => {
+    // A map is an object, so an app can expose one definition under a second
+    // key. Matching document names alone leaves the alias on the seat's map —
+    // a writable handle on a document the seat was denied, under another name.
+    const aliasedFlow = defineFlow({
+      kind: "aliased-desk",
+      cardinality: "collection",
+      configSchema: workerConfigSchema(),
+      resources: {
+        ...CATALOG,
+        handbookAlias: CATALOG[HANDBOOK]!,
+        "audit-log": auditLog
+      } as DeclaredResources,
+      actions: { run: { inputSchema: z.object({}), block: work } }
+    });
+
+    const [lead] = hireWorkforce(
+      [{ id: "eng.lead", declared: { flow: "aliased-desk", description: "d", [SEAT_RESOURCES_KEY]: [] }, body: "" }],
+      { kinds: { "aliased-desk": aliasedFlow as never }, documents: CATALOG }
+    );
+
+    const ctx = await contextFor(lead!, "sess_alias");
+    expect(() => ctx.resources.get("handbookAlias")).toThrow(/not registered/i);
+    // The app's own store, which no alias and no grant governs, is untouched.
+    await expect(handleFor(ctx, "audit-log").setState({ entries: ["ok"] })).resolves.toBeUndefined();
+  });
+});
+
+describe("a refusal counts workers, not reasons", () => {
+  it("one worker with two bad grants is one refused worker", () => {
+    // `refused 2 of 1 worker` is not a sentence this function may print.
+    expect(() =>
+      hire([seat("eng.lead", { [SEAT_RESOURCES_KEY]: ["no/such/doc", "also/missing"] })])
+    ).toThrow(/refused 1 of 1 worker;/);
+  });
+});
