@@ -1,7 +1,10 @@
 /** Exercises the compact progress filter as a real, incrementally consumed jq process. */
 import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { testBlock } from "@flow-state-dev/testing";
 import { describe, expect, it } from "vitest";
+import { scriptedClaude } from "./scripted-claude";
 
 const filter = fileURLToPath(new URL("../progress.jq", import.meta.url));
 const args = ["--unbuffered", "-c", "-f", filter];
@@ -57,27 +60,6 @@ describe("coding progress stream", () => {
     }
   });
 
-  it("adds denial signals for failed approval results while preserving tool outcomes", () => {
-    const denials = [
-      { name: "Write", status: "failed", output: "Claude requested permissions to write, but you haven't granted it yet." },
-      { name: "Edit", status: "completed", isError: true, output: { message: "This tool requires approval." } },
-      { name: "Bash", status: "completed", output: { isError: true, content: [{ type: "text", text: "The command WAS BLOCKED." }] } },
-      { name: "Write", status: "failed", error: { message: "Writing requires approval." } },
-    ];
-    const lines = project(denials.map(({ name, ...item }, index) => ({
-      type: "item_done",
-      item: { type: "tool_output", toolCall: { name, callId: `denied-${index}` }, ...item },
-    })));
-
-    expect(lines.map((line) => line.event)).toEqual(denials.flatMap(() => ["tool_finished", "tool_denied"]));
-    expect(lines.filter((line) => line.event === "tool_finished").map((line) => line.status)).toEqual(denials.map(() => "failed"));
-    expect(lines.filter((line) => line.event === "tool_denied")).toEqual([
-      { event: "tool_denied", name: "Write", id: "denied-0", detail: denials[0].output },
-      { event: "tool_denied", name: "Edit", id: "denied-1", detail: "This tool requires approval." },
-      { event: "tool_denied", name: "Bash", id: "denied-2", detail: "The command WAS BLOCKED." },
-      { event: "tool_denied", name: "Write", id: "denied-3", detail: "Writing requires approval." },
-    ]);
-  });
 
   it("does not flag ordinary failures or successful output that mentions approval", () => {
     const lines = project([
@@ -90,19 +72,73 @@ describe("coding progress stream", () => {
     ]);
   });
 
-  it("detects denials beyond the displayed excerpt without emitting large details", () => {
+  it.each([
+    "request was blocked by CORS",
+    "deployment requires approval",
+  ])("preserves recoverable failed Bash output without a denial signal: %s", (detail) => {
+    const lines = project([{
+      type: "item_done",
+      item: {
+        type: "tool_output",
+        status: "failed",
+        toolCall: { name: "Bash", callId: "application-failure" },
+        output: detail,
+      },
+    }]);
+    expect(lines).toEqual([{
+      event: "tool_finished",
+      name: "Bash",
+      id: "application-failure",
+      status: "failed",
+      detail,
+    }]);
+  });
+
+  it("signals a Claude permission denial after the real adapter translates its tool result", async () => {
+    // req_1789748619356_f15c3d25dcc118.events.json, seq 465: a real denied Write.
+    const detail = "Claude requested permissions to write to /mnt/mac/flow-state-dev/implementation/scripts/validate-spec-folder.mjs, but you haven't granted it yet.";
+    const scripted = scriptedClaude({
+      messages: [
+        {
+          type: "assistant",
+          message: { content: [{ type: "tool_use", id: "denied-write", name: "Write", input: { file_path: "/mnt/mac/flow-state-dev/implementation/scripts/validate-spec-folder.mjs", content: "export {};" } }] },
+        },
+        {
+          type: "user",
+          message: { content: [{ type: "tool_result", tool_use_id: "denied-write", is_error: true, content: detail }] },
+        },
+        { type: "result", subtype: "success", result: "blocked", session_id: "permission-probe" },
+      ],
+    });
+    const result = await testBlock(claudeCodeAgent({
+      detached: true,
+      recordWork: false,
+      resolveClaudeAgent: scripted.resolve,
+    }), { input: { prompt: "write output.txt" } });
+    expect(result.error).toBeNull();
+    const lines = project(result.items
+      .filter((item) => item.type === "tool_output")
+      .map((item) => ({ type: "item_done", item })));
+    expect(lines).toEqual([
+      { event: "tool_finished", name: "Write", id: "denied-write", status: "failed", detail },
+      { event: "tool_denied", name: "Write", id: "denied-write", detail },
+    ]);
+  });
+
+  it("detects a permission denial beyond the bounded display excerpt", () => {
     const lines = project([{
       type: "item_done",
       item: {
         type: "tool_output", status: "failed",
-        toolCall: { name: "Bash", callId: "long-denial" },
-        output: "context ".repeat(100) + "This command requires approval.",
+        toolCall: { name: "Write", callId: "long-denial" },
+        output: "context ".repeat(100) + "Claude requested permissions to write to /work/out.txt, but you haven't granted it yet.",
       },
     }]);
     expect(lines.map((line) => line.event)).toEqual(["tool_finished", "tool_denied"]);
-    expect(lines[1]).toMatchObject({ name: "Bash", id: "long-denial", detail: lines[0].detail });
+    expect(lines[1]).toMatchObject({ name: "Write", id: "long-denial", detail: lines[0].detail });
     expect(String(lines[1].detail).length).toBeLessThanOrEqual(480);
   });
+
 
   it("omits token deltas, payloads and duplicate lifecycle snapshots", () => {
     const secretPayload = "DO_NOT_ECHO_".repeat(10_000);

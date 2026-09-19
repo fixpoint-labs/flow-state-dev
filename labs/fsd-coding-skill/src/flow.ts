@@ -1,11 +1,12 @@
 /**
  * One coding flow with four static doors sharing the host-selected adapter.
  */
+import { realpathSync } from "node:fs";
 import { defineFlow, sequencer, type harnessRunInputSchema } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockDefinition, HarnessCallbackContext, HarnessRunHandle } from "@flow-state-dev/core/types";
 import type { z } from "zod";
-import { claudeCodeAgent, type ClaudeCodeAgentOptions } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent, containmentSandbox, type ClaudeCodeAgentOptions } from "@flow-state-dev/claude-code/sdk";
 import { codexAgent, type CodexAgentOptions } from "@flow-state-dev/codex";
 import { cursorAgent, type CursorAgentOptions } from "@flow-state-dev/cursor";
 import {
@@ -170,16 +171,19 @@ export function createFsdCodingFlow(options: FsdCodingHostOptions) {
       if (options.additionalDirectories !== undefined) {
         throw new Error("FSD_CODING_ADD_DIR is only supported with FSD_CODING_HARNESS=codex");
       }
+      const permissionMode = options.claude?.permissionMode ?? "bypassPermissions";
+      if (permissionMode === "bypassPermissions" && (process.getuid?.() === 0 || process.geteuid?.() === 0)) {
+        throw new Error("Claude bypassPermissions cannot run as root/sudo; use a non-root signed-in host or explicitly configure a supported options.claude.permissionMode.");
+      }
+      const cwd = realpathSync(options.cwd);
       agent = claudeCodeAgent({
-        permissionMode: "bypassPermissions",
         // Coding doors do their own work instead of spawning unbounded subagents.
-        disallowedTools: ["Agent"],
-        sandbox: () => ({
-          enabled: true,
-          filesystem: { allowWrite: [options.cwd] },
-        }),
+        disallowedTools: ["Agent", "Task"],
+        sandbox: () => ({ ...containmentSandbox(cwd), failIfUnavailable: true }),
         ...options.claude,
         ...resolvers,
+        permissionMode,
+        cwd: () => cwd,
         detached: true,
         name: "claude-agent",
         ...(options.model === undefined ? {} : { model: options.model }),

@@ -143,10 +143,12 @@ For Codex only, pass `FSD_CODING_NETWORK_ACCESS=1` when an authorized sandboxed 
 - Tell the user about meaningful phase changes, successful edits/checks, and
   blockers. Do not narrate every read or forward every compact line to chat.
   A quiet interval means **no new event observed**, not proof of progress.
-- On `tool_denied` for `Write`, `Edit`, or `Bash`, stop the managed process
-  immediately (`hub stop` in OMP). Do not wait for completion, more discovery,
-  or a repeated denial. Inspect the specific raw failure after stopping and
-  report the blocker. Never bypass permissions to restore progress.
+- On observing `tool_denied` for `Write`, `Edit`, or `Bash`, stop the managed
+  process (`hub stop` in OMP). Do not wait for completion or a repeated denial.
+  Inspect the specific raw failure after stopping and report the blocker.
+  Never bypass permissions to restore progress. This is supervisor-driven:
+  the filter does not cancel the provider, which may continue work before
+  the supervisor observes the event and stops the process.
 - Assistant completion, flow termination, and artifact acceptance are different.
   A `finished` event reports a claim; obtain the process exit status and verify
   the requested artifact. If the process remains alive after a terminal event,
