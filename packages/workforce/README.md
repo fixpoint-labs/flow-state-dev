@@ -267,6 +267,8 @@ So hiring imposes `instructions`, `seatSkills` and `seatTools` today. `teamInstr
 declared door with nothing coming through it, and a kind that reads it gets `undefined` regardless
 of what any team has written.
 
+**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that seat may call, because the hire step reads it. A name in a worker's `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then your kind's catalog), and the ones that resolved to the seat's own folders arrive on `seatTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
+
 Add your kind's own settings on top, at the same level:
 
 ```ts

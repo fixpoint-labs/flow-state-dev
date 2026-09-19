@@ -60,7 +60,9 @@ A worker's own settings can still put a **control** on it. A control is a piece 
 
 A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's catalog tools, so a worker with `tools: []` reaches nothing through a delegate — it can command the board, but the workers it commands are fenced. A block from a worker's own folder does not travel that way either: a delegated worker is its own seat, with its own folder and its own list.
 
-Checking `tools:` against a catalog is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so whether a `tools:` name is checked against anything is that kind's business.
+Checking `tools:` against a catalog is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so what a `tools:` name is checked against is that kind's business — and so is whether it declares `tools` at all.
+
+What the key *means* is not. `tools` is reserved across hireable kinds for one thing: the names of tools that seat may call. Hiring resolves each name against what is registered for that seat before your kind ever sees the bag, so the key is not available for unrelated configuration of your own — give that its own name.
 
 ## Configuring the kind
 

@@ -64,7 +64,11 @@ at boot:
 | | Keys | Whose |
 |---|---|---|
 | **The admission contract** | `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
-| **This kind's own** | `model`, `tools`, `skills` (the switches) | The default kind's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. |
+| **This kind's own** | `model`, `tools`, `skills` (the switches) | The default kind's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. `tools` is the one of the three that is **reserved** — see below. |
+
+**`tools` is reserved across hireable kinds, for one meaning: the names of tools this seat may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then the kind's catalog), and the ones that resolved to the seat's own folders are moved onto `seatTools` as live blocks. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
+
+The reservation is written down rather than enforced, and it is not new: the pentest lab's `probe` kind re-implemented this fence from its description alone (`goals/pentest-lab/lab/workforce/flows/workers/probe.mts`) and arrived at the same meaning, which is what a real convention looks like before anyone states it. Stating it is cheaper than the alternative — probing each kind to decide whether to resolve its `tools` would put the behaviour behind a guess, and this step removed kind-probing after a probe produced a false accusation (`admissionHint`, `packages/workforce/src/hire.ts`).
 
 It declares **no memory switch** — per C5 memory is composed into a kind at definition time, not
 turned on here. `instructions` is the worker file's body arriving as one setting — the hire step
