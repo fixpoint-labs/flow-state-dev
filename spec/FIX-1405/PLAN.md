@@ -204,8 +204,11 @@ and no less conclusive.
   divergence is a finding, not a merge conflict.
 - **The FIX-1385 seam, and who rebases.** **PR-A lands first; PR-B here rebases onto it.** FIX-1385
   is the critical path and its spec already names this seam one-directionally; this is the other
-  half. Read against what FIX-1385 actually built, not against its spec — its S4, S4b and BR-18 are
-  gone, so there is no re-bind reconciliation and nothing writes an open channel's session state:
+  half. **Read against what FIX-1385 has actually built, not against its spec.** Its S4, S4b, BR-18
+  and V7 are still written in `spec/FIX-1385/` and nobody has retired them; what implementation
+  found is that the session-state write they assume does not exist on `SessionClient`, so that
+  surface is **not built and not on `main`**. Plan against the landed shape and re-read the sibling
+  spec if it lands later:
   - **`openChannels` is untouched.** Every hunk of FIX-1385's `channel-binder.ts` diff is on the
     **bind** path — the imports, `validate`, and `channelInstances`. Nothing lands below them.
     Verified against `origin/fix/FIX-1385-channel-boards`; re-verify before the rebase, since that
@@ -215,9 +218,10 @@ and no less conclusive.
     `actions` and `internal.actions`. S5 here adds to all three of those. The merge is a real one:
     one `resources` map carrying the boards *and* the inventory collections, not two.
 - **V10 is scoped to `openInventory` alone, and the reason is no longer the seam.** The earlier
-  reason — that FIX-1385's re-bind reconciliation would refresh an open channel's members from the
-  file and make the whole-boot check false-green — died with that reconciliation. The scoping is
-  still right, for a reason that does not depend on FIX-1385 at all: `openChannels` in a whole-boot
+  reason — that a re-bind refreshing an open channel's members from the file would make the
+  whole-boot check false-green — assumed a surface that is not built, so it cannot be relied on.
+  The scoping is still right, for a reason that does not depend on FIX-1385 at all: `openChannels`
+  in a whole-boot
   version is a **second** candidate writer of the row's members, so a red result would not say
   which of the two carried them. The binder alone leaves exactly one candidate, which is what
   BR-10a is a claim about. Aim the check at its own claim, not at a neighbour.

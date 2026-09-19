@@ -63,12 +63,17 @@ for any channel whose session holds something else — one a bind refused, one a
 one minted by a kind this roster does not describe. That is the declared layer's copy of membership
 wearing a live name, which [D3](#d3) refuses and [BR-10](BUSINESS-RULES.md) forbids.
 
-The two copies never converge on their own. `openChannels` leaves an already-open channel exactly as
-it is — `channel-binder.ts`'s already-open branch says so in as many words — so an edited
-`CHANNEL.md` does not reach the session, at a re-bind or at any other time; only deleting the
-session and opening it again does. **Nothing in this wave changes that**, and this spec does not
-promise that anything will. What it changes is that the drift stops being silent: the row reports
-the channel's own answer, so a consumer comparing it against the tree can see the two disagree.
+The two copies do not converge on their own **today**. `openChannels` leaves an already-open channel
+exactly as it is — `channel-binder.ts`'s already-open branch says so in as many words — so an
+edited `CHANNEL.md` does not reach the session; only deleting it and opening it again does.
+**Nothing in this wave changes that**, and this spec does not promise that anything will. What it
+changes is that the drift stops being silent: the row reports the channel's own answer, so a
+consumer comparing it against the tree can see the two disagree.
+
+If a later change does refresh an open channel's declared projection, nothing here moves. The
+channel still writes its own row from its own session state, so the row would follow that refresh
+by construction — this decision is about **who writes membership**, not about whether the session
+ever gets re-derived.
 
 <a name="the-membership-index"></a>
 **Why a third collection.** A collection's only narrowing is `list(prefix)`. Membership is a
