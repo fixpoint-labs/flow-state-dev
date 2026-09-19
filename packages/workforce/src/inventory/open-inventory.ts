@@ -75,6 +75,22 @@ export interface InventoryActionRequest {
   flowKind: string;
   /** The session to run in: the channel's id for a channel, the seat writer's session otherwise. */
   sessionId: string;
+  /**
+   * `"internal"` for the seat write, absent for a channel registration.
+   *
+   * The seat-registration action lives only in the flow's `internal.actions`
+   * map, not its public one (see `inventoryWriterActions` in
+   * `channel-flow.ts`), because its whole input is caller-supplied row data
+   * with nothing to validate it against. `run` must forward this straight
+   * into `runAction`'s own `source` option — `runAction({ source:
+   * request.source, ... })` — so the seat write resolves from `internal.actions`
+   * instead of the public one. A door that drops this field on the floor
+   * makes the seat write unreachable rather than insecure: `resolveEntry`
+   * reads one map per dispatch type with no fallback, so a `run` that always
+   * dispatches as `"http"` gets `no-entry` for the seat write, never a
+   * public hit on it.
+   */
+  source?: string;
 }
 
 /** Where the seat rows are written. @see OpenInventoryOptions.seatWriter */
@@ -236,7 +252,10 @@ export async function openInventory(
         userId: options.userId,
         orgId,
         flowKind: writer.flowKind,
-        sessionId: writer.sessionId ?? INVENTORY_SEAT_WRITER_SESSION
+        sessionId: writer.sessionId ?? INVENTORY_SEAT_WRITER_SESSION,
+        // The seat writer lives in `internal.actions` only — see
+        // `InventoryActionRequest.source`.
+        source: "internal"
       });
       seatsWritten = seats.length;
     } catch (error) {

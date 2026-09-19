@@ -23,6 +23,8 @@ import { z } from "zod";
 import {
   CHANNEL_KIND,
   INVENTORY_REGISTER_CHANNEL,
+  INVENTORY_REGISTER_SEATS,
+  INVENTORY_SEAT_WRITER_SESSION,
   channelInstances,
   defineChannelInventoryCollection,
   defineMembershipIndexCollection,
@@ -185,6 +187,7 @@ async function host(roster: ChannelManifest[], options: HostOptions = {}) {
     orgId: string;
     flowKind: string;
     sessionId: string;
+    source?: string;
   }): Promise<unknown> => {
     const flow = byKind[request.flowKind];
     if (flow === undefined) {
@@ -197,6 +200,7 @@ async function host(roster: ChannelManifest[], options: HostOptions = {}) {
       userId: request.userId,
       orgId: request.orgId,
       sessionId: request.sessionId,
+      source: request.source,
       stores: runtime.stores,
       runtimeConfig: { ...runtime.runtimeConfig }
     } as never);
@@ -680,6 +684,27 @@ describe("the registration action itself", () => {
       const second = await lab.act("eng.standup", INVENTORY_REGISTER_CHANNEL, {});
       expect(second.error).toBeDefined();
       expect(await lab.keys()).toEqual([]);
+    } finally {
+      await lab.dispose();
+    }
+  });
+
+  it("registerSeatsInInventory cannot be reached through the public door", async () => {
+    const roster = [record("eng.standup")];
+    const lab = await host(roster, { inventory: true, open: roster });
+    try {
+      // `lab.act` dispatches exactly the way a caller-addressed HTTP/MCP
+      // request would — no `source`, which resolves as `"http"` (public).
+      // Unlike `registerChannel`, this action's whole input is the row data,
+      // so a public hit on it would let a caller write any seat it chose.
+      const attempt = await lab.act(INVENTORY_SEAT_WRITER_SESSION, INVENTORY_REGISTER_SEATS, {
+        seats: [{ id: "attacker.fake", kind: "agent" }]
+      });
+      expect(attempt.error).toBeDefined();
+      expect(String((attempt.error as Error).message)).toContain(
+        `does not define action "${INVENTORY_REGISTER_SEATS}"`
+      );
+      expect(await lab.row("inventory/seats/attacker.fake")).toBeUndefined();
     } finally {
       await lab.dispose();
     }

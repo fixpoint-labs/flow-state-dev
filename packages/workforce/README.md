@@ -1120,21 +1120,25 @@ Leave both out and channels work without an inventory. Nothing is declared, noth
 
 **The `run` door.** `run` is your app's door into a flow: it takes the request `openInventory`
 builds, runs it through your runtime, and rejects when the action fails. A door that hands back a
-failed run as an ordinary value reports every channel registered while writing nothing.
+failed run as an ordinary value reports every channel registered while writing nothing. **It must
+also forward `request.source` into `runAction`'s own `source` option** —
+`runAction({ ..., source: request.source })` — because the seat write sets `source: "internal"` on
+its request and needs that value carried through. A door that drops it does not become insecure, it
+becomes unable to write seats at all: the seat write shows up named in `problems` instead.
 
 **Where the seat rows go.** Seat rows need a flow to run in, because a resource collection can only
 be written from inside a flow. `seatWriter: { flowKind: "channel" }` names the built-in, which
 carries the writer when built with `inventory: true`. Any flow that spreads `inventoryWriterActions`
 will do.
 
-**`registerSeatsInInventory` is a public action, and its input is the row data.** Unlike channel
-registration — which takes empty input and reads the channel's own already-open session state —
-seats have no session to read from, so whatever a caller passes in `seats` is written as-is. This
-package has nothing to check those rows against, so any principal that can reach the flow's public
-actions can write fabricated seat rows, not only your boot process. If that flow is reachable by
-callers other than your own boot code and you need to close that off, gate it in your own
-`authentication.resolvePrincipal` by refusing to resolve a principal when
-`envelope.action === "registerSeatsInInventory"` and the caller is not the boot process.
+**`registerSeatsInInventory` is boot machinery, not a caller-addressed action.** Unlike channel
+registration, which is public because its empty input and the channel's own already-open session
+state make it harmless from any caller, the seat write has no session to derive from — its whole
+input IS the row data. It lives only in the flow's `internal.actions` map, which a caller-addressed
+HTTP or MCP request can never resolve into (`resolveEntry` reads one map per dispatch type with no
+fallback); the only way in is the trusted, direct `runAction({ source: "internal", ... })` call
+`openInventory`'s own request makes. A hand-rolled kind that spreads `inventoryWriterActions(kind)`
+must make the same split itself — see that function's own doc comment for the shape.
 
 **What the channel rows hold.** `members` is the seat ids the channel's session holds, read by the
 channel itself. An edit to `members:` in a `CHANNEL.md` does not reach a channel that is already
@@ -1316,11 +1320,11 @@ membershipPrefix("");
 | `SeatInventoryRow` / `ChannelInventoryRow` / `MembershipIndexRow` | One row of each of the three collections. |
 | `seatInventoryRowSchema` / `channelInventoryRowSchema` / `membershipIndexRowSchema` | The Zod schema behind each row type. Closed: an undeclared key is dropped on the way in. |
 | `openInventory(roster, options)` | Write the inventory at boot: one row per seat, one row per channel, one row per membership. Takes `InventoryRoster` (the seats and channels to register) and `OpenInventoryOptions` (the `run` door, `seatWriter`, `userId`, `orgId`). Returns `{ seats, channels, problems }`. |
-| `inventoryWriterActions(kind)` | The actions a custom channel kind spreads to get inventory rows: `registerChannelInInventory` and `registerSeatsInInventory`. The string is the `kind` value those rows carry. |
+| `inventoryWriterActions(kind)` | The two blocks a custom channel kind installs to get inventory rows, keyed by action name. Split them: `registerChannelInInventory` into `actions` (public, safe — empty input), `registerSeatsInInventory` into `internal.actions` (its input is the row data, with nothing to check it against). The string is the `kind` value those rows carry. |
 | `INVENTORY_REGISTER_CHANNEL` / `INVENTORY_REGISTER_SEATS` | The action names the writer runs: `"registerChannelInInventory"` and `"registerSeatsInInventory"`. |
 | `INVENTORY_SEAT_WRITER_SESSION` | The session id the seat-registration action runs under when `seatWriter` names none: `"inventory-binder"`. |
 | `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, channels }`), one seat (`{ id, kind }`), and which flow writes the seat rows (`{ flowKind }`). |
-| `InventoryActionRequest` / `InventoryBinding` | What the `run` door receives (`{ action, input, userId, orgId, flowKind, sessionId }`), and what one boot of `openInventory` returns (`{ seats, channels, problems }`). |
+| `InventoryActionRequest` / `InventoryBinding` | What the `run` door receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the seat request and must reach `runAction`), and what one boot of `openInventory` returns (`{ seats, channels, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `seatWriter`, `userId`, `orgId`. |
 
 ## Error Semantics

@@ -613,6 +613,10 @@ export const INVENTORY_REGISTER_CHANNEL = "registerChannelInInventory";
  * **Pinned**, for the same reason. One run for the whole roster rather than one
  * per seat: a seat holds no session, so there is no per-seat place this has to
  * land, and the rows are a straight copy of what the binder already holds.
+ *
+ * Lives in `internal.actions`, never the public map — its whole input is the
+ * row data, with nothing to check it against. Reachable only by the binder's
+ * own direct, trusted `runAction({ source: "internal", ... })` call.
  */
 export const INVENTORY_REGISTER_SEATS = "registerSeatsInInventory";
 
@@ -651,15 +655,26 @@ export const inventorySeatsRegisteredSchema = z.object({ written: z.number() });
  *   `defineChannelFlow` passes its own; a hand-rolled kind passes the same
  *   string it passed `defineFlow({ kind })`, and a row carrying the wrong one
  *   is that kind's bug in the same way a mismatched `cardinality` is.
- * @returns The `actions` entries to spread. The blocks declare the collections
- *   they touch, so a flow that spreads these installs them too.
+ * @returns Both entries, keyed by their action name. The blocks declare the
+ *   collections they touch, so installing an entry installs its collection
+ *   too. **Split them across `actions` and `internal.actions` — do not spread
+ *   the whole return into `actions`.** `registerSeats`'s whole input is
+ *   caller-supplied row data with nothing to check it against, so a public
+ *   caller could write fabricated seat rows; `registerChannel` has no such
+ *   risk (empty input, derives its row from the channel's own session state),
+ *   so it is the one safe to leave public. `defineChannelFlow`'s own built-in
+ *   kind makes exactly this split — read it there for the mechanics.
  *
  * @example
+ *   const writer = inventoryWriterActions("briefing");
  *   defineFlow({
  *     kind: "briefing",
  *     cardinality: "singleton",
  *     session: { stateSchema: briefingState },
- *     actions: { ...myActions, ...inventoryWriterActions("briefing") }
+ *     actions: { ...myActions, registerChannelInInventory: writer.registerChannelInInventory },
+ *     internal: {
+ *       actions: { registerSeatsInInventory: writer.registerSeatsInInventory }
+ *     }
  *   });
  */
 export function inventoryWriterActions(kind: string) {
@@ -1021,27 +1036,19 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
               description: "Read the rows on one of this channel's boards."
             }
           }),
-      // Public rather than internal, because the door that reaches them is the
-      // app's own action client at boot, and an internal dispatch resolves from
-      // a different map. That is a stronger claim for one of the two than the
-      // other:
+      // `registerChannel` only. It takes a closed, empty input and derives the
+      // row entirely from `ctx.session.state` — the channel's own,
+      // already-open state — so a caller cannot make it write anything but
+      // that channel's true members, and calling it early or twice is
+      // harmless. Public because the door that reaches it is the app's own
+      // action client at boot, and an internal dispatch resolves from a
+      // different map.
       //
-      // - `registerChannel` takes a closed, empty input and derives the row
-      //   entirely from `ctx.session.state` — the channel's own, already-open
-      //   state. A caller cannot make it write anything but that channel's
-      //   true members, so calling it early or twice is harmless.
-      // - `registerSeats` has no such anchor: a seat has no session, so its
-      //   whole input IS the row data, and this package has nothing to check
-      //   it against. Any principal that can reach this flow's public actions
-      //   — not just the boot process — can call it with fabricated
-      //   `{ id, kind }` pairs and have them land as real seat rows. An app
-      //   that exposes this flow to callers other than its own boot code and
-      //   cares about that must add its own gate, e.g. refusing to resolve a
-      //   principal for `envelope.action === "registerSeatsInInventory"`
-      //   (`defineFlow({ authentication: { resolvePrincipal } })`,
-      //   `PrincipalResolutionContext.envelope.action`) unless the caller is
-      //   the boot process. Nothing in this package closes that gap today.
-      ...(inventoryActions ?? {})
+      // `registerSeats` is deliberately NOT here — see `internal.actions`
+      // below for why.
+      ...(inventoryActions === undefined
+        ? {}
+        : { [INVENTORY_REGISTER_CHANNEL]: inventoryActions[INVENTORY_REGISTER_CHANNEL] })
     },
     internal: {
       actions: {
@@ -1058,6 +1065,24 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         ...(fileTask === undefined || readBoard === undefined
           ? {}
           : { fileTask: { block: fileTask }, readBoard: { block: readBoard } }),
+        // `registerSeats` lives ONLY here, never in the public `actions` map
+        // above. Unlike `registerChannel`, it has no session state to derive
+        // from — a seat has no session — so its whole input IS the row data,
+        // with nothing in this package to check it against. Public
+        // reachability would let any principal that can reach this flow write
+        // fabricated `{ id, kind }` pairs into the org's seat inventory.
+        // `internal.actions` resolves from its own map (`resolveEntry`,
+        // `@flow-state-dev/engine`) that a caller-addressed dispatch can never
+        // reach — `dispatchTypeOf` maps every caller-facing transport source
+        // to `public`, never to `internal` — so the only way in is a direct,
+        // trusted `runAction({ source: "internal", ... })` call, which is
+        // exactly what `openInventory`'s `run` door makes for this one
+        // request (see `open-inventory.ts`). A hand-rolled kind that spreads
+        // `inventoryWriterActions(kind)` must do the same split itself — see
+        // that function's own doc comment.
+        ...(inventoryActions === undefined
+          ? {}
+          : { [INVENTORY_REGISTER_SEATS]: inventoryActions[INVENTORY_REGISTER_SEATS] }),
         ...(fanOut === undefined
           ? {}
           : {

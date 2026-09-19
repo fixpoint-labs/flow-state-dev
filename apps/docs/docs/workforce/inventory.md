@@ -88,6 +88,7 @@ const run = async (request) => {
     userId: request.userId,
     orgId: request.orgId,
     sessionId: request.sessionId,
+    source: request.source,
     stores: runtime.stores,
     runtimeConfig: runtime.runtimeConfig,
   });
@@ -99,6 +100,8 @@ const run = async (request) => {
 ```
 
 The rejection matters. A door that hands back a failed run as an ordinary value reports every channel registered while writing nothing.
+
+`source` matters too. The seat write is boot machinery, not something any caller can invoke — the request `openInventory` builds for it carries `source: "internal"`, and it only resolves when that reaches `runAction`. A door that drops it does not create a caller-reachable seat write; it makes the seat write fail closed, named in the result's `problems`.
 
 ### Where the seat rows go
 
@@ -165,7 +168,7 @@ const seatChannels = handler({
 
 ## Writing from your own kind
 
-A channel kind you wrote yourself gets rows when it carries the writer. Spread `inventoryWriterActions` into its `actions` the way it already carries `cardinality: "singleton"`:
+A channel kind you wrote yourself gets rows when it carries the writer. `inventoryWriterActions(kind)` gives back its two blocks by action name — split them across `actions` and `internal.actions`, the way the built-in kind does. `registerChannelInInventory` is safe to leave public: it takes no input and derives its row from the channel's own already-open session state. `registerSeatsInInventory` is not — its whole input is the row data — so it belongs only in `internal.actions`, reachable solely by the trusted, direct `runAction({ source: "internal", ... })` call `openInventory` makes for it:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -174,15 +177,23 @@ import {
   inventoryWriterActions,
 } from "@flow-state-dev/workforce";
 
+const writer = inventoryWriterActions("briefing");
+
 const briefingKind = defineFlow({
   kind: "briefing",
   cardinality: "singleton",
   session: { stateSchema: channelSessionStateSchema },
-  actions: { ...myActions, ...inventoryWriterActions("briefing") },
+  actions: {
+    ...myActions,
+    registerChannelInInventory: writer.registerChannelInInventory,
+  },
+  internal: {
+    actions: { registerSeatsInInventory: writer.registerSeatsInInventory },
+  },
 });
 ```
 
-The string you pass is the value that appears as `kind` on that channel's rows. Passing the wrong one is that kind's bug.
+The string you pass `inventoryWriterActions` is the value that appears as `kind` on that channel's rows. Passing the wrong one is that kind's bug.
 
 A kind passed under `channelInstances`'s `kinds` option is yours to build. The `inventory: true` flag reaches the built-in only.
 
