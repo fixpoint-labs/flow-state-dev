@@ -123,11 +123,23 @@ export function channelBoardNameProblem(name: unknown): string | undefined {
  *
  * Nothing here can tell those two apart: the id is everything the call site
  * has, and `channelBoard` is a module-scope declaration made before any
- * runtime exists. Separating them means a declaration that takes a runtime,
- * which is a different public shape from the one-thing-a-seat-declares the
- * spec settled on. Documented as a limitation rather than half-solved — a memo
- * keyed on something weaker would break the coupling above, which is the case
- * that actually happens.
+ * runtime exists. A memo keyed on anything weaker would break the coupling
+ * above, which is the case that actually happens, where two applications
+ * sharing a channel id is not.
+ *
+ * **Scoping the memo is the wrong lever anyway, and the next reader should not
+ * spend the same afternoon on it.** What leaks is not this map but the freeze,
+ * and the freeze is written by `taskBoard` — a declaration-time factory whose
+ * only argument is its config. There is no runtime, store or app handle in
+ * scope when it marks the ledger, so the registry behind
+ * `freezeLedgerAssignee` cannot be moved onto one. The read side does have a
+ * `BlockContext`, but a registry only the reader scopes reintroduces exactly
+ * the ordering bug the module-level mark exists to prevent: a ref that
+ * resolves before the handed-off board has run would see `false`.
+ *
+ * So this is documented rather than half-solved, and the fix — if it is worth
+ * one — is a change to how the task board records handoff, not to what this
+ * map is keyed on.
  */
 const ledgers = new Map<string, ChannelBoardCollection>();
 
