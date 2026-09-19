@@ -201,8 +201,8 @@ describe("fsd-coding flow wiring — Claude", () => {
   beforeEach(() => {
     claudeCwd = realpathSync(mkdtempSync(join(tmpdir(), "fsd-coding-claude-")));
     dirs.push(claudeCwd);
-    if (process.getuid) vi.spyOn(process, "getuid").mockReturnValue(1000);
-    if (process.geteuid) vi.spyOn(process, "geteuid").mockReturnValue(1000);
+    if (process.getuid) vi.spyOn(process as Required<typeof process>, "getuid").mockReturnValue(1000);
+    if (process.geteuid) vi.spyOn(process as Required<typeof process>, "geteuid").mockReturnValue(1000);
   });
   afterEach(() => { vi.restoreAllMocks(); });
 

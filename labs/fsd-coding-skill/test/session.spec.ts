@@ -31,8 +31,8 @@ describe("provider-safe session continuity", () => {
   it("returns to each provider's own confirmed session on shared stores", async () => {
     const cwd = realpathSync(mkdtempSync(join(tmpdir(), "fsd-coding-sessions-")));
     dirs.push(cwd);
-    if (process.getuid) vi.spyOn(process, "getuid").mockReturnValue(1000);
-    if (process.geteuid) vi.spyOn(process, "geteuid").mockReturnValue(1000);
+    if (process.getuid) vi.spyOn(process as Required<typeof process>, "getuid").mockReturnValue(1000);
+    if (process.geteuid) vi.spyOn(process as Required<typeof process>, "geteuid").mockReturnValue(1000);
     const stores = createInMemoryStores();
     const cursor = scriptedCursor();
     const codex = scriptedCodex();
