@@ -1,0 +1,104 @@
+<svg viewBox="0 0 940 420" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two layers over one workforce tree. Left of a vertical fence, at boot and off the request path, a declared tree of teams, workers, channels and documents is read once by readDeclaredRoster into records plus one problems list; it derives state and registers nothing. Right of the fence, on the request path, ChannelFlow writes an org-scoped live inventory as each channel opens; the inventory holds one row per registered seat and one per open channel, and any flow in the same org reads it as an ordinary resource. One arrow crosses the fence, at boot, carrying the records; nothing crosses back. A strip along the bottom names what is not built: no second WorkerRegistry, no mega-loader that re-walks the tree, and no DM verb.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-code { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-acc  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-flat { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .edge   { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .edge-x { stroke:var(--code); stroke-width:1.8; fill:none; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:6 4; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-3)"/>
+    </marker>
+    <marker id="ax" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--code)"/>
+    </marker>
+  </defs>
+
+  <g id="fence">
+    <path class="fence" d="M478 24 L478 60"/>
+    <path class="fence" d="M478 100 L478 330"/>
+    <text class="t-lbl" x="478" y="16" text-anchor="middle">THE FENCE</text>
+  </g>
+
+  <g id="declared">
+    <text class="t-lbl" x="16" y="42">DECLARED · BOOT, OFF THE REQUEST PATH</text>
+    <rect class="n-box" x="16" y="52" width="118" height="76" rx="5"/>
+    <text class="t-b" x="28" y="74">the tree</text>
+    <text class="t-s" x="28" y="92">teams · workers</text>
+    <text class="t-s" x="28" y="106">channels</text>
+    <text class="t-s" x="28" y="120">documents</text>
+
+    <path class="edge" d="M134 90 L158 90" marker-end="url(#a)"/>
+
+    <rect class="n-code" x="166" y="52" width="152" height="76" rx="5"/>
+    <text class="t-lbl" x="178" y="70">NEW</text>
+    <text class="t-b" x="178" y="92">readDeclaredRoster</text>
+    <text class="t-s" x="178" y="112">three readers, no walk</text>
+
+    <path class="edge" d="M318 90 L342 90" marker-end="url(#a)"/>
+
+    <rect class="n-box" x="350" y="52" width="70" height="76" rx="5"/>
+    <text class="t-s" x="360" y="80">records</text>
+    <text class="t-s" x="360" y="96">+</text>
+    <text class="t-s" x="360" y="112">problems</text>
+
+    <text class="t-s" x="16" y="152">derives per read · registers nothing · Node only</text>
+  </g>
+
+  <g id="crossing">
+    <text class="t-lbl" x="478" y="78" text-anchor="middle">ONCE, AT BOOT</text>
+    <path class="edge-x" d="M420 90 L532 90" marker-end="url(#ax)"/>
+  </g>
+
+  <g id="live">
+    <text class="t-lbl" x="540" y="42">LIVE · THE REQUEST PATH</text>
+
+    <rect class="n-box" x="540" y="68" width="384" height="44" rx="5"/>
+    <text class="t-b" x="556" y="88">ChannelFlow</text>
+    <text class="t-s" x="556" y="104">the one writer</text>
+
+    <path class="edge" d="M732 112 L732 140" marker-end="url(#a)"/>
+    <text class="t-s" x="742" y="131">as a channel opens</text>
+
+    <rect class="n-acc" x="540" y="144" width="384" height="100" rx="5"/>
+    <text class="t-lbl" x="556" y="164">ORG-SCOPED · ONE PER ORG</text>
+    <text class="t-b" x="556" y="186">the live inventory</text>
+    <rect class="n-flat" x="556" y="198" width="150" height="22" rx="3"/>
+    <text class="t-s" x="566" y="213">inventory/seats/*</text>
+    <rect class="n-flat" x="556" y="224" width="150" height="14" rx="3"/>
+    <text class="t-s" x="566" y="235">inventory/channels/*</text>
+    <text class="t-s" x="722" y="213">what is actually open,</text>
+    <text class="t-s" x="722" y="229">not what the files say</text>
+
+    <path class="edge" d="M732 244 L732 272" marker-end="url(#a)"/>
+    <text class="t-s" x="742" y="263">an ordinary resource read</text>
+
+    <rect class="n-box" x="540" y="276" width="384" height="44" rx="5"/>
+    <text class="t-b" x="556" y="296">any flow in the same org</text>
+    <text class="t-s" x="556" y="312">a seat · a board · a catalog</text>
+  </g>
+
+  <g id="not-built">
+    <path class="fence" d="M16 352 L924 352"/>
+    <text class="t-lbl" x="16" y="374">NOT BUILT</text>
+    <text class="t-gone" x="16" y="396">no second WorkerRegistry</text>
+    <text class="t-gone" x="260" y="396">no mega-loader that re-walks the tree</text>
+    <text class="t-gone" x="600" y="396">no DM verb · no join or leave</text>
+  </g>
+</svg>

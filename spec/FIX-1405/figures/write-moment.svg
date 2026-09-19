@@ -1,0 +1,62 @@
+<svg viewBox="0 0 940 240" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A grid of three candidate write moments against two channel states. Columns: written at boot through a binder, written lazily on the first post, and never written. Rows: a channel that has been posted to, and a channel that is open but untouched. At boot, both rows are present. Lazily, the posted channel is present and the open-but-untouched one is missing, which is the cell that rules the option out. Never, both are missing.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .cell   { fill:var(--surface); stroke:var(--rule); stroke-width:1.1; }
+    .ok     { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .bad    { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.4; }
+    .kill   { fill:none; stroke:var(--gone); stroke-width:2.2; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-ok   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-bad  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+  </style>
+
+  <g id="columns">
+    <text class="t-lbl" x="286" y="28" text-anchor="middle">AT BOOT · A BINDER</text>
+    <text class="t-lbl" x="506" y="28" text-anchor="middle">LAZILY · ON FIRST POST</text>
+    <text class="t-lbl" x="726" y="28" text-anchor="middle">NEVER</text>
+  </g>
+
+  <g id="row-posted">
+    <text class="t-b" x="16" y="72">a channel that</text>
+    <text class="t-b" x="16" y="88">has been posted to</text>
+    <rect class="ok"   x="176" y="44" width="220" height="56" rx="5"/>
+    <text class="t-ok" x="192" y="70">in the inventory</text>
+    <text class="t-s"  x="192" y="88">written when it opened</text>
+    <rect class="ok"   x="396" y="44" width="220" height="56" rx="5"/>
+    <text class="t-ok" x="412" y="70">in the inventory</text>
+    <text class="t-s"  x="412" y="88">written by the first post</text>
+    <rect class="bad"  x="616" y="44" width="220" height="56" rx="5"/>
+    <text class="t-bad" x="632" y="70">missing</text>
+    <text class="t-s"  x="632" y="88">nothing answers</text>
+  </g>
+
+  <g id="row-quiet">
+    <text class="t-b" x="16" y="146">a channel that is</text>
+    <text class="t-b" x="16" y="162">open and untouched</text>
+    <rect class="ok"   x="176" y="118" width="220" height="56" rx="5"/>
+    <text class="t-ok" x="192" y="144">in the inventory</text>
+    <text class="t-s"  x="192" y="162">opening is the write</text>
+    <rect class="bad"  x="396" y="118" width="220" height="56" rx="5"/>
+    <text class="t-bad" x="412" y="144">missing</text>
+    <text class="t-s"  x="412" y="162">open, and invisible</text>
+    <path class="kill" d="M406 126 L606 166"/>
+    <rect class="bad"  x="616" y="118" width="220" height="56" rx="5"/>
+    <text class="t-bad" x="632" y="144">missing</text>
+    <text class="t-s"  x="632" y="162">nothing answers</text>
+  </g>
+
+  <g id="reading">
+    <text class="t-lbl" x="176" y="206">THE CELL THAT DECIDES</text>
+    <text class="t-s" x="176" y="224">a channel with no traffic is the common case at boot, and lazy writing reports the org short</text>
+  </g>
+</svg>
