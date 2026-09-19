@@ -212,15 +212,6 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
   });
 
   /**
-   * The model's door onto the board — and the only place a model appears in
-   * this lab.
-   *
-   * The `tools:` slot is declared unconditionally, which is what raises the
-   * fence. What it resolves is the seat's own declared catalog names and
-   * nothing else; the eight controls are added underneath it by core, where no
-   * list can reach them.
-   */
-  /**
    * Settle a row from the coordinator's own session — BR-9.
    *
    * The coordinator never claimed it, and the write goes through anyway. That
@@ -229,11 +220,6 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
    * the eight task tools reach the same method, so a coordinator holding them
    * can settle somebody else's row. The lab shows it rather than working around
    * it, because a queue meets this case.
-   *
-   * The builder kind has its own settle, and the two are not duplicates: this
-   * one runs in the coordinator's session to show an unclaimed settle is
-   * allowed, and that one runs in a seat's session to show a settle whose
-   * lease has lapsed is refused.
    */
   const settleRow = handler({
     name: "coordinator-settle-row",
@@ -283,6 +269,15 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
     },
   });
 
+  /**
+   * The model's door onto the board — and the only place a model appears in
+   * this lab.
+   *
+   * The `tools:` slot is declared unconditionally, which is what raises the
+   * fence. What it resolves is the seat's own declared catalog names and
+   * nothing else; the eight controls are added underneath it by core, where no
+   * list can reach them.
+   */
   const intake = generator({
     name: "coordinator-intake",
     inputSchema: intakeInputSchema,

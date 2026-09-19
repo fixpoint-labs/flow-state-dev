@@ -55,7 +55,7 @@
  * can ever see.
  *
  * Run: pnpm tsx goals/manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name/run.mts
- * Controls: GOAL_CONTROL=repointed-map · GOAL_FILER=scripted
+ * Controls: GOAL_FILER=scripted GOAL_CONTROL=repointed-map · GOAL_CONTROL=duplicate-filing
  */
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -85,18 +85,43 @@ const WORK = [
  * edit there would move the answer along with the implementation and the
  * control would stay green.
  *
- *   repointed-map  one seat's entry in the host's seat -> desk map is pointed at
- *                  a DIFFERENT declared seat. Everything still compiles, every
- *                  id is still well-formed, the roster still hires and rows
- *                  still run. What changes is which seat a desk's rows reach,
- *                  and the tree still says where they should have gone — so the
- *                  run is observed on a seat whose own file claims another
- *                  desk. Must fail at leg (c).
+ *   repointed-map  two builders' desks are SWAPPED in the host's seat -> desk
+ *                  map. Everything still compiles, every id is still
+ *                  well-formed, the roster still hires, every row still runs
+ *                  and every row still completes. What changes is which seat a
+ *                  desk's rows reach, and the tree still says where they should
+ *                  have gone — so each is observed on a seat whose own file
+ *                  claims another desk. Must fail at leg (c), three times, the
+ *                  same three every run. See `repoint` for why a swap and not a
+ *                  one-sided re-point.
+ *
+ *   duplicate-filing  the filer combines two pieces into one row and files a
+ *                  third twice. Four rows still land, every piece still
+ *                  appears somewhere, every row still names a declared desk, a
+ *                  desk still gets two, and every row still runs on the seat
+ *                  its file answers for — so legs (c) to (f) all stay green.
+ *                  Only the count per piece and per row moves. Must fail at
+ *                  leg (b), and nowhere else. Forces the scripted filer,
+ *                  because the thing being perturbed is what gets filed.
  */
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 
-/** Who files the rows. See the module header — only `model` is the exit gate. */
-const FILER = process.env.GOAL_FILER === "scripted" ? "scripted" : "model";
+/**
+ * Who files the rows. See the module header — only `model` is the exit gate.
+ *
+ * `duplicate-filing` forces the scripted filer: it perturbs *what gets filed*,
+ * and a model cannot be made to file badly on demand.
+ */
+const FILER =
+  CONTROL === "duplicate-filing" || process.env.GOAL_FILER === "scripted" ? "scripted" : "model";
+
+/**
+ * The words a leg's own failure carries, so a control can prove it went red
+ * THERE and not somewhere else. Substrings of the notes below, kept here so the
+ * two move together.
+ */
+const LEG_C_IDENTITY = "whose own file answers for";
+const LEG_B_MARKS = ["carry the same piece", "combines", "carries none of the work"];
 
 /** Silence the engine's own logging; a goal's output is its verdict. */
 const silent = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
@@ -110,16 +135,29 @@ function treeFiles(dir: string): string[] {
 }
 
 /**
- * The map the control perturbs.
+ * The map the control perturbs: two builders' desks are SWAPPED.
  *
- * It re-points one builder at another builder's declared desk. Both are
- * declared seats and both desks are declared desks, so nothing is malformed —
- * only the association is wrong, which is the one thing under test.
+ * Both are declared seats and both desks are declared desks, so nothing is
+ * malformed — only the association is wrong, which is the one thing under test.
+ *
+ * It is a swap and not a one-sided re-point, and the difference is the whole
+ * value of the control. Pointing `first` at `second`'s desk while leaving
+ * `second` there too makes BOTH seats eligible for that desk, and `drainAll`
+ * claims concurrently: which one wins is a CAS race. The run still exits
+ * non-zero — but on the rows nobody was left eligible for, so it can go red
+ * without ever emitting the leg (c) identity mismatch this control exists to
+ * demonstrate. A control that can go red at the wrong leg certifies nothing.
+ *
+ * A swap leaves exactly ONE seat eligible for each desk. Every row still runs,
+ * every row still completes, and every row for either swapped desk is observed
+ * on a seat whose own file answers for the other one. Deterministic, at leg (c),
+ * and nowhere else.
  */
 function repoint(lab: Lab): Record<string, string> {
   const map = { ...lab.assignees };
   const [first, second] = lab.builderIds;
-  map[first] = String(map[second]);
+  map[first] = String(lab.assignees[second]);
+  map[second] = String(lab.assignees[first]);
   return map;
 }
 
@@ -191,14 +229,29 @@ await runGoal(async () => {
       if (filed.error !== undefined) note(`the coordinator could not file: ${filed.error}`);
     } else {
       const desks = [...declaredDesks];
-      const spread = [desks[0], desks[0], desks[1], desks[2]];
-      for (const [index, piece] of WORK.entries()) {
-        const result = await lab.fileThroughChannel({
-          board: lab.boardName,
-          goal: piece,
-          assignee: spread[index],
-        });
-        if (result.error !== undefined) note(`could not file ${JSON.stringify(piece)}: ${result.error}`);
+      // Four rows either way, and either way one desk gets two — so every leg
+      // after (b) grades exactly what it grades on a good run. The control
+      // moves only WHICH TEXT each row carries: two pieces folded into one row,
+      // and a third filed twice.
+      const filings =
+        CONTROL === "duplicate-filing"
+          ? [
+              { goal: `${WORK[0]} ${WORK[1]}`, assignee: desks[0] },
+              { goal: WORK[2], assignee: desks[0] },
+              { goal: WORK[2], assignee: desks[1] },
+              { goal: WORK[3], assignee: desks[2] },
+            ]
+          : [
+              { goal: WORK[0], assignee: desks[0] },
+              { goal: WORK[1], assignee: desks[0] },
+              { goal: WORK[2], assignee: desks[1] },
+              { goal: WORK[3], assignee: desks[2] },
+            ];
+      for (const filing of filings) {
+        const result = await lab.fileThroughChannel({ board: lab.boardName, ...filing });
+        if (result.error !== undefined) {
+          note(`could not file ${JSON.stringify(filing.goal)}: ${result.error}`);
+        }
       }
     }
 
@@ -213,9 +266,36 @@ await runGoal(async () => {
     // ---- b. every piece reached the board, in its own words ----------------
     // Graded against the INPUT, so a run that filed four rows about something
     // else fails here rather than passing on a count.
+    //
+    // ONE DISTINCT ROW PER PIECE, both directions. "Each piece appears
+    // somewhere" is a weaker claim than the one this gate makes, and the gap
+    // between them is exactly a filer that combines two pieces into one row and
+    // files a third twice: four rows, every piece present, nothing downstream
+    // the wiser, because the outbox legs grade taskIds and never the text. So
+    // the count is asserted per piece AND per row, and `GOAL_CONTROL=`
+    // `duplicate-filing` is the red state for it.
+    const rowsCarrying = (piece: string) =>
+      rowsAfterFiling.filter((row) => row.goal.includes(piece));
     for (const piece of WORK) {
-      if (!rowsAfterFiling.some((row) => row.goal.includes(piece))) {
+      const carriers = rowsCarrying(piece);
+      if (carriers.length === 0) {
         note(`no row carries the work ${JSON.stringify(piece)}`);
+      } else if (carriers.length > 1) {
+        note(
+          `${carriers.length} rows carry the same piece ${JSON.stringify(piece)} ` +
+            `(${carriers.map((row) => row.id).join(", ")}); one piece is one row`,
+        );
+      }
+    }
+    for (const row of rowsAfterFiling) {
+      const carried = WORK.filter((piece) => row.goal.includes(piece));
+      if (carried.length === 0) {
+        note(`row ${row.id} carries none of the work that came in: ${JSON.stringify(row.goal)}`);
+      } else if (carried.length > 1) {
+        note(
+          `row ${row.id} combines ${carried.length} pieces into one row: ` +
+            `${carried.map((piece) => JSON.stringify(piece)).join(", ")}`,
+        );
       }
     }
 
@@ -357,6 +437,36 @@ await runGoal(async () => {
     }
     if (lab.workLines().some((line) => line.taskId === orphanId)) {
       note(`the unassigned row ran anyway; no seat should have a body for it`);
+    }
+
+    // ---- the controls grade THEMSELVES -------------------------------------
+    // "It exited non-zero" is not what a control certifies. A control certifies
+    // that THIS CHECK FAILS WHEN THIS THING BREAKS — so it has to go red at the
+    // leg it names, and at no other. A run that goes red somewhere else has
+    // demonstrated a different check.
+    if (CONTROL !== "") {
+      const expected =
+        CONTROL === "repointed-map"
+          ? { leg: "(c)", marks: [LEG_C_IDENTITY] }
+          : CONTROL === "duplicate-filing"
+            ? { leg: "(b)", marks: LEG_B_MARKS }
+            : undefined;
+      if (expected === undefined) {
+        note(`unknown control ${JSON.stringify(CONTROL)}`);
+      } else {
+        const offLeg = failures.filter((line) => !expected.marks.some((m) => line.includes(m)));
+        if (failures.length === 0) {
+          note(
+            `the ${CONTROL} control did not go red at all; leg ${expected.leg} does not grade ` +
+              `what it claims to`,
+          );
+        } else if (offLeg.length > 0) {
+          note(
+            `the ${CONTROL} control went red away from leg ${expected.leg}, so it certifies a ` +
+              `different check than the one it names: ${offLeg.join(" | ")}`,
+          );
+        }
+      }
     }
 
     const placement = lines

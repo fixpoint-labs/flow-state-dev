@@ -19,10 +19,10 @@
  *   f  an unclaimed settle is allowed, and a lapsed one is not (BR-9, BR-11)
  *   g  the task status set has exactly the members it had (BR-13)
  *   h  this issue's diff stays inside `goals/manager-queue-lab/` (BR-14, BR-15)
- *   i  the drain-width switch runs the lab at either value (BR-17)
+ *   i  the drain-width switch RUNS WORK at either value (BR-17)
  *
  * Run: pnpm tsx goals/manager-queue-lab/it-stands-the-team-and-its-board-up-from-files/run.mts
- * Controls: GOAL_CONTROL=catalog-door
+ * Controls: GOAL_CONTROL=catalog-door · GOAL_CONTROL=repointed-map
  */
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -66,6 +66,17 @@ const STATUS_SET = [
  *                 Everything still compiles and the roster still hires; only
  *                 the door moves. Must fail at leg (c), which is what makes
  *                 that leg a test of the door rather than of tool count.
+ *
+ *   repointed-map two builders' desks are SWAPPED in the host's map. The tree
+ *                 is untouched, every id is well-formed, the roster hires and
+ *                 rows run — a recovered row just runs on a seat whose own file
+ *                 answers for another desk. Must fail at leg (f), which is the
+ *                 only leg here that grades routing identity. A swap and not a
+ *                 one-sided re-point, so exactly one seat stays eligible per
+ *                 desk and which seat takes a row is not a CAS race.
+ *
+ * Each control also grades ITSELF at the end: a run that goes red somewhere
+ * other than the leg it names has demonstrated a different check, and says so.
  */
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 
@@ -100,6 +111,13 @@ async function toolNames(
   return list.map((tool) => String((tool as { name?: unknown }).name)).sort();
 }
 
+/** A fresh outbox per width, so one width's lines cannot be read as another's. */
+function widthOutbox(scratch: string, width: number): string {
+  const path = join(scratch, `width-${width}.ndjson`);
+  writeFileSync(path, "", "utf8");
+  return path;
+}
+
 /** Open a lab, run a body, and always dispose. */
 async function withLab<T>(
   options: Parameters<typeof openLab>[0],
@@ -129,7 +147,25 @@ await runGoal(async () => {
     ...(CONTROL === "catalog-door" ? { door: "catalog" as const } : {}),
   };
 
-  const lab = await openLab(base);
+  // `repointed-map` needs the hired map before it can perturb it, and the map
+  // is fixed when the kinds are built — so the perturbed run gets its own lab.
+  // Same swap as the sibling check's: exactly one seat eligible per desk, so
+  // which seat takes a row is not a race.
+  let assignees: Record<string, string> | undefined;
+  if (CONTROL === "repointed-map") {
+    const probe = await openLab(base);
+    const [first, second] = probe.builderIds;
+    assignees = {
+      ...probe.assignees,
+      [first]: String(probe.assignees[second]),
+      [second]: String(probe.assignees[first]),
+    };
+    await probe.dispose();
+  }
+
+  const lab = await openLab(
+    assignees === undefined ? base : { ...base, stores: inMemoryStores(), assignees },
+  );
   let evidence = "";
 
   try {
@@ -141,7 +177,13 @@ await runGoal(async () => {
     if (lab.builderIds.length !== 3) {
       note(`expected 3 builder seats, found ${lab.builderIds.length}`);
     }
-    if (lab.coordinatorId === "") note("no seat was hired onto the coordinator kind");
+    // `openLab` now refuses a tree with no coordinator outright, so the empty
+    // case cannot reach here. What is still worth asserting is that the two
+    // kinds PARTITION the roster: a seat counted as both would make the four
+    // above add up while leaving a desk unanswered.
+    if (lab.builderIds.includes(lab.coordinatorId)) {
+      note(`${lab.coordinatorId} was hired onto both kinds; the roster does not partition`);
+    }
     if (lab.roster.channels.length !== 1) {
       note(`the tree declared ${lab.roster.channels.length} channels, not 1`);
     }
@@ -162,10 +204,30 @@ await runGoal(async () => {
 
     // ---- c. the eight arrive by composition (BR-2) -------------------------
     // Three arms, read off BUILT kinds rather than off a run: the real
-    // coordinator, the same kind with its file's `tools: []` in place, and a
-    // twin that composes nothing.
+    // coordinator with the `tools:` ITS OWN FILE declares, the same kind with a
+    // catalog tool named, and a twin that composes nothing.
+    //
+    // WHAT THIS LEG DOES NOT GRADE, stated here and in the evidence line rather
+    // than left for a reader to discover: the block is the one `openLab` built,
+    // so the composition is the shipped one — but the tools RESOLVER is invoked
+    // directly, with a context this check assembles. It is not a live
+    // generation, so it says nothing about how the tools reach a model mid-run.
+    // The narrow claim is the one worth having: a seat's `tools:` can neither
+    // grant nor fence a capability control.
+    const coordinatorDeclared = lab.roster.workers.find(
+      (worker) => worker.id === lab.coordinatorId,
+    )?.declared;
+    const declaredTools = (coordinatorDeclared?.tools as string[] | undefined) ?? undefined;
+    if (declaredTools === undefined || declaredTools.length !== 0) {
+      note(
+        `the coordinator's file was expected to declare \`tools: []\` — the arm this leg grades ` +
+          `— and declares ${JSON.stringify(declaredTools)}`,
+      );
+    }
+    // Fed the value read OFF THE TREE, not a literal typed here: otherwise the
+    // arm grades a string this check chose and the file's own line never enters.
+    const withNothing = await toolNames(lab.intake, { tools: declaredTools ?? [] });
     const withNote = await toolNames(lab.intake, { tools: ["note"] });
-    const withNothing = await toolNames(lab.intake, { tools: [] });
     const eight = withNothing.filter((name) => name !== "note");
 
     if (eight.length !== 8) {
@@ -365,6 +427,15 @@ await runGoal(async () => {
     // when a reclaim genuinely won or the committed span cannot be read. The
     // lab grades the recovery, which is what actually happens and is the
     // stronger claim.)
+    // The desk the row was FILED for, read off the ledger before the drain.
+    // This is the independent side of the comparison below and the reason the
+    // leg can fail at all: it is what the filer wrote, not what the host's map
+    // says. Comparing the seat's own file against `lab.assignees[seat]` would
+    // put the tree on BOTH sides — the map is derived from `answersFor` — and
+    // the leg would be green however badly the row was routed. That is exactly
+    // the failure mode this lab's own README names, and it was in here.
+    const heldAssignee = (await lab.rows()).find((row) => row.id === held.taskId)?.assignee;
+
     const beforeRecovery = lab.workLines().length;
     await lab.drainAll();
     const recovered = lab
@@ -373,8 +444,13 @@ await runGoal(async () => {
       .find((line) => line.taskId === held.taskId);
     if (recovered === undefined) {
       note(`the row whose lease lapsed was never taken back by a drain; it is not really queued`);
-    } else if (recovered.declaredAssignee !== lab.assignees[recovered.seat]) {
-      note(`the recovered row ran on a seat whose file claims a different desk`);
+    } else if (heldAssignee === undefined) {
+      note(`the row that lapsed names no desk, so where it ran cannot be graded`);
+    } else if (recovered.declaredAssignee !== heldAssignee) {
+      note(
+        `the recovered row was filed for "${heldAssignee}" and ran on ${recovered.seat}, ` +
+          `whose own file answers for "${recovered.declaredAssignee}"`,
+      );
     }
 
     // The coordinator settling a row it never claimed IS allowed. Recorded as
@@ -433,16 +509,76 @@ await runGoal(async () => {
     }
 
     // ---- i. the drain-width switch (BR-17) ---------------------------------
-    // Exercised at both values, model-free, and the whole of what this issue
-    // owes on it. The two-width comparison is the epic's to ask for.
+    // The epic ruled width 1. The knob stays so the other case remains
+    // REACHABLE, and that is the claim this leg has to earn: not that a lab
+    // boots at 2, but that it runs work at 2.
+    //
+    // The leg used to open a lab at each width and read `drainWidth` back off
+    // it — the same number it had just handed in. Concurrency wiring that was
+    // ignored outright would have left that green. So each width now files two
+    // rows for one desk, drains, and requires both to run and settle.
     const widths: string[] = [];
     for (const width of [1, 2]) {
       try {
-        const booted = await withLab({ ...base, drainWidth: width }, async (other) => other.drainWidth);
-        widths.push(`${booted}`);
-        if (booted !== width) note(`the lab booted at drain width ${booted}, not ${width}`);
+        const ran = await withLab(
+          { ...base, stores: inMemoryStores(), outbox: widthOutbox(scratch, width), drainWidth: width },
+          async (other) => {
+            if (other.drainWidth !== width) {
+              note(`the lab booted at drain width ${other.drainWidth}, not ${width}`);
+            }
+            for (const goal of [`first piece at width ${width}`, `second piece at width ${width}`]) {
+              await other.fileThroughChannel({
+                board: other.boardName,
+                goal,
+                assignee: other.desks[0],
+              });
+            }
+            await other.drainAll();
+            const rows = await other.rows();
+            return {
+              lines: other.workLines().length,
+              settled: rows.filter((row) => row.status === "completed").length,
+              total: rows.length,
+            };
+          },
+        );
+        widths.push(`${width} (${ran.lines} rows ran)`);
+        if (ran.lines !== 2 || ran.settled !== ran.total) {
+          note(
+            `at drain width ${width}, ${ran.lines} of 2 rows ran and ${ran.settled} of ` +
+              `${ran.total} settled; the switch is not operable at that width`,
+          );
+        }
       } catch (error) {
-        note(`the lab did not boot at drain width ${width}: ${messageOf(error)}`);
+        note(`the lab did not run work at drain width ${width}: ${messageOf(error)}`);
+      }
+    }
+
+    // ---- the controls grade THEMSELVES -------------------------------------
+    // A control certifies "this check fails when this thing breaks", so it has
+    // to go red at the leg it names and at no other. Exiting non-zero from
+    // somewhere else demonstrates a different check.
+    if (CONTROL !== "") {
+      const expected: Record<string, { leg: string; mark: string }> = {
+        "catalog-door": { leg: "(c)", mark: "board tools, not 8" },
+        "repointed-map": { leg: "(f)", mark: "whose own file answers for" },
+      };
+      const want = expected[CONTROL];
+      if (want === undefined) {
+        note(`unknown control ${JSON.stringify(CONTROL)}`);
+      } else if (failures.length === 0) {
+        note(
+          `the ${CONTROL} control did not go red at all; leg ${want.leg} does not grade what it ` +
+            `claims to`,
+        );
+      } else {
+        const offLeg = failures.filter((line) => !line.includes(want.mark));
+        if (offLeg.length > 0) {
+          note(
+            `the ${CONTROL} control went red away from leg ${want.leg}, so it certifies a ` +
+              `different check than the one it names: ${offLeg.join(" | ")}`,
+          );
+        }
       }
     }
 
@@ -452,16 +588,22 @@ await runGoal(async () => {
       `framework minted "${lab.boardId}" — a string that appears in no file under the lab. The ` +
       `coordinator's file says \`tools: []\` and it holds all eight board tools anyway ` +
       `(${eight.join(", ")}); with \`tools: ["note"]\` it holds those eight plus the catalog ` +
-      `tool, and a twin kind composing nothing holds none. A seat folder declaring the board ` +
+      `tool, and a twin kind composing nothing holds none — read off the kinds \`openLab\` ` +
+      `built, by invoking the tools resolver DIRECTLY with a context this check assembles and ` +
+      `the seat's own declared \`tools:\`, so the composition is the shipped one and the ` +
+      `resolution is not a live generation. A seat folder declaring the board ` +
       `refuses the whole roster by naming "desk-board", and the corrected tree hires. The ` +
       `channel refused a filing naming a non-member and accepted the same call with no author. ` +
       `Reading the queue left the ledger byte-identical; a blocked row carried its own reason ` +
       `into "waiting on you"; a real claim on the ${held.leaseMs}ms minimum lease read running ` +
       `with its seat busy, and once it lapsed read queued with its seat idle and was then taken ` +
-      `back and run by the next drain — on the seat its own file names. An unclaimed settle by ` +
+      `back and run by the next drain — on the seat whose own file answers for the desk the ` +
+      `row was FILED for, which is a fact of the ledger and not of the host's map. An ` +
+      `unclaimed settle by ` +
       `the coordinator: ${unclaimedSettle}. The status set is ` +
       `unchanged at ${statuses.length} members. The diff gate ran over ${diff}, all inside ` +
-      `${LAB_ROOT}. The drain-width switch booted at ${widths.join(" and ")}.`;
+      `${LAB_ROOT}. The drain-width switch RAN WORK at ${widths.join(" and ")}; the epic ` +
+      `ruled width 1, and the knob keeps the other case reachable.`;
   } finally {
     await lab.dispose();
   }

@@ -80,8 +80,19 @@ export const LAB_ORG_ID = "org_manager_queue_lab";
  *
  * **One knob, no edit to the tree and none to the checks** (BR-17). At `1` a
  * second row for a busy desk queues behind the first; above `1` the seat takes
- * a second copy. Which is right is an epic-level call — this lab shows both and
- * recommends neither.
+ * a second copy.
+ *
+ * **The epic ruled `1`** (2026-09-19): a busy seat never takes a second row
+ * concurrently, and the lab is pinned to it. A seat is a roster slot that mints
+ * a flow instance, and one running two rows at once is a pool rather than a
+ * seat; the seat is also what carries a `WORKER.md`, a persona and memory, so
+ * interleaving two rows inside one breaks the coherence the seat exists to
+ * hold. The live inventory asks *which seats are busy*, which means nothing
+ * unless busy excludes.
+ *
+ * The knob stays because the ruling is reversible and because it is how the
+ * negative case stays reachable — the "extra one waits" leg has no evidence at
+ * all above width 1.
  *
  *     MANAGER_QUEUE_DRAIN_WIDTH=2 pnpm tsx goals/manager-queue-lab/<goal>/run.mts
  */
@@ -175,15 +186,6 @@ export interface OpenLabOptions {
   // ---- controls, each the red state of one claim -------------------------
 
   /**
-   * Rewrite one seat's `tools:` fence before the mint — BR-2's first arm.
-   *
-   * Applied to the RECORD, so the seat genuinely hires with the rewritten fence
-   * rather than being graded as if it had. With `["note"]` the seat holds nine
-   * tools; the tree's own `tools: []` leaves exactly the eight controls, and the
-   * difference between the two readings is the fence biting.
-   */
-  toolOverrides?: Record<string, string[]>;
-  /**
    * Rewrite one seat's `flow:` line before the mint — BR-1's negative control.
    *
    * Pointed at a kind nobody registered, the WHOLE roster refuses and names the
@@ -246,8 +248,6 @@ export interface Lab {
   queue(): Promise<QueueView>;
   /** Every row on the ledger, whole — the unredacted rows the view is derived from. */
   rows(): Promise<Task[]>;
-  /** The channel's own `readBoard` projection — the redacted, public one. */
-  readBoard(): Promise<{ board: string; boardId: string; tasks: unknown[] }>;
   /** The lines finished work left behind, outside the board entirely. */
   workLines(): WorkLine[];
   /** One session record, straight out of the store — for reading parentage. */
@@ -300,11 +300,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   // The control mutates the RECORD, before the mint, so a seat with a rewritten
   // fence genuinely hires with it rather than being graded as if it had.
-  const toolOverrides = options.toolOverrides ?? {};
   const kindOverrides = options.kindOverrides ?? {};
   const workers: WorkerManifest[] = roster.workers.map((worker) => {
     const declared = { ...worker.declared };
-    if (Object.hasOwn(toolOverrides, worker.id)) declared.tools = toolOverrides[worker.id];
     if (Object.hasOwn(kindOverrides, worker.id)) declared.flow = kindOverrides[worker.id];
     return { ...worker, declared };
   });
@@ -344,8 +342,14 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const builderIds = workers
     .filter((worker) => worker.declared.flow === BUILDER_KIND)
     .map((worker) => worker.id);
-  const coordinatorId =
-    workers.find((worker) => worker.declared.flow === COORDINATOR_KIND)?.id ?? "";
+  // Every other missing piece in `openLab` throws; this one used to fall back to
+  // "" and then index `seats[""]`, which is undefined and fails somewhere else
+  // entirely. Refuse where the fact is missing.
+  const coordinatorRecord = workers.find((worker) => worker.declared.flow === COORDINATOR_KIND);
+  if (coordinatorRecord === undefined) {
+    throw new Error(`the tree at ${root} hired no seat onto the "${COORDINATOR_KIND}" kind`);
+  }
+  const coordinatorId = coordinatorRecord.id;
 
   const hiredSeats: HiredSeat[] = builderIds.map((id) => ({
     id,
@@ -460,7 +464,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   await openChannels(channels, { client, userId: LAB_USER_ID, orgId: LAB_ORG_ID });
 
-  const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND)!;
+  const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND);
+  if (channelInstance === undefined) {
+    throw new Error(`the tree at ${root} produced no "${CHANNEL_KIND}" instance to act on`);
+  }
 
   /**
    * Run one action and hand back what it returned.
@@ -596,12 +603,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       );
       if (result.error !== undefined) throw new Error(`block: ${messageOf(result.error)}`);
       return result.output as { blocked: boolean; refusal?: string };
-    },
-
-    readBoard: async () => {
-      const result = await act(channelInstance, channel.id, "readBoard", { board: boardName });
-      if (result.error !== undefined) throw new Error(`readBoard: ${messageOf(result.error)}`);
-      return result.output as { board: string; boardId: string; tasks: unknown[] };
     },
 
     workLines: () => readWorkLines(options.outbox),
