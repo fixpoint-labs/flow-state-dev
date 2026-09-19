@@ -37,6 +37,14 @@ per **channel**, on a loop that already makes one network `createSession` per ch
 roughly doubles a boot-time loop and adds nothing per request. Accepted deliberately: the
 alternative that avoids it is the binder writing members from the tree, the staleness BR-10 forbids.
 
+**The door `openInventory` takes, and why it is not `openChannels`'.** The binder runs an action
+inside each channel's own session, so it needs an **action** door where `openChannels` needs a
+session one. Structurally typed, for the same reason `openChannels`' is: this package depends on no
+client package, and `@flow-state-dev/engine` is a **devDependency** here — `runAction` is reachable
+from a test and not from shipped code. The shipped action client is bound to one `flowKind` at
+creation while channels may be several, so the app passes a small adapter closing over it rather
+than a client instance. [SPEC → Turning the live inventory on](SPEC.md) shows the shape.
+
 **Why not write the row inside `openChannels`.** Its `client` is a session door by design,
 structurally typed so the package depends on no client package. It creates the session through the
 session route, where **no block runs** — no flow context to read state or reach a resource from.
@@ -152,7 +160,7 @@ readDeclaredRoster(root):
                (skill errors stay per-seat, not per-level)          BR-3
     return { workers, teams, documents, channels, problems }
 
-openInventory({ seats, channels }, { client, userId, orgId }):
+openInventory({ seats, channels }, { run, userId, orgId }):
     refuse if no orgId                                              BR-11
     for each SEAT, in id order:
         upsert its row from the roster — id and kind                BR-8

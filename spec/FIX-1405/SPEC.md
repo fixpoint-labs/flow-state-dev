@@ -43,7 +43,22 @@ Left of the fence is the tree and what it says. Right of it is what is actually 
   const instances = channelInstances(channels, { kinds });
 + const instances = channelInstances(channels, { kinds, inventory: true });
   await openChannels(channels, { client, userId, orgId });
-+ await openInventory({ seats, channels }, { client, userId, orgId });
++ await openInventory({ seats, channels }, { run, userId, orgId });
+```
+
+`openChannels` keeps the session door it already takes. **`openInventory` needs a
+different one**, and this is the one place an app notices the two-writer split:
+a channel's row is written by *the channel*, in its own session, so the binder
+has to run an action there — and the session route `openChannels` uses runs no
+block. The app supplies that door. It is app boot code, not framework API, and
+it is a one-liner over the shipped client because the action client is bound to
+one `flowKind` at creation while channels may be several:
+
+```ts
+// app boot — whatever your app already uses to run an action
+const run = (req) =>
+  createClient({ flowKind: req.flowKind, userId: req.userId })
+    .sendAction(req.action, req.input, { sessionId: req.sessionId, orgId: req.orgId });
 ```
 
 **Reading it, from any flow in that org:**
