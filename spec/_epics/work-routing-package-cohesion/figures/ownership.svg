@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 340" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: a matrix of six cross-cutting rules against the seven issues in the set. The board is the work plane is built by FIX-1385 and consumed by FIX-1430. One package format is built by FIX-1394 and consumed by FIX-1430. Inventory in two layers is built by FIX-1405 and consumed by FIX-1385, FIX-817 and FIX-1415. The wire and the payload is decided by FIX-1408 and consumed by FIX-1385, FIX-1394 and FIX-1430. Assignee is not a seat is decided by FIX-1385 and consumed by FIX-1394 and FIX-1430. The propagation pass inherited from the project as PR-5 is built by FIX-1385. Every rule has exactly one owner.">
+<svg viewBox="0 0 940 352" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: a matrix of six cross-cutting rules against the five issues in the set. The board is the work plane is built by FIX-1385 and consumed by FIX-1430. One package format is built by FIX-1394 and consumed by FIX-1430. Inventory in two layers is built by FIX-1405 and consumed by FIX-1385. The wire and the payload is decided by FIX-1408 and consumed by FIX-1385, FIX-1394 and FIX-1430. Assignee is not a seat is decided by FIX-1385 and consumed by FIX-1394 and FIX-1430. The propagation pass inherited from the project as PR-5 is built by FIX-1385. Every rule has exactly one owner. A footnote records that FIX-817 and FIX-1415, related but not in the set, also consume inventory in two layers.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -23,86 +23,73 @@
   <text class="t-lbl" x="16" y="20">WHO OWNS WHAT — EVERY RULE HAS EXACTLY ONE OWNER</text>
 
   <g id="columns">
-    <text class="t-col" x="298" y="50">FIX-1385</text>
-    <text class="t-col" x="390" y="50">FIX-1394</text>
-    <text class="t-col" x="482" y="50">FIX-1405</text>
-    <text class="t-col" x="574" y="50">FIX-1408</text>
-    <text class="t-col" x="670" y="50">FIX-817</text>
-    <text class="t-col" x="758" y="50">FIX-1415</text>
-    <text class="t-col" x="850" y="50">FIX-1430</text>
+    <text class="t-col" x="304" y="50">FIX-1385</text>
+    <text class="t-col" x="420" y="50">FIX-1394</text>
+    <text class="t-col" x="536" y="50">FIX-1405</text>
+    <text class="t-col" x="652" y="50">FIX-1408</text>
+    <text class="t-col" x="768" y="50">FIX-1430</text>
   </g>
 
   <g id="r1">
     <text class="t-row" x="16" y="78">ER-1 · the board is the work plane</text>
-    <rect class="own"  x="276" y="60" width="92" height="30"/><text class="t-own" x="304" y="79">BUILDS</text>
-    <rect class="cell" x="368" y="60" width="92" height="30"/>
-    <rect class="cell" x="460" y="60" width="92" height="30"/>
-    <rect class="cell" x="552" y="60" width="92" height="30"/>
-    <rect class="cell" x="644" y="60" width="92" height="30"/>
-    <rect class="cell" x="736" y="60" width="92" height="30"/>
-    <rect class="use"  x="828" y="60" width="92" height="30"/><text class="t-use" x="849" y="79">consumes</text>
+    <rect class="own"  x="276" y="60" width="116" height="30"/><text class="t-own" x="312" y="79">BUILDS</text>
+    <rect class="cell" x="392" y="60" width="116" height="30"/>
+    <rect class="cell" x="508" y="60" width="116" height="30"/>
+    <rect class="cell" x="624" y="60" width="116" height="30"/>
+    <rect class="use"  x="740" y="60" width="116" height="30"/><text class="t-use" x="772" y="79">consumes</text>
   </g>
 
   <g id="r2">
     <text class="t-row" x="16" y="112">ER-2 · one package format</text>
-    <rect class="cell" x="276" y="94" width="92" height="30"/>
-    <rect class="own"  x="368" y="94" width="92" height="30"/><text class="t-own" x="396" y="113">BUILDS</text>
-    <rect class="cell" x="460" y="94" width="92" height="30"/>
-    <rect class="cell" x="552" y="94" width="92" height="30"/>
-    <rect class="cell" x="644" y="94" width="92" height="30"/>
-    <rect class="cell" x="736" y="94" width="92" height="30"/>
-    <rect class="use"  x="828" y="94" width="92" height="30"/><text class="t-use" x="849" y="113">consumes</text>
+    <rect class="cell" x="276" y="94" width="116" height="30"/>
+    <rect class="own"  x="392" y="94" width="116" height="30"/><text class="t-own" x="428" y="113">BUILDS</text>
+    <rect class="cell" x="508" y="94" width="116" height="30"/>
+    <rect class="cell" x="624" y="94" width="116" height="30"/>
+    <rect class="use"  x="740" y="94" width="116" height="30"/><text class="t-use" x="772" y="113">consumes</text>
   </g>
 
   <g id="r3">
     <text class="t-row" x="16" y="146">ER-3 · inventory in two layers</text>
-    <rect class="use"  x="276" y="128" width="92" height="30"/><text class="t-use" x="297" y="147">consumes</text>
-    <rect class="cell" x="368" y="128" width="92" height="30"/>
-    <rect class="own"  x="460" y="128" width="92" height="30"/><text class="t-own" x="488" y="147">BUILDS</text>
-    <rect class="cell" x="552" y="128" width="92" height="30"/>
-    <rect class="use"  x="644" y="128" width="92" height="30"/><text class="t-use" x="665" y="147">consumes</text>
-    <rect class="use"  x="736" y="128" width="92" height="30"/><text class="t-use" x="757" y="147">consumes</text>
-    <rect class="cell" x="828" y="128" width="92" height="30"/>
+    <rect class="use"  x="276" y="128" width="116" height="30"/><text class="t-use" x="308" y="147">consumes</text>
+    <rect class="cell" x="392" y="128" width="116" height="30"/>
+    <rect class="own"  x="508" y="128" width="116" height="30"/><text class="t-own" x="544" y="147">BUILDS</text>
+    <rect class="cell" x="624" y="128" width="116" height="30"/>
+    <rect class="cell" x="740" y="128" width="116" height="30"/>
   </g>
 
   <g id="r4">
     <text class="t-row" x="16" y="180">ER-4 · the wire and the payload</text>
-    <rect class="use"  x="276" y="162" width="92" height="30"/><text class="t-use" x="297" y="181">consumes</text>
-    <rect class="use"  x="368" y="162" width="92" height="30"/><text class="t-use" x="389" y="181">consumes</text>
-    <rect class="cell" x="460" y="162" width="92" height="30"/>
-    <rect class="own"  x="552" y="162" width="92" height="30"/><text class="t-own" x="576" y="181">DECIDES</text>
-    <rect class="cell" x="644" y="162" width="92" height="30"/>
-    <rect class="cell" x="736" y="162" width="92" height="30"/>
-    <rect class="use"  x="828" y="162" width="92" height="30"/><text class="t-use" x="849" y="181">consumes</text>
+    <rect class="use"  x="276" y="162" width="116" height="30"/><text class="t-use" x="308" y="181">consumes</text>
+    <rect class="use"  x="392" y="162" width="116" height="30"/><text class="t-use" x="424" y="181">consumes</text>
+    <rect class="cell" x="508" y="162" width="116" height="30"/>
+    <rect class="own"  x="624" y="162" width="116" height="30"/><text class="t-own" x="660" y="181">DECIDES</text>
+    <rect class="use"  x="740" y="162" width="116" height="30"/><text class="t-use" x="772" y="181">consumes</text>
   </g>
 
   <g id="r5">
     <text class="t-row" x="16" y="214">ER-5 · assignee is not a seat</text>
-    <rect class="own"  x="276" y="196" width="92" height="30"/><text class="t-own" x="300" y="215">DECIDES</text>
-    <rect class="use"  x="368" y="196" width="92" height="30"/><text class="t-use" x="389" y="215">consumes</text>
-    <rect class="cell" x="460" y="196" width="92" height="30"/>
-    <rect class="cell" x="552" y="196" width="92" height="30"/>
-    <rect class="cell" x="644" y="196" width="92" height="30"/>
-    <rect class="cell" x="736" y="196" width="92" height="30"/>
-    <rect class="use"  x="828" y="196" width="92" height="30"/><text class="t-use" x="849" y="215">consumes</text>
+    <rect class="own"  x="276" y="196" width="116" height="30"/><text class="t-own" x="312" y="215">DECIDES</text>
+    <rect class="use"  x="392" y="196" width="116" height="30"/><text class="t-use" x="424" y="215">consumes</text>
+    <rect class="cell" x="508" y="196" width="116" height="30"/>
+    <rect class="cell" x="624" y="196" width="116" height="30"/>
+    <rect class="use"  x="740" y="196" width="116" height="30"/><text class="t-use" x="772" y="215">consumes</text>
   </g>
 
   <g id="r6">
     <text class="t-row" x="16" y="248">ER-19 · the propagation pass</text>
-    <rect class="own"  x="276" y="230" width="92" height="30"/><text class="t-own" x="304" y="249">BUILDS</text>
-    <rect class="cell" x="368" y="230" width="92" height="30"/>
-    <rect class="cell" x="460" y="230" width="92" height="30"/>
-    <rect class="cell" x="552" y="230" width="92" height="30"/>
-    <rect class="cell" x="644" y="230" width="92" height="30"/>
-    <rect class="cell" x="736" y="230" width="92" height="30"/>
-    <rect class="cell" x="828" y="230" width="92" height="30"/>
+    <rect class="own"  x="276" y="230" width="116" height="30"/><text class="t-own" x="312" y="249">BUILDS</text>
+    <rect class="cell" x="392" y="230" width="116" height="30"/>
+    <rect class="cell" x="508" y="230" width="116" height="30"/>
+    <rect class="cell" x="624" y="230" width="116" height="30"/>
+    <rect class="cell" x="740" y="230" width="116" height="30"/>
   </g>
 
   <g id="legend">
-    <rect class="own" x="16" y="276" width="16" height="14"/>
-    <text class="t-use" x="40" y="288">the one owner — decides or builds it</text>
-    <rect class="use" x="276" y="276" width="16" height="14"/>
-    <text class="t-use" x="300" y="288">consumes it, and must not re-decide it</text>
-    <text class="t-use" x="16" y="312">FIX-1430 consumes four rows and owns none, which is what makes it the proof</text>
+    <rect class="own" x="16" y="278" width="16" height="14"/>
+    <text class="t-use" x="40" y="290">the one owner — decides or builds it</text>
+    <rect class="use" x="276" y="278" width="16" height="14"/>
+    <text class="t-use" x="300" y="290">consumes it, and must not re-decide it</text>
+    <text class="t-use" x="16" y="314">FIX-1430 consumes four rows and owns none of them — what makes it the proof. It owns ER-20, the done-condition.</text>
+    <text class="t-use" x="16" y="332">Related, not in the set: FIX-817 and FIX-1415 also consume ER-3 from outside, and may not re-decide it.</text>
   </g>
 </svg>

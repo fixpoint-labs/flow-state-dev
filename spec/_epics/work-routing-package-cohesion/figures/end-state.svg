@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 362" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box: the W4 first cut is a channel or org board that routes work to a seat run and assigns team seats — the exit gate, one hop — plus one package format with two attachment modes, a runtime inventory in two layers (a declared roster composed at read time and a live org resource ChannelFlow updates), and the shipped dispatch and session policy. Composed in by the app: custom kinds as flow factories, and defaultWorker triage. A phase-2 panel inside W4, off the exit gate but holding the wrap, holds the nested personal and request board cascade, channel-admin verbs, catalog manifests and the manager-queue lab's nested half. Below a fence, what is not built: no Agent, Channel, Team, MessageBoard, TeamFlow or SessionBoard L1 type, no Collab RC, no silent parent transcript, no nested or shadow session substrate as a work hierarchy, no merged board-assignee and seat registry, no team wildcards as first ship, no second WorkerRegistry or mega-loader, no assignable-channel routing, no BoardFlow as the only mint, no Graft rebuild.">
+     aria-label="What's in the box: the W4 first cut is a channel or org board that routes work to a seat run and assigns team seats — the exit gate, one hop — plus one package format with two attachment modes, a runtime inventory in two layers (a declared roster composed at read time and a live org resource ChannelFlow updates), and the shipped dispatch and session policy. Composed in by the app: custom kinds as flow factories, and defaultWorker triage. A phase-2 panel inside W4, off the exit gate and holding no wrap, holds just two items: the nested personal and request board cascade, and the manager-queue lab's nested half. Below a fence, what is not built: no Agent, Channel, Team, MessageBoard, TeamFlow or SessionBoard L1 type, no Collab RC, no silent parent transcript, no nested or shadow session substrate as a work hierarchy, no merged board-assignee and seat registry, no team wildcards as first ship, no second WorkerRegistry or mega-loader, no assignable-channel routing, no BoardFlow as the only mint, no Graft rebuild.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -61,11 +61,10 @@
 
   <g id="phase-two">
     <rect class="box" x="592" y="162" width="332" height="98" rx="5"/>
-    <text class="t-lbl" x="608" y="182">PHASE-2 — OFF THE GATE, HOLDS THE WRAP</text>
+    <text class="t-lbl" x="608" y="182">PHASE-2 — OFF THE GATE, HOLDS NO WRAP</text>
     <rect class="later" x="608" y="192" width="300" height="56" rx="4"/>
-    <text class="t-s" x="620" y="208">nested personal / request boards</text>
-    <text class="t-s" x="620" y="223">channel-admin verbs &#183; catalog manifests</text>
-    <text class="t-s" x="620" y="238">the manager-queue lab's nested half</text>
+    <text class="t-s" x="620" y="215">nested personal / request boards</text>
+    <text class="t-s" x="620" y="232">the manager-queue lab's nested half</text>
   </g>
 
   <g id="not-built">

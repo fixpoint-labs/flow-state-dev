@@ -2,10 +2,11 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
-The calls above any single issue: what was chosen, what lost, what each locks in. All five are
+The calls above any single issue: what was chosen, what lost, what each locks in. D1 to D5 are
 **Architect locks carried into this document**, not calls taken here — FIX-1407's *FSD Architect —
 EM guidance* section and each child's own fences are the source, and its **Still open** list stays
-open except where the Architect has since closed an item himself ([D5](#d5)).
+open except where the Architect has since closed an item himself ([D5](#d5)). [D6](#d6) is the one
+call taken here rather than carried: the owner's, at the objective gate.
 
 ## The tree
 
@@ -16,6 +17,7 @@ flowchart TD
   E -->|"kills one noun for two registries"| D3["D3 · workers do, channels hold"]
   E -->|"kills the ambient transcript dump"| D4["D4 · the wire and the payload"]
   E -->|"kills a second index, and the fork between the layers"| D5["D5 · inventory is two layers"]
+  E -->|"kills an epic that outlives its own gate"| D6["D6 · the set is five"]
 ```
 
 Each edge names what the decision killed. The alternative that lost is in the card.
@@ -27,10 +29,11 @@ Each edge names what the decision killed. The alternative that lost is in the ca
 |---|---|
 | **Instead of** | Making the full nested cascade — channel/org board → personal board → request board → seat — the exit gate |
 | **Because** | The routing claim needs one hop to be true or false. A cascade proves the same thing three times and cannot be finished on a schedule, which is how an epic with a behavioural gate never closes |
-| **Locks in** | Nested personal / request decomposition is **phase-2 inside W4**, promoted by a POC that proves need. Three children (FIX-817, FIX-1415, FIX-1430's nested half) sit off the gate. Conversation, DM and transcript stay off the board — they belong to the inventory and ChannelFlow |
+| **Locks in** | Nested personal / request decomposition is **phase-2 inside W4**, promoted by a POC that proves need. What sits off the gate is FIX-1430's nested half, plus two issues that are no longer children at all ([D6](#d6)). Conversation, DM and transcript stay off the board — they belong to the inventory and ChannelFlow |
 
-Off the gate is not free: a phase-2 child that is still parented holds the epic's **wrap** open
-after the gate is met. That is [Open](#open), not a qualification on this card.
+Off the gate was not free while FIX-817 and FIX-1415 were parented: a phase-2 child that is still
+a child holds the epic's **wrap** open after the gate is met. [D6](#d6) is what closed that,
+and it is why this card can be read on its own now.
 
 <a name="d2"></a>
 ## D2 · W4 *ship* tickets are soft-after W3; W4 is not a child of W3
@@ -74,16 +77,34 @@ invent-kills its return. No child reads `parentSessionId` as a session tree.
 | **Locks in** | **Layer 1 — declared roster, composed at read time.** The duplicated private `LabRoster` in `goals/devforce-lab/lab/host.mts` and `goals/pentest-lab/lab/host.mts` becomes one package-level export over the three existing readers (`readWorkforce`, `readResourcesDirectory`, `readChannelsDirectory`) — derived per read, no state, registers nothing. Both lab copies deleted. FIX-1405, or a thin sibling, owns it. **Layer 2 — runtime inventory** (Jake's lock, 2026-09-16): ChannelFlow updates an org-scoped resource as seats and channels open. It stays FIX-1405's **primary** runtime shape for DM find-or-create, membership and fan-out, and layer 1 does **not** replace it. `team.*` wildcards call layer 2 later, not at first ship |
 
 **Compose is not a registry.** Layer 1 is a function over what the readers already return; the
-invent-kill on a second index of truth ([ER-12](BUSINESS-RULES.md)) is unchanged by it.
+invent-kill on a second index of truth ([ER-12](BUSINESS-RULES.md)) is unchanged by it. Layer 1's
+**public export on `@flow-state-dev/workforce` is approved** — the owner's objective gate,
+2026-09-19. FIX-1405 implementation now waits only on its own spec.
+
+<a name="d6"></a>
+## D6 · The set is five children; two related issues are re-homed rather than parented
+
+| | |
+|---|---|
+| **Instead of** | Keeping all seven parented — an epic that meets its own exit gate and then stays open, indefinitely, on two children it does not need |
+| **Because** | **The exit gate and the wrap are different moments.** The wrap term requires every child to be Linear-terminal, and a Backlog or Todo phase-2 child is not. An epic that cannot close after proving what it set out to prove has the wrong boundary — and both re-homed issues fence themselves off a ship by their own Architect sections anyway |
+| **Locks in** | Five children: FIX-1394, FIX-1405, FIX-1385, FIX-1408 (done), and **FIX-1430 adopted as the proof**, which gives [ER-20](BUSINESS-RULES.md) its owner. FIX-817 and FIX-1415 are **related-not-child**, keeping their dependency on FIX-1405. Re-homing does not release them from this set's rules where they touch it: FIX-817 still waits for FIX-1405's approved spec ([ER-23](BUSINESS-RULES.md)), and neither may re-decide [ER-3](BUSINESS-RULES.md) |
+
+**Re-homed is not descoped.** Both issues stay filed, keep their dependency edges, and are drawn
+outside the set in [the graph](SPEC.md#how-the-issues-flow-into-each-other). What changed is which
+epic's wrap they hold: none.
 
 <a name="who-owns-what"></a>
 ## Who owns what
 
-![Who owns what: a matrix of six cross-cutting rules against the seven issues in the set. The board is the work plane is built by FIX-1385 and consumed by FIX-1430. One package format is built by FIX-1394 and consumed by FIX-1430. Inventory in two layers is built by FIX-1405 and consumed by FIX-1385, FIX-817 and FIX-1415. The wire and the payload is decided by FIX-1408 and consumed by FIX-1385, FIX-1394 and FIX-1430. Assignee is not a seat is decided by FIX-1385 and consumed by FIX-1394 and FIX-1430. The propagation pass inherited from the project as PR-5 is built by FIX-1385. Every rule has exactly one owner.](figures/ownership.svg)
+![Who owns what: a matrix of six cross-cutting rules against the five issues in the set. The board is the work plane is built by FIX-1385 and consumed by FIX-1430. One package format is built by FIX-1394 and consumed by FIX-1430. Inventory in two layers is built by FIX-1405 and consumed by FIX-1385. The wire and the payload is decided by FIX-1408 and consumed by FIX-1385, FIX-1394 and FIX-1430. Assignee is not a seat is decided by FIX-1385 and consumed by FIX-1394 and FIX-1430. The propagation pass inherited from the project as PR-5 is built by FIX-1385. Every rule has exactly one owner. A footnote records that FIX-817 and FIX-1415, related but not in the set, also consume inventory in two layers.](figures/ownership.svg)
 
 Every rule has exactly one owner. Read a row to see where a decision is made, where it is built,
 and where it is only consumed; a *consumes* cell is a place a child must not re-decide. FIX-1430
-consumes four rows and owns none, which is what makes it a proof rather than a surface.
+consumes four rows and owns none of them, which is what makes it a proof rather than a surface —
+what it does own is [ER-20](BUSINESS-RULES.md), the epic's done-condition. The matrix covers the
+five issues in the set; [FIX-817 and FIX-1415](SPEC.md#related-not-children) consume ER-3 from
+outside it and may not re-decide it either ([D6](#d6)).
 
 <a name="decided-in-review"></a>
 ## Decided in review, recorded so no child reopens them
@@ -107,44 +128,75 @@ consumes four rows and owns none, which is what makes it a proof rather than a s
   / busy-copy, hire-or-dispatch-with-parent naming, which opt-in history packs are v1, and how a
   sub-agent's background work surfaces on a board row: **FIX-1394's POC owns the evidence, this
   epic owns the decision**. FIX-1408 is not reopened, and no child decides one locally
-  ([ER-15](BUSINESS-RULES.md)).
+  ([ER-15](BUSINESS-RULES.md)). — **Narrowed to one wall on 2026-09-19**; see the ER-15 ruling
+  below, which is what now holds.
 - **FIX-1385 owns ER-19**, the project's PR-5 propagation pass — it mints the largest new Layer 2
   vocabulary surface in the set.
+
+**Objective gate · 2026-09-19**, the owner, against the three-item ask on
+[#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905). Ratified as recommended:
+
+- **The exit gate stands as one hop** — channel/org board → seat runs, assign team seats. The
+  nested cascade is phase-2 inside W4 ([D1](#d1)).
+- **The set is five, and FIX-1430 is the proof** ([D6](#d6)). FIX-817 and FIX-1415 are
+  related-not-child with their FIX-1405 dependency preserved. **[ER-20](BUSINESS-RULES.md) now has
+  an owner**; it is no longer the set's ownerless rule.
+- **The compose helper's public export on `@flow-state-dev/workforce` is approved**
+  ([D5](#d5), [ER-3](BUSINESS-RULES.md)). It was the one item D5 left on this gate. FIX-1405
+  implementation now waits on its own spec, not on this.
+- **The W3 ship fence stands as written** ([D2](#d2), [ER-14](BUSINESS-RULES.md)): it lifts when
+  every W3 child **carrying an implementation** is merged to main. Children completed by decision,
+  duplicated or cancelled do not hold it.
+
+**ER-15 ruling · 2026-09-19**, the EM, on the FIX-1394 worker's escalation
+([comment 5738870528](https://github.com/fixpoint-labs/flow-state-dev/pull/1905#issuecomment-5738870528)).
+The worker raised it up rather than deciding locally, which is ER-15 working.
+
+- **FIX-1394's POC keeps exactly one of FIX-1408's walls: *which opt-in history packs are v1*.** A
+  history pack **is** a library package with opt-in attachment, so the package matrix already probes
+  it and the evidence costs nothing extra.
+- **The other four go back to the epic** — reuse-vs-create session policy, auto-scale / busy-copy,
+  hire-or-dispatch-with-parent naming, and how a sub-agent's background work surfaces on a board
+  row. They are session policy with **no package content in them**. Loading them onto a
+  package-format POC is scope creep that leaves FIX-1394's probe set unfixable — which would
+  make its spec unapprovable for the wrong reason.
+- They are **parked visibly** in [Open](#open), not dropped. An unowned wall nobody can see is worse
+  than one parked honestly.
 
 ## What the end-state POC showed
 
 **None built.** The division into issues came from the Architect's ownership carve rather than a
-sketch, and four of the seven children are themselves POC-first. If the gate wants the division
-tested first, the question one would answer is whether the package format and the board's assign
-surface are really two issues.
+sketch, and three of the five children are themselves POC-first. The gate approved the division
+without one. The question a POC would still answer, if the first-cut specs make it worth asking, is
+whether the package format and the board's assign surface are really two issues.
 
 <a name="open"></a>
 ## Open
 
-**Seven children, or five?** *(Decides: the owner. Blocks: nothing today — it decides when the epic
-can wrap.)*
+**The set question is closed** — seven children or five was this document's one open ask, and the
+owner closed it at the objective gate on 2026-09-19 as [D6](#d6). The compose helper's public
+export closed with it ([D5](#d5)). What is open is the four walls below.
 
-- **The fork.** Keep all seven parented — or cut to five (FIX-1394, FIX-1405, FIX-1385, FIX-1408
-  done, FIX-1430 as the proof) and re-home FIX-817 and FIX-1415 as related-not-child, dependency
-  links preserved?
-- **In plain terms.** The epic promises one behaviour: work filed for a team reaches a seat that
-  runs it. Three issues build it, one demonstrates it, one is already done. The other two — a
-  catalog an agent reads to plan, and letting a seat create and invite to channels — are real work
-  in the same area that the promise does not need.
-- **The trade-off.** Not "phase-2 costs nothing", which is what an earlier draft of this document
-  implied and what one reviewer argued from. **The exit gate and the wrap are different moments**
-  ([the spec](SPEC.md#the-set--as-of-2026-09-18) has the mechanism). Keeping seven means W4 proves
-  what it set out to prove and then stays open, indefinitely, on two children it does not need.
-  Cutting to five means W4 wraps when it hits its gate.
-- **My recommendation: five.** An epic that cannot close after meeting its own exit gate has the
-  wrong boundary, and both children fence themselves off a ship by their own Architect sections
-  anyway.
-- **What would change my mind.** The objection to splitting is that FIX-1405 would then have two
-  dependent epics. That is answerable: FIX-817 and FIX-1415 are phase-2 *after* FIX-1405 lands, so
-  the second dependent consumes shipped code, not a concurrent epic. What would actually change my
-  mind is wanting one epic to hold the whole channel/board/inventory arc as a tracking unit, and
-  being willing to pay for it with a W4 that stays open past its gate.
-- **If wrong.** Cutting when you should have kept costs two re-parented issues and a dependency
-  link to redraw — a tracker edit. Keeping when you should have cut costs the epic's finish: it
-  sits open for as long as two phase-2 children take, and every wrap check reports it as live work
-  when it is not.
+### Four of FIX-1408's walls, returned to the epic
+
+*(Decides: the epic, as EM calls, on evidence. Blocks: nothing today. Bites: the first child that
+builds over the wire — which is FIX-1385.)*
+
+| Wall | What it decides | What would settle it |
+|---|---|---|
+| **Reuse-vs-create session policy** | Whether assigning a seat that is already running reuses its session or mints a second | FIX-1385's first real assign, where the choice becomes visible. Also on the Architect's Still-open list ([ER-13](BUSINESS-RULES.md)) |
+| **Auto-scale / busy-copy** | Whether a busy seat gets a second copy under load, or work queues on the board | The proof (FIX-1430) running a queue deep enough to make it matter |
+| **Hire-or-dispatch-with-parent naming** | What the call that mints a linked child is *called*, given [D4](#d4) already fixed what it does | FIX-1385's board → seat call site, which is the first place a name is read by someone who did not write it |
+| **How a sub-agent's background work surfaces on a board row** | Whether same-session background work is visible on the row at all, and as what | FIX-1385, which owns the row ([ER-1](BUSINESS-RULES.md)), with [ER-11](BUSINESS-RULES.md) binding: a view, never a new status |
+
+**Why they are parked rather than asked.** None of them is a business call — they are engineering
+choices the objective already constrains, and three of the four are answered by building FIX-1385
+rather than by deciding in advance. **What being wrong costs:** if they are still open when
+FIX-1385 reaches its assign surface, that child either stalls on an epic question or decides one
+locally, which is exactly what [ER-15](BUSINESS-RULES.md) forbids. Settle them on FIX-1385's spec
+review at the latest.
+
+What stays open is *not* a decision this epic owes: the Architect's **Still open** list
+([ER-13](BUSINESS-RULES.md)) — exact package schema, reuse-vs-create, nested cascade timing, how
+many POCs before a ship cut. Those close with the owner, on the evidence FIX-1394's POC matrix
+produces, and no child closes one locally ([ER-15](BUSINESS-RULES.md)).

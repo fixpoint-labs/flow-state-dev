@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
-Epic · 7 issues · Workforce: Layer 2 Abstraction · Goal 1 — Workforce multi-seat real usage /
+Epic · 5 issues · Workforce: Layer 2 Abstraction · Goal 1 — Workforce multi-seat real usage /
 architecture cohesion
 
 ## Four teams, before and after
@@ -22,66 +22,81 @@ its own — the lead measure moves when a child ships a goal check.
 
 ## What's in the box
 
-![What's in the box: the W4 first cut is a channel or org board that routes work to a seat run and assigns team seats — the exit gate, one hop — plus one package format with two attachment modes, a runtime inventory in two layers (a declared roster composed at read time and a live org resource ChannelFlow updates), and the shipped dispatch and session policy. Composed in by the app: custom kinds as flow factories, and defaultWorker triage. A phase-2 panel inside W4, off the exit gate but holding the wrap, holds the nested personal and request board cascade, channel-admin verbs, catalog manifests and the manager-queue lab's nested half. Below a fence, what is not built: no Agent, Channel, Team, MessageBoard, TeamFlow or SessionBoard L1 type, no Collab RC, no silent parent transcript, no nested or shadow session substrate as a work hierarchy, no merged board-assignee and seat registry, no team wildcards as first ship, no second WorkerRegistry or mega-loader, no assignable-channel routing, no BoardFlow as the only mint, no Graft rebuild.](figures/end-state.svg)
+![What's in the box: the W4 first cut is a channel or org board that routes work to a seat run and assigns team seats — the exit gate, one hop — plus one package format with two attachment modes, a runtime inventory in two layers (a declared roster composed at read time and a live org resource ChannelFlow updates), and the shipped dispatch and session policy. Composed in by the app: custom kinds as flow factories, and defaultWorker triage. A phase-2 panel inside W4, off the exit gate and holding no wrap, holds just two items: the nested personal and request board cascade, and the manager-queue lab's nested half. Below a fence, what is not built: no Agent, Channel, Team, MessageBoard, TeamFlow or SessionBoard L1 type, no Collab RC, no silent parent transcript, no nested or shadow session substrate as a work hierarchy, no merged board-assignee and seat registry, no team wildcards as first ship, no second WorkerRegistry or mega-loader, no assignable-channel routing, no BoardFlow as the only mint, no Graft rebuild.](figures/end-state.svg)
 
 The **exit gate is the top row and only the top row** ([D1](DECISIONS.md#d1)). The strip under it
 is phase-2 *inside* W4 — named so nobody reads it as refused, and fenced off the gate so the gate
-is reachable on a schedule. Off the gate is not free; see below. The bottom strip is what the set
-refuses to build, every item named out by the Architect rather than forgotten.
+is reachable on a schedule. Since the set cut to five ([D6](DECISIONS.md#d6)), nothing on that
+strip holds the epic's wrap. The bottom strip is what the set refuses to build, every item named
+out by the Architect rather than forgotten.
 
-## The set · as of 2026-09-18
+## The set · as of 2026-09-19
 
 The live table. Refreshed on the epic PR as issues move; the plan and the figures point here.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | FIX-1408 | Dispatch / session policy: sub-agent is same-session background, worker assign is a roster seat in a **linked** session, `parentSessionId` at mint, history by opt-in tools | The wire everything else routes over | **Done** · 2026-09-18 · no impl PR ([below](#a-note-on-fix-1408)) |
-| FIX-1394 | One package format, two attachment modes. POC-first | Half the epic's title. Two overlapping surfaces grow board and tool sugar twice until this settles | Not started · Backlog |
-| FIX-1405 | Inventory in two layers: a declared roster composed from the existing readers, and the live org resource ChannelFlow updates | Assigning a **team** seat needs to know which seats exist. Without it a board routes to a literal id and nothing else | Not started · Backlog |
-| FIX-1385 | A channel holding `0..N` TaskCollections; channel actions and `taskTools` as two doors on one surface. Also the PR-5 propagation pass ([ER-19](BUSINESS-RULES.md)) | **The exit gate's surface** — the board in "channel/org board → seat runs" | Not started · Todo |
-| FIX-817 | Catalog manifests + agent introspection: one discovery shape over seats, channels, resources, tools, skills | Planning *before* assign. Off the exit gate, but **holds the wrap** | Not started · Todo · `Open Question` |
-| FIX-1415 | Channel create / delete / invite as a capability, behind the seat's `tools:` fence | Off the exit gate by its own fence, but **holds the wrap** | Not started · Todo |
-| FIX-1430 | Manager-queue lab: a coordinator seat owns a channel board, assigns to linked seats, shows queue state as **views** over existing task status | The only child shaped like a **proof** of the exit gate | Not started · Todo |
+| FIX-1394 | One package format, two attachment modes. POC-first | Half the epic's title. Two overlapping surfaces grow board and tool sugar twice until this settles | **In spec** · 2026-09-19 · in flight |
+| FIX-1405 | Inventory in two layers: a declared roster composed from the existing readers, and the live org resource ChannelFlow updates | Assigning a **team** seat needs to know which seats exist. Without it a board routes to a literal id and nothing else | **In spec** · 2026-09-19 · in flight |
+| FIX-1385 | A channel holding `0..N` TaskCollections; channel actions and `taskTools` as two doors on one surface. Also the PR-5 propagation pass ([ER-19](BUSINESS-RULES.md)) | **The exit gate's surface** — the board in "channel/org board → seat runs" | **In spec** · 2026-09-19 · in flight |
+| FIX-1430 | Manager-queue lab: a coordinator seat owns a channel board, assigns to linked seats, shows queue state as **views** over existing task status | The **proof** of the exit gate — adopted at the objective gate, and the owner of [ER-20](BUSINESS-RULES.md) | Not started · follows the three first-cut specs |
 
-1 done · 0 in flight · 6 not started.
+1 done · 3 in flight · 1 not started.
 
-**Four, or seven?** The epic body names four — FIX-1408, FIX-1394, FIX-1405, FIX-1385. FIX-817,
-FIX-1415 and FIX-1430 were parented afterwards and the body does not mention them. That is what the
-objective gate has to settle, and it is not bookkeeping, because **the epic's exit gate and its
-wrap are different moments.** The wrap term in `.agents/workflows/epic-wake.js` requires every child
-to be Linear-terminal, merged or `DONE`, and `TERMINAL_LINEAR` matches only done / closed /
-cancelled / duplicate / dropped / won't-do. A Backlog or Todo child is none of those. So a phase-2
-child does not gate the exit gate — it holds the epic open past it, indefinitely. Both arms priced:
-[Open](DECISIONS.md#open).
+**Five, settled at the objective gate** (2026-09-19). The epic body named four — FIX-1408,
+FIX-1394, FIX-1405, FIX-1385 — and three more were parented afterwards. The gate kept those four
+and adopted FIX-1430 as the proof ([D6](DECISIONS.md#d6)). It was not bookkeeping, because **the
+epic's exit gate and its wrap are different moments.** The wrap term in
+`.agents/workflows/epic-wake.js` requires every child to be Linear-terminal, merged or `DONE`, and
+`TERMINAL_LINEAR` matches only done / closed / cancelled / duplicate / dropped / won't-do. A
+Backlog or Todo child is none of those — so a parented phase-2 child would not have gated the exit
+gate, it would have held the epic open past it, indefinitely. At five, W4 wraps when it meets its
+own gate.
+
+<a name="related-not-children"></a>
+**Related, not children.** [FIX-817](https://linear.app/fixpoint-labs/issue/FIX-817) (catalog
+manifests) and [FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415) (channel-admin verbs)
+are real work in the same area that this epic's promise does not need. Both **keep their dependency
+on FIX-1405**, and both still obey this set's rules where they touch it: FIX-817 does not start
+until FIX-1405's spec is **approved** ([ER-23](BUSINESS-RULES.md)), and neither may re-decide
+[ER-3](BUSINESS-RULES.md). They are drawn outside the set in the graph below.
 
 <a name="a-note-on-fix-1408"></a>
 **A note on FIX-1408.** Backlog → Done on 2026-09-18 with no implementation PR: what shipped is the
 **decision** ([D4](DECISIONS.md#d4), [ER-4](BUSINESS-RULES.md)). Its own open walls are not closed
-by that — FIX-1394's POC owns the evidence and this epic owns the decision
-([decided in review](DECISIONS.md#decided-in-review)).
+by that. **One** of them — which opt-in history packs are v1 — is evidenced by FIX-1394's POC; the
+other **four** came back to the epic on 2026-09-19 and are parked in [Open](DECISIONS.md#open)
+([ER-15](BUSINESS-RULES.md)).
 
 ## How the issues flow into each other
 
 ```mermaid
 flowchart LR
-  T377["FIX-1377 · TEAM.md · W3, unlanded"] -.->|"the team layer a package composes onto"| PK
-  T416["FIX-1416 · tools fence + blocks scan · W3, unlanded"] -.->|"what a seat may call"| PK
+  T377["FIX-1377 · TEAM.md · W3, landed"] -.->|"the team layer a package composes onto"| PK
+  T416["FIX-1416 · tools fence + blocks scan · W3, landed"] -.->|"what a seat may call"| PK
   DP["FIX-1408 · dispatch / session policy"] -->|"the wire: parentSessionId, opt-in history"| BD
   DP --> PK["FIX-1394 · package cohesion"]
   INV["FIX-1405 · runtime inventory"] -->|"which seats exist to assign to"| BD["FIX-1385 · channel boards"]
-  BD -->|"the exit gate's surface"| LAB["FIX-1430 · manager-queue lab"]
+  BD -->|"the exit gate's surface"| LAB["FIX-1430 · manager-queue lab · the proof"]
   PK -.->|"the ratified contract, not the ship"| LAB
-  INV -->|"reader contract closes first"| CAT["FIX-817 · catalog manifests · phase-2"]
-  INV -.->|"invite and find"| ADM["FIX-1415 · channel-admin · phase-2"]
+  subgraph REL ["related, not in the set — consume it, do not hold its wrap"]
+    CAT["FIX-817 · catalog manifests"]
+    ADM["FIX-1415 · channel-admin"]
+  end
+  INV -->|"approved reader contract first, ER-23"| CAT
+  INV -.->|"invite and find"| ADM
   T416 -.-> ADM
   classDef done stroke-width:2px
   class DP done
 ```
 
 A **solid** edge blocks: what it carries does not exist until it lands. A **dashed** edge does not,
-and its label says what makes starting safe anyway — an approved spec to write against (the two W3
-inputs, [ER-18](BUSINESS-RULES.md)), a ratified contract rather than a shipped surface (below), or
-a fence the child holds itself to (FIX-1415). A heavy border is done. Every node is filed.
+and its label says what makes starting safe anyway — **landed code** to write against (the two W3
+inputs, merged 2026-09-19, [ER-18](BUSINESS-RULES.md)), a ratified contract rather than a shipped
+surface (below), or a fence the child holds itself to (FIX-1415). A heavy border is done. Every node is filed. The two
+in the box are [related, not children](#related-not-children): the FIX-1405 edges they depend on
+are unchanged, and neither holds this epic's wrap.
 
 <a name="what-the-proof-consumes"></a>
 **The proof consumes package cohesion's contract, not its implementation.** FIX-1430's seats can
@@ -107,20 +122,24 @@ unreachable gate [D1](DECISIONS.md#d1) exists to prevent.
 - **`goals/devforce-lab/` ([FIX-1426](https://linear.app/fixpoint-labs/issue/FIX-1426))** — the
   coding seam only. It does not grow into FIX-1430's showcase.
 
-## Sign off
+## Signed off · 2026-09-19
 
-1. **[D1](DECISIONS.md#d1) · The exit gate is channel/org board → seat runs / assign team seats;
-   the nested cascade is phase-2.** If wrong: the epic finishes on a cut too thin to prove routing,
-   or never finishes because the gate kept moving.
-2. **[Open](DECISIONS.md#open) · Seven children, or five?** Keeping FIX-817 and FIX-1415 parented
-   means W4 reaches its exit gate and then stays open until they are done. Re-homing them as
-   related-not-child means W4 wraps at its gate. **Recommendation: five.** If wrong: either the
-   epic sits open for months after proving what it set out to prove, or two issues lose the epic
-   holding their shared dependency on FIX-1405.
-3. **[D2](DECISIONS.md#d2) · W4 *ship* PRs are soft-after W3; filing, specs and POCs run now.** The
-   fence lifts when **every W3 child that carries an implementation is merged to main**; children
-   completed by decision, duplicated or cancelled do not hold it. If wrong: either W4 ships onto a
-   floor that moves under it, or six children idle for a floor that was never going to block them.
+The owner ratified all three items of this section's ask at the objective gate, each with the
+recommendation it carried. What each one killed is in the card behind it.
 
-**Open: one** — the set. Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md). Sequencing and what each
-issue entails: [PLAN.md](PLAN.md).
+1. **[D1](DECISIONS.md#d1) · The exit gate is channel/org board → seat runs / assign team seats.**
+   The nested cascade is phase-2 inside W4.
+2. **[D6](DECISIONS.md#d6) · The set is five.** FIX-1430 is adopted as the proof — which gives
+   [ER-20](BUSINESS-RULES.md) its owner — and FIX-817 and FIX-1415 are re-homed as
+   [related-not-child](#related-not-children), dependency on FIX-1405 preserved.
+3. **[D2](DECISIONS.md#d2) · W4 *ship* PRs are soft-after W3**, as written: the fence lifts when
+   **every W3 child that carries an implementation is merged to main**; children completed by
+   decision, duplicated or cancelled do not hold it. Filing, specs and POCs run now.
+
+Also approved at the same gate: **the public export of the compose helper on
+`@flow-state-dev/workforce`** ([D5](DECISIONS.md#d5), [ER-3](BUSINESS-RULES.md)).
+
+**Open: four** — FIX-1408's returned session-policy walls, epic-owned and parked in
+[Open](DECISIONS.md#open). None of them blocks a start; they bite when FIX-1385 reaches its assign
+surface. Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md). Sequencing and what each issue entails:
+[PLAN.md](PLAN.md).
