@@ -20,7 +20,7 @@ It is a **lab**, the way `goals/pentest-lab/` is: a small tree of Markdown, a ho
 
 ## What changes
 
-![Today and after, side by side. Today a team's board is about forty lines of TypeScript declared twice, once on the coordinator flow and once on the recipient so the claim gate passes, with one assignee key, one row, one hand-off and no queue. After, one boards line in the channel's own file mints the ledger, a coordinator seat files four rows through the task tools its own file grants it, and rows route by assignee to three declared seats while a fourth waits behind a busy seat; four queue columns sit below as a read-time view over rows that already exist.](figures/what-changes.svg)
+![Today and after, side by side. Today a team's board is about forty lines of TypeScript declared twice, once on the coordinator flow and once on the recipient so the claim gate passes, with one assignee key, one row, one hand-off and no queue. After, one boards line in the channel's own file mints the ledger, a coordinator seat files four rows through the board capability its kind composes, and rows route by assignee to three declared seats while a fourth waits behind a busy seat; four queue columns sit below as a read-time view over rows that already exist.](figures/what-changes.svg)
 
 Left is what a team writes today, and it is code. Right is the same team written as files, with one more row in flight than there are seats to run it — the case the columns exist for.
 
@@ -34,16 +34,20 @@ Left is what a team writes today, and it is code. Right is the same team written
   ---
 ```
 
-**What the coordinator's own file grants it:**
+**What gives the coordinator the board — and it is not the coordinator's file:**
 
 ```diff
-  ---
-  description: Takes work in, decides who does it, says where it stands.
-+ tools: [addTask, assignTask, listTasks, completeTask]
-  ---
+  const work = channelBoard("eng.queue", "work")   // the ledger the channel holds
+
+  defineAgentWorkerFlow({
+    kind: "coordinator",
++   uses: [createTaskToolsCapability(() => work)],
+  })
 ```
 
-The seat names the tools; its flow points them at the channel's ledger. Registration makes a name resolvable, declaration grants its use — the fence that landed with FIX-1416, unwidened here.
+Composing the capability is the grant. The eight task tools arrive as capability **controls**, which core exempts from a block's `tools:` fence and mints per resolver — so no `tools:` line can name them back in or fence them out, and a coordinator whose file says `tools: []` still holds the board ([FIX-1385 BR-17](https://github.com/fixpoint-labs/flow-state-dev/pull/1917)). All eight or none; narrowing the set is capability selection, parked on the epic. The seat-tool fence FIX-1416 landed is unwidened here because nothing here asks it for anything (BR-3).
+
+So this team is declared in files down to the board's *existence* — one `boards:` line — but the coordinator's **grant** is still code, in its kind. That is the honest edge of "declared in Markdown", and the lab draws it rather than blurring it.
 
 ## How a row reaches a seat
 
@@ -69,7 +73,7 @@ One hop. The coordinator names no session, flow or seat instance — only an ass
 ## Sign off
 
 1. **[D1](DECISIONS.md#d1) · The lab ships no package code — the queue columns stay lab-local.** *If wrong:* a view surface is designed from one example, exported, then redesigned when a second consumer disagrees.
-2. **[D2](DECISIONS.md#d2) · The proof is a queue, not a hand-off: more rows than seats, the coordinator assigning through the tools it declared.** *If wrong:* we re-run FIX-1385's own check with an extra seat, call it the exit gate, and prove the half of ER-20 nobody doubted.
+2. **[D2](DECISIONS.md#d2) · The proof is a queue, not a hand-off: more rows than seats, the coordinator assigning through the model's door on the channel's board.** *If wrong:* we re-run FIX-1385's own check with an extra seat, call it the exit gate, and prove the half of ER-20 nobody doubted.
 3. **[D3](DECISIONS.md#d3) · What a busy seat does is shown, not chosen: the lab is wired to run at either drain width, and the comparison goes to the epic when it asks for it.** *If wrong:* a lab settles a policy the epic owns, in a folder nobody reads as a decision.
 
 **Open: one** — how much realism ER-20 closes on ([Q1](DECISIONS.md#q1)). Number 2 is the one to weigh: it is what separates this from a second copy of a check that already exists. Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).

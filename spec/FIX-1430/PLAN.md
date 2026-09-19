@@ -16,12 +16,12 @@ For the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RUL
 
 | ID | Role | Change | Rules |
 |---|---|---|---|
-| S1 | `goals/manager-queue-lab/lab/workforce/` · the tree | One team: a channel declaring one board, a coordinator seat naming the task tools in its own file, three worker seats | BR-1 BR-2 |
-| S2 | The kinds, under `flows/workers/` | The coordinator's installs the task tools against the channel's ledger; the worker's declares the same ledger and drains it, one assignee key per worker seat, no default worker. **Each drain narrows its own claim to its assignee** — see the guardrail below, which is the difference between BR-4 holding and the lab eating its own rows | BR-4 BR-5 BR-7 |
+| S1 | `goals/manager-queue-lab/lab/workforce/` · the tree | One team: a channel declaring one board, a coordinator seat, three worker seats. **No seat file names a task tool** — the board grant is not a file-level thing, and writing one in would be decoration a reader mistakes for the mechanism. Give the coordinator's file `tools: []` on purpose, so BR-2's second arm has something to grade | BR-1 BR-2 |
+| S2 | The kinds, under `flows/workers/` | **The coordinator's kind composes `createTaskToolsCapability` over the channel's ledger — this is the grant, and the only one** (BR-2); the worker's declares the same ledger and drains it, one assignee key per worker seat, no default worker. **Each drain narrows its own claim to its assignee** — see the guardrail below, which is the difference between BR-4 holding and the lab eating its own rows | BR-2 BR-4 BR-5 BR-7 |
 | S3 | `lab/host.mts` | Read the tree, build the kinds, hire, register, open the channel, hand back handles — through the package's own roster reader, **no third `LabRoster`** | BR-1 |
 | S4 | `lab/queue.mts` | A pure read: rows plus the hired seats to four columns and per-seat idle. Writes nothing | BR-10 BR-11 BR-12 |
-| S5 | `lab/refusal-trees/` | Two twins and their corrected pairs: a coordinator naming no task tools (**hires, then refuses at filing** — not a hire-time refusal, so do not file it under the refusal trees without saying so), a seat folder holding a block that declares the board (refused at hire) | BR-2 BR-3 |
-| S6 | The contract gate, model-free | The tree, both refusals, the columns, the enum, the diff check | BR-1–BR-3 BR-8–BR-14 |
+| S5 | `lab/refusal-trees/` | **One** tree and its corrected pair: a seat folder holding a block that declares the board, refused at hire. BR-2's twin does **not** live here — it refuses nowhere. It is a second *kind*, built beside the real one in S6, that composes no capability and therefore holds no tool at all | BR-3 |
+| S6 | The contract gate, model-free | The tree, BR-3's refusal, BR-2's three tool sets (the real kind, the same kind under `tools: []`, the composition-less twin), the columns, the enum, the diff check | BR-1–BR-3 BR-8–BR-14 |
 | S7 | The goal check, model-backed | The coordinator decides who gets what: four rows across three assignees, so one assignee holds two | BR-4–BR-7 |
 | S8 | The drain-width **switch** | One documented knob that runs the lab at either width with no edit to the tree and none to the checks. **The comparison itself is not on this issue's merge bar** ([D3](DECISIONS.md#d3)): what ships here is the wiring plus a stated way to run it, and the two-width evidence lands when the epic asks for it | BR-17 |
 | S9 | `lab/README.md` and the diff check | What the lab proves, what it does not, the check keeping it inside `goals/` **and out of `goals/devforce-lab/`** — the diff gate rejects that subtree too, because BR-15's "byte for byte" is not something a behavioural suite can prove | BR-14 BR-15 BR-16 |
@@ -33,7 +33,7 @@ flowchart TD
   S1["S1 · the tree"] --> S2["S2 · the two kinds"]
   S2 --> S3["S3 · the host"]
   S3 --> S4["S4 · the queue read"]
-  S3 --> S5["S5 · the refusal trees"]
+  S3 --> S5["S5 · the refusal tree"]
   S4 --> S6["S6 · the contract gate"]
   S5 --> S6
   S6 --> S7["S7 · the goal check"]
@@ -46,11 +46,20 @@ flowchart TD
 | ID | After | Passes when |
 |---|---|---|
 | V1 | S3 | BR-1. **Negative control:** rename one seat's kind to an unregistered one, watch the whole roster refuse, restore it |
-| V2 | S5 | BR-2 and BR-3, each against its corrected twin. **They fail at different moments, and the checks must not be written alike:** BR-3's tree is refused at hire and is asserted on the block **named**; BR-2's twin *hires cleanly* — omitting `tools:` leaves nothing to refuse — and is asserted on the refusal it gets **at filing**, naming the tool. Neither asserts on message text |
+| V2 | S5, S6 | **BR-3:** the tree is refused at hire, asserted on the block **named**, never on message text. **BR-2 is not a refusal check and must not be written as one** — it reads tool sets off two built kinds. Three arms: the real coordinator kind holds all eight; the same kind still holds all eight with the seat file's `tools: []` in place; a twin kind composing no capability holds none, and its ledger is untouched. Compare by tool **name**, since the instances are minted per resolver |
 | V3 | S4 | BR-10, BR-11, BR-12. BR-10 by comparing the ledger before and after a queue read — a view that wrote something fails here |
 | V4 | S6 | BR-13 on the enum itself; BR-14 as a check over this issue's diff, run rather than read; BR-8 and BR-9 through the channel |
 | VG | S7 | **Goal, real path:** four rows, three assignees, three worker seats. Every row lands where its assignee points (BR-4), each in a session parented to the coordinator's (BR-5); the fourth is not re-routed and not dropped, and runs once its seat frees (BR-6); a row naming nobody refuses loudly (BR-7). **Negative control, and the red state it actually produces:** re-point one assignee in the host's map at a different declared seat, leaving the tree alone. The row is then observed running on a seat whose own file claims a different assignee — implementation and oracle disagree — and BR-4 fails on that mismatch. The control moves only the thing under test, which is why it can fail |
 | V5 | S8 | The switch is exercised at both values and the lab boots at each — cheap, model-free, and the whole of what this issue owes. **Not on the merge bar:** the full two-width comparison, run and written out for [ER-15](https://github.com/fixpoint-labs/flow-state-dev/pull/1905) when the epic asks. Record what each run did to the waiting row *then* |
+
+## What turns each corrected check red
+
+Written out because a rule the exit gate is measured by has to be able to go red, and the two below could not before.
+
+| Check | The red state it produces |
+|---|---|
+| **BR-2** | The eight are wired as catalog tools instead of controls — pushed into a kind's `tools:` array, or registered in a catalog the seat file names. The `tools: []` arm then finds an empty tool set on the real coordinator and fails. It also fails the other way: if the twin kind composes nothing and still holds the eight, the grant is leaking from somewhere the lab does not control, and the lab is not filing through the door it says it is |
+| **BR-8** | The roster check starts running on a call that carries no `author` — the no-author arm refuses where it should land. Or the refusal arm stops refusing, or stops using the channel's own `author-not-a-member` reason. Both arms exist so the rule cannot be read as a membership gate: drop the second and BR-8 goes green against a path that checks nothing, which is exactly what it did before this correction |
 
 **Every held-out fact is read out of the tree at run time**, as both existing labs do: a token that decides a check lives in one convention file and in none of the lab's code, so a different valid tree still passes a correct implementation.
 
@@ -73,6 +82,7 @@ Everything else is yours, the column names included.
 | Every column is derived on read, and the queue module holds no state | BR-10, and [ER-11](https://github.com/fixpoint-labs/flow-state-dev/pull/1905). A cached column is a second copy of the board |
 | The assignee-to-seat map lives in the host, supplied by the caller, never read from the tree. **The expected association is held out separately, in the tree** — each worker seat's own file names the assignee it answers for | The map is the app's, and a supplied map is the only way VG's negative control can point an assignee at the wrong seat. But the check may not grade the map against itself: repointing it would move the oracle along with the implementation and the control would stay green. The tree is the oracle, the map is what is under test (BR-4) |
 | **Every drain passes an assignee `eligibility` predicate into `collection.claim`** — `eligibility: (t) => t.assignee === "<this seat's key>"`. Never a bare `claim`, and never a status arm in that predicate | This is the one place a seat-per-drain layout goes wrong, and it goes wrong loudly. `ClaimOptions.eligibility` **narrows the candidate set before the CAS flip** (`packages/orchestration/src/tasks/collection/types.ts`), and both backings compose it with `isClaimable` rather than replacing it. Omit it and the drain claims whatever is next — including a row addressed to another seat — and then `keyedRouter` misses, throws out of the router, and `.rescue()` routes to `recordError`, which writes `collection.fail` against that row (`blocks/worker-step.ts`). The row does not merely mis-route: it settles `errored`. Do not add `t.status === "pending"` to the predicate either — that silently opts this drain out of lapsed-lease recovery, which the substrate calls out by name |
+| **The eight tools reach the coordinator only by composing the capability** — never by pushing `buildTaskToolsList()` into a kind's `tools:` array, and never by registering them in a catalog a seat file names | That is the other door (DECISIONS -> *Decided, not asked*), and it is not the one FIX-1385 ships for models. Taking it would make ER-20 evidence for a wiring nothing else uses. BR-2's `tools: []` arm is the tripwire: route the eight through the fenced `tools` bucket and that arm goes red |
 | No epic wall is answered in a comment in this folder | [ER-15](https://github.com/fixpoint-labs/flow-state-dev/pull/1905). Evidence goes up to the epic PR; decisions come back down |
 | **The narrow shape is required while [Q1](DECISIONS.md#q1) is open, not preferred:** worker handlers are stubs doing small deterministic work (write a file the check reads back), the model appears at **one** surface only — the coordinator deciding who gets what — and waiting is driven by pentest-style poll and timeout fixtures rather than sleeps | VG is the epic's exit gate, and a gate that goes red for reasons unrelated to routing stops being one ([D2](DECISIONS.md#d2)). Writing this as a guardrail rather than a recommendation is what stops the gate drifting toward devforce economics (a harness per row, ×4) while the question is still with the owner. If Q1 comes back wide, widen it deliberately and price it then |
 
@@ -85,11 +95,12 @@ Everything else is yours, the column names included.
 ## Sketch · pseudocode, illustrative, react to the shape
 
 ```
-the tree:      one channel declaring one board; a coordinator seat whose own
-               file names the task tools; three worker seats
+the tree:      one channel declaring one board; a coordinator seat
+               (tools: [] in its own file, on purpose); three worker seats
 
 the host:      read the tree through the package's reader
-               build the coordinator kind:  task tools -> this channel's ledger
+               build the coordinator kind:  compose taskTools over this
+                                            channel's ledger -- the grant
                build the worker kind:       the same ledger, drained,
                                             one assignee key per worker seat
                hire, register, open the channel
@@ -110,6 +121,8 @@ the check:     coordinator files four rows across three assignees
                  once its seat frees -- its status while waiting is
                  recorded, not asserted (BR-6)
                a row naming nobody refuses at the drain
+               the coordinator holds all eight tools despite tools: []
+                 a twin kind composing nothing holds none of them
                each drain claims with eligibility narrowed to its own
                  assignee -- never a bare claim (see Guardrails)
 ```
@@ -122,6 +135,7 @@ the check:     coordinator files four rows across three assignees
 - **Check whether `readDeclaredRoster` has landed** (FIX-1405). If so, read the tree through it; if not, use the three readers directly, and still hand-roll nothing reusable.
 - **Check the four returned session-policy walls** on the epic before wiring the dispatcher. Two are visible at this queue depth: whether a seat already running has its session reused, and what a busy seat does. If either has been ruled, follow it; otherwise show it and report up.
 - **`goals/devforce-lab/` declares one ledger twice on purpose.** Interim, and not the shape to copy.
+- **Do not re-add a `tools:` grant for the board when the tree looks bare.** It reads like an omission and is not one — the task tools are capability controls, exempt from the fence and minted per resolver ([FIX-1385 BR-17](https://github.com/fixpoint-labs/flow-state-dev/pull/1917)). If you find yourself wanting one, you are about to take the catalog door; read BR-2 first.
 
 ## Notes from review
 

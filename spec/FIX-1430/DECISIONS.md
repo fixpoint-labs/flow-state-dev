@@ -29,7 +29,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | **Locks in** | The next consumer that wants columns derives them again, and this lab's shape is a suggestion rather than a contract. If the view turns out to be the product we pay a second design pass — on two examples instead of one, which is the cheaper mistake |
 
 <a name="d2"></a>
-## D2 · The proof is a queue, not a hand-off: more rows than seats, and the coordinator assigns through the tools it declared
+## D2 · The proof is a queue, not a hand-off: more rows than seats, and the coordinator assigns through the model's door
 
 | | |
 |---|---|
@@ -55,7 +55,8 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 - **No `defaultWorker`.** An unassigned row throws at the drain today. The lab shows that refusal rather than papering it, because "a row for nobody" is a case a queue meets.
 - **The coordinator does not claim the rows it settles.** `taskTools` leaves an unclaimed settle unguarded on purpose; the lab records that rather than working around it.
 - **Two checks over one host, differing by one block** — a model-free contract gate and a model-backed run. The devforce lab's shape, reused.
-- **The channel's membership fence is consumed, not re-implemented.** A non-member filing is refused by the path a post already meets.
+- **The channel's roster check on `author` is consumed, not re-implemented — and it is a label check, not a fence.** `author` is optional and stored `authorVerified: false`, so a filing that names no label is not checked at all, and `addTask` — the door the coordinator files through — carries no label to check ([FIX-1385 BR-10, BR-20](https://github.com/fixpoint-labs/flow-state-dev/pull/1917)). The lab grades the check where it exists (BR-8) and claims nothing about who may file. Members-only filing needs a per-caller identity the channel session does not have; that is parked on the epic, not borrowed here.
+- **The lab files through the capability door, not the catalog door.** There are two ways the eight tools can reach a model. The one FIX-1385 ships is composition: the kind composes `taskTools` over the channel's ledger, the tools arrive as controls, and no `tools:` line touches them ([BR-17](https://github.com/fixpoint-labs/flow-state-dev/pull/1917)). The other is an app registering `buildTaskToolsList()` output in its own catalog, where a seat's `tools:` *does* bite. The lab takes the first, because ER-20 is evidence for the door models actually get; proving the catalog door would grade a wiring FIX-1385 does not ship and leave the shipped one unexercised. BR-2 is written so drifting to the catalog door turns it red.
 
 ## Considered and dropped
 
@@ -91,3 +92,4 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 ## How it got here
 
 - **Draft** — framed as evidence rather than surface: owns one rule, builds no export, consumes four. The delta against FIX-1385's goal check was made explicit early, because repeating a sibling's check is the obvious way this issue fails quietly.
+- **Post-approval correction (two rules that could not go red).** Both were factual, both verified in the code before folding, and neither reopens an approved call. **BR-2** graded a `tools:` line that grants nothing: the task tools are capability controls, exempt from the fence and minted per resolver, so the twin that omitted the line would have filed just as happily (`task-tools-capability.ts:795-802`, `capability/types.ts:99-121`, `blocks/generator.ts:2760-2816`). The lab's draft carried the same sentence FIX-1385's draft carried — *registration makes a name resolvable, declaration grants its use* — which FIX-1385 had refuted in its own round 1. BR-2 now grades composition, and the door choice is recorded above. **BR-8** graded a membership gate the filing path does not have; it now grades the label check that does exist, on the action that has one, with the no-author arm beside it. D2's heading lost the words *the tools it declared* for the same reason FIX-1385's D3 did: the reasoning was wrong, the choice was not.
