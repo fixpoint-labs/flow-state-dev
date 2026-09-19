@@ -632,8 +632,10 @@ const REPAIR_ATTEMPTS = 3;
  *
  * - **A bound channel** is left exactly as it is. That is what keeps re-running
  *   over an unchanged roster a no-op — and, for the same reason, an edited
- *   `CHANNEL.md` does not reach a channel that is already open. Re-opening is
- *   not a migration. The one thing that is not silently left behind is an
+ *   `members:` or `instructions:` does not reach a channel that is already
+ *   open, since both are read from the state written here. Re-opening is not a
+ *   migration. `boards:` is not affected: the board list lives on the kind and
+ *   is re-derived on every bind, never on the session. The one thing that is not silently left behind is an
  *   `orgId` this run asked for that the open channel is not in: the same
  *   reasoning makes that unfixable here, so it refuses rather than reporting
  *   the channel opened.
