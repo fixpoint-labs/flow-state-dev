@@ -226,17 +226,21 @@ const capError = (err: TaskCapExceededError) => ({
  * @param task The task as it stands now, used only to route `failTask`. Absent
  *   (a task removed underneath us) is read as "no retry budget".
  */
-function statusChangingTools(task: Task | undefined): Array<{ name: string; target: TaskStatus }> {
+function statusChangingTools(
+  task: Task | undefined,
+  suffix = ""
+): Array<{ name: string; target: TaskStatus }> {
+  const named = (base: string): string => `${base}${suffix}`;
   return [
-    { name: "blockTask", target: "blocked" },
-    { name: "cancelTask", target: "cancelled" },
-    { name: "completeTask", target: "completed" },
+    { name: named("blockTask"), target: "blocked" },
+    { name: named("cancelTask"), target: "cancelled" },
+    { name: named("completeTask"), target: "completed" },
     // `failTask` routes on the retry budget at call time: budget left soft-fails
     // back to `pending`, otherwise it goes terminal `errored`. Asking the
     // collection's own predicate keeps this in step with `fail()` rather than
     // restating the rule here.
     {
-      name: "failTask",
+      name: named("failTask"),
       target: task !== undefined && shouldRetryOnFail(task) ? "pending" : "errored",
     },
   ];
@@ -313,7 +317,12 @@ const ASSIGNEE_CLAUSE = "Its assignee will not change.";
  * status permits `cancelled`), so the action list is never empty — terminal
  * sources take the other branch rather than rendering an empty list.
  */
-const illegalTransitionToolError = (err: IllegalTaskTransitionError, task: Task | undefined) => {
+const illegalTransitionToolError = (
+  err: IllegalTaskTransitionError,
+  task: Task | undefined,
+  /** Board qualifier, so the tools this names are the ones the caller holds. */
+  nameSuffixForGuidance = ""
+) => {
   const subject = `illegal_status_transition: task "${err.taskId}" is ${err.from}`;
 
   // Terminal sources name no target status. That is load-bearing for `failTask`,
@@ -329,7 +338,7 @@ const illegalTransitionToolError = (err: IllegalTaskTransitionError, task: Task 
     });
   }
 
-  const available = statusChangingTools(task)
+  const available = statusChangingTools(task, nameSuffixForGuidance)
     .filter((t) => isTransitionAllowed(err.from, t.target))
     .map((t) => t.name);
 
@@ -433,7 +442,22 @@ const claimGuard = (
 // specific board (own-state default or an injected shared board).
 // ---------------------------------------------------------------------------
 
-function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) {
+function buildTaskTools(
+  resolve: TaskCollectionResolver,
+  roster?: WorkerRoster,
+  nameSuffix?: string
+) {
+  /**
+   * The eight names, optionally board-qualified.
+   *
+   * A generator asserts its tool names are unique, and these eight are fixed
+   * strings, so composing two boards' capabilities into one block collides on
+   * every one of them. A suffix is what makes a second board addressable at
+   * all; without one the surface is single-board by construction.
+   */
+  const named = (base: string): string =>
+    nameSuffix === undefined ? base : `${base}_${nameSuffix}`;
+  const nameSuffixForGuidance = nameSuffix === undefined ? "" : `_${nameSuffix}`;
   /**
    * `options.assignee`, when given, is the assignee this mutation would write;
    * it is validated after the board and the task resolve, so the three tools all
@@ -505,7 +529,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
         // Keyed off `err.taskId`, not the closure's `taskId`: everything else in
         // the composer reads the error, and the two are only incidentally equal
         // (no mutator transitions a task other than the one it was handed).
-        return illegalTransitionToolError(err, collection.get(err.taskId));
+        return illegalTransitionToolError(err, collection.get(err.taskId), nameSuffixForGuidance);
       }
       throw err;
     }
@@ -519,7 +543,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
   }
 
   const addTask = handler({
-    name: "addTask",
+    name: named("addTask"),
     description:
       "Add a new task to your delegation board. Returns the new task id. " +
       "assignee optionally names one of your agents or tools; leave it unset to run the task " +
@@ -583,7 +607,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
   });
 
   const assignTask = handler({
-    name: "assignTask",
+    name: named("assignTask"),
     description:
       "Reassign an existing task to a different worker. A task that has already " +
       "finished cannot be reassigned — you get told so rather than a silent success.",
@@ -598,7 +622,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
   });
 
   const completeTask = handler({
-    name: "completeTask",
+    name: named("completeTask"),
     description: "Mark a task complete with its output.",
     inputSchema: z.object({ taskId: z.string(), output: z.unknown() }),
     outputSchema: okOrError,
@@ -610,7 +634,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
   });
 
   const failTask = handler({
-    name: "failTask",
+    name: named("failTask"),
     description: "Mark a task failed with an error message.",
     inputSchema: z.object({ taskId: z.string(), error: z.string() }),
     outputSchema: okOrError,
@@ -622,7 +646,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
   });
 
   const blockTask = handler({
-    name: "blockTask",
+    name: named("blockTask"),
     description: "Block a task pending an external condition.",
     inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
     outputSchema: okOrError,
@@ -634,7 +658,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
   });
 
   const cancelTask = handler({
-    name: "cancelTask",
+    name: named("cancelTask"),
     description:
       "Cancel a task (terminal). Use when the work is no longer needed. A task that " +
       "has already finished cannot be cancelled — you get told so rather than a " +
@@ -649,7 +673,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
   });
 
   const updateTask = handler({
-    name: "updateTask",
+    name: named("updateTask"),
     description:
       "Patch a task's mutable fields (priority, metadata, assignee, labels). All patch fields are optional.",
     inputSchema: z.object({
@@ -703,7 +727,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
   });
 
   const listTasks = handler({
-    name: "listTasks",
+    name: named("listTasks"),
     description:
       "List tasks on your delegation board, optionally filtered by status or assignee.",
     inputSchema: z.object({
@@ -764,8 +788,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
 export function buildTaskToolsList(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
   roster?: WorkerRoster,
+  nameSuffix?: string,
 ) {
-  return buildTaskTools(resolveCollection, roster);
+  return buildTaskTools(resolveCollection, roster, nameSuffix);
 }
 
 // ---------------------------------------------------------------------------

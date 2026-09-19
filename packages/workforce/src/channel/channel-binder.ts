@@ -35,16 +35,37 @@ import {
   REFUSED_SYSTEM_KEY_MESSAGE,
   type ChannelManifest
 } from "../manifest";
-import { CHANNEL_KIND, boundChannel, channelFlow, type ChannelSessionState } from "./channel-flow";
+import {
+  CHANNEL_KIND,
+  boundChannel,
+  channelFlow,
+  holdsBoards,
+  type ChannelSessionState
+} from "./channel-flow";
+import {
+  CHANNEL_BOARDS_KEY,
+  channelBoardId,
+  channelBoardNameProblem
+} from "./channel-board";
 
 /**
  * Every key a `CHANNEL.md` may declare. Closed, and checked by name.
  *
  * `flow` is consumed and stripped — it selects the kind and never reaches
- * state. The other three are the channel's own facts. Anything else refuses,
+ * state. The other four are the channel's own facts. Anything else refuses,
  * including `id`, which is the record's identity rather than a setting.
+ *
+ * `boards` is the fifth member and the newest: a list of plain local names,
+ * read exactly as `members` is. It never carries an id — the ledger's identity
+ * is minted from where the channel sits.
  */
-const DECLARABLE_KEYS = ["flow", "description", "members", INSTRUCTIONS_KEY] as const;
+const DECLARABLE_KEYS = [
+  "flow",
+  "description",
+  "members",
+  CHANNEL_BOARDS_KEY,
+  INSTRUCTIONS_KEY
+] as const;
 
 /**
  * A channel kind: a flow factory carrying the same identity contract the
@@ -254,6 +275,26 @@ function validate(
     return { problem: "declares a `description:` that is not text" };
   }
 
+  // Shape first, then each name. A `boards:` that is not a list is one problem
+  // with the file, not one problem per entry.
+  if (Object.hasOwn(declared, CHANNEL_BOARDS_KEY)) {
+    const boards = declared[CHANNEL_BOARDS_KEY];
+    if (!isListOfNames(boards)) {
+      return {
+        problem:
+          "declares a `boards:` that is not a list of plain names. A board entry is a local " +
+          "name, as a member is — the ledger's id is minted from this channel's id, so no file " +
+          "writes one."
+      };
+    }
+    for (const name of boards) {
+      const problem = channelBoardNameProblem(name);
+      if (problem !== undefined) {
+        return { problem: `declares board "${name}", and the board name ${problem}` };
+      }
+    }
+  }
+
   if (Object.hasOwn(declared, INSTRUCTIONS_KEY) && typeof declared[INSTRUCTIONS_KEY] !== "string") {
     return { problem: `declares an \`${INSTRUCTIONS_KEY}:\` that is not text` };
   }
@@ -284,7 +325,64 @@ function validate(
     };
   }
 
+  // Boards are held by a kind this framework built, and a record pairing them
+  // with any other kind is refused BY NAME rather than silently holding none.
+  // A kind a caller wrote is zero-arg by contract, so there is nowhere to hand
+  // it the ledger ids its records declared — and a board that quietly does not
+  // exist is worse than either a widened contract or this refusal.
+  if (boardNamesOf(declared).length > 0 && !holdsBoards(factory)) {
+    return {
+      problem:
+        `declares \`${CHANNEL_BOARDS_KEY}:\` and runs on channel kind "${selected.kind}", which ` +
+        `is not a kind \`defineChannelFlow\` built. Boards are the built-in channel kind's: a ` +
+        `custom kind is zero-arg, so there is no way to hand it the ledgers this roster minted. ` +
+        `Drop the \`flow:\` line to hold a board, or drop the \`${CHANNEL_BOARDS_KEY}:\` line to ` +
+        `keep the custom kind.`
+    };
+  }
+
   return { kind: selected.kind };
+}
+
+/**
+ * The board names one record declared, or none.
+ *
+ * Reads only a well-formed list — `validate` refuses a malformed one first, and
+ * this is also reached from {@link channelBoardIds}, where a caller may be
+ * holding a roster nobody validated. A shape this cannot read is *no boards*
+ * here, never a guess at what was meant.
+ */
+function boardNamesOf(declared: Record<string, unknown>): string[] {
+  const boards = declared[CHANNEL_BOARDS_KEY];
+  if (!isListOfNames(boards)) return [];
+  return boards.filter((name) => channelBoardNameProblem(name) === undefined);
+}
+
+/**
+ * Every ledger id a roster's channels mint, sorted and deduplicated.
+ *
+ * The one place a roster becomes a list of ids, so the binder and the
+ * hire-time unattended-board check read the same answer rather than each
+ * joining channel ids to board names themselves.
+ *
+ * **Reads only well-formed entries.** A `boards:` this cannot read, or a name
+ * that breaks the rules, counts as NO board here rather than as a guess at
+ * what was meant — `channelInstances` is what refuses those, and it may not
+ * have run yet. So on an unvalidated roster this returns the ids of the
+ * channels that would bind and silently omits the ones that would not. Call it
+ * on a roster you also pass to `channelInstances`, or the set is a subset.
+ *
+ * @param manifests The roster — the same records `channelInstances` registers.
+ * @returns The minted ids, `<channelId>.<boardName>`, in a stable order.
+ */
+export function channelBoardIds(manifests: readonly ChannelManifest[]): string[] {
+  const ids = new Set<string>();
+  for (const manifest of manifests) {
+    for (const name of boardNamesOf(manifest.declared)) {
+      ids.add(channelBoardId(manifest.id, name));
+    }
+  }
+  return [...ids].sort();
 }
 
 function isListOfNames(value: unknown): value is string[] {
@@ -323,6 +421,10 @@ export function channelInstances(
   const problems: string[] = [];
   const seen = new Set<string>();
   const selected = new Set<string>();
+  /** Ledger id → the channel that minted it. A collision names both. */
+  const minted = new Map<string, string>();
+  /** The minted ids each selected kind must be built holding. */
+  const boardsByKind = new Map<string, string[]>();
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
@@ -344,6 +446,35 @@ export function channelInstances(
       continue;
     }
     selected.add(result.kind);
+
+    // Minted here rather than in `validate`, because uniqueness is a fact
+    // about the ROSTER and not about one record. An id is a storage key: two
+    // channels minting one is two teams' work in a single ledger, which reads
+    // as rows appearing from nowhere rather than as a misconfiguration.
+    for (const name of boardNamesOf(manifest.declared)) {
+      const id = channelBoardId(manifest.id, name);
+      const owner = minted.get(id);
+      if (owner !== undefined) {
+        // The two arms are not equally reachable, and saying so beats leaving a
+        // reader to assume both fire. A channel id is unique across the roster
+        // (refused above) and a board name carries no dot, so two DIFFERENT
+        // channels cannot mint one id from any roster this package can build.
+        // The second arm covers a hand-built `ChannelManifest`, whose ids are
+        // caller-supplied and which this module cannot constrain — it is a
+        // guard on an input it does not own, not dead code.
+        refuse(
+          owner === manifest.id
+            ? `declares board "${name}" twice; a channel's board names are its ledger ids and ` +
+                `must be unique (minted "${id}")`
+            : `declares board "${name}", which mints ledger id "${id}" — already minted by ` +
+                `channel "${owner}". An id is a storage key, and a duplicate is two teams' work ` +
+                `in one ledger`
+        );
+        continue;
+      }
+      minted.set(id, manifest.id);
+      boardsByKind.set(result.kind, [...(boardsByKind.get(result.kind) ?? []), id]);
+    }
   }
 
   if (problems.length > 0) {
@@ -353,7 +484,16 @@ export function channelInstances(
     );
   }
 
-  return [...selected].sort().map((kind) => kinds[kind]!());
+  return [...selected].sort().map((kind) => {
+    const factory = kinds[kind]!;
+    const boards = boardsByKind.get(kind);
+    // A kind holding nothing is built exactly as it was before boards existed,
+    // and `validate` has already refused the third case — boards named on a
+    // kind that cannot hold them.
+    return boards === undefined || !holdsBoards(factory)
+      ? factory()
+      : factory.withBoards(boards)();
+  });
 }
 
 /**
@@ -492,8 +632,13 @@ const REPAIR_ATTEMPTS = 3;
  *
  * - **A bound channel** is left exactly as it is. That is what keeps re-running
  *   over an unchanged roster a no-op — and, for the same reason, an edited
- *   `CHANNEL.md` does not reach a channel that is already open. Re-opening is
- *   not a migration. The one thing that is not silently left behind is an
+ *   `members:`, charter or `description:` does not reach a channel that is
+ *   already open — {@link stateFor} writes the first two into session state at
+ *   create and `description` is a session field set there, and this branch
+ *   returns before any of them is looked at again. Re-opening is not a
+ *   migration. `boards:` is NOT one of them: the board list is built onto the
+ *   kind from the roster on every bind and never written to the session, so it
+ *   does reach a channel that is already open. The one thing that is not silently left behind is an
  *   `orgId` this run asked for that the open channel is not in: the same
  *   reasoning makes that unfixable here, so it refuses rather than reporting
  *   the channel opened.
@@ -522,6 +667,25 @@ export async function openChannels(
   manifests: readonly ChannelManifest[],
   options: OpenChannelsOptions
 ): Promise<void> {
+  // A board is org-scoped storage, so a channel that holds one and opens
+  // without an org has nowhere to put a row. Refused here rather than left to
+  // surface per request: every `fileTask` and `readBoard` on that channel would
+  // fail for the life of the process, and an app is better told at startup
+  // than one refusal at a time.
+  if (options.orgId === undefined) {
+    const holding = orderedById(manifests)
+      .filter((manifest) => boardNamesOf(manifest.declared).length > 0)
+      .map((manifest) => manifest.id);
+    if (holding.length > 0) {
+      throw new Error(
+        `channel(s) ${holding.map((id) => `"${id}"`).join(", ")} declare \`${CHANNEL_BOARDS_KEY}:\` ` +
+          `but \`openChannels\` was given no \`orgId\`. A board is org-scoped storage, so there ` +
+          `is nowhere to keep its rows. Pass an \`orgId\`, or drop the \`${CHANNEL_BOARDS_KEY}:\` ` +
+          `line from those channels.`
+      );
+    }
+  }
+
   for (const manifest of orderedById(manifests)) {
     const selected = kindOf(manifest.declared);
     if ("problem" in selected) {
