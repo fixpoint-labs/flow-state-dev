@@ -632,10 +632,13 @@ const REPAIR_ATTEMPTS = 3;
  *
  * - **A bound channel** is left exactly as it is. That is what keeps re-running
  *   over an unchanged roster a no-op — and, for the same reason, an edited
- *   `members:` or `instructions:` does not reach a channel that is already
- *   open, since both are read from the state written here. Re-opening is not a
- *   migration. `boards:` is not affected: the board list lives on the kind and
- *   is re-derived on every bind, never on the session. The one thing that is not silently left behind is an
+ *   `members:`, charter or `description:` does not reach a channel that is
+ *   already open — {@link stateFor} writes the first two into session state at
+ *   create and `description` is a session field set there, and this branch
+ *   returns before any of them is looked at again. Re-opening is not a
+ *   migration. `boards:` is NOT one of them: the board list is built onto the
+ *   kind from the roster on every bind and never written to the session, so it
+ *   does reach a channel that is already open. The one thing that is not silently left behind is an
  *   `orgId` this run asked for that the open channel is not in: the same
  *   reasoning makes that unfixable here, so it refuses rather than reporting
  *   the channel opened.

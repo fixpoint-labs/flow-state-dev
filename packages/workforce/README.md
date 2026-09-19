@@ -989,9 +989,13 @@ back to the built-in. The `kinds` map is the whole registration surface; there i
 No join or leave verb, no delete or retirement, and no summary pass over a long transcript.
 Membership is the declared list and nothing else writes it, so changing who is in a channel means
 editing the record and opening a fresh channel. Re-running `openChannels` over an open channel
-leaves its session alone, so an edited `members:` or `instructions:` does not reach it. Re-opening
-is not a migration. `boards:` is the exception, because the board list is re-derived from the files
-on every bind rather than stored on the channel.
+finds it bound and leaves its session alone, so the three settings written at create — `members:`,
+the charter (a body or `instructions:`) and `description:` — keep whatever they were opened with.
+`flow:` is settled at create too, since it picks the session's kind. Re-opening is not a migration.
+
+`boards:` is the one that does reach: the board list is built onto the kind from the roster on
+every bind and is never stored on the session, so adding a board to an open channel's file makes it
+usable the next time you run.
 It does repair a channel whose id was claimed before it was opened — a post that arrives first
 leaves an empty session there, and re-running binds it.
 
