@@ -8,7 +8,7 @@ which is each issue's own plan. IDs cross-reference [DECISIONS.md](DECISIONS.md)
 
 ## The path
 
-![The path: a ship fence band across the top naming FIX-1435 and FIX-1449 as the two W3 children still non-terminal on a relayed read, with no W4 ship PR merging until every implementation-carrying W3 child is on main, then two W3 input lanes for TEAM.md and the tools fence, both landed on main on September 19, then the five lanes of the set against time. FIX-1408 has a done bar behind the now line at September 19. The three first-cut lanes — runtime inventory, channel boards and package cohesion — carry spec bars that start at the now line, all three in flight in parallel from September 19. The manager-queue lab lane is empty and marked the proof, adopted, and it follows the first cut. Below a divider two related lanes, catalog manifests and channel-admin, are marked related, not in the set: they consume FIX-1405 and hold no wrap, and catalog manifests waits for FIX-1405's approved spec. The critical path is drawn in the gutter through the inventory, the boards and the lab.](figures/path.svg)
+![The path: a ship fence band across the top naming FIX-1435 and FIX-1449 as the two W3 children still non-terminal on a relayed read, with no W4 ship PR merging until every implementation-carrying W3 child is on main, then two W3 input lanes for TEAM.md and the tools fence, both landed on main on September 19, then the five lanes of the set against time. FIX-1408 has a done bar behind the now line at September 19. The three first-cut lanes — runtime inventory, channel boards and package cohesion — carry spec bars that start at the now line, all three in flight in parallel from September 19. The manager-queue lab lane is empty and marked the proof, adopted, and it starts after the board surface exists. Below a divider two related lanes, catalog manifests and channel-admin, are marked related, not in the set: they consume FIX-1405 and hold no wrap, and catalog manifests waits for FIX-1405's approved spec. The critical path is drawn in the gutter through the inventory, the boards and the lab.](figures/path.svg)
 
 Nine lanes: two W3 inputs, the **five** children, and — under the divider — the two
 [related issues](SPEC.md#related-not-children) that still consume FIX-1405. Four bars exist:
@@ -25,8 +25,8 @@ cohesion beside it the whole way ([the spec](SPEC.md#what-the-proof-consumes)).
 | **FIX-1408** dispatch policy | design → **closed as decided** | D4's two leans | Sub-agent vs seat-assign, `parentSessionId` at mint, opt-in history, the brief | Every other child | — |
 | **FIX-1405** runtime inventory | spec → POC → impl | The three existing readers · hire · `channelInstances` · open sessions (D5) | Two layers: a declared roster composed at read time (replacing both labs' private `LabRoster`), and the live org resource | FIX-1385 · FIX-817 · FIX-1415 · wildcards, later | Medium |
 | **FIX-1385** channel boards | spec → POC → impl | The ChannelFlow floor · the inventory (ER-3) · ER-5 | A channel holding `0..N` TaskCollections; two doors, one surface. Plus the PR-5 propagation pass (ER-19) | The proof · FIX-1430 | Large |
-| **FIX-1394** package cohesion | **POC matrix → ratify** → ship tickets | FIX-1377's team layer · FIX-1416's `tools:` fence — **both landed** at `d8e4c99`, and the code wins over either spec (ER-18) · D4 | One package format, two attachment modes. Its POC also carries the evidence for **one** of FIX-1408's walls — which opt-in history packs are v1 (ER-15) | The proof's contract at ratify; ship tickets after | Large |
-| **FIX-1430** manager-queue lab · *the proof* | spec → goal check | ER-1 · ER-2 as a contract · ER-4 · ER-5 — consumes four, owns none | A coordinator seat assigning over a channel board to linked seats, queue columns as views | The epic's wrap | Medium |
+| **FIX-1394** package cohesion | **POC matrix → ratify** → ship tickets | FIX-1377's team layer · FIX-1416's `tools:` fence — **both landed** at `d8e4c99`, and the code wins over either spec (ER-18) · D4 | One package format, two attachment modes. Its POC also carries the evidence for **one** of FIX-1408's walls — which opt-in history packs are v1 (ER-15) | Ship tickets, after the ratify (ER-8) — **not** the proof | Large |
+| **FIX-1430** manager-queue lab · *the proof* | spec → goal check | ER-1 · **ER-2 as a fence, not an input** · ER-4 · ER-5 — consumes four, owns none of them | A coordinator seat assigning over a channel board to linked seats, queue columns as views | The epic's wrap | Medium |
 
 **Size is a read, not an estimate.** Three of the five are exploration tickets whose own scope is
 the thing being explored — FIX-1394 most of all, whose ship tickets are not in this set yet.
@@ -53,9 +53,10 @@ the code is missing.
    The one edge that genuinely sequences.
 4. **FIX-1385's board surface lands** → the proof can run. Until then ER-20 has nothing behind it.
 5. **W3's last implementing child merges** → the ship fence lifts (ER-14).
-6. **FIX-1394's POC matrix is ratified** → ER-2 becomes a contract the proof can hold itself to, and
-   only then are ship tickets cut (ER-8). Those are new children, and will need the set table and
-   this path redrawn.
+6. **FIX-1394's POC matrix is ratified** → ship tickets are cut (ER-8). Those are new children,
+   and will need the set table and this path redrawn. It does **not** unblock the proof: ER-2
+   already fences what the lab may author, and the lab waits on nothing here ([the
+   spec](SPEC.md#what-the-proof-consumes)).
 
 ## Coordination seams to watch
 

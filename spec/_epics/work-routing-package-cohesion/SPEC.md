@@ -71,7 +71,7 @@ flowchart LR
   DP --> PK["FIX-1394 · package cohesion"]
   INV["FIX-1405 · runtime inventory"] -->|"which seats exist to assign to"| BD["FIX-1385 · channel boards"]
   BD -->|"the exit gate's surface"| LAB["FIX-1430 · manager-queue lab · the proof"]
-  PK -.->|"the ratified contract, not the ship"| LAB
+  PK -.->|"a fence on what the lab may author — not an input"| LAB
   subgraph REL ["related, not in the set — consume it, do not hold its wrap"]
     CAT["FIX-817 · catalog manifests"]
     ADM["FIX-1415 · channel-admin"]
@@ -83,18 +83,22 @@ flowchart LR
   class DP done
 ```
 
-A **solid** edge blocks; a **dashed** edge does not, and its label says what makes starting safe
-anyway — **landed code** to write against (the two W3 inputs, merged 2026-09-19,
-[ER-18](BUSINESS-RULES.md)), a ratified contract rather than a shipped surface (below), or a fence
-the child holds itself to. A heavy border is done. The two in the box are
+A **solid** edge blocks; a **dashed** edge does not, and its label says why — **landed code** to
+write against (the two W3 inputs, merged 2026-09-19, [ER-18](BUSINESS-RULES.md)), or a **fence** the
+child holds itself to rather than an input it waits on ([the proof](#what-the-proof-consumes)). A
+heavy border is done. The two in the box are
 [related, not children](#related-not-children).
 
 <a name="what-the-proof-consumes"></a>
-**The proof consumes package cohesion's contract, not its implementation.** FIX-1430's seats can
-carry instructions and tools on today's surfaces — both existing labs already do. What the proof may
-not do is invent a *third* shape the ratified format would contradict
-([ER-2](BUSINESS-RULES.md)). Binding it to a shipped package instead would hang the exit gate on
-ship tickets that do not exist yet — the unreachable gate [D1](DECISIONS.md#d1) exists to prevent.
+**The proof consumes no package work — not the implementation, and not the contract either.**
+FIX-1430's seats carry instructions, skills and tools on surfaces already on `main` at `d8e4c99`,
+and FIX-1394 changes none of them: its spec promises today's behaviour byte for byte. So the lab
+has nothing to write against and nothing to wait for — and because it authors no package shape at
+all, it is compatible with every answer FIX-1394 can reach, *including not collapsing*.
+[ER-2](BUSINESS-RULES.md) still binds it, as a **fence**: the lab may not invent a *third* shape a
+ratified format would contradict. Binding the proof to a shipped package — or to a ratify — would
+hang the exit gate on work it does not need, which is the unreachable gate [D1](DECISIONS.md#d1)
+exists to prevent.
 
 ## What stays as it is
 

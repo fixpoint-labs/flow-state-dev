@@ -103,9 +103,11 @@ which epic's wrap they hold: none.
 ![Who owns what: a matrix of six cross-cutting rules against the five issues in the set. The board is the work plane is built by FIX-1385 and consumed by FIX-1430. One package format is built by FIX-1394 and consumed by FIX-1430. Inventory in two layers is built by FIX-1405 and consumed by FIX-1385. The wire and the payload is decided by FIX-1408 and consumed by FIX-1385, FIX-1394 and FIX-1430. Assignee is not a seat is decided by FIX-1385 and consumed by FIX-1394 and FIX-1430. The propagation pass inherited from the project as PR-5 is built by FIX-1385. Every rule has exactly one owner. A footnote records that FIX-817 and FIX-1415, related but not in the set, also consume inventory in two layers.](figures/ownership.svg)
 
 A *consumes* cell is a place a child must not re-decide. FIX-1430 consumes four rows and owns none
-— what makes it a proof rather than a surface; what it owns is [ER-20](BUSINESS-RULES.md), the
-done-condition. [FIX-817 and FIX-1415](SPEC.md#related-not-children) consume ER-3 from outside the
-set, and may not re-decide it either.
+of them — what makes it a proof rather than a surface. What it does own is
+[ER-20](BUSINESS-RULES.md), the done-condition, which is not a matrix row. **FIX-1385 provides the
+surface ER-20 stands on and does not own it** — [ER-20](BUSINESS-RULES.md) says which is which.
+[FIX-817 and FIX-1415](SPEC.md#related-not-children) consume ER-3 from outside the set, and may not
+re-decide it either.
 
 <a name="decided-in-review"></a>
 ## Decided in review, recorded so no child reopens them
@@ -114,7 +116,7 @@ set, and may not re-decide it either.
 |---|---|---|
 | Inventory is **two layers**; the helper-vs-resource fork is dismissed | The declared tree and the live set answer different questions, and picking one produces the other badly. Checked against the code first: "one shared scan map" was intent, not an exported thing | [D5](#d5) · ER-3 |
 | The W3 ship fence has **one** release condition | Three documents stated it three ways — *merges*, *no open children*, *close* — which diverge the moment a child closes by decision | [D2](#d2) · ER-14 |
-| The proof consumes the package **contract**, not the implementation | Binding it to a shipped package hangs the exit gate on ship tickets that do not exist yet. ER-2 still binds the proof: no third package shape | [the spec](SPEC.md#what-the-proof-consumes) |
+| The proof consumes **no package work** — not the implementation, and (sharpened 2026-09-19) not the contract either | Binding it to a shipped package *or* to a ratify hangs the exit gate on work the lab does not need: its seats run on surfaces already on main at `d8e4c99`, which FIX-1394 does not change. ER-2 still binds it as a **fence** — no third package shape | [the spec](SPEC.md#what-the-proof-consumes) |
 | **FIX-1385 owns ER-19**, the project's PR-5 propagation pass | It mints the largest new Layer 2 vocabulary surface in the set | ER-19 |
 | **The objective gate**: the exit gate stands as one hop · **the set is five**, FIX-1430 the proof · the compose helper's public export approved · the ship fence as written | The owner, 2026-09-19, ratifying the three-item ask as recommended | [D1](#d1) · [D6](#d6) · [D5](#d5) · [D2](#d2) |
 | FIX-1394's POC keeps **one** of FIX-1408's walls — *which opt-in history packs are v1*; the other four return to the epic | A history pack **is** a library package with opt-in attachment, so the matrix already probes it. The other four are session policy with no package content, and loading them leaves the probe set unfixable | ER-15 · [Open](#open) |
@@ -123,6 +125,8 @@ set, and may not re-decide it either.
 Rows 1–4 are round 1 (2026-09-18, five reviewers on
 [#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905)); rows 5–7 are 2026-09-19, the
 last two raised up from a child rather than decided locally ([ER-15](BUSINESS-RULES.md) working).
+**Row 3 was sharpened on 2026-09-19** by FIX-1430's own spec, which answered the
+contract-vs-implementation question with *neither*.
 
 **Two of these stay falsifiable.** ER-3's reading flips on evidence that a channel's `members` is
 *not* current on the refusal path — a factual question, and FIX-1385 rewrites rather than adjusts if

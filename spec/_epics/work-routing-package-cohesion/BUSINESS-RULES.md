@@ -57,7 +57,7 @@ re-derived.**
 
 | # | The epic's first cut is done when | Proved by |
 |---|---|---|
-| ER-20 | Work filed on a **channel or org board** wakes a seat that runs it, and a coordinator seat assigns work to **team** seats — on the real path, seats and channels declared in files | **FIX-1430**, adopted as the proof at the objective gate, 2026-09-19 ([D6](DECISIONS.md#d6)) |
+| ER-20 | Work filed on a **channel or org board** wakes a seat that runs it, and a coordinator seat assigns work to **team** seats — on the real path, seats and channels declared in files | **FIX-1430 owns it**, adopted as the proof at the objective gate, 2026-09-19 ([D6](DECISIONS.md#d6)). **FIX-1385 provides the surface it stands on and does not own it** — one row filed and claimed on a board is not ER-20; ER-20 is a coordinator assigning a queue across several seats |
 | ER-21 | The queue a coordinator sees is a **view** over existing task state and seat idle — no new status, no new L1 type | FIX-1430's goal check · ER-11 |
 | ER-22 | The docs teach routing as something a team gets by attaching a board to a channel, **not something it builds** — and teach `assignee` and *seat* as two different things | The epic's docs pass · ER-5 |
 

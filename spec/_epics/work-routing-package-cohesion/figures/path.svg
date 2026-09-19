@@ -75,7 +75,7 @@
     <text class="t-ln" x="16" y="212">FIX-1394 package cohesion</text>
     <rect class="live" x="330" y="203" width="140" height="12" rx="2"/>
     <path class="lane" d="M476 209 L600 209"/>
-    <text class="t-s" x="616" y="212">POC matrix → ratify · the proof takes the contract</text>
+    <text class="t-s" x="616" y="212">POC matrix → ratify · then ship tickets (ER-8)</text>
     <text class="t-ln" x="16" y="234">FIX-1430 manager-queue lab</text>
     <path class="lane" d="M490 231 L600 231"/>
     <text class="t-s" x="616" y="234">the proof, adopted — owns ER-20. Follows the boards</text>
