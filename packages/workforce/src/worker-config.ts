@@ -3,11 +3,13 @@
  * accepts.
  *
  * Declared and imposed are different sets, and this file is where they are
- * easiest to confuse. The contract DECLARES three keys. The seat factory
- * IMPOSES two of them — `instructions` when the record has a body, and
- * `seatSkills` on every record. `teamInstructions` is reserved: nothing
- * populates it until the team-level layer lands, so a kind that reads it today
- * gets `undefined` however many instructions a team has written.
+ * easiest to confuse. The contract DECLARES three keys, and the seat factory
+ * IMPOSES each on its own condition: `instructions` when the record has a
+ * body, `seatSkills` on every record, and `teamInstructions` when the record's
+ * team wrote a `TEAM.md`. Only `seatSkills` is unconditional — present and
+ * empty is a real answer for a seat's skills, and there is no equivalent
+ * answer for a team layer, so a seat whose team wrote none carries no such key
+ * at all rather than an empty string.
  *
  * A worker kind is an ordinary flow. What makes it *hireable* is that its
  * `configSchema` accepts what the factory imposes, and composing this contract
