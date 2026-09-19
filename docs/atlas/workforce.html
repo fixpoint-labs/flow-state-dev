@@ -343,7 +343,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 420" role="img" aria-label="A stack. Top dashed band: two sibling Labs on Workforce, DevForce software eng and Pentest Lab FIX-1355, wiring proposed, neither hosted. Middle band: Layer 2 product, Workforce, thin package that exists plus the proposed factory, team, channels, and plan convention. Bottom solid band: Layer 1 primitives that already exist. Do not invent here. Do not fold Workforce into core. Do not supersede thin-pentest.">
+      <svg viewBox="0 0 940 420" role="img" aria-label="A stack. Top dashed band: two sibling Labs on Workforce, DevForce software eng and Pentest Lab FIX-1355, wiring proposed, neither hosted. Middle band: Layer 2 product, Workforce, the package that exists — seats, the agent worker kind, channels — plus the proposed team and plan convention. The Agent factory is removed, not proposed. Bottom solid band: Layer 1 primitives that already exist. Do not invent here. Do not fold Workforce into core. Do not supersede thin-pentest.">
         <rect class="n-prop" x="16" y="16" width="908" height="100" rx="5"/>
         <text class="t-lbl" x="34" y="38">SIBLING LABS &#8212; NOT SIBLING PRODUCTS</text>
         <rect class="n-box" x="34" y="52" width="280" height="48" rx="4"/>
@@ -361,9 +361,9 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-prop" x="16" y="132" width="908" height="128" rx="5"/>
         <text class="t-lbl" x="34" y="154">LAYER 2 &#8212; THE PRODUCT &#183; WORKFORCE</text>
         <rect class="n-code" x="34" y="168" width="280" height="72" rx="4"/>
-        <text class="t-s f-code" x="48" y="190">exists &#183; old surface</text>
-        <text class="t-xs" x="48" y="210">defineAgent &#8594; Agent config</text>
-        <text class="t-xs" x="48" y="226">KILL. DO NOT TEACH</text>
+        <text class="t-s f-code" x="48" y="190">removed &#183; old surface</text>
+        <text class="t-xs" x="48" y="210">defineAgent &#8594; NOT EXPORTED (FIX-1344)</text>
+        <text class="t-xs" x="48" y="226">KILLED. DO NOT TEACH</text>
         <rect class="n-prop" x="330" y="168" width="280" height="72" rx="4"/>
         <text class="t-s f-accent" x="344" y="190">the teach</text>
         <text class="t-xs" x="344" y="210">SEAT = FLOW INSTANCE</text>
@@ -383,7 +383,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-s" x="34" y="376">taskBoard workers: name &#8594; BlockDefinition &#183; dispatcher() &#183; do not invent Agent L1</text>
       </svg>
     </div>
-    <figcaption><b>The product sits on primitives.</b> Layer&nbsp;1 already has the doors Workforce uses: a flow instance, a session, a resource, a board whose workers are <code>name &#8594; BlockDefinition</code>, and a dispatcher. <code>defineAgent</code> / <code>materializeAgent</code> / <code>AgentRegistry</code> exist as the old surface &#8212; invent-kill / placeholder; do not grow them and do not teach them as the path. Do not fold Workforce into core. Do not invent Team / Channel / MessageBoard here.</figcaption>
+    <figcaption><b>The product sits on primitives.</b> Layer&nbsp;1 already has the doors Workforce uses: a flow instance, a session, a resource, a board whose workers are <code>name &#8594; BlockDefinition</code>, and a dispatcher. <code>defineAgent</code> is removed &#8212; <code>@flow-state-dev/workforce</code> exports no Agent factory (FIX-1344). The <code>Agent</code> / <code>AgentRegistry</code> types and the <code>materializeAgent</code> dependency name survive in <code>core</code> as the skills-delegation seam; do not grow them and do not teach them as the path. Do not fold Workforce into core. Do not invent Team / Channel / MessageBoard here.</figcaption>
   </figure>
 
   <div class="tw">
@@ -849,7 +849,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-prose" x="16" y="300" width="908" height="84" rx="5"/>
         <text class="t-lbl" x="34" y="322">CUT</text>
         <text class="t-s" x="34" y="346">no defineAgent factory lock &#183; no materializeAgent spine &#183; no persona hire species &#183; no worker.ts-as-manifest &#183; no Agent catalog as roster</text>
-        <text class="t-xs" x="34" y="368">STOP GROWING agentRegistry / agent-ref. defineAgent MAY NOT NEED TO EXIST. KINDS ARE FLOW FACTORIES. NOT A D-n.</text>
+        <text class="t-xs" x="34" y="368">STOP GROWING agentRegistry / agent-ref. defineAgent IS REMOVED. KINDS ARE FLOW FACTORIES. NOT A D-n.</text>
       </svg>
     </div>
     <figcaption><b>Seat the flow. Prompt the worker.</b> A seat is the dispatch target. A worker is instructions + model + tools on a generator or flow. The default system prompt, when it lands, is another entry in the existing prompt slot &#8212; not a persona type and not a <code>defineAgent</code> factory. Growing <code>AgentRegistry</code> so seats and skills look like one list is the failure this fence exists to stop.</figcaption>
@@ -902,7 +902,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <tbody>
         <tr><td>A</td><td>Durable memory / identity on agent/member scope, not the seat</td><td><span class="tag t-prop">opinion</span> <code>flowIsolation</code> resources on the worker flow. v1 prompt source is <code>instructions</code>, not a persona store. Thin seats do not need this. <strong>This proof has landed.</strong> The rows key per seat &#8212; one flow instance per seat &#8212; and carry no session coordinate, so one seat reads its own across a DM and a project room. Outliving a <em>restart</em> is a property of the configured store, not of the key: durable with the SQLite, Postgres or filesystem adapters, lost with the in-memory one. &#8220;Per member&#8221; is per seat (<code>docs/architecture/workforce-default-worker-kind.md</code>), so the keying half is done too. See <a href="#memory">&#167;07</a>.</td><td><code>Agent.resources</code>, <code>Agent.memory</code>, memory on the seat, a durable identity bag on the core type. No such fields on this pin.</td></tr>
         <tr><td>B</td><td>Seat bind: worker &#8594; roster row &#8594; session, no Team type</td><td><span class="tag t-prop">proposed</span> A keyed row (<code>teamId</code> + seat) names a worker flow instance, an optional harness, and the session the room helpers open. Prove one row can seat a thin coordinator and a thick Agent without a Team object. Prove a second team is another key, not a new type. Thin seats skip member memory. They are not catalog rows.</td><td>A Team type whose job is to hold the bind. A singleton team with no key. <code>Agent.sessions</code>. Requiring every seat to be an Agent. Stuffing the row into <code>AgentRegistry</code>.</td></tr>
-        <tr><td>C</td><td>Workers are generators/flows with instructions + model + tools; seats stay flow instances</td><td><span class="tag t-gone">invent-kill</span> Today on main: <code>defineAgent</code> returns <code>Agent</code>; <code>createAgentRegistry</code> / <code>materializeAgent</code> / <code>agent-ref</code> exist; one caller (<code>examples/guides/research-team</code>). Hire still names the body <code>persona</code> &#8212; leave it. Teach: <code>instructions</code> &#8594; generator <code>prompt</code>; seats = <code>WORKER.md</code>; hire takes an optional <code>{ kinds }</code>; one name&#8594;block list for skills and boards. Custom kinds are flow factories (W3 scan). <code>defineAgent</code> may not need to exist. <code>materializeAgent</code> is a placeholder &#8212; kill it; do not teach it. Stop growing the old surface now. Engine never sees a product registry.</td><td>Teaching <code>defineAgent</code> as a block factory. Teaching <code>materializeAgent</code> as the Workforce spine. Teaching <code>worker.ts</code> as a WorkerManifest / compose-a-record door. Teaching <code>persona</code> as the v1 hire species. Scanning seats into <code>AgentRegistry</code>. A second Agent type.</td></tr>
+        <tr><td>C</td><td>Workers are generators/flows with instructions + model + tools; seats stay flow instances</td><td><span class="tag t-gone">invent-kill</span> Today on main: the factory is gone &#8212; no <code>defineAgent</code>, no <code>createAgentRegistry</code>, no caller in <code>examples/</code>. What survives is the core seam: the <code>Agent</code> type, and <code>agent-ref</code> / <code>materializeAgent</code> as skills-delegation names an application supplies. Hire still names the body <code>persona</code> &#8212; leave it. Teach: <code>instructions</code> &#8594; generator <code>prompt</code>; seats = <code>WORKER.md</code>; hire takes an optional <code>{ kinds }</code>; one name&#8594;block list for skills and boards. Custom kinds are flow factories (W3 scan). <code>defineAgent</code> may not need to exist. <code>materializeAgent</code> is a placeholder &#8212; kill it; do not teach it. Stop growing the old surface now. Engine never sees a product registry.</td><td>Teaching <code>defineAgent</code> as a block factory. Teaching <code>materializeAgent</code> as the Workforce spine. Teaching <code>worker.ts</code> as a WorkerManifest / compose-a-record door. Teaching <code>persona</code> as the v1 hire species. Scanning seats into <code>AgentRegistry</code>. A second Agent type.</td></tr>
       </tbody>
     </table>
   </div>
@@ -1105,8 +1105,8 @@ const { workers } = await <b>readWorkforceDirectory</b>(<em>"./workforce"</em>);
 
         <rect class="n-code" x="592" y="16" width="332" height="168" rx="5"/>
         <text class="t-lbl f-code" x="610" y="38">DOCUMENT DOOR &#183; EXISTS</text>
-        <text class="t-s" x="610" y="64">createAgentRegistry(agents)</text>
-        <text class="t-xs" x="610" y="82">OLD SURFACE. DO NOT GROW.</text>
+        <text class="t-s" x="610" y="64">hireWorkforce(workers, { kinds })</text>
+        <text class="t-xs" x="610" y="82">MINTS ONE FLOW INSTANCE PER SEAT.</text>
         <text class="t-s" x="610" y="108">defineFlow({ kind, ... })</text>
         <text class="t-xs" x="610" y="126">EXPLICIT. STILL THE FLOOR.</text>
         <text class="t-s" x="610" y="152">FOUR READERS, ONE TREE</text>
@@ -1203,7 +1203,7 @@ const { workers } = await <b>readWorkforceDirectory</b>(<em>"./workforce"</em>);
     <p>A <code>CHANNEL.md</code> under <code>teams/&lt;teamId&gt;/channels/&lt;name&gt;/</code> declares one channel, and it binds to the default ChannelFlow kind &#8212; one copy, one transcript session. <code>flow:</code> is only for naming a different registered kind. That is a declaration, not the Collab system / dynamic roster: the L2 channel roster (undeletable system + helper-minted) is <a href="#collab">&#167;14</a>, after the Labs. The org-scope door, <code>org/channels/</code>, is locked open and read by nothing &#8212; declare the channel on a team. No Channel / MessageBoard L1.</p>
   </div>
 
-  <pre class="code"><i>// EXISTS &#8212; in-memory old surface. Do not grow. Do not teach as the path.</i>
+  <pre class="code"><i>// HISTORICAL &#8212; this import no longer resolves. Kept to show the shape that was killed.</i>
 import { <b>defineAgent</b>, <b>createAgentRegistry</b> } from <em>"@flow-state-dev/workforce"</em>;
 import { <b>defineFlow</b> } from <em>"@flow-state-dev/core"</em>;
 
@@ -2773,7 +2773,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="note">
     <span class="lbl">The package is Layer 2 sugar, not the harness</span>
-    <p><code>@flow-state-dev/workforce</code> is still documented as agent registry and materialization. What landed on that path is the old surface &#8212; do not teach it. What also landed: <code>readWorkforceDirectory</code> and <code>hireWorkforce</code>. A seat is a flow instance. A worker is instructions + model + tools. The name&#8594;block list for skills and boards does not depend on a <code>defineAgent</code> factory. Engine never sees a product registry. Sibling Labs (DevForce and Pentest) are how we will know the file surface works &#8212; after W3, not on this pin. Package docs must not fork the room matrix on this page. See <a href="#fence">&#167;04</a> proof&nbsp;C.</p>
+    <p><code>@flow-state-dev/workforce</code> documents the seat factory, the built-in <code>agent</code> worker kind, the file loaders and the channel surface &#8212; not an agent registry. The registry / materialization path was removed (FIX-1344); do not teach it. What the package does carry: <code>readWorkforceDirectory</code> and <code>hireWorkforce</code>. A seat is a flow instance. A worker is instructions + model + tools. The name&#8594;block list for skills and boards does not depend on a <code>defineAgent</code> factory. Engine never sees a product registry. Sibling Labs (DevForce and Pentest) are how we will know the file surface works &#8212; after W3, not on this pin. Package docs must not fork the room matrix on this page. See <a href="#fence">&#167;04</a> proof&nbsp;C.</p>
   </div>
 </section>
 
@@ -2850,7 +2850,7 @@ const replyToSender = <b>dispatcher</b>({
         <tr><td>7</td><td>Full conversation through dispatch</td><td><span class="tag t-prose">blocked-on</span></td><td>The proof is A &#8594; B &#8594; <code>{ from: true }</code> reply &#8594; later messages into the <em>existing</em> session. Layer&nbsp;1 path: FIX-1312 reverse <strong>exists</strong> + gap 4 <strong>exists</strong> + existing-session via external queue (gap 5). Workforce must <strong>not</strong> invent a delivery bus. Remaining hold is session addressability past a queue, plus multi-hire on FIX-1320.</td></tr>
         <tr><td>8</td><td>Board as address-model test</td><td><span class="tag t-prop">proposed · L2</span></td><td>FIX-1311 stays Layer&nbsp;2 assembly: collections + subscriptions in state + <code>reactTo</code>. <code>reactTo</code> exists (in-session, inline). Pressure: addresses-as-data vs statically declared dispatch targets &#8212; <code>dispatch.ts</code> says a target chosen from data is a router over declared dispatchers, not a dynamic address. Need that Layer&nbsp;1 composition explicit before Workforce mints a &#8220;dynamic dispatcher.&#8221; Teams = roster (FIX-1310). Room-roster park is FIX-1341 (Collab later) &#8212; fence/rewrite FIX-1311 when Collab opens; do not rush it as W2 next. See <a href="#collab">&#167;14</a>. Static-target notify can prove as L1 now &#8212; that is not the DevForce Lab, and not MCP.</td></tr>
         <tr><td>9</td><td>Durable task collections for delegation</td><td><span class="tag t-none">backlog</span></td><td><a href="https://linear.app/fixpoint-labs/issue/FIX-957">FIX-957</a>. Skills delegation still constructs the board with <code>backing: "sequencer"</code> (<code>delegation-surface.ts</code>) &#8212; turn-scoped. A hand-built durable collection already exists. Standing teams must not get a second Workforce task store. Separate from FIX-1246 (gap 3).</td></tr>
-        <tr><td>10</td><td><code>materializeAgent</code> kill</td><td><span class="tag t-gone">placeholder · kill</span></td><td>FIX-1327 landed: missing catalog refuses. Worker <code>z.string()</code> is FIX-1337 interim until delete. Owner fence (2026-09-10): kill <code>materializeAgent</code>; do not teach, grow, or forever-patch against it. <code>defineAgent</code> is an invent-kill candidate &#8212; do not collapse into a factory. Persona FIX-796 is independent &#8212; do not sequence it here.</td></tr>
+        <tr><td>10</td><td><code>materializeAgent</code> kill</td><td><span class="tag t-gone">done · killed</span></td><td>FIX-1344 landed the kill: <code>@flow-state-dev/workforce</code> exports no <code>defineAgent</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code> or <code>agentBlock</code>. <code>materializeAgent</code> survives only as an injected dependency name on the core skills seam, which an application fills. Do not teach, grow, or forever-patch against it. The factory &#8212; do not collapse into a factory. Persona FIX-796 is independent &#8212; do not sequence it here.</td></tr>
       </tbody>
     </table>
   </div>
@@ -3098,7 +3098,7 @@ const replyToSender = <b>dispatcher</b>({
 
   <div class="tension">
     <h5>Do not grow agentRegistry. Do not grow the core Agent type</h5>
-    <p>Today&#8217;s core <code>Agent</code> / <code>AgentRegistry</code> / <code>agent-ref</code> is the old surface. The worker is a flow instance with instructions + model + tools. <code>defineAgent</code> may not need to exist. Growing the catalog so seats and skills look like one list is how Layer&nbsp;1 absorbs a Workforce opinion.</p>
+    <p>Today&#8217;s core <code>Agent</code> / <code>AgentRegistry</code> / <code>agent-ref</code> is the old surface, and it is still there. The worker is a flow instance with instructions + model + tools. <code>defineAgent</code> is settled: removed in FIX-1344, and not coming back. Growing the catalog so seats and skills look like one list is how Layer&nbsp;1 absorbs a Workforce opinion.</p>
     <span class="ask">When that build exists, the first question is still &#8220;is this a resource the worker&#8217;s flow declares, or a new field on the core Agent type?&#8221; &#8212; and the cheaper answer is usually the resource.</span>
   </div>
 

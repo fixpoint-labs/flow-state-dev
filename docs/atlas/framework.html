@@ -684,7 +684,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="855" y="52" text-anchor="middle">BUILT</text>
 
         <text class="t-s" x="24" y="82">a model and tool surface</text>
-        <text class="t-xs" x="330" y="82">materializeAgent → A GENERATOR, WORKER OR STANDALONE</text>
+        <text class="t-xs" x="330" y="82">THE agent WORKER KIND — A GENERATOR WITH MODEL + TOOLS</text>
         <rect class="n-acc" x="782" y="68" width="146" height="20" rx="10"/>
         <text class="t-xs" x="855" y="82" text-anchor="middle">BUILT</text>
 
@@ -737,7 +737,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <h3>What "a team" would mean, given what already exists</h3>
   <p>Most of the machinery is there. An agent already has an editable identity, a model, tools, capabilities, and a place to do work. What a team layer would add is <strong>relationships and a lifetime</strong>:</p>
   <ul>
-    <li><strong>A roster that is a thing, not a map.</strong> <code>createAgentRegistry</code> is a flat name-to-agent lookup with a duplicate check. A team has structure — who may assign to whom, who reviews whom, who is the executive. Today that structure exists only implicitly, as whatever the executive generator happens to plan.</li>
+    <li><strong>A roster that is a thing, not a map.</strong> The roster today is the seat list <code>hireWorkforce</code> mints from <code>WORKER.md</code> records — one configured flow instance per seat, and no relationships between them. A team has structure — who may assign to whom, who reviews whom, who is the executive. Today that structure exists only implicitly, as whatever the executive generator happens to plan.</li>
     <li><strong>A workspace scoped to the team, not to a turn.</strong> The pieces exist (<code>sharedToLineage</code>, resource collections, the lineage root) but nothing binds them to a team. A standing team wants a durable board its members return to, not a board that lives inside one generator's state.</li>
     <li><strong>Composition of the two unwired fields.</strong> <code>usesSkills</code> would let a member carry its own playbooks rather than inheriting the coordinator's; <code>contextMode: "fork"</code> would give a member its own context window instead of composing inline. Both are the difference between "a prompt with a name" and "a participant".</li>
   </ul>
@@ -765,7 +765,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>patterns</code></td><td>Composition</td><td class="num">8,058</td><td class="num">54</td><td>Eight named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
       <tr><td><code>memory</code></td><td>Composition</td><td class="num">7,825</td><td class="num">32</td><td>Four memory tiers (working / episodic / semantic / digest), consolidation, hygiene janitor, recall tools, one composed capability.</td><td>core</td></tr>
       <tr><td><code>tools</code></td><td>Composition</td><td class="num">7,170</td><td class="num">53</td><td>Search (7 providers), fetch (3), crawl (2), sandboxed bash (5 adapters), MCP client manager.</td><td>core</td></tr>
-      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">397</td><td class="num">8</td><td>Named agents: registry, persona definition and resolution, materialization into a block. The L2 product (teams / seats / channels) is convention, not this package yet &mdash; see &sect;04 and the <a href="workforce.html">Workforce atlas</a>.</td><td>core, orchestration</td></tr>
+      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">6,635</td><td class="num">28</td><td>The seat factory (<code>hireWorkforce</code>), the built-in <code>agent</code> worker kind, the <code>WORKER.md</code> / resource / channel loaders, resource-map codegen, and personas. No Agent factory. The L2 product story (teams / seats / channels) is convention &mdash; see &sect;04 and the <a href="workforce.html">Workforce atlas</a>.</td><td>core, orchestration</td></tr>
       <tr><td><code>@thought-fabric/core</code></td><td>Composition</td><td class="num">3,931</td><td class="num">17</td><td>Cognitive primitives: attention (salience, relevance), identity (constitution, perspective), metacognition (bias detection).</td><td>core</td></tr>
       <tr><td><code>ui</code></td><td>Composition</td><td class="num">387</td><td class="num">10</td><td>Generative component registry — link-card, info-card.</td><td>contracts, core</td></tr>
       <tr><td><code>store-sqlite</code></td><td>Persistence</td><td class="num">3,301</td><td class="num">16</td><td>SQLite-backed implementation of the store registry.</td><td>core, engine</td></tr>
