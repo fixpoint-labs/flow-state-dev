@@ -19,10 +19,11 @@
  *
  * The third is the second one indexed the other way round. Its key shape is the
  * whole point: the seat id is a complete path segment ahead of the channel id,
- * so "which channels is this seat in" is the prefix `inventory/members/<seatId>/`
- * rather than a read of every channel row followed by a scan of every member
- * array. {@link membershipPrefix} spells that prefix; {@link membershipKey}
- * spells the row.
+ * so "which channels is this seat in" is answerable from the key rather than
+ * from a `members` array inside a channel row's value. That is a statement
+ * about what a prefix can reach, NOT about reading less — see
+ * {@link membershipPrefix}, which measures it. {@link membershipPrefix} spells
+ * that prefix; {@link membershipKey} spells the row.
  *
  * These keys are a public surface. Moving one is a breaking change for any app
  * whose rows are already persisted, because nothing here ever deletes a row.
@@ -201,9 +202,15 @@ export function membershipKey(seatId: string, channelId: string): string {
  * What this does *not* buy, measured rather than assumed: the narrowing is not
  * pushed into the store. The runtime loads the collection's own prefix and
  * applies this one in memory after — a `list(membershipPrefix("eng.lead"))`
- * issues a single `getByPrefix("inventory/members/")`. The win is that the
- * question is a key match over rows that are one fact each, instead of loading
- * every channel row and scanning its member array.
+ * issues a single `getByPrefix("inventory/members/")`. So this is not the
+ * cheaper way to answer the question today.
+ *
+ * What the key shape buys is a read that CAN get narrower later. A `members`
+ * array lives inside a channel row's value, where no prefix reaches it now or
+ * after any storage change; a seat id in the key is something a store could
+ * push down. Do not restate this as the index moving less data — whether it
+ * does depends on how many members a channel has, and on a realistic roster it
+ * moves more.
  *
  * @throws on the same ids {@link membershipKey} refuses.
  */
