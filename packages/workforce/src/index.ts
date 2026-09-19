@@ -35,10 +35,10 @@
  * channel opens a SESSION per record on a shared one.
  *
  * Beside the channel floor sits the **inventory**: three org-scoped resource
- * collections holding what is actually open — which seats exist, which channels
- * are open and who is in them, and which channels one seat is in. A folder of
- * files answers none of those at run time, because a block does not walk
- * folders. The rows and the declared records join on the record's `id`.
+ * collections holding what is actually open, which a folder of files cannot
+ * answer at run time because a block does not walk folders. `inventory/
+ * collections.ts` is canonical for what each one holds and how they join back
+ * to the declared records.
  */
 
 export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";

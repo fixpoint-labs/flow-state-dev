@@ -227,6 +227,22 @@ describe("a flow that did not write the rows", () => {
         openedAt: "2026-09-19T00:00:00.000Z"
       }
     ]);
+    // The third collection is asserted here too. The seed writes to all three,
+    // so without this a membership upsert could fail outright and the seat and
+    // channel assertions above would still pass — the case would be green about
+    // two thirds of what it claims to read back.
+    expect(rows.memberships).toHaveLength(3);
+    expect(
+      (rows.memberships as Array<{ seatId: string; channelId: string }>).map(
+        (row) => `${row.seatId}/${row.channelId}`
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        "eng.lead/eng.standup",
+        "eng.lead/eng.retro",
+        "eng.leadership/eng.allhands"
+      ])
+    );
   });
 
   it("reads nothing at all under a different orgId (BR-15)", async () => {
