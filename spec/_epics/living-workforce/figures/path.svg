@@ -1,0 +1,101 @@
+<svg viewBox="0 0 940 332" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path: lanes against time, with a now line at September 19, 2026. A ship-fence band under the axis says W4's first cut has not shipped, so every W5 ship lane is fenced and only the exploration crosses. Two input lanes from other epics: the W3 floor, FIX-1351, carries a bar that reaches the now line and reads landed — seats, channels and skills on disk. The W4 first cut, FIX-1407, carries a bar that reaches the now line and then a dashed continuation running forward to the fence-lift line, reading In Development, first cut not shipped. That dashed vertical fence-lift line sits ahead of the now line, marked W4 first cut, fence lifts, with no date. Then the three lanes of the set. FIX-1458, humans in seats, opens a dashed ready bar exactly at the now line — the one lane that crosses the fence — reading needs spec, no PR yet. FIX-1455, the kitchen-sink child epic, has no bar before the fence-lift line and a dashed not-started line after it, reading held, its own lifecycle, ship fenced. The working-assemblies lane has no bar at all, only a label, reading not filed, cut undecided, no duration to draw. The critical path is drawn in the gutter from the exploration lane to the assemblies lane. Under a divider, three related lanes that are not in the set: the manager-queue lab FIX-1430, org never optional FIX-1442, and the Collab park FIX-1341 — each consumed or deferred, none holding this epic's wrap.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .done  { fill:var(--code); stroke:none; }
+    .ready { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; stroke-dasharray:5 3; }
+    .inp   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .lane  { stroke:var(--ink-3); stroke-width:1; stroke-dasharray:2 4; }
+    .axis  { stroke:var(--rule); stroke-width:1; }
+    .div   { stroke:var(--rule); stroke-width:1; }
+    .now   { stroke:var(--gone); stroke-width:1.4; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:6 4; }
+    .crit  { fill:none; stroke:var(--ink-3); stroke-width:1.2; }
+    .critd { fill:var(--ink-3); stroke:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-ln  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.06em; }
+    .t-fen { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+
+  <text class="t-lbl" x="16" y="18">THE PATH — ONE LANE PER ROW OF THE SET, AGAINST TIME</text>
+
+  <g id="axis">
+    <path class="axis" d="M200 42 L924 42"/>
+    <text class="t-s" x="200" y="34">Sep 16</text>
+    <text class="t-now" x="300" y="34">now &#183; Sep 19</text>
+    <text class="t-s" x="632" y="34">ahead &#183; no dates set</text>
+  </g>
+
+  <g id="ship-fence">
+    <text class="t-fen" x="16" y="62">SHIP FENCE</text>
+    <rect class="fence" x="200" y="50" width="724" height="16" rx="2"/>
+    <text class="t-fen" x="212" y="62">W4 first cut has not shipped &#8212; W5 ship is fenced; only the exploration crosses</text>
+  </g>
+
+  <path class="now" d="M330 74 L330 200"/>
+  <path class="fence" d="M520 74 L520 200"/>
+  <text class="t-fen" x="528" y="84">W4 first cut &#8594; fence lifts</text>
+
+  <g id="critical-path">
+    <path class="crit" d="M190 146 L190 190"/>
+    <circle class="critd" cx="190" cy="146" r="3.2"/>
+    <circle class="critd" cx="190" cy="190" r="3.2"/>
+  </g>
+
+  <g id="lanes-inputs">
+    <text class="t-ln" x="16" y="100">FIX-1351 W3 floor</text>
+    <rect class="inp" x="200" y="91" width="100" height="12" rx="2"/>
+    <text class="t-s" x="616" y="100">landed &#183; seats, channels, skills on disk</text>
+    <text class="t-ln" x="16" y="122">FIX-1407 W4 first cut</text>
+    <rect class="inp" x="200" y="113" width="130" height="12" rx="2"/>
+    <path class="lane" d="M336 119 L516 119"/>
+    <text class="t-s" x="616" y="122">In Development &#183; first cut NOT shipped</text>
+  </g>
+
+  <g id="lanes-set">
+    <text class="t-ln" x="16" y="150">FIX-1458 humans-in-seats</text>
+    <rect class="ready" x="330" y="141" width="120" height="12" rx="2"/>
+    <path class="lane" d="M456 147 L600 147"/>
+    <text class="t-s" x="616" y="150">needs spec &#183; no PR &#183; the one lane crossing the fence</text>
+    <text class="t-ln" x="16" y="172">FIX-1455 kitchen-sink &#183; epic</text>
+    <path class="lane" d="M526 169 L600 169"/>
+    <text class="t-s" x="616" y="172">held &#183; own epic lifecycle &#183; ship fenced</text>
+    <text class="t-ln" x="16" y="194">FIX-XXX working assemblies</text>
+    <text class="t-s" x="616" y="194">not filed &#183; cut undecided &#183; no duration to draw</text>
+  </g>
+
+  <g id="related">
+    <path class="div" d="M16 208 L924 208"/>
+    <text class="t-lbl" x="16" y="224">RELATED — NOT IN THE SET</text>
+    <text class="t-ln" x="16" y="244">FIX-1430 manager-queue lab</text>
+    <text class="t-s" x="616" y="244">W4-side &#183; the drain story human seats plug into</text>
+    <text class="t-ln" x="16" y="266">FIX-1442 org never optional</text>
+    <text class="t-s" x="616" y="266">soft-related &#183; assemblies open under org identity</text>
+    <text class="t-ln" x="16" y="288">FIX-1341 Collab park</text>
+    <text class="t-s" x="616" y="288">later &#183; never the whole of W5</text>
+  </g>
+
+  <g id="legend">
+    <rect class="inp" x="90" y="312" width="16" height="12" rx="2"/>
+    <text class="t-s" x="114" y="321">input from another epic</text>
+    <rect class="ready" x="256" y="312" width="16" height="12" rx="2"/>
+    <text class="t-s" x="280" y="321">sanctioned, not started</text>
+    <path class="lane" d="M420 318 L456 318"/>
+    <text class="t-s" x="464" y="321">not started</text>
+    <path class="fence" d="M544 312 L544 324"/>
+    <text class="t-s" x="556" y="321">the ship fence</text>
+    <circle class="critd" cx="668" cy="318" r="3.2"/>
+    <path class="crit" d="M668 312 L668 324"/>
+    <text class="t-s" x="684" y="321">critical path to the proof</text>
+  </g>
+</svg>

@@ -1,0 +1,80 @@
+<svg viewBox="0 0 940 348" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: a matrix of five cross-cutting rules against the three rows of the W5 set — FIX-1458, the held child epic FIX-1455, and the unfiled working-assemblies row. ER-1, a person occupies the same roster slot, is decided by FIX-1458 and consumed by both others. ER-2, Waiting-on-you is parked and Idle is runtime, is decided by FIX-1458 and consumed by both others. ER-3, the reference runs and survives a redeploy, is built by FIX-1455 and consumed by the assemblies row. ER-4, assemblies compose and add no layer, is built by the assemblies row and consumed by FIX-1455. ER-19, the done condition, has no owner at all: its cell under the assemblies column is drawn as a dashed gap reading NO OWNER, because the row that would own it has not been cut. Four of the five rules have exactly one live owner; the fifth is the epic's structural gap.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .cell  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .gap   { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-weight:700; font-size:9.5px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gap { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-weight:700; font-size:9.5px; letter-spacing:.06em; }
+  </style>
+
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT — FOUR RULES HAVE ONE OWNER; THE FIFTH HAS NONE</text>
+
+  <g id="columns">
+    <text class="t-col" x="330" y="50">FIX-1458</text>
+    <text class="t-col" x="500" y="50">FIX-1455 &#183; epic</text>
+    <text class="t-col" x="670" y="50">FIX-XXX &#183; assemblies</text>
+  </g>
+
+  <g id="r1">
+    <text class="t-row" x="16" y="78">ER-1 &#183; the same roster slot</text>
+    <rect class="own" x="300" y="60" width="160" height="30"/><text class="t-own" x="352" y="79">DECIDES</text>
+    <rect class="use" x="470" y="60" width="160" height="30"/><text class="t-use" x="522" y="79">consumes</text>
+    <rect class="use" x="640" y="60" width="160" height="30"/><text class="t-use" x="692" y="79">consumes</text>
+  </g>
+
+  <g id="r2">
+    <text class="t-row" x="16" y="112">ER-2 &#183; Waiting-on-you is parked</text>
+    <rect class="own" x="300" y="94" width="160" height="30"/><text class="t-own" x="352" y="113">DECIDES</text>
+    <rect class="use" x="470" y="94" width="160" height="30"/><text class="t-use" x="522" y="113">consumes</text>
+    <rect class="use" x="640" y="94" width="160" height="30"/><text class="t-use" x="692" y="113">consumes</text>
+  </g>
+
+  <g id="r3">
+    <text class="t-row" x="16" y="146">ER-3 &#183; the reference runs</text>
+    <rect class="cell" x="300" y="128" width="160" height="30"/>
+    <rect class="own" x="470" y="128" width="160" height="30"/><text class="t-own" x="526" y="147">BUILDS</text>
+    <rect class="use" x="640" y="128" width="160" height="30"/><text class="t-use" x="692" y="147">consumes</text>
+  </g>
+
+  <g id="r4">
+    <text class="t-row" x="16" y="180">ER-4 &#183; assemblies compose, add no layer</text>
+    <rect class="cell" x="300" y="162" width="160" height="30"/>
+    <rect class="use" x="470" y="162" width="160" height="30"/><text class="t-use" x="522" y="181">consumes</text>
+    <rect class="own" x="640" y="162" width="160" height="30"/><text class="t-own" x="696" y="181">BUILDS</text>
+  </g>
+
+  <g id="r5">
+    <text class="t-row" x="16" y="214">ER-19 &#183; the done condition</text>
+    <rect class="cell" x="300" y="196" width="160" height="30"/>
+    <rect class="cell" x="470" y="196" width="160" height="30"/>
+    <rect class="gap" x="640" y="196" width="160" height="30"/><text class="t-gap" x="688" y="215">NO OWNER</text>
+  </g>
+
+  <g id="legend">
+    <rect class="own" x="16" y="244" width="16" height="14"/>
+    <text class="t-use" x="40" y="256">the one owner — decides or builds it</text>
+    <rect class="use" x="300" y="244" width="16" height="14"/>
+    <text class="t-use" x="324" y="256">consumes it, and must not re-decide it — not a wait</text>
+    <rect class="gap" x="640" y="244" width="16" height="14"/>
+    <text class="t-use" x="664" y="256">a gap, not an owner</text>
+    <text class="t-use" x="16" y="284">Only one column is live this cycle. FIX-1455 runs its own epic lifecycle; the assemblies column is not filed at all.</text>
+    <text class="t-use" x="16" y="302">ER-19 is the epic's done condition and nothing owns it, because the row that would has not been cut — Open 3 and 4.</text>
+    <text class="t-use" x="16" y="320">The other nine rules are prohibitions, which bind every row equally and so have no column to sit in.</text>
+  </g>
+</svg>

@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box for W5. In the box, three items. First, shaped this cycle: humans in seats — a person occupies the same roster slot an agent does, appearing in inventory, holding channel membership, and claiming or receiving board rows, with a Waiting-on-you drain instead of a model loop. Then a dashed ship fence band saying that W4's first cut has not shipped, so everything below it is fenced: explore crosses now, ship does not. Below the fence, two fenced items: the reference consumer, which is the kitchen-sink rebuild as a runnable app with durable hire, channels, seats, boards and inventory, running its own epic lifecycle; and working assemblies, reference surfaces composing the W3 floor with the W4 first cut, whose child cut is undecided. A note says everything in the box is made of W3 and W4 pieces, and only the top row is new. Composed in by the app: its own channel kinds and CHANNEL.md files, and its own approval and Waiting-on-you rendering. Consumed, not owned: the W3 floor, which has landed, and the W4 first cut, which is still in development. Below a second fence, what is not built: no Human, Team, Channel or Agent as an L1 type; no parallel HITL plane and no human-only side boards; no merged board-assignee and seat registry; no new L1 TaskStatus for Waiting-on-you or Idle; no Collab RC as the whole of W5; no kitchen-sink-only APIs, KS-only durable store or in-memory-only hire; no DevForce or CyberForce Lab product inside the kitchen-sink; no seats plugged into supervisor or patterns factories as L2 primitives; no nested sessions as the work control plane; no second skill registry and no second memory story for human principals.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .gate  { fill:var(--code-soft); stroke:var(--code); stroke-width:2.2; }
+    .held  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .inp   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-gat { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-fen { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-out { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-out-l { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+               font-size:9.5px; letter-spacing:.1em; }
+  </style>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="26" width="560" height="232" rx="5"/>
+    <text class="t-lbl" x="32" y="46">IN THE BOX — W5, A COMPOSITION</text>
+
+    <rect class="gate" x="32" y="58" width="528" height="44" rx="4"/>
+    <text class="t-gat" x="44" y="73">SHAPED THIS CYCLE — FIX-1458</text>
+    <text class="t-b" x="44" y="90">humans in seats &#8212; a person occupies the same roster slot</text>
+
+    <rect class="fence" x="32" y="108" width="528" height="16" rx="2"/>
+    <text class="t-fen" x="44" y="120">SHIP FENCE &#183; W4 first cut has not shipped &#8212; explore crosses now, ship does not</text>
+
+    <rect class="held" x="32" y="130" width="528" height="40" rx="4"/>
+    <text class="t-b" x="44" y="147">the reference consumer &#8212; FIX-1455, its own lifecycle</text>
+    <text class="t-s" x="44" y="161">durable hire &#183; CHANNEL.md seats &#183; boards &#183; inventory &#183; survives a redeploy</text>
+
+    <rect class="held" x="32" y="176" width="528" height="40" rx="4"/>
+    <text class="t-b" x="44" y="193">working assemblies &#8212; the child cut is undecided</text>
+    <text class="t-s" x="44" y="207">reference surfaces composing the W3 floor with the W4 first cut</text>
+
+    <text class="t-s" x="32" y="240">All of it is made of W3 and W4 pieces. Only the top row is new, and it is shaped, not shipped.</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="box" x="592" y="26" width="332" height="118" rx="5"/>
+    <text class="t-lbl" x="608" y="46">COMPOSED IN BY THE APP</text>
+    <rect class="comp" x="608" y="58" width="300" height="36" rx="4"/>
+    <text class="t-b" x="620" y="75">its own channel kinds</text>
+    <text class="t-s" x="620" y="88">CHANNEL.md &#183; flow factories, not new L1</text>
+    <rect class="comp" x="608" y="100" width="300" height="36" rx="4"/>
+    <text class="t-b" x="620" y="117">its own approval UX</text>
+    <text class="t-s" x="620" y="130">renders Waiting-on-you; never adds a status</text>
+  </g>
+
+  <g id="consumed">
+    <rect class="box" x="592" y="156" width="332" height="102" rx="5"/>
+    <text class="t-lbl" x="608" y="176">CONSUMED, NOT OWNED</text>
+    <rect class="inp" x="608" y="186" width="300" height="30" rx="4"/>
+    <text class="t-s" x="620" y="205">W3 floor &#183; FIX-1351 &#8212; landed</text>
+    <rect class="inp" x="608" y="220" width="300" height="30" rx="4"/>
+    <text class="t-s" x="620" y="239">W4 first cut &#183; FIX-1407 &#8212; in development</text>
+  </g>
+
+  <g id="not-built">
+    <path class="fence" d="M16 274 L924 274"/>
+    <text class="t-out-l" x="16" y="296">NOT BUILT</text>
+    <text class="t-out" x="104" y="296">no Human / Team / Channel / Agent as an L1 type &#183; no parallel HITL plane &#183; no human-only side boards</text>
+    <text class="t-out" x="104" y="312">no merged board-assignee + seat registry &#183; no new L1 TaskStatus for Waiting-on-you or Idle</text>
+    <text class="t-out" x="104" y="328">no Collab RC as this epic &#183; no KS-only APIs / KS-only store / in-memory-only hire &#183; no Lab product in KS</text>
+    <text class="t-out" x="104" y="344">no seats in supervisor() or patterns factories &#183; no nested sessions as control plane &#183; no second skill or memory story</text>
+  </g>
+</svg>
