@@ -149,6 +149,17 @@ holds the write, a `problems` entry's fields beyond `layer`.
   (`members`, the charter, the description); do not widen it to `CHANNEL.md` as a whole. What the
   row adds is that the disagreement becomes visible. "What channels do not do yet" stays true and is
   not edited: this adds no join or leave verb.
+- **Dispatching the docs-writer for this step: do not cut its worktree from a `spec/*` branch.** The
+  writer is held out of spec documents on purpose — it writes from the public surface so the spec's
+  framing cannot leak into published prose. Put it on a worktree whose checkout is `spec/FIX-1405`
+  and that isolation is gone, and the S4 run only avoided it because the branch name was visible in
+  `git log` before it opened a file. It also could not push, because git refuses an operation aimed
+  at another worktree, so the prose had to be relayed and landed by someone else. Cut it from the
+  implementation branch.
+- **Do not hand the writer a cost comparison between the two membership shapes.** It is conditional
+  (see [DECISIONS](DECISIONS.md#the-membership-index)) and was asserted both ways before being
+  dropped. The publishable claim is the unconditional one: the prefix is applied in memory, and a
+  field inside a value is not reachable by a key prefix.
 - **A `patch` changeset per PR** for `@flow-state-dev/workforce` (BP-022) — PR-A's included, ruled
   in review. The labs are private and get none.
 
