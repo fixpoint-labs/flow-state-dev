@@ -11,22 +11,49 @@ scope.
 
 ## Run
 
-From this directory (`fsdev` config search is cwd-only), pass the host values
-on each command; no shell exports are required:
+All four doors run through a **supervised live stream**. From this directory
+(`fsdev` config search is cwd-only), use the managed-process invocation in
+[the skill](../../.agents/skills/fsd-coding/SKILL.md#pass-values-on-each-invocation).
+In OMP this is `hub start`, followed by bounded incremental `hub logs` reads with
+the returned cursor, not a completion-only background command.
+
+The command inside that supervisor is:
 
 ```bash
-env -u FSD_CODING_MODEL \
-  FSD_CODING_HARNESS=codex \
-  FSD_CODING_CWD=/absolute/path/to/target-checkout \
-  FSD_CODING_NETWORK_ACCESS=0 FSD_CODING_ADD_DIR= \
-  pnpm fsdev run fsd-coding implement -i '{"task":"<what to build>"}' --session work-1
+bash -o pipefail -c 'mkdir -p .fsdev/runs &&
+  pnpm --silent fsdev run fsd-coding "$FSD_DOOR" -i "$FSD_INPUT" \
+    --session "$FSD_SESSION" --quiet --capture "$FSD_CAPTURE" |
+  tee "$FSD_TRACE" |
+  jq --unbuffered -c -f progress.jq'
 ```
 
-Command tools with `cwd` and `env` fields can pass these values directly.
-Resolve the target checkout from the outer session before running from this
-lab; it may be a different repository or linked worktree. The lab's process
-directory is not a safe target default. `FSD_CODING_CWD` must reach the child
-process, but need not exist in the parent shell.
+Pass the host flags and the quoted command arguments through the supervisor's
+`env`; no shell exports are required. `FSD_DOOR` is `implement`, `fix`, `openPr`,
+or `fixFsd`; `FSD_INPUT` is the JSON input string. `FSD_SESSION` stays the same
+across doors. Use unique `.fsdev/runs/<session>-<door>-<attempt>.ndjson` and `.json`
+paths for `FSD_TRACE` and `FSD_CAPTURE`. With adapter-default models, launch via
+`env -u FSD_CODING_MODEL bash ...`; for a resolved override, pass it explicitly.
+
+The pipeline requires Bash, `tee`, and `jq` supporting `--unbuffered`. Keep
+`pipefail`: a successful filter does not make a failed upstream run successful.
+Keep stderr visible for bootstrap failures. `pnpm --silent` removes script
+banners from stdout; `--quiet` suppresses routine runtime logs, not the stream.
+
+`progress.jq` prints bounded JSON lines for start/status, completed messages,
+tool starts/outcomes, errors, and terminal claims. It does not print token
+deltas, reasoning, raw task input, full tool arguments, or successful tool
+stdout. Failed tool results include a bounded excerpt immediately. It selects
+one lifecycle boundary per item kind rather than repeating added/updated/done
+copies. A terminal claim is not proof that files changed or checks passed.
+
+The raw NDJSON is retained incrementally; the full `--capture` JSON is written
+only at completion. Inspect bounded raw excerpts for a specific failure, not
+the whole transcript on every poll. Raw traces may contain sensitive task/tool
+data; keep them local. Surface permission failures immediately, and stop
+unproductive work when the worker is blocked.
+
+Resolve the target checkout before running from this lab; it may be a different
+repository or linked worktree. The lab directory is not a safe target default.
 
 The outer agent resolves the harness, checkout, model, and permissions from
 owner choices and trusted session context, following
@@ -73,12 +100,9 @@ failures — missing SDK, version-gate, invalid host flags, or adapter
 construction — use the same construction path, so `fixFsd` cannot recover
 them. Fix the host or environment, then retry the original door once.
 
-```bash
-pnpm fsdev run fsd-coding fixFsd \
-  -i '{"repro":"<verbatim error and command>","notes":"<intent>"}' \
-  --session work-1
-```
-The snippet shows only the command; reuse the original tool `cwd` and `env`.
+Use the same supervised streaming command with `FSD_DOOR=fixFsd` and
+`FSD_INPUT='{"repro":"<verbatim error and command>","notes":"<intent>"}'`.
+Choose new raw-trace and capture paths, preserving the original host settings.
 
 Keep the same host flags and `--session`. Then retry the original door once.
 Report both outputs if it fails again.
@@ -103,8 +127,10 @@ pnpm --filter @flow-state-dev/fsd-coding-skill test
 pnpm --filter @flow-state-dev/fsd-coding-skill typecheck
 ```
 
-Tests inject scripted clients through each adapter's existing client seam.
-A live door needs a signed-in harness for the host's selection.
+Adapter tests inject scripted clients through each adapter's existing seam.
+The focused `test/progress.spec.ts` exercises the real `jq` subprocess, including
+emission before stdin closes; it needs `jq` on `PATH`, not provider credentials.
+A live coding door needs a signed-in harness for the selected host.
 
 The outer agent's mandatory path is
 [the fsd-coding skill](../../.agents/skills/fsd-coding/SKILL.md).
