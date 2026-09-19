@@ -3,15 +3,21 @@
  *
  * What is pinned here is that this is a JOIN and not a fourth walk: every
  * record each reader returns arrives unchanged and in walk order, every error
- * channel arrives flattened into one list tagged with the layer it came from,
- * and a tree with problems still hands back everything that loaded. The one
- * throw is the root, because that is the one condition with no record to
- * collect against.
+ * channel arrives flattened into one list in a stated order and tagged with the
+ * layer it came from, each entry carrying the reader's own `Error` OBJECT
+ * rather than a copy of its text, and a tree with problems still hands back
+ * everything that loaded. The one throw is the root, because that is the one
+ * condition with no record to collect against.
+ *
+ * **No assertion here sorts what it is checking.** Order is part of this
+ * composer's contract — five error channels arrive in one stated sequence, and
+ * records arrive in their readers' walk order — so a sorted comparison would
+ * pass against an implementation that had lost it.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readChannelsDirectory } from "../src/loader/read-channels-directory";
 import { readDeclaredRoster } from "../src/loader/read-declared-roster";
 import { readWorkforce } from "../src/loader/read-workforce";
@@ -76,23 +82,42 @@ describe("readDeclaredRoster", () => {
     expect(roster.documents.map((d) => d.ref)).toEqual(["handbook"]);
   });
 
+  it("flattens all five error channels in one stated order (BR-2)", async () => {
+    // One failure per layer, so the ordering claim is made against every
+    // channel rather than the three that happened to be easiest to break.
+    await writeWorker("qa", "tester"); // loads — what the skill error attaches to
+    await fs.mkdir(path.join(root, "teams", "qa", "workers", "broken"), { recursive: true });
+    await fs.mkdir(path.join(root, "org", "skills", "house-style"), { recursive: true });
+    await fs.mkdir(path.join(root, "teams", "qa", "TEAM.md"), { recursive: true });
+    await fs.mkdir(path.join(root, "org", "resources"), { recursive: true });
+    await fs.writeFile(path.join(root, "org", "resources", "loose.md"), "no frontmatter here\n");
+    await writeChannel("qa", "brokenchannel", "members: [qa.tester]");
+
+    const roster = await readDeclaredRoster(root);
+
+    // Unsorted, deliberately. The sequence IS the contract: worker slots, then
+    // each seat's skills, then team files, then documents, then channels.
+    expect(roster.problems.map((p) => p.layer)).toEqual([
+      "worker",
+      "skill",
+      "team",
+      "document",
+      "channel",
+    ]);
+  });
+
   it("keeps every record that loaded when other records did not (BR-4)", async () => {
     await writeWorker("qa", "tester");
     await writeChannel("qa", "standup");
     await writeDocument("org/resources", "handbook");
-    // One failure per layer, each a different reader's channel.
     await fs.mkdir(path.join(root, "teams", "qa", "workers", "broken"), { recursive: true });
     await writeChannel("qa", "brokenchannel", "members: [qa.tester]");
     await fs.writeFile(path.join(root, "org", "resources", "loose.md"), "no frontmatter here\n");
 
     const roster = await readDeclaredRoster(root);
 
-    expect(roster.problems.map((p) => p.layer).sort()).toEqual([
-      "channel",
-      "document",
-      "worker",
-    ]);
-    // The point of BR-4: the good records survived the bad ones.
+    expect(roster.problems.map((p) => p.layer)).toEqual(["worker", "document", "channel"]);
+    // The point of BR-4: the good records survived the bad ones, in walk order.
     expect(roster.workers.map((w) => w.id)).toEqual(["qa.tester"]);
     expect(roster.channels.map((c) => c.id)).toEqual(["qa.standup"]);
     expect(roster.documents.map((d) => d.ref)).toEqual(["handbook"]);
@@ -108,24 +133,51 @@ describe("readDeclaredRoster", () => {
     expect(roster.problems).toHaveLength(1);
     expect(roster.problems[0].layer).toBe("worker");
     expect(roster.problems[0].path).toBe(direct.errors[0].path);
-    // Verbatim: the reader owns one wording per refusal, and re-phrasing here
-    // would give one failure two spellings.
     expect(roster.problems[0].error.message).toBe(direct.errors[0].error.message);
   });
 
-  it("carries a channel problem's wording verbatim too (BR-2)", async () => {
+  it("carries a channel problem's path and wording from the reader (BR-2)", async () => {
     await writeChannel("qa", "nodesc", "members: [qa.tester]");
 
     const roster = await readDeclaredRoster(root);
     const direct = await readChannelsDirectory(root);
 
     expect(roster.problems.map((p) => p.layer)).toEqual(["channel"]);
+    expect(roster.problems[0].path).toBe(direct.errors[0].path);
     expect(roster.problems[0].error.message).toBe(direct.errors[0].error.message);
   });
 
+  it("hands back the reader's own Error OBJECT, not one rebuilt from its text (BR-2)", async () => {
+    // Comparing `.message` cannot tell passing the reader's error through from
+    // rebuilding `new Error(e.message)` — which reads identically and silently
+    // drops the `cause` chain the reader attached. Identity is the only
+    // assertion that can see the difference.
+    const cause = new Error("the syscall underneath");
+    const sentinel = new Error("a wording only the reader owns", { cause });
+
+    vi.resetModules();
+    vi.doMock("../src/loader/read-channels-directory", () => ({
+      readChannelsDirectory: async () => ({
+        channels: [],
+        errors: [{ path: "teams/qa/channels/x", error: sentinel, kind: "channel-load-failed" }],
+      }),
+    }));
+    try {
+      const fresh = await import("../src/loader/read-declared-roster");
+      const roster = await fresh.readDeclaredRoster(root);
+
+      const channel = roster.problems.find((p) => p.layer === "channel");
+      expect(channel?.error).toBe(sentinel);
+      expect(channel?.error.cause).toBe(cause);
+    } finally {
+      vi.doUnmock("../src/loader/read-channels-directory");
+      vi.resetModules();
+    }
+  });
+
   it("reports a shared skills level once per affected seat, not once for the level (BR-3)", async () => {
-    await writeWorker("qa", "tester");
     await writeWorker("qa", "reviewer");
+    await writeWorker("qa", "tester");
     // A broken skill at the ORG level — a level both seats read.
     await fs.mkdir(path.join(root, "org", "skills", "house-style"), { recursive: true });
 
@@ -133,22 +185,25 @@ describe("readDeclaredRoster", () => {
     const skills = roster.problems.filter((p) => p.layer === "skill");
 
     // One entry per seat that lost a skill. Flattening to one would say the
-    // level failed; what actually happened is that two seats are running short.
+    // level failed; what actually happened is two seats running short.
+    // Unsorted: the entries follow the seats' walk order, so each entry's
+    // `worker` has to be the seat it was attached to rather than either name.
     expect(skills).toHaveLength(2);
-    expect(skills.map((p) => p.worker).sort()).toEqual(["qa.reviewer", "qa.tester"]);
+    expect(skills.map((p) => p.worker)).toEqual(["qa.reviewer", "qa.tester"]);
     expect(new Set(skills.map((p) => p.path)).size).toBe(1);
   });
 
   it("surfaces a team that declared a TEAM.md, and omits one that did not (BR-7)", async () => {
     await writeTeamFile("qa", "description: The quality team");
-    await writeWorker("qa", "tester");
     await writeWorker("ops", "oncall");
+    await writeWorker("qa", "tester");
 
     const roster = await readDeclaredRoster(root);
 
     expect(roster.problems).toEqual([]);
     expect(roster.teams.map((t) => t.id)).toEqual(["qa"]);
-    expect(roster.workers.map((w) => w.id).sort()).toEqual(["ops.oncall", "qa.tester"]);
+    // Walk order, not sorted: two teams, and the reader's order is the contract.
+    expect(roster.workers.map((w) => w.id)).toEqual(["ops.oncall", "qa.tester"]);
   });
 
   it("throws on a symlinked root, naming it — the only throw (BR-5)", async () => {
