@@ -5,13 +5,13 @@ sidebar_label: Per-generator binding
 
 # Binding skills to a generator
 
-There are two ways to give a generator skills. The older one activates a skill into a session-wide bag that every generator in the conversation reads from. That works for a single agent, but in a multi-agent flow one agent's skill leaks into every other agent's context, and an activation sticks around for the rest of the conversation.
+A skill binds to **one generator**, where that generator is defined, and only that generator carries it. Two generators in the same flow can hold different skills without seeing each other's, and there's no activate/deactivate lifecycle to track.
 
-The per-generator binding fixes both. A skill binds to **one generator** where that generator is defined, and it's carried only by that generator. No shared bag, no activate/deactivate lifecycle to reason about.
+Reach for this whenever you know at build time which generator needs which skill. The session-wide alternative, [`createSkillsCapability`](../orchestration/configuration), puts activations in one bag every generator in the conversation reads, which suits a single agent and leaks between agents in a multi-agent flow.
 
 ## Library and binding
 
-Two pieces. A **library** is the shared catalog: the skills themselves, installed once. A **binding** is per generator: which of those skills this generator has, and how.
+A **library** is the shared catalog: the skills themselves, installed once. A **binding** is per generator: which of those skills this generator has, and how.
 
 ```ts
 import { createSkillsLibrary, readSkillsDirectory } from "@flow-state-dev/orchestration";
@@ -47,11 +47,9 @@ const analyst = generator({
 uses: [skills.with({ active: ["detailed-analysis", "cite-sources"] })];
 ```
 
-- **The catalog rides along, not the skill's list.** Binding a skill contributes the library's whole `catalog` to the generator. `allowed-tools` records what the skill is written around; it grants nothing on its own, and the generator's context says so. A generator that declares its own `tools:` is the exception: that list is the complete set of tools its model may call, so name the skill's tools there too. `loadSkill` and the delegation surface below are not tools from your catalog and arrive either way. See [Tools a capability contributes](../fundamentals/capabilities#capability-tools).
-- **A preloaded skill can delegate.** If the skill declares an `agents:` field, binding it installs the delegation surface (a private board, the `taskTools`, and `runBoard`) on this generator. `delegation: true`/`false` are explicit overrides of that default (install iff `agents:` is declared): `false` suppresses it, and `true` forces it on even when the skill declares no `agents:`, relying on the board's default worker. See [Delegation](./delegation).
-- **Fails loud on a typo.** A name that isn't a known skill throws at build time. This is an author declaration, not a runtime read, so a silent skip would run the generator without the instructions you asked for. Binding by name validates against the library's bundled `initialSkills`, so pass them to `createSkillsLibrary` — binding a name with no catalog to check against is itself an error.
-
-Two generators, two different `active` sets, and neither sees the other's skill. That's the whole point.
+- **The catalog rides along, not the skill's list.** A binding contributes the library's `catalog`. `allowed-tools` is validated against that catalog but never selects what gets contributed, so it is not the unit here. Two things decide what the generator actually ends up with. A library built with `registerCatalogTools: false` contributes no catalog tools at all and leaves registration to you, which is what the built-in worker kind does. And a generator that declares its own `tools:` gets exactly that list: declaring the slot at all is what raises the fence, so `tools: []` means no catalog tools, while omitting the slot lets the contributed catalog through. If you declare `tools:`, name the skill's tools there too. `loadSkill` and the delegation surface below are not tools from your catalog and arrive either way. See [Tools a capability contributes](../fundamentals/capabilities#capability-tools).
+- **A preloaded skill can delegate.** If the skill declares an `agents:` field, binding it installs the delegation surface (a private board, the `taskTools`, and `runBoard`) on this generator. This is the one path where `allowed-tools` restricts rather than describes: the catalog keys it lists are the tools that can be assigned a task, and a skill that lists none makes the whole catalog assignable. `delegation: true`/`false` are explicit overrides of that default (install iff `agents:` is declared): `false` suppresses it, and `true` forces it on even when the skill declares no `agents:`, relying on the board's default worker. See [Delegation](./delegation).
+- **Fails loud on a typo.** A name that isn't a known skill throws at build time. Binding by name validates against the library's bundled `initialSkills`, so pass them to `createSkillsLibrary`; binding a name with no catalog to check against is itself an error.
 
 ## `with({ dynamicActivation })` — let the agent load a skill mid-turn
 
@@ -91,20 +89,11 @@ Declare that field in the scope's state schema where it's **written**. The upstr
 
 ### Who writes the activation
 
-:::note Two activation paths — only one uses block state
-Don't read the automatic block-state field as making `createSkillActivator` unnecessary. They're different mechanisms:
-
-- **`dynamicActivation`'s `loadSkill` tool** is *model-driven* and runs *inside* the generator (as a child block), so it writes the generator's own block state — which the binding now installs for you.
-- **`createSkillActivator`** is *deterministic* (a `/skill` slash command, a keyword, or the classifier) and runs *before* the generator, as its own block. At that point the generator's block state doesn't exist yet, so it can't use it no matter who declares the schema — it must write an explicit shared field. It also gives you rule-based activation the model-driven tool can't (a `/research` command activates research whether or not the model would pick it).
-
-So the automatic block-state field removed the hand-declared `stateSchema` for the load-tool path; it did **not** remove the matcher's need for a shared field. Reach for the matcher when you want up-front, deterministic activation; reach for `dynamicActivation` when you want the model to decide mid-turn.
-:::
-
 Three writers, and the storage choice follows from which one you have:
 
 - **The load tool** (the LLM, mid-turn) writes the generator's block state by default, or the explicit `activeState` field if you set one.
 - **Code** writes an explicit `activeState` field directly (`ctx.session.patchState(...)`).
-- **An upstream matcher** — `createSkillActivator`, the slash / keyword / classifier router — runs *before* the generator, so it can't reach a downstream generator's block state (that state doesn't exist until the block runs). It **requires** an explicit shared field, and it should be scoped to the binding's `allowed` set so a `/skill` hit for a skill this generator wasn't given doesn't land in the field.
+- **An upstream matcher** (`createSkillActivator`, the slash / keyword / classifier router) runs *before* the generator, so it can't reach a downstream generator's block state; that state doesn't exist until the block runs. It **requires** an explicit shared field, and it should be scoped to the binding's `allowed` set so a `/skill` hit for a skill this generator wasn't given doesn't land in the field. Reach for it when you want activation by rule rather than by the model's judgement: `/research` activates research whether or not the model would have picked it.
 
 ```ts
 const activator = createSkillActivator({

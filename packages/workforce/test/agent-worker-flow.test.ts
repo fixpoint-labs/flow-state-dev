@@ -15,6 +15,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, InitialSkill } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
+import { formatAllowedToolsIntentNote } from "@flow-state-dev/orchestration";
 import { hireWorkforce, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
@@ -386,22 +387,14 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
 
     const system = systemPromptOf(answer);
 
-    // The skill's intent still reaches the model: it names the tool it was
-    // written around. Removing the lie must not cost the author that signal.
-    expect(system).toContain("board");
-
-    // ...but never as a claim about what this seat can call. The renderer is
-    // in `@flow-state-dev/orchestration` and cannot see `ctx.flow.config.tools`
-    // (nor the seat's colocated blocks, which are not catalog keys at all), so
-    // any sentence it writes about availability is a guess — and here it would
-    // be a wrong one.
-    expect(system).not.toMatch(/tools are available/i);
-    expect(system).not.toMatch(/you (can|may) call/i);
-    expect(system).not.toMatch(/access to/i);
-
-    // And it says which it is, out loud, so the next reader of the prompt
-    // does not re-derive the grant reading from a bare list of tool names.
-    expect(system).toMatch(/not a grant/i);
+    // What the seat is told about `board` is exactly the intent note, and
+    // nothing else. Asserting the note verbatim — rather than a list of
+    // phrasings it must avoid — is the point: patterns like
+    // `not.toMatch(/tools are available/)` are satisfied by "only these tools
+    // are usable", so they cannot fail in the way they claim to. The wording
+    // is the deliverable, so the wording is what gets asserted, from the one
+    // place that defines it.
+    expect(system).toContain(formatAllowedToolsIntentNote(["board"]));
   });
 });
 

@@ -133,18 +133,26 @@ export interface SkillState {
   metadata?: Record<string, string>;
 
   /**
-   * From `allowed-tools`. The tools the skill is written around — neither a
-   * grant nor a gate (FIX-1451).
+   * From `allowed-tools`. The tools the skill is written around. **It never
+   * widens access** — but what it narrows depends on the path, so the two
+   * have to be kept apart (FIX-1451).
    *
-   * It introduces nothing: registration is a consuming generator's own job,
-   * and no path anywhere registers this subset — `createSkillsLibrary`
-   * validates these names against the catalog and then registers the whole
-   * catalog, or, under `registerCatalogTools: false`, registers none of it.
-   * It gates nothing either: no runtime code narrows a generator's tools to
-   * this list. Where it does decide something — the delegation surface's tool
-   * seats — it only ever narrows the catalog the holder already reached.
+   * **Direct model tool access — decides nothing.** It registers nothing:
+   * `createSkillsLibrary` validates these names against the catalog and then
+   * contributes the *whole* catalog, or, under `registerCatalogTools: false`,
+   * contributes none of it. Either way this subset is not the unit. What the
+   * generator may call is its own `tools:` when it declares one (declaring it
+   * at all raises the fence) and otherwise whatever its capabilities
+   * contribute.
    *
-   * Treat it as authoring metadata. A seat's `tools:` is the access boundary.
+   * **Delegation tool seats — does gate.** When the skill declares `agents:`,
+   * `resolveToolSeats` seats exactly the catalog keys listed here; a skill
+   * that declares none seats the whole catalog. So this list restricts which
+   * tools can be a task assignee. It still never widens: seats are drawn from
+   * the catalog the holder already reached, and narrowed again by
+   * `toolSeatFence`.
+   *
+   * Authoring metadata for the first path, a real restriction for the second.
    */
   allowedTools?: string[];
 

@@ -9,14 +9,21 @@
  * `allowed-tools`. Keeping one renderer avoids two copies drifting apart
  * (per the repo's no-duplicate-helpers convention).
  *
- * **What that note may say, and why it is narrow (FIX-1451).** `allowed-tools`
- * grants nothing. `createSkillsLibrary` validates the names against the
- * catalog and, under `registerCatalogTools: false` — the stock worker posture
- * — registers none of them; a seat's own `tools:` is the entire grant, and
- * nothing at runtime narrows a generator's tools to a skill's list either. So
- * the shipped note ("only these tools are available: ...") was wrong in both
- * directions at once: it promised tools the seat could not call, and claimed
- * exclusivity over tools it could.
+ * **What that note may say, and why it is narrow (FIX-1451).** The note is
+ * about one thing only: what the consuming generator can CALL. On that path
+ * `allowed-tools` decides nothing. `createSkillsLibrary` validates the names
+ * against the catalog and then contributes the whole catalog, or — under
+ * `registerCatalogTools: false`, the stock worker posture — contributes none
+ * of it; the generator's own `tools:` is the boundary, and nothing at runtime
+ * narrows a generator's tools to a skill's list. So the shipped note ("only
+ * these tools are available: ...") was wrong in both directions at once: it
+ * promised tools the generator could not call, and claimed exclusivity over
+ * tools it could.
+ *
+ * (`allowed-tools` is not inert everywhere — when a skill declares `agents:`
+ * it gates which catalog keys become delegation task seats, per
+ * `resolveToolSeats`. That is a different question from what the generator
+ * may call, so the note stays silent about it rather than blurring the two.)
  *
  * The fix is phrasing, not plumbing, because the honest sentence is the only
  * one this function is in a position to write. It is handed a collection, a
@@ -25,7 +32,8 @@
  * turn from `ctx.flow.config.tools` plus the seat's own colocated blocks,
  * which are not catalog keys at all. An intersection rendered here would be a
  * guess wearing the same grant-shaped sentence. So: describe the skill, say
- * nothing about the seat, and say which of the two it is out loud.
+ * nothing about the consuming generator's access, and say which of the two it
+ * is out loud.
  */
 
 import path from "node:path";
@@ -34,6 +42,32 @@ import type { SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
 import { substitute } from "./skill-md";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
+
+/**
+ * The `allowed-tools` note, in one place so a test can assert the exact text
+ * rather than approximate it with patterns (FIX-1451). Two files were each
+ * carrying their own regex inventory of phrasings this note must not use,
+ * which is a weaker check than it looks: "only these tools are usable" would
+ * have satisfied every one of them.
+ *
+ * It says **"this generator"**, never "this seat". This renderer is shared by
+ * both skill entry points, and the legacy `createSkillsCapability` attaches to
+ * an ordinary generator with no seat anywhere — "seat" is workforce
+ * vocabulary, and on that path it would be undefined terminology in a model's
+ * prompt.
+ *
+ * @param allowedTools - the skill's declared `allowed-tools`, non-empty.
+ */
+export function formatAllowedToolsIntentNote(
+  allowedTools: readonly string[],
+): string {
+  return (
+    `(Tools this skill is written around: ${allowedTools.join(", ")}. ` +
+    `That is the skill's intent, not a grant — whether this generator can ` +
+    `call them is decided by its own tool configuration, so some may be ` +
+    `missing and others not listed here may be present.)`
+  );
+}
 
 /**
  * Render a single inline skill's `<active_skill>` block, or `null` when the
@@ -68,14 +102,11 @@ export async function renderActiveSkillBody(
   });
   // `allowed-tools` is the skill author's INTENT, and this function has no way
   // to learn the consuming generator's actual tool list — so the note describes
-  // the skill and says nothing about the seat (FIX-1451). See the module
-  // docstring for why the honest phrasing is load-bearing rather than fussy.
+  // the skill and says nothing about the generator's access (FIX-1451). See the
+  // module docstring for why the honest phrasing is load-bearing, not fussy.
   const intent =
     state.allowedTools && state.allowedTools.length > 0
-      ? `\n(Tools this skill is written around: ${state.allowedTools.join(", ")}. ` +
-        `That is the skill's intent, not a grant — whether this seat can call them is ` +
-        `decided by its own tool configuration, so some may be missing and others not ` +
-        `listed here may be present.)`
+      ? `\n${formatAllowedToolsIntentNote(state.allowedTools)}`
       : "";
   return `<active_skill name="${name}">\n${substituted}${intent}\n</active_skill>`;
 }

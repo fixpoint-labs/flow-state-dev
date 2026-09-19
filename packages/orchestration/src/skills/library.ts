@@ -379,9 +379,11 @@ export function createSkillsLibrary(
   // capability: the reader renders the LIVE manifest, which an admin can edit
   // after seeding, so freezing a per-skill tool subset at build time would let
   // the rendered `allowed-tools` note name a tool the generator never
-  // registered. The declared list never becomes a restriction: the rendered
-  // note states it as the skill's intent and explicitly disclaims any read as
-  // a grant (FIX-1451), because nothing here narrows the generator to it.
+  // registered. On THIS path the declared list never becomes a restriction —
+  // nothing here narrows the generator to it, so the rendered note states it
+  // as the skill's intent and disclaims any read as a grant (FIX-1451). It is
+  // a restriction on the delegation path (`resolveToolSeats` seats exactly
+  // these keys); that is a separate question from what this generator calls.
   const validateDeclaredTools = (name: string): void => {
     const declared = index.get(name)?.allowedTools;
     if (!declared) return;
@@ -461,10 +463,11 @@ export function createSkillsLibrary(
 
     // Whenever a skill body can render — statically preloaded (`active`) or
     // activated at runtime (load tool / upstream matcher / code) — register the
-    // whole catalog as a safe superset. The skill's own `allowed-tools` scopes
-    // nothing here — it renders as an intent note (FIX-1451), not a fence;
-    // registering the superset keeps a live post-seeding edit to that list
-    // from pointing the model at an unregistered tool.
+    // whole catalog as a safe superset. The skill's own `allowed-tools` does
+    // not scope this registration — it renders as an intent note (FIX-1451),
+    // not a fence; registering the superset keeps a live post-seeding edit to
+    // that list from pointing the model at an unregistered tool. (It DOES
+    // scope delegation seats, built separately below.)
     //
     // `registerCatalogTools: false` opts out of this registration only —
     // `validateDeclaredTools` above still runs unconditionally, so a caller
