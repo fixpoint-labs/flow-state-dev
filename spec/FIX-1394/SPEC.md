@@ -8,7 +8,7 @@ Feature (exploration) · `workforce` + `orchestration` · large · POC matrix �
 
 | Someone who… | Today | After this issue |
 |---|---|---|
-| **wants to give a seat one new capability** | Picks between five file conventions with no rule saying which. Instructions go in one, a tool in another, a document in a third, and the reusable version of the same thing in a fourth | Still picks — but from a ratified rule, backed by a built comparison rather than by whoever argued last |
+| **wants to give a seat one new capability** | Picks between seven file conventions with no rule saying which. Instructions go in one, a tool in another, a document in a third, and the reusable version of the same thing in a fourth | Still picks — but from a ratified rule, backed by a built comparison rather than by whoever argued last |
 | **wants to hand another team a working capability** | Sends a folder and a paragraph of instructions on where to put it and which line to add. There is no unit that travels | Knows what a shippable unit is, and what the receiver still has to do by hand |
 | **writes a skill that needs a tool** | Declares `allowed-tools`, watches it get validated, and gets no tool. The seat's own `tools:` is the only grant, and nothing says so at the point of writing | Knows this is the rule rather than a bug, and whether it is the rule we are keeping |
 | **builds the next thing on top of a seat** (boards, channel admin) | Decides twice — once for the seat surface, once for the skill surface — and picks a side the other child may contradict | Builds against one ratified contract, or against a written rule that two surfaces are correct |
@@ -25,11 +25,12 @@ the same as any other, and it is the outcome that costs the framework least.
 
 ## What changes
 
-![Today, five separate file conventions each supply a seat one thing, and only skills can be held without being active; every one of them still passes through a single grant gate, the tools key in the seat's own WORKER.md. After a ratify, one package format supplies all of it in two attachment modes, attached to a seat as always-on or held in a library as opt-in, and the same grant gate is unchanged.](figures/what-changes.svg)
+![Today, seven author-written conventions across three doors each supply a seat one thing, and only skills can be held without being active; every one of them passes through a single grant gate, the tools key in the seat's own WORKER.md. If the ratify chooses to collapse them, one package format supplies all of it in two attachment modes, attached to a seat as always-on or held in a library as opt-in, and the same grant gate is unchanged. Don't collapse is also a possible answer.](figures/what-changes.svg)
 
 The gate is the same line in both halves, and this issue does not move it. What moves is the left
-column collapsing into one box with two modes. Whether a package may ever cross that gate on its
-own is [D1](DECISIONS.md#d1), and it is the thing worth your attention.
+column collapsing into one box with two modes — **if** the ratify chooses that; the right half is
+one of four possible answers, not a foregone one. Whether a package may ever cross that gate on
+its own is [D1](DECISIONS.md#d1), and it is the thing worth your attention.
 
 **The rule as it stands today, verified in the code rather than read off a doc** — every source of
 a tool passes through one key in the seat's own file:
@@ -91,6 +92,8 @@ comparable ([D2](DECISIONS.md#d2)). Nothing merges to `main` from this issue.
    the four.** *If wrong:* we spend four builds on a comparison whose probes were chosen to suit
    whichever variant was written first, and ratify a format on it.
 
-**Open: one** — whether five session-policy questions the epic loaded onto this POC belong here
-at all ([Open](DECISIONS.md#open)). Number 1 is the one to weigh. The reasoning and what lost:
-[DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
+**Open: none.** The one question that was — whether five session-policy walls the epic loaded onto
+this POC belong here — went up under ER-15 and came back ruled: one stays, four return, and
+FIX-1385 takes the board-row one ([Settled](DECISIONS.md#settled)). Number 1 is the one to weigh.
+The reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
+[BUSINESS-RULES.md](BUSINESS-RULES.md).

@@ -2,7 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
-Two decisions are the sign-off surface; one question is open and goes back to the epic.
+Two decisions are the sign-off surface. Nothing is open — the one question that was went up to the
+epic under ER-15 and came back ruled ([Settled](#settled)).
 
 ## The tree
 
@@ -42,22 +43,26 @@ tool goes. Then the fence is what to revisit, as its own issue.
 | **Because** | A matrix whose probes are chosen per variant proves nothing: the first shape written defines what counts as passing. And neither obvious cut is ours — *reuse-vs-create* is reserved for the owner ([ER-13](https://github.com/fixpoint-labs/flow-state-dev/pull/1905)), so a matrix omitting *create* answers a question nobody asked, and *don't collapse* is the cheapest outcome for the framework and has to be able to win |
 | **Locks in** | Four builds before a ratify — the bulk of this issue's cost. The probe set becomes the definition of what "one package format" must mean, so a probe nobody thought of is a gap the ratify inherits. **How many variants is the owner's to move**; four is a recommendation, not a closed item |
 
-![A grid of six fixed probes down the side against four candidate variants across the top: reuse the SKILL.md format, reuse the seat-folder shape, create a new format, and don't collapse at all. Every variant is judged on the same six probes: ships instructions, ships a tool, ships a document, attaches both ways, the grant gate still holds, and nothing that works today breaks. The ships-a-document row is marked as the one expected to fail in every variant, because a file-declared document installs at flow level and cannot be lazy. The don't-collapse column is a real candidate and not a control.](figures/probe-matrix.svg)
+![A grid of six fixed probes down the side against four candidate variants across the top: reuse the SKILL.md format, reuse the seat-folder shape, create a new package file, and don't collapse at all. Every variant is judged on the same six probes: ships instructions, ships a tool, ships a document, attaches both ways, the grant gate still holds, and nothing that works today breaks. Every probe is satisfiable by something that exists today, and the don't-collapse column is a real candidate rather than a control.](figures/probe-matrix.svg)
 
-Read down a column, not across a row. The shaded row is expected to fail everywhere, and is in the
-set for that reason: a file-declared document installs at flow level and is refused
-`prefetchMode: "lazy"`. Learning that during the matrix is cheap; learning it after ship tickets is
-not.
+Read down a column, not across a row. **Every probe in the set is satisfiable by something that
+exists today** — review caught P3 drafted so that no candidate could pass it, which would have
+consumed a column while distinguishing nothing and let the matrix ratify a format that cannot
+carry documents in both modes. The grid is empty because the cells are the deliverable.
 
 ## Decided, not asked
 
-- **P3 stays in the set even though it is expected to fail.** A probe dropped because you know the
-  answer is how a format ships that works for instructions and tools but not documents.
+- **Every probe must be satisfiable before the set is fixed.** A probe no candidate can pass
+  distinguishes nothing and costs a column. P3 was drafted that way and rewritten (BR-12); the
+  check now runs on the whole set, not just on the probe that was caught.
 - **Written against landed code, not two approved specs.** FIX-1377 and FIX-1416 merged to `main`
   (PRs #1911, #1909) while this was drafted; ER-18 assumes neither had. Where the shipped
   behaviour differs — FIX-1416 shipped *stricter* — the code wins.
-- **No `spec-poc/` in this pass.** The one premise justifying one is settled from the repo (BR-1),
-  and the matrix is this issue's deliverable: building a variant now pre-empts the gate.
+- **No *premise* POC on this spec PR.** The one premise that would have justified one — whether a
+  package can grant a seat a tool — is settled from the repo and asserted by
+  `evidence/check-conventions.mjs` (BR-1). The four variants are a different thing: they are this
+  issue's deliverable, they live under `spec-poc/` at implement time, and building one now would
+  pre-empt the gate.
 - **The ratify is recorded on the epic.** ER-2 names this answer as the epic's contract.
 
 ## Considered and dropped
@@ -70,34 +75,36 @@ not.
 | Treat a package's tools as `controlTools`, which already cross | The precedent does not transfer: a control crosses because it is built inside its capability and never exported. A package's tool is exported by construction |
 | Collapse only instructions, leaving tools and documents alone | The smallest real version, carried into the matrix as variant D's fallback. Not the headline, because it answers none of the tool question |
 
-<a name="open"></a>
+<a name="settled"></a>
+## Settled on the epic
+
+**Four of five session-policy walls went back; one stays here.** Raised on the epic PR under
+ER-15 rather than answered locally, and ruled there.
+
+The epic recorded FIX-1408's five unclosed walls as evidenced by **this** POC. Four of them are
+about how a dispatched worker gets its session and its history, which this matrix does not touch;
+making one comparison answer two unrelated questions would have cost the variants their
+comparability on the thing they were built to compare.
+
+**The ruling: keep one, return four.** *Which opt-in history packs are v1* stays — a history pack
+is a library package with opt-in attachment, which is exactly what P4 probes. The other four go
+back to the epic for re-homing, and **FIX-1385 takes the board-row one**. The probe set is six,
+and fixed.
+
 ## Open
 
-**Do five session-policy questions belong on this POC?** *(Decides: the owner, on the epic. Blocks: the matrix's scope, before any variant is built.)*
-
-- **The fork.** The epic records FIX-1408's five unclosed walls — reuse-vs-create session policy,
-  auto-scale and busy-copy, hire-or-dispatch-with-parent naming, which opt-in history packs are
-  v1, and how a sub-agent's background work surfaces on a board row — as evidenced by **this** POC
-  (ER-15). Keep all five, or return four to the epic for re-homing?
-- **In plain terms.** Four are about how a dispatched worker gets its session and its history. One
-  — which opt-in history packs ship first — is about what a reusable, opt-in unit carries, which is
-  what this matrix already builds.
-- **The trade-off.** Keeping all five makes one comparison answer two unrelated questions: each
-  variant would model session behaviour it does not touch, and the four stop being comparable on
-  the thing they were built to compare. Returning four leaves them unowned until somebody files —
-  which is how a *Still open* item quietly becomes nobody's.
-- **My recommendation: keep one, return four.** Keep *which opt-in history packs are v1*: a history
-  pack is a library package with opt-in attachment, and P4 already probes it.
-- **What would change my mind.** If the five meant "use whatever this POC reveals" rather than
-  "this POC must answer them," nothing is loaded onto the matrix and this is a wording fix on the
-  epic. Confirming that closes it.
-- **If wrong.** Keeping all five costs a matrix nobody can read and a ratify nobody trusts.
-  Returning all five costs four orphaned questions that resurface at the exit gate, expensively.
-
-*Raised on the epic PR rather than decided here, per ER-15.*
+**None.**
 
 ## How it got here
 
 - **Draft** — framed as an attachment-semantics question rather than a schema question, after the
   code showed a single grant gate enforced at four points; deliverable shaped as a four-variant
   matrix against six fixed probes, with *don't collapse* as a real candidate.
+- **Review** — the evidence base was weaker than it read. P3 was unpassable by any candidate and
+  is now an observable behaviour (BR-12); P1 forbade a prompt layer every package-bearing variant
+  would need, and now protects the reserved `default` rather than the array (BR-10); the
+  grant-gate check asserted that implementation identifiers appeared in a file, and now anchors on
+  four behavioural suites, one per enforcement point — including the capability fence it never
+  reached; the totality check scanned one door of three and now covers all seven readers, with the
+  negative control planting in the door it had been missing. The ER-15 fork was ruled in the same
+  round.

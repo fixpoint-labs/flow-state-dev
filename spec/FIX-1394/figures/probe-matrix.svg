@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 320" role="img" aria-label="A grid of six fixed probes down the side against four candidate variants across the top: reuse the SKILL.md format, reuse the seat-folder shape, create a new format, and don't collapse at all. Every variant is judged on the same six probes: ships instructions, ships a tool, ships a document, attaches both ways, the grant gate still holds, and nothing that works today breaks. The ships-a-document row is marked as the one expected to fail in every variant, because a file-declared document installs at flow level and cannot be lazy. The don't-collapse column is a real candidate and not a control."
+<svg viewBox="0 0 940 300" role="img" aria-label="A grid of six fixed probes down the side against four candidate variants across the top: reuse the SKILL.md format, reuse the seat-folder shape, create a new package file, and don't collapse at all. Every variant is judged on the same six probes: ships instructions, ships a tool, ships a document, attaches both ways, the grant gate still holds, and nothing that works today breaks. Every probe is satisfiable by something that exists today, and the don't-collapse column is a real candidate rather than a control."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -10,14 +10,12 @@
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
     .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.1; }
     .n-head { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
-    .n-warn { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
     .n-ctl  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
     .grid   { stroke:var(--rule); stroke-width:.8; fill:none; }
     .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
               font-size:9.5px; letter-spacing:.1em; }
     .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
     .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
-    .t-w    { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
   </style>
 
   <g id="col-heads">
@@ -34,7 +32,7 @@
     <text class="t-b" x="622" y="50">C · create</text>
     <text class="t-s" x="622" y="64">a new package file</text>
 
-    <rect class="n-ctl" x="768" y="32" width="156" height="40" rx="4"/>
+    <rect class="n-ctl" x="768" y="32" width="150" height="40" rx="4"/>
     <text class="t-b" x="778" y="50">D · don't collapse</text>
     <text class="t-s" x="778" y="64">write the placement rule</text>
   </g>
@@ -46,29 +44,26 @@
     <rect class="n-box" x="16" y="114" width="278" height="26" rx="3"/>
     <text class="t-b" x="26" y="131">P2 · ships a tool</text>
 
-    <rect class="n-warn" x="16" y="146" width="278" height="26" rx="3"/>
+    <rect class="n-box" x="16" y="146" width="278" height="26" rx="3"/>
     <text class="t-b" x="26" y="163">P3 · ships a document</text>
-    <text class="t-w" x="232" y="163">expected fail</text>
 
     <rect class="n-box" x="16" y="178" width="278" height="26" rx="3"/>
-    <text class="t-b" x="26" y="195">P4 · attaches both ways, unchanged</text>
+    <text class="t-b" x="26" y="195">P4 · attaches both ways</text>
 
     <rect class="n-box" x="16" y="210" width="278" height="26" rx="3"/>
-    <text class="t-b" x="26" y="227">P5 · the grant gate still holds</text>
+    <text class="t-b" x="26" y="227">P5 · the grant gate holds</text>
 
     <rect class="n-box" x="16" y="242" width="278" height="26" rx="3"/>
-    <text class="t-b" x="26" y="259">P6 · nothing that works today breaks</text>
+    <text class="t-b" x="26" y="259">P6 · nothing today breaks</text>
   </g>
 
   <g id="cells">
     <path class="grid" d="M300 82 H924 M300 114 H924 M300 146 H924 M300 178 H924 M300 210 H924 M300 242 H924 M300 268 H924"/>
     <path class="grid" d="M300 82 V268 M456 82 V268 M612 82 V268 M768 82 V268 M924 82 V268"/>
-    <rect class="n-warn" x="300" y="146" width="624" height="26"/>
-    <text class="t-s" x="312" y="163">installs at flow level, refused `prefetchMode: lazy` — no variant has an opt-in mode for a document</text>
   </g>
 
   <g id="caption">
-    <path class="grid" d="M16 288 H924"/>
-    <text class="t-s" x="16" y="306">Read down a column, not across a row. A variant wins by passing probes the others fail — and the probe set is fixed first, so the four stay comparable.</text>
+    <path class="grid" d="M16 286 H924"/>
+    <text class="t-s" x="16" y="296">Read down a column. A variant wins by passing probes the others fail, and the probe set is fixed first so the four stay comparable.</text>
   </g>
 </svg>

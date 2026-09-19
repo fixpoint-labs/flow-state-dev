@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 340" role="img" aria-label="Today, five separate file conventions each supply a seat one thing, and only skills can be held without being active; every one of them still passes through a single grant gate, the tools key in the seat's own WORKER.md. After a ratify, one package format supplies all of it in two attachment modes, attached to a seat as always-on or held in a library as opt-in, and the same grant gate is unchanged."
+<svg viewBox="0 0 940 358" role="img" aria-label="Today, seven author-written conventions across three doors each supply a seat one thing, and only skills can be held without being active; every one of them passes through a single grant gate, the tools key in the seat's own WORKER.md. If the ratify chooses to collapse them, one package format supplies all of it in two attachment modes, attached to a seat as always-on or held in a library as opt-in, and the same grant gate is unchanged. Don't collapse is also a possible answer."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -22,87 +22,94 @@
   </style>
 
   <g id="today">
-    <text class="t-lbl" x="16" y="24">TODAY · FIVE CONVENTIONS</text>
-    <rect class="n-box" x="16" y="36" width="188" height="34" rx="4"/>
-    <text class="t-b" x="28" y="52">WORKER.md</text>
-    <text class="t-s" x="28" y="64">instructions · always-on</text>
+    <text class="t-lbl" x="16" y="24">TODAY · SEVEN CONVENTIONS</text>
+    <rect class="n-box" x="16" y="34" width="196" height="32" rx="4"/>
+    <text class="t-b" x="28" y="49">WORKER.md</text>
+    <text class="t-s" x="28" y="61">instructions · always-on</text>
 
-    <rect class="n-box" x="16" y="78" width="188" height="34" rx="4"/>
-    <text class="t-b" x="28" y="94">TEAM.md</text>
-    <text class="t-s" x="28" y="106">team instructions · always-on</text>
+    <rect class="n-box" x="16" y="72" width="196" height="32" rx="4"/>
+    <text class="t-b" x="28" y="87">TEAM.md</text>
+    <text class="t-s" x="28" y="99">team text · always-on</text>
 
-    <rect class="n-opt" x="16" y="120" width="188" height="34" rx="4"/>
-    <text class="t-b" x="28" y="136">SKILL.md</text>
-    <text class="t-s" x="28" y="148">held · the one opt-in</text>
+    <rect class="n-opt" x="16" y="110" width="196" height="32" rx="4"/>
+    <text class="t-b" x="28" y="125">SKILL.md</text>
+    <text class="t-s" x="28" y="137">held · the one opt-in</text>
 
-    <rect class="n-box" x="16" y="162" width="188" height="34" rx="4"/>
-    <text class="t-b" x="28" y="178">resources/*.md</text>
-    <text class="t-s" x="28" y="190">documents · always-on, never lazy</text>
+    <rect class="n-box" x="16" y="148" width="196" height="32" rx="4"/>
+    <text class="t-b" x="28" y="163">CHANNEL.md</text>
+    <text class="t-s" x="28" y="175">charter · always-on</text>
 
-    <rect class="n-box" x="16" y="204" width="188" height="34" rx="4"/>
-    <text class="t-b" x="28" y="220">blocks/*.ts</text>
-    <text class="t-s" x="28" y="232">registers a name · always-on</text>
+    <rect class="n-box" x="16" y="186" width="196" height="32" rx="4"/>
+    <text class="t-b" x="28" y="201">resources/*.md</text>
+    <text class="t-s" x="28" y="213">documents · always-on</text>
 
-    <text class="t-s" x="16" y="262">five readers · one frontmatter dialect</text>
-    <text class="t-s" x="16" y="276">five refusal vocabularies</text>
+    <rect class="n-box" x="16" y="224" width="196" height="32" rx="4"/>
+    <text class="t-b" x="28" y="239">blocks/*.ts · resources/*.ts</text>
+    <text class="t-s" x="28" y="251">TypeScript · no frontmatter</text>
+
+    <text class="t-s" x="16" y="274">three doors · two dialects</text>
   </g>
 
   <g id="today-flows">
-    <path class="flow" d="M204 53 H300"/>
-    <path class="flow" d="M204 95 H300"/>
-    <path class="flow" d="M204 137 H300"/>
-    <path class="flow" d="M204 179 H300"/>
-    <path class="flow" d="M204 221 H300"/>
+    <path class="flow" d="M212 50 H304"/>
+    <path class="flow" d="M212 88 H304"/>
+    <path class="flow" d="M212 126 H304"/>
+    <path class="flow" d="M212 164 H304"/>
+    <path class="flow" d="M212 202 H304"/>
+    <path class="flow" d="M212 240 H304"/>
   </g>
 
   <g id="gate-left">
-    <path class="fence" d="M300 30 V250"/>
-    <text class="t-f" x="308" y="150">THE GRANT GATE</text>
-    <text class="t-s" x="308" y="164">the seat's own</text>
-    <text class="t-s" x="308" y="176">WORKER.md `tools:`</text>
-    <text class="t-s" x="308" y="194">nothing crosses</text>
-    <text class="t-s" x="308" y="206">unless the file names it</text>
+    <path class="fence" d="M304 30 V262"/>
+    <text class="t-f" x="314" y="160">THE GRANT GATE</text>
+    <text class="t-s" x="314" y="176">the seat's own</text>
+    <text class="t-s" x="314" y="188">WORKER.md `tools:`</text>
+    <text class="t-s" x="314" y="206">nothing crosses unless</text>
+    <text class="t-s" x="314" y="218">the file names it</text>
   </g>
 
   <g id="seat-left">
-    <rect class="n-seat" x="430" y="110" width="118" height="64" rx="5"/>
-    <text class="t-lbl" x="442" y="130">SEAT</text>
-    <text class="t-b" x="442" y="148">what it may</text>
-    <text class="t-b" x="442" y="162">actually call</text>
-    <path class="flow" d="M300 142 H430"/>
+    <rect class="n-seat" x="466" y="77" width="120" height="60" rx="5"/>
+    <text class="t-lbl" x="478" y="97">SEAT</text>
+    <text class="t-b" x="478" y="115">what it may</text>
+    <text class="t-b" x="478" y="129">actually call</text>
+    <path class="flow" d="M304 107 H466"/>
   </g>
 
   <g id="after">
-    <text class="t-lbl" x="596" y="24">AFTER A RATIFY · ONE FORMAT</text>
-    <rect class="n-soft" x="596" y="36" width="188" height="72" rx="5"/>
-    <text class="t-b" x="608" y="56">one package</text>
-    <text class="t-s" x="608" y="70">instructions · tools</text>
-    <text class="t-s" x="608" y="82">documents · skills</text>
-    <text class="t-s" x="608" y="98">one reader, one refusal set</text>
+    <text class="t-lbl" x="628" y="24">IF THE RATIFY COLLAPSES THEM</text>
+    <rect class="n-soft" x="628" y="34" width="196" height="70" rx="5"/>
+    <text class="t-b" x="640" y="54">one package</text>
+    <text class="t-s" x="640" y="68">instructions · tools</text>
+    <text class="t-s" x="640" y="80">documents · skills</text>
+    <text class="t-s" x="640" y="96">one reader, one refusal set</text>
 
-    <rect class="n-box" x="596" y="128" width="188" height="34" rx="4"/>
-    <text class="t-b" x="608" y="144">attached to a seat</text>
-    <text class="t-s" x="608" y="156">mode 1 · always-on</text>
+    <rect class="n-box" x="628" y="124" width="196" height="32" rx="4"/>
+    <text class="t-b" x="640" y="139">attached to a seat</text>
+    <text class="t-s" x="640" y="151">mode 1 · always-on</text>
 
-    <rect class="n-opt" x="596" y="170" width="188" height="34" rx="4"/>
-    <text class="t-b" x="608" y="186">held in a library</text>
-    <text class="t-s" x="608" y="198">mode 2 · opt-in</text>
+    <rect class="n-opt" x="628" y="164" width="196" height="32" rx="4"/>
+    <text class="t-b" x="640" y="179">held in a library</text>
+    <text class="t-s" x="640" y="191">mode 2 · opt-in</text>
 
-    <path class="flow" d="M690 108 V128"/>
-    <path class="flow" d="M690 162 V170"/>
+    <path class="flow" d="M726 104 V124"/>
+    <path class="flow" d="M726 156 V164"/>
+
+    <text class="t-s" x="628" y="216">`don't collapse` is also</text>
+    <text class="t-s" x="628" y="228">a possible answer</text>
   </g>
 
   <g id="gate-right">
-    <path class="fence" d="M860 30 V250"/>
-    <text class="t-f" x="808" y="232">SAME GATE</text>
-    <text class="t-s" x="790" y="246">unchanged by this issue</text>
-    <path class="flow" d="M784 145 H860"/>
-    <path class="flow" d="M784 187 H860"/>
+    <path class="fence" d="M880 30 V262"/>
+    <text class="t-f" x="806" y="252">SAME GATE</text>
+    <path class="flow" d="M824 140 H880"/>
+    <path class="flow" d="M824 180 H880"/>
   </g>
 
   <g id="caption">
-    <path class="flow" d="M16 296 H924"/>
-    <text class="t-s" x="16" y="316">The gate is the same line in both halves. What moves is the left column collapsing into one box with two modes —</text>
-    <text class="t-s" x="16" y="330">and whether a package may ever cross that gate on its own is the decision this issue exists to put to you.</text>
+    <path class="flow" d="M16 300 H924"/>
+    <text class="t-s" x="16" y="320">The gate is the same line in both halves, and this issue does not move it. What moves is the left column collapsing into one</text>
+    <text class="t-s" x="16" y="334">box with two modes — and whether a package may ever cross that gate on its own is the decision this issue puts to you.</text>
+    <text class="t-s" x="16" y="350">The right half shows one of four possible answers, not a foregone one.</text>
   </g>
 </svg>
