@@ -100,10 +100,12 @@ which epic's wrap they hold: none.
 <a name="who-owns-what"></a>
 ## Who owns what
 
-![Who owns what: a matrix of six cross-cutting rules against the five issues in the set. The board is the work plane is built by FIX-1385 and consumed by FIX-1430. One package format is built by FIX-1394 and consumed by FIX-1430. Inventory in two layers is built by FIX-1405 and consumed by FIX-1385. The wire and the payload is decided by FIX-1408 and consumed by FIX-1385, FIX-1394 and FIX-1430. Assignee is not a seat is decided by FIX-1385 and consumed by FIX-1394 and FIX-1430. The propagation pass inherited from the project as PR-5 is built by FIX-1385. Every rule has exactly one owner. A footnote records that FIX-817 and FIX-1415, related but not in the set, also consume inventory in two layers.](figures/ownership.svg)
+![Who owns what: a matrix of six cross-cutting rules against the five issues in the set. The board is the work plane is built by FIX-1385 and consumed by FIX-1430. The package format — whatever FIX-1394's ratify records — is built by FIX-1394 and consumed by FIX-1430. Inventory in two layers is built by FIX-1405 and consumed by FIX-1385. The wire and the payload is decided by FIX-1408 and consumed by FIX-1385, FIX-1394 and FIX-1430. Assignee is not a seat is decided by FIX-1385 and consumed by FIX-1394 and FIX-1430. The PR-5 name check over this set's own diff is built by FIX-1385. Every rule has exactly one owner. A footnote records that FIX-817 and FIX-1415, related but not in the set, also consume inventory in two layers.](figures/ownership.svg)
 
-A *consumes* cell is a place a child must not re-decide. FIX-1430 consumes four rows and owns none
-of them — what makes it a proof rather than a surface. What it does own is
+A *consumes* cell is a place a child must not re-decide. **It is not a sequencing edge** — ER-3 is
+FIX-1385's to obey, not to wait on: it reads the declared roster only if that has landed, and works
+without it ([the graph](SPEC.md#how-the-issues-flow-into-each-other)). FIX-1430 consumes four rows
+and owns none of them — what makes it a proof rather than a surface. What it does own is
 [ER-20](BUSINESS-RULES.md), the done-condition, which is not a matrix row. **FIX-1385 provides the
 surface ER-20 stands on and does not own it** — [ER-20](BUSINESS-RULES.md) says which is which.
 [FIX-817 and FIX-1415](SPEC.md#related-not-children) consume ER-3 from outside the set, and may not
@@ -117,16 +119,26 @@ re-decide it either.
 | Inventory is **two layers**; the helper-vs-resource fork is dismissed | The declared tree and the live set answer different questions, and picking one produces the other badly. Checked against the code first: "one shared scan map" was intent, not an exported thing | [D5](#d5) · ER-3 |
 | The W3 ship fence has **one** release condition | Three documents stated it three ways — *merges*, *no open children*, *close* — which diverge the moment a child closes by decision | [D2](#d2) · ER-14 |
 | The proof consumes **no package work** — not the implementation, and (sharpened 2026-09-19) not the contract either | Binding it to a shipped package *or* to a ratify hangs the exit gate on work the lab does not need: its seats run on surfaces already on main at `d8e4c99`, which FIX-1394 does not change. ER-2 still binds it as a **fence** — no third package shape | [the spec](SPEC.md#what-the-proof-consumes) |
-| **FIX-1385 owns ER-19**, the project's PR-5 propagation pass | It mints the largest new Layer 2 vocabulary surface in the set | ER-19 |
+| **FIX-1385 owns ER-19**, the project's PR-5 | It mints the largest new Layer 2 vocabulary surface in the set. **What it owns was narrowed on 2026-09-19** to a check over this set's own diff — the ER-19 row further down | ER-19 |
 | **The objective gate**: the exit gate stands as one hop · **the set is five**, FIX-1430 the proof · the compose helper's public export approved · the ship fence as written | The owner, 2026-09-19, ratifying the three-item ask as recommended | [D1](#d1) · [D6](#d6) · [D5](#d5) · [D2](#d2) |
 | FIX-1394's POC keeps **one** of FIX-1408's walls — *which opt-in history packs are v1*; the other four return to the epic | A history pack **is** a library package with opt-in attachment, so the matrix already probes it. The other four are session policy with no package content, and loading them leaves the probe set unfixable | ER-15 · [Open](#open) |
+| The **inventory → boards** sequencing edge the epic asserted does not exist; dropped | FIX-1385's `SPEC.md`, `DECISIONS.md` and `BUSINESS-RULES.md` name FIX-1405 and *inventory* **zero** times; its `PLAN.md`'s two mentions are an optional read and a collision note. Its BR-7 carries the caller's `assignee` with no seat resolution, and `team.*` addressing is ER-7's, built by no child at first ship. **The set's one blocking edge is FIX-1385's implementation before FIX-1430** | [the graph](SPEC.md#how-the-issues-flow-into-each-other) · [PLAN](PLAN.md#what-unblocks-what-from-here) · `figures/path.svg` |
+| What replaces it is a **merge order**: FIX-1385's PR-A lands before FIX-1405's PR-B | Both edit `defineChannelFlow` and the binder. It orders two *merges*, not two starts — neither spec waits on the other, and FIX-1385's plan already names the seam | [the seams table](PLAN.md#coordination-seams-to-watch) |
+| **ER-2 binds whatever the ratify records**, *don't collapse* included. It no longer pre-names the collapse | FIX-1394's BR-16 makes *don't collapse* a result with the same force as any other, and ER-8 and ER-13 reserve the answer to the ratify — an epic rule naming it first is the second authority ER-15 exists to stop. It costs nothing operationally: FIX-1430 already reads ER-2 as a fence compatible with all four answers | ER-2 · `figures/end-state.svg` |
+| **ER-19 is a check over this set's own diff**, not a repo-wide rename | FIX-1385's BR-14 scopes it to the vocabulary this issue mints, citing the project's **PD-4**: running it early pays the rename twice. The narrowing is accepted rather than argued. The repo-wide pass stays the **project's**, with **no owner inside W4** — named out so the wrap cannot close by confirming a pass nobody ran | ER-19 · [the wrap](PLAN.md#wrap) |
 | ER-3 means **(a)** a contrast with the declared tree — **not (b)** relocating ChannelFlow's post fence onto an org resource | A channel's `members` is already live, read on the refusal path in the session the post lands in; (b) would put one fact in two places and tax every post | ER-3 · ER-12 |
 
 Rows 1–4 are round 1 (2026-09-18, five reviewers on
-[#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905)); rows 5–7 are 2026-09-19, the
-last two raised up from a child rather than decided locally ([ER-15](BUSINESS-RULES.md) working).
-**Row 3 was sharpened on 2026-09-19** by FIX-1430's own spec, which answered the
+[#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905)); rows 5–6 and the last are
+2026-09-19, raised up from a child rather than decided locally ([ER-15](BUSINESS-RULES.md)
+working). **Row 3 was sharpened on 2026-09-19** by FIX-1430's own spec, which answered the
 contract-vs-implementation question with *neither*.
+
+**The four rows between the returned-walls row and the ER-3 reading are a cross-spec pass** over
+the children's own documents, 2026-09-19. Each
+is a place this epic asserted something its children had since narrowed or dropped; each was
+checked against the child's text before it was folded, and the child won on substance every time.
+None reopens an approved decision.
 
 **Two of these stay falsifiable.** ER-3's reading flips on evidence that a channel's `members` is
 *not* current on the refusal path — a factual question, and FIX-1385 rewrites rather than adjusts if

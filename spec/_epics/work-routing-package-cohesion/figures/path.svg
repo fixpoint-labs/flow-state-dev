@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 344" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path: a ship-fence band under the axis naming FIX-1435 and FIX-1449 as the two W3 children still non-terminal on a relayed read, with no W4 ship PR merging until every implementation-carrying W3 child is on main. Below it, nine lanes against time with a now line at September 19. Two input lanes from W3, TEAM.md and the tools fence, carry bars that reach the now line and read landed on main on September 19. Then the five lanes of the set. FIX-1408 carries a done bar behind the now line, done by decision. The three first-cut lanes — runtime inventory, channel boards and package cohesion — each carry a spec bar that starts at the now line, all three in flight in parallel from September 19. The manager-queue lab lane is empty and reads the proof, adopted, and it starts after the board surface exists, with the axis marked ahead, no dates set. Under a divider, two related lanes, catalog manifests and channel-admin, read related, not in the set: they consume FIX-1405 and hold no wrap, and catalog manifests waits for FIX-1405's approved spec. The critical path is drawn in the gutter through the inventory, the boards and the lab.">
+     aria-label="The path: a ship-fence band under the axis naming FIX-1435 and FIX-1449 as the two W3 children still non-terminal on a relayed read, with no W4 ship PR merging until every implementation-carrying W3 child is on main. Below it, nine lanes against time with a now line at September 19. Two input lanes from W3, TEAM.md and the tools fence, carry bars that reach the now line and read landed on main on September 19. Then the five lanes of the set. FIX-1408 carries a done bar behind the now line, done by decision. The three first-cut lanes — runtime inventory, channel boards and package cohesion — each carry a spec bar that starts at the now line, all three specified in parallel from September 19, with channel boards' spec approved and the other two in review. The manager-queue lab lane carries a spec bar at the now line as well, reading spec approved and the owner of ER-20, with its build following the boards and the axis marked ahead, no dates set. Under a divider, two related lanes, catalog manifests and channel-admin, read related, not in the set: they consume FIX-1405 and hold no wrap, and catalog manifests waits for FIX-1405's approved spec. The critical path is drawn in the gutter through the boards and the lab only; the inventory lane sits beside it, not behind it.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -45,10 +45,9 @@
   <path class="now" d="M330 74 L330 246"/>
 
   <g id="critical-path">
-    <path class="crit" d="M190 163 L190 229"/>
-    <circle class="critd" cx="190" cy="163" r="3.2"/>
-    <circle class="critd" cx="190" cy="185" r="3.2"/>
-    <circle class="critd" cx="190" cy="229" r="3.2"/>
+    <path class="crit" d="M190 187 L190 231"/>
+    <circle class="critd" cx="190" cy="187" r="3.2"/>
+    <circle class="critd" cx="190" cy="231" r="3.2"/>
   </g>
 
   <g id="lanes-inputs">
@@ -67,18 +66,19 @@
     <text class="t-ln" x="16" y="168">FIX-1405 inventory</text>
     <rect class="live" x="330" y="159" width="140" height="12" rx="2"/>
     <path class="lane" d="M476 165 L600 165"/>
-    <text class="t-s" x="616" y="168">spec in flight since Sep 19 · POC next</text>
+    <text class="t-s" x="616" y="168">spec in review · #1916 · POC next</text>
     <text class="t-ln" x="16" y="190">FIX-1385 channel boards</text>
     <rect class="live" x="330" y="181" width="140" height="12" rx="2"/>
     <path class="lane" d="M476 187 L600 187"/>
-    <text class="t-s" x="616" y="190">spec in flight — the exit gate's surface</text>
+    <text class="t-s" x="616" y="190">spec approved · #1917 — the exit gate's surface</text>
     <text class="t-ln" x="16" y="212">FIX-1394 package cohesion</text>
     <rect class="live" x="330" y="203" width="140" height="12" rx="2"/>
     <path class="lane" d="M476 209 L600 209"/>
-    <text class="t-s" x="616" y="212">POC matrix → ratify · then ship tickets (ER-8)</text>
+    <text class="t-s" x="616" y="212">spec in review · #1915 · matrix → ratify (ER-8)</text>
     <text class="t-ln" x="16" y="234">FIX-1430 manager-queue lab</text>
-    <path class="lane" d="M490 231 L600 231"/>
-    <text class="t-s" x="616" y="234">the proof, adopted — owns ER-20. Follows the boards</text>
+    <rect class="live" x="330" y="225" width="140" height="12" rx="2"/>
+    <path class="lane" d="M476 231 L600 231"/>
+    <text class="t-s" x="616" y="234">spec approved · #1919 — owns ER-20, build follows boards</text>
   </g>
 
   <g id="related">
@@ -96,7 +96,7 @@
     <rect class="done" x="120" y="332" width="16" height="10" rx="2"/>
     <text class="t-s" x="144" y="340">done</text>
     <rect class="live" x="182" y="331" width="16" height="12" rx="2"/>
-    <text class="t-s" x="206" y="340">spec in flight</text>
+    <text class="t-s" x="206" y="340">spec written</text>
     <rect class="inp" x="300" y="331" width="16" height="12" rx="2"/>
     <text class="t-s" x="324" y="340">an input from W3 — landed on main</text>
     <path class="lane" d="M580 337 L616 337"/>

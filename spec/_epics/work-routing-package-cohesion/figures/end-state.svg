@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 362" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box: the W4 first cut is a channel or org board that routes work to a seat run and assigns team seats — the exit gate, one hop — plus one package format with two attachment modes, a runtime inventory in two layers (a declared roster composed at read time and a live org resource ChannelFlow updates), and the shipped dispatch and session policy. Composed in by the app: custom kinds as flow factories, and defaultWorker triage. A phase-2 panel inside W4, off the exit gate and holding no wrap, holds just two items: the nested personal and request board cascade, and the manager-queue lab's nested half. Below a fence, what is not built: no Agent, Channel, Team, MessageBoard, TeamFlow or SessionBoard L1 type, no Collab RC, no silent parent transcript, no nested or shadow session substrate as a work hierarchy, no merged board-assignee and seat registry, no team wildcards as first ship, no second WorkerRegistry or mega-loader, no assignable-channel routing, no BoardFlow as the only mint, no Graft rebuild.">
+     aria-label="What's in the box: the W4 first cut is a channel or org board that routes work to a seat run and assigns team seats — the exit gate, one hop — plus whatever FIX-1394's ratify records about the package format — one format with two attachment modes, or don't collapse — a runtime inventory in two layers (a declared roster composed at read time and a live org resource ChannelFlow updates), and the shipped dispatch and session policy. Composed in by the app: custom kinds as flow factories, and defaultWorker triage. A phase-2 panel inside W4, off the exit gate and holding no wrap, holds just two items: the nested personal and request board cascade, and the manager-queue lab's nested half. Below a fence, what is not built: no Agent, Channel, Team, MessageBoard, TeamFlow or SessionBoard L1 type, no Collab RC, no silent parent transcript, no nested or shadow session substrate as a work hierarchy, no merged board-assignee and seat registry, no team wildcards as first ship, no second WorkerRegistry or mega-loader, no assignable-channel routing, no BoardFlow as the only mint, no Graft rebuild.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -34,8 +34,8 @@
     <text class="t-b" x="44" y="90">channel / org board &#8594; seat runs &#183; assign team seats</text>
 
     <rect class="in" x="32" y="106" width="528" height="36" rx="4"/>
-    <text class="t-b" x="44" y="123">one package format</text>
-    <text class="t-s" x="44" y="136">two attachment modes: seat always-on &#183; library opt-in — after POC ratify</text>
+    <text class="t-b" x="44" y="123">package format — open until the ratify</text>
+    <text class="t-s" x="44" y="136">one format, two modes &#183; or don't collapse — whichever FIX-1394 records</text>
 
     <rect class="in" x="32" y="146" width="528" height="36" rx="4"/>
     <text class="t-b" x="44" y="163">runtime inventory — two layers</text>
