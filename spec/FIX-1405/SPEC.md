@@ -12,7 +12,7 @@ Feature · `workforce` · medium · 2 PRs · epic [FIX-1407](https://linear.app/
 | **runs a seat that needs to know which other seats exist** | Nothing to ask. The tree is on disk, the seat is in a flow, and a flow does not walk folders per request | Reads the org's live inventory the way it reads any other resource |
 | **wants to know which channels a seat is in** | Open every channel session and read its members, or re-walk the tree and hope nothing minted since | One list, filtered. The tree answers what was declared; the inventory answers what is open |
 | **opens channels without an org** | Every org-scoped lookup silently resolves nothing | Visible: the inventory reads empty, and the binder refuses rather than writing where nobody can read |
-| **edits a `CHANNEL.md` after the channel opened** | The edit does not reach the open channel | Unchanged. The inventory mirrors what is open, not what the file now says |
+| **edits a `CHANNEL.md` after the channel opened** | The edit reaches the channel only when it is next re-bound, and nothing at run time reports either state | The inventory mirrors what the open channel holds, never what the file says. A re-bind **does** refresh a live channel's declared projection, members included ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)'s BR-18), so the row follows at the next boot |
 
 **Why now.** A team can be declared and hired, and nothing at run time answers *which seats and channels exist*. Every consumer that needs it — assigning a team seat, finding a member, fanning out — re-walks the tree or hard-codes an id. Two labs already grew the same private reader, byte for byte, which is the shape of a missing export.
 

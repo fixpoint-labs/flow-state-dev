@@ -56,11 +56,19 @@ hired from — so the binder upserts seat rows directly. A **channel** has a ses
 own state; the binder names it and carries **no member data** ([BR-10a](BUSINESS-RULES.md)).
 [PLAN → Write moments](PLAN.md) is canonical for the order and the cost.
 
-This rules out one writer working from the roster. `openChannels` deliberately **leaves an
-already-open channel alone**, so an edited `CHANNEL.md` never reaches it — a writer working from the
-tree would publish *file-time* members for a channel whose session holds different ones. That is the
-declared layer's copy of membership wearing a live name, which [D3](#d3) refuses and
-[BR-10](BUSINESS-RULES.md) forbids.
+This rules out one writer working from the roster. The roster holds the **file's** copy of
+membership; an open channel's `members` live in its session, which is where the post fence and the
+fan-out read them. A writer working from the tree would publish the file-time copy under a live name
+for any channel whose session holds something else — one a bind refused, one another process opened,
+one minted by a kind this roster does not describe. That is the declared layer's copy of membership
+wearing a live name, which [D3](#d3) refuses and [BR-10](BUSINESS-RULES.md) forbids.
+
+A re-bind now re-derives an open channel's declared projection — board list, **members**, charter —
+from its file ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)'s BR-18, on the same
+`channel-binder.ts` path this spec cites). So the two copies converge once a boot rather than never.
+That narrows the window; it does not move the truth. The channel still writes its own row from its
+own session state, which is why the row follows a file edit at the **next boot** and not at the
+edit.
 
 <a name="the-membership-index"></a>
 **Why a third collection.** A collection's only narrowing is `list(prefix)`, which the store
