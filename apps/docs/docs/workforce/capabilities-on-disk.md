@@ -9,7 +9,7 @@ description: "Put a TypeScript capability in a team's resources/ folder, run one
 
 A `resources/` folder takes TypeScript beside its Markdown. A `.md` file there is a [document](./documents-on-disk.md) — reference material a worker reads. A `.ts` file there is code: a **capability** (a bundle of context, tools and resources a worker can carry) or a plain resource.
 
-1. `fsdev gen` walks the tree and writes the modules onto a generated file of plain imports. Your app imports that file.
+1. [`fsdev gen`](./code-on-disk.md) walks the tree and writes the modules onto a generated file of plain imports. Your app imports that file.
 2. Each worker's own `WORKER.md` names which capabilities it wants, and which of their presets.
 
 Nothing in your app's source names the capability. Nothing watches the folder.
@@ -46,13 +46,12 @@ A capability lives at the organization level or in a team. One inside a single *
 
 ## Running the command
 
-```bash
-fsdev gen
-```
-
-It walks every `resources/` folder the convention reads and writes them onto `workforce.gen.ts`:
+`fsdev gen` walks every `resources/` folder the convention reads, along with the rest of the tree's code folders, and writes what it found onto `workforce.gen.ts`. The capabilities and resources land in one export:
 
 ```ts
+import type { ResourceModules } from "@flow-state-dev/workforce";
+import resource_teams__support__research from "./teams/support/resources/research";
+
 export const resourceModules = {
   "teams/support/research": resource_teams__support__research,
 } satisfies ResourceModules;
@@ -60,9 +59,7 @@ export const resourceModules = {
 
 The key is the same [ref](./documents-on-disk.md#a-documents-ref) a document of that name in that folder would get, so a `.md` and a `.ts` of one name in one folder are refused at generation rather than one quietly winning.
 
-Run it again after adding or removing a file. `fsdev gen --check` exits non-zero when the generated file is out of date and prints what the tree holds, so it is worth wiring into CI: a stale file means a worker silently misses a capability.
-
-The imports in the generated file are static, so the same tree works on a plain Node host and behind a bundler.
+Run it again after adding or removing a file, and give `fsdev gen --check` its own CI step: a stale generated file means a worker silently misses a capability. [Code on disk](./code-on-disk.md) covers the command, the rest of what it generates, and when it runs.
 
 ## Installing what it found
 
