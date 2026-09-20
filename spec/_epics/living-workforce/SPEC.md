@@ -1,152 +1,158 @@
-# FIX-1457 · W5: Living Workforce — polish and prove Workforce so it can ship
+# FIX-1457 · W5: Workforce release QA — Devtool, a DevForce proof, multi-seat collab
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
-Epic · **an open set, 2 filed children + 2 named gaps** · Workforce: Layer 2 Abstraction · Goal 1 —
-validate through real usage
+Epic · **an open set · no live proof-producer, 3 named gaps** · Workforce: Layer 2 Abstraction ·
+Goal 1 — foundation honesty / validate through real usage
 
-> **Objective restated by the owner on 2026-09-20.** W5 is *"polishing and proving workforce so we
-> can ship it"* — proved on three surfaces: **kitchen-sink** upgraded to show it in action,
-> **devtool** improved so a run is observable as it unfolds across channels and workers, and **a
-> basic DevForce** running a real workforce configuration ([D6](DECISIONS.md#d6)). The same day the
-> owner **canceled** the humans-in-seats explore (FIX-1458 /
-> [#1955](https://github.com/fixpoint-labs/flow-state-dev/pull/1955)) and set the boundary at
-> **one-user-org / agent isolation** ([D7](DECISIONS.md#d7)). **The set is expected to grow**; two of
-> the three surfaces have no child yet.
+> **Recalibrated by the owner on 2026-09-20 (18:05Z).** W5 is **Workforce release QA / polish** —
+> get L2 tested and proven ready to ship. The done condition is **three named exit proofs**
+> ([D6](DECISIONS.md#d6)), replacing the previous three-surfaces framing. **Kitchen-sink left the
+> set** ([D9](DECISIONS.md#d9)); **proof-via-DevForce came in** ([D8](DECISIONS.md#d8)), reversing a
+> standing invent-kill. The owner's words for the north star: *"Workforce is feature-complete enough
+> that a finish-line Lab (DevForce) can actually build something with seats collaborating across
+> channel(s), and Devtool can inspect that world without special wrappers."*
 
 ## Four teams, before and after
 
 | A team that… | Today | After this epic |
 |---|---|---|
-| **is deciding whether Workforce is ready to adopt** | Reads four architecture documents. Nothing shows a Workforce running, so "ready" is a claim with no artifact behind it | Sees one running: a reference app with a hired team, watched live, plus a real configuration doing real work |
-| **wants to see Workforce working** | Finds a kitchen-sink demo nothing serves | Clones a reference app that hires a team, opens channels and boards, and still has them after a redeploy |
-| **needs to watch what its workers are doing** | Reads an NDJSON trace afterwards and infers what happened across channels and seats | Watches the run unfold in devtool — channels, workers, and the activity moving between them |
-| **needs a seat to reach the right documents and no others** | Whitelists one `resources:` list per seat by hand; handbooks and mutable state share a noun | Handbooks are ambient down the tree and read-only; mutable resources stay an explicit grant |
+| **is deciding whether Workforce is ready to ship** | "Ready" is a claim standing on architecture documents. Nothing has run a workforce and produced anything | Three named proofs, each pass/fail: the inspector is green, a Lab shipped a real artifact, two seats collaborated |
+| **needs to watch what its workers are doing** | Opens a session and reads its stream. There is no roster, no channel list and no board browser — and a parked row's reason is inside a JSON expander | Opens Devtool on a live hired Workforce and reads the roster, the channels, the boards, the inventory and the parked rows, **without a special wrapper** |
+| **wants to know a workforce can actually build something** | The Labs have a first build slice and no end-to-end run. Whether seats can ship a work product is untested | One DevForce path completes and hands back a **real artifact** — code, a PR, a work product — with seats and channels used honestly |
+| **runs more than one seat** | Multi-seat is a composition the docs describe | ≥2 seats across ≥1 channel: work filed, assigned, drained, and a cross-seat handoff observed |
 
-**Why now.** W3 made a Workforce **describable** and W4 made work **reach** a seat. Both are claims
-about what exists, and neither has been demonstrated end to end — so what stands between Workforce
-and a launch is not another substrate epic ([D1](DECISIONS.md#d1)) but **evidence**.
+**Why now.** W3 made a Workforce **describable** and W4 made work **reach** a seat. Both ended in a
+claim about what exists. Nothing between them and a launch is more substrate
+([D1](DECISIONS.md#d1)) — it is **evidence**, and evidence is what a QA epic produces.
 
 ## What's in the box
 
-![What's in the box: the objective is to prove Workforce is shippable, on three surfaces — kitchen-sink upgraded to show it in action, devtool improved so a run is observable as it unfolds across channels and workers, and a basic DevForce running a real workforce configuration. Two of the three are drawn as empty slots because no child produces them yet. Underneath sits the living assembly they are all views of: durable hire, channels, seats, boards and inventory, plus agent isolation, where read-only handbooks are ambient down the tree and mutable resources need an explicit grant, plus park-and-answer, where a seat parks a row and the person answers through a flow action carrying the request's own principal. A boundary line marks the scope as one user and one org. Below it a band of work deferred to later, revisited when multi-user or sign-off pain is real, and below a fence the list of what the set refuses to build. The figure's aria-label carries every item.](figures/end-state.svg)
+![What's in the box: the objective is Workforce release QA, and the box holds three named exit proofs — ER-Devtool, a documented Devtool checklist green on a live hired Workforce; ER-DevForce, one DevForce path completing with a real artifact; and ER-Collab, two or more seats across at least one channel filing, assigning, draining and handing off. All three are drawn as empty slots marked NO CHILD because nothing in the set produces any of them yet. Beneath the box sits the unchanged substrate they compose and must not extend: boards, inventory, manager-queue, org identity, dispatch honesty, and the references-versus-resources split FIX-1467 settled. A boundary line reads one user, one org. To the side, kitchen-sink FIX-1455 is drawn outside the box as a sibling epic that left the set. Below, a grow-into-later band, and below a fence, everything the set refuses to build — including the four invent-kills the recalibration added and the one it killed. The figure's aria-label carries every item.](figures/end-state.svg)
 
-The top band is the objective as three artifacts, and **two of the three are drawn as empty slots** —
-nothing in the set produces them, which is the most important thing this figure says. Beneath them
-is the one running thing they are all views of. The boundary line is the scope cut
-([D7](DECISIONS.md#d7)). **Grow into later** is deferred with a revisit condition, not refused; only
-the bottom strip is refused outright.
+**All three slots are empty.** That is what the figure is for: the done condition is three proofs and
+not one has a producer. Beneath them is the substrate they compose and may not extend
+([ER-4](BUSINESS-RULES.md)). Kitchen-sink sits **outside** the box — a sibling epic, not a member
+([D9](DECISIONS.md#d9)).
 
 ## The set · as of 2026-09-20
 
-The live table, and **an open one** ([ER-23](BUSINESS-RULES.md)) — the objective names work that has
-no child yet, shown here as named gaps rather than left out. Refreshed on the epic PR as issues move.
-**A held child epic carries no spec PR of its own here** — it runs its own lifecycle
-([ER-15](BUSINESS-RULES.md)) — and an empty cell in that row is correct, not a gap.
+The live table, and **an open one** ([ER-23](BUSINESS-RULES.md)) — the objective names three proofs
+with no ticket, shown here as named gaps rather than left out. **Filing a child is the normal course
+of this epic, not a re-scope.** Refreshed on the epic PR as issues move.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1467](https://linear.app/fixpoint-labs/issue/FIX-1467) · Explore: `references/` vs `resources/` | The split that makes **agent isolation declarable**: read-only handbooks ambient by tree, mutable resources by explicit grant | The reference app **teaches whichever noun wins** — it cannot be rebuilt against one about to be renamed ([ER-18](BUSINESS-RULES.md)) | **Spec in review** · route `spec` · spec [#1957](https://github.com/fixpoint-labs/flow-state-dev/pull/1957) |
-| [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) · Kitchen-sink rebuild | **Surface 1** — the reference consumer people copy: durable hire, `CHANNEL.md` seats, channels, boards, inventory | Workforce seen in action, in something a person can clone and run | **Held child epic** · own `Epic` label, own child [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) · runs its **own** lifecycle · Backlog; ship fence lifted 2026-09-20, no ship ticket opened. No spec PR here **by design** |
-| FIX-XXX · devtool observability | **Surface 2** — a run **observable as it unfolds**: channels, workers, and the activity between them, watched live rather than reconstructed | Without it, "Workforce works" is asserted from log files. It is also how the other two surfaces get tested at all | **No child — named gap.** Not filed, no owner. The nearest prior work ([FIX-1071](https://linear.app/fixpoint-labs/issue/FIX-1071)) is Done and its surface was **removed** by [FIX-1308](https://linear.app/fixpoint-labs/issue/FIX-1308) |
-| FIX-XXX · basic DevForce | **Surface 3** — one real configuration running one genuine task end to end, watched doing it | A reference app is a demo; a Lab doing real work is the evidence a launch claim rests on | **No child — named gap.** Not filed. The first build slice **is Done** ([FIX-1426](https://linear.app/fixpoint-labs/issue/FIX-1426)); *basically working* has no owner. **Tension with locked input** — [D6](DECISIONS.md#d6), [ER-11](BUSINESS-RULES.md) |
-| ~~[FIX-1458](https://linear.app/fixpoint-labs/issue/FIX-1458) · Explore: humans-in-seats~~ | Would have shaped the **multi-person** org chart — people bound to principals, an audience routing between them | **Canceled by the owner 2026-09-20**, spec [#1955](https://github.com/fixpoint-labs/flow-state-dev/pull/1955) closed unmerged. Kept so a reader sees it was considered and dropped. **What it invented against survives** as [D2](DECISIONS.md#d2); what it would have built is [deferred](DECISIONS.md#later) | **Canceled** · not re-specced, not reopened, no longer a child |
+| FIX-XXX · Devtool checklist | **ER-Devtool** — the six-area checklist green on a live hired Workforce: roster, channels, boards, inventory, parked rows, resources + references, **with no special wrapper** | The inspector is how the other two proofs are observed at all. Without it, "it worked" is asserted from a log | **No child — named gap.** Not filed. **Rows drafted** in [ER-Devtool](BUSINESS-RULES.md#er-devtool) against what the surfaces expose today; **two of six fail as written now**. **Possible collision with [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320)** — Sign-off 1 |
+| FIX-XXX · DevForce proof path | **ER-DevForce** — the **thinnest** DevForce path that completes and produces a **real artifact**, seats and channels used honestly | A reference app shows Workforce *can* run. A Lab shipping a work product is the evidence a launch claim rests on | **No child — named gap.** Not filed. First build slice is Done ([FIX-1426](https://linear.app/fixpoint-labs/issue/FIX-1426), [FIX-1410](https://linear.app/fixpoint-labs/issue/FIX-1410)); an end-to-end path has no owner. Scope fenced by [ER-11](BUSINESS-RULES.md) |
+| FIX-XXX · multi-seat collab scenario | **ER-Collab** — one graded scenario: ≥2 seats across ≥1 channel, work filed → assigned → drained, and a cross-seat handoff or reply **observed in Devtool** | Multi-seat is the composition W3 and W4 exist to enable and the one nothing has run | **No child — named gap.** Not filed. Composes boards ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)), inventory ([FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)), manager-queue ([FIX-1430](https://linear.app/fixpoint-labs/issue/FIX-1430)) |
+| [FIX-1467](https://linear.app/fixpoint-labs/issue/FIX-1467) · `references/` vs `resources/` | The isolation convention: read-only handbooks ambient by tree, mutable resources by explicit grant | Settled the noun before anything teaches it. **Not a proving leg** — it never advanced the done condition | **Done · merged 2026-09-20.** Noun is `references/`, migration is `clearShadowedReferences`, grant model settled. **[ER-18](BUSINESS-RULES.md) is met** by it |
+| [FIX-1468](https://linear.app/fixpoint-labs/issue/FIX-1468) · `ReadOnlyResourceRef` | A handle type that omits `writeContent` for read-only documents | FIX-1467's deliberately-deferred type change. Additive, independent | **Backlog** · filed 2026-09-20 as a spin-off. **Not a proving leg** |
+| [FIX-1469](https://linear.app/fixpoint-labs/issue/FIX-1469) · `goals/` labs migration + KS documents | Decides the `goals/` labs document migration; would give kitchen-sink workforce documents | FIX-1467's deferred step S7. **Its kitchen-sink half is now stale** — it was filed while "upgrade kitchen-sink" was a W5 leg, and that leg left with [D9](DECISIONS.md#d9) | **Backlog** · filed 2026-09-20. **Not a proving leg.** Its KS half belongs to [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455); flagged, not moved |
+| ~~[FIX-1458](https://linear.app/fixpoint-labs/issue/FIX-1458)~~ · humans-in-seats | Would have shaped the multi-person org chart | **Canceled 2026-09-20**, [#1955](https://github.com/fixpoint-labs/flow-state-dev/pull/1955) closed unmerged. Kept so a reader sees it was considered and dropped | **Canceled** · not re-specced, not reopened, no longer a child |
 
-**0 done · 1 spec in review · 1 held child epic · 2 named gaps with no child · 1 canceled.**
+**1 done · 2 backlog spin-offs · 3 named gaps with no child · 1 canceled. Zero live proof-producers.**
 
-**Two thirds of the done condition has no owner.** [ER-19](BUSINESS-RULES.md) names three artifacts;
-one has a producer. That is not a gap in this document — it is the state of the epic, and filing the
-two gaps is the first thing that has to happen for W5 to be deliverable
-([Open 1](DECISIONS.md#open)). The earlier *working assemblies* placeholder is **resolved into these
-two rows**: the assemblies were always whatever proves the composition, and the owner has now named
-them.
+**Every exit proof has no producer, and the one child that finished was never a proving leg.**
+FIX-1467 is Done and it settled a convention; it did not advance the done condition, and saying so
+is the point of this row. FIX-1468 and FIX-1469 are its spin-offs and neither is a leg either. So the
+honest reading of this table is that W5's staffed work is complete and **its objective has not been
+started**. Filing the three gaps is the first thing that has to happen ([Open 1](DECISIONS.md#open)).
+**Kitchen-sink is not in this table by design** — FIX-1455 is a sibling epic, soft-related, running
+its own lifecycle ([D9](DECISIONS.md#d9), [ER-15](BUSINESS-RULES.md)).
 
 ## How the issues flow into each other
 
 ```mermaid
 flowchart LR
-  W3["W3 floor · FIX-1351"] -.->|"seats, channels, skills on disk"| K
-  W4["W4 first cut · FIX-1407"] -.->|"boards, inventory, dispatch"| K
-  R["FIX-1467 · references vs resources"] -->|"the isolation convention to teach"| K["FIX-1455 · kitchen-sink · child epic"]
-  K -->|"a running Workforce to observe"| T["FIX-XXX · devtool observability"]
-  T -->|"the lens the evidence is seen through"| F["FIX-XXX · basic DevForce"]
-  K -->|"the conventions a real configuration runs on"| F
-  K --> P["ER-19 · the done condition"]
-  T --> P
+  W3["W3 floor · FIX-1351"] -.->|"seats, channels, skills on disk"| S
+  W4["W4 first cut · FIX-1407"] -.->|"boards, inventory, dispatch, org identity"| S
+  R["FIX-1467 · references vs resources"] -->|"the settled isolation noun"| S["a live hired Workforce"]
+  S -->|"a world to inspect"| T["FIX-XXX · Devtool checklist"]
+  S -->|"seats and channels to run"| F["FIX-XXX · DevForce proof path"]
+  S -->|"two seats and a channel"| C["FIX-XXX · multi-seat collab"]
+  T -->|"the lens both are observed through"| F
+  T --> C
+  T --> P["the done condition · three exit proofs"]
   F --> P
-  X["FIX-1458 · canceled Sep 20"] -.->|"its invent-kills, as locked constraint"| K
+  C --> P
+  K["FIX-1455 · kitchen-sink"] -.->|"sibling epic · left the set"| P
+  X["FIX-1458 · canceled Sep 20"] -.->|"its invent-kills, as locked constraint"| S
+  classDef done stroke-width:2px
   classDef proposed stroke-dasharray:4 3
-  classDef gone stroke-dasharray:2 3,opacity:0.55
-  class T,F proposed
-  class X gone
+  class R done
+  class T,F,C proposed
+  class K,X proposed
 ```
 
-An edge is what one node hands the next. The two dashed **nodes** are the named gaps, and **all
-three inbound edges to the done condition matter equally** — a set that files neither gap cannot
-reach it. The faded node is the canceled explore, drawn because it still hands something forward:
-its invent-kills, now [D2](DECISIONS.md#d2), bind FIX-1455 with no child in between. More nodes are
-expected.
+An edge is what one node hands the next. **The three dashed nodes in the middle are the named gaps**
+— all three inbound edges to the done condition matter equally, and none has an owner. The Devtool
+checklist is drawn upstream of the other two because both are *observed in Devtool*, which makes it
+the one that cannot be last. Kitchen-sink is dashed and outside the chain: it hands the set nothing
+and the set owes it nothing.
 
 ## What stays as it is
 
-- **The OOTB agent kind** ([FIX-1359](https://linear.app/fixpoint-labs/issue/FIX-1359)) and **board
-  assignee / L1 task status** ([D3](DECISIONS.md#d3)) — consumed, not re-decided.
-- **Collab rooms** ([FIX-1341](https://linear.app/fixpoint-labs/issue/FIX-1341)) and **CyberForce**.
-  DevForce enters as a proving surface; the pentest Lab does not ([D6](DECISIONS.md#d6)).
-- **Package cohesion, the skills register, the memory story.**
+- **Kitchen-sink** ([FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455)) — a **sibling**
+  epic on its own lifecycle. Not a child, not in the set, not specced here
+  ([D9](DECISIONS.md#d9)).
+- **The substrate.** Boards ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)), inventory
+  ([FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)), manager-queue
+  ([FIX-1430](https://linear.app/fixpoint-labs/issue/FIX-1430)), org never optional
+  ([FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442)), dispatch honesty
+  ([FIX-1440](https://linear.app/fixpoint-labs/issue/FIX-1440)). Composed, never re-decided
+  ([D1](DECISIONS.md#d1)).
+- **CyberForce.** DevForce enters as the proof; the pentest Lab does not this cycle
+  ([D8](DECISIONS.md#d8)).
+- **Collab rooms** ([FIX-1341](https://linear.app/fixpoint-labs/issue/FIX-1341)), the skills
+  register, the memory story, package cohesion.
 - **Everything the cancellation deferred** ([Grow into later](DECISIONS.md#later)) — multi-user, an
   org chart of people, originator ≠ reviewer, durable `reviewedBy:`, multi-principal boards. Parked
-  with a revisit condition, and **not** an open question.
+  with a revisit condition, and **not** open questions.
 
 ## Sign off
 
-**The gate is being re-taken.** You approved this set on 2026-09-20, then restated the objective and
-re-cut it the same day. The objective moved, so the approval does not carry.
+**The objective gate is owed on this re-cut.** The recalibration is explicit that it is *"Not owner
+merge approval… direction for the EM"* — so it sets the direction and does not discharge the gate.
+Approving here certifies the objective and the three exit proofs, nothing below them.
 
-1. **Does "ready to launch Workforce" need all three surfaces, or is the reference app enough?**
-   - **Plain terms.** The bar below is that Workforce can be **seen working** three ways: a cloneable
-     app, a live view of it running, one real configuration doing real work. The cheaper bar is the
-     app alone.
-   - **Trade-off.** Three surfaces is what makes "ready" believable to someone outside the team — the
-     app shows it *can* run, devtool shows what it is *doing*, DevForce shows it doing something
-     worth doing. It is also two bodies of work that do not exist, and it puts the launch a cycle out.
-   - **Recommendation: all three, as you framed it** — but file the two gaps before approving, so the
-     bar has owners. Twice now this epic has carried a finish line nobody was working toward.
-   - **Changes my mind:** a launch date inside this cycle. Then the app alone is the bar, and the
-     other two become named launch follow-ups rather than quietly dropped.
-   - **If wrong:** we build observability and a Lab slice to prove what the app had already proved.
-     Real cost, no incorrect behaviour.
-2. **How much DevForce — and does this override the fence that said the Labs are not W5's to build?**
-   - **Plain terms.** Locked Architect input says the finish-line Labs stay on the delivery countdown
-     and W5 must not become "build DevForce". You have now asked for a basic DevForce inside W5.
-     Those disagree, and the newer one is yours.
-   - **Trade-off.** A thin configuration — one real task through a real workforce, watched — is proof
-     and costs little. A DevForce someone could adopt is a product, and it will eat the epic. That is
-     what the fence was protecting against.
-   - **Recommendation: the thin configuration, and write the fence down as narrowed rather than
-     lifted.** CyberForce stays out; no Lab product lands inside kitchen-sink
-     ([ER-11](BUSINESS-RULES.md) keeps that half).
-   - **Changes my mind:** DevForce having a customer or a demo date. Then it is a deliverable with its
-     own epic, not a proving surface borrowed by this one.
-   - **If wrong:** W5 absorbs a Lab and stops being a proving epic — the failure the fence named.
-3. **File the two gaps now, or approve the objective first and file after?**
-   - **Plain terms.** Two of three surfaces have no ticket. Filing now commits the cycle's capacity;
-     approving first keeps the objective settled while the work's shape is argued.
-   - **Trade-off.** Filing now means the done condition has owners the day it is written — the
-     specific failure this epic has repeated. Approving first is faster and risks a third repeat.
-   - **Recommendation: approve the objective and file both in the same pass**, before any ship ticket
-     opens. I can surface this; the filing is yours.
-   - **Changes my mind:** either gap belonging to another epic — devtool work may sit closer to
-     [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320).
-   - **If wrong:** two tickets exist a cycle early and get re-cut. Cheap.
+**The recalibration answered the previous three asks and they are not carried forward.** The items
+it left under *Still open* — the exact Devtool checklist rows, which DevForce artifact counts,
+whether CyberForce gets a parallel thin proof this cycle — are explicitly **not blocking EM start on
+polish**, so none of them is an ask here. The checklist rows are drafted below as the EM's own work
+([ER-Devtool](BUSINESS-RULES.md#er-devtool)).
 
-**Not asked, reported as news.** [D7](DECISIONS.md#d7) — one user, one org, multi-human deferred — is
-your boundary, recorded not re-litigated. [D2](DECISIONS.md#d2) — humans are **not** board drain
-seats — is a **locked constraint**, no longer a fork: the cancellation removed the child that would
-have explored it. [D5](DECISIONS.md#d5) was your call on 2026-09-19.
-[D3](DECISIONS.md#d3) is **consumed from W4 with no re-gate**.
+**One live ask**, and it is here because filing against it is about to commit a cycle's capacity to
+the wrong epic.
 
-**Open: two**, the first structural — two thirds of the done condition has no owner
-([Open 1](DECISIONS.md#open)) — plus FIX-1467's own walls ([ER-18](BUSINESS-RULES.md)). Reasoning and
-what lost: [DECISIONS.md](DECISIONS.md). The rules every child obeys:
-[BUSINESS-RULES.md](BUSINESS-RULES.md). The order the work runs in: [PLAN.md](PLAN.md).
+1. **Does W5 file its own Devtool child, or does ER-Devtool ride
+   [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320)?**
+   - **Plain terms.** FIX-1320 (*Flow instances first-class*, **Spec Approved**) already owns
+     Devtool's instance and session surfaces — its INST-4 is *"Devtool instance list/switch/sessions
+     and request inspection,"* and its own text says completion *"requires actual UI verification on
+     the real Devtool surface"* and that the proof *"is planned, not run."* Four of ER-Devtool's six
+     areas read on exactly those surfaces. Two teams could end up building one inspector.
+   - **Trade-off.** Riding FIX-1320 means one Devtool body of work and one UI verification pass, but
+     W5's exit proof then depends on an epic W5 does not run, and ER-Devtool's workforce-specific
+     rows — inventory, parked-row reasons, references vs resources — are outside FIX-1320's stated
+     scope and would have to be added to it. Filing W5's own child keeps the proof in W5's hands and
+     risks two passes over the same panel.
+   - **Recommendation: ride FIX-1320 for the instance/session surfaces and file a small W5 child for
+     the four workforce-specific rows.** FIX-1320's UI verification is unrun and W5 needs it run;
+     that is one pass, not two, and the rows it does not cover are genuinely W5's.
+   - **What would change my mind:** FIX-1320 slipping past this cycle. Then W5's proof is hostage to
+     it, and a self-contained W5 Devtool child is worth the duplication.
+   - **If wrong:** one Devtool pass is done twice, or W5's exit proof waits on another epic's
+     schedule. Both are real cost; neither is incorrect behaviour.
+
+**Not asked, reported as news.** [D8](DECISIONS.md#d8) — **proof-via-DevForce is in**, and the
+invent-kill that said *don't treat W5 as build DevForce* is **dead**; unbounded Lab delivery stays
+out. [D9](DECISIONS.md#d9) — kitchen-sink left the set. [ER-18](BUSINESS-RULES.md) is **met** by
+FIX-1467's merge. [ER-15](BUSINESS-RULES.md) was **rewritten**: this epic drives no child epic.
+[D7](DECISIONS.md#d7) (one user, one org) and [D2](DECISIONS.md#d2) (humans are not board drainers)
+stand unchanged. **[FIX-1469](https://linear.app/fixpoint-labs/issue/FIX-1469)'s kitchen-sink half is
+stale** — flagged for routing to FIX-1455, not moved.
+
+**Open: one**, and it is structural — no exit proof has a producer
+([Open 1](DECISIONS.md#open)). Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The rules every
+child obeys: [BUSINESS-RULES.md](BUSINESS-RULES.md). The order the work runs in: [PLAN.md](PLAN.md).
