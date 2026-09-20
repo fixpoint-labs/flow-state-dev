@@ -103,6 +103,10 @@ export {
 
 export {
   createTaskToolsCapability,
+  // The eight handlers on their own, for a consumer that composes its own
+  // capability around them — one that also has to declare the ledger the
+  // resolver reaches, which `createTaskToolsCapability` has no slot for.
+  buildTaskToolsList,
   taskTools,
   defaultOwnStateResolver,
   DELEGATION_BOARD_FIELD,

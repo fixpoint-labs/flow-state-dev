@@ -160,7 +160,7 @@ export const triageFlow = defineFlow({
  * so the refusal is equally consistent with hire checking whether the helper
  * was CALLED — which it does not and cannot. A control that conflates two
  * causes certifies whichever one the reader already believes. This one declares
- * two of the three contract keys and omits the one that makes the bag
+ * three of the four contract keys and omits the one that makes the bag
  * unacceptable, so only the structural cause is left.
  *
  * For the same reason it runs `controlActions` rather than `triageFlow`'s: an
@@ -175,6 +175,9 @@ export const noContractFlow = defineFlow({
   configSchema: z.object({
     instructions: z.string().optional(),
     teamInstructions: z.string().optional(),
+    // Declared so `seatSkills` stays the SINGLE missing key: the contract grew a
+    // fourth, and a control that omitted two would no longer isolate one cause.
+    seatTools: z.array(z.any()).default([]),
     // `seatSkills` omitted — the single reason the imposed bag is refused.
     desk: z.string().default("front")
   }),
@@ -199,6 +202,10 @@ export const handRolledFlow = defineFlow({
     instructions: z.string().optional(),
     teamInstructions: z.string().optional(),
     seatSkills: z.array(z.object({ name: z.string(), skillMd: z.string() }).passthrough()).default([]),
+    // The fourth contract key. A hand-rolled schema has to add each one as the
+    // contract grows — which is the cost this fixture exists to show, not a
+    // reason to stop hand-rolling.
+    seatTools: z.array(z.any()).default([]),
     desk: z.string().default("front")
   }),
   actions: controlActions,

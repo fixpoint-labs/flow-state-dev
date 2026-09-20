@@ -30,9 +30,9 @@ Each step is worth a sentence.
 
 **Run the harness.** Whichever one you handed it. The manager gives it a deadline.
 
-**Read the verdict.** The handle says how the run ended in neutral terms — it finished, it was stopped by a limit, or it failed — and the manager decides from that. It never reads a vendor's own status strings, so two different harnesses settle identically.
+**Read the verdict.** The handle carries two separate facts. `status` is whether the run terminated normally, and the manager's succeed-or-fail verdict is read from that alone. `outcome` is the run's own report of how it stopped, in a neutral vocabulary: `finished`, `stopped-at-limit`, `failed`, or `null` for no terminal result at all. Both are the framework's spelling rather than a vendor's, so two different harnesses settle identically.
 
-**Settle or re-queue.** Succeeded and the job is done, the row completes. Asked a question, the row parks. Anything else is a failed attempt, re-queued with the reason, until the retry budget runs out.
+**Settle or re-queue.** A run that terminated normally goes on to the phase's completion check, including one that reports `stopped-at-limit`. Pass the check and the row completes. Asked a question, the row parks. Anything else is a failed attempt, re-queued with the reason, until the retry budget runs out.
 
 ## Choosing the harness
 
@@ -83,11 +83,16 @@ A phase is the part that knows what the work *is*. Three values:
 const implementPhase = {
   phase: "implement",
   buildPrompt: (run) => `Implement ${run.issue} in ${run.workspacePath}.`,
-  isDone: (run) => pullRequestExists(run.branch),
+  isDone: (run) =>
+    run.stopReport === "stopped-at-limit" ? false : pullRequestExists(run.branch),
 };
 ```
 
 `buildPrompt` runs on every attempt, rebuilt from current state rather than computed once when the row was filed. `isDone` answers whether the job is actually finished — and it is consulted only *after* a successful verdict, never as an alternative route to completion. Both halves have to hold.
+
+`isDone` gets one fact `buildPrompt` does not: `run.stopReport`, how the run itself said it stopped. It is the handle's `outcome`, `"finished"`, `"stopped-at-limit"` or `"failed"`, and it arrives exactly as the harness reported it. A value this version of the framework doesn't define reaches `isDone` unchanged, and never as `"finished"`. `null` means the run reported no terminal result at all, which is a different fact from finishing. What "done" means is entirely the phase's call.
+
+Ending cleanly and finishing the job are two different answers. A run that exhausts its turn or spend budget commits the part it got through and reports `stopped-at-limit`. A completion check that answers from the branch alone (a commit exists, a pull request exists) settles that row as done with half the work in it. Reading `stopReport` is how a phase refuses that, as the sample above does.
 
 If a phase reads collections of its own, ship them as a capability and put it on the manager's `uses`:
 

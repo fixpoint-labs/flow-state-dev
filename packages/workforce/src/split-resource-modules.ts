@@ -25,8 +25,12 @@
  *
  * **Where that second door stops.** It refuses what cannot be either half; it
  * does not re-judge which half a thing belongs in. An *object* that is neither
- * lands in the resource map and is refused, by ref, by `defineFlow` for having
- * no intrinsic scope. And a capability written in one worker's own folder is
+ * lands in the resource map, and the thing that refuses it is the **type**:
+ * both resource arms of `ResourceModuleExport` require a `stateSchema`, so the
+ * app's own `tsc` rejects it at the call site that spreads the map. `defineFlow`
+ * sits under that as a net rather than the backstop — it throws only on an
+ * entry with no intrinsic scope at all, so an object carrying a bogus one would
+ * pass it and fail later, where the first `stateSchema.safeParse` runs. And a capability written in one worker's own folder is
  * the generated map's per-entry type to refuse, because saying so here would
  * mean re-deriving the ref grammar that `./loader/resource-convention` owns —
  * a second spelling of the one rule that names everything in this tree.

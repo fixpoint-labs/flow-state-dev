@@ -26,6 +26,7 @@ import {
   renderWorkforceCode,
   type DiscoveredFile,
   type DiscoveredResourceModule,
+  type DiscoveredSeatBlock,
 } from "@flow-state-dev/workforce/codegen";
 import { classify, refusedSymlink } from "@flow-state-dev/workforce/loader";
 import { EXIT_SUCCESS, EXIT_CONFIG_ERROR, EXIT_EXECUTION_ERROR } from "../exit-codes";
@@ -49,6 +50,8 @@ export interface GenResult {
   files: DiscoveredFile[];
   /** Every discovered resource module, ordered by path. */
   resourceModules: DiscoveredResourceModule[];
+  /** Every per-seat block registration, ordered by path then seat. */
+  seatBlocks: DiscoveredSeatBlock[];
   /** The folders looked in. */
   searched: string[];
   /** True when the file on disk already matched — always true for a write that changed nothing. */
@@ -56,18 +59,31 @@ export interface GenResult {
 }
 
 /** Group what was discovered by the map each one lands on, for the summary line. */
-function countBySlot(result: Pick<GenResult, "files" | "resourceModules">): string {
+function countBySlot(
+  result: Pick<GenResult, "files" | "resourceModules" | "seatBlocks">,
+): string {
   const counts = { worker: 0, channel: 0, block: 0 };
   for (const file of result.files) counts[file.slot] += 1;
+  // Seat blocks are counted by FILE rather than by registration: one team-level
+  // file registers for every seat on the team, and a count of registrations
+  // would not match the number of files an author can point at.
+  const seatBlockFiles = new Set(result.seatBlocks.map((entry) => entry.path)).size;
   return (
     `${counts.worker} worker kind(s), ${counts.channel} channel kind(s), ` +
-    `${counts.block} block(s), ${result.resourceModules.length} resource module(s)`
+    `${counts.block} block(s), ${result.resourceModules.length} resource module(s), ` +
+    `${seatBlockFiles} seat block(s)`
   );
 }
 
 /** Every discovered path, in one list, for the report that names what disagreed. */
-function discoveredPaths(result: Pick<GenResult, "files" | "resourceModules">): string[] {
-  return [...result.files, ...result.resourceModules].map((found) => found.path);
+function discoveredPaths(
+  result: Pick<GenResult, "files" | "resourceModules" | "seatBlocks">,
+): string[] {
+  const seatBlockPaths = [...new Set(result.seatBlocks.map((entry) => entry.path))];
+  return [
+    ...[...result.files, ...result.resourceModules].map((found) => found.path),
+    ...seatBlockPaths,
+  ];
 }
 
 /**
@@ -85,8 +101,8 @@ export async function executeGenCommand(options: GenCommandOptions): Promise<Gen
   // The root's own refusals — symlinked, missing, unreadable — belong to the
   // walk and are made there, so every caller of it gets them and not just this
   // command.
-  const { files, resourceModules, searched } = await discoverWorkforceCode(root);
-  const rendered = renderWorkforceCode(files, resourceModules);
+  const { files, resourceModules, seatBlocks, searched } = await discoverWorkforceCode(root);
+  const rendered = renderWorkforceCode(files, resourceModules, seatBlocks);
   const file = join(root, GENERATED_FILE_NAME);
 
   // The no-follow promise covers what we WRITE as well as what we read. Both
@@ -108,7 +124,7 @@ export async function executeGenCommand(options: GenCommandOptions): Promise<Gen
 
   if (options.check !== true && !upToDate) await writeFile(file, rendered, "utf-8");
 
-  return { file, files, resourceModules, searched, upToDate };
+  return { file, files, resourceModules, seatBlocks, searched, upToDate };
 }
 
 export function registerGenCommand(program: Command): void {
@@ -163,6 +179,9 @@ export function registerGenCommand(program: Command): void {
       for (const file of result.files) console.log(`  ${file.path} -> ${file.name}`);
       for (const module of result.resourceModules) {
         console.log(`  ${module.path} -> ${module.ref}`);
+      }
+      for (const entry of result.seatBlocks) {
+        console.log(`  ${entry.path} -> ${entry.seat}.${entry.name}`);
       }
       console.log(
         result.upToDate

@@ -30,6 +30,8 @@ const LEDGER = "LEDGER-8830";
 const TONE = "TONE-2216";
 const EXTRA = "EXTRA-9074";
 const SHARED = "SHARED-3308";
+const SURVEY = "SURVEY-1902";
+const RADIO = "RADIO-5517";
 
 /** Nothing on by default — the shape a discovered `research.ts` has. */
 const research = defineCapability({
@@ -87,7 +89,36 @@ function fieldwork() {
   const capability = defineCapability({
     name: "fieldwork",
     presets: {
-      survey: { tools: [lookup] },
+      survey: { context: [SURVEY], tools: [lookup] },
+      default: []
+    }
+  });
+  return { capability, calls: () => calls };
+}
+
+/**
+ * A preset carrying a CONTROL rather than a catalog tool — the exemption.
+ *
+ * Same shape as {@link fieldwork}, and deliberately so: the two differ in one
+ * key, so the opposite results below are attributable to that key and nothing
+ * else.
+ */
+function dispatch() {
+  let calls = 0;
+  const ping = handler({
+    name: "ping",
+    description: "A framework control.",
+    inputSchema: z.object({}),
+    outputSchema: z.object({ ok: z.boolean() }),
+    execute: () => {
+      calls += 1;
+      return { ok: true };
+    }
+  });
+  const capability = defineCapability({
+    name: "dispatch",
+    presets: {
+      radio: { context: [RADIO], controlTools: [ping] },
       default: []
     }
   });
@@ -267,20 +298,27 @@ describe("a seat picks presets from what its kind carries", () => {
     expect(occurrences(said.prompt, EXTRA)).toBe(1);
   });
 
-  // A preset's TOOLS travel the same per-seat path as its context. Graded on
-  // the tool's own `execute`: a name the generator never registered resolves
-  // to a synthesized result inside the mock's loop and never reaches it, so
-  // the counter only moves when the tool really got there. The sibling, asked
-  // to call the same name, is the red state this check needs to be worth
-  // anything.
-  it("gives a selected preset's tool to that seat and not to its sibling", async () => {
+  // V7 · BR-16, BR-17 — a preset's CONTEXT travels the per-seat path; its
+  // catalog TOOLS do not get past the seat's `tools:`. Core's fence (FIX-1393)
+  // drops a capability's catalog tools whenever the consuming block declares
+  // `tools:`, and this kind declares it on every seat.
+  //
+  // Both halves are asserted on purpose. The marker proves the selection
+  // actually landed, so a zero call count reads as "the fence held" rather
+  // than "nothing was selected" — without it this check would pass just as
+  // happily if per-seat resolution were removed entirely.
+  //
+  // The tool is graded on its own `execute`: a name the generator never
+  // registered resolves to a synthesized result inside the mock's loop and
+  // never reaches it, so the counter moves only if the tool really got there.
+  it("carries a selected preset's context but not its tool past the seat's fence", async () => {
     const { capability, calls } = fieldwork();
     const kind = defineAgentWorkerFlow({ uses: [capability] });
     const seat = hire(
       [
         record({
           id: "engineering.surveyor",
-          declared: { capabilities: { fieldwork: ["survey"] } }
+          declared: { tools: [], capabilities: { fieldwork: ["survey"] } }
         }),
         record({ id: "engineering.ghost" })
       ],
@@ -289,10 +327,45 @@ describe("a seat picks presets from what its kind carries", () => {
 
     const surveyed = await turn(seat("engineering.surveyor"), callsTool("lookup"));
     expect(surveyed.error).toBeUndefined();
-    expect(calls()).toBe(1);
+    expect(occurrences(surveyed.prompt, SURVEY)).toBe(1);
+    expect(calls()).toBe(0);
 
+    // The sibling selected nothing, so it gets neither half.
     const said = await turn(seat("engineering.ghost"), callsTool("lookup"));
     expect(said.error).toBeUndefined();
+    expect(said.prompt).not.toContain(SURVEY);
+    expect(calls()).toBe(0);
+  });
+
+  // The exemption, and the reason the fence above is about CATALOG tools
+  // rather than tools. A control is not something a `tools:` list could have
+  // named — it is usually built inside the capability and never exported — so
+  // the capability being composed IS the declaration, and the seat's empty
+  // `tools:` does not reach it. Same seat shape as the check above, one key
+  // different on the preset, opposite result.
+  it("lets a selected preset's CONTROL tool through the same empty tools list", async () => {
+    const { capability, calls } = dispatch();
+    const kind = defineAgentWorkerFlow({ uses: [capability] });
+    const seat = hire(
+      [
+        record({
+          id: "engineering.operator",
+          declared: { tools: [], capabilities: { dispatch: ["radio"] } }
+        }),
+        record({ id: "engineering.ghost" })
+      ],
+      { [AGENT_KIND]: kind }
+    );
+
+    const operated = await turn(seat("engineering.operator"), callsTool("ping"));
+    expect(operated.error).toBeUndefined();
+    expect(occurrences(operated.prompt, RADIO)).toBe(1);
+    expect(calls()).toBe(1);
+
+    // Still a selection, not a gift to the kind: the sibling named nothing.
+    const said = await turn(seat("engineering.ghost"), callsTool("ping"));
+    expect(said.error).toBeUndefined();
+    expect(said.prompt).not.toContain(RADIO);
     expect(calls()).toBe(1);
   });
 

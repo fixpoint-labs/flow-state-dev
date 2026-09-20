@@ -20,7 +20,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
-import { kinds, resourceModules } from "./workforce.gen";
+import { blocks, kinds, resourceModules, seatBlocks } from "./workforce.gen";
 
 /**
  * What a `.ts` file in a `resources/` folder turned into.
@@ -39,8 +39,13 @@ const { capabilities } = splitResourceModules(resourceModules);
  * is hired into. The app decides WHICH capabilities the roster may reach; each
  * seat's own file decides which of their presets it wants, and a seat that
  * names none carries the kind's defaults.
+ *
+ * `catalog: blocks` is the whole of the custom-tool recipe on the app's side:
+ * the scanned `workforce/blocks/` map IS a tool catalog, so a seat naming one
+ * of its keys in `tools:` can call it. The app decides what the catalog holds;
+ * each seat decides which of it to use, and a key nobody names reaches nobody.
  */
-const agent = defineAgentWorkerFlow({ uses: capabilities });
+const agent = defineAgentWorkerFlow({ uses: capabilities, catalog: blocks });
 
 /** This directory — the workforce root, read at run time the way Markdown always is. */
 export const workforceRoot = dirname(fileURLToPath(import.meta.url));
@@ -48,7 +53,19 @@ export const workforceRoot = dirname(fileURLToPath(import.meta.url));
 /** One hired seat, plus what the loader could not read. */
 export interface HiredWorkforce {
   seats: FlowInstance[];
-  /** Folders that should have been a worker and were not, by path. */
+  /**
+   * Everything the loader could not read, by path — from **all three** of its
+   * error channels, not just the worker one.
+   *
+   * The three are separate on the loader's result because they are different
+   * severities: a worker slot that failed is a seat this app does not have, a
+   * skill that failed is a seat running short, and a `TEAM.md` that failed is a
+   * whole team's seats running without instructions their author wrote. They
+   * are flattened here because this app's answer to all three is the same —
+   * say so — and because a channel a caller forgets to destructure is a
+   * failure that reports nowhere, which is the one outcome collecting rather
+   * than throwing is supposed to make impossible.
+   */
   errors: string[];
 }
 
@@ -62,9 +79,16 @@ export interface HiredWorkforce {
  * @throws If any record cannot be hired; the message names every bad worker.
  */
 export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
-  const { workers, errors } = await readWorkforce(workforceRoot);
+  const { workers, errors, skillErrors, teamErrors } = await readWorkforce(workforceRoot);
   return {
-    seats: hireWorkforce(workers, { kinds: { ...kinds, agent } }),
-    errors: errors.map((e) => e.path),
+    // `seatBlocks` registers what each worker's own folder holds, for that
+    // worker alone. It grants nothing: a seat still names the block in its
+    // `tools:` before the model can call it.
+    seats: hireWorkforce(workers, { kinds: { ...kinds, agent }, seatBlocks }),
+    errors: [
+      ...errors.map((e) => e.path),
+      ...skillErrors.flatMap((seat) => seat.errors.map((e) => e.path)),
+      ...teamErrors.map((e) => e.path),
+    ],
   };
 }

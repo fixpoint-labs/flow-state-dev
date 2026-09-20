@@ -63,6 +63,27 @@ function memory() {
  * by default, and without them the stores are written and never read back),
  * and the capture pipeline in the post-answer door.
  */
+/**
+ * The same kind with memory's tool-bearing presets left ON, so the capability
+ * actually contributes a tool for the fence to act on. `rememberingKind` turns
+ * `recall`/`connect` off — which is the documented recipe, but it also means a
+ * fence test built on it has nothing to observe and passes either way.
+ */
+function toolBearingKind(mem: ReturnType<typeof memory>) {
+  return defineAgentWorkerFlow({
+    uses: [
+      mem.capability.presets({
+        recall: true,
+        connect: true,
+        semantic: true,
+        episodic: true
+      })
+    ],
+    isolateUserState: false,
+    afterAnswer: mem.captureFromItems
+  });
+}
+
 function rememberingKind(mem: ReturnType<typeof memory>, isolateUserState: boolean) {
   return defineAgentWorkerFlow({
     uses: [
@@ -264,18 +285,44 @@ describe("memory attaches to the built-in agent kind by composition", () => {
     expect(result.error).toBeUndefined();
   });
 
-  // Names what it covers: the documented recipe, not the general guarantee.
-  // The framework unions a capability's tools onto a block's own list rather
-  // than intersecting them, so nothing here stops a tool-carrying preset the
-  // app leaves on. That intersection is FIX-1393's, in `@flow-state-dev/core`.
+  // Covers the general guarantee now, not just the recipe: core fences a
+  // capability's catalog tools behind a declared `tools:` (FIX-1393), and this
+  // kind declares one on every seat.
+  //
+  // **This test used to pass for the wrong reason.** It mocked `agent-answer`
+  // through `generators:` and then wrapped `ctx.resolveModel` to watch the tool
+  // list — but a mocked generator never consults the resolver, so the wrapper's
+  // `generate` was never called and `seen` stayed `[]` no matter what the fence
+  // did. `expect(answer.calls.length).toBeGreaterThan(0)` looked like a control
+  // and was not: it proved the MOCK ran, which is exactly what stopped the
+  // observation happening. The fix is to let the real generator run against a
+  // recording model resolver, and to assert the observation occurred at all —
+  // an empty list is only evidence if something was there to see it.
   it("sends zero tools to the model for a worker with an empty `tools:`, on the recipe's kind", async () => {
     const mem = memory();
+    // Tool-bearing presets ON. With them off (the recipe's own opt-out) the
+    // capability contributes nothing and this test cannot fail — it would
+    // observe an empty list whether the fence worked or not.
     const [seat] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
-      [AGENT_KIND]: rememberingKind(mem, false)
+      [AGENT_KIND]: toolBearingKind(mem)
     });
 
-    const answer = mockGenerator({ name: "agent-answer", script: [{ text: "done" }] });
     const seen: string[] = [];
+    let generateCalls = 0;
+
+    // Supply the resolver to the harness rather than mocking the generator and
+    // wrapping afterwards: the real generator has to run for the tool list to
+    // be resolved at all, and that list IS the fence.
+    const recording = ((): GeneratorModel => ({
+      modelId: "m",
+      async generate(options: { tools?: Array<{ name: string }> }) {
+        generateCalls += 1;
+        seen.push(...(options.tools ?? []).map((tool) => tool.name));
+        return { text: "done" };
+      }
+    })) as unknown as ModelResolver;
+    recording.resolveId = (modelId: string) => modelId;
+
     const runtime = await createTestContext({
       flow: { ...seat!, cardinality: "singleton" },
       orgId: "test-org",
@@ -283,26 +330,9 @@ describe("memory attaches to the built-in agent kind by composition", () => {
       sessionId: "test-session",
       sequencerName: seat!.actions.run!.block.name,
       declaredResources: seat!.actions.run!.block.declaredResources,
-      generators: { "agent-answer": answer },
+      modelResolver: recording,
       unmockedGeneratorPolicy: "allow"
     });
-
-    // Wrap the harness's resolver so the tool list the provider is handed is
-    // observable. That list IS the fence.
-    const base = runtime.ctx.resolveModel;
-    const watching = ((modelId: string, blockName?: string): GeneratorModel => {
-      const model = base(modelId, blockName);
-      if (blockName !== "agent-answer") return model;
-      return {
-        ...model,
-        generate: (options) => {
-          seen.push(...(options.tools ?? []).map((tool) => tool.name));
-          return model.generate(options);
-        }
-      };
-    }) as ModelResolver;
-    watching.resolveId = base.resolveId;
-    (runtime.ctx as { resolveModel: ModelResolver }).resolveModel = watching;
 
     const result = await executeBlock({
       block: seat!.actions.run.block,
@@ -311,7 +341,10 @@ describe("memory attaches to the built-in agent kind by composition", () => {
     });
 
     expect(result.error).toBeUndefined();
-    expect(answer.calls.length).toBeGreaterThan(0);
+    // The control. Without this the assertion below passes whenever the model
+    // is never reached — which is how this test passed before it observed
+    // anything. An empty list is evidence only if something looked.
+    expect(generateCalls).toBeGreaterThan(0);
     expect(seen).toEqual([]);
   });
 

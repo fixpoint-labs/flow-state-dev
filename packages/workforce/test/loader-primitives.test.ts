@@ -111,6 +111,40 @@ describe("openRoot", () => {
     }
   });
 
+  it("refuses a root whose `..` steps back through an earlier segment", async () => {
+    // The spelling where the filesystem and `path.join` disagree. `openRoot`
+    // asks the filesystem, which applies a `..` only after walking what precedes
+    // it; every path below the root is built with `path.join`, which applies it
+    // lexically. A link in front of the `..` sends those two to different
+    // directories, so the root that is checked is not the root that is read.
+    const dir = base();
+    mkdirSync(join(dir, "holder", "inner"), { recursive: true });
+    mkdirSync(join(dir, "holder", "elsewhere"), { recursive: true });
+    mkdirSync(join(dir, "elsewhere"), { recursive: true });
+    symlinkSync(join(dir, "holder", "inner"), join(dir, "hop"));
+
+    // Control: both directories the spelling could mean open on their own, so
+    // the refusal below is the spelling and not a missing folder.
+    await expect(openRoot(join(dir, "holder", "elsewhere"))).resolves.toBeUndefined();
+    await expect(openRoot(join(dir, "elsewhere"))).resolves.toBeUndefined();
+
+    // Built by hand — `path.join` would collapse the `..` before `openRoot` saw it.
+    await expect(openRoot(`${dir}${sep}hop${sep}..${sep}elsewhere`)).rejects.toThrow(
+      /^Workforce directory ".+" is spelled with a "\.\." that steps back through an earlier segment/,
+    );
+
+    // A leading `..` collapses nothing, because no directory precedes it, so the
+    // ordinary relative spellings stay open. This is the half that can fail by
+    // being too wide, and too wide here is an app that will not boot.
+    const cwd = process.cwd();
+    try {
+      process.chdir(join(dir, "holder", "inner"));
+      await expect(openRoot(`..${sep}..${sep}elsewhere`)).resolves.toBeUndefined();
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
   it("still opens an ordinary root spelled with a trailing separator", async () => {
     const { real } = linkedRoot();
 

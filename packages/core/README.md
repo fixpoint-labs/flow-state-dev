@@ -209,6 +209,7 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
   - `config: { schema?, resolve }` — Open, typed configuration. The resolver maps a validated value onto a block surface (like a preset, but value-carrying). Consumers pass it with `.config(value)`, which composes with `.presets()` in either order
   - `.with(bag)` — The normalized consumer builder. Collapses `.config()` and `.presets()` into one flat call: preset-named keys become preset toggles, the rest become the config value. `cap.with({ allowed: ["x"], dynamicActivation: true })` ≡ `cap.config({ allowed: ["x"] }).presets({ dynamicActivation: true })`. `.config`/`.presets` remain the underlying primitives; a preset name colliding with a config field is a `defineCapability()` error
   - `uses` — Capabilities can depend on other capabilities (transitive composition with diamond dedup)
+  - Preset tool slots (generator-only): `tools` is a grant a consuming generator can withhold — a generator that declares its own `tools:` gets that list and nothing else. `controlTools` reaches the model whatever the generator declares, for a control the generator's own configuration asked for (a loader the capability builds and never exports, say)
   - Factory pattern: wrap `defineCapability()` in a function for parameterized capabilities
 
 **Capability schema forwarding:**

@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/bullmq",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "BullMQ host/runtime adapter for flow-state-dev — durable background jobs, native cron, and full-flow worker dispatch for long-lived hosts.",
   "keywords": [
     "ai",
@@ -91,7 +91,7 @@
     "vitest": "latest"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run --root .",
     "test:watch": "vitest --root ."
