@@ -1,15 +1,14 @@
 ---
 name: spec-poc
-description: Build a throwaway proof-of-concept ON a never-merged spec or epic PR so a direction can be validated before it is implemented — a characterization test pinning how the system already behaves, sketch source files showing the shape of a solution, a self-contained HTML mockup of a UI, or (at epic altitude) a rough end-state showing what the whole set looks like once every issue has landed. Also builds 2–3 competing variants when a direction fork is genuinely contested, so the choice is made on evidence. Use when a spec or epic-spec rests on a premise nobody has checked, when the ergonomics or the look only become visible in code, or when the division of work across an epic's issues might be wrong.
+description: Build an experimental proof-of-concept inside a retained issue or epic spec to validate direction. Publish on its unmerged review PR, or on a new follow-up PR from main after approval. Supports characterization, sketches, UI mockups, end-state compositions, and competing variants; retained evidence stays outside production discovery.
 argument-hint: "<ISSUE-ID or epic name> — the question the POC has to answer"
 ---
 
 # Spec POC
 
-A **spec POC** is throwaway code committed to a **never-merged** spec or epic PR, so we
-learn what we need to learn *before* implementing. The reviewers on that PR and the human
-at the approval gate are **meant to look at it** — that is what separates it from every
-other kind of throwaway code we write.
+A **spec POC** is experimental code retained with its owning issue or epic spec.
+Reviewers and the human at the direction gate are meant to run it. Retention preserves
+the evidence, not a production implementation or a maintained API.
 
 Read [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec-branch POCs"
 for where this sits in the lifecycle and who dispatches it. This file is how you execute it.
@@ -23,9 +22,9 @@ the whole effort:
 |---|---|---|---|
 | **The question** | *What should we do?* — yours, undecided | *Who is right?* — contested, twice over | *Is this direction right?* — published for sign-off |
 | **Audience** | you | the review thread | spec/epic PR reviewers + the human at the gate |
-| **Lives** | `_prototypes/` in a host app | a throwaway worktree | the never-merged `spec/` or `epic/` branch |
+| **Lives** | `_prototypes/` in a host app | a throwaway worktree | the owning `specs/issues/<ID>/poc/<experiment>/` or `specs/epics/<ID>/poc/<experiment>/` |
 | **Output** | an answer, in `NOTES.md` | `CONFIRMED` / `REFUTED` / `INCONCLUSIVE` | a summary in the spec + code a reviewer can run |
-| **Survives?** | deleted or absorbed | deleted | the PR closes unmerged; the branch is kept |
+| **Survives?** | deleted or absorbed | deleted | retained as isolated evidence with the merged spec |
 
 If nobody but you will read it, it's a `prototype`. If two reviewers keep reversing each
 other on a factual claim, it's `settle-claim`. If the point is to show someone the shape so
@@ -102,7 +101,7 @@ Self-contained is the load-bearing constraint, not a style preference:
 - **We have no hosted PR preview.** GitHub serves committed HTML as plain text and does not
   render it, so the reviewer's path is *pull the branch and open the file* — and that only
   works if opening the file is the whole of it.
-- The PR description therefore gives **the literal command**: `open spec-poc/FIX-820-timeline/variant-a.html`.
+- The PR description gives the literal command: `open specs/issues/FIX-820/poc/timeline/variant-a.html`.
   No dev server, no `pnpm install`, no build.
 
 Several variants are several files in the same directory, plus one `README.md` comparing
@@ -131,7 +130,7 @@ arguing. Four rules, and the second is the one that gets broken:
    for the option you already preferred and puts a human's name on it. If you notice you're
    building one properly and one carelessly, stop: you've already decided, so write the
    decision down and skip the variants.
-3. **One comparison page** (`spec-poc/<ID>-<slug>/README.md`): what each variant does
+3. **One comparison page** (`<owning-spec>/poc/<experiment>/README.md`): what each variant does
    differently, what each is better at, what each costs, and the **question the choice turns
    on**. Not a recommendation-free dump — say which you'd pick and why, then let it be
    argued with.
@@ -145,30 +144,19 @@ can afford five; a review surface can't. Four is a sign the question is under-sp
 
 ## Where it lives, and why CI stays green
 
-**`spec-poc/<ISSUE-ID>-<slug>/`** at the repo root — e.g. `spec-poc/FIX-775-resume-seam/`,
-`spec-poc/epic-stream-resilience/`.
+Use **`specs/issues/<ISSUE-ID>/poc/<experiment>/`** or
+**`specs/epics/<EPIC-ISSUE-ID>/poc/<experiment>/`**. Other authored figures and assets
+stay under that same spec. Do not move unrelated historical root POCs.
 
-**`spec-poc/` is not a pnpm workspace package**, so `turbo`-driven `pnpm typecheck` and
-`pnpm test` never reach it — which is what lets a POC be quick and dirty even though **CI runs
-on every PR into `main`, spec PRs included**. Full mechanics, next to the directory:
-[`spec-poc/README.md`](../../../spec-poc/README.md).
+These experiments are not workspace packages or production modules. Keep them out of
+production imports, package exports, default builds, test/lint discovery, and knip's
+production scan. Exclusions must target retained `poc/` subtrees, not hide production code.
+Keep generated dependencies and secrets out of git; do not add workspace membership,
+package manifests, or root execution scripts for a POC.
 
-Rules that keep it that way:
-
-- **Never put a POC inside `packages/*`.** Those ship to consumers.
-- **Never add `spec-poc/` to `pnpm-workspace.yaml`**, and give it no `package.json` — that is
-  exactly what would pull it into turbo's graph.
-- **Run it directly**: `pnpm tsx spec-poc/<dir>/run.ts`, `pnpm fsdev run …`, or open the HTML.
-  **Never wire a root `package.json` script** — beyond implying it's maintained, that is the one
-  publishing route that *can* turn the knip gate red: knip's `unlisted` / `binaries` findings
-  attach to the root `package.json`, which the `spec-poc/**` ignore does **not** cover. A script
-  is how you'd reintroduce the exact failure this location was chosen to avoid.
-- **Imports resolve or CI complains.** `pnpm knip:ci` gates on unresolved imports and
-  undeclared dependencies across the root workspace, so `spec-poc/**` is listed in `knip.json`'s
-  root `ignore`. Don't remove that line, and don't rely on it to hide a POC that imports
-  something that doesn't exist — prefer imports that actually resolve.
-- **If CI still goes red, fix the POC, don't disable the check.** A red spec PR is a broken
-  gate signal, and the whole point of this location is that no config had to be weakened.
+Run directly with its documented command, e.g.
+`pnpm tsx specs/issues/FIX-775/poc/resume-seam/run.ts`, or open its self-contained HTML.
+CI still runs on the spec PR; fix a failed required check rather than bypassing it.
 
 ## Publishing it — the reviewer has to be able to run it
 
@@ -178,16 +166,16 @@ block, and it is not optional:
 ```
 ## POC on this branch
 
-`spec-poc/FIX-820-timeline/` — three variants of the run timeline.
+`specs/issues/FIX-820/poc/timeline/` — three variants of the run timeline.
 
-  open spec-poc/FIX-820-timeline/variant-a.html      # one row per block
-  open spec-poc/FIX-820-timeline/variant-b.html      # collapsed by phase
-  open spec-poc/FIX-820-timeline/variant-c.html      # flame-graph
+  open specs/issues/FIX-820/poc/timeline/variant-a.html  # one row per block
+  open specs/issues/FIX-820/poc/timeline/variant-b.html  # collapsed by phase
+  open specs/issues/FIX-820/poc/timeline/variant-c.html  # flame-graph
 
-Comparison + my pick: spec-poc/FIX-820-timeline/README.md
+Comparison + my pick: specs/issues/FIX-820/poc/timeline/README.md
 The question it turns on: does a reader scan for *what ran* or for *what was slow*?
 
-Throwaway — never merges, closes with this PR. Please don't review it as code.
+Experimental evidence retained with the spec, not production code. Review direction, not polish.
 ```
 
 Three requirements:
@@ -195,8 +183,8 @@ Three requirements:
 1. **One runnable/openable command per artifact**, verbatim and copy-pasteable.
 2. **The question it answers**, stated. A reviewer who has to infer what they're looking
    for reviews the code quality instead — which is the exact feedback we don't want.
-3. **Say it's throwaway.** The contract block in `spec-template.md` already excludes POC
-   files from review; repeating it here is cheap and it works.
+3. **Say it is experimental, not production.** Retention does not require production
+   polish; direction and the reliability of the claimed evidence remain reviewable.
 
 Then the **spec** gets the durable record: `PLAN.md`'s POC line points at the POC and states
 what it showed; `DECISIONS.md → Settled` records a premise it settled (with the same "resolved,
@@ -208,33 +196,25 @@ altitude the record is `DECISIONS.md → What the end-state POC showed` instead.
 result and it belongs on the plan's POC line. Only recording POCs that found problems teaches
 the next reader that a quiet POC was a failure.
 
-## Exit — it never merges
+## Retention and later experiments
 
-The spec PR closes **unmerged** the moment the spec is approved, and **its branch is kept**
-(BP-037), so the POC's working life ends at the gate but its code stays reachable. **Its value
-is meant to be consumed before that point** — a POC exists to inform the gate. What survives is
-the record: the plan's POC line and the decisions' settled claims, the closed PR whose diff
-GitHub keeps viewable, and the retained `spec/<ISSUE-ID>` branch. **Cite the PR** — it renders the POC with no checkout — and
-reach for the branch when someone wants to run it.
+Human approval authorizes merging the reviewed spec after required checks and
+repository thread policy; confirmed merge precedes implementation. The original PR
+then preserves review history, while its artifacts remain in the owning spec on `main`.
 
-### Building one *after* approval — re-open, don't start a second PR
+### Building one after approval
 
-A direction can be signed off and still rest on something nobody has run. Then the POC is built
-on the **already-approved spec**, on the surface it already has:
+Start a new branch from fresh `main` and open a follow-up PR, adding the POC under the
+same owning spec and reconciling its plan/decision/evolution records. Never reopen or
+push the original approved/merged PR. If approval arrived before the original merge,
+finish that reviewed merge first; do not quietly attach new experiments to its approval.
+Material direction changes require renewed human approval on the new head. A standing
+label cannot authorize changed content; required checks still apply.
 
-1. Check out the retained branch (`git fetch origin spec/<ISSUE-ID> && git checkout -B spec/<ISSUE-ID> origin/spec/<ISSUE-ID>` — never re-base it on `main`), commit the POC under `spec-poc/<ISSUE-ID>-<slug>/`, push.
-2. **Re-open the closed spec PR** (`gh pr reopen <spec-pr>`) with a comment saying what it answers and how to run it. Same PR, same review history, same reviewers.
-3. Record what it showed on the plan's POC line — **pushed to the branch** *and* mirrored to Linear. A re-opened PR is live, which is the one exception to a closed spec branch being a frozen record (BP-037); it re-freezes on close.
-4. **Close it again, unmerged.** If the POC *changed the direction*, that fold needs fresh sign-off first: keep the PR open and escalate it as a **blocker** for the coordinator to surface. Neither phase re-gates by itself — a standing `spec approved` label survives pushes, and a row already implementing cannot return to the spec gate — so don't wait on an approval nobody will read. Whoever applies the answer folds it and closes the PR.
-
-Re-opening never re-opens the approval gate, never resumes spec review, and never merges.
-
-That the POC can't leak into the codebase rests on one mechanical fact worth stating: the
-implementation branch is cut from **fresh `origin/main`**, never from the spec branch (see
-`orchestration.md` → "Worktree branching"). Whatever else an implementation PR carries over
-from the spec branch, **the POC is not part of it, ever.** If you find yourself
-copying `spec-poc/` files onto a `fix/` branch, stop — either it's real code and needs `tdd`, or
-it's throwaway and it stays behind.
+Retained POCs are present in implementation checkouts, but must stay out of production
+imports and default discovery. If an experiment deserves production adoption, implement
+it through the ordinary discipline on the implementation branch rather than importing
+the experimental file.
 
 What crosses the line, and how:
 
@@ -242,7 +222,7 @@ What crosses the line, and how:
 |---|---|
 | **A premise it settled** | `DECISIONS.md → Settled`, as resolved-with-evidence. Costs a later reviewer zero rounds to reopen. |
 | **A characterization test worth keeping** | Named in the plan's checks as a CI spec to write, or graduated into `goals/<describe>/<it>/` properly (`goal.md` with a real anti-game field). Re-written under `tdd` on the impl branch — not copied. |
-| **The shape** | The plan's POC line cites **the spec PR URL** plus the path inside it. The PR renders the POC with no checkout, which is what a reader wants; the branch is retained too (BP-037), so reach for it when someone needs to *run* the code. The implementer starts *from* it; they don't inherit it. |
+| **The shape** | Cite the retained POC path and original review/amendment PR. The implementer learns from the experiment without importing it into production. |
 | **A chosen variant** | A decision card in `DECISIONS.md`. |
 | **A refuted premise** | Fold it into the spec **before** the gate. This is the cheapest possible version of that discovery. |
 | **A framework bug it uncovered** | File it via `issue-manager`, related to the source issue. Don't let it live only in a PR description. |
@@ -257,9 +237,9 @@ What crosses the line, and how:
   grows specs has stopped being a POC; it's code, and it needs `tdd` on a real branch.
 - **The POC nobody reads.** If you can't name who looks at it and what they'd decide
   differently afterwards, don't build it.
-- **The POC that becomes the implementation.** Committing real work to an unapproved,
-  never-merged branch means it either gets rewritten or it smuggles unreviewed code past the
-  gate. Both are worse than starting clean.
+- **The POC that becomes production by accident.** Retaining an experiment does not
+  authorize importing it into shipped code. Implement production behavior through its
+  ordinary review and verification discipline, not a shortcut around it.
 - **A POC standing in for a decision.** No run answers "should we build this?" That's the
   human's call at the gate, and a POC informs it rather than replacing it.
 
@@ -269,8 +249,8 @@ What crosses the line, and how:
   the approval gate stays reachable. But **disclose it**: a gate surfaced while a
   load-bearing POC is still in flight must say so, or the human approves on a premise nobody
   mentioned was contested.
-- **You never merge the POC, and you never open a separate PR for it.** It lives on the spec
-  or epic branch that already has one.
+- **Use the owning spec's review PR before approval; afterward use a new follow-up PR.**
+  Never reopen or push the original merged PR. Required checks apply to both.
 - **You never prompt the user when dispatched** (as `issue-worker` or `epic-agent` running
   this step) — return the summary and let the coordinator surface it. Invoked directly by a
   human, ask when the question is ambiguous.

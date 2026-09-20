@@ -14,8 +14,10 @@ Agent tool (general-purpose):
 
     ## Spec Context
 
-    [Relevant sections from the spec that inform this task: Technical Design, Edge Cases, Testing Strategy.
-     Include the spec's directional design — modules/layers, data flow, any diagram, and the Decisions that bind this task. The spec doesn't fix exact signatures and types; the implementer settles those.]
+    [Approved merged retained spec revision and relevant rules/decisions/plan for this task.
+     Include applicable DOCS.md operations and EVOLUTION.md predecessor anchors, retained
+     versus superseded portions, and compatibility obligations. Include pinned shapes;
+     otherwise exact implementation signatures remain the implementer's to settle.]
 
     ## Codebase Context
 
@@ -71,6 +73,9 @@ Agent tool (general-purpose):
     - Follow existing codebase patterns. Don't invent new conventions.
     - Don't refactor code outside your task's scope.
     - If a file is growing beyond what the spec intended, report it as DONE_WITH_CONCERNS.
+    - Do not import retained spec POCs into production or default discovery.
+    - Report material direction changes for a new amendment PR from main and renewed
+      human approval; never silently edit a Linear mirror or original merged spec PR.
 
     ## Self-Review
 

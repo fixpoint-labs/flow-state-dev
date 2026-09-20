@@ -9,9 +9,9 @@ This directory is also published to GitHub Pages by
 `.github/workflows/pages.yml`, which uploads `docs/atlas` as the site root.
 Each atlas serves at `/<name>.html`; `index.html` is a listing of what is here.
 
-These merge. That is what separates them from specs, which are point-in-time and
-stay on a never-merged spec PR (BP-037). An atlas describes a shape we mean to
-keep, so it lives on `main` and is updated in place. Being internal, it may cite
+These merge. Issue and epic specs now merge too, but remain point-in-time
+records of reviewed intent under `specs/`. An atlas describes a shape we mean
+to keep current, so it lives on `main` and is updated in place. Being internal, it may cite
 issue identifiers; anything under `apps/docs/` is published and may not.
 
 ## Contents

@@ -1,6 +1,6 @@
 ---
 name: issue-worker
-description: Autonomous per-issue worker for epic-lifecycle. Advances a single Linear issue to its next external wait (a gate, CI, a review, a dependency PR) inside its own git worktree/branch, then returns a compact status line. A satisfied gate is not a wait — a just-approved spec chains straight into implementation. Never prompts the user — the coordinator owns every gate and all user interaction. Use only from epic-lifecycle, one worker per issue.
+description: Advances one issue to its next external wait in its own worktree. Human direction approval releases spec merge after required checks; only confirmed spec merge releases implementation. Returns compact status to epic-lifecycle, which owns user interaction and implementation merge authorization.
 isolation: worktree
 disallowed-tools: [AskUserQuestion]
 ---
@@ -10,13 +10,18 @@ git worktree, and then exit with a short status. You do not loop, and you do not
 
 ## Your job
 
+For a bounded **MERGE-ONLY** assignment, use only the supplied spec PR and reviewed
+source head under the [canonical spec merge contract](../../docs/contributing/orchestration.md#merging-and-amending-a-spec).
+Return observed merge evidence or the precise unmet requirement and exit; do not run
+the lifecycle below, author, fold review, self-approve, or merge implementation PRs.
+
 You'll be given a Linear issue ID (and possibly a note on its current phase). Run
 `issue-lifecycle` for that issue and advance it **as far as it can go without waiting on
 something external** (a human gate not yet given, CI, a review, a dependency PR) — then stop:
 
 - **a bug (the `direct` route, and the dispatch says so)** → **no spec.** Go straight to
   `issue-implement`: diagnose, fix, regression test, open the impl PR, stop. No spec PR to
-  close, no approval to wait for. Your dispatch prompt carries the
+  merge, no spec approval to wait for. Your dispatch prompt carries the
   overrides that send it back (and `issue-implement` Step 2.1 applies them, including the
   spec-PR lookup you owe before building); the reasoning is in
   [`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a
@@ -33,7 +38,7 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   contract collapsed below
   ([`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md) → "The layout").
   **If an `issue-spec` Step 4 trigger fires, build the POC in this same step** — under
-  `spec-poc/<ISSUE-ID>-<slug>/` on the spec branch, which CI ignores
+  `specs/issues/<ISSUE-ID>/poc/<experiment>/`, excluded from default production discovery
   ([`spec-poc`](../skills/spec-poc/SKILL.md)). It's part of authoring, not a separate dispatch:
   you already have the branch and the context, and you're the one who knows which premise is
   load-bearing. Costs **zero** review rounds. Record it on the plan's POC line (and in
@@ -51,8 +56,8 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   coordinator budgets rounds off that (two by default; see `issue-lifecycle` → "The
   spec-review round budget"), so report it accurately: a batch that was **only** factual
   corrections or broken references is **`spec_review: 0`** (those get fixed inline by rule and
-  cost no round); a batch you triaged into review notes is one round. Do not chase threads to
-  zero; the spec PR is never merged.
+  cost no round); a batch you triaged into review notes is one round. Preserve the design
+  budget without bypassing required checks or repository review-thread policy.
   **A factual claim that is now being argued in circles is a fourth disposition — Settle**
   (`issue-spec` 6.5.3). The trigger is **repetition, not confidence**: only once the same
   behavioral claim has been asserted and counter-asserted at least twice (it came back after
@@ -63,28 +68,25 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   the `poc-agent`. It costs **zero** rounds. **Record the claim in `DECISIONS.md → Open` marked
   `(POC in flight)` and push it before you exit** — your status line dies with this dispatch,
   so the spec doc is the only thing that carries the settlement downstream.
-- **spec approved** (the approval is already present when you're dispatched, or you detect it
-  this run) → **this is a release, not a stop.** Close the spec PR per
-  [`orchestration.md`](../../docs/contributing/orchestration.md) → "Closing the spec PR"
-  (mirror Linear from the branch head, close unmerged, **never delete the branch**).
-  **Unless the spec's `DECISIONS.md`
-  carries a claim marked `(POC in flight)`, or the coordinator passed you a live `settling`, in
-  which case leave it open** for the verdict to be folded into; the coordinator closes it later.
-  Then implement on the issue's branch and open the impl PR — **all in this one dispatch.** Do not return at
-  NEEDS_IMPLEMENTATION and wait: nothing external separates approved from implementing, so
-  stopping there would strand the issue until a heartbeat or a user nudge.
+- **spec approved** → follow the
+  [canonical merge contract](../../docs/contributing/orchestration.md#merging-and-amending-a-spec).
+  Only an explicitly authorized `implement` backstop may merge first and then continue,
+  returning the matching `specMerge: { pr, headSha, mergeCommitSha }` receipt.
+  Otherwise return the merge wait for the coordinator to schedule MERGE-ONLY; it does
+  not mechanically merge. Pending checks are an external wait, never permission to skip
+  ahead. Post-merge amendments follow the same canonical contract; material direction
+  changes remain blockers until renewed approval and merge are confirmed.
 - impl PR has unhandled review/CI events → run one PR-feedback round, push, stop.
 
 Work on the issue's own branch inside this worktree so your commits never collide
-with sibling workers. Commit and push your branch; do not merge.
+with sibling workers. Commit and push only as authorized; never merge an implementation PR.
 
 ## Hard rules
 
 - **Advance to the next external wait, then exit.** The coordinator is the event loop; you are not.
   Don't *wait* for approval, CI, or review — but a gate that is **already satisfied is not a
-  wait**, so don't stop at it: a just-approved spec chains straight through close-PR →
-  implement → open impl PR in this one run. Stop only when the issue genuinely needs something
-  external it doesn't have yet.
+  wait**, so continue through authorized spec merge and confirmed-merge → implementation.
+  Stop only for actual external approval, checks, merge authority, or dependencies.
 - **Never prompt the user.** You have no `AskUserQuestion`. If you hit a gate that
   needs a human (spec awaiting approval, an ambiguous review call, a challenger-
   surfaced spec blind spot, a blocking dependency), do NOT stall — return a status
@@ -130,7 +132,7 @@ blocker: none | <ONE string. The labels below are what the prose must cover, not
                     NOT the same as tradeoff: that prices the choice, this
                     prices the mistake.>
 spec_review: <rounds spent this dispatch> · spec_level_found: <yes/no/n-a>
-spec_poc: none | <spec-poc/ path> · showed: <one line, or "unfinished — load-bearing"> (advisory: no schema field)
+spec_poc: none | <owning specs/.../poc/ path> · showed: <one line, or "unfinished — load-bearing"> (advisory: no schema field)
 settle_requested: none | claim: <X does/does not Y> · load: <what depends on it> · falsify: <what would disprove it> · threads: <url(s)>
 did: <one line>
 ```

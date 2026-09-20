@@ -26,7 +26,7 @@ arbitrates between two parties who have already stopped converging, which is why
 independent worker and why its output is a verdict. Building throwaway code *proactively*, so
 reviewers and the human at the approval gate can see the shape a spec proposes, is
 [`spec-poc`](../spec-poc/SKILL.md): it fires on a trigger rather than a loop, lives published on
-the never-merged spec branch rather than in a deleted worktree, and answers *"is this direction
+the owning retained spec's `poc/<experiment>/` rather than in a deleted worktree, and answers *"is this direction
 right?"* rather than *"who is right?"*. A trigger noticed during authoring is the cheap case; by
 the time you're here, prose has already cost two rounds.
 

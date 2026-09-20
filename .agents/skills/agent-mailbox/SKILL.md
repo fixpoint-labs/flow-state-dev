@@ -263,7 +263,6 @@ was decided, and the comments stay on the merged PR as the raw thread. **Close w
 when the handle was aborted, or was a ping with nothing worth keeping. Never merge one that is
 still the live conversation.
 
-This is the one place the mailbox's rules override the instinct built by every other repo we
-work in: here, *merge* is how a finished handle is archived. Retiring nothing at all is the
-actual failure — the board's directory is its open PRs, so a handle that outlives its work is
-indistinguishable from a live one.
+Mailbox retirement follows the conversation's end, unlike issue/epic spec merge, which
+records approved direction before implementation. Retiring nothing is the failure:
+the board's directory is its open PRs, so a handle outliving its work looks live.

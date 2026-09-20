@@ -96,19 +96,14 @@ jobs:
         with:
           node-version: 22
 
-      # A spec PR (branch `spec/<ISSUE-ID>`), an epic PR (branch `epic/<name>`,
-      # carrying `spec/_epics/<name>/`) and a project PR (branch
-      # `project/<slug>`, carrying `spec/_projects/<slug>/`) hold the in-flight
-      # spec by design and are never merged, so they are exempt. Keyed on the BRANCH,
-      # not the `spec` label: the label is applied after the PR is created, and
-      # `labeled` is not a default `pull_request` event type — a label-keyed
-      # exemption would fail on the opening run and never re-run.
-      # Every other PR — and main itself — is checked.
-      - name: Spec folder is clear
+      # Issue and epic specs merge into specs/ after approval and required checks,
+      # so their PRs run this guard too. Only standing project specs retain the
+      # never-merged spec/_projects/ lifecycle. Key that exception on the branch,
+      # not a label that may be applied after the opening CI run. Main is always checked.
+      - name: Spec retention and legacy paths
         if: >-
           github.event_name == 'push' ||
-          !(startsWith(github.head_ref, 'spec/') || startsWith(github.head_ref, 'epic/') ||
-            startsWith(github.head_ref, 'project/'))
+          !startsWith(github.head_ref, 'project/')
         run: node scripts/validate-spec-folder.mjs
 
       - name: Changesets name their Linear issue
