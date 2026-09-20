@@ -1,6 +1,6 @@
 # FIX-1455 · Decisions
 
-[Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+[Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 The calls that sit above any single issue. Six of them are locks the epic body and the Architect
 already made — they are recorded here so no child reopens them, not re-argued. **One is new:
@@ -89,14 +89,17 @@ on. Then this epic returns to design and POC and the fence goes back up.
 | **Because** | The app has exactly one persistent region and it is spent on a session list. A fourth column does not fit — the centre already loses its minimum below `sm`, and the right panel is 280–700px on its own. A tab strip hides whichever half you are not looking at, which is the opposite of a reference. A separate route says the workforce is a subsystem you visit, when the claim is that it is the app. Sessions do not disappear: a channel's history *is* the session list, scoped |
 | **Locks in** | The rail is org → channels → **seat list**. The right panel holds boards and **the roster**, and stops being conditional on build mode. Three children build against those regions: FIX-1476 fills the channel half of the rail, FIX-1475 fills the roster, FIX-1477 ships the components for both. Reversible cheaply until FIX-1477 merges, and not after |
 
+![Today's shell beside the rebuilt shell, aligned region for region: a 256 pixel rail holding a session list becomes a rail holding the org's channels and its seat list; the centre column keeps the turn stream and loses its six-control strip; the build-mode-only artifact panel becomes a standing boards and roster panel](figures/shell-before-after.svg)
+
+Read it by column width, not by label. The rail keeps its width and changes its content; the
+right panel stops being conditional on a mode. The centre survives unchanged, because the turn
+stream is the one thing the app already gets right.
+
 **The roster has one home: the right panel.** The rail carries a *seat list* — names and presence,
 read from the same collection, and navigation into the roster rather than a second copy of it.
-The two words are not interchangeable and the figures draw the difference: in
-[`shell-regions.svg`](figures/shell-regions.svg) the rail's region is *seat list* and the right
-panel's is *roster*, and in [`shell-before-after.svg`](figures/shell-before-after.svg) the rail
-shows bare seat names while `BOARDS + ROSTER` is the panel. A child that renders roster detail in
-the rail, or a bare name list in the panel, has breached this card and not merely styled it
-differently.
+The two words are not interchangeable and the figure draws the difference: the rail shows bare
+seat names while `BOARDS + ROSTER` is the panel. A child that renders roster detail in the rail,
+or a bare name list in the panel, has breached this card and not merely styled it differently.
 
 **What would change my mind:** a rendered narrow-width pass showing the rail cannot hold channels
 and a seat list together without one of them becoming a scroll-within-a-scroll. Then the seat list
@@ -148,6 +151,14 @@ are the ones that bind three children each, and an owner moving there moves a fi
   ([channels.md](../../../apps/docs/docs/workforce/channels.md)). FIX-1476's worked example has
   to show the drain on a built-in-kind channel; it is a shape of the example, not a fork, and it
   is recorded here so the demo kinds are not built against a combination the framework refuses.
+- **Shell region detail is FIX-1477's, not the epic's.** The first draft carried four shell
+  figures and a long narrative in `SPEC.md`. Cursor's simplify pass, `second-look` and the
+  Architect all read that as issue altitude, and the owner's approval took the Architect's call.
+  **[D7](#d7)'s outcome is unchanged** — the rail becomes the workforce, and the before/after is
+  pinned beside the card. What moved is the *detail*: the region-tag map, the shed and the
+  narrow-width order stay authored evidence in `figures/` and are **inherited by FIX-1477**,
+  which owns the regions narrative under [ER-7](BUSINESS-RULES.md). No figure was deleted, and
+  the yielding order remains fixed here rather than in any one child.
 - **"Inline" is a source, not a lifetime — and this corrects the epic body.** The epic body
   says *inline UI = request/stream-local*, and the first draft of [D5](#d5) and
   [`shell-regions.svg`](figures/shell-regions.svg) carried that phrase forward. It is wrong
@@ -169,73 +180,55 @@ components first than by sketching an end state. If the coordinator dispatches o
 section takes its four lines.
 
 <a name="open"></a>
-## Open
+## Answered
 
-Two, both the owner's. The first arrived from review and blocks FIX-1475's *proof*, not its
-start; the second is housekeeping. Nothing here is decided by a child
-([ER-19](BUSINESS-RULES.md)).
+Both were the owner's, and both were answered on 2026-09-20: *"Approved, I'm good with
+Architects recommendations for any remaining open questions"*
+([PR #1978](https://github.com/fixpoint-labs/flow-state-dev/pull/1978#issuecomment-5753189267)),
+formalized by the Architect's follow-up
+([review](https://github.com/fixpoint-labs/flow-state-dev/pull/1978#pullrequestreview-5261975115)).
+Nothing here is reopened by a child ([ER-19](BUSINESS-RULES.md)).
 
-<a name="open-runtime-admin"></a>
-### 1 · FIX-1475's durability proof needs runtime creation, which [ER-16](BUSINESS-RULES.md) forbids
+<a name="answered-runtime-admin"></a>
+### 1 · FIX-1475's durability proof is scoped to runtime hire — **closed**
 
-[ER-2](BUSINESS-RULES.md) and [ER-22](BUSINESS-RULES.md) ask for *hire a team, open a channel,
-create a board; redeploy; all three are still there*. But [ER-16](BUSINESS-RULES.md) keeps
-runtime channel-admin verbs out of this set and parks them under
-[FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415). Materializing a channel from
-`CHANNEL.md` at boot does not prove anything about durability — it proves the file is read twice.
-The epic body carries the tension itself: *hire a team, open channels / workers / boards* beside
-the admin-verb park.
+**The call: runtime hire only.** The proof is *hire a team while the app is running; redeploy;
+the seats and the roster are still there*. Channels and boards stay declared in files for this
+set. Runtime channel administration is **not** brought in: ER-16 stands unchanged and
+[FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415) stays parked and out of the set.
 
-**In plain terms.** The one thing this epic exists to demonstrate is that a team you create
-while the app is running is still there after a redeploy. As written, the only things the app
-can create while running are seats.
+**What moved.** [ER-2](BUSINESS-RULES.md) and [ER-22](BUSINESS-RULES.md) are amended to ask for
+runtime hire rather than a runtime-created channel, which is the contradiction that opened this
+question. The file-declared channel's boards are still materialized, drained and warned about —
+FIX-1476's half of the proof is unchanged, because it never depended on runtime creation.
 
-**The trade-off.** *Scope the proof to runtime hire* — seats and the roster created at runtime,
-channels and boards still declared in files — keeps ER-16 intact and keeps FIX-1415 parked, but
-the proof covers one of the three nouns the rules name. *Bring runtime channel administration
-in* — unpark enough of FIX-1415 to open a channel and mint a board at runtime — makes the proof
-match the claim, and grows the epic by most of a parked issue.
+**The cost of being wrong**, recorded so it is not rediscovered: the reference app under-promises
+for a cycle, and FIX-1415 comes in as a follow-up. That was the cheaper side, and it is the side
+taken. **FIX-1475 is unblocked** — it no longer waits on this question.
 
-**My recommendation: scope the proof to runtime hire of seats and the roster**, and amend ER-2
-and ER-22 to say so plainly rather than leaving them asking for something ER-16 forbids.
+<a name="answered-stale"></a>
+### 2 · The five stale kitchen-sink tickets — **closed, split two ways**
 
-**What would change my mind:** if "durable" is meant to promise runtime channel creation to
-anyone reading the reference app, scoping down makes the reference lie, and FIX-1415 comes in.
+**Stays open.** [FIX-1372](https://linear.app/fixpoint-labs/issue/FIX-1372) (skill activator sees
+an empty catalog on the first turn of a fresh session). An empty catalog on the first turn is a
+correctness bug whether the shell changes or not, so the rebuild does not answer it. It is
+**verified against the rebuilt app at wrap** ([PLAN.md → Wrap](PLAN.md#wrap)); if it still
+reproduces, it is fixed on its own ticket, not folded here.
 
-**What being wrong costs:** scoping down and being wrong costs a follow-up issue and a reference
-app that under-promises for a cycle. Bringing FIX-1415 in and being wrong costs the epic's size
-and its schedule, against a surface that was parked on purpose.
+**Close as superseded by this set.** [FIX-420](https://linear.app/fixpoint-labs/issue/FIX-420)
+(input toolbar consolidation with a `+` menu) and
+[FIX-472](https://linear.app/fixpoint-labs/issue/FIX-472) (memory-attribution pill) both describe
+the control strip and chrome that [D7](#d7) reallocates and FIX-1478 sheds.
+[FIX-429](https://linear.app/fixpoint-labs/issue/FIX-429) (org-scope showcase with
+projects-as-collection) is the resource-backed showcase FIX-1477 ships properly, against a real
+roster rather than a demo collection. [FIX-540](https://linear.app/fixpoint-labs/issue/FIX-540)
+(realtime voice client plus kitchen-sink integration) is a surface the rebuild removes; it
+returns as its own ticket if it is wanted, not as a leg of the reference app.
 
-**Until this is answered, ER-2, ER-16 and ER-22 stand as written**, and FIX-1475 does not start.
-
-<a name="open-stale"></a>
-### 2 · The five stale kitchen-sink tickets: fold, cancel, or leave open?
-
-The epic body soft-noted [FIX-1372](https://linear.app/fixpoint-labs/issue/FIX-1372) (skill
-activator sees an empty catalog on the first turn),
-[FIX-420](https://linear.app/fixpoint-labs/issue/FIX-420),
-[FIX-472](https://linear.app/fixpoint-labs/issue/FIX-472),
-[FIX-429](https://linear.app/fixpoint-labs/issue/FIX-429) and
-[FIX-540](https://linear.app/fixpoint-labs/issue/FIX-540) as *not mass-canceled pending final PM
-pass*. Nothing in this epic touches them and nothing here decides them.
-
-**In plain terms.** Five old bugs and polish items sit against the app this epic rebuilds. Some
-of them describe screens that will not exist afterwards.
-
-**The trade-off.** Leaving them open costs a board that lies about what is broken, and a reader
-who cannot tell which of them the rebuild already answers. Canceling them costs a real bug
-(FIX-1372 is a first-turn correctness problem, not polish) quietly disappearing under a rebuild
-that may not fix it.
-
-**My recommendation:** triage them in two piles rather than one decision — FIX-1372 stays open
-and is *verified against the rebuilt app* at wrap, because an empty catalog on the first turn is
-a bug whether the shell changes or not; FIX-420, FIX-429, FIX-472 and FIX-540 close as superseded
-by the rebuild, with this epic named as the superseder.
-
-**What would change my mind:** any of the four naming a behaviour the rebuild does not replace.
-
-**What being wrong costs:** one reopened ticket. This is cheap in both directions and the only
-expensive option is leaving it undecided for another cycle.
+**Linear triage is PM/LM's, not this set's.** These five are recorded as decided here and none
+of them is re-stated, re-parented or edited in Linear by this epic or any child
+([ER-17](BUSINESS-RULES.md), [ER-21](BUSINESS-RULES.md)). The epic names itself as the
+superseder when the four are closed.
 
 ## How it got here
 
@@ -247,3 +240,9 @@ expensive option is leaving it undecided for another cycle.
   shipped channel pair after the Architect ruled that `CHANNELS.md` does not exist, with Board
   v1 kept whole. The roster was given one home. ER-24 joined the wrap gate. D5 gained the
   package routing and dropped a stale `W5` reference. Two questions went up to the owner.
+- **Migrated and folded (Sep 20)** — the set moved from the branch-slug path to
+  `specs/epics/FIX-1455/` under the retained-spec policy, gaining the required
+  [`DOCS.md`](DOCS.md) and, because it supersedes four earlier decisions,
+  [`EVOLUTION.md`](EVOLUTION.md). The owner's two answers were folded: the durability proof
+  scoped to runtime hire (ER-2 and ER-22 amended), and the five stale tickets split. The shell
+  narrative was trimmed to epic altitude with its figures retained for FIX-1477.

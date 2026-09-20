@@ -1,6 +1,6 @@
 # FIX-1455 · Rules every issue in the set obeys
 
-[Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md)
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 At epic altitude the rules are not behaviours of one feature; they are the constraints every
 child spec and implementation must satisfy, and the place a cross-spec review checks. Each says
@@ -11,7 +11,7 @@ who owns it and where it is checked.
 | # | Rule | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | A request to a file-declared seat (`support.ada`) is answered over kitchen-sink's real HTTP route, against the Next-built app, with the desk that seat's own `WORKER.md` declared | FIX-1429 | The `code-comes-from-files-alone` goal check |
-| ER-2 | Hire a team, open a channel, create a board; redeploy; all three are still there, served from the Postgres path the app already uses | FIX-1475 ([D2](DECISIONS.md#d2)) | FIX-1475's goal check · the epic's proof |
+| ER-2 | **Hire a team at runtime; redeploy; the seats and the roster are still there**, served from the Postgres path the app already uses. Channels and boards are declared in files and are not created at runtime in this set (ER-16; [answered 2026-09-20](DECISIONS.md#answered-runtime-admin)) | FIX-1475 ([D2](DECISIONS.md#d2)) | FIX-1475's goal check · the epic's proof |
 | ER-3 | One channel kind, one named instance of it, and a seat that drains a named subset of that instance's boards. A minted board with no declaring seat warns | FIX-1476 ([D4](DECISIONS.md#d4)) | FIX-1476's tests · the warning is visible in the run |
 | ER-4 | Every component the rebuilt shell renders is imported from a client package. Kitchen-sink adds no component the packages could not export | FIX-1477 ([D5](DECISIONS.md#d5)) | FIX-1477's spec review · the app's import graph |
 | ER-5 | One recipe per job on screen. A surface that keeps `@flow-state-dev/patterns` carries a written *keep because…* in its PR | FIX-1478 ([D6](DECISIONS.md#d6)) | FIX-1478's PR |
@@ -46,7 +46,7 @@ who owns it and where it is checked.
 
 | # | The epic is done when | Proved by |
 |---|---|---|
-| ER-22 | A clone of kitchen-sink hires a team, opens a channel with boards, is redeployed, and still has all of it — with a seat draining its named subset and the unattended board warning visible | FIX-1475's goal check on the real path, plus FIX-1476's |
+| ER-22 | A clone of kitchen-sink **hires a team at runtime**, is redeployed, and still has that team's seats and roster — with its file-declared channel's boards materialized, a seat draining its named subset, and the unattended board warning visible | FIX-1475's goal check on the real path, plus FIX-1476's |
 | ER-23 | `goals/workforce-conventions/code-comes-from-files-alone/goal.md` moves off `NOT RUN` | That goal's own contract, over the real HTTP route against the Next-built app |
 | ER-24 | The rebuilt shell's components are imported from client packages by an app outside kitchen-sink, or the import surface is demonstrably able to be | FIX-1477's PR — the export list, and one consumer that is not the reference app |
 | ER-25 | The docs teach hire, channels and boards as what a Workforce app *is*, not as a kitchen-sink recipe | The wrap's docs-polish pass over the Workforce pages the children each edited in isolation |

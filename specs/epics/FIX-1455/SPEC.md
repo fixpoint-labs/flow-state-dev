@@ -1,6 +1,6 @@
 # FIX-1455 · Kitchen-sink rebuild: the Workforce reference people copy
 
-**Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+**Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Epic · 5 issues · Workforce: Layer 2 Abstraction · Goal 1, validate through real usage
 
@@ -36,40 +36,12 @@ keeps it a *consumer*: nothing in this epic ships an API that only kitchen-sink 
 
 ## How the shell makes room
 
-Channels, seats and boards have no home in the current chrome. The app has two routes — `/`
-mounts the chat agent directly, `/devtool` — and one persistent region, a 256px rail
-(`w-64`) whose vertical budget is spent on a scrollable **session list**. There is no channel
-list, no seat roster, no board and no board column anywhere in the app. That is the real-estate
-contest this epic resolves, and it is the one call the epic body had not already made
-([D7](DECISIONS.md#d7)).
-
-![Today's shell beside the rebuilt shell, aligned region for region: a 256 pixel rail holding a session list becomes a rail holding the org's channels and its seat list; the centre column keeps the turn stream and loses its six-control strip; the build-mode-only artifact panel becomes a standing boards and roster panel](figures/shell-before-after.svg)
-
-Read it by column width, not by label. The rail keeps its width and changes its content; the
-right panel stops being conditional on a mode. The centre is the only region that survives
-unchanged, because the turn stream is the one thing the app already gets right.
-
-![The rebuilt shell with every region tagged inline or resource-backed: the channel list, the rail's seat list, the roster and the board columns subscribe to collections; the turn stream, task updates and approval cards render from the session's persisted item stream. Both shapes survive a reload — the tag names the source, not a lifetime](figures/shell-regions.svg)
-
-The split is not new — every region of the app is already one shape or the other, unnamed.
-Spine item 3 moves both into the client packages rather than inventing them
-([D5](DECISIONS.md#d5)). **Inline names the source a region reads — the session's item stream —
-not how long its content lives**; the items are durable, so an inline region still shows earlier
-turns and resolved approvals after a reload. The hooks and renderers each region uses today are
-in the figure, and which one goes where is FIX-1477's to work out, not this document's.
-
-![What comes out and the space it frees: the six-control strip above the prompt — mode, thinking style, model, thinking, features, voice — collapses, the four-mode zoo goes, and five patterns-backed pipeline files leave the tree; the freed space is one control row and the rail's vertical budget](figures/shell-shed.svg)
-
-Most of the patterns shed is behind the screen — five imports in `flows/chat-agent/`
-— so this figure is honest about how little screen it frees on its own: one control row. The
-rail's budget is freed by [D7](DECISIONS.md#d7), not by the shed. Both together are what pays
-for channels and the roster.
-
-![Narrow width: the three regions in yielding order — boards and roster collapse to a sheet first, the workforce rail to a drawer second, the channel stream never collapses](figures/shell-narrow.svg)
-
-The order is the content. Three children each own one of these regions, so which one yields
-first is a seam between them rather than any one issue's layout call — it is fixed here and
-consumed there ([ER-7](BUSINESS-RULES.md)).
+The app has two routes and one persistent region: a 256px rail spent entirely on a session
+list. There is no channel list, no seat roster and no board anywhere in it. That is the
+real-estate contest this epic resolves, and the one call the epic body had not already made.
+[D7](DECISIONS.md#d7) makes it, and pins the before-and-after beside the card. The regions
+themselves — their hooks, their tags, their narrow-width order — are FIX-1477's, under
+[ER-7](BUSINESS-RULES.md).
 
 ## The set · as of 2026-09-20
 
@@ -79,7 +51,7 @@ figures point here rather than repeating it.
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) · **bug** | The file-declared workforce demo is served over the app's real HTTP route | Nothing else in the set can stand on a workforce the app never loads. It is also the only row that tests the file convention against a real build | Backlog · direct route, no spec PR |
-| [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) | Hired teams, channels and boards survive a redeploy, on the Postgres the app already uses | The substance. "Durable" is the whole difference between a reference and a demo | Backlog · blocked by FIX-1429 |
+| [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) | A team hired at runtime — its seats and roster — survives a redeploy, on the Postgres the app already uses | The substance. "Durable" is the whole difference between a reference and a demo | Backlog · blocked by FIX-1429 |
 | [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) | The shipped channel pair — a kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — one ChannelFlow factory, board v1 seat drain | Without it there is no worked example of how a seat reaches the boards it is meant to watch — and no visible warning for the ones nobody watches | Backlog |
 | [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) | Inline and resource-backed components shipped in the client packages | The one row that makes the rebuild reusable rather than admirable. Without it every reader copies kitchen-sink files | Backlog |
 | [FIX-1478](https://linear.app/fixpoint-labs/issue/FIX-1478) | `@flow-state-dev/patterns` dropped as a kitchen-sink dependency where Workforce covers it | A reference app teaching two recipes for one job teaches neither | Backlog |
@@ -138,17 +110,22 @@ other rows' surfaces as they land.
    teaches it. This is an invent-kill from the epic body, restated because it is the one a child
    is most likely to breach quietly.
 
-**Open: two.** First, whether FIX-1475's durability proof is scoped to runtime hire of seats
-and the roster, or whether runtime channel administration comes into the set — as written,
-[ER-2](BUSINESS-RULES.md) asks for a runtime-created channel that [ER-16](BUSINESS-RULES.md)
-forbids ([DECISIONS.md → Open](DECISIONS.md#open-runtime-admin)). Second, whether the five
-soft-noted stale kitchen-sink tickets
-([FIX-1372](https://linear.app/fixpoint-labs/issue/FIX-1372),
-[FIX-420](https://linear.app/fixpoint-labs/issue/FIX-420),
+**Open: none.** Both questions were answered by the owner on 2026-09-20
+([PR #1978](https://github.com/fixpoint-labs/flow-state-dev/pull/1978#issuecomment-5753189267)),
+taking the Architect's recommendations. **FIX-1475's durability proof is scoped to runtime
+hire** — seats and the roster — so [ER-2](BUSINESS-RULES.md) and [ER-22](BUSINESS-RULES.md) no
+longer ask for a runtime-created channel that [ER-16](BUSINESS-RULES.md) forbids; runtime
+channel administration stays parked under
+[FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415) and out of this set. **The five
+stale kitchen-sink tickets split**:
+[FIX-1372](https://linear.app/fixpoint-labs/issue/FIX-1372) stays open and is verified against
+the rebuilt app at wrap; [FIX-420](https://linear.app/fixpoint-labs/issue/FIX-420),
 [FIX-472](https://linear.app/fixpoint-labs/issue/FIX-472),
-[FIX-429](https://linear.app/fixpoint-labs/issue/FIX-429),
-[FIX-540](https://linear.app/fixpoint-labs/issue/FIX-540)) fold into this set, cancel as
-superseded, or stay open — the owner's call, written out in
-[DECISIONS.md → Open](DECISIONS.md#open). The reasoning and what lost:
-[DECISIONS.md](DECISIONS.md). The rules every child obeys:
-[BUSINESS-RULES.md](BUSINESS-RULES.md). The order the work runs in: [PLAN.md](PLAN.md).
+[FIX-429](https://linear.app/fixpoint-labs/issue/FIX-429) and
+[FIX-540](https://linear.app/fixpoint-labs/issue/FIX-540) close as superseded by this set.
+Both in full: [DECISIONS.md → Answered](DECISIONS.md#open).
+
+The reasoning and what lost: [DECISIONS.md](DECISIONS.md). The rules every child obeys:
+[BUSINESS-RULES.md](BUSINESS-RULES.md). The order the work runs in: [PLAN.md](PLAN.md). The
+reader-facing prose the set owes: [DOCS.md](DOCS.md). What it supersedes:
+[EVOLUTION.md](EVOLUTION.md).
