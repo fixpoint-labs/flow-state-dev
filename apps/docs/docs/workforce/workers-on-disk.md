@@ -47,6 +47,9 @@ description: Holds the engineering board and breaks work into tasks.
 flow: custom-agent
 model: openai/gpt-5.4-mini
 tools: [board, search]
+resources:
+  - teams/engineering/handbook
+  - teams/engineering/board-notes: rw
 ---
 
 You are the engineering lead. You do not write code yourself. You break the
@@ -54,6 +57,10 @@ request into tasks, assign them, and report what came back.
 ```
 
 `description` is the only key the file itself requires. Four it refuses outright: `persona:`, `seatSkills:`, `seatTools:` and `teamInstructions:` — the last three because a seat's skills and the blocks it can reach are decided by where its folders sit, and its team's instructions by that team's [`TEAM.md`](#what-a-teammd-says), rather than by what one worker's file claims. `flow` names which of your flow kinds this worker runs. Leave it out and the worker is hired into [the built-in worker kind](./built-in-worker.md), which needs no flow of yours.
+
+`resources:` is a list of the [documents](./documents-on-disk.md) this worker may touch, chosen from the ones its kind holds. Each entry is a document's [ref](./documents-on-disk.md#a-documents-ref), the name it gets from where its file sits. A ref on its own is read-only. `<ref>: rw` grants writes, and `<ref>: ro` spells the default out. Leave the key out and the worker reaches every document its kind installed, and writes the ones that allow writes; `resources: []` is how you say it gets none.
+
+Only documents are narrowed. The stores and boards its kind declares stay reachable and writable whatever the list says, and so do the resources the kind's own blocks declare. Where the documents come from is [below](#supplying-the-documents-a-seat-may-name).
 
 Reading the file checks no other key. Whatever else you write lands on the record spelled exactly as you spelled it. The flow a worker names has the final say: at hiring it [refuses a setting it never declared](#the-flow-decides-what-a-worker-may-declare).
 
@@ -301,7 +308,7 @@ composed kind for free and makes a hand-rolled one refuse at startup until you a
 
 `cardinality: "collection"` is what lets one definition have many copies. A roster is exactly that: one copy per worker, each with its own id and its own settings. [Copies that differ by settings](../fundamentals/flows.md#copies-that-differ-by-settings) covers how a copy is configured, and [how an instance is addressed](../fundamentals/flows.md#how-an-instance-is-addressed) covers the URL each one answers on.
 
-`hireWorkforce` reads `flow` to pick the kind, and `description` as a label for the roster. Everything else becomes that copy's settings and is parsed against the flow's `configSchema`, which is closed. So the flow's author, not the framework, decides what a worker of that kind may say about itself.
+`hireWorkforce` reads three keys of its own: `flow` to pick the kind, `description` as a label for the roster, and [`resources`](#supplying-the-documents-a-seat-may-name) to decide which documents the copy is minted with. Everything else becomes that copy's settings and is parsed against the flow's `configSchema`, which is closed. So the flow's author, not the framework, decides what a worker of that kind may say about itself.
 
 ```ts
 const lead = seats.find((seat) => seat.id === "engineering.lead")!;
@@ -370,6 +377,50 @@ Declaring `instructions:` in the frontmatter *and* writing a body is refused, na
 
 `persona:` names something else here, [an agent's system prompt](../orchestration/agents.md#personas). A `WORKER.md` has no `persona` setting, so declaring one lands the worker in `errors` when the tree is read, or is refused by `hireWorkforce` for a hand-built record.
 
+### Supplying the documents a seat may name
+
+A worker's `resources:` list selects from the documents its kind was installed with, so the hire step has to be told which entries in a kind's resource map are documents. Pass it the same map you spread into the flow. Here is [the `custom-agent` kind](#the-flow-decides-what-a-worker-may-declare) again with its documents installed — the action's `inputSchema` and `runTurn`, and the `workers` you loaded, are the same ones as there:
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { hireWorkforce, resourcesFromDocs, workerConfigSchema } from "@flow-state-dev/workforce";
+import { readResourcesDirectory } from "@flow-state-dev/workforce/loader";
+import { boardResource } from "./resources";
+
+const { documents } = await readResourcesDirectory("./workforce");
+const catalog = resourcesFromDocs(documents);
+
+export const customAgentFlow = defineFlow({
+  kind: "custom-agent",
+  cardinality: "collection",
+  configSchema: workerConfigSchema().extend({
+    instructions: z.string(),
+    model: z.string().default("openai/gpt-5.4-mini"),
+    tools: z.array(z.string()).default([]),
+  }),
+  resources: { board: boardResource, ...catalog },
+  actions: { run: { inputSchema, block: runTurn } },
+});
+
+const seats = hireWorkforce(workers, {
+  kinds: { "custom-agent": customAgentFlow },
+  documents: catalog,
+});
+```
+
+One catalog, spread into the flow and handed to the hire. Which entries in that map are documents is what the `documents` option answers: `board` above is not one, and no worker's list governs it.
+
+`documents` is consulted only for a worker that declares `resources:`. A roster where none does hires the same whether you pass it or not. A worker that does declare one while `documents` is absent is refused, naming what is missing.
+
+A list the hire step cannot resolve refuses the whole roster, naming the worker and what was wrong. The message calls one entry a grant and quotes the ref as the file spelled it, which here is `handbook` with two letters swapped:
+
+```
+hireWorkforce refused 1 of 3 workers; nothing was hired:
+  - worker "engineering.lead" — grants "teams/engineering/hanbdook", which is
+    not a document this app declared. A grant selects from the documents passed
+    to hireWorkforce as `documents`; it cannot declare one.
+```
+
 ### When a hire is refused
 
 Every problem here is a startup misconfiguration, so every problem throws. They are collected first, so one run names all of them and you fix them in one pass, and nothing is returned, so a bad record cannot leave you with a half-hired roster.
@@ -383,6 +434,7 @@ A record is refused when it:
 - declares `instructions:` and carries a body;
 - declares `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:`, none of which is a setting a worker declares;
 - declares `teamInstructions:` in its frontmatter, wherever that frontmatter came from — a team's instructions come from its [`TEAM.md`](#what-a-teammd-says) body, read by the loader;
+- declares a `resources:` list the hire step cannot resolve: a ref no document matches, a ref naming a document the app declared but did not install on this worker's kind, a mode that is neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says `writable: false`, a ref colliding with a name the kind's own blocks declare, or the key at all when no `documents` were passed;
 - shares an id with another record in the same call, which is two workers claiming one address.
 
 `kinds` itself is checked too. A flow passed under a key that is not its own `kind` is refused. The copy would otherwise come back carrying the right worker's id, and run the other kind's graph once you registered it.
