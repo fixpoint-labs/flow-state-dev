@@ -74,6 +74,33 @@ L1 type** (W3 D1). *Room* is a dead noun and may not appear in a new surface.
 **Costs** code still carries old names until the propagation pass runs, so the tree and the
 vocabulary disagree in the meantime. That gap is expected, not a defect to file.
 
+**One line of this card is contradicted by what shipped, and it is `Worker → Role`.** Role is not
+a pending rename — it is a noun no epic has used since Sep 11 and that appears **nowhere** in
+`packages/workforce/src` on `main`, while *worker* is load-bearing there (`WORKER.md`,
+`hireWorkforce(workers)`, `workerConfigSchema`). PD-6 records what did settle. Whether Role
+survives the propagation pass or is struck from this list is under **Open** — it is not decided by
+this card and it is not decided by the code either.
+
+### PD-6 · The nouns that shipped are Seat, Kind, Worker — and Agent is an opinion, not a type
+
+**Binds** FIX-1359, FIX-1407, FIX-1457 and FIX-1455 — all four state this triple in their own
+bodies, which is the definition of a call that belongs here rather than in any one of them.
+
+| Noun | What it is |
+|---|---|
+| **Seat** | A hired, durable worker instance — a roster slot that mints one flow instance and is the dispatch target. Declared as `WORKER.md` |
+| **Kind** | The replaceable flow shape a seat names in `flow:`. The OOTB `agent` kind is the default; pointing elsewhere swaps it |
+| **Agent** | A Workforce **opinion** — a persistent identity with its own memory, not bound to a session, a channel or a Flow. **Not a Layer 1 substrate type** |
+
+**Rejected:** *thin* and *fat* seats — that difference is really a difference of kind; and Agent as
+an L1 type, which is PD-1 applied, since there are several valid assemblies of a persistent
+identity. **Costs** a reader meets three nouns before a feature, and `Agent` is narrower here than
+in the wider industry.
+
+**Verified rather than asserted**, because an unchecked vocabulary claim is how the last one rotted:
+on `origin/main`, `packages/workforce/src` carries *seat* in 33 files, *kind* in 32, *worker* in 29,
+and *role* and *strategy* in **none**.
+
 ---
 
 ## Decided once
@@ -97,6 +124,9 @@ Answers settled at project altitude, so no later epic reopens them.
 | What is a seat's package, and where do documents live? | One format, **authored in Markdown**, scoped to instructions and tools, two attachment modes (seat always-on, library opt-in), and **not disk-only** — packages will eventually be LLM-authored and stored as a resource, which binds the design now. **Documents are org-scoped**: v1 carries no per-seat document slot, and the exclusion is structural — a package attaches to one seat, a document installs at org scope | W4 ER-2, the owner's ratify Sep 19 · builds outside W4 as **FIX-1459** |
 | What does a hireable worker kind have to accept? | **Four imposed keys, not three** — `instructions`, `teamInstructions`, `seatSkills`, `seatTools`. Compose `workerConfigSchema()`; a file that authors one is refused by name (PR-6) | Read off `packages/workforce/src/worker-config.ts` on `main`; `teamInstructions` shipped with FIX-1377 ([#1911](https://github.com/fixpoint-labs/flow-state-dev/pull/1911)) |
 | Does `teams/<id>/` fence what a seat reads, or only address it? | **It addresses; it does not fence**, and the halves differ mechanically. Team *instructions* reach only that team's seats — they ride each seat's own config. Team *documents* install on a worker **kind**, so every seat of that kind reaches every team's | FIX-1377 shipped as written, FIX-1368 done, and the docs teach both rules out loud. **Settled by what shipped, not by a recorded ruling** — below |
+| What is a seat, what is a kind, and is an Agent a Layer 1 type? | Seat = hired durable worker instance · Kind = the replaceable flow shape it names · Agent = an opinion, **not** substrate (PD-6). No thin/fat | Stated identically in FIX-1359's wrap, W4's and W5's EM fences, and FIX-1455's; verified against `packages/workforce/src` |
+| Is the kitchen-sink rebuild part of W5? | **No — its own epic** under this project (FIX-1455), sibling to W5, not nested under W4 either. It is the always-on **reference consumer**, which is a Proof of the project's outcome rather than a spine item of the living-assemblies epic | The owner's call, Sep 20, un-parenting it from FIX-1457 |
+| Is the W3 → W4 → W5 chain still holding ship work back? | **No — the floor is down.** W3 is done 19/20 and W4's first-cut children (FIX-1385, FIX-1405, FIX-1408) are all done, with W4 itself wrapped. **Every epic here that fenced its *ship* work on "after W4's first cut" is released** — W5 and FIX-1455 both. What remains is each epic's own sequencing | Derived Sep 20 from both halves: Linear child states plus [#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905) closed unmerged |
 
 ## Recorded at the wrap, not decided
 
@@ -202,3 +232,27 @@ waiting. Then it leaves the table and the outcome narrows.
 
 **Cost of being wrong:** low and reversible; what is paid today is two surfaces answering a reader
 differently about what this project owes.
+
+### Does *Role* survive the propagation pass, or is *Worker* the settled noun? — needs the owner
+
+**Plain terms.** PD-5's rename list — absorbed from this project's own Linear description — says a
+*Worker* becomes a *Role*. Everything built since says otherwise: four stamped epic bodies and the
+shipped package call it a **worker**, the file an author writes is `WORKER.md`, and *Role* appears
+in no code and no epic. The propagation pass has not run, so the list is still the instruction it
+would execute. Evidence: PD-5, PD-6, and the file counts on `main` under PD-6.
+
+**The trade-off.** Strike `Worker → Role` and the vocabulary matches what people already write, at
+the cost of the published manifest losing a noun. Keep it, and the pass renames `WORKER.md` and
+everything under it — the surface most authors touch.
+
+**Recommendation — strike it, and let *Role* keep only its narrow meaning: a position inside a
+Strategy.** That is the sense the manifest actually defines, and it never competed with *worker*;
+it is the one-for-one substitution that never happened. PD-6 then stands as the noun set and PD-5
+loses one line.
+
+**What would change my mind:** the manifest's *Role* was always meant to replace *worker* at the
+file level, and `WORKER.md` is the thing due for renaming. Then the pass is bigger than PD-4 has
+been pricing it, and that is worth knowing before it is scheduled.
+
+**Cost of being wrong:** small now, large later. Today it is one line in a list. After the
+propagation pass it is a renamed authoring surface in every app and doc that copied the convention.

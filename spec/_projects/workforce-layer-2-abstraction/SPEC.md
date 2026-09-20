@@ -13,7 +13,7 @@ epics that establish it.
 |---|---|
 | **Winning when** | Someone stands up a working team of agents from files alone — no TypeScript to declare a channel, a resource, or a skill — and Layer 1 stays fully available to anyone who wants past the conventions |
 | **The read** | Layer 2 nouns that still require code to declare. Five at the start, and the count only moves when a convention ships with a reader and a proof |
-| **Now** | **4 epics done** · 1 in flight · 1 not started. W4 and W3 wrapped three minutes apart on Sep 20, and **both wraps are folded** — what they settled is in [Decisions](DECISIONS.md), and what they left unowned is recorded there with that status attached. 101 work issues, of which **47 sit under no epic** — the vocabulary era this project began in |
+| **Now** | **4 epics done** · 1 in flight · 1 entering setup · 1 not started. The floor is down: W3 and W4 both wrapped on Sep 20, so **every epic here that fenced its ship work on "after W4's first cut" is released**. 108 work issues, of which **52 sit under no epic** — the vocabulary era this project began in |
 | **Kill line** | If real apps turn out to want to assemble Layer 2 themselves, this project is mis-shaped rather than unfinished: what changes is that the conventions become examples, not the remaining epic list |
 
 ![The territory](figures/territory.svg)
@@ -22,7 +22,7 @@ Above the fence is what this project owns; below it is the substrate it assemble
 own. The fence is one question — *is there exactly one of it?* — and it is the test every epic
 under this project is checked against.
 
-## The epics — derived live 2026-09-20 02:00 UTC
+## The epics — derived live 2026-09-20 18:00 UTC
 
 | Epic | What it owns | State | Issues |
 |---|---|---|---|
@@ -30,11 +30,12 @@ under this project is checked against.
 | [FIX-1359](https://linear.app/fixpoint-labs/issue/FIX-1359) · **default agent flow** | OOTB replaceable `agent` flow kind | **done** | 7/11 |
 | [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351) · **W3 file surface** | Channels, resources, skills + a thin pentest lab | **done** | 19/20 |
 | [FIX-1407](https://linear.app/fixpoint-labs/issue/FIX-1407) · **W4 routing** | Work routing & package cohesion | **done** | 7/9 |
-| [FIX-1457](https://linear.app/fixpoint-labs/issue/FIX-1457) · **W5 living workforce** | Humans in seats, and reference apps that run on the surface | **in flight** | 0/2 |
+| [FIX-1457](https://linear.app/fixpoint-labs/issue/FIX-1457) · **W5 living workforce** | Living assemblies that compose the whole surface into runnable shape | **in flight** | 1/3 |
+| [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) · **kitchen-sink rebuild** | The always-on reference consumer — durable hire, channels, shipped UI | **entering setup** | 0/1 |
 | [FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333) · **W1 MCP door** | Client door over intake, boards, dispatcher | *not started* — **scope disputed** | — |
 
-4 done · 1 in flight · 1 not started. Every number above is re-derived from Linear and the epic PRs
-each refresh; none is carried forward.
+4 done · 1 in flight · 1 entering setup · 1 not started. Every number above is re-derived from Linear
+and the epic PRs each refresh; none is carried forward.
 
 **This is the case the two-source rule exists for, and each half caught one epic.** W4 reads
 **done** from [#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905), closed unmerged
@@ -50,12 +51,21 @@ it, kept separate on purpose: an unratified operating default, three items named
 and a door whose owning issue reads Done while the code does not carry it. A wrap that recorded
 those as answers would have manufactured four ratifications nobody gave.
 
-**W5 is now the only epic building.** [#1944](https://github.com/fixpoint-labs/flow-state-dev/pull/1944)
-carries `spec approved` and one folded review round. Neither child has started — FIX-1458 (explore)
-and FIX-1455, a nested child epic that runs its own lifecycle and files no spec PR here (W5's
-ER-15). **Its ship fence has lifted.** W5's soft-after condition was W4's first cut for ship; W4's
-first cut exists and W4 has wrapped, so the condition is met and what remains is W5's own
-sequencing, not a hold on anything upstream ([Plan](PLAN.md)).
+**W5's set was cut in half today, and neither half was a setback.**
+[#1944](https://github.com/fixpoint-labs/flow-state-dev/pull/1944) carries `spec approved`. Of the
+two children it had at its gate, **FIX-1458 — people on the org chart — is canceled** and out of the
+epic, revisitable when multi-user pain is real; **FIX-1455 is un-parented** and runs as its own epic
+below. What W5 keeps is the living-assemblies half, now three children (FIX-1467 done; FIX-1468 and
+FIX-1469 in backlog). **Its ship fence has lifted**: W4's first cut exists and W4 has wrapped, so
+what remains is W5's own sequencing, not a hold on anything upstream ([Plan](PLAN.md)).
+
+**The kitchen-sink rebuild is an epic in its own right, by the owner's call today.** FIX-1455 was
+filed Sep 19 as W5's child and un-parented Sep 20: the reference consumer is not a spine item of the
+living-assemblies epic, it is the always-on Proof this project's own outcome is read against — one
+app someone copies, standing up a team from files. It enters setup now with one child (FIX-1429, the
+unwired file-declared demo) and no epic PR yet. **It is the second epic released by the floor coming
+down** ([Decisions](DECISIONS.md) → *decided once*): its ship half was fenced on W4's first cut, the
+same condition W5's was, and that condition is met.
 
 **W4 wrapped at 7 of 9 — growth, not a reopened set size.** The ratified five are all done;
 FIX-1451 and FIX-1381 attached after the gate and are done too. What is left is two strays in
@@ -82,16 +92,19 @@ flowchart LR
   AF --> W3
   W3 --> W4["FIX-1407 · W4 routing"]
   W3 --> W5["FIX-1457 · W5 living workforce"]
-  W4 -.->|"first cut before W5 ships"| W5
+  W3 --> KS["FIX-1455 · kitchen-sink rebuild"]
+  W4 -.->|"first cut before ship"| W5
+  W4 -.->|"first cut before ship"| KS
   W2 --> W1["FIX-1333 · W1 MCP door"]
   classDef done stroke-width:2px
   class W2,AF,W3,W4 done
 ```
 
-Four heavy borders and one live node: everything W5 was sequenced behind has now wrapped. The
-dotted edge was the only soft one and it has gone slack — W4's first cut exists, so nothing
-upstream is still holding W5's ship half. W1, depending on no file surface, remains the one epic
-that can sit unstarted without blocking anything.
+Four heavy borders and two live nodes: everything both of them were sequenced behind has wrapped.
+**Both dotted edges have gone slack** — they carried the same condition, W4's first cut, and it
+exists. W5 and the kitchen-sink rebuild are siblings, not a nesting; that changed today. W1,
+depending on no file surface, remains the one epic that can sit unstarted without blocking
+anything.
 
 ## What this project is not
 

@@ -8,9 +8,10 @@ deliberately not next. Each epic's own plan owns its checks.
 ![The arc](figures/arc.svg)
 
 Thirteen days, not three months. The project opened in June, but every epic here was filed from
-**Sep 8** onward; the vocabulary era before it left 47 issues under no epic. The overlap this
+**Sep 8** onward; the vocabulary era before it left 52 issues under no epic. The overlap this
 project ran all week collapsed on Sep 20: **W4 and W3 wrapped three minutes apart**, and W5 is the
-only bar crossing the now line. Four lanes closed, one open, one that never opened.
+only bar crossing the now line. Seven lanes — four closed, one open, one that starts today with no
+bar yet, and one that never opened.
 
 ## What each epic consumes and releases
 
@@ -21,7 +22,13 @@ only bar crossing the now line. Four lanes closed, one open, one that never open
 | **W3** · FIX-1351 | W2's walk primitives; the agent flow as a consumer | The file surface — channels, resources, skills — and the pentest lab that proves PR-3 |
 | **W1** · FIX-1333 | W2's conventions; Layer 1 boards + dispatcher | The MCP client door over intake, boards and dispatch |
 | **W4** · FIX-1407 | W3's file surface; the settled vocabulary | Work routing, proved on the real path (ER-20), and the **ratified** package format — whose build left the set as FIX-1459. **Not** the PR-5 propagation pass, which it named out unowned |
-| **W5** · FIX-1457 | W3's file surface; W4's routing, for its ship half only | Humans in seats on the same surface as agents, and reference apps that run on it |
+| **W5** · FIX-1457 | W3's file surface; W4's routing, for its ship half only | Living assemblies — channels, seats, boards and inventory composed into one runnable shape. **No longer humans in seats**: that explore is canceled, and only its invent-kill survives (PR list) |
+| **kitchen-sink** · FIX-1455 | W3's file surface; W4's first cut, for its ship half only; the existing Postgres persistence | The always-on reference consumer — durable hire that survives a redeploy, channels, and the inline-vs-resource-backed UI split, shipped in client packages rather than in the app |
+
+**Two epics run the same play from here, and the difference is who they are for.** W5 composes the
+surface for whoever builds on it; the kitchen-sink rebuild is the one app people copy. They share a
+released fence and most of their inputs, which is worth watching — the seam to guard is that a UI
+shape either app needs lands in a **client package**, not twice.
 
 **W1 is the one that unblocks nothing**, which is why it can sit unstarted at the bottom of the arc
 without holding anything up — and also why it is the easiest to keep deferring. Its cost is not
@@ -39,10 +46,13 @@ issue says only *Todo* ([Decisions](DECISIONS.md) → Open).
   **satisfied** — every W3 child is terminal, and the one issue W4 named as holding the fence turns
   out not to be a W3 child at all. Nobody ruled it discharged
   ([Decisions](DECISIONS.md) → *Recorded at the wrap*, 1).
-- **W4 → W5 — the fence has lifted.** W5's ship half was soft-after W4's first cut, because a human
-  in a seat is routed to the same way an agent is, and routing was W4's. **That cut exists and W4
-  has wrapped, so the condition is met** and W5's remaining sequencing is its own. Sanctioned-now
-  versus held is still per child: FIX-1458 runs, FIX-1455 is held.
+- **W4 → the two epics that fenced on it — the floor is down.** W5 and the kitchen-sink rebuild
+  each fenced their *ship* work on the same condition, *after W4's first cut*, because both compose
+  routing rather than re-inventing it. **That cut exists, its three children are done, and W4 has
+  wrapped, so the condition is met for both** ([Decisions](DECISIONS.md) → *decided once*). What
+  remains is each epic's own sequencing, and neither is waiting on anything upstream. The per-child
+  hold W5 used to carry is gone with the children: FIX-1458 is canceled and FIX-1455 is its own
+  epic.
 - **W3's lab is the proof for PR-3**, so any epic that ships a convention before the lab exists is
   asserting the rule rather than checking it. The lab shipped with W3 (FIX-1355, done).
 - **The `org/channels/` door outlived both epics that bound it, and now reads closed while being
