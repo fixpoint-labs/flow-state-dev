@@ -157,8 +157,27 @@ disagrees: on `main`, `readChannelsDirectory` walks `teams/<teamId>/channels/` o
 says so, `packages/workforce/README.md` says *"There is no `org/channels/` level"*, the atlas lists
 it under **not shipped**, and a committed test plants an `org/channels/` file and **pins the
 silence deliberately**. A declared, unread door carrying a closed ticket is worse than an unowned
-one, because the next reader takes Done at its word. Whoever next touches the channel surface
-builds the reader or reopens FIX-1419; nothing currently does either.
+one, because the next reader takes Done at its word.
+
+### Reopen FIX-1419, or accept `org/channels/` as a gap the docs teach? — needs the owner
+
+**Plain terms.** An author who follows the published tree and drops a company-wide channel under
+`org/channels/` gets silent nothing — no channel, no error. You decided to close that (FIX-1419's
+own description says so), the ticket reads Done, and the reader was never built.
+
+**The trade-off.** Reopened, someone owns building it and the project's own headline promise — a
+company-wide channel without inventing a fake team — becomes true. Accepted as a gap, the promise
+narrows to *team channels*, and the docs have to say so where an author will hit it.
+
+**Recommendation — reopen FIX-1419 and leave it unscheduled.** The decision to close the gap was
+already made once; what failed was delivery, not the call. An open ticket costs nothing and stops
+the next reader concluding it shipped.
+
+**What would change my mind:** you meant to withdraw the org door, not defer it. Then D3's
+`org/` lock narrows for channels and the docs teach team-only, which is a smaller, honest surface.
+
+**Cost of being wrong:** low either way, and the expensive outcome is the current one — an author
+following the docs into silence while the tracker says the gap is shut.
 
 *An earlier version asked whether rooms had a declaration surface. The zero it found was the
 `room` → `channel` fold (PD-5) working, not a gap.*
