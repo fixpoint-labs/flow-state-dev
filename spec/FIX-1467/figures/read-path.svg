@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 320" role="img"
-     aria-label="Today, a markdown file under resources slash seeds one org-wide database row on first boot; every seat on the kind reads and writes that row, crossing the team wall unchecked, and the file in git goes stale. After, references slash is served from disk on every read and stops at the team wall, while resources slash keeps the seed-then-evolve database path behind an explicit grant."
+     aria-label="Today, a markdown file under resources slash seeds one org-wide database row on first boot; every seat on the kind reads and writes that row, crossing the team wall unchecked, and the file in git goes stale. After, references slash is read from the file on every request and stops at the team wall, while resources slash keeps the seed-then-evolve database path."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -71,7 +71,7 @@
     <text class="t-s" x="30" y="218">in git · the ONLY source</text>
     <path class="flow-ok" d="M212,205 L552,205"/>
     <path class="h-ok" d="M545,201 L552,205 L545,209 z"/>
-    <text class="t-ok" x="230" y="197">served from disk on EVERY read · no row, no write path</text>
+    <text class="t-ok" x="230" y="197">read from the FILE each request · sealed, no row</text>
 
     <line class="wall-shut" x1="560" y1="174" x2="560" y2="286"/>
     <text class="t-ok" x="524" y="168">TEAM WALL</text>
@@ -91,10 +91,10 @@
     <text class="t-s" x="250" y="261">seed-then-evolve · content lives in the row</text>
     <path class="flow" d="M568,269 L700,269"/>
     <path class="h" d="M693,265 L700,269 L693,273 z"/>
-    <text class="t-s" x="576" y="261">explicit grant</text>
+    <text class="t-s" x="576" y="261">no grant needed</text>
 
     <rect class="n-box" x="702" y="244" width="222" height="50" rx="5"/>
-    <text class="t-b" x="716" y="265">seats that named it</text>
-    <text class="t-s" x="716" y="282">ro or rw, as #1943 ships</text>
+    <text class="t-b" x="716" y="265">every seat on the kind</text>
+    <text class="t-s" x="716" y="282">a grant NARROWS (#1943)</text>
   </g>
 </svg>

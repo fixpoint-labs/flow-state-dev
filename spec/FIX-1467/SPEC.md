@@ -8,10 +8,10 @@ Exploration · `workforce` · medium · 1 PR · epic [FIX-1457](https://linear.a
 
 | Someone who… | Today | After |
 |---|---|---|
-| **keeps the company handbook in git and edits it there** | The edit reaches the agents on the next deploy — until anything writes that document once. From then on the file is dead weight and the agents read a body that exists in no repo. Nothing reports it | The file in git is the only copy. Editing it *is* the edit, every read, forever |
+| **keeps the company handbook in git and edits it there** | The edit reaches the agents on the next deploy — until anything writes that document once. From then on the file is dead weight and the agents read a body that exists in no repo. Nothing reports it | The file in git is the only copy. Editing it *is* the edit — it reaches the agents on the next request, and keeps reaching them. No write can strand it |
 | **runs an engineering seat that needs the team handbook** | Reachable only because the app remembered to install that team's slice on this seat's kind. Nothing derives it from where the file sits | Reachable because the file sits in that team's folder. No install list to keep in step |
 | **runs a sales seat in the same org** | Reads the **engineering** handbook too, unless the app also remembered a filter line. Nobody is told | Cannot. The wall comes from the path, and the app writes no filter |
-| **wants an agent to keep notes that survive the turn** | Same folder, same word, same behaviour as the handbook. Nothing on disk tells the two apart | Puts it in `resources/`, which keeps today's database path and still needs a named grant |
+| **wants an agent to keep notes that survive the turn** | Same folder, same word, same behaviour as the handbook. Nothing on disk tells the two apart | Puts it in `resources/`, which keeps today's database path — reachable exactly as today, with a named grant available to *narrow* it and never required to get it |
 | **expects the handbook on the agent's bash mount** | It is not there. Bash mounts collections; a document is a single resource and is skipped | **Still not there.** This exploration does not claim the mount — see *What stays as it is* |
 
 Handbooks are the first thing anyone puts in a workforce tree, and the last thing anyone
@@ -20,7 +20,7 @@ and a seat silently reads a neighbour's.
 
 ## What changes
 
-![Today a markdown file under resources slash seeds one org-wide database row on first boot, every seat reads and writes it across the team wall, and the file goes stale; after, references slash is served from disk on every read and stops at the team wall, while resources slash keeps the database path behind an explicit grant](figures/read-path.svg)
+![Today a markdown file under resources slash seeds one org-wide database row on first boot, every seat reads and writes it across the team wall, and the file goes stale; after, references slash is read from the file on every request and stops at the team wall, while resources slash keeps the database path](figures/read-path.svg)
 
 The top row is today, and the red dashed arrow is the part nobody sees: the disk file
 stops being the source the first time anything writes. The bottom row splits one folder
@@ -48,6 +48,8 @@ into two paths — read-from-disk with a derived wall, and seed-then-evolve with
 + # Present = a narrowing, never a widening.
 + references:
 +   - teams/engineering/handbook
+  # Unchanged by this spec. Absent = every mutable resource on this kind,
+  # exactly as today. Present = a narrowing. Same rule, both keys.
   resources:
     - teams/engineering/scratch: rw
 ```
@@ -68,9 +70,13 @@ into two paths — read-from-disk with a derived wall, and seed-then-evolve with
 ## Sign off
 
 1. **[D1](DECISIONS.md#d1) · A reference is a read path, not a renamed folder.** `references/`
-   is served from disk on every read and has no write path; `resources/` keeps today's
-   seed-then-evolve behaviour. *If wrong:* org knowledge can only be changed by a deploy, and
-   anyone who wanted in-product editing has to move the file and re-teach their people.
+   is read from the file rather than from a stored row, and is sealed so nothing can write it;
+   `resources/` keeps today's seed-then-evolve behaviour. *If wrong:* org knowledge can only be
+   changed by a deploy, and anyone who wanted in-product editing has to move the file and
+   re-teach their people.
+   *Scope of the promise:* an edit in git reaches the agents on the **next request**, not
+   mid-request. That is the shape today's core API can build ([why](DECISIONS.md#d1-feasibility)),
+   and BR-3 already declined to promise more.
 2. **[D2](DECISIONS.md#d2) · The tree scope becomes derived and enforced, replacing the app's
    hand-written install filter.** *If wrong:* where a file sits becomes a permission, so moving
    one between team folders silently changes who can read it.
