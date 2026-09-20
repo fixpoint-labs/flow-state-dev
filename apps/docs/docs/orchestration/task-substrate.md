@@ -331,11 +331,13 @@ Mint the token **before** the write. A token minted afterwards can't answer.
 
 Surface `undefined` as its own condition instead of guessing. It means the task carries no provenance, your receipt has aged out, or the token names a different incarnation of the task — deleted and recreated under the same id between the mint and the read, whether by an explicit delete or by capacity eviction on a resource-backed collection. A task keeps its four most recent receipts, so a caller asking after several later writes can find its own gone. The answer withholds itself rather than inventing one.
 
-A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above, and the two are worth reading together.
+A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above: a refusal is a value, not a throw. The two are worth reading together.
 
 **Which writes you can correlate.** The seven methods that take the options argument: `complete`, `fail`, `block`, `unblock`, `awaitReview`, `unpark`, and `cancel`. `addTask`, `addTasks`, `claim`, `reclaim` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
 
 **A collection ref you wrote yourself** maintains none of this. Absence of a record reads as `undefined`, never as "your write did not land".
+
+The task board uses this on its own result writes: a write that landed but could not be announced is reported rather than passed over. See [When the board cannot record a result](./task-board#when-the-board-cannot-record-a-result).
 
 ## The three backings
 

@@ -129,7 +129,7 @@ The `transient` and `key` fields compose orthogonally — knowing one tells you 
 
 | `transient` | `key` | Semantics | Example |
 |:-----------:|:-----:|-----------|---------|
-| `false` | absent | Append-only event | A finalized message; a completed tool output |
+| `false` | absent | Append-only event | A finalized message; a completed tool output; `task-board-recorder-failure` (two failures on one board must both survive, so it takes no key) |
 | `false` | present | **Keyed snapshot** — replays on reload | `task-change`, `task-board-meta`, `rb-entry` |
 | `true` | absent | Ephemeral one-shot | A debug trace |
 | `true` | present | Live-only progress with dedup | A spinner-style "currently doing X" |
@@ -163,7 +163,21 @@ Pattern aggregators (synthesizer prompt builders, reviewer input builders, repla
 
 Attribution is by **execution scope** — which worker/turn produced the item — captured at emit time, not by a timestamp range. A worker scope marks itself with the task it claimed (`ctx._markTaskScope`), and every item that scope and its descendants emit is stamped with that task id (`OutputItem.taskId`) as it is produced. The earlier timestamp-window approach could not separate concurrent producers — while a worker was still looping, its window stayed open, so a sibling worker that ran inside that interval was wrongly absorbed into it. Stamping the origin at emit time removes the ambiguity.
 
-The attribution guarantee: each item belongs to **at most one** task. Concurrent sibling workers and sequential turns of one worker are separated by execution scope, not by time, so neither overlaps the other. A re-claim — a retry, or resuming after `parked` — runs in a fresh scope but marks the same task id, so all attempts union under that task. Synthesizers iterating completed tasks never see an item twice. Items emitted outside any task scope (seed-time events, board scaffolding) carry no task id and are excluded. Bookend `task-change` and `task-board-meta` items are excluded too — they drive status grouping / mount the board, they aren't worker emissions.
+The attribution guarantee: each item belongs to **at most one** task. Concurrent sibling workers and sequential turns of one worker are separated by execution scope, not by time, so neither overlaps the other. A re-claim — a retry, or resuming after `parked` — runs in a fresh scope but marks the same task id, so all attempts union under that task. Synthesizers iterating completed tasks never see an item twice. Items emitted outside any task scope (seed-time events, board scaffolding) carry no task id and are excluded.
+
+**Substrate components are excluded even though they carry a task id.** Three types are on that list:
+
+| Type | Why it is excluded |
+| --- | --- |
+| `task-change` | Drives `<TaskPlan />` status grouping. Board scaffolding, not a worker emission — including the terminal one the worker body itself emits. |
+| `task-board-meta` | Mounts the board component. |
+| `task-board-recorder-failure` | The board saved a task's result and then could not announce it (FIX-963). It says something about the *substrate*, not about the work. |
+
+The rule the list applies is **whose event it is**, not what it looks like. A recorder failure is stamped with the task it was recording — it has to be, so a reader can tell which task's bookkeeping fell over — and without the exclusion a caller asking "what did this worker produce?" would be handed the board's own trouble as though the worker had emitted it. The worker may well have succeeded; that is the whole case the entry exists to describe.
+
+So the test for a new type emitted in task scope is not whether it is "scaffolding". It is whether the worker produced it. If the substrate emitted it *about itself*, it belongs on this list, and it owes a case in `packages/core/test/items/task-attribution.test.ts`.
+
+**A substrate component owes a second entry, in the renderer registry.** Attribution and rendering are different axes, and only the first is settled above. A `component` item is a *structural* type, so it resolves to `{ client: true, history: false }` whatever `itemVisibility` it declares — see [Visibility](#visibility) — and a component type the registry does not name falls through `ItemRenderer` to a `<pre>` of its own JSON. For an item the substrate emits about itself that fallback is a stray blob in the user's thread. So each one is named in `chatAssistantRenderers` (`packages/ui/registry/components/chat-assistant.tsx`): with a renderer where it has a card (`task-board-meta`), and with `false` where it has none (`task-change`, `task-board-recorder-failure`). An app that supplies its own registry owes itself the same lines. `packages/ui/test/substrate-components-never-raw.test.ts` holds the list.
 
 One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / `itemsForTask` / `collectAttributedItemIds`) backs both the substrate (`extractTaskItems` → `task.items()`) and the UI (`<TaskPlan />` per-task expansion and the chat-thread renderer's dedup), so the two agree by construction. The standalone substrate utility — `extractTaskItems(items, collectionId, taskId)` — is exported from the browser-safe `@flow-state-dev/orchestration/tasks` subpath for any consumer that wants the same attribution without going through a `TaskCollection`.
 

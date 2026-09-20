@@ -212,62 +212,101 @@ function createEmitMessage(
   };
 }
 
+type EmitComponentOptions = {
+  key?: string;
+  itemVisibility?: ItemVisibility;
+  agentName?: string;
+  transient?: boolean;
+};
+
+/**
+ * Build the `ComponentItem` both component emitters send. Shared so the
+ * fire-and-forget emitter and the awaited one (FIX-963) cannot drift on item
+ * shape, index reservation, or keying — only on how they treat the emitter
+ * promises.
+ */
+function buildComponentItem(
+  emCtx: EmissionContext,
+  component: string,
+  data: Record<string, unknown>,
+  options?: EmitComponentOptions,
+): ComponentItem {
+  const itemIndex = emCtx.nextItemIndex();
+  // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
+  // Default non-transient; the block's `transient` flag governs only the
+  // auto-emitted block_trace item. Per-call
+  // `{ transient: true }` is the explicit opt-in (e.g. live-only progress
+  // with dedup).
+  // FIX-491: when a `key` is supplied, derive a deterministic item ID from
+  // the key so subsequent emissions upsert in place — `itemsById` collapses
+  // to one entry per `(requestId, key)`. The SSE event log still appends
+  // an `item.added` + `item.done` event per emission; clients reconcile by
+  // item ID and overwrite. `data` is replaced wholesale, never merged.
+  return {
+    id:
+      options?.key !== undefined
+        ? `item_component_keyed:${options.key}`
+        : `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+    type: "component",
+    status: "completed",
+    transient: options?.transient === true ? true : undefined,
+    requestId: emCtx.requestId,
+    itemIndex,
+    provenance: emCtx.provenance(),
+    ts: Date.now(),
+    ownedBy: emCtx.ownedBy,
+    taskId: emCtx.taskId,
+    itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
+    agentName: options?.agentName ?? emCtx.agentName,
+    component,
+    data,
+    ...(options?.key !== undefined ? { key: options.key } : {}),
+  };
+}
+
 function createEmitComponent(
   emCtx: EmissionContext
 ): (
   component: string,
   data: Record<string, unknown>,
-  options?: {
-    key?: string;
-    itemVisibility?: ItemVisibility;
-    agentName?: string;
-    transient?: boolean;
-  },
+  options?: EmitComponentOptions,
 ) => void {
   return function emitComponent(
     component: string,
     data: Record<string, unknown>,
-    options?: {
-      key?: string;
-      itemVisibility?: ItemVisibility;
-      agentName?: string;
-      transient?: boolean;
-    },
+    options?: EmitComponentOptions,
   ): void {
-    const itemIndex = emCtx.nextItemIndex();
-    // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
-    // Default non-transient; the block's `transient` flag governs only the
-    // auto-emitted block_trace item. Per-call
-    // `{ transient: true }` is the explicit opt-in (e.g. live-only progress
-    // with dedup).
-    // FIX-491: when a `key` is supplied, derive a deterministic item ID from
-    // the key so subsequent emissions upsert in place — `itemsById` collapses
-    // to one entry per `(requestId, key)`. The SSE event log still appends
-    // an `item.added` + `item.done` event per emission; clients reconcile by
-    // item ID and overwrite. `data` is replaced wholesale, never merged.
-    const item: ComponentItem = {
-      id:
-        options?.key !== undefined
-          ? `item_component_keyed:${options.key}`
-          : `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-      type: "component",
-      status: "completed",
-      transient: options?.transient === true ? true : undefined,
-      requestId: emCtx.requestId,
-      itemIndex,
-      provenance: emCtx.provenance(),
-      ts: Date.now(),
-      ownedBy: emCtx.ownedBy,
-      taskId: emCtx.taskId,
-      itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
-      agentName: options?.agentName ?? emCtx.agentName,
-      component,
-      data,
-      ...(options?.key !== undefined ? { key: options.key } : {}),
-    };
-
+    const item = buildComponentItem(emCtx, component, data, options);
     void emCtx.response.emitItemAdded(item);
     void emCtx.response.emitItemDone(item);
+  };
+}
+
+/**
+ * The awaited component emitter behind `ctx._emitComponentAwaited` (FIX-963).
+ *
+ * Identical to {@link createEmitComponent} except that it settles on the
+ * emission instead of discarding it: the returned promise resolves once the
+ * item has been added and completed, and **rejects** if either step does. No
+ * `.catch()` — a caller reaches for this emitter precisely because it needs a
+ * failed emission to be loud, and swallowing here would hand it the silence it
+ * was trying to avoid.
+ */
+function createEmitComponentAwaited(
+  emCtx: EmissionContext
+): (
+  component: string,
+  data: Record<string, unknown>,
+  options?: EmitComponentOptions,
+) => Promise<void> {
+  return async function emitComponentAwaited(
+    component: string,
+    data: Record<string, unknown>,
+    options?: EmitComponentOptions,
+  ): Promise<void> {
+    const item = buildComponentItem(emCtx, component, data, options);
+    await emCtx.response.emitItemAdded(item);
+    await emCtx.response.emitItemDone(item);
   };
 }
 
@@ -3781,6 +3820,10 @@ export async function createExecutionContext<
     // round so a tool's `activeStatusMessage` does not linger past the
     // tool's lifetime.
     context._peekStatus = (): string => statusSlot.message;
+    // FIX-963: the awaited component emitter. Deliberately NOT on `ctx.emit`
+    // — `emit.component` stays `void`, and a caller that needs delivery to be
+    // observable asks for it by name.
+    context._emitComponentAwaited = createEmitComponentAwaited(activeEmCtx);
 
     Object.defineProperty(context, "sequencer", {
       enumerable: true,

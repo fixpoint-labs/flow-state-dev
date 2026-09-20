@@ -190,4 +190,79 @@ describe("attributeItemsToTasks / itemsForTask / collectAttributedItemIds", () =
     const owned = collectAttributedItemIds(items);
     expect(owned).toEqual(new Set([m1.id, s1.id, m2.id]));
   });
+
+  describe("substrate components are never a worker's output", () => {
+    // FIX-963. A recorder-failure entry says the BOARD could not record a
+    // result; it is stamped with the task it was recording, so without an
+    // exclusion a reader asking "what did this worker produce?" is handed the
+    // substrate's own trouble as though the worker had emitted it — and the
+    // worker may well have succeeded.
+    function recorderFailure(args: { taskId: string; ts: number }): ComponentItem {
+      return {
+        id: nextId("item_component"),
+        type: "component",
+        status: "completed",
+        requestId: "req_1",
+        itemIndex: 0,
+        provenance: {
+          blockName: "board-worker-record-success",
+          blockInstanceId: "rec#1",
+          phase: "main",
+        },
+        ts: args.ts,
+        taskId: args.taskId,
+        component: "task-board-recorder-failure",
+        data: {
+          collectionId: "a",
+          taskId: args.taskId,
+          recorder: "complete",
+          verdict: "committed",
+          error: "announcement blew up",
+        },
+      };
+    }
+
+    function boardMeta(args: { taskId: string; ts: number }): ComponentItem {
+      return {
+        ...recorderFailure(args),
+        id: nextId("item_component"),
+        component: "task-board-meta",
+        data: { collectionId: "a" },
+      };
+    }
+
+    it("keeps a recorder-failure entry out of the task's items", () => {
+      const work = message({ ts: 110, text: "real work", taskId: "t1" });
+      const items: OutputItem[] = [
+        taskChange({ collectionId: "a", taskId: "t1", kind: "claimed", ts: 100 }),
+        work,
+        recorderFailure({ taskId: "t1", ts: 120 }),
+        boardMeta({ taskId: "t1", ts: 121 }),
+      ];
+
+      expect(itemsForTask(items, "a", "t1")).toEqual([work]);
+      expect(attributeItemsToTasks(items, "a").get("t1")).toEqual([work]);
+      expect(collectAttributedItemIds(items)).toEqual(new Set([work.id]));
+    });
+
+    it("does not make a task LOOK like it produced nothing but a failure", () => {
+      // The discriminating case: a worker that succeeded, whose result the
+      // board then failed to announce. Its items are its own work, not the
+      // board's complaint about itself.
+      const work = message({ ts: 110, text: "succeeded", taskId: "t1" });
+      const items: OutputItem[] = [
+        taskChange({ collectionId: "a", taskId: "t1", kind: "claimed", ts: 100 }),
+        work,
+        recorderFailure({ taskId: "t1", ts: 120 }),
+      ];
+      const bucket = itemsForTask(items, "a", "t1");
+      expect(bucket).toHaveLength(1);
+      expect(
+        bucket.some(
+          (i) =>
+            (i as ComponentItem).component === "task-board-recorder-failure"
+        )
+      ).toBe(false);
+    });
+  });
 });
