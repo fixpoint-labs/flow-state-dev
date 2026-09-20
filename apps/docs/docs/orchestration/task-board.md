@@ -444,7 +444,7 @@ Saving a result is two steps: the store commits the write, then the change is an
 }
 ```
 
-The item is persisted, so it is still there after the run. The shipped chat renderer does not display it; read it off the run's items. `verdict` is what the board could establish about the write:
+The item is persisted, so it is still there after the run. The [`chatAssistantRenderers`](/docs/ui/flow-aware-components#chatassistant) registry maps it to `false`, so it does not appear in a chat thread; read it off the run's items. `verdict` is what the board could establish about the write:
 
 | `verdict` | Means |
 | --- | --- |
@@ -456,7 +456,7 @@ Then the run fails, after every other task has finished. `onError: "skip"` does 
 `undetermined` is never reported as "it wasn't saved". It is a permanent answer, not a transient one, and you get it in these cases:
 
 - **On a task store you wrote yourself.** A store built against `TaskCollectionRef` keeps no record of which write landed, so the board can never answer better than `undetermined`. There is no way to opt in.
-- **On rows a persistent store already held.** Rows created before the board started keeping this record carry none, and nothing adds one, so they answer `undetermined` for as long as they live. Rows the board creates give a definite answer.
+- **On rows a persistent store already held.** Rows written by an earlier release of the board carry none, and nothing adds one, so they answer `undetermined` for as long as they live. Rows the board creates give a definite answer.
 
 A row the board is unsure about is handed back rather than left claimed, so it settles or returns to the queue on the same pass instead of waiting out its lease.
 
@@ -609,6 +609,8 @@ A board run produces two item streams:
 - `task-board-meta` — board-level state, keyed by `collectionId`. Emitted twice per run, once with `status: "active"` at start and once with `status: "completed"` at end. The completed item carries `terminationReason` and the `counts` snapshot.
 
 Renderers like `<TaskPlan />` subscribe to both: `task-board-meta` for the board-level status header, `task-change` for per-task rows.
+
+A board that could not record a result emits one more item, `task-board-recorder-failure`. It carries no key, so each failure in a run is its own entry rather than replacing the last. See [When the board cannot record a result](#when-the-board-cannot-record-a-result).
 
 ## Commanding the board with its capability
 
