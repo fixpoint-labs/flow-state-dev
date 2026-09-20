@@ -13,7 +13,7 @@ epic [FIX-1457 · W5](https://linear.app/fixpoint-labs/issue/FIX-1457)
 | **asks "what is this team waiting on, and on whom?"** | Gets rows it can see and prompts it can't. The two lists live in different places and neither names a person | One read of the board: every waiting row, the reason already on it, and the seat — and so the person — it is waiting on |
 | **is the person** | Answers in whatever UI was wired to that one flow | Holds a seat. Appears in the inventory, sits on channels, and drains the rows addressed to them. The difference from an agent seat is that they answer instead of a model |
 | **redeploys** | The approval prompt's own record survives; who was supposed to answer it was never written down | The person's seat comes back from the same tree every other seat comes back from, still bound to them |
-| **wants a new status column for this** | — | Doesn't get one. Waiting-on-you is a **reading** of rows that are already parked ([D2](DECISIONS.md#d2)) |
+| **wants a new status column for this** | — | Doesn't get one. Waiting-on-you is a **reading** of rows that are already parked ([decided, not asked](DECISIONS.md#decided) — the epic's [D3](https://github.com/fixpoint-labs/flow-state-dev/blob/epic/living-workforce/spec/_epics/living-workforce/DECISIONS.md#d3) settled it) |
 
 **Why this is an exploration and not a build.** W5's other two rows cannot be specced until a
 person in a seat has a shape, and the shape was an open fork: is a human seat its own kind, or an
@@ -51,7 +51,7 @@ flowchart LR
   B -->|"claim"| H["the human seat's drain"]
   H -->|"awaitReview · the reason"| P["row: parked"]
   P -->|"read: desk resolves to the seat, the seat names the person"| W["waiting on Dana"]
-  W -->|"unparkAndDrain · her words"| B
+  W -->|"unparkAndDrain · the answer"| B
 ```
 
 The loop already exists. `awaitReview` parks a row with a reason, the board's own recorders refuse
@@ -75,12 +75,13 @@ What was missing is a seat on the near end of it.
    first spine point is substrate work, not composition, and the epic's [D1](https://github.com/fixpoint-labs/flow-state-dev/blob/epic/living-workforce/spec/_epics/living-workforce/DECISIONS.md#d1)
    ("a put-it-together epic") is wrong with it. **This is the one to weigh.**
 2. **[D2](DECISIONS.md#d2) · A human seat persists exactly as an agent seat does, and what durable
-   hire owes it is the seat's whole settings bag — not `{ id, kind }`.** If wrong: FIX-1455 ships a
-   store that re-hires people bound to nobody, silently, and the failure shows up as work waiting on
-   an empty chair.
+   hire owes it is every *authored* setting — not `{ id, kind }`. What the hire step imposes at
+   runtime, live tool blocks above all, is re-resolved rather than stored.** If wrong: FIX-1455
+   ships a store that re-hires people bound to nobody, silently, and the failure shows up as work
+   waiting on an empty chair.
 
 **Approving these two closes the epic's two downstream-blocking walls**
 ([ER-18](https://github.com/fixpoint-labs/flow-state-dev/blob/epic/living-workforce/spec/_epics/living-workforce/BUSINESS-RULES.md)) —
-a lean becomes a decision only here. **Open: none blocking.** The other two walls stay open, with the
+a lean becomes a decision only here. **Open: none blocking.** Three other walls stay open, with the
 evidence that nothing downstream waits on them, in [DECISIONS.md](DECISIONS.md#open). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md). The build: [PLAN.md](PLAN.md).

@@ -12,7 +12,7 @@ A human reviews this page for a case that is missing.
 |---|---|---|---|
 | BR-1 | A `WORKER.md` declares `flow: human` and `principal:` | It hires like any seat. Its inventory row's `kind` is `human`, which is how anything downstream can tell | Lab goal · leg (a) |
 | BR-2 | `principal:` is declared on a kind that never declared it | The **whole** roster refuses at boot, naming the key. Nothing is hired, so a refusal cannot leave a short roster running | Lab goal · leg (a), the control. Already green in the POC |
-| BR-3 | A seat runs the human kind but declares no `principal:` | It still hires — an absent setting is not an undeclared one. Its rows wait on the **desk**, and every read says the seat has no principal rather than inventing one | Lab goal · leg (c), null arm |
+| BR-3 | A seat runs the human kind but declares no `principal:` | It still hires — an absent setting is not an undeclared one, so the kind declares `principal` **optional**. Its rows wait on the **desk**: the read names the seat and no person, which is a different answer from a row that resolves to no seat at all (BR-12) | Lab goal · legs (a) and (c), null arms. Already green in the POC |
 | BR-4 | A human seat is listed in a `CHANNEL.md`'s `members:` | It is a member on the same terms as an agent seat. No membership surface learns what kind it is | Lab goal · leg (a) |
 
 ## The row that waits on them
@@ -22,9 +22,15 @@ A human reviews this page for a case that is missing.
 | BR-5 | A row is filed for the desk a human seat answers for, and the board drains | The seat parks it with its own reason and the drain exits `parked-for-review`. The row is still `parked` after the request ends | Lab goal · leg (b) |
 | BR-6 | A row for an agent desk is on the **same board**, in the same drain | It completes inline. The difference is the kind, not the board | Lab goal · leg (b) |
 | BR-7 | Nobody answers, and the board drains again | The parked row is **not** re-taken and not handed to a free seat. It is still parked, still carrying its reason | Lab goal · leg (b), second path |
-| BR-8 | The person answers, in a later request | The row re-queues, the same seat records their words, and it settles `completed` carrying them | Lab goal · leg (d) |
+| BR-8 | An answer arrives for the parked row, in a later request | The row re-queues, the same seat records **the answer** as the row's outcome, and it settles `completed` carrying it. The rule is about the answer being recorded and landing in a later request — **it does not say who sent it** | Lab goal · leg (d) |
 | BR-9 | A second answer arrives for a row already answered | Declined as a value, naming the status it found. The first answer stands and nothing is overwritten | Lab goal · leg (d), second arm |
-| BR-10 | The person's answer is a refusal rather than an approval | The seat records their words the same way. **What a refusal means is the app's call**, not the substrate's — the row settles either way, and nothing silently re-queues it for an agent | Lab goal · leg (d) |
+| BR-10 | The answer is a refusal rather than an approval | The seat records it the same way. **What a refusal means is the app's call**, not the substrate's — the row settles either way, and nothing silently re-queues it for an agent | Lab goal · leg (d) |
+
+**Recording the words is not proving who spoke.** `unparkAndDrain` takes `{ taskId, feedback }`
+and no caller identity, so nothing in BR-8 to BR-10 binds the answer to the seat's `principal:` —
+a row filed for Dana's desk can be answered by anyone who can reach the action, and the read will
+still say the row was waiting on Dana. That wall is named, with the check that would settle it, in
+[DECISIONS.md → Open](DECISIONS.md#open). It is not this issue's to close.
 
 ## Reading who owes it
 
@@ -32,12 +38,13 @@ A human reviews this page for a case that is missing.
 flowchart LR
   R["a parked row"] -->|"assignee: review-desk"| S["the seat whose file answers for it"]
   S -->|"kind: human · principal"| P["waiting on Dana"]
+  S -.->|"kind: human · no principal"| D["waiting on the desk, on no person"]
   S -.->|"kind is not human"| N["waiting, on no person"]
   R -.->|"no assignee"| N
   R -.->|"settled"| Z["waiting on nobody"]
 ```
 
-Three ways a read ends, and only the solid path names a person. Each is a rule below.
+Four ways a read ends, and only the solid path names a person. Each is a rule below.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
@@ -67,9 +74,11 @@ nothing here is a transient failure — a person not answering is not an error.
 
 A team declared entirely in files, one of whose seats is a **person**, takes in work. The
 coordinator files a row for the review desk. The board drains, the row comes back waiting on Dana by
-name, and the request ends. In a **later** request Dana answers, and the row finishes carrying her
-words — with the other seats' rows having run through the same board the whole time, and the task
-status set unchanged. That is the goal check, model-free on its routing arm.
+name, and the request ends. In a **later** request an answer arrives on that row, and the row
+finishes carrying it — with the other seats' rows having run through the same board the whole time,
+and the task status set unchanged. That is the goal check, model-free on its routing arm. It grades
+that the row *waited on Dana* and that the answer *landed later*; it does not grade that the
+answering caller was Dana, which nothing can check yet (DECISIONS → Open).
 
 It does **not** cover a person in a live inventory under a running host, or a human seat that runs in
 its own session rather than inline. Both are FIX-1455's, and the plan says so.

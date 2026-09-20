@@ -15,18 +15,26 @@
  *
  * ## The legs
  *
- * (a) The tree alone hires two seats, and the human one carries `kind: "human"`
+ * (a) The tree alone hires three seats, and the human ones carry `kind: "human"`
  *     — the exact value `openInventory` writes as its inventory row's `kind`.
- *     Control: the same file on a kind that never declared `principal:` refuses
- *     the whole roster, by the key's name.
+ *     One of them declares NO `principal:` and hires all the same (BR-3): an
+ *     absent setting is not an undeclared one. Control: the same file on a kind
+ *     that never declared `principal:` refuses the whole roster, by the key's
+ *     name.
  * (b) A row filed for the human's desk comes back **parked**, carrying the
  *     reason the seat wrote, and the drain exits `parked-for-review` — while the
  *     row filed for the agent desk on the SAME board completes inline. The
  *     difference is the kind, not the board.
  * (c) The audience is derivable and nothing stores it: row → desk → the seat
- *     whose own file answers for that desk → that seat's `principal:`.
+ *     whose own file answers for that desk → that seat's `principal:`. Null
+ *     arm: the unnamed seat's parked row names the SEAT and no person, which is
+ *     a different answer from a row that resolves to nobody at all.
  * (d) The answer arrives in a LATER request. `unparkAndDrain` re-queues the row
- *     and the same seat records the person's words; the row settles `completed`.
+ *     and the same seat records the answer as the row's outcome; the row settles
+ *     `completed` carrying it. What this leg does NOT show is who sent it —
+ *     every request here runs as `u_boot` and `unparkAndDrain` takes
+ *     `{ taskId, feedback }` with no caller identity. Recording the words is not
+ *     proving who spoke; see DECISIONS.md → Open.
  *
  * ## What this does NOT grade, stated rather than implied
  *
@@ -43,14 +51,12 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
-  getOrCreateTaskCollection,
   type TaskCollectionRef,
   type TaskWorkerInput,
 } from "@flow-state-dev/orchestration/tasks";
 import {
   taskBoard,
   taskWorkerInputSchema,
-  unparkAndDrainInputSchema,
   TASK_BOARD_META_COMPONENT_TYPE,
 } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -76,6 +82,7 @@ const SESSION_ID = "s_refunds";
 const BOARD = "refunds";
 const LEDGER_ID = `${BOARD}-ledger`;
 const ASK = "Refund over the desk limit. Approve or send it back?";
+const AUDIT_ASK = "Flagged for audit. Somebody has to look at this.";
 
 const failures: string[] = [];
 function check(leg: string, ok: boolean, detail: string): void {
@@ -98,9 +105,20 @@ const seats = hireWorkforce(roster.workers, {
 });
 const reviewer = seats.find((s) => s.id === "ops.reviewer");
 const filer = seats.find((s) => s.id === "ops.filer");
-check("a", seats.length === 2, `hired ${seats.length} seats: ${seats.map((s) => s.id).join(", ")}`);
+const auditor = seats.find((s) => s.id === "ops.auditor");
+check("a", seats.length === 3, `hired ${seats.length} seats: ${seats.map((s) => s.id).join(", ")}`);
 check("a", reviewer?.kind === HUMAN_KIND, `ops.reviewer hired into kind "${reviewer?.kind}"`);
 check("a", filer?.kind === "desk", `ops.filer hired into kind "${filer?.kind}"`);
+
+// BR-3's null arm at the hire: the same human kind, no `principal:` in the file.
+// An ABSENT setting is not an undeclared one — the roster must not refuse, and
+// the seat must not acquire a principal from anywhere.
+check("a", auditor?.kind === HUMAN_KIND, `ops.auditor hired into kind "${auditor?.kind}" with no principal declared`);
+check(
+  "a",
+  (auditor?.config as { principal?: unknown } | undefined)?.principal === undefined,
+  `and its settings carry no principal: ${JSON.stringify((auditor?.config as { principal?: unknown } | undefined)?.principal)}`
+);
 
 // The oracle for every later leg: what the TREE says, read at run time.
 const declared = roster.workers.map((w) => ({
@@ -169,6 +187,14 @@ const board = taskBoard({
     // board's assignee registry and the roster RESOLVE to each other (ER-7).
     "approvals-desk": CONTROL === "no-park" ? noParkDrain : humanDrain({ ledgerId: LEDGER_ID, ask: ASK }),
     "routine-desk": routineDrain,
+    // The desk of the human seat nobody is named to. Same kind, same drain —
+    // the only difference is that its file names no person (BR-3). The control
+    // swaps BOTH human desks, because the defect it models is a wrong idea about
+    // the kind, not one badly written desk.
+    "audit-desk":
+      CONTROL === "no-park"
+        ? noParkDrain
+        : humanDrain({ ledgerId: LEDGER_ID, ask: AUDIT_ASK, name: "human-seat-drain-audit" }),
   },
   onReview: "exit",
   idlePollMs: 2,
@@ -193,6 +219,12 @@ const seed = handler({
       goal: "refund #8813, within the desk limit",
       assignee: "routine-desk",
       input: { amount: 12 },
+    });
+    await tasks.addTask({
+      id: "unnamed",
+      goal: "refund #8814, flagged for audit",
+      assignee: "audit-desk",
+      input: { amount: 400 },
     });
     return null;
   },
@@ -280,6 +312,18 @@ check(
 
 // ---------------------------------------------------------------- leg (c)
 
+// A second drain, because `onReview: "exit"` ends the request at the first park
+// and the audit row is behind it. It doubles as the cheap version of BR-7: the
+// row the first drain parked must still be parked, still carrying its reason.
+await run("drain", {});
+const stillParked = (await run("inspect", { taskId: "over-limit" })).output as z.infer<typeof rowSchema>;
+const unnamed = (await run("inspect", { taskId: "unnamed" })).output as z.infer<typeof rowSchema>;
+check(
+  "b",
+  stillParked.status === "parked" && stillParked.feedback === ASK,
+  `a second drain does not re-take the parked row — still "${stillParked.status}" with its reason`
+);
+
 console.log("\n(c) who owes it — derived from the row and the tree, stored nowhere");
 
 const audience = audienceOf({ ...parked, status: parked.status ?? "" }, declared);
@@ -289,6 +333,22 @@ check(
   "c",
   audienceOf({ ...done, status: done.status ?? "" }, declared) === undefined,
   "a settled row waits on nobody"
+);
+
+// BR-3's null arm at the READ. The unnamed seat's row parks the same way, and
+// the read names the seat while naming no person — which must not collapse into
+// the answer for a row that resolves to no seat at all.
+const unnamedAudience = audienceOf({ ...unnamed, status: unnamed.status ?? "" }, declared);
+check("c", unnamed.status === "parked", `the unnamed seat's row is "${unnamed.status}" — it hired and it parks`);
+check(
+  "c",
+  unnamedAudience?.seatId === "ops.auditor" && unnamedAudience.principal === undefined,
+  `and the read names the seat with no person: ${JSON.stringify(unnamedAudience)}`
+);
+check(
+  "c",
+  audienceOf({ assignee: "no-such-desk", status: "parked" }, declared) === undefined,
+  "while a row resolving to no seat at all is a different answer — undefined, not a seat with no person"
 );
 
 // ---------------------------------------------------------------- leg (d)
@@ -301,7 +361,7 @@ check("d", answered.status === "completed", `the row settled "${answered.status}
 check(
   "d",
   (answered.output as { answer?: string } | undefined)?.answer === "approved — refund it",
-  `and the seat recorded the person's own words: ${JSON.stringify(answered.output)}`
+  `and the seat recorded the answer as the row's outcome (nothing here checks who sent it): ${JSON.stringify(answered.output)}`
 );
 
 // ----------------------------------------------------------------- verdict

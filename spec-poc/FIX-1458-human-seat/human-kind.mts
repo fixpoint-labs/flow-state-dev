@@ -36,14 +36,19 @@ export const HUMAN_KIND = "human";
  * The seat's settings bag: the four the hire step imposes, plus two of its own.
  *
  * `principal` is the whole human-specific surface — one string naming who the
- * seat is, inside the org the seat runs under. `answersFor` is the desk key the
- * board files rows against, kept a DIFFERENT spelling from the seat id on
- * purpose (ER-7): the board's assignee registry and the roster resolve to each
- * other, they are not one noun.
+ * seat is, inside the org the seat runs under. It is **optional**, and that is
+ * a rule rather than a convenience (BR-3): an absent setting is not an
+ * undeclared one, so a human seat nobody has been named to still hires, and
+ * every read says so rather than inventing a person. Only a `principal:` on a
+ * kind that never declared the key is refused, and it refuses the whole roster.
+ *
+ * `answersFor` is the desk key the board files rows against, kept a DIFFERENT
+ * spelling from the seat id on purpose (ER-7): the board's assignee registry
+ * and the roster resolve to each other, they are not one noun.
  */
 export const humanSeatConfigSchema = () =>
   workerConfigSchema().extend({
-    principal: z.string(),
+    principal: z.string().optional(),
     answersFor: z.string(),
   });
 
@@ -88,9 +93,12 @@ export function boardTasks(ctx: BlockContext, ledgerId: string): Promise<TaskCol
  * `unpark(id, answer)` writes — the person has answered, so the seat records it
  * and the row settles.
  */
-export function humanDrain(options: { ledgerId: string; ask: string }) {
+export function humanDrain(options: { ledgerId: string; ask: string; name?: string }) {
   return handler({
-    name: "human-seat-drain",
+    // One drain per desk, so the name is per-desk too: the board's worker router
+    // refuses two routes spelling the same name, and a team can seat more than
+    // one person.
+    name: options.name ?? "human-seat-drain",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.object({ answeredBy: z.string(), answer: z.string() }),
     execute: async (input: TaskWorkerInput, ctx) => {
@@ -113,14 +121,20 @@ export function humanDrain(options: { ledgerId: string; ask: string }) {
  * is the point: the row names a desk, the roster names which seat answers for
  * that desk, and that seat's own file names the person. Three facts, no new
  * field, and nothing here is written down anywhere.
+ *
+ * Three endings, and the middle one is BR-3. A row whose desk resolves to a
+ * human seat names that seat, and names a person only when the seat's file
+ * does — a seat nobody is named to reads as *waiting on the desk, on no
+ * person*, which is a different answer from *this row resolves to nobody at
+ * all* and must not collapse into it.
  */
 export function audienceOf(
   row: { assignee?: string; status: string; feedback?: string },
   roster: ReadonlyArray<{ id: string; kind: string; answersFor?: string; principal?: string }>
-): { seatId: string; principal: string } | undefined {
+): { seatId: string; principal: string | undefined } | undefined {
   if (row.status !== "parked" && row.status !== "blocked") return undefined;
   if (row.assignee === undefined) return undefined;
   const seat = roster.find((s) => s.answersFor === row.assignee);
-  if (seat === undefined || seat.kind !== HUMAN_KIND || seat.principal === undefined) return undefined;
+  if (seat === undefined || seat.kind !== HUMAN_KIND) return undefined;
   return { seatId: seat.id, principal: seat.principal };
 }

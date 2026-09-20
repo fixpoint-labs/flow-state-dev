@@ -14,7 +14,7 @@ flowchart TD
   I["FIX-1458 · humans-in-seats"] --> D1["D1 · an ordinary seat on a kind that parks<br/>principal is that kind's own setting"]
   D1 -.->|"rejected"| X1["a Human L1 type, or a human flag on every seat"]
   D1 -.->|"dissolved"| X2["own kind VS principal bind<br/>two answers to two different questions"]
-  I --> D2["D2 · persists like any seat<br/>durable hire owes it the whole settings bag"]
+  I --> D2["D2 · persists like any seat<br/>durable hire owes it every authored setting<br/>imposed runtime values are re-resolved"]
   D2 -.->|"rejected"| X3["a principal registry beside the roster"]
   D2 -.->|"rejected"| X4["durable hire stores id and kind only"]
 ```
@@ -41,18 +41,19 @@ the same file on a kind that never declared `principal:` refuses the whole roste
 Leg (a), in [the POC's README](../../spec-poc/FIX-1458-human-seat/README.md).
 
 <a name="d2"></a>
-## D2 · A human seat persists exactly as an agent seat does; what durable hire owes it is the seat's whole settings bag
+## D2 · A human seat persists exactly as an agent seat does; what durable hire owes it is every *authored* setting, not `{ id, kind }`
 
 | | |
 |---|---|
-| **Instead of** | A principal registry beside the roster · a durable-hire store that persists `{ id, kind }` and re-derives the rest · treating human-seat persistence as its own problem |
+| **Instead of** | A principal registry beside the roster · a durable-hire store that persists `{ id, kind }` and re-derives the authored settings · treating human-seat persistence as its own problem |
 | **Because** | The only human-specific durable fact is `principal:`, and by [D1](#d1) it is a **setting** — the same class of thing as `answersFor:`. A file-declared roster already persists it: the file is the store. The exposure is the other hire path, a roster hired at runtime and replayed after a redeploy. A store keeping id and kind and re-deriving the rest would re-hire a person's seat **bound to nobody**, silently — an absent `principal:` is refused nowhere, only a present-and-undeclared one is |
-| **Locks in** | FIX-1455 inherits a requirement, not a suggestion: durable hire round-trips a seat's settings bag verbatim, and proves it on a seat whose settings it has never seen. W5 does not build that store, and this card does not let its owner discover the constraint after shipping |
+| **Locks in** | FIX-1455 inherits a requirement, not a suggestion, and it is **split by provenance**. What is **persisted** is what the seat's files authored: the kind's own settings (`principal:`, `answersFor:`, anything else the kind declares), `description`, and the catalog names left in `tools:` — plus the manifest-derived text the factory imposes, which is all strings: `instructions`, `teamInstructions`, `seatSkills`. What is **re-resolved at hire**, never stored, is every runtime-only imposed value — `seatTools` above all, which the factory fills with **live `BlockDefinition` objects** off the app's registry (`packages/workforce/src/hire.ts` → `resolveDeclaredTools`, typed `Array<BlockDefinition>` and admitted by `z.custom` in `worker-config.ts`). Those carry executable functions and no store round-trips them. The proof FIX-1455 owes is a seat whose **authored** settings it has never seen, hired from a store, coming back bound to the same person with its tools re-resolved rather than revived |
 
 **What would change my mind:** durable hire turning out to re-read the tree on every boot rather than
 replay a stored roster. Then there is no second path and the requirement is vacuous — worth saying
 so out loud rather than leaving a rule nobody can fail.
 
+<a name="decided"></a>
 ## Decided, not asked
 
 - **Waiting-on-you is the reading, not a value.** `parked` ∪ `blocked` with the row's own reason —
@@ -80,10 +81,10 @@ so out loud rather than leaving a rule nobody can fail.
 <a name="open"></a>
 ## Open
 
-**None blocking.** Two of the four walls stay open, and what follows is the evidence that nothing
+**None blocking.** Three walls stay open, and what follows is the evidence that nothing
 downstream waits on them —
 [ER-18](https://github.com/fixpoint-labs/flow-state-dev/blob/epic/living-workforce/spec/_epics/living-workforce/BUSINESS-RULES.md)
-permits exactly that. Neither is an ask.
+permits exactly that. None of them is an ask.
 
 - **One human across several seats.** Nothing reads `principal:` for uniqueness, so two seats naming
   one person already work, and would whatever we decided. It becomes real when something aggregates
@@ -92,6 +93,16 @@ permits exactly that. Neither is an ask.
   to: `members:` is a declared roster list and the channel's check on `author` is validity, not
   authentication (`packages/workforce/README.md` → *What a transcript proves*). Revisit when a
   channel needs a participant holding no seat.
+- **Nothing binds the answering caller to the seat's `principal:`.** `unparkAndDrain` is
+  `{ taskId, feedback }` (`packages/orchestration/src/task-board/schemas.ts`) with no caller
+  identity, so naming a person on a seat makes an accountability *claim* the park loop does not
+  enforce: anyone who can reach the action can answer Dana's row, and the read still says the row
+  was waiting on Dana. Third wall of the same shape as the two above, and nothing in W5 waits on it
+  — the lab's answering arm is the goal's own harness, not a user. **The check that settles it: a
+  wrong-principal control — the answer submitted by a request whose server-derived principal is not
+  the seat's, which must be refused.** Where it belongs is FIX-1455's live-inventory/session work,
+  because that is where an authenticated caller first exists to check against. Deliberately **not**
+  built here: caller-binding would be an auth plane this issue's ship fence does not open.
 
 ## Settled
 
