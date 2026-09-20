@@ -227,7 +227,8 @@ if (errors.length || teamErrors.length || skillErrors.length) {
 }
 ```
 
-`errors` and `teamErrors` are flat lists of `{ path, error }`. `skillErrors` is not: it is one entry
+`errors` and `teamErrors` are flat lists of `{ path, error, kind }`, where `kind` names which
+condition the entry is — match on it rather than on `error.message`. `skillErrors` is not: it is one entry
 per affected seat, `{ worker, errors }`, carrying that seat's own list — so it needs flattening
 before it reads like the other two.
 
@@ -434,7 +435,8 @@ A record is refused when it:
 - declares `instructions:` and carries a body;
 - declares `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:`, none of which is a setting a worker declares;
 - declares `teamInstructions:` in its frontmatter, wherever that frontmatter came from — a team's instructions come from its [`TEAM.md`](#what-a-teammd-says) body, read by the loader;
-- declares a `resources:` list the hire step cannot resolve: a ref no document matches, a ref naming a document the app declared but did not install on this worker's kind, a mode that is neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says `writable: false`, a ref colliding with a name the kind's own blocks declare, or the key at all when no `documents` were passed;
+- declares a `resources:` list the hire step cannot resolve: a `resources:` that is not a list at all, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this worker's kind, a mode that is neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind does declare at flow level while what it holds there is not that document, or the key at all when no `documents` were passed;
+- reaches a document it never named, because one of its kind's blocks declares that document and a block's declaration merges back in after the worker's narrowed list is applied. Keep the document at flow level and let the block reach it there, or grant it to the worker deliberately;
 - shares an id with another record in the same call, which is two workers claiming one address.
 
 `kinds` itself is checked too. A flow passed under a key that is not its own `kind` is refused. The copy would otherwise come back carrying the right worker's id, and run the other kind's graph once you registered it.
