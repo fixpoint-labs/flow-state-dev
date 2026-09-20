@@ -2837,20 +2837,19 @@ they fall back to collection time and are **partials**, labelled as such and nev
 | [#1943](https://github.com/fixpoint-labs/flow-state-dev/pull/1943) impl FIX-1381 | impl | **3** | merge | **missed-edge-case ×4 (2 *vacuous-assertion*)** · docs-miss ×2 · over-engineered ×3 · nit | no | **`hired ?? []` — the 404 was going to arrive whatever happened** |
 | #1915 · #1916 · #1917 · #1919 · #1935 | spec ×5 | — | approval | **not collected this cycle** | — | — |
 
-**Load: 19 rounds across the nine implementation artifacts**, two of them partial. Both specs and the
+**Load: 21 rounds across the nine implementation artifacts**, two of them partial. Both specs and the
 epic PR held their two-round budget; no direction artifact reached a third round, so by BP-040's rule
 there was no direction-level finding anywhere in the set.
 
 ### The dominant class — 21 instances, and it has a shape
 
-**Classes (closed set), 62 non-`nit` findings on the ten collected artifacts:** `missed-edge-case` 30
+**Classes (closed set), 61 non-`nit` findings on the ten collected artifacts:** `missed-edge-case` 30
 · `docs-miss` 14 · `over-engineered` 15 · `stale-restatement` 1 · `spec-ambiguity` 1 · `design-off` 0.
 
-**Of the 30 `missed-edge-case` findings, 23 carry the `vacuous-assertion` reading label** — an
+**Of the 30 `missed-edge-case` findings, 17 carry the `vacuous-assertion` reading label** — an
 assertion that passes for a reason unrelated to what it claims to check. Adding the four the #1920
-author found by sweeping rather than by review gives **21 distinct instances of the class**, since two
-of #1920's filed findings are among the counted 23. The distribution across artifacts is the thing to
-read, not the total:
+author found by sweeping rather than by review gives **21 distinct instances of the class**. The
+distribution across artifacts is the thing to read, not the total:
 
 | Artifact | Instances | What the artifact is |
 |---|---|---|
@@ -3029,9 +3028,11 @@ and by the same measurement.
   it useful has not yet shown the step is needed by anyone who was not already going to do it.
 - **Claim 1 / `vacuous-assertion` measurability — answered, and the answer is large.** Cycle 13 carried
   **6 of 34** forward and asked for a sample containing code PRs. This sample is nine of them:
-  **23 of 62** non-`nit` findings carry the label, **37%**, against cycle 12's 15 of 37 (41%) and cycle
-  13's 6 of 34 (18%). The populations differ — cycle 13's was four documentation PRs — so the honest
-  reading is that the class is **flat at roughly 40% wherever the artifacts assert**, and that cycle
+  **21 of 61** non-`nit` findings carry the label, **34%**, against cycle 12's 15 of 37 (41%) and cycle
+  13's 6 of 34 (18%). The 21 counts the four an author swept rather than a reviewer filing them, and
+  the 61 counts only review findings, so 34% is a ceiling; review-filed alone is 17 of 61, **28%**.
+  The populations differ — cycle 13's was four documentation PRs — so the honest
+  reading is that the class is **flat in the 30–40% band wherever the artifacts assert**, and that cycle
   13's dip measured its denominator. This also settles the promotion question the file header leaves
   open: `vacuous-assertion` has now been the dominant shape in every cycle that sampled asserting code.
 - **Claim 5 — "are the loop's fixes landed at the gate?"** This cycle's fix is proposed at wrap, on a
@@ -3067,9 +3068,10 @@ and by the same measurement.
    instances, 17 filed by review, 4 found by one author sweeping one file.** Score whether an author
    obliged to report the blast radius finds them at authoring time, on a sample containing at least
    one artifact that grades its own claim (a lab, a goal check, a POC matrix, a wording pin).
-2. **Does the class stay near 40% wherever code asserts?** Three data points now — 41%, 18%, 37% —
-   with the dip explained by a documentation denominator. A fourth code-heavy sample settles whether
-   40% is the resting rate or whether cycle 12–14 are flat because nothing has yet acted on it.
+2. **Does the class stay in the 30–40% band wherever code asserts?** Three data points now — 41%,
+   18%, 34% — with the dip explained by a documentation denominator. A fourth code-heavy sample
+   settles whether that band is the resting rate or whether cycle 12–14 are flat because nothing has
+   yet acted on it.
 3. **Does the retained guard stay retained?** `check-isolation-coordinate.mjs` and
    `validate-control-shape.mts` are both wired now. The failure mode is not deletion, it is going
    green forever: check next cycle that each has fired at least once, or that its negative control
