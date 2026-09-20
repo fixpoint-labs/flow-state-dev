@@ -1,0 +1,80 @@
+<svg viewBox="0 0 940 336" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The rebuilt shell at three viewport widths, drawn to scale and getting narrower left to right, so the order in which regions yield is visible as position. At a wide desktop viewport all three regions are present at once: the workforce rail, the channel stream, and the standing boards-and-roster panel. At a medium viewport the boards-and-roster panel has yielded first and becomes a sheet opened from a control in the channel header; the rail and the stream both remain persistent. At a narrow phone viewport the rail has yielded second and becomes a drawer opened from a button, leaving only the channel stream, which never yields. Below the three shells the yielding order is stated as a numbered list: first the boards and roster panel, because a board is something you go and look at rather than something you watch; second the workforce rail, because the channel you are in is already named in the header so the list of the others is navigation, not content; and never the channel stream, because an app whose stream collapses has stopped being the thing it is demonstrating. A closing note records that three different children own these three regions, which is why the order is fixed at epic altitude and consumed rather than re-decided in each child.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .shell { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .rail  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .panel { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .tab   { fill:none; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+    .t-cod { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-weight:700; font-size:8.5px; letter-spacing:.06em; }
+    .t-r   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-n   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+  </style>
+
+  <text class="t-lbl" x="16" y="20">AS THE VIEWPORT NARROWS, THE ORDER OF YIELDING IS THE CONTENT</text>
+  <text class="t-r" x="16" y="38">wide &#8212; all three regions</text>
+  <text class="t-r" x="396" y="38">lg and below &#8212; boards yield first</text>
+  <text class="t-r" x="696" y="38">below sm &#8212; the rail yields too</text>
+
+  <g id="wide">
+    <rect class="shell" x="16" y="48" width="340" height="196" rx="4"/>
+    <rect class="rail" x="24" y="56" width="60" height="180" rx="3"/>
+    <text class="t-acc" x="29" y="70">rail</text>
+    <text class="t-acc" x="29" y="84">channels</text>
+    <text class="t-acc" x="29" y="98">seats</text>
+    <rect class="keep" x="92" y="56" width="170" height="180" rx="3"/>
+    <text class="t-cod" x="98" y="70">CHANNEL STREAM</text>
+    <text class="t-r" x="98" y="88">the turn stream</text>
+    <rect class="panel" x="270" y="56" width="78" height="180" rx="3"/>
+    <text class="t-acc" x="275" y="70">boards</text>
+    <text class="t-acc" x="275" y="84">roster</text>
+  </g>
+
+  <g id="medium">
+    <rect class="shell" x="396" y="48" width="260" height="196" rx="4"/>
+    <rect class="rail" x="404" y="56" width="60" height="180" rx="3"/>
+    <text class="t-acc" x="409" y="70">rail</text>
+    <text class="t-acc" x="409" y="84">channels</text>
+    <text class="t-acc" x="409" y="98">seats</text>
+    <rect class="keep" x="472" y="56" width="176" height="180" rx="3"/>
+    <text class="t-cod" x="478" y="70">CHANNEL STREAM</text>
+    <text class="t-r" x="478" y="88">the turn stream</text>
+    <rect class="tab" x="600" y="56" width="44" height="18" rx="3"/>
+    <text class="t-acc" x="605" y="68">boards</text>
+    <text class="t-acc" x="478" y="230">boards + roster &#8594; a sheet from the header</text>
+  </g>
+
+  <g id="narrow">
+    <rect class="shell" x="696" y="48" width="150" height="196" rx="4"/>
+    <rect class="tab" x="704" y="56" width="40" height="18" rx="3"/>
+    <text class="t-acc" x="709" y="68">rail</text>
+    <rect class="tab" x="750" y="56" width="44" height="18" rx="3"/>
+    <text class="t-acc" x="755" y="68">boards</text>
+    <rect class="keep" x="704" y="80" width="134" height="156" rx="3"/>
+    <text class="t-cod" x="710" y="94">CHANNEL STREAM</text>
+    <text class="t-r" x="710" y="112">still the whole</text>
+    <text class="t-r" x="710" y="124">column</text>
+    <text class="t-acc" x="862" y="68">two</text>
+    <text class="t-acc" x="862" y="80">drawers</text>
+  </g>
+
+  <text class="t-n" x="16" y="268">1 &#183; boards and roster yield first</text>
+  <text class="t-s" x="250" y="268">a board is something you go and look at, not something you watch</text>
+  <text class="t-n" x="16" y="288">2 &#183; the workforce rail yields second</text>
+  <text class="t-s" x="250" y="288">the channel you are in is named in the header; the list of the others is navigation</text>
+  <text class="t-n" x="16" y="308">3 &#183; the channel stream never yields</text>
+  <text class="t-s" x="250" y="308">an app whose stream collapses has stopped demonstrating the thing it exists to demonstrate</text>
+  <text class="t-s" x="16" y="330">Three different children own these three regions (FIX-1475, FIX-1476, FIX-1477), which is why the order is fixed here and consumed there &#8212; ER-7.</text>
+</svg>
