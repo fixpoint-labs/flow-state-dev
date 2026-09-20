@@ -91,8 +91,10 @@ const WORK = [
  *                  and every row still completes. What changes is which seat a
  *                  desk's rows reach, and the tree still says where they should
  *                  have gone — so each is observed on a seat whose own file
- *                  claims another desk. Must fail at leg (c), three times, the
- *                  same three every run. See `repoint` for why a swap and not a
+ *                  claims another desk. Must fail at leg (c) once for every row
+ *                  the swap moved and nowhere else — which the control checks
+ *                  for itself against the ledger, rather than against a count
+ *                  written down here. See `repoint` for why a swap and not a
  *                  one-sided re-point.
  *
  *   duplicate-filing  the filer combines two pieces into one row and files a
@@ -190,6 +192,12 @@ await runGoal(async () => {
   // hire and every check below are identical across both.
   const probe = await openLab(base);
   const assignees = CONTROL === "repointed-map" ? repoint(probe) : probe.assignees;
+  // The two desks the swap moves. Held so the control can grade WHICH rows went
+  // red, not merely that some did — see the control-grading block below.
+  const swappedDesks =
+    CONTROL === "repointed-map"
+      ? new Set(probe.builderIds.slice(0, 2).map((id) => String(probe.assignees[id])))
+      : new Set<string>();
   await probe.dispose();
 
   const lab = await openLab({ ...base, stores: inMemoryStores(), assignees });
@@ -465,6 +473,27 @@ await runGoal(async () => {
             `the ${CONTROL} control went red away from leg ${expected.leg}, so it certifies a ` +
               `different check than the one it names: ${offLeg.join(" | ")}`,
           );
+        } else if (CONTROL === "repointed-map") {
+          // "Red at leg (c)" is weaker than the claim this control makes. The
+          // claim is that exactly the rows for the two swapped desks go red, one
+          // note apiece — so derive that set from the ledger and require the
+          // failures to BE it. Without this the control passes on a single
+          // mismatch while the log records three, and the log is unfalsifiable.
+          const mustFail = lines.flatMap((line) => {
+            const row = rowById.get(line.taskId);
+            return row !== undefined && swappedDesks.has(String(row.assignee))
+              ? [String(row.id)]
+              : [];
+          });
+          const unnamed = mustFail.filter((id) => !failures.some((line) => line.includes(id)));
+          if (unnamed.length > 0 || failures.length !== mustFail.length) {
+            note(
+              `the repointed-map control went red ${failures.length} time(s), but the swap moved ` +
+                `${mustFail.length} row(s) (${mustFail.join(", ")}); leg ${expected.leg} must ` +
+                `fail once for each of them and no more` +
+                (unnamed.length > 0 ? `. Never named: ${unnamed.join(", ")}` : ``),
+            );
+          }
         }
       }
     }
