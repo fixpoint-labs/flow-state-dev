@@ -11,7 +11,7 @@ Epic · 5 issues · Workforce: Layer 2 Abstraction · Goal 1, validate through r
 | **clones the reference app to learn Workforce** | Finds a chat app with four modes and a thinking-style menu. The workforce is a folder nothing serves | Opens it and sees a hired team, its channels, and its boards |
 | **hires a team and redeploys** | The roster dies with the process | It is still there on the next boot, out of the Postgres the app already uses |
 | **builds a Workforce UI of its own** | Copies kitchen-sink's components, because that is the only place they exist | Imports them from the client packages. Kitchen-sink imports the same ones |
-| **wires a seat to a board** | Has no example at all | Has one channel family, one named instance, and a seat that drains a subset — plus a warning for the board nobody watches |
+| **wires a seat to a board** | Has no example at all | Has one channel kind, one named instance, and a seat that drains a subset — plus a warning for the board nobody watches |
 | **wants to know which recipe to copy** | Finds a patterns recipe beside a Workforce one for the same job | Finds one, and a written reason wherever patterns stays |
 
 **Why now.** The L2 surface a reference app would teach now exists: the W3 floor
@@ -43,18 +43,20 @@ list, no seat roster, no board and no board column anywhere in the app. That is 
 contest this epic resolves, and it is the one call the epic body had not already made
 ([D7](DECISIONS.md#d7)).
 
-![Today's shell beside the rebuilt shell, aligned region for region: a 256 pixel rail holding a session list becomes a rail holding the org's channels and its seat roster; the centre column keeps the turn stream and loses its six-control strip; the build-mode-only artifact panel becomes a standing boards and roster panel](figures/shell-before-after.svg)
+![Today's shell beside the rebuilt shell, aligned region for region: a 256 pixel rail holding a session list becomes a rail holding the org's channels and its seat list; the centre column keeps the turn stream and loses its six-control strip; the build-mode-only artifact panel becomes a standing boards and roster panel](figures/shell-before-after.svg)
 
 Read it by column width, not by label. The rail keeps its width and changes its content; the
 right panel stops being conditional on a mode. The centre is the only region that survives
 unchanged, because the turn stream is the one thing the app already gets right.
 
-![The rebuilt shell with every region tagged inline or resource-backed: the channel list, seat roster and board columns subscribe to collections; the turn stream, task updates and approval cards render from the current turn's stream. Each tag names the hook the app already uses for that shape today](figures/shell-regions.svg)
+![The rebuilt shell with every region tagged inline or resource-backed: the channel list, the rail's seat list, the roster and the board columns subscribe to collections; the turn stream, task updates and approval cards render from the session's persisted item stream. Both shapes survive a reload — the tag names the source, not a lifetime](figures/shell-regions.svg)
 
-The split is not new — it is already in the code, unnamed. `useResourceCollectionList(session,
-"artifacts")`, `useClientData` and `useSession(childSessionId)` are resource-backed today;
-`Conversation`, `RequestGroupRenderer` and `TaskPlan` are inline. Spine item 3 is moving both
-shapes into the client packages, not inventing them ([D5](DECISIONS.md#d5)).
+The split is not new — every region of the app is already one shape or the other, unnamed.
+Spine item 3 moves both into the client packages rather than inventing them
+([D5](DECISIONS.md#d5)). **Inline names the source a region reads — the session's item stream —
+not how long its content lives**; the items are durable, so an inline region still shows earlier
+turns and resolved approvals after a reload. The hooks and renderers each region uses today are
+in the figure, and which one goes where is FIX-1477's to work out, not this document's.
 
 ![What comes out and the space it frees: the six-control strip above the prompt — mode, thinking style, model, thinking, features, voice — collapses, the four-mode zoo goes, and five patterns-backed pipeline files leave the tree; the freed space is one control row and the rail's vertical budget](figures/shell-shed.svg)
 
@@ -78,7 +80,7 @@ figures point here rather than repeating it.
 |---|---|---|---|
 | [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) · **bug** | The file-declared workforce demo is served over the app's real HTTP route | Nothing else in the set can stand on a workforce the app never loads. It is also the only row that tests the file convention against a real build | Backlog · direct route, no spec PR |
 | [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) | Hired teams, channels and boards survive a redeploy, on the Postgres the app already uses | The substance. "Durable" is the whole difference between a reference and a demo | Backlog · blocked by FIX-1429 |
-| [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) | `CHANNELS.md` family vs `CHANNEL.md` instance, one ChannelFlow factory, board v1 seat drain | Without it there is no worked example of how a seat reaches the boards it is meant to watch — and no visible warning for the ones nobody watches | Backlog |
+| [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) | The shipped channel pair — a kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — one ChannelFlow factory, board v1 seat drain | Without it there is no worked example of how a seat reaches the boards it is meant to watch — and no visible warning for the ones nobody watches | Backlog |
 | [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) | Inline and resource-backed components shipped in the client packages | The one row that makes the rebuild reusable rather than admirable. Without it every reader copies kitchen-sink files | Backlog |
 | [FIX-1478](https://linear.app/fixpoint-labs/issue/FIX-1478) | `@flow-state-dev/patterns` dropped as a kitchen-sink dependency where Workforce covers it | A reference app teaching two recipes for one job teaches neither | Backlog |
 
@@ -136,7 +138,11 @@ other rows' surfaces as they land.
    teaches it. This is an invent-kill from the epic body, restated because it is the one a child
    is most likely to breach quietly.
 
-**Open: one.** Whether the five soft-noted stale kitchen-sink tickets
+**Open: two.** First, whether FIX-1475's durability proof is scoped to runtime hire of seats
+and the roster, or whether runtime channel administration comes into the set — as written,
+[ER-2](BUSINESS-RULES.md) asks for a runtime-created channel that [ER-16](BUSINESS-RULES.md)
+forbids ([DECISIONS.md → Open](DECISIONS.md#open-runtime-admin)). Second, whether the five
+soft-noted stale kitchen-sink tickets
 ([FIX-1372](https://linear.app/fixpoint-labs/issue/FIX-1372),
 [FIX-420](https://linear.app/fixpoint-labs/issue/FIX-420),
 [FIX-472](https://linear.app/fixpoint-labs/issue/FIX-472),

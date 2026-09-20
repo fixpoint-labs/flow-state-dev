@@ -12,18 +12,18 @@ who owns it and where it is checked.
 |---|---|---|---|
 | ER-1 | A request to a file-declared seat (`support.ada`) is answered over kitchen-sink's real HTTP route, against the Next-built app, with the desk that seat's own `WORKER.md` declared | FIX-1429 | The `code-comes-from-files-alone` goal check |
 | ER-2 | Hire a team, open a channel, create a board; redeploy; all three are still there, served from the Postgres path the app already uses | FIX-1475 ([D2](DECISIONS.md#d2)) | FIX-1475's goal check · the epic's proof |
-| ER-3 | One channel family, one named instance of it, and a seat that drains a named subset of that instance's boards. A minted board with no declaring seat warns | FIX-1476 ([D4](DECISIONS.md#d4)) | FIX-1476's tests · the warning is visible in the run |
+| ER-3 | One channel kind, one named instance of it, and a seat that drains a named subset of that instance's boards. A minted board with no declaring seat warns | FIX-1476 ([D4](DECISIONS.md#d4)) | FIX-1476's tests · the warning is visible in the run |
 | ER-4 | Every component the rebuilt shell renders is imported from a client package. Kitchen-sink adds no component the packages could not export | FIX-1477 ([D5](DECISIONS.md#d5)) | FIX-1477's spec review · the app's import graph |
 | ER-5 | One recipe per job on screen. A surface that keeps `@flow-state-dev/patterns` carries a written *keep because…* in its PR | FIX-1478 ([D6](DECISIONS.md#d6)) | FIX-1478's PR |
 | ER-6 | The words on screen and in files are Seat, Kind and Agent, as [D3](DECISIONS.md#d3) defines them — not worker, bot, team member or agent-as-session | FIX-1476 defines · every row consumes | Every child's spec review |
-| ER-7 | Every region of the rebuilt shell is either inline or resource-backed and says which. The rail is org → channels → seats; the right panel is boards and roster and is not conditional on a mode; under narrow width boards yield first, the rail second, the stream never | FIX-1477 builds · [D7](DECISIONS.md#d7) decides | FIX-1477's spec review · FIX-1475's and FIX-1476's, against the figures |
+| ER-7 | Every region of the rebuilt shell is either inline or resource-backed and says which. The rail is org → channels → **seat list**; the roster's one home is the right panel, beside boards, and is not conditional on a mode; under narrow width boards yield first, the rail second, the stream never | FIX-1477 builds · [D7](DECISIONS.md#d7) decides | FIX-1477's spec review · FIX-1475's and FIX-1476's, against the figures |
 
 ## What no child may do
 
 | # | Rule | Because |
 |---|---|---|
 | ER-8 | No kitchen-sink-only durable store, and no roster that lives only in process memory | [D2](DECISIONS.md#d2). A fifth persistence layer taught by the reference app |
-| ER-9 | No kitchen-sink-only UI API, and no third Workforce UI package beside `react` / `client`. No component ships twice: one W5's reference assemblies would also need is imported from the client package, never copied or re-exported | [D5](DECISIONS.md#d5). A shape that cannot be exported is a finding, not a workaround; a shape exported twice is the same finding from the other side |
+| ER-9 | No kitchen-sink-only UI API, and no third Workforce UI package beside `react` / `client` / the existing `ui` registry. No component ships twice: one Labs or another consumer would also need is imported from its one package, never copied or re-exported | [D5](DECISIONS.md#d5). A shape that cannot be exported is a finding, not a workaround; a shape exported twice is the same finding from the other side |
 | ER-10 | No hired seat inside `supervisor()` or any pattern factory | [D6](DECISIONS.md#d6). It collapses the roster the epic exists to show |
 | ER-11 | No Agent, Team, Channel or Board minted as a Layer 1 type | [D3](DECISIONS.md#d3). Workforce is L2 on orchestration |
 | ER-12 | No ambient "all boards" seat drain, and no widget that renders one | [D4](DECISIONS.md#d4). Board v1 is explicit per-seat wiring |

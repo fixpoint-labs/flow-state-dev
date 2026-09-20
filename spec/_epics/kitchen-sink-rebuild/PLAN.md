@@ -22,7 +22,7 @@ absorbs what the other two produce rather than waiting for it. The dependency sh
 |---|---|---|---|---|---|
 | **FIX-1429** serve the demo | direct → impl PR | The W3 floor · `workforce/hire.ts`, which nothing imports today | Those seats in the served flow map, over the real HTTP route of the Next-built app. Its own open question (async `fsdev.config` boot vs a post-construction `createFlowState` registry) is resolved toward durable hire | FIX-1475 | Medium |
 | **FIX-1475** durable hire | spec → impl PR | FIX-1429's served workforce · the app's existing Postgres path · D2 | Runtime hire and channel/board creation writing org-scoped durable state the next boot reloads. The file convention stays the authoring path | The roster half of the rail (D7) · the epic's proof | Large |
-| **FIX-1476** channels and boards | spec → impl PR | The W4 first cut (boards, inventory) · D4 | `CHANNELS.md` family and `CHANNEL.md` instance, one ChannelFlow factory with dm / topic / workstream clones, boards as a bare name list, explicit per-seat drain, the unattended-board warning | The channel half of the rail · boards for FIX-1477 to render | Large |
+| **FIX-1476** channels and boards | spec → impl PR | The W4 first cut (boards, inventory) · D4 | The shipped pair — a channel kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — written as real kind files, one ChannelFlow factory with dm / topic / workstream clones, boards as a bare name list, explicit per-seat drain, the unattended-board warning | The channel half of the rail · boards for FIX-1477 to render | Large |
 | **FIX-1477** UI package split | spec → impl PR | D5 · D7 · FIX-1475's roster · FIX-1476's boards | Inline and resource-backed components as client-package exports; kitchen-sink consuming them; the rebuilt shell's regions | The rebuild people can copy | Large |
 | **FIX-1478** patterns shed | spec → impl PR | D6 · the five `@flow-state-dev/patterns` imports under `flows/chat-agent/` | An audit with a Workforce path or a *keep because…* per surface; the dependency dropped if no keep-notes remain; the six-control strip's justification gone | The freed control row | Small |
 
@@ -46,7 +46,9 @@ decision). Neither is re-parented here (ER-17).
 4. **FIX-1478's audit completes** → either the dependency drops and the control strip's
    remaining rationale goes with it, or its keep-notes tell FIX-1477 which surfaces keep their
    controls.
-5. **ER-22 and ER-23 both hold** → the epic wraps.
+5. **ER-22, ER-23 and ER-24 all hold** → the epic wraps. ER-24 is in the gate deliberately:
+   it is the reusability claim the whole set rests on, and an epic that closed on ER-22 and
+   ER-23 alone would have shipped a rebuild nobody outside kitchen-sink had ever imported.
 
 ## Coordination seams to watch
 
@@ -69,11 +71,11 @@ consumed as a POC spine for board → seat routing, W4-side) ·
 never re-parented (ER-17).
 
 The five soft-noted stale tickets — FIX-1372, FIX-420, FIX-429, FIX-472, FIX-540 — are **not
-children and not canceled** while [the open question](DECISIONS.md#open) stands.
+children and not canceled** while [that open question](DECISIONS.md#open-stale) stands.
 
 ## Wrap
 
-When ER-22 and ER-23 both hold: run the lessons pass over the set's review rounds, dispatch the
+When ER-22, ER-23 and ER-24 all hold: run the lessons pass over the set's review rounds, dispatch the
 docs polish over the Workforce pages the children each edited in isolation (ER-25), verify
 FIX-1372 against the rebuilt app if the owner's triage kept it open, refresh the set table and
 the path one last time, and close the epic PR unmerged. The branch is kept.
