@@ -114,6 +114,7 @@ export {
   WORKERS_LEVEL,
   type DocumentSlot,
   mintResourceRef,
+  siblingSlotPath,
 } from "./resource-convention";
 
 export type { WorkerManifest, TeamManifest, ResourceDoc, ChannelManifest } from "../manifest";

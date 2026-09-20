@@ -50,8 +50,10 @@ export { referencesFromDocs, referenceBody } from "./references-from-docs";
 export {
   clearShadowedReferences,
   describeShadowedReferences,
+  type ClearShadowedReferencesInput,
   type ClearShadowedReferencesResult,
   type ReferenceContentStore,
+  type ReferenceInstallFlow,
   type ShadowedReference,
 } from "./clear-shadowed-references";
 export {

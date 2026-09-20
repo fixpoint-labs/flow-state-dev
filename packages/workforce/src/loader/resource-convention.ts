@@ -54,6 +54,41 @@ export const DOCUMENT_SLOTS = [RESOURCES_SLOT, REFERENCES_SLOT] as const;
 /** One of {@link DOCUMENT_SLOTS}. */
 export type DocumentSlot = (typeof DOCUMENT_SLOTS)[number];
 
+/**
+ * The same path with its slot segment swapped for the other slot's.
+ *
+ * "This path's sibling in the other slot" is a derived fact about the
+ * convention, so it belongs here with the folder names rather than being worked
+ * out at each call site — which is where it was, twice, in two directions: the
+ * module walk sliced a trailing `resources` off and concatenated, and the
+ * roster join did a separator-aware replace. The slice was the fragile half. It
+ * assumed the path ended in exactly the slot with nothing after it, which held
+ * only because of how its callers happened to build the string.
+ *
+ * Swaps the LAST occurrence, because a path may legitimately contain the slot
+ * name higher up — a team called `references` is a legal team.
+ *
+ * @param at The path, in whatever separator its caller uses.
+ * @param from The slot `at` sits in.
+ * @param to The slot to address instead.
+ * @param sep The separator `at` is written with. Slash for the loader's
+ *   root-relative paths, `path.sep` for an absolute one.
+ * @returns The sibling path, or `at` unchanged when it holds no `from` segment.
+ */
+export function siblingSlotPath(
+  at: string,
+  from: DocumentSlot,
+  to: DocumentSlot,
+  sep = "/",
+): string {
+  const segments = at.split(sep);
+  // Last, not first: only the trailing one is the slot this path sits in.
+  const slotAt = segments.lastIndexOf(from);
+  if (slotAt === -1) return at;
+  segments[slotAt] = to;
+  return segments.join(sep);
+}
+
 /** The level a worker's folder sits in, under `org/` and under every team. */
 export const WORKERS_LEVEL = "workers";
 

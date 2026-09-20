@@ -28,7 +28,7 @@ import path from "node:path";
 import { readChannelsDirectory } from "./read-channels-directory";
 import { readReferencesDirectory, readResourcesDirectory } from "./read-resources-directory";
 import { readWorkforce } from "./read-workforce";
-import { REFERENCES_SLOT, RESOURCES_SLOT } from "./resource-convention";
+import { REFERENCES_SLOT, RESOURCES_SLOT, siblingSlotPath } from "./resource-convention";
 import type {
   ChannelManifest,
   ResourceDoc,
@@ -222,10 +222,7 @@ function collidingRefs(
     const sibling =
       reference.filePath === undefined
         ? reference.ref
-        : reference.filePath.replace(
-            `${path.sep}${REFERENCES_SLOT}${path.sep}`,
-            `${path.sep}${RESOURCES_SLOT}${path.sep}`,
-          );
+        : siblingSlotPath(reference.filePath, REFERENCES_SLOT, RESOURCES_SLOT, path.sep);
     problems.push({
       layer: "reference",
       path: at,

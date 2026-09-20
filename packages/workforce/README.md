@@ -750,7 +750,7 @@ refused rather than resolved. What differs is what the document IS afterwards:
 
 | Slot | Content an agent reads | Writable | Reach |
 | --- | --- | --- | --- |
-| `references/` | the file, re-read on each execution context | no — `writable`, `llmWritable` and `render` are derived, and a file declaring any of them is refused | derived from the tree: the org's, the seat's own team's, and the seat's own folder |
+| `references/` | the file, re-read on each execution context | no — `writable`, `llmWritable`, `render` and `flowIsolation` are derived, and a file declaring any of them is refused | derived from the tree: the org's, the seat's own team's, and the seat's own folder |
 | `resources/` | the file's body seeds a row; the row is the source from then on | yes, unless the file says otherwise | every document the flow was installed with |
 
 Put standing material an author owns in the repository under `references/`; put anything an agent
@@ -795,9 +795,16 @@ references at or above its place in the tree.
 
 Moving a file from `resources/` into `references/` needs one extra step when anything ever wrote
 that document: the written body is still stored, and a stored body wins over the file.
-`clearShadowedReferences({ references, orgId, content })` finds those rows, reports each one with
-the body it had been serving, and clears them. It is idempotent, takes `dryRun`, and never touches
-a `resources/` document.
+`clearShadowedReferences({ references, orgId, content, installedOn })` finds those rows, reports
+each one with the body it had been serving, and clears them. It is idempotent, takes `dryRun` (and
+says so on the result, so the log sentence reads "would clear"), and never touches a `resources/`
+document.
+
+`installedOn` is `{ id, isolatesOrgState }` for the flow the references are installed on, and it is
+required rather than defaulted: a flow that isolates its org scope stores content under a different
+address, so a wrong assumption here looks in the wrong place, finds nothing, and reports success.
+For an org or flow id containing `:` or a backslash it throws instead of guessing — that address
+needs the engine's own escaping, and a second copy of that rule here is how the two would drift.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -885,6 +892,11 @@ flowIsolation: true
 ```
 
 Both sentences are owed together. A worker folder without that line is an address, not a boundary.
+
+This is a `resources/` setting. A `references/` file that declares it is refused: a per-seat copy of
+a document whose body is one file for everyone cannot differ from the file or from itself, and the
+copies would each store their content somewhere different — which is the address the reference
+migration has to be able to find. A reference is walled by where it sits, not by a frontmatter key.
 
 **`description` is required.** A file without one lands in `errors`. It reaches the resource with
 the rest of the frontmatter, and nothing puts it in front of a model. Write it for whoever opens the

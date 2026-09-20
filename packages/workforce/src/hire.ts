@@ -691,8 +691,7 @@ export function hireWorkforce(
       catalog: options.references,
       kindResources: (factory.resources ?? {}) as DeclaredResources,
       kindFlowLevelKeys: factory.flowLevelResourceKeys ?? new Set<string>(),
-      base: seatResources,
-      kind
+      base: seatResources
     });
     if (wall.problems.length > 0) {
       for (const problem of wall.problems) refuse(problem);

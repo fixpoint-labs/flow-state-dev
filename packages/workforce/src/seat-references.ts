@@ -99,6 +99,17 @@ export function placeOfReference(ref: string): TreePlace | undefined {
   const parts = ref.split("/");
   if (parts.some((part) => part.length === 0)) return undefined;
 
+  // **Length decides which segments are structural, never their spelling.**
+  // `teams` and `workers` are reserved PATH segments and also perfectly legal
+  // document names — `validateSegment` admits both — so `org/references/teams.md`
+  // mints the single-segment ref `teams`. Reading that as a broken `teams/`
+  // path made an ordinary org document reachable by nobody.
+  //
+  // Handled as a class rather than as two special cases: a ref's shape is fixed
+  // by how many segments it has, because that is what `mintResourceRef`
+  // guarantees. A single segment is an org document whatever it spells.
+  if (parts.length === 1) return { team: undefined, worker: undefined };
+
   let team: string | undefined;
   let rest = parts;
   if (parts[0] === TEAMS_LEVEL) {
@@ -110,6 +121,27 @@ export function placeOfReference(ref: string): TreePlace | undefined {
   if (rest.length === 1) return { team, worker: undefined };
   if (rest.length === 3 && rest[0] === WORKERS_LEVEL) return { team, worker: rest[1] };
   return undefined;
+}
+
+/**
+ * Where the reference behind one of a kind's accessor keys actually sits.
+ *
+ * **The accessor key is not the place.** An app may expose one definition under
+ * a second key — `{ ...references, handbook: references["teams/eng/handbook"] }`
+ * — and that alias is still the team's handbook. Placing it by its key would
+ * read a single-segment alias as an org document and hand it to every seat in
+ * the company, which is the exact widening the wall exists to stop. So the
+ * place comes from the definition's own minted `ref`, which the loader derived
+ * from the path on disk, and never from the key an app chose (BP-031).
+ *
+ * `undefined` when no minted ref can be read, which the wall treats as
+ * unreachable. That is the safer reading of a definition this module cannot
+ * place: an alias nobody can locate is denied rather than published org-wide.
+ */
+function placeOfEntry(entry: unknown): TreePlace | undefined {
+  const minted = (entry as { ref?: unknown } | undefined)?.ref;
+  if (typeof minted !== "string" || minted.length === 0) return undefined;
+  return placeOfReference(minted);
 }
 
 /**
@@ -312,8 +344,6 @@ export interface ApplyReferenceWallInput {
    * declares none and would be minted with the kind's own map.
    */
   base: DeclaredResources | undefined;
-  /** The kind's name, for the refusals. */
-  kind: string;
 }
 
 /** What {@link applyReferenceWall} produced. */
@@ -350,8 +380,11 @@ export interface AppliedReferenceWall {
  * @returns The seat's map, the reachable set, and every problem.
  */
 export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedReferenceWall {
-  const { seatId, declared, hasDeclared, catalog, kindResources, kindFlowLevelKeys, base, kind } =
-    input;
+  // No `kind` here, deliberately: none of this function's three refusals names
+  // it. The wall is about where a seat SITS, and `hireWorkforce` already
+  // prefixes every refusal with the worker's id. The kind is named only by
+  // `verifySeatReferenceWall`, whose refusal is about a block on that kind.
+  const { seatId, declared, hasDeclared, catalog, kindResources, kindFlowLevelKeys, base } = input;
 
   // Which of the kind's accessors hold one of the app's references. By name OR
   // by definition identity, the way `seat-resources` recognises a document: an
@@ -373,10 +406,15 @@ export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedRefer
   }
 
   // The wall: derived, before anything the seat wrote is read.
+  //
+  // Placed from the DEFINITION's minted ref, not from the accessor key it sits
+  // under — see `placeOfEntry`. The two are the same string for every entry an
+  // app installs under its own ref, and differ exactly for an alias, which is
+  // the case that would otherwise widen.
   const reachable = new Set<string>();
-  for (const ref of references) {
-    const place = placeOfReference(ref);
-    if (place !== undefined && referenceReachableBySeat(seat, place)) reachable.add(ref);
+  for (const key of references) {
+    const place = placeOfEntry(kindResources[key] ?? catalog?.[key]);
+    if (place !== undefined && referenceReachableBySeat(seat, place)) reachable.add(key);
   }
 
   // The narrowing, if the seat asked for one. Selects from `reachable`; a ref
@@ -478,6 +516,12 @@ export function verifySeatReferenceWall(input: VerifySeatReferenceWallInput): st
   if (minted === undefined || catalog === undefined) return [];
 
   const definitions = new Set<unknown>(Object.values(catalog));
+  // Re-derived here rather than taken from `applyReferenceWall`, so this is an
+  // independent check and not a restatement. Asking only "is this key in
+  // `allowed`?" makes the verification agree with whatever the wall computed —
+  // including a mistake, which is how an aliased entry could be waved through
+  // by the very check that exists to catch it.
+  const seat = placeOfSeat(seatId);
   const problems: string[] = [];
 
   for (const key of Object.keys(minted)) {
@@ -485,7 +529,17 @@ export function verifySeatReferenceWall(input: VerifySeatReferenceWallInput): st
     // is not that reference, and flagging it by name would refuse an app whose
     // wiring is fine.
     if (!definitions.has(minted[key])) continue;
-    if (!allowed.has(key)) problems.push(referenceCrossedWallMessage(key, seatId, kind));
+
+    const place = placeOfEntry(minted[key]);
+    const withinWall =
+      seat !== undefined && place !== undefined && referenceReachableBySeat(seat, place);
+
+    // Two ways to be wrong, one refusal: the entry is outside this seat's place
+    // in the tree, or it is inside but the seat narrowed it away and it came
+    // back. Both mean the minted flow reaches a reference the seat must not.
+    if (!withinWall || !allowed.has(key)) {
+      problems.push(referenceCrossedWallMessage(key, seatId, kind));
+    }
   }
 
   return problems;

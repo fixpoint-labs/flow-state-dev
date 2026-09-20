@@ -50,7 +50,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WorkforceCodeError, discoverWorkforceCode } from "../src/codegen/discover";
 import { readChannelsDirectory } from "../src/loader/read-channels-directory";
-import { readResourcesDirectory } from "../src/loader/read-resources-directory";
+import {
+  readReferencesDirectory,
+  readResourcesDirectory,
+} from "../src/loader/read-resources-directory";
 import { readSeatSkills } from "../src/loader/read-seat-skills";
 import { readWorkforce } from "../src/loader/read-workforce";
 
@@ -61,8 +64,10 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 interface Readout {
   /** Worker ids that loaded. */
   workers: string[];
-  /** Document refs that loaded. */
+  /** Document refs that loaded, from the `resources/` slot. */
   documents: string[];
+  /** Reference refs that loaded, from the `references/` slot. Its own field, not merged into `documents`: the two slots go to different install halves, and a shape accounted for by the wrong one is a shape nobody reads. */
+  references: string[];
   /** Channel ids that loaded. */
   channels: string[];
   /** Ids of teams whose `TEAM.md` loaded. */
@@ -444,6 +449,51 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.reported.includes("teams/alpha/channels/standup"),
   },
   {
+    shape: "org/references/code-of-conduct.md",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/documents-on-disk.md",
+      quote: "      code-of-conduct.md",
+    },
+    write: (root) => writeFile(root, "org/references/code-of-conduct.md", doc("A code of conduct.")),
+    accountedFor: (out) =>
+      out.references.includes("code-of-conduct") ||
+      out.reported.includes("org/references/code-of-conduct.md"),
+  },
+  {
+    shape: "teams/<team>/references/handbook.md",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/documents-on-disk.md",
+      quote: "        handbook.md",
+    },
+    write: (root) => writeFile(root, "teams/alpha/references/handbook.md", doc("A handbook.")),
+    accountedFor: (out) =>
+      out.references.includes("teams/alpha/handbook") ||
+      out.reported.includes("teams/alpha/references/handbook.md"),
+  },
+  {
+    shape: "teams/<team>/references/escalation.md",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/documents-on-disk.md",
+      quote: "        escalation.md",
+    },
+    write: (root) => writeFile(root, "teams/alpha/references/escalation.md", doc("An escalation.")),
+    accountedFor: (out) =>
+      out.references.includes("teams/alpha/escalation") ||
+      out.reported.includes("teams/alpha/references/escalation.md"),
+  },
+  {
+    shape: "teams/<team>/workers/<worker>/references/runbook.md",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/documents-on-disk.md",
+      quote: "            runbook.md",
+    },
+    write: (root) =>
+      writeFile(root, "teams/alpha/workers/lead/references/runbook.md", doc("A runbook.")),
+    accountedFor: (out) =>
+      out.references.includes("teams/alpha/workers/lead/runbook") ||
+      out.reported.includes("teams/alpha/workers/lead/references/runbook.md"),
+  },
+  {
     shape: "teams/<team>/resources/<name>.md",
     publishedIn: {
       file: "apps/docs/docs/workforce/documents-on-disk.md",
@@ -704,6 +754,9 @@ async function readEverything(root: string): Promise<Readout> {
   const resources = await readResourcesDirectory(root);
   for (const error of resources.errors) reported.push(error.path);
 
+  const references = await readReferencesDirectory(root);
+  for (const error of references.errors) reported.push(error.path);
+
   const channels = await readChannelsDirectory(root);
   for (const error of channels.errors) reported.push(error.path);
 
@@ -750,6 +803,7 @@ async function readEverything(root: string): Promise<Readout> {
   return {
     workers: workforce.workers.map((worker) => worker.id),
     documents: resources.documents.map((document) => document.ref),
+    references: references.documents.map((reference) => reference.ref),
     channels: channels.channels.map((channel) => channel.id),
     teams: workforce.teams.map((team) => team.id),
     resourceModules,

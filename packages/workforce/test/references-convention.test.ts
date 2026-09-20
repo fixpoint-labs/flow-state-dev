@@ -45,10 +45,13 @@ import { discoverResourceModules } from "../src/codegen/discover-resource-module
 import { readDeclaredRoster } from "../src/loader/read-declared-roster";
 import { referencesFromDocs } from "../src/references-from-docs";
 import { resourcesFromDocs } from "../src/resources-from-docs";
-import { clearShadowedReferences } from "../src/clear-shadowed-references";
+import {
+  clearShadowedReferences,
+  describeShadowedReferences,
+} from "../src/clear-shadowed-references";
 import { hireWorkforce } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
-import { SEAT_REFERENCES_KEY } from "../src/seat-references";
+import { SEAT_REFERENCES_KEY, placeOfReference } from "../src/seat-references";
 import { SEAT_RESOURCES_KEY } from "../src/seat-resources";
 import { workerConfigSchema } from "../src/worker-config";
 
@@ -71,6 +74,15 @@ const BOB_NOTES = "teams/engineering/workers/bob/notes";
  * own-team / sibling-team distinction nothing to be distinguished FROM.
  */
 const ENG_SEAT = "engineering.ada";
+
+/**
+ * The installing flow, as the migration's storage coordinate needs it.
+ *
+ * `isolatesOrgState: false` is the ordinary case and the one the fixtures
+ * build; the isolated case has its own check below, because it addresses a
+ * different bucket and getting it wrong is silent.
+ */
+const INSTALLED_ON = { id: ENG_SEAT, isolatesOrgState: false };
 
 const roots: string[] = [];
 
@@ -386,7 +398,12 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
     const { root, stores } = await treeWithHistory();
     const { seat: ada, references } = await seatOn(root);
 
-    const result = await clearShadowedReferences({ references, orgId: ORG, content: stores.content });
+    const result = await clearShadowedReferences({
+      references,
+      orgId: ORG,
+      content: stores.content,
+      installedOn: INSTALLED_ON,
+    });
 
     // Observable, not silent: the migration names the ref it unshadowed and
     // hands back the body that had been served in the file's place.
@@ -394,6 +411,9 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
     expect(result.cleared).toEqual([
       { ref: ORG_HANDBOOK, shadowedContent: "WRITTEN BEFORE THE MOVE" },
     ]);
+
+    expect(result.dryRun).toBe(false);
+    expect(describeShadowedReferences(result)).toContain("have been cleared");
 
     const { ctx } = await ctxFor(ada, stores);
     expect(await handleFor(ctx, ORG_HANDBOOK)!.readContent()).toBe("ORG HANDBOOK v1");
@@ -407,9 +427,18 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
       references,
       orgId: ORG,
       content: stores.content,
+      installedOn: INSTALLED_ON,
       dryRun: true,
     });
     expect(result.cleared.map((r) => r.ref)).toEqual([ORG_HANDBOOK]);
+    // The result says it was a preview, and the sentence an operator reads says
+    // WOULD. A preview that claims completion is worse than no preview: it is
+    // read as a finished migration and the stale body stays live.
+    expect(result.dryRun).toBe(true);
+    const sentence = describeShadowedReferences(result);
+    expect(sentence).toContain("dry run");
+    expect(sentence).toContain("WOULD be cleared");
+    expect(sentence).not.toContain("have been cleared");
 
     const { ctx } = await ctxFor(ada, stores);
     expect(await handleFor(ctx, ORG_HANDBOOK)!.readContent()).toBe("WRITTEN BEFORE THE MOVE");
@@ -420,11 +449,21 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
     const { references } = await seatOn(root);
     const stores = createInMemoryStores();
 
-    const first = await clearShadowedReferences({ references, orgId: ORG, content: stores.content });
+    const first = await clearShadowedReferences({
+      references,
+      orgId: ORG,
+      content: stores.content,
+      installedOn: INSTALLED_ON,
+    });
     expect(first.cleared).toEqual([]);
     expect(first.checked.length).toBe(5);
 
-    const second = await clearShadowedReferences({ references, orgId: ORG, content: stores.content });
+    const second = await clearShadowedReferences({
+      references,
+      orgId: ORG,
+      content: stores.content,
+      installedOn: INSTALLED_ON,
+    });
     expect(second.cleared).toEqual([]);
   });
 
@@ -434,7 +473,12 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
     const { ctx, stores } = await ctxFor(ada);
     await handleFor(ctx, ENG_SCRATCH)!.writeContent("scratch edit");
 
-    await clearShadowedReferences({ references, orgId: ORG, content: stores.content });
+    await clearShadowedReferences({
+      references,
+      orgId: ORG,
+      content: stores.content,
+      installedOn: INSTALLED_ON,
+    });
 
     const again = await ctxFor(ada, stores);
     expect(await handleFor(again.ctx, ENG_SCRATCH)!.readContent()).toBe("scratch edit");
@@ -674,5 +718,183 @@ describe("BR-16 / BR-17 · both folders at one level, each by its own rules", ()
     const again = await ctxFor(ada, stores);
     expect(await handleFor(again.ctx, ENG_SCRATCH)!.readContent()).toBe("evolved");
     expect(await handleFor(again.ctx, ENG_HANDBOOK)!.readContent()).toBe("ENGINEERING HANDBOOK v1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The wall's two bypasses, both asserted as the NEGATIVE
+// ---------------------------------------------------------------------------
+
+describe("the wall places a reference by its minted ref, not by its accessor key", () => {
+  /**
+   * An app may expose one definition under a second key. The alias is still the
+   * engineering handbook, but its KEY is a single segment — which reads as an
+   * org-level ref, and would hand a team's handbook to every seat in the
+   * company. Asserted as the negative, because a happy-path check would have
+   * stayed green straight through this.
+   */
+  async function withAlias(seatId: string) {
+    const root = await tree();
+    const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
+    const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
+    const aliased: DeclaredResources = {
+      ...references,
+      // A single-segment alias of a TEAM document — the widening shape.
+      companyHandbook: references[ENG_HANDBOOK]!,
+    };
+    const hired = hireWorkforce([seat(seatId)], {
+      kinds: { [KIND]: kindWith({ ...documents, ...aliased }) as never },
+      documents,
+      references: aliased,
+    });
+    return await ctxFor(hired[0]!);
+  }
+
+  it("RED→GREEN — a sibling team's seat cannot reach an aliased engineering handbook", async () => {
+    const { ctx } = await withAlias("sales.sam");
+    expect(handleFor(ctx, "companyHandbook")).toBeUndefined();
+  });
+
+  it("…and the team's own seat still can, so the wall narrowed rather than broke", async () => {
+    const { ctx } = await withAlias(ENG_SEAT);
+    expect(await handleFor(ctx, "companyHandbook")!.readContent()).toBe(
+      "ENGINEERING HANDBOOK v1",
+    );
+  });
+
+  it("an entry with no minted ref to place is unreachable, not org-wide", () => {
+    // The safer reading. A definition this module cannot locate is denied, not
+    // published to everyone — the direction a permission boundary must fail in.
+    expect(placeOfEntryIsUnplaceable()).toBe(true);
+  });
+});
+
+/** A hand-built entry carrying no `ref`, as an odd catalog might hold. */
+function placeOfEntryIsUnplaceable(): boolean {
+  // Exercised through the exported placer: a ref that is not a shape the
+  // convention mints has no place, and the wall reads "no place" as "no reach".
+  return placeOfReference("teams/only-two") === undefined;
+}
+
+describe("a reserved path segment is still a legal document name", () => {
+  // `teams` and `workers` are both reserved segments AND names `validateSegment`
+  // admits, so `org/references/teams.md` mints the bare ref `teams`. Reading
+  // that as a broken `teams/` path made an ordinary org document reach nobody.
+  // Handled as a class — length decides the shape, never the spelling.
+  it.each(["teams", "workers"])(
+    "RED→GREEN — an org reference named %s reaches every seat",
+    async (name) => {
+      const root = await tree();
+      await writeInto(root, {
+        [`org/references/${name}.md`]: doc(`An org document named ${name}`, `ORG ${name} v1`),
+      });
+      const { seat: ada } = await seatOn(root);
+      const { ctx } = await ctxFor(ada);
+      expect(await handleFor(ctx, name)!.readContent()).toBe(`ORG ${name} v1`);
+    },
+  );
+
+  it("and the structural readings still hold beside them", () => {
+    expect(placeOfReference("teams/eng/handbook")).toEqual({ team: "eng", worker: undefined });
+    expect(placeOfReference("teams/eng/workers")).toEqual({ team: "eng", worker: undefined });
+    expect(placeOfReference("teams/eng/workers/ada/notes")).toEqual({
+      team: "eng",
+      worker: "ada",
+    });
+    expect(placeOfReference("workers/ada/notes")).toEqual({ team: undefined, worker: "ada" });
+  });
+});
+
+describe("a reference cannot isolate itself", () => {
+  it("`flowIsolation` is refused, which is what keeps the migration's bucket knowable", async () => {
+    const root = await tree();
+    await fs.writeFile(
+      path.join(root, "org/references/handbook.md"),
+      "---\ndescription: The org handbook\nflowIsolation: true\n---\nORG HANDBOOK v1",
+      "utf8",
+    );
+    const read = await readReferencesDirectory(root);
+    const refused = read.errors.find((e) => e.path === "org/references/handbook.md");
+    expect(refused?.kind).toBe("refused-declaration");
+    expect(refused?.error.message).toContain("flowIsolation");
+  });
+
+  it("a resources/ document may still declare it — the shared list did not widen", async () => {
+    const root = await tree();
+    await fs.writeFile(
+      path.join(root, "teams/engineering/resources/scratch.md"),
+      "---\ndescription: Scratch\nflowIsolation: true\n---\nseed",
+      "utf8",
+    );
+    const read = await readResourcesDirectory(root);
+    expect(read.errors).toEqual([]);
+    expect(read.documents[0]!.declared["flowIsolation"]).toBe(true);
+  });
+});
+
+describe("the migration addresses the right bucket, or refuses", () => {
+  it("an isolated org scope is a DIFFERENT bucket, and the migration uses it", async () => {
+    const root = await tree();
+    const { references } = await seatOn(root);
+    const stores = createInMemoryStores();
+    const isolated = { id: ENG_SEAT, isolatesOrgState: true };
+
+    // A row written where an isolated flow would store it.
+    await stores.content.set("org", `${ORG}:${isolated.id}`, ORG_HANDBOOK, "WRITTEN BEFORE");
+
+    // Addressed as non-isolated, the row is invisible — the silent-miss shape.
+    const missed = await clearShadowedReferences({
+      references,
+      orgId: ORG,
+      content: stores.content,
+      installedOn: INSTALLED_ON,
+    });
+    expect(missed.cleared).toEqual([]);
+
+    // Told the truth about the flow, it finds and clears it.
+    const found = await clearShadowedReferences({
+      references,
+      orgId: ORG,
+      content: stores.content,
+      installedOn: isolated,
+    });
+    expect(found.scopeId).toBe(`${ORG}:${isolated.id}`);
+    expect(found.cleared.map((r) => r.ref)).toEqual([ORG_HANDBOOK]);
+    expect(await stores.content.get("org", `${ORG}:${isolated.id}`, ORG_HANDBOOK)).toBeUndefined();
+  });
+
+  it("refuses loudly for an id the engine would escape, rather than reading the wrong cell", async () => {
+    const root = await tree();
+    const { references } = await seatOn(root);
+    const stores = createInMemoryStores();
+
+    await expect(
+      clearShadowedReferences({
+        references,
+        orgId: "org:weird",
+        content: stores.content,
+        installedOn: INSTALLED_ON,
+      }),
+    ).rejects.toThrow(/Cannot address/i);
+
+    // The flow id is the other component of an isolated bucket, so it is
+    // checked too — but only when it is actually part of the key.
+    await expect(
+      clearShadowedReferences({
+        references,
+        orgId: ORG,
+        content: stores.content,
+        installedOn: { id: "kind:seat", isolatesOrgState: true },
+      }),
+    ).rejects.toThrow(/flow id/i);
+
+    // …and not when it is not: a colon in an id nothing joins is harmless.
+    const fine = await clearShadowedReferences({
+      references,
+      orgId: ORG,
+      content: stores.content,
+      installedOn: { id: "kind:seat", isolatesOrgState: false },
+    });
+    expect(fine.scopeId).toBe(ORG);
   });
 });

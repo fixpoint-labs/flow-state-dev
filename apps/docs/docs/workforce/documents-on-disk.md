@@ -84,7 +84,9 @@ Where a file sits decides its identity, where it is stored, and what its content
 
 Everything outside that set arrives at the resource exactly as written, so `llmReadable`, `llmWritable`, `writable`, `allowedExtensions` and `metadata` all take effect from the file.
 
-A file in `references/` derives three more: `writable`, `llmWritable` and `render`. The folder is what makes a reference read-only, so no file has to ask for that and no file can turn it off. Declaring any of the three is refused by name, `writable: false` included — agreeing with the folder is still a second place to keep the same fact, and the next person to open the file cannot tell which copy is the one doing the work. A document that needs to be written belongs in `resources/`.
+A file in `references/` derives four more: `writable`, `llmWritable`, `render` and `flowIsolation`. The folder is what makes a reference read-only, so no file has to ask for that and no file can turn it off. Declaring any of the four is refused by name, `writable: false` included — agreeing with the folder is still a second place to keep the same fact, and the next person to open the file cannot tell which copy is the one doing the work. A document that needs to be written belongs in `resources/`.
+
+`flowIsolation` is refused for a second reason worth saying out loud: a per-seat copy of a document whose body is one file for everybody cannot differ from the file or from itself, and it would put each copy's stored content somewhere different — which is what the migration below has to be able to find.
 
 ## A document's ref
 
@@ -346,14 +348,19 @@ const result = await clearShadowedReferences({
   references: referencesFromDocs(references.documents),
   orgId,
   content: stores.content,
+  installedOn: { id: flow.id, isolatesOrgState: false },
 });
 console.log(describeShadowedReferences(result));
 // references: 1 of 4 were shadowed by a stored write and have been cleared — handbook.
 ```
 
-It reports before it is believed: `result.cleared` names each reference and carries the body that had been served in the file's place, which is the last moment that text exists anywhere. Pass `dryRun: true` to see the finding and change nothing.
+`installedOn` describes the flow the references are installed on, and it is required rather than assumed. A flow that isolates its organization scope keeps each instance's stored content in its own place, so a run told the wrong thing would look in the wrong place, find nothing, and report success — the one outcome worse than not running it. Read `isolatesOrgState` off the flow rather than guessing.
+
+It reports before it is believed: `result.cleared` names each reference and carries the body that had been served in the file's place, which is the last moment that text exists anywhere. Pass `dryRun: true` to see the finding and change nothing — the result says it was a preview, and the sentence says "would".
 
 Run it once per organization after the move. It is safe to run again — a tree whose files are already the source reports nothing cleared — and it never touches a `resources/` document.
+
+It refuses, loudly, for an organization or flow id containing `:` or a backslash. Those need the escaping the engine applies when it builds a storage address, and this cannot reproduce that rule without keeping a second copy of it — so it stops rather than reading the wrong place and telling you there was nothing to clear.
 
 ## What stays in TypeScript
 

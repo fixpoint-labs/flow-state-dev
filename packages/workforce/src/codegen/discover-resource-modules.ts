@@ -43,6 +43,7 @@ import {
   openRoot,
   openStructuralDirectory,
   refusedSymlink,
+  siblingSlotPath,
   unreadable,
   walkTeams,
 } from "../loader";
@@ -271,7 +272,7 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
   // here too would double every entry in a tree with one bad slot. A resources/
   // file wins the map only because it was inserted first; either path names a
   // real claimant, and the pair is refused whichever is quoted.
-  const referenceSlotPath = `${slotPath.slice(0, -RESOURCES_SLOT.length)}${REFERENCES_SLOT}`;
+  const referenceSlotPath = siblingSlotPath(slotPath, RESOURCES_SLOT, REFERENCES_SLOT);
   const siblings = await openStructuralDirectory(
     path.join(path.dirname(slotDir), REFERENCES_SLOT),
     referenceSlotPath,

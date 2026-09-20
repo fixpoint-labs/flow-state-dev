@@ -555,6 +555,26 @@ export const DERIVED_RESOURCE_KEYS = [
 const REFUSED_PREFETCH_MODE = "lazy";
 
 /**
+ * Say why a document's `prefetchMode` is refused, or `undefined` when it is not.
+ *
+ * Shared by both doors' refusals rather than written twice. The two differ in
+ * which KEYS they derive — that difference is real and stays two loops — but
+ * `prefetchMode` is refused for one reason that has nothing to do with the slot
+ * a file sits in: a file-declared resource is installed at flow level either
+ * way, so both doors were carrying the same sentence.
+ */
+function refusedPrefetchModeMessage(
+  declared: Record<string, unknown>,
+): string | undefined {
+  if (declared["prefetchMode"] !== REFUSED_PREFETCH_MODE) return undefined;
+  return (
+    `declares \`prefetchMode: "${REFUSED_PREFETCH_MODE}"\`, which a file-declared ` +
+    `resource cannot be: it is installed at flow level, and a flow-level declaration ` +
+    `has no per-block load trigger to load it on. Drop the key.`
+  );
+}
+
+/**
  * Say why a document's declaration is refused, or `undefined` when nothing is.
  *
  * Checked at both doors — the loader that parses a file, and the function that
@@ -578,15 +598,7 @@ export function refusedDeclarationMessage(
     }
   }
 
-  if (declared["prefetchMode"] === REFUSED_PREFETCH_MODE) {
-    return (
-      `declares \`prefetchMode: "${REFUSED_PREFETCH_MODE}"\`, which a file-declared ` +
-      `resource cannot be: it is installed at flow level, and a flow-level declaration ` +
-      `has no per-block load trigger to load it on. Drop the key.`
-    );
-  }
-
-  return undefined;
+  return refusedPrefetchModeMessage(declared);
 }
 
 /**
@@ -610,16 +622,25 @@ export function refusedDeclarationMessage(
  *   reader gets the document and not the YAML above it. A file that supplied
  *   its own would serve its own frontmatter, or throw at read time when a YAML
  *   scalar is called as a function.
+ * - `flowIsolation` — a per-instance copy of a document whose content is the
+ *   same file for everyone is incoherent: nothing can write the copies, so they
+ *   would differ from each other never and from the file always. It also has a
+ *   second cost, which is why it is refused rather than ignored — an isolated
+ *   resource stores under a flow-qualified bucket, so allowing it would make
+ *   "where does this reference's content live" a per-file question, and the
+ *   migration in `../clear-shadowed-references` could no longer name one place
+ *   to look.
  *
  * **Deliberately NOT added to {@link DERIVED_RESOURCE_KEYS}.** A `resources/`
- * document may legitimately declare `writable:` — that path is unchanged, and
- * widening the shared list would break it.
+ * document may legitimately declare `writable:` or `flowIsolation:` — that path
+ * is unchanged, and widening the shared list would break it.
  */
 export const DERIVED_REFERENCE_KEYS = [
   ...DERIVED_RESOURCE_KEYS,
   "writable",
   "llmWritable",
   "render",
+  "flowIsolation",
 ] as const;
 
 /**
@@ -647,13 +668,5 @@ export function refusedReferenceDeclarationMessage(
     );
   }
 
-  if (declared["prefetchMode"] === REFUSED_PREFETCH_MODE) {
-    return (
-      `declares \`prefetchMode: "${REFUSED_PREFETCH_MODE}"\`, which a file-declared ` +
-      `resource cannot be: it is installed at flow level, and a flow-level declaration ` +
-      `has no per-block load trigger to load it on. Drop the key.`
-    );
-  }
-
-  return undefined;
+  return refusedPrefetchModeMessage(declared);
 }
