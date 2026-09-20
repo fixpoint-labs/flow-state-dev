@@ -199,11 +199,14 @@ A **lapsed lease is not one of those arms**. Nothing renews the row's lease
 while the dispatch waits in the host's queue, so a child that starts more than
 a lease later finds a row the queue already counts as free. It takes that row
 back rather than refusing it: `adoptLapsedLease` renews on the same attempt,
-and the run proceeds if that write lands. It refuses only when the renewal is
-declined — the case where another drain has already reclaimed the row and is
-running it elsewhere. Adopted rather than refused, because this claimant has
-run nothing yet, so there are no side effects to double up; refusing here
-would strand handed-off work behind nothing worse than a deep queue.
+and the run proceeds if that write lands. It refuses on three arms, which all
+carry `stale-task-claim` because what the dispatch must do about each is the
+same — stop, and write nothing: the renewal is declined, so a reclaim
+genuinely won; the row carries no committed lease span to take it back for; or
+the collection answers the renewal with no verdict at all. Adopted rather than
+refused, because this claimant has run nothing yet, so there are no side
+effects to double up; refusing here would strand handed-off work behind
+nothing worse than a deep queue.
 
 Past the gate, the same read does three more jobs: it marks the task scope so
 the worker's items are attributed, it **re-mints the claim ticket** from the
