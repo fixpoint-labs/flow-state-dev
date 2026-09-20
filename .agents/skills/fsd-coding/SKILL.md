@@ -70,6 +70,7 @@ stdout. `--quiet` suppresses routine runtime logs, not progress or startup error
   ],
   "cwd": "/absolute/path/to/implementation/labs/fsd-coding-skill",
   "env": {
+    "FSDEV_TRACE_OBSERVABILITY": "true",
     "FSD_CODING_HARNESS": "codex",
     "FSD_CODING_CWD": "/absolute/path/to/target-checkout",
     "FSD_CODING_NETWORK_ACCESS": "0",
@@ -101,6 +102,10 @@ a streaming supervisor.
 
 These paths and the harness are examples, not defaults. Apply the env values
 over the inherited environment, preserving `PATH`, `HOME`, and credentials.
+Set `FSDEV_TRACE_OBSERVABILITY=true` explicitly on every invocation, including
+`fixFsd` and retries. This overrides inherited `false`/`0` and keeps the real
+root-block trace available when `NODE_ENV=production`; the `started` readiness
+event comes from that trace. Do not synthesize readiness or change `NODE_ENV`.
 Add `FSD_CODING_MODEL` only for a resolved override. All env values are strings,
 not `null`. If using adapter defaults, remove an inherited
 `FSD_CODING_MODEL` from the child environment (for a merge-only tool, use
@@ -128,6 +133,21 @@ For Codex only, set `FSD_CODING_ADD_DIR` to extra writable directories (`thread.
 
 For Codex only, pass `FSD_CODING_NETWORK_ACCESS=1` when an authorized sandboxed run needs outbound network, such as `git push`. Cursor and Claude cannot honor either permission; pass disabled network and no extra directories for them. The host refuses enabled Codex-only permissions on another adapter. If a door fails and you call `fixFsd`, pass the same host values to `fixFsd` and to the one retry of the original door.
 
+### Claude permission policy
+
+Claude coding doors default to `permissionMode: "bypassPermissions"` for headless
+execution and `disallowedTools: ["Agent", "Task"]` to prevent subagent fan-out.
+Use a non-root signed-in host: the default is rejected before vendor startup if
+either the real or effective user ID is zero. The environment-driven skill path
+has no `FSD_CODING_*` permission-mode override; trusted programmatic factory
+configuration is described in the
+[lab README](../../../labs/fsd-coding-skill/README.md#run).
+
+The default sandbox refuses unsandboxed commands and fails if sandboxing is
+unavailable. The checkout must exist; its physical path supplies both cwd and
+`filesystem.allowWrite`. That SDK setting adds a writable path, not an exclusive
+filesystem fence.
+
 ### Follow progress without filling the context
 
 - Observe readiness **or exit**. `started` means the flow entered its root block,
@@ -143,18 +163,24 @@ For Codex only, pass `FSD_CODING_NETWORK_ACCESS=1` when an authorized sandboxed 
 - Tell the user about meaningful phase changes, successful edits/checks, and
   blockers. Do not narrate every read or forward every compact line to chat.
   A quiet interval means **no new event observed**, not proof of progress.
-- On `tool_denied` for `Write`, `Edit`, or `Bash`, stop the managed process
-  immediately (`hub stop` in OMP). Do not wait for completion, more discovery,
-  or a repeated denial. Inspect the specific raw failure after stopping and
-  report the blocker. Never bypass permissions to restore progress.
-- Assistant completion, flow termination, and artifact acceptance are different.
-  A `finished` event reports a claim; obtain the process exit status and verify
-  the requested artifact. If the process remains alive after a terminal event,
-  inspect shutdown rather than claiming the process exited.
+- `tool_denied` recognizes the Claude permission-prompt sentence
+  `Claude requested permissions to …, but you haven't granted it yet.`
+  It is relevant to explicitly overridden prompting modes, not a universal
+  sandbox, Codex, or Cursor denial classifier. On observing it for `Write`,
+  `Edit`, or `Bash`, stop the managed process (`hub stop` in OMP) immediately;
+  do not wait for completion or a repeated denial. Inspect the specific raw
+  failure after stopping and report the blocker.
+- Other access-policy failures remain failed-tool/error diagnostics. Inspect
+  the raw failure and stop/report when it is genuinely a policy refusal;
+  ordinary test/build failures are not permission denials. Cancellation is
+  supervisor-only: the filter does not cancel the provider, which may continue
+  work before the supervisor observes the failure and stops the process.
+  Never widen permissions mid-run to restore progress; this does not forbid
+  the explicitly configured default above.
 - `--capture` is written at completion, so it is not a live channel. Use the
-  incrementally written `.ndjson` for bounded, targeted diagnosis; read the
-  final capture's result after exit. Never load the entire raw transcript merely
-  to produce a status update.
+  incrementally written `.ndjson` for bounded, targeted diagnosis; it retains
+  token deltas too, so long turns can produce large traces. Read the final
+  capture's result after exit, not the entire raw transcript for a status update.
 
 ## Self-heal — do this before retrying
 
@@ -182,6 +208,8 @@ These apply on a local machine or Grok box, where this skill is the path. On a C
 
 After each supervised run, inspect the compact terminal event, the process exit
 status, and the relevant final result in `--capture` (or the targeted raw event).
+If the process remains alive after a terminal event, inspect shutdown rather
+than claiming the process exited.
 
 `outcome: "finished"` only means the vendor turn ended. It is not success by itself.
 

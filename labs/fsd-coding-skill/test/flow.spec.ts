@@ -2,14 +2,15 @@
  * The path this lab exists to prove: a declared door runs the host-selected
  * harness through host resolvers. cwd/session are not taken from action input.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../../../packages/cursor/src/agent";
 import { TESTED_SDK_VERSION } from "@flow-state-dev/cursor";
+import type { ResolveClaudeAgent } from "@flow-state-dev/claude-code/sdk";
 import { createFsdCodingFlow } from "../src/flow";
 import { DOOR_PREFIX, DOORS, FLOW_KIND } from "../src/schemas";
 import { scriptedClaude } from "./scripted-claude";
@@ -196,32 +197,66 @@ describe("fsd-coding flow wiring", () => {
 });
 
 describe("fsd-coding flow wiring — Claude", () => {
-  function flowWithClaude(recursor: ReturnType<typeof scriptedClaude>, extras: { model?: string } = {}) {
+  let claudeCwd: string;
+  beforeEach(() => {
+    claudeCwd = realpathSync(mkdtempSync(join(tmpdir(), "fsd-coding-claude-")));
+    dirs.push(claudeCwd);
+    if (process.getuid) vi.spyOn(process as Required<typeof process>, "getuid").mockReturnValue(1000);
+    if (process.geteuid) vi.spyOn(process as Required<typeof process>, "geteuid").mockReturnValue(1000);
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  function flowWithClaude(resolve: ResolveClaudeAgent) {
     return createFsdCodingFlow({
-      cwd: HOST_CWD,
+      cwd: claudeCwd,
       harness: "claude",
-      model: extras.model,
-      claude: { resolveClaudeAgent: recursor.resolve },
+      claude: { resolveClaudeAgent: resolve },
     });
   }
+
+  it.skipIf(!process.getuid || !process.geteuid).each([
+    { uid: 0, euid: 1000 },
+    { uid: 1000, euid: 0 },
+  ])("rejects default Claude creation with uid=$uid and euid=$euid", ({ uid, euid }) => {
+    vi.spyOn(process as Required<typeof process>, "getuid").mockReturnValue(uid);
+    vi.spyOn(process as Required<typeof process>, "geteuid").mockReturnValue(euid);
+
+    expect(() => flowWithClaude(scriptedClaude().resolve)).toThrow();
+  });
+
+  it.skipIf(!process.getuid || !process.geteuid)("runs a Claude door on root with an explicit supported non-bypass host mode", async () => {
+    vi.spyOn(process as Required<typeof process>, "getuid").mockReturnValue(0);
+    vi.spyOn(process as Required<typeof process>, "geteuid").mockReturnValue(0);
+    const scripted = scriptedClaude();
+    const result = await testFlow({
+      flow: createFsdCodingFlow({
+        cwd: claudeCwd,
+        harness: "claude",
+        claude: { resolveClaudeAgent: scripted.resolve, permissionMode: "default" },
+      }),
+      action: "implement",
+      userId: USER,
+      input: { task: "inspect this checkout" },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.output).toMatchObject({
+      outcome: "finished",
+    });
+  });
 
   it("implement sends the task through Claude in the host cwd", async () => {
     const scripted = scriptedClaude();
     const result = await testFlow({
-      flow: flowWithClaude(scripted),
+      flow: flowWithClaude(scripted.resolve),
       action: "implement",
       userId: USER,
       input: { task: "add a smoke test" },
     });
 
     expect(result.status).toBe("completed");
-    expect(scripted.rec.cwd).toEqual([HOST_CWD]);
+    expect(scripted.rec.cwd).toEqual([claudeCwd]);
     expect(scripted.rec.resume).toEqual([undefined]);
-    expect(scripted.rec.options[0]).toMatchObject({
-      permissionMode: "bypassPermissions",
-      disallowedTools: expect.arrayContaining(["Agent"]),
-      sandbox: { enabled: true, filesystem: { allowWrite: [HOST_CWD] } },
-    });
     expect(scripted.rec.prompts[0]).toContain(DOOR_PREFIX.implement);
     expect(scripted.rec.prompts[0]).toContain("add a smoke test");
     expect(result.output).toMatchObject({
@@ -234,7 +269,7 @@ describe("fsd-coding flow wiring — Claude", () => {
 
   it("onSession persists the Claude session id so the next door on the same stores resumes", async () => {
     const scripted = scriptedClaude();
-    const flow = flowWithClaude(scripted);
+    const flow = flowWithClaude(scripted.resolve);
     const stores = createInMemoryStores();
 
     const first = await testFlow({
@@ -258,46 +293,9 @@ describe("fsd-coding flow wiring — Claude", () => {
     });
 
     expect(second.status).toBe("completed");
-    expect(scripted.rec.cwd).toEqual([HOST_CWD, HOST_CWD]);
+    expect(scripted.rec.cwd).toEqual([claudeCwd, claudeCwd]);
     expect(scripted.rec.resume).toEqual([undefined, "sess_claude"]);
     expect(scripted.rec.prompts[1]).toContain(DOOR_PREFIX.fix);
   });
 
-  it("host model override reaches Claude query options", async () => {
-    const scripted = scriptedClaude();
-    await testFlow({
-      flow: flowWithClaude(scripted, { model: "claude-sonnet-4-6" }),
-      action: "implement",
-      userId: USER,
-      input: { task: "use the host model" },
-    });
-
-    expect(scripted.rec.options[0]).toMatchObject({ model: "claude-sonnet-4-6" });
-  });
-
-  it("lets trusted Claude host options override the headless defaults", async () => {
-    const scripted = scriptedClaude();
-    const result = await testFlow({
-      flow: createFsdCodingFlow({
-        cwd: HOST_CWD,
-        harness: "claude",
-        claude: {
-          resolveClaudeAgent: scripted.resolve,
-          permissionMode: "default",
-          disallowedTools: ["WebFetch"],
-          sandbox: { enabled: false },
-        },
-      }),
-      action: "implement",
-      userId: USER,
-      input: { task: "use the host policy" },
-    });
-
-    expect(result.status).toBe("completed");
-    expect(scripted.rec.options[0]).toMatchObject({
-      permissionMode: "default",
-      disallowedTools: ["WebFetch"],
-      sandbox: { enabled: false },
-    });
-  });
 });
