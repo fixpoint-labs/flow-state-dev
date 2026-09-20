@@ -51,7 +51,7 @@ Fragment format:
 One user-facing sentence (FIX-123).
 ```
 
-**Every fragment names its Linear issue.** The repo keeps no spec copy ([BP-037](best-practices/process.md)), so the issue id is the only route from a released change back to the reasoning behind it. `scripts/validate-changeset-refs.mjs` enforces this in CI on fragments a PR adds or edits.
+**Every fragment names its Linear issue.** That issue links to retained design history where a spec exists ([BP-037](best-practices/process.md)); release notes stay concise while preserving the route to the reasoning. `scripts/validate-changeset-refs.mjs` enforces the issue reference in CI on fragments a PR adds or edits.
 
 The body is what shows up under that package's heading in the next `CHANGELOG.md` release section, so write it for the next reader, not for the PR reviewer. Implementation rationale, decision lineage, file paths, exact test counts, "out of scope" sections, and Linear ticket internals belong in the PR description, not in the fragment.
 

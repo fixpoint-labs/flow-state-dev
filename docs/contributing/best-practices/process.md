@@ -12,7 +12,7 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Date: 2026-02-15 (updated 2026-06-28: spec-driven; 2026-09-02: a decided surface survives constraints)
 - Scope: Process — scoping and tracking a change, and holding the build to what the unit of intent decided.
 - Rule:
-  - Every implementation change maps to a tracked unit of intent. Which unit depends on the route ([`../orchestration.md`](../orchestration.md) → "Which issues get a spec"): a **feature / enhancement** gets a full `spec/*` spec per BP-037; a **bug** gets none — the Linear issue is the contract and the fix is reviewed on its implementation PR.
+  - Every implementation change maps to a tracked unit of intent. Which unit depends on the route ([`../orchestration.md`](../orchestration.md) → "Which issues get a spec"): a **feature / enhancement** gets a retained issue spec per BP-037; a **bug** gets none — the Linear issue is the contract and the fix is reviewed on its implementation PR.
   - Each spec carries explicit deliverables and verification steps.
   - Between the two: small, local work can use a one-screen agent brief on the issue (`agent-brief-template.md`) instead of a full spec doc. A bug returns to the spec route on the three overrides in [`../orchestration.md`](../orchestration.md) → "Which issues get a spec" — don't re-enumerate them here, since a count that drifts from the router's reads as a contradiction.
   - **A surface the unit of intent decided survives a build constraint.** When a decided shape cannot be built as written — a package boundary, a dependency direction, a type that will not line up — re-read the section of the unit of intent that decided it (the spec for a feature, the issue itself for a bug) first, then move the *mechanism* under the surface until the shape holds. The shape is what was reviewed; the mechanism was not.
@@ -68,21 +68,26 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Update a package README in the same change set when that package's exported surface, runtime behavior, or setup scripts materially change.
 - Why: Docs next to the code that owns each contract reduce integration friction and drift.
 
-### BP-037: Specs live on their spec PR and in Linear — never on `main`
+### BP-037: Retain issue and epic specs as reviewed design history
 
 - Status: Active
-- Date: 2026-06-29 (updated 2026-08-07: `spec/` + CI guard; Linear is the only durable copy)
-- Scope: Process — spec authoring (`issue-spec`).
+- Date: 2026-06-29 (updated 2026-09-19: repository retention and approval-time merge)
+- Scope: Process — issue and epic spec authoring, review and implementation.
 - Rule:
-  - Write the spec to `spec/<ISSUE-ID>/` on branch `spec/<ISSUE-ID>` — four documents (`SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`) and a `figures/` folder — and open a spec PR for it (separate from the implementation PR) so the project's automated reviewers critique the design before any code is written. Applies to issues **on the spec route** — a bug has no spec and no spec PR by design (BP-002).
-  - Follow [`../spec-template.md`](../spec-template.md), whose every document is a worked example of that document filled in, and [`../spec-figures.md`](../spec-figures.md) for the figures. An epic's coordination artifact follows [`../epic-spec-template.md`](../epic-spec-template.md) the same way, at `spec/_epics/<name>/`, and is refreshed for the epic's life.
-  - **The spec never reaches `main`, and this is enforced, not asked.** `scripts/validate-spec-folder.mjs` fails CI on any PR carrying a file in `spec/`; the spec PR itself is exempt **by its branch name** (`spec/*`, and `epic/*` for an epic), not by its `spec` label — the label is applied after the PR is created, and `labeled` is not a default `pull_request` event type, so a label-keyed exemption would fail on the opening run and never re-run. Do not "land the approved spec on the implementation branch" — that was the old workaround and it is now a red check.
-  - **The spec PR is never merged, and it closes when the spec is approved** — not when implementation starts. Mirror the Linear document from the branch head first, close unmerged with a comment naming the Linear doc and the branch, and **keep the branch** (`spec/<ISSUE-ID>` is never deleted). Review history stays on the closed PR. Canonical: [`../orchestration.md`](../orchestration.md) → "Closing the spec PR".
-  - **Re-open it — never open a second one — when a POC is worth building after approval.** Commit the POC to the retained branch, re-open for reviewers, close again unmerged. A re-open does not re-open the approval gate and is never a route to merging.
-  - **Linear is the durable copy — the only one.** The repo keeps no spec on `main`, so there is no sync obligation and no second copy to drift. Mirror the spec to the issue's Linear document when it is published, again before the PR closes, and make any post-approval edit there.
-  - **Nothing in the repo cites a spec by path.** A spec file does not exist on `main`, so such a reference is dangling the moment it is written; CI rejects one. A comment states its reason; durable design decisions are promoted into `docs/architecture/*`, and the changeset names the issue (BP-022) so a released change traces back to Linear.
-  - Because it never merges, the spec PR is also where a **POC** belongs when the design rests on something unverified — throwaway code under `spec-poc/<ISSUE-ID>-<slug>/` that reviewers can actually run ([`spec-poc`](../../../.agents/skills/spec-poc/SKILL.md)). Triggered, not default; costs no review rounds; never lands on `main`. Cite the PR — its diff renders the POC without a checkout — and reach for the retained branch when you want to run it.
-- Why: Reviewing the spec before implementation catches design problems when they're cheapest to fix — a doc edit, not a code rewrite. Keeping the spec out of the repo keeps a point-in-time plan from being read as current truth, and removes the two-copy sync rule that a prose obligation could never hold.
+  - Follow the canonical [retention and authority policy](../orchestration.md#spec-retention-and-authority)
+    and [merge/amendment lifecycle](../orchestration.md#merging-and-amending-a-spec).
+    Repository content is canonical; Linear carries links and status.
+  - Use the [issue](../spec-template.md) or [epic](../epic-spec-template.md) template,
+    including concrete `DOCS.md` drafts and conditional `EVOLUTION.md`.
+  - Specs preserve approved intent, not current behavior. Architecture docs remain
+    authoritative for the current system; implementation reconciles and publishes the
+    documentation draft against what ships.
+  - Valid retained-spec citations may provide provenance. A code comment still states
+    its reason rather than making a reader follow a link to understand it.
+  - Project specs keep their separate never-merged lifecycle. No historical backfill.
+- Why: Design review catches expensive mistakes before implementation. Retaining the
+  reviewed intent and authored evidence makes later evolution traceable without turning
+  Linear into a second editable spec or treating an approved plan as shipped behavior.
 
 ### BP-040: Spec review is a direction check — converge, don't grind
 
@@ -93,8 +98,11 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - **Sign-off certifies directional correctness only** — the problem is real, the approach works, the decisions in `DECISIONS.md` are the ones we want. Not a finished design, and not "nothing left to nitpick" (an unreachable target).
   - **One test per comment: does acting on it change the approach?** Yes → **fold in** (re-draft, anti-addenda rule). No → **note for the implementer** (record verbatim in `PLAN.md → Notes from review`; reply once; do *not* rewrite the design prose around it). Already answered / out of scope / preference → **drop** with one reply. **Default is note; the burden of proof is on folding.**
   - **Budget two review rounds**, then declare convergence and go to the approval gate, carrying remaining threads as implementer notes. A third round requires a genuine spec-level finding from round two, stated in one line. Count rounds **actually spent** — a factual-correction-only batch costs zero — and keep the conditional third round reachable rather than stopping on the count alone. The same budget applies to an **epic** PR.
-  - **Don't drive spec-PR threads to zero.** The spec PR is never merged, so open threads gate nothing. A bot `CHANGES_REQUESTED` neither trips the gate nor extends the budget.
-  - **Below-the-bar spec comments never block implementation** — they're implementer input, not prerequisites.
+  - **Do not grind optional comments to zero.** Required repository checks, approvals and
+    review-thread policy still govern merge; direction approval waives none of them.
+    Triage optional feedback into notes or a reasoned reply within the existing budget.
+  - **Below-the-bar comments are implementer input**, not another direction gate.
+    Implementation still waits for confirmed spec merge under BP-037.
   - The spec PR description leads with the people table, the figure, and the sign-off — then a per-PR **"Reviewers · look here"** block. The reviewer contract from `spec-template.md` (what's in scope to challenge, what's deliberately unsettled) is the one lever available on reviewers we can't instruct, and it sits **collapsed below the fold**, where a bot still reads it and a human skips it. Both blocks are required on every PR we open, at the altitude that PR is reviewed at; canonical in [`../pr-reviewer-guidance.md`](../pr-reviewer-guidance.md).
 - Why: Spec-PR review comes mostly from automated reviewers tuned for code, pointed at a document that is deliberately not a finished design. Treating every line-level observation as a spec defect turned directionally-sound specs into ten-round grinds, at the altitude where none of that detail can actually be settled. Full rule, with the rationale for why converging is safe: [`../orchestration.md`](../orchestration.md) → "Spec review: the bar and the convergence rule".
 

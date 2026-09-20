@@ -20,7 +20,7 @@ gates, not the gates.
 
 | | Under `epic-em` |
 |---|---|
-| Epic objective gate · per-issue spec approval · merge | Theirs, unchanged. **Never absorbed, for any reason** |
+| Epic/issue direction approval · implementation merge | Human-owned, never absorbed. Approved spec merge follows required checks; confirmed merge releases implementation |
 | An escalated blocker | **Yours**, unless it meets a test below |
 | The PR-feedback cap | **Yours** per resolution, not per option |
 
@@ -33,6 +33,8 @@ gates, not the gates.
 - **Never absorbable, whatever the test says** — an `INCONCLUSIVE` POC verdict, an epic
   `unsettled` claim, an epic-spec `openQuestions` entry. An evidence run that failed to settle a
   question is where it stops being an engineering call.
+- **Material changes to approved direction** require renewed human approval on a new
+  spec amendment PR. EM judgment never replaces that gate or the separate implementation merge gate.
 - **At the cap**, run **both** tests above against the resolution you are about to give, not
   against the option — a resolution that changes a shipped contract escalates on the
   architectural test just as *merge as-is with the rest deferred* does on the product one, and
@@ -53,9 +55,9 @@ Absorbing the engineering decisions means the user stops reading specs — that 
 point, and it is also how a product owner ends up ratifying gates on a body of work they can
 no longer picture. So under this posture every gate you surface carries the link to the
 epic-spec's `SPEC.md` — the box figure, the set table and the dependency graph — and, for a
-spec-approval gate, that spec's own `SPEC.md`. The wake keeps the epic set current on every
-phase transition (`epic-lifecycle` → the loop), so the link is to a live picture, not a
-forecast.
+spec-approval gate, that spec's own `SPEC.md`. Pair retained direction with live progress
+from Linear and implementation PRs. The merged spec is a design snapshot, not a per-tick
+status dashboard; meaningful changes use amendment PRs.
 
 This adds no state and moves no gate. Two things it is not: it does **not** replace the
 six-part ask (a picture shows the shape, it doesn't price the decision), and it is **not** a
@@ -68,7 +70,7 @@ It changes **who decides** — not where the information lives, and not where th
 | | Do |
 |---|---|
 | Getting the answer | Decide from what the worker reported. When that isn't enough, **dispatch a bounded reader** (`scout`, or the row's worker) and decide on its return. Never open a spec, diff or thread here ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "The coordinator dispatches; it never does the work") |
-| Unknown trade-offs | Reading won't settle it — **dispatch a throwaway POC**, with 2–3 competing variants when the fork is genuinely contested, so the choice is evidence rather than argument. [`spec-poc`](../spec-poc/SKILL.md) while a spec or epic PR is open (reviewers and the gate see it); [`prototype`](../prototype/SKILL.md) mid-implementation, where you are the audience. Own worktree, throwaway, blocks nothing |
+| Unknown trade-offs | Dispatch a bounded POC, with 2–3 variants for a contested fork. Use `spec-poc` for evidence reviewers need: current review PR before approval, new follow-up PR from `main` afterward. Use `prototype` for private implementation exploration. Own worktree; material direction changes still need human approval |
 | A cap blocker | Dispatch that reader **first, every time** — the wake's blocker leaves *"the worker's read on the open threads is on the PR"*, a surface you may not read |
 | A row-keyed answer | Append `{ for, answer }` to the row's `blockerResolutions`; clear `blocker` |
 | An epic-keyed answer (`unsettled`, `openQuestions`) | Append `{ question, answer }` to `epic.answers`, **leave the entry**, let the `epic-agent` fold retire it. The row field cannot hold it: the question resurfaces every wake and `mayWrap` never goes true |

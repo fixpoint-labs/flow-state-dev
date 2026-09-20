@@ -197,8 +197,7 @@ mostly *for* the bot without weakening it.
 
 **Where a surface doesn't render HTML, the ordering still carries the fold.** Linear
 documents and issue descriptions are the cases we hit: same above-the-fold content first,
-then a `---`, then the detail under a `## Detail` heading. This is why `<details>` belongs
-in a **PR body** and not in a spec document — the four files under `spec/<ISSUE-ID>/` are
-mirrored to a Linear document (BP-037), and a collapsed block there renders as raw HTML. The
-spec's split into four documents, each for one reader, is already its fold. Check what a
-surface renders before relying on it collapsing; the ordering never needs checking.
+then a `---`, then the detail under a `## Detail` heading. Retained issue/epic specs
+link from Linear rather than being mirrored there; their reader-specific document split
+already supplies the fold. Project specs keep their existing Linear mirror. Check what
+a surface renders before relying on it collapsing; the ordering never needs checking.

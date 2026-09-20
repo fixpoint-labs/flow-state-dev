@@ -10,11 +10,11 @@ What it is, where it lives, and how it's gated is canonical in
 | | |
 |---|---|
 | **The epic** | A Linear parent issue carrying the `Epic` label (Kind group); the work is its sub-issues |
-| **Where** | `spec/_epics/<name>/` on branch `epic/<name>`, mirrored to the Epic issue's Linear document |
-| **The PR** | Never merged, never deleted. Open for the life of the epic; closes unmerged at wrap |
-| **Author** | `epic-agent`, one bounded update per dispatch. It **never starts over** — the set is the state |
-| **The gate** | An approving human comment, review, or the owner's `epic approved` label on the epic PR signs off the objective only. Everything else flows continuously and blocks nothing |
-| **Refreshed** | For the life of the epic: the set table, the dependency graph, the path figure and the PR body move as issues are filed and finish |
+| **Where** | `specs/epics/<EPIC-ISSUE-ID>/` on branch `epic/<name>`; Linear links to the repository set |
+| **The PR** | Merges after human objective approval and required checks; then preserves the original review history |
+| **Author** | `epic-agent`, one bounded change to the existing set per dispatch |
+| **The gate** | Human direction approval for the reviewed head, then confirmed merge, before ramping children; see [Gates](orchestration.md#gates-direction-approval-then-confirmed-merge) |
+| **After merge** | Live status from Linear and implementation PRs; meaningful amendments via follow-up PRs from `main` |
 
 **Sign-off certifies the objective, not the plan.** Approving an epic says this body of work is
 worth doing and the outcome is the right one. It does not sign off any issue's approach — that's
@@ -22,35 +22,37 @@ each spec's own gate. The epic-spec is a direction artifact, so the **same two-r
 budget and the same three dispositions** as an issue spec govern its PR. Feedback that doesn't
 change the objective or a cross-cutting decision belongs to the issues under it.
 
-**The same four documents as an issue spec, at a different altitude.** The shape is
+**The same five required documents and conditional evolution record as an issue spec.** The shape is
 [`spec-template.md`](spec-template.md)'s; what each document carries changes with the altitude,
 and the change is the whole of this file:
 
 | File | At issue altitude | At epic altitude | Budget |
 |---|---|---|---|
-| `SPEC.md` | What changes, for whom | The objective as before/after for the **teams** who feel it · **what's in the box** as one figure · **the set, with live status** · **the dependency graph** · what stays as it is · sign-off on the objective | ~900 |
+| `SPEC.md` | What changes, for whom | The objective as before/after for the **teams** who feel it · **what's in the box** · **the set, as of review** · **the dependency graph** · what stays as it is · sign-off on the objective | ~900 |
 | `DECISIONS.md` | D-n cards, the tree | The **cross-cutting calls** as cards · an **ownership matrix** of rule × issue · what was **decided in review** so no child reopens it · what the end-state POC showed | ~1,300 |
 | `BUSINESS-RULES.md` | BR-n: when → then → proved by | **ER-n: the rules every child obeys**, with owner and where each is checked · what no child may do · how the set is run · what done means | ~800 |
 | `PLAN.md` | Surfaces, DAG, checks, guardrails — for the implementer | **Sequencing, not building**: **the path** as lanes against time · what each issue consumes, delivers and releases · what unblocks what · coordination seams · not-children · the wrap | ~900 |
+| `DOCS.md` | Concrete proposed prose for the issue's changed surface | Shared reader narrative, destination operations, and which issue publishes each specific | Changed material only |
+| `EVOLUTION.md` (conditional) | Relevant predecessor decisions/rules | Cross-epic or multi-issue lineage, without duplicating child-specific evolution | Relevant lineage only |
 | `figures/` | One figure the PR body carries | Three the PR body carries: the box, the ownership matrix, the path | — |
 
 **The nav line is the same at both altitudes.** The third line of every document is
-`[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)` with
+`[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)` with
 the current one bold and unlinked ([`spec-template.md`](spec-template.md)), so a reader who lands
 on the rules from a child's spec PR can flip to the decisions without climbing to the directory.
+Append `[Evolution](EVOLUTION.md)` only when present.
 
 **The plan is the document that changes most.** An issue plan says how to build one thing; an
 epic plan says what order N things run in, what each one entails, and what each hands the next.
 So its figure is time, not structure. It has no checks column, because each child's plan owns
 those.
 
-**Status lives in the spec, once.** The set table in `SPEC.md` carries every issue's state and PR
-links, and it is refreshed on the epic PR as issues move; the plan and the figures point at it
-rather than repeating it. The dependency graph sits beside it as mermaid because it is the thing
-edited most: an epic spec usually causes its issues to be filed, so a node for an issue that
-doesn't exist yet is a **`FIX-XXX · working title`** placeholder, drawn dashed, that gets its
-real id when filed and a heavy border when done ([`spec-figures.md`](spec-figures.md) → "The
-placeholder convention"). The path figure is redrawn at the same moments.
+**Status is not a retained spec's authority.** The set table is an explicitly dated
+snapshot of the reviewed scope, with links to Linear and implementation PRs for live
+state. Graphs and path figures change when scope or dependencies change, not on every
+phase tick. Before filing an issue, use a dashed **`FIX-XXX · working title`** node;
+replace it with the actual ID when scope is made concrete. After merge, meaningful
+changes follow [the amendment rule](orchestration.md#merging-and-amending-a-spec).
 
 **One epic-spec is smaller than one issue spec** in what it decides. If `DECISIONS.md` is longer
 than the specs it coordinates, it has stopped being a coordination artifact and started being a
@@ -63,7 +65,7 @@ design nobody signed off. Cross-cutting decisions only.
 | §1 Purpose & objective, the holistic necessity check | `SPEC.md` — the teams table, *what's in the box*, the set with *why the set needs it*, the sign-off |
 | §2 Themes | `DECISIONS.md` — the cross-cutting calls as cards, and *decided in review* |
 | §3 Shape of the whole (the POC) | `DECISIONS.md` — *what the end-state POC showed*, four lines |
-| §4 Running index | `SPEC.md` — the set table, now with status and PR links, refreshed for the epic's life |
+| §4 Running index | `SPEC.md` — the reviewed set with links to live Linear status and implementation PRs |
 | §5 Open cross-cutting questions | `DECISIONS.md` — *decided in review* once answered; a live one is an ask in the PR body |
 | The explainer | Retired. Its panels are the box figure, the set table, the ownership matrix and the path |
 
@@ -81,7 +83,7 @@ this text is identical on every epic PR — so it sits **below the fold**. The v
 authored per PR. Layout and rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
 
 This is an **epic-spec**: the shared objective and cross-cutting decisions for a *set* of
-issues, in four documents. It is not an implementation plan and it is not any one issue's design.
+issues, in a retained document set. It is not any one issue's implementation design.
 
 **In scope to challenge:**
 
@@ -91,32 +93,34 @@ issues, in four documents. It is not an implementation plan and it is not any on
 - A cross-cutting decision in `DECISIONS.md` — shared surface, naming, sequencing, contracts.
 - A rule in `BUSINESS-RULES.md` with no owner, or two.
 - A missing issue the objective implies, or one in the set that doesn't serve it.
+- Shared promises and publication ownership in `DOCS.md`; missing or misleading
+  predecessor treatment in conditional `EVOLUTION.md`.
 
 **Out of scope — owned by the individual issue specs:**
 
 - Any single issue's approach, architecture, file layout, or test plan.
 - Anything that touches exactly one issue. It belongs on that issue's spec PR.
-- **The figures, at the pixel level**, and **the status in the set table**, which is refreshed
-  as the set moves and is never a review finding.
-- **Any POC files on this branch, entirely.** This PR is never merged, so it may carry a
-  throwaway end-state POC built to show what the set looks like once every issue has landed
-  ([`spec-poc`](../../.agents/skills/spec-poc/SKILL.md)). None of it ships. React to the
-  *shape and the scoping it reveals* — `DECISIONS.md` summarizes what it showed — and don't
-  review it as code.
+- **The figures, at the pixel level**, and routine status movement since the dated snapshot.
+- **POC production polish.** End-state experiments under the owning spec's `poc/`
+  show shape and scoping, not shippable implementation. Directional evidence, experimental
+  isolation and absence of secrets/generated dependencies remain in scope.
 
 Feedback in the second list is routed to the issue it concerns as an implementer note, not
 folded in here.
+
+Required repository checks, approvals and review-thread policy still govern merge.
+Optional comments are triaged, not a reason to grind to zero or restart the design review.
 
 ---
 
 ## The PR body
 
-*(Authored when the epic PR opens; the status line and the figure pins are refreshed for the
-life of the epic, the rest whenever the objective materially changes. Budget ~450 prose words
-above the fold. Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
+*(Authored for the reviewed revision, with dated status and pinned figures. After merge,
+leave this original review record intact; a follow-up amendment describes its own delta.
+Budget ~450 prose words above the fold. Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
 
 The teams table from `SPEC.md`. **What's in the box**, pinned, with its sentence. **Why now.**
-**The set** in one line each, with the as-of status counts and a link to the live table. **The
+**The set** in one line each, with as-of counts and links to live Linear/PR state. **The
 path**, pinned, with a sentence — this is what a reader arriving mid-epic wants first. **Who owns
 what**, pinned, with a sentence. Then **Sign off**: the objective and the one or two cross-cutting
 calls that pass the filters, compact form. Then **Reviewers · look here** at epic altitude. Then
@@ -132,7 +136,7 @@ the links line and the collapsed contract.
 > | **has a connection go silently dead** | Never reconnects, because nothing noticed | Notices within a heartbeat and resumes |
 > | **wants their own reconnect policy** | Writes it | Still writes it; the default is one line to override |
 >
-> <img src="…/<sha>/spec/_epics/<name>/figures/end-state.svg" width="940" alt="What's in the box: resume and heartbeats; composed in by the app: reconnect policy; not built: offline queueing and a durable history" />
+> <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/end-state.svg" width="940" alt="What's in the box: resume and heartbeats; composed in by the app: reconnect policy; not built: offline queueing and a durable history" />
 >
 > Inside the box is what an app gets for nothing. The fence keeps a stream from becoming a store.
 >
@@ -141,13 +145,13 @@ the links line and the collapsed contract.
 >
 > **The set:** three issues and a proof. Resume, heartbeats, a backoff default, and a required
 > goal check that drops a real connection. As of 2026-07-05: 1 done, 2 in flight, 1 not
-> filed; the live table and the dependency graph are in [the spec](SPEC.md#the-set--as-of-2026-07-05).
+> filed; [the spec](SPEC.md#the-set--as-of-2026-07-05) records that snapshot and links to live state.
 >
-> <img src="…/<sha>/spec/_epics/<name>/figures/path.svg" width="940" alt="The path: one lane per issue against time, resume done, heartbeats and backoff in flight at the now line, the proof lane empty until both land" />
+> <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/path.svg" width="940" alt="The path: one lane per issue against time, resume done, heartbeats and backoff in flight at the now line, the proof lane empty until both land" />
 >
-> Redrawn on this PR as the set moves. Heartbeats and backoff are the one parallel window.
+> As of the review snapshot, heartbeats and backoff are the one parallel window.
 >
-> <img src="…/<sha>/spec/_epics/<name>/figures/ownership.svg" width="940" alt="Who owns what: five cross-cutting rules by four issues, each rule with exactly one owner" />
+> <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/ownership.svg" width="940" alt="Who owns what: five cross-cutting rules by four issues, each rule with exactly one owner" />
 >
 > Every rule has one owner. Two would be a seam; none would be a gap.
 >
@@ -171,8 +175,8 @@ the links line and the collapsed contract.
 >
 > **Not here:** any single issue's approach. Those are the spec PRs.
 >
-> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
-> · Linear FIX-770 · Project: Streaming · **never merges**, open for the life of the epic
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
+> · Linear FIX-770 · Project: Streaming · merges after human approval and required checks
 >
 > <details>
 > <summary><b>How to review this</b> — an epic-spec, not an implementation plan</summary>
@@ -182,11 +186,9 @@ the links line and the collapsed contract.
 > </details>
 > ```
 
-**The as-of line and the three image pins are refreshed by every epic-agent update**, in the
-same commit as the set table. A body that says *1 done* under a table that says *3 done* is the
-defect the single live table exists to prevent. Where a person has pasted an image into the body,
-the tool leaves it and the refresh names the pin the person changes
-([`spec-figures.md`](spec-figures.md) → "In the PR body").
+Before merge, keep figure pins consistent with the reviewed revision. After merge,
+do not rewrite the original PR body to look current; live status belongs in Linear
+and implementation PRs. Follow-up amendments pin their own figures.
 
 ---
 
@@ -201,7 +203,7 @@ Sections, in order:
 3. **Why now**, in a paragraph.
 4. **What's in the box** — the one figure: in the box · composed in by the app · replaced in
    one line · not built. And its sentence.
-5. **The set · as of `<date>`** — the live table: issue · what it delivers · why the set needs
+5. **The set · as of `<date>`** — the reviewed snapshot: issue · what it delivers · why the set needs
    it · status with PR links. Then the counts line and the holistic necessity check in a
    paragraph: whether N is really N−1, and the collapse trigger if one was named. **A bug row
    carries no spec PR by design** ([`orchestration.md`](orchestration.md) → "Which issues get
@@ -215,7 +217,7 @@ Sections, in order:
 
 > # FIX-770 · Stream resilience: a dropped connection is a non-event
 >
-> **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+> **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 >
 > Epic · 4 issues · Streaming · Goal 1, validate through real usage
 >
@@ -328,7 +330,7 @@ cross-cutting decision.** Sections, in order:
 
 > # FIX-770 · Decisions
 >
-> [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+> [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 >
 > The calls that sit above any single issue: what was chosen, what lost, why, and what each
 > locks in for the four issues under it. Three are the sign-off surface. The rest were raised
@@ -399,8 +401,8 @@ cross-cutting decision.** Sections, in order:
 >
 > **Built:** all three issues' surfaces sketched together end to end, rough and unshipped — a
 > cursor on the stream seam, heartbeat frames, and a client that reconnects — driven by one
-> throwaway flow. **See it:** `spec-poc/epic-stream-resilience/` on this branch;
-> `pnpm tsx spec-poc/epic-stream-resilience/run.ts` prints the assembled reconnect transcript.
+> throwaway flow. **See it:** `specs/epics/FIX-770/poc/end-state/` on this branch;
+> `pnpm tsx specs/epics/FIX-770/poc/end-state/run.ts` prints the assembled reconnect transcript.
 > **Showed:** heartbeats and resume both want to write through the sequence allocator, and each
 > issue read alone puts that decision in its own file. **Changed:** the one-cursor rule became a
 > constraint on the allocator, not just on the encoding, and allocation moved into FIX-775's
@@ -430,7 +432,7 @@ no child may do · how the set is run · the proof (what done means).
 
 > # FIX-770 · Rules every issue in the set obeys
 >
-> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md)
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 >
 > At epic altitude the rules aren't behaviours of one feature; they're the constraints every
 > child spec and implementation must satisfy, and the place a cross-spec review checks. Each
@@ -460,7 +462,7 @@ no child may do · how the set is run · the proof (what done means).
 > | # | Rule | Because |
 > |---|---|---|
 > | ER-10 | A child's Linear state is mirrored the moment it changes | The epic wake derives blocked-by from Linear; a stale child blocks its dependants whatever its PRs say |
-> | ER-11 | A cross-cutting question a child hits is commented **up** on the epic PR, not decided locally | The decisions doc is the single place; a local answer is a second authority |
+> | ER-11 | A cross-cutting question is raised to the epic coordinator, not decided locally; after merge, any resulting amendment gets a follow-up PR | The retained decisions are canonical; the original PR remains history |
 > | ER-12 | Every child's route reads *spec* by default; only a `Bug` label re-routes it | Fail-closed routing |
 > | ER-13 | The epic finishes only when the proof's goal check passes | D1. Surface without proof doesn't move the lead measure |
 >
@@ -480,12 +482,12 @@ any piece; that's each issue's own plan. Sections, in order:
 
 1. **The path** — the one figure: one lane per issue in chain order, inputs from other epics as
    lanes above, done bars, in-flight bars at the now line, empty lanes after it, the critical
-   path drawn through. And its sentence. **Redrawn whenever the set table moves.**
+   path drawn through. And its sentence. **Dated; amended when the planned sequence changes.**
 2. **What each issue entails** — a table: issue · route · consumes · delivers · releases · size.
    *Consumes → delivers → releases* is the row an issue plan never needs and an epic plan can't
    do without.
-3. **Where it is** — a pointer at the spec's live table, plus the inputs from other epics and
-   their verified state. Never a second copy of the table.
+3. **Where it is** — links to live Linear and implementation PR state from the set table,
+   plus dated evidence for external inputs. Never a second status database.
 4. **What unblocks what, from here** — numbered: this merges → that can start.
 5. **Coordination seams to watch** — a table: seam · between · rule. The places two children
    edit the same surface.
@@ -494,7 +496,7 @@ any piece; that's each issue's own plan. Sections, in order:
 
 > # FIX-770 · Plan
 >
-> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan**
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 >
 > An epic plan sequences the work and says what each piece entails. It does not say how to
 > build any piece; that's each issue's own plan. IDs cross-reference
@@ -520,16 +522,16 @@ any piece; that's each issue's own plan. Sections, in order:
 >
 > ## Where it is
 >
-> Status lives in one place: [the set table in the spec](SPEC.md#the-set--as-of-2026-07-05).
-> The swimlanes above carry the same state as a picture of time and are redrawn when it moves.
+> [The set table](SPEC.md#the-set--as-of-2026-07-05) is the review-time snapshot.
+> Follow its Linear and implementation PR links for current status, not the dated swimlanes.
 > The one input from another epic: FIX-790, the store's history read, is shipped and ER-9
 > consumes it without re-parenting it.
 >
 > ## What unblocks what, from here
 >
 > 1. **FIX-776 and FIX-777 merge** → the proof is filed and can start. Nothing else waits on them.
-> 2. **The proof's goal check passes** → the epic wraps: lessons pass, docs polish, the epic PR
->    closes unmerged.
+> 2. **The proof's goal check passes** → wrap: lessons pass, docs polish and a completion
+>    report in Linear. The original merged spec PR remains the historical review.
 > 3. **If FIX-790's read gains a `from` option during any of this** → FIX-775's seam is
 >    unchanged (decided, not asked). No child re-sequences.
 >
@@ -547,40 +549,84 @@ any piece; that's each issue's own plan. Sections, in order:
 >
 > ## Wrap
 >
-> When ER-13 holds: run the lessons pass over the set's review rounds, dispatch the docs polish
-> over the streaming pages the children each edited in isolation, refresh the spec's set table
-> and the path one last time, and close the epic PR unmerged.
+> When ER-13 holds: run the lessons pass, dispatch docs polish over the children's
+> streaming pages, and report the outcome from Linear and implementation evidence.
+> Publish meaningful design amendments through a follow-up PR, not a final status commit.
 
 ---
+
+## `DOCS.md` — shared narrative and publication ownership
+
+Use the [issue template's documentation contract and example](spec-template.md#docsmd--proposed-documentation-not-a-plan).
+At epic altitude, write the shared story once and assign its publication to an issue;
+do not pre-write every child's detail. This continues the fictional streaming epic.
+
+> # FIX-770 · Documentation draft
+>
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
+>
+> ## UPDATE · `apps/docs/docs/streaming/overview.md` · opening
+>
+> A dropped connection does not require a new answer. The client resumes the existing
+> request from its last received item; heartbeats let it notice a connection that has
+> silently stopped delivering data. The built-in reconnect delay supplies a default,
+> and an app can replace that policy without replacing resume.
+>
+> For example, if a phone loses its connection after item 41, reconnecting resumes
+> after that item instead of appending items 1–41 again. A completed request returns
+> its remaining items and closes. This is recovery within a request, not offline
+> queueing or an unlimited history store.
+>
+> Existing apps need no new configuration to use the default. Apps with a custom
+> reconnect policy keep ownership of that policy; the individual issue drafts describe
+> cursor handling and the override example before publication.
+>
+> ## Ownership
+>
+> | Material | Publisher | Specific draft |
+> |---|---|---|
+> | Shared opening above | FIX-776, after assembled behavior is verified | This document |
+> | Cursor precedence, malformed values and completed-request boundaries | FIX-775 | Its `DOCS.md` |
+> | Heartbeat detection limits | FIX-776 | Its `DOCS.md` |
+> | Reconnect policy override example and limits | FIX-777 | Its `DOCS.md` |
+>
+> Publish each specific with its implementation. The shared opening waits until the
+> behaviors it promises are available; do not publish it merely because this spec merged.
+> No unchanged page is copied here. Later publishers link the first owner's narrative.
+
+## `EVOLUTION.md` — cross-cutting lineage
+
+The [issue example](spec-template.md#evolutionmd--conditional-precise-design-lineage)
+shows the row shape. At epic altitude, track only changes spanning children. These
+two additional predecessors are **fictional**, and their source paths are illustrative
+code spans, not claims that those files exist.
+
+> # FIX-770 · Evolution
+>
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · **Evolution**
+>
+> | Prior intent and precise source | Treatment | Reason / evidence | Replacement | Compatibility |
+> |---|---|---|---|---|
+> | FIX-680 D3 made each app own all reconnect machinery; source `../FIX-680/DECISIONS.md#d3` | **Amended** for the default, retained for overrides | The end-state POC demonstrates one shared resume path instead of three app-owned implementations | This epic D3; FIX-777 owns the default, FIX-775 owns resume | Existing app policy remains an override, not a second reconnect actor |
+> | FIX-681 ER-2 forbids durable per-client state; source `../FIX-681/BUSINESS-RULES.md#er-2` | **Retained** | Current architecture keeps persistence request-scoped; the proof must exercise reconnection without a client-state store | This epic ER-4 and ER-8, owned by FIX-775 | No new durable state or offline queue; no stored-data migration |
+>
+> Neither predecessor is wholly superseded. FIX-790's store-history API is consumed,
+> not superseded. Child-specific cursor changes belong in FIX-775's evolution record.
+> Re-check the cited intentions against current code and architecture before implementing.
+
+Use actual historical PR/Linear provenance and precise section IDs when retained files
+do not exist; the [canonical retention policy](orchestration.md#spec-retention-and-authority)
+defines that case without requiring backfill.
 
 ## What refreshes, and when
 
-The epic-spec is the one spec that is edited for its whole life. `epic-agent` owns every edit,
-one bounded update per dispatch, and the coordinator dispatches it on these triggers
-(`epic-lifecycle` → the loop; `epic-wake` fires the refresh when a row's phase changed):
+| Event | Before merge | After merge |
+|---|---|---|
+| Routine issue/PR phase change | Refresh session status from Linear and PRs; avoid status-only spec churn | Same; no retained-spec commit |
+| Scope, dependencies or ownership changes | Amend the open set and affected figures | Follow-up PR from `main` |
+| Direction changes or a POC refutes a premise | Redraft and obtain fresh human approval | Pause affected work; follow-up amendment with renewed human approval |
+| Wrap | Determine completion from implementation evidence, not spec-PR state | Report completion in Linear; leave original merged PR historical |
 
-| Trigger | `SPEC.md` | `DECISIONS.md` | `PLAN.md` | The PR body |
-|---|---|---|---|---|
-| An issue is filed, or its spec PR opens | Set table row · graph node gets its id, solid border | — | Path lane gets a bar | As-of line · path pin |
-| A spec is approved, an impl PR opens or merges | Set table status · graph border goes heavy on done | — | Path bars and now line | As-of line · path pin |
-| A cross-cutting question is answered, or a POC verdict lands | — | The card or *decided in review* · ownership matrix if an owner moved | — | The affected block |
-| Review folds a change to the objective | Teams table · box figure if the box changed | The card · *how it got here* | — | Blocks 1–3 · box pin |
-| Wrap | Set table final · counts line | *How it got here* final line | Path final | As-of line · path pin |
-
-Two things about that table. **A status refresh is a commit on the epic PR**, so it moves the
-head: a review-based objective approval goes stale on it by the ordinary staleness rule, and the
-owner's `epic approved` label — standing state that survives pushes — is the channel built for a
-PR that takes commits for its whole life ([`orchestration.md`](orchestration.md) → Gates). **A
-refresh that changes nothing is a real outcome**: say so and exit rather than manufacturing a
-diff.
-
----
-
-## Publishing and mirroring
-
-The directory is committed to `epic/<name>` and opened as the never-merged epic PR. The Linear
-document attached to the Epic issue is **the four files in reading order** under their own H1s,
-figures linked to the branch (`https://github.com/<owner>/<repo>/blob/epic/<name>/spec/_epics/<name>/figures/<name>.svg`)
-and every cross-document link (`DECISIONS.md#d4`, `PLAN.md`) rewritten to the same branch URL,
-re-mirrored on every refresh. Linear renders neither `<details>` nor a repo-relative image, so
-the document carries links and the ordering carries the fold.
+Project-spec refresh remains its own unchanged lifecycle. Issue/epic publication follows
+[Merging and amending a spec](orchestration.md#merging-and-amending-a-spec); Linear holds
+links and status, not a full-content mirror.

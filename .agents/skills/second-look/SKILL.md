@@ -2,7 +2,7 @@
 name: second-look
 context: fork
 agent: general-purpose
-description: Use when you want a retrospective re-examination of a branch, PR, a Linear issue's attached spec, or a named feature in the @flow-state-dev repo — to question whether the solution was (or will be) the right approach, whether it's overbuilt or carries YAGNI/speculative surface, what the 80/20 version would be, and whether building it revealed a simpler path. Read-only; produces a scannable findings table, no edits or tickets. Keywords: bloat, overbuilt, over-engineered, too much code, premature abstraction, YAGNI, 80/20, was this the best approach, cut scope, review spec before building, FIX-.
+description: Read-only retrospective review of a branch, PR, retained issue spec, or named feature — whether the approach earns its scope, what the leaner version is, and what implementation revealed. Produces a findings table; no edits or tickets.
 ---
 
 # Second Look
@@ -37,10 +37,10 @@ The target names one of three review objects. Resolve it first — the object an
 |--------|---------------|---------------|---------------|
 | `<PR#>` | the PR diff | `gh pr view <PR#>` | actual diff — `gh pr diff <PR#>` / `--patch` for `numstat` |
 | no arg | current branch diff vs `main` | PR/commit messages | actual diff — `git diff --numstat main...HEAD` |
-| `FIX-XXX` (Linear) | the **attached spec** — the *planned* approach, before/while it's built | the issue body | **forward estimate** — lines the spec would generate |
+| `FIX-XXX` (Linear) | the **retained spec** and applicable evolution — planned approach | issue outcome plus canonical repo set | **forward estimate** — lines the spec would generate |
 | `<name>` (feature/area) | the current code implementing it | the issue/PR/wave it came from | current LOC of the isolated surface |
 
-- **`FIX-XXX`** → fetch the issue and its **attached spec document** from Linear (see CLAUDE.md → "Linear access" for the channel). The issue body is the requirement; the spec is the approach under review. You're catching bloat *before it's written* — findings recommend cutting scope from the spec.
+- **`FIX-XXX`** → use Linear for the issue outcome and spec links. Read `specs/issues/<ISSUE-ID>/` from the approved review head before merge, or `main` and merged amendments afterward. Include `DOCS.md`, applicable `EVOLUTION.md`, and predecessor anchors; compare prior intent with current code/docs. Historical PR/Linear provenance is valid when no retained file exists, not a reason to invent a path. Recommend cuts against the current direction, not a superseded predecessor; post-merge changes would need a new amendment PR.
 - **`<name>`** → use the `Explore` agent to **isolate the surface first** (which blocks/patterns/capabilities/files implement it), then review what's there. Pull the wave plan + journal under `docs/internal/waves/` or the originating PR for intent.
 
 For diff and feature targets, pull the **real line counts** before estimating. Every Δlines number is anchored to that real size (or, for a spec, a stated forward estimate) — report the size in the verdict.
