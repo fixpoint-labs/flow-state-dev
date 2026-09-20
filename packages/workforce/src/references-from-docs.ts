@@ -95,6 +95,26 @@ export function referenceBody(raw: string): string {
 }
 
 /**
+ * Whether this declared entry is a reference THIS package installed.
+ *
+ * **By identity, not by shape.** The test is `render === referenceBody` — the
+ * exact function above, which only `referencesFromDocs` attaches. A shape test
+ * (`contentFile` set and both write flags false) would read a hand-written
+ * sealed file-backed resource as a reference and refuse an app whose wiring is
+ * fine. Identity says what this is asking: *did this convention build it?*
+ *
+ * It exists so the wall can tell that a kind is holding references before it
+ * has a catalog to recognise them with — which is the one way the wall could be
+ * switched off. See `./seat-references`.
+ *
+ * Deliberately no brand field. A marker property would be a second place the
+ * same fact lives, and one a hand-built entry could set.
+ */
+export function isReferenceDefinition(entry: unknown): boolean {
+  return (entry as { render?: unknown } | undefined)?.render === referenceBody;
+}
+
+/**
  * The wording for a reference record with no file to read.
  *
  * Fatal rather than empty: a reference IS its file, so a record without one

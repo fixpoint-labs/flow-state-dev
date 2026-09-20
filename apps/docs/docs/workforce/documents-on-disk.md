@@ -49,7 +49,7 @@ workforce/
 
 Five documents: a code of conduct everyone reads, a handbook for engineering, a runbook for one seat, an escalation procedure for support, and a scratchpad the engineering agents can write. Every example below reads this tree.
 
-Both folders name documents the same way, and they share one namespace. `references/handbook.md` and `resources/handbook.md` in one team are two spellings of the name `handbook`. `readDeclaredRoster` reports the pair in its `problems`, and `hireWorkforce` throws on it, naming both files. Neither single-folder reader sees the other folder, so neither of them reports it on its own.
+Both folders name documents the same way, and they share one namespace. `references/handbook.md` and `resources/handbook.md` in one team are two spellings of the name `handbook`. Neither single-folder reader sees the other folder, so neither reports the pair on its own. `readDeclaredRoster`, which walks the whole tree in one call, puts it in its `problems` and names both files; `hireWorkforce` throws on a ref handed to it as both a document and a reference.
 
 A worker's own folder is what lets two seats each have a `runbook` without their authors agreeing on a name. Organization-level workers, under `org/workers/`, are read the same way.
 
@@ -196,15 +196,20 @@ A reported file is a document your app was supposed to have. Log a warning and c
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { referencesFromDocs, resourcesFromDocs } from "@flow-state-dev/workforce";
-import { readReferencesDirectory, readResourcesDirectory } from "@flow-state-dev/workforce/loader";
+import { hireWorkforce, referencesFromDocs, resourcesFromDocs } from "@flow-state-dev/workforce";
+import {
+  readReferencesDirectory,
+  readResourcesDirectory,
+  readWorkforceDirectory,
+} from "@flow-state-dev/workforce/loader";
 import { answerQuestion } from "./blocks";
 import { ticketResource } from "./resources";
 
+const roster = await readWorkforceDirectory("./workforce");
 const references = await readReferencesDirectory("./workforce");
 const resources = await readResourcesDirectory("./workforce");
-for (const { errors } of [references, resources]) {
-  if (errors.length) throw new Error(`workforce: ${errors.length} document(s) failed to load`);
+for (const { errors } of [roster, references, resources]) {
+  if (errors.length) throw new Error(`workforce: ${errors.length} entries failed to load`);
 }
 
 const documentMap = resourcesFromDocs(resources.documents);
@@ -215,19 +220,29 @@ export const supportFlow = defineFlow({
   actions: { answer: { block: answerQuestion } },
   resources: { ticket: ticketResource, ...documentMap, ...referenceMap },
 });
+
+export const seats = hireWorkforce(roster.workers, {
+  kinds: { support: supportFlow },
+  documents: documentMap,
+  references: referenceMap,
+});
 ```
 
 Every file-declared document is installed at `org` scope. A `resources/` entry carries the file's body as its starting content; a `references/` entry points at the file itself, which is read whenever an execution context is built. Editing a reference in your repository reaches agents on the next request, and a read already in flight keeps the body it started with.
 
-Pass both maps to `hireWorkforce` as well, under `documents` and `references`:
+`documents` and `references` tell the hire which entries on a kind's map are which. [The tree wall](#who-reaches-what) is derived against the `references` map, so a kind holding references has to be hired with it. Omit it, or pass one that is missing a reference the kind installed, and `hireWorkforce` throws, naming every reference it was not given. The whole roster is refused, so no seat is hired:
 
-```ts
-hireWorkforce(workers, { kinds, documents: documentMap, references: referenceMap });
+```
+hireWorkforce refused 1 of 1 worker; nothing was hired:
+  - worker "engineering.ada" — is hired onto a kind holding 4 reference(s) that hireWorkforce
+    was not given: "code-of-conduct", "teams/engineering/handbook",
+    "teams/engineering/workers/ada/runbook", "teams/support/escalation". … Pass the same map you
+    installed on the kind: hireWorkforce(workers, { references: referencesFromDocs(refs) })
 ```
 
-That is what tells the hire which entries on a kind's map are references, which is what [the tree wall](#who-reaches-what) narrows. Leave `references` out and no entry is treated as one: every seat reaches every reference the kind installed, and a seat whose `WORKER.md` names any is refused. A ref passed in both maps is refused too, naming it.
+A kind holding no references needs no map, and a roster hires the same whether you pass one or not. A ref passed in both maps is refused too, naming it.
 
-Spread the maps rather than passing one on its own. A flow copy created with `supportFlow({ resources })` *replaces* the definition's map instead of merging with it, so a copy handed only `resourcesFromDocs(documents)` loses whatever the flow kind declared.
+Spread the maps rather than passing one on its own. A flow copy created with `supportFlow({ resources })` *replaces* the definition's map instead of merging with it, so a copy handed only `documentMap` loses whatever the flow kind declared.
 
 Both functions throw rather than collecting. A record that cannot become a resource stops startup, naming the ref.
 
@@ -272,7 +287,7 @@ references:
 ---
 ```
 
-Leaving the key out means every reference at or above the seat. Writing `references: []` means none — the two are different answers, not the same one.
+Leaving the key out means every reference at or above the seat. Writing `references: []` means none.
 
 Seats are read from `teams/<team>/workers/<name>/`, so a reference under `org/workers/<name>/references/` sits beside the organization level rather than above any seat, and no seat reaches it.
 
@@ -321,11 +336,11 @@ export const answerQuestion = generator({
 });
 ```
 
-`requireOrg: true` is what binds the request to an org, which org-scoped documents need to load at all.
+`requireOrg: true` is there because documents are org-scoped. See [The request needs an org](#the-request-needs-an-org).
 
 The documents are already declared on the flow, so the generator does not declare them again. The tool addresses a document by its scope-qualified uri, the same handle the [search tools](/docs/resources/searching) return. See [LLM access patterns](/docs/resources/overview#llm-access-patterns).
 
-A reference is read-only to code and to the model. `writeContent()` on one throws a `FlowError` with code `resource_read_only` and the message `Resource "handbook" content is read-only`, and the write tool is never offered for it, whatever tools the generator carries.
+A reference is read-only to code and to the model. `writeContent()` on one throws a `FlowError` with code `resource_read_only`, whose message names the ref: `Resource "teams/engineering/handbook" content is read-only`. The write tool is never offered for a reference either, whatever tools the generator carries.
 
 ## Moving a document into `references/`
 
@@ -343,7 +358,7 @@ const result = await clearShadowedReferences({
   installedOn: { id: flow.id, isolatesOrgState: false },
 });
 console.log(describeShadowedReferences(result));
-// references: 1 of 4 were shadowed by a stored write and have been cleared — handbook.
+// references: 1 of 4 were shadowed by a stored write and have been cleared — teams/engineering/handbook.
 // Each now serves its file again.
 ```
 

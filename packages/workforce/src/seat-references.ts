@@ -35,6 +35,7 @@
 
 import type { DeclaredResources } from "@flow-state-dev/core";
 import { describe } from "./describe-value";
+import { isReferenceDefinition } from "./references-from-docs";
 import { emptyMap } from "./empty-map";
 
 /**
@@ -236,6 +237,21 @@ const unreachableSeatReferenceMessage = (ref: string, seatId: string): string =>
   `tree to widen who reads it, or drop the entry.`;
 
 /**
+ * The wording for a kind holding references the hire step was not given.
+ *
+ * The one refusal that is about the APP's wiring rather than a seat's file, so
+ * it names the option rather than the seat. Fatal, and deliberately not a
+ * warning: a warning here would be a wall that is off with a log line, which is
+ * the failure this convention exists to end.
+ */
+const referencesNotDeclaredMessage = (refs: readonly string[]): string =>
+  `is hired onto a kind holding ${refs.length} reference(s) that hireWorkforce was not given: ` +
+  `${refs.map((ref) => `"${ref}"`).join(", ")}. A reference's reach is derived from where its ` +
+  `file sits, and that can only be worked out against the app's own catalog — so without it ` +
+  `every seat would reach every team's references and nothing would say so. Pass the same map ` +
+  `you installed on the kind: \`hireWorkforce(workers, { references: referencesFromDocs(refs) })\`.`;
+
+/**
  * The wording for a seat whose id names no place in the tree.
  *
  * Fatal once the kind holds references, and silent before that: reachability is
@@ -391,6 +407,31 @@ export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedRefer
   // app may expose one definition under a second key, and matching names alone
   // would leave that alias outside the wall.
   const references = referenceKeys(catalog, kindResources);
+
+  // **Before the wall can be applied, check it is not simply absent.**
+  //
+  // Reachability is derived from the catalog, and the catalog is the app's to
+  // hand over. An app that spreads `referencesFromDocs(...)` into its flow but
+  // forgets to pass the same map here gets a kind full of references that
+  // nothing recognises: D1 still holds, because the seal rides on the
+  // definition, but D2 evaporates and every seat reaches every team's
+  // handbook. Nothing would warn, and the folder would still be called
+  // `references/`.
+  //
+  // That is this convention's own problem statement one level up — the wall
+  // back to a line the app must remember, with the same silence when it is
+  // missing — so omission is refused rather than tolerated. Fail closed and
+  // loud, the way the migration refuses an address it cannot compute.
+  //
+  // Recognised by IDENTITY, not by shape: see `isReferenceDefinition`. A
+  // partial catalog is refused for the same reason and by the same check —
+  // one unrecognised reference is one document the wall does not cover.
+  const unwalled = Object.keys(kindResources).filter(
+    (key) => isReferenceDefinition(kindResources[key]) && !references.has(key),
+  );
+  if (unwalled.length > 0) {
+    return { reachable: new Set<string>(), problems: [referencesNotDeclaredMessage(unwalled)] };
+  }
 
   // Nothing to wall. Left exactly as it was — the branch that keeps an app with
   // no references/ folder unchanged, including being minted with no map.

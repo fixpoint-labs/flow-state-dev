@@ -898,3 +898,92 @@ describe("the migration addresses the right bucket, or refuses", () => {
     expect(fine.scopeId).toBe(ORG);
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// The wall's own off-switch: forgetting to hand it the catalog
+// ---------------------------------------------------------------------------
+
+describe("the wall cannot be turned off by omission", () => {
+  /**
+   * An app spreads `referencesFromDocs(...)` into its flow but forgets to pass
+   * the same map to `hireWorkforce` as `references`.
+   *
+   * D1 survives that — the seal rides on the definition, so the files stay
+   * read-only and still read from disk. **D2 does not.** Nothing is recognised
+   * as a reference, so the wall applies to nothing and every seat reaches every
+   * team's handbook.
+   *
+   * That is this convention's own problem statement one level up: the wall it
+   * exists to derive would be back to a line the app has to remember, and its
+   * absence would be as silent as the filter's was. Refused instead, naming the
+   * option, the same way the migration refuses an address it cannot compute.
+   */
+  async function hireWithoutCatalog(seatRecord = seat(ENG_SEAT)) {
+    const root = await tree();
+    const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
+    const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
+    return hireWorkforce([seatRecord], {
+      kinds: { [KIND]: kindWith({ ...documents, ...references }) as never },
+      documents,
+      // `references` deliberately NOT passed. This is the whole case.
+    });
+  }
+
+  it("RED→GREEN — refuses rather than hiring a seat with no wall", async () => {
+    await expect(hireWithoutCatalog()).rejects.toThrow(/references/);
+  });
+
+  it("the refusal names the option the app is missing, so it is actionable", async () => {
+    await expect(hireWithoutCatalog()).rejects.toThrow(/hireWorkforce/);
+  });
+
+  it("a PARTIAL catalog is refused too — the hole is the same size", async () => {
+    const root = await tree();
+    const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
+    const all = referencesFromDocs((await readReferencesDirectory(root)).documents);
+    // Everything except the sales handbook, which would then be walled by
+    // nothing and reachable by every seat.
+    const partial = Object.fromEntries(
+      Object.entries(all).filter(([ref]) => ref !== SALES_HANDBOOK),
+    );
+    expect(() =>
+      hireWorkforce([seat(ENG_SEAT)], {
+        kinds: { [KIND]: kindWith({ ...documents, ...all }) as never },
+        documents,
+        references: partial,
+      }),
+    ).toThrow(new RegExp(SALES_HANDBOOK));
+  });
+
+  it("an app with no references at all is untouched — no catalog, no refusal", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "fix1467-none-"));
+    roots.push(root);
+    await writeInto(root, {
+      "teams/engineering/resources/scratch.md": doc("Scratch", "seed"),
+    });
+    const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
+    const hired = hireWorkforce([seat(ENG_SEAT)], {
+      kinds: { [KIND]: kindWith(documents) as never },
+      documents,
+    });
+    const { ctx } = await ctxFor(hired[0]!);
+    expect(await handleFor(ctx, ENG_SCRATCH)!.readContent()).toBe("seed");
+  });
+});
+
+describe("a reference above no seat reaches nobody", () => {
+  it("an org WORKER's references/ sits beside the org level, not above a team seat", async () => {
+    const root = await tree();
+    await writeInto(root, {
+      "org/workers/build/references/runbook.md": doc("Build runbook", "BUILD RUNBOOK v1"),
+    });
+    const { seat: ada } = await seatOn(root);
+    const { ctx } = await ctxFor(ada);
+    // Seats are minted only from `teams/<team>/workers/<name>/`, so nothing in
+    // this tree sits below an org worker's folder. The document loads, installs
+    // and is reachable by no seat at all — the same gap that retired BR-8, kept
+    // visible here rather than left for someone to rediscover.
+    expect(handleFor(ctx, "workers/build/runbook")).toBeUndefined();
+  });
+});

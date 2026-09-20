@@ -406,7 +406,7 @@ One catalog, spread into the flow and handed to the hire. Which entries in that 
 
 `documents` is consulted only for a worker that declares `resources:`. A roster where none does hires the same whether you pass it or not. A worker that does declare one while `documents` is absent is refused, naming what is missing.
 
-References go the same way, under a `references` option holding the map `referencesFromDocs` returned. That option is what marks those entries as references, and the tree wall applies only to entries it names: leave it out and every worker reaches every reference its kind installed. [Installing the documents](./documents-on-disk.md#installing-the-documents) has the call with both maps.
+References go under a `references` option holding the map `referencesFromDocs` returned, and that one works the other way round: the tree wall is derived against it, so a kind holding references has to be hired with it. Leave it out, or pass a map missing one of them, and the whole roster is refused, naming every reference the hire was not given. [Installing the documents](./documents-on-disk.md#installing-the-documents) has the call with both maps.
 
 A list the hire step cannot resolve refuses the whole roster, naming the worker and what was wrong. The message calls one entry a grant and quotes the ref as the file spelled it, which here is `handbook` with two letters swapped:
 

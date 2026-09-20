@@ -825,9 +825,11 @@ const seats = hireWorkforce(workers, {
 });
 ```
 
-`references` is what tells the hire which entries on a kind's map are references. Leave it out and
-none of them is: every seat reaches every reference the kind installed, and a seat whose file
-declares `references:` is refused. A ref passed in both maps is refused as well, naming it.
+`references` is what tells the hire which entries on a kind's map are references, and the tree wall
+applies only to the entries it names. So once a kind holds references, the option is required: omit
+it, or pass a map that is missing one of them, and `hireWorkforce` throws, naming every reference it
+was not given. A kind that holds none needs no map. A ref passed in both maps is refused as well,
+naming it.
 
 **The flow needs an org identity, and it will not ask for one on its own.** Every file-declared
 document is org-scoped, and a flow collects `requiresOrg` from its blocks, not from its resource
@@ -929,7 +931,7 @@ const result = await clearShadowedReferences({
   // dryRun: true,
 });
 console.log(describeShadowedReferences(result));
-// references: 1 of 4 were shadowed by a stored write and have been cleared — handbook.
+// references: 1 of 4 were shadowed by a stored write and have been cleared — teams/engineering/handbook.
 // Each now serves its file again.
 ```
 
@@ -939,12 +941,11 @@ place that text exists, so log or keep it before deciding the clear was right. `
 reports the same finding, deletes nothing, and makes the sentence read "WOULD be cleared". Running
 it again over a migrated tree clears nothing, and it never touches a `resources/` document.
 
-`installedOn` is `{ id, isolatesOrgState }` for the flow the references are installed on, and it is
-required rather than defaulted: a flow that isolates its org scope stores content under a different
-address, so a wrong value here looks in the wrong place, finds nothing, and reports success. Read
-`isolatesOrgState` off the flow. For an org or flow id containing `:` or a backslash it throws —
-that address needs the engine's own escaping; clear those rows with the engine's store helpers
-instead.
+`installedOn` is `{ id, isolatesOrgState }` for the flow the references are installed on. A flow
+that isolates its org scope stores content under a different address, so a wrong value here looks in
+the wrong place, finds nothing, and reports success. Read `isolatesOrgState` off the flow. For an org
+or flow id containing `:` or a backslash it throws. That address needs the engine's own escaping, so
+clear those rows with the engine's store helpers instead.
 
 ### What a file may and may not declare
 
@@ -960,20 +961,20 @@ so is `prefetchMode: "lazy"`: a file-declared document is always loaded eagerly.
 carried through as written, so `llmReadable`, `llmWritable`, `writable`, `allowedExtensions` and
 `metadata` all reach the resource.
 
-A `references/` file may not declare `writable`, `llmWritable`, `render` or `flowIsolation` either —
+A `references/` file may not declare `writable`, `llmWritable`, `render` or `flowIsolation` either,
 `writable: false` included, even though it agrees with the folder. A reference is read-only on both
 doors: `writeContent()` throws a `FlowError` with code `resource_read_only`, and the model is never
 offered the write tool for it. A document that needs to be written belongs in `resources/`.
 
 A document that needs a state schema, a render function, reactive bindings or an edge graph stays in
-code — those are functions, and a Markdown file cannot hold one. Session- and user-scoped resources
+code. Those are functions, and a Markdown file cannot hold one. Session- and user-scoped resources
 are not file-declared.
 
 Document, team and worker folder names all follow one rule: lowercase letters, digits and
 single hyphens, at most 64 characters. A worker folder's documents load whether or not the folder
-holds a `WORKER.md` — this reader answers a question about a file, and a slot with no seat file is
-reported separately by `readWorkforceDirectory`. A non-`.md` file in the slot is passed over in silence. An
-absent `org/` root or document folder is not an error — a team may have no documents.
+holds a `WORKER.md`, and a slot with no seat file is reported separately by
+`readWorkforceDirectory`. A non-`.md` file in the slot is passed over in silence. An absent `org/`
+root or document folder is not an error. A team may have no documents.
 
 ### What did not load
 
@@ -1478,7 +1479,7 @@ membershipPrefix("");
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
 | `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, every `resources/` folder the convention reads, and every `blocks/` folder inside the team tree, returning what they hold on `files`, `resourceModules` and `seatBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules, seatBlocks?)` | Render a discovery's `files`, `resourceModules` and `seatBlocks` as a module of static imports exporting `kinds`, `channelKinds`, `blocks`, `seatBlocks` and `resourceModules`. Pass all three: the third parameter defaults to `[]`, so omitting it renders an empty `seatBlocks` map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
-| `hireWorkforce(manifests, { kinds, seatBlocks, channelBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever the tree has a `references/` folder: it is what marks those entries as references, and the per-seat tree wall applies only to entries it names. `channelBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
+| `hireWorkforce(manifests, { kinds, seatBlocks, channelBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, the per-seat tree wall is derived against it, and a kind holding references it was not given refuses the whole roster. `channelBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
 | `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills` and `seatTools`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
 | `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
