@@ -199,7 +199,7 @@ if (offenders.length > 3) {
 }
 console.error(
   `\n  Name the issue in the fragment body so a released change traces back to` +
-    `\n  its spec and discussion in Linear — the repo keeps no spec copy.` +
+    `\n  its retained repository spec and Linear discussion when they exist.` +
     `\n\n  ---` +
     `\n  "@flow-state-dev/engine": patch` +
     `\n  ---` +

@@ -480,7 +480,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 386" role="img" aria-label="The end-to-end lifecycle. An objective is shaped into five lines, an epic spec is written, then gate one is the owner approving the objective. Issues then route by category: features get a spec, a review budget of two rounds, and gate two the spec approval; bugs skip both and go straight to implementation. Implementation produces a pull request, review rounds run to a cap of twelve, and gate three is the owner merging. A wrap phase distils lessons. Gates are human, most phases are prose, and the routing and the budgets are code.">
+      <svg viewBox="0 0 940 386" role="img" aria-label="The end-to-end lifecycle. An objective is shaped into five lines, an epic spec is written, then gate one is the owner approving the objective; required checks pass and the spec merges before work begins. Issues then route by category: features get a spec, a review budget of two rounds, gate two approval, and a confirmed spec merge before implementation; bugs skip those steps. Implementation produces a pull request, review rounds run to a cap of twelve, and gate three is the owner merging. A wrap phase distils lessons. Gates are human, most phases are prose, and routing, merge confirmation, and budgets are code.">
         <rect class="n-prose" x="16" y="34" width="132" height="52" rx="4"/>
         <text class="t-s" x="28" y="54">shape objective</text>
         <text class="t-xs" x="28" y="70">FIVE LINES</text>
@@ -488,7 +488,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
         <rect class="n-prose" x="174" y="34" width="132" height="52" rx="4"/>
         <text class="t-s" x="186" y="54">epic spec</text>
-        <text class="t-xs" x="186" y="70">NEVER-MERGED PR</text>
+        <text class="t-xs" x="186" y="70">MERGED AFTER GATE 1</text>
         <path class="ln" d="M306,60 L330,60"/>
 
         <rect class="n-human" x="332" y="28" width="150" height="64" rx="4"/>
@@ -519,7 +519,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-human" x="482" y="120" width="150" height="64" rx="4"/>
         <text class="t-b f-human" x="494" y="142">GATE 2</text>
         <text class="t-s" x="494" y="160">spec approved</text>
-        <text class="t-xs" x="494" y="175">THE OWNER&#8217;S CALL ALONE</text>
+        <text class="t-xs" x="494" y="175">APPROVE; MERGE FOLLOWS</text>
 
         <path class="ln" d="M557,184 L557,206 L232,206 L232,224"/>
 
@@ -1474,7 +1474,7 @@ await runs.<b>upsert</b>(key, {
       <tbody>
         <tr>
           <td><strong>spec</strong></td>
-          <td>The prompt (what a spec must contain). The done-condition: <em>a spec exists on its branch and is mirrored</em>. The readable set: the epic and the issue, not the diff. And one structural difference &#8212; a spec's completion is followed by a <strong>human gate</strong>, so its task has a downstream approval dependency the other phases do not.</td>
+          <td>The prompt (what a spec must contain). The done-condition: <em>the complete retained set exists on its review branch</em>. The readable set: the epic and the issue, not the diff. And one structural difference &#8212; authoring is followed by a <strong>human approval gate</strong> and confirmed merge before implementation.</td>
           <td>Provisioning. Starting the run. Letting the turn finish. Reading the handle. Deciding settle / retry / ask. Posting to the inbox. Resuming on a steer. Settling the row.</td>
         </tr>
         <tr>
