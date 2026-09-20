@@ -103,7 +103,7 @@ placeholder. ER-19 is the epic’s done condition rather than an issue, and it h
    against a moving floor, or the exploration sits idle for a cycle it could have used.
 3. **Approve a set whose done condition has only a provisional owner, or hold it until the cut is
    forced?**
-   - **Plain terms.** The finish line is *a person occupies a seat in a running app and drains a row
+   - **Plain terms.** The finish line is *a person occupies a seat in a running, **org-bound** app and drains a row
      assigned to them*. FIX-1455 is the app that could show it, but it runs its own lifecycle, and
      nobody is on the hook for whatever it turns out to be missing.
    - **Trade-off.** Approving starts the exploration a cycle earlier. Holding buys a committed proof
