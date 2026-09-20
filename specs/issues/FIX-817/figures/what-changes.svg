@@ -1,0 +1,111 @@
+<svg viewBox="0 0 940 376" width="940" height="376" role="img"
+     aria-label="Today: four domain readers already exist, but each reaches an orchestrator differently — skills by an ambient prompt dump, resources by an ungated full-state tool with no callers, seats and channels not at all. After: the same four readers project into one manifest shape behind one scoped on-demand door."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-have { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-door { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .n-bad  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-bad  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .arr    { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .arr-b  { stroke:var(--gone); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+    .arr-g  { stroke:var(--code); stroke-width:1.4; fill:none; }
+    .sep    { stroke:var(--rule); stroke-width:1; stroke-dasharray:3 4; }
+  </style>
+
+  <!-- ================= TODAY ================= -->
+  <g id="today">
+    <text class="t-lbl" x="16" y="20">TODAY</text>
+
+    <g id="today-readers">
+      <rect class="n-have" x="16" y="32" width="150" height="30" rx="4"/>
+      <text class="t-b" x="26" y="52">skills reader</text>
+      <rect class="n-have" x="16" y="68" width="150" height="30" rx="4"/>
+      <text class="t-b" x="26" y="88">seats reader</text>
+      <rect class="n-have" x="16" y="104" width="150" height="30" rx="4"/>
+      <text class="t-b" x="26" y="124">channels reader</text>
+      <rect class="n-have" x="16" y="140" width="150" height="30" rx="4"/>
+      <text class="t-b" x="26" y="160">resources reader</text>
+      <text class="t-s" x="16" y="186">all four already ship</text>
+    </g>
+
+    <g id="today-exits">
+      <path class="arr-b" d="M166 47 L293 47"/><path d="M300 47 L293 50.6 L293 43.4 z" fill="var(--gone)"/>
+      <rect class="n-bad" x="302" y="32" width="230" height="30" rx="4"/>
+      <text class="t-bad" x="312" y="51">ambient dump · every prompt step</text>
+
+      <path class="arr-b" d="M166 83 L293 83"/><path d="M300 83 L293 86.6 L293 79.4 z" fill="var(--gone)"/>
+      <text class="t-bad" x="308" y="87">no model-facing door at all</text>
+
+      <path class="arr-b" d="M166 119 L293 119"/><path d="M300 119 L293 122.6 L293 115.4 z" fill="var(--gone)"/>
+      <text class="t-bad" x="308" y="123">no model-facing door at all</text>
+
+      <path class="arr-b" d="M166 155 L293 155"/><path d="M300 155 L293 158.6 L293 151.4 z" fill="var(--gone)"/>
+      <rect class="n-bad" x="302" y="140" width="230" height="30" rx="4"/>
+      <text class="t-bad" x="312" y="159">listResources · ungated, 0 callers</text>
+    </g>
+
+    <g id="today-planner">
+      <rect class="n-box" x="700" y="68" width="224" height="66" rx="5"/>
+      <text class="t-lbl" x="714" y="88">ORCHESTRATOR</text>
+      <text class="t-b" x="714" y="108">plans blind</text>
+      <text class="t-s" x="714" y="124">four shapes, or nothing</text>
+    </g>
+    <path class="arr-b" d="M540 101 L689 101"/><path d="M696 101 L689 104.6 L689 97.4 z" fill="var(--gone)"/>
+  </g>
+
+  <line class="sep" x1="16" y1="196" x2="924" y2="196"/>
+
+  <!-- ================= AFTER ================= -->
+  <g id="after" transform="translate(0,-18)">
+    <text class="t-lbl" x="16" y="228">AFTER</text>
+
+    <g id="after-readers">
+      <rect class="n-have" x="16" y="240" width="150" height="26" rx="4"/>
+      <text class="t-b" x="26" y="258">skills reader</text>
+      <rect class="n-have" x="16" y="270" width="150" height="26" rx="4"/>
+      <text class="t-b" x="26" y="288">seats reader</text>
+      <rect class="n-have" x="16" y="300" width="150" height="26" rx="4"/>
+      <text class="t-b" x="26" y="318">channels reader</text>
+      <rect class="n-have" x="16" y="330" width="150" height="26" rx="4"/>
+      <text class="t-b" x="26" y="348">resources reader</text>
+    </g>
+
+    <g id="after-shape">
+      <path class="arr-g" d="M166 253 L293.2 286.2"/><path d="M300 288 L292.3 289.7 L294.1 282.7 z" fill="var(--code)"/>
+      <path class="arr-g" d="M166 283 L293 291.5"/><path d="M300 292 L292.8 295.1 L293.3 287.9 z" fill="var(--code)"/>
+      <path class="arr-g" d="M166 313 L293 304.5"/><path d="M300 304 L293.3 308.1 L292.8 300.9 z" fill="var(--code)"/>
+      <path class="arr-g" d="M166 343 L293.2 309.8"/><path d="M300 308 L294.1 313.3 L292.3 306.3 z" fill="var(--code)"/>
+      <rect class="n-door" x="302" y="270" width="230" height="56" rx="5"/>
+      <text class="t-lbl" x="314" y="288">ONE MANIFEST SHAPE</text>
+      <text class="t-s" x="314" y="304">id · kind · purpose · contract</text>
+      <text class="t-s" x="314" y="318">projected, never a second copy</text>
+    </g>
+
+    <g id="after-door">
+      <path class="arr-g" d="M540 298 L587 298"/><path d="M594 298 L587 301.6 L587 294.4 z" fill="var(--code)"/>
+      <rect class="n-door" x="596" y="270" width="150" height="56" rx="5"/>
+      <text class="t-lbl" x="608" y="288">ONE DOOR</text>
+      <text class="t-s" x="608" y="304">on demand</text>
+      <text class="t-s" x="608" y="318">scoped to this seat</text>
+    </g>
+
+    <g id="after-planner">
+      <path class="arr-g" d="M748 298 L783 298"/><path d="M790 298 L783 301.6 L783 294.4 z" fill="var(--code)"/>
+      <rect class="n-box" x="792" y="270" width="132" height="56" rx="5"/>
+      <text class="t-lbl" x="804" y="288">ORCHESTRATOR</text>
+      <text class="t-b" x="804" y="308">plans on fact</text>
+    </g>
+  </g>
+</svg>
