@@ -344,7 +344,12 @@ is the permanent answer on a caller-supplied `TaskCollectionRef`, and on rows th
 predate write provenance; such a row is also released rather than left claimed. If the
 report itself cannot be emitted, the run fails immediately with a
 `TaskBoardReportFailureError` instead. `task-board-recorder-failure` is excluded from
-per-task item attribution — it is the substrate's, not the worker's.
+per-task item attribution — it is the substrate's, not the worker's — and is suppressed in
+`chatAssistantRenderers`; an app with its own renderer registry should add
+`component: { "task-board-recorder-failure": false }`, as it already does for `task-change`.
+The recorders themselves (`createRecordSuccess` / `createRecordError`) **raise** a recorder
+failure by default; only a composition that supplies a tail able to read the report — which
+`taskBoard()`'s drain does — passes `recorderFailure: { onRecorderFailure: "defer" }`.
 
 #### Handing tasks off through a dispatcher seat
 

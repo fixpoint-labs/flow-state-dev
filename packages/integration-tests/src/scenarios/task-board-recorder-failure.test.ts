@@ -518,6 +518,120 @@ describe("FIX-963: a recorder failure after the write committed", () => {
     expect(recorderFailureItems(healthy.items)).toHaveLength(0);
   });
 
+  it("contains a NESTED board's recorder failure instead of abandoning the outer board", async () => {
+    // The guard that keeps this fix from re-breaking what FIX-951 fixed.
+    //
+    // A board can run inside another board's worker. When the inner board's
+    // tail fails its own run, that failure arrives at the outer worker's
+    // `.rescue()` as an ordinary thrown error — and it is an error of a class
+    // the outer `recordError` recognises. Rethrowing it there would reject the
+    // outer `forEach` and abandon every outer task that had not started, which
+    // is precisely the containment FIX-951 shipped, broken by this change's own
+    // error class.
+    //
+    // So a deferring site treats it as what it is from where it stands: a
+    // worker went wrong. `onError` governs that, the outer row records it, and
+    // the rest of the outer board drains. The inner run already failed on its
+    // own account, and its report is still on the stream.
+    const INNER = "nested-inner-board";
+    const OUTER = "nested-outer-board";
+
+    const innerWorker = handler({
+      name: "nested-inner-worker",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ ok: z.string() }),
+      execute: async (input) => ({ ok: `${input.goal}:${SALT}` }),
+    }) as Parameters<typeof taskBoard>[0]["workers"];
+
+    // The outer worker runs an inner board for the one poisoned task, and
+    // ordinary work for the rest.
+    const innerBoard = taskBoard({
+      name: INNER,
+      collection: async (ctx) =>
+        announcementFailingStore(
+          await getOrCreateTaskCollection({
+            ctx,
+            backing: "request",
+            collectionId: INNER,
+          }),
+          { failOn: "complete" }
+        ),
+      concurrency: 1,
+      workers: innerWorker,
+      initialTasks: [{ id: POISON, goal: POISON }],
+      onError: "skip",
+      onIdle: "complete",
+      maxIterations: 20,
+    });
+
+    const outerWorker = sequencer({
+      name: "nested-outer-worker",
+      inputSchema: taskWorkerInputSchema,
+      stateSchema: taskBoardStateSchema,
+    })
+      .stepIf(
+        (input: { goal?: string }) => input.goal === "runs-inner",
+        innerBoard.drain
+      )
+      .tap(async () => undefined) as unknown as Parameters<
+      typeof taskBoard
+    >[0]["workers"];
+
+    const outerBoard = taskBoard({
+      name: OUTER,
+      collection: { backing: "request", collectionId: OUTER },
+      // Two workers, so an escape from the one hosting the inner board has a
+      // sibling to abandon. At concurrency 1 the fan-out has a single
+      // iteration and the property is not exercised.
+      concurrency: 2,
+      workers: outerWorker,
+      initialTasks: [
+        { id: "runs-inner", goal: "runs-inner" },
+        { id: "outer-sibling-a", goal: "outer-sibling-a" },
+        { id: "outer-sibling-b", goal: "outer-sibling-b" },
+      ],
+      onError: "skip",
+      onIdle: "complete",
+      maxIterations: 20,
+    });
+
+    const flow = defineFlow({
+      kind: "fix963-nested-board",
+      actions: {
+        run: {
+          block: sequencer({
+            name: "nested-root",
+            inputSchema: z.unknown(),
+            stateSchema: taskBoardStateSchema,
+          }).step(outerBoard.drain),
+        },
+      },
+    })();
+
+    const result = await testFlow({
+      flow,
+      action: "run",
+      userId: "u",
+      input: undefined,
+      unmockedGeneratorPolicy: "error",
+    });
+
+    // The inner board's failure is on the stream — it was not swallowed.
+    const reports = recorderFailureItems(result.items);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.data).toMatchObject({ collectionId: INNER });
+
+    // And the OUTER board drained. This is the assertion the guard exists for:
+    // without it the outer fan-out rejects on the first task and the two
+    // siblings are never claimed.
+    const outer = finalStatuses(result.items, OUTER);
+    expect(outer["outer-sibling-a"]).toBe("completed");
+    expect(outer["outer-sibling-b"]).toBe("completed");
+    // The task that hosted the inner board records the failure as its own,
+    // which is what `onError` is for.
+    expect(outer["runs-inner"]).toBe("errored");
+  });
+
   it("does not let a second batch inherit the first one's failure", async () => {
     // BR-12. Reports accumulate on the per-REQUEST item buffer and a request
     // can drain the same board twice, so the tail has to scope its read to its

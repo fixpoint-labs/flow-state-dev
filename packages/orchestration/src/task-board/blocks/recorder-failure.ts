@@ -37,7 +37,10 @@
  *
  * It is stamped with the task it was recording, which would otherwise make it
  * read as that worker's output; `task-attribution.ts` excludes this type for
- * that reason.
+ * that reason. That exclusion is about *attribution* — whose output this is —
+ * and is a separate axis from whether a client renders it, which the renderer
+ * registry decides. See the note on `itemVisibility` in
+ * {@link reportRecorderFailure}.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 
@@ -122,9 +125,14 @@ export async function reportRecorderFailure(
         // Persisted: the entry has to survive the run. The original defect hid
         // on items that did not.
         transient: false,
-        // Neither rendered nor fed to a model. It is substrate bookkeeping, and
-        // the caller-visible signal is the run's own failure — same shape as
-        // `goal-seek-loop`'s termination entry.
+        // **Metadata, not a control.** A component item is a structural type,
+        // and `resolveItemVisibility` ignores `itemVisibility` for those —
+        // they resolve to `{ client: true, history: false }` whatever they
+        // declare (`docs/architecture/items.md` → Visibility). So this records
+        // intent for `selectForContext` and per-agent queries and suppresses
+        // nothing. What actually keeps the entry out of a chat thread is the
+        // renderer registry naming it `false`; an app with its own registry
+        // owes itself the same line, exactly as it does for `task-change`.
         itemVisibility: { client: false, history: false },
       }
     );
@@ -135,6 +143,12 @@ export async function reportRecorderFailure(
 
 /**
  * Read one drain's recorder-failure reports off a request's item buffer.
+ *
+ * Package-internal: the only thing that can supply a usable `runId` is the
+ * board's own run state, which is not exported. Anything else silently reads
+ * nothing, so exporting this would offer a caller a function that can only be
+ * wrong. Consumers get the component type, the payload shape and the two error
+ * classes instead, which are enough to read the stream themselves.
  *
  * Scoped by `runId` alone, deliberately. The stamp is minted per drain and read
  * from a slot keyed by board name, so it already identifies both which board

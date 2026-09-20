@@ -212,7 +212,6 @@ export {
   TASK_BOARD_RECORDER_FAILURE_COMPONENT_TYPE,
   TaskBoardRecorderFailureError,
   TaskBoardReportFailureError,
-  recorderFailuresForRun,
 } from "./blocks/recorder-failure";
 export type {
   RecorderFailureReport,
@@ -926,8 +925,11 @@ export function taskBoard<
     resolveFlowPolicy: createFlowPolicyResolver(name),
   });
 
-  // FIX-963. On the inline batch a recorder failure is REPORTED here and
-  // raised at the drain's tail, so every sibling finishes first.
+  // FIX-963. The inline batch is the one place that may DEFER: a recorder
+  // failure is reported here and raised at `raiseRecorderFailures` below, so
+  // every sibling finishes before the run fails. Said explicitly because the
+  // recorders default to raising — deferring is only safe where something
+  // downstream is known to read the report, and this is that place.
   const recorderFailure = {
     runId: (ctx: BlockContext) => currentBoardRunId(name, ctx),
     onRecorderFailure: "defer" as const,

@@ -12,4 +12,6 @@ other task has drained; on a handed-off task it fails that child run. `onError`
 does not suppress it. Where the board cannot tell whether the write landed —
 permanently so on a task store you supplied, and on rows that predate write
 provenance — it says `undetermined` rather than assuming the write was lost, and
-hands the row back rather than leaving it claimed (FIX-963).
+hands the row back rather than leaving it claimed. `createRecordSuccess` and
+`createRecordError` composed outside a board raise the failure where it happens,
+since nothing downstream would read the report (FIX-963).

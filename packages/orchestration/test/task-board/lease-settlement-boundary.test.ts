@@ -280,6 +280,10 @@ describe("the swallow path releases the driver itself (FIX-963)", () => {
     const block = createRecordSuccess({
       name: "record-success",
       collection: async () => announceFails,
+      // The drain's composition: a tail follows, so the recorder reports and
+      // returns rather than raising. Without this it defaults to raising and
+      // the lease question below never gets asked.
+      recorderFailure: { onRecorderFailure: "defer" },
     });
 
     // It returns rather than throwing — the deferring site leaves the raise to
@@ -310,6 +314,7 @@ describe("the swallow path releases the driver itself (FIX-963)", () => {
       name: "record-error",
       collection: async () => announceFails,
       onError: "skip",
+      recorderFailure: { onRecorderFailure: "defer" },
     });
 
     await runForTest(block, new Error("boom"), ctxWith(fx, emitted));

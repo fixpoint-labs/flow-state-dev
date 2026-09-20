@@ -174,6 +174,12 @@ export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
   // recorder that cannot announce a committed write raises where it stands and
   // fails the child run. Nothing is abandoned by that: there is no sibling here
   // to protect. `recordError` refuses to let `onError` swallow the raise.
+  //
+  // This is also the recorders' default, so the option is redundant. It is
+  // passed anyway: the gate's raise is a property of the composition — no tail
+  // follows it — and stating it here is what makes that visible next to the
+  // `.rescue()` it travels through, rather than resting on a default one file
+  // away that a later change to the drain could be tempted to flip.
   const recorderFailure = { onRecorderFailure: "raise" as const };
 
   const recordSuccess = createRecordSuccess({

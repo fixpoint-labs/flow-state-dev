@@ -17,9 +17,12 @@
  * ## What it reads
  *
  * The reports themselves, off the request's item buffer — the same accessor
- * `TaskHandle.items()` reads through. Scoped to this collection AND this drain:
- * the buffer is per-request and a request can drain the same board twice, so a
- * second batch must not inherit the first one's failure.
+ * `TaskHandle.items()` reads through. Scoped by **this drain's run stamp
+ * alone**: the buffer is per-request and a request can drain the same board
+ * twice, so a second batch must not inherit the first one's failure. Collection
+ * id is deliberately not a second filter — see `recorderFailuresForRun`, where
+ * a board given a collection *factory* reports under the ref's own id while the
+ * drain knows it only as `factory-supplied`.
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";

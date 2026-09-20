@@ -217,12 +217,25 @@ export interface RecorderFailureWiring {
    */
   runId?: (ctx: BlockContext) => string | undefined;
   /**
-   * `"defer"` (the default) reports and returns, leaving the drain's tail to
-   * fail the run once every sibling has finished — the ordering BR-8 makes
-   * non-negotiable. `"raise"` throws here instead, for a settlement with no
-   * tail to raise at.
+   * `"defer"` reports and returns, leaving the drain's tail to fail the run
+   * once every sibling has finished. `"raise"` throws here instead.
+   *
+   * **`"raise"` is the default, and deferring is what has to be asked for.**
+   * Deferring only works because something downstream reads the report and
+   * fails the run; a recorder composed without a tail — these blocks are
+   * exported, and `taskBoard()` is not the only way to reach them — would
+   * otherwise report into a stream nobody checks and return successfully,
+   * leaving that caller *quieter* than it was before any of this existed,
+   * where the announcement's rejection simply propagated. That is this issue's
+   * own defect, reintroduced one caller over. So the only site that defers is
+   * the one that can name what will pick the report up.
    */
   onRecorderFailure?: "defer" | "raise";
+}
+
+/** Resolve the wiring's raise/defer choice. Absent wiring raises — see above. */
+function raisesHere(wiring: RecorderFailureWiring): boolean {
+  return (wiring.onRecorderFailure ?? "raise") === "raise";
 }
 
 /**
@@ -406,7 +419,7 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
         // cannot report its own bookkeeping failure has nothing left to be
         // honest with (BR-13).
         await reportRecorderFailure(ctx, recorderFailure);
-        if (wiring.onRecorderFailure === "raise") {
+        if (raisesHere(wiring)) {
           throw new TaskBoardRecorderFailureError([recorderFailure]);
         }
         // Otherwise: return quietly. The drain's tail fails the run once every
@@ -478,7 +491,7 @@ export function createRecordError(options: RecordErrorOptions) {
       // FIX-951 shipped. From this board's point of view a nested board blowing
       // up is a worker going wrong, and that is what `onError` is for.
       if (
-        wiring.onRecorderFailure === "raise" &&
+        raisesHere(wiring) &&
         error instanceof TaskBoardRecorderFailureError
       ) {
         stopLeaseRenewal();
@@ -545,7 +558,7 @@ export function createRecordError(options: RecordErrorOptions) {
       if (recorderFailure !== undefined) {
         // Awaited, and its own failure is caught by nothing (BR-13).
         await reportRecorderFailure(ctx, recorderFailure);
-        if (wiring.onRecorderFailure === "raise") {
+        if (raisesHere(wiring)) {
           throw new TaskBoardRecorderFailureError([recorderFailure]);
         }
         // `onError` is deliberately not consulted. It is a policy about a task

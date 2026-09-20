@@ -220,7 +220,7 @@ describe("FIX-963: a recorder failure on a handed-off task fails the child run",
     "fails the child run under onError: %s, and reports on a saved entry",
     async (onError) => {
       const kind = `hand-off-recorder-${onError}`;
-      const { child, stores } = await handOffAndRunChild(kind, onError);
+      const { child } = await handOffAndRunChild(kind, onError);
 
       // BR-14. The child run carries the work, so the child run is what has to
       // report the failure — a consumer reading run status would otherwise see
