@@ -9,34 +9,47 @@ description: "Write a team's shared documents as Markdown files, read the tree a
 
 A handbook, a glossary, an escalation procedure: the reference material a team shares and an agent reads. You can declare each one in TypeScript with `defineResource`. You can also write it as a Markdown file and read the folder at startup, which lets someone who does not write TypeScript edit it.
 
-`readResourcesDirectory` turns the folder tree into plain records. `resourcesFromDocs` turns those records into the resource map you pass to `defineFlow`.
+There are two folders, and which one you use decides where the document lives afterwards.
+
+| Folder | The body an agent reads | Who can change it | Who can read it |
+|---|---|---|---|
+| `references/` | the file on disk, re-read each request | whoever can edit the file in your repo | seats at or below it in the tree |
+| `resources/` | the file's body at first boot, then whatever the product last wrote | the file, until something writes it; after that, the product | any seat the flow installed it on |
+
+Put a company handbook in `references/`. Editing the file is the edit, and it keeps reaching agents on the next deploy no matter what else happens. Put an agent's working notes in `resources/`, where they can be written and survive the turn.
+
+`readReferencesDirectory` and `readResourcesDirectory` turn the folder tree into plain records. `referencesFromDocs` and `resourcesFromDocs` turn those records into the resource maps you pass to `defineFlow`.
 
 Documents live in the same tree as [workers](./workers-on-disk.md) and [skills](../skills/overview.md), so one folder can describe a whole workforce.
 
 ## The tree
 
-A `resources/` folder is read wherever the tree puts one: at the organization level, in a team, and inside a single worker's own folder.
+A `references/` or `resources/` folder is read wherever the tree puts one: at the organization level, in a team, and inside a single worker's own folder.
 
 ```
 workforce/
   org/
-    resources/
+    references/
       code-of-conduct.md
   teams/
     engineering/
-      resources/
+      references/
         handbook.md
+      resources/
+        scratch.md
       workers/
         on-call/
-          WORKER.md
-          resources/
+          references/
             runbook.md
+          WORKER.md
     support/
-      resources/
+      references/
         escalation.md
 ```
 
-Four documents: one shared across the organization, two belonging to a team, and one belonging to a single seat. Every example below reads this tree.
+Five documents: one shared across the organization, two belonging to a team, one belonging to a single seat, and one scratchpad the team's agents can write. Every example below reads this tree.
+
+Both folders name documents the same way, and they share one namespace. `references/handbook.md` and `resources/handbook.md` in one team are two spellings of the same name, so the pair is refused at startup rather than one of them quietly winning.
 
 A worker's own folder is what lets two seats each have a `runbook` without their authors agreeing on a name. Organization-level workers, under `org/workers/`, are read the same way.
 
@@ -70,6 +83,8 @@ Where a file sits decides its identity, where it is stored, and what its content
 `prefetchMode: "lazy"` is refused too: a file-declared document is installed at flow level and always loaded eagerly. Writing `prefetchMode: eager` is accepted and carried through.
 
 Everything outside that set arrives at the resource exactly as written, so `llmReadable`, `llmWritable`, `writable`, `allowedExtensions` and `metadata` all take effect from the file.
+
+A file in `references/` derives three more: `writable`, `llmWritable` and `render`. The folder is what makes a reference read-only, so no file has to ask for that and no file can turn it off. Declaring any of the three is refused by name, `writable: false` included — agreeing with the folder is still a second place to keep the same fact, and the next person to open the file cannot tell which copy is the one doing the work. A document that needs to be written belongs in `resources/`.
 
 ## A document's ref
 
@@ -111,8 +126,11 @@ interface ResourceDoc {
   ref: string;                       // "teams/engineering/handbook"
   declared: Record<string, unknown>; // the frontmatter, exactly as written
   body: string;                      // the Markdown below it, verbatim
+  filePath?: string;                 // where it was read from — references only
 }
 ```
+
+`readReferencesDirectory` has the same signature and returns the same records, each carrying the `filePath` its content is served from.
 
 For the handbook above:
 
@@ -192,6 +210,35 @@ export const supportFlow = defineFlow({
 
 Every file-declared document is installed at `org` scope, with the file's body as the resource content.
 
+References install the same way, through `referencesFromDocs`, and both maps spread into the same flow:
+
+```ts
+const references = await readReferencesDirectory("./workforce");
+const documents = await readResourcesDirectory("./workforce");
+
+export const supportFlow = defineFlow({
+  kind: "support",
+  actions: { answer: { block: answerQuestion } },
+  resources: {
+    ticket: ticketResource,
+    ...resourcesFromDocs(documents.documents),
+    ...referencesFromDocs(references.documents),
+  },
+});
+```
+
+Pass both to `hireWorkforce` as well, so it knows which entries are references and can hold each seat to its place in the tree:
+
+```ts
+hireWorkforce(workers, {
+  kinds,
+  documents: resourcesFromDocs(documents.documents),
+  references: referencesFromDocs(references.documents),
+});
+```
+
+A reference's content is read from its file whenever an execution context is built, so editing the file in your repository reaches agents on the next request. A read already in flight keeps the body it started with.
+
 Spread the map rather than passing it on its own. A flow copy created with `supportFlow({ resources })` *replaces* the definition's map instead of merging with it, so a copy handed only `resourcesFromDocs(documents)` loses whatever the flow kind declared.
 
 `resourcesFromDocs` throws rather than collecting. A record it cannot turn into a resource stops startup, naming the ref, the same way a refused hire does.
@@ -209,11 +256,37 @@ await ctx.resources.get("teams/engineering/handbook").readContent();
 
 Put `requireOrg: true` on the blocks that read a document, as the example in the next section does. The flow then turns away a request with no org up front, instead of running it and coming up empty. How a request carries its org is covered in [the client reference](/docs/configuration/client).
 
-### A folder is a namespace, not a visibility boundary
+### Who reaches what
 
-Every file-declared document is org-scoped, and a generator's resource tools reach every installed document marked `llmReadable`, with no per-team filter. Install a whole tree on one flow and every team's documents are reachable from it.
+**For a `references/` document, the folder is the boundary.** A seat reaches the references at or above its own place in the tree: the organization's, its own team's, and its own folder's. Not another team's, and not a teammate's folder. You write no filter, and there is no setting to get wrong.
 
-To give one team's seats only its own documents, filter the records before installing them:
+```
+teams/engineering/workers/ada/     a seat here reads…
+  org/references/code-of-conduct     yes — the organization is above everyone
+  teams/engineering/references/handbook   yes — its own team
+  teams/engineering/workers/ada/references/runbook   yes — its own folder
+  teams/engineering/workers/ivan/references/runbook  no  — a teammate's folder
+  teams/support/references/escalation                no  — another team
+```
+
+To let a reference reach more people, move the file up the tree. That is the only way to widen it, which is what makes the boundary worth trusting: nothing on the install side can quietly open it back up.
+
+A seat that wants less than its place gives it lists what it wants in its own file. The list narrows and never widens, so naming a document the seat could not already reach is refused at startup rather than granted:
+
+```md
+---
+flow: desk
+description: Engineering desk
+references:
+  - teams/engineering/handbook
+---
+```
+
+Leaving the key out means every reference at or above the seat. Writing `references: []` means none — the two are different answers, not the same one.
+
+**For a `resources/` document, the folder is a namespace and nothing more.** Every one is org-scoped, and a generator's resource tools reach every installed document marked `llmReadable`. Install a whole tree on one flow and every team's writable documents are reachable from it, one team from another included.
+
+So if you want a team's writable documents kept to that team, filter the records before installing them:
 
 ```ts
 const engineering = resourcesFromDocs(
@@ -221,7 +294,7 @@ const engineering = resourcesFromDocs(
 );
 ```
 
-The same is true one level down, and it is worth being plain about. Putting a document under `workers/on-call/` addresses it to that seat. It does not keep it from the others. Seats hired into one kind share that kind's flow definition, so by default every one of them reads the same row.
+The same is true one level down. Putting a `resources/` document under `workers/on-call/` addresses it to that seat; it does not keep it from the others, because seats hired into one kind share that kind's flow definition.
 
 Filtering decides what a whole kind installs. To narrow one seat within a kind, the seat's own file names the documents it may touch, and can take one read-only: see [what a `WORKER.md` says](./workers-on-disk.md#what-a-workermd-says). A seat naming a document its kind was not installed with is refused at the hire, so the filter holds.
 
@@ -260,6 +333,28 @@ export const answerQuestion = generator({
 
 The documents are already declared on the flow, so the generator does not declare them again. The tool addresses a document by its scope-qualified uri, the same handle the [search tools](/docs/resources/searching) return. See [LLM access patterns](/docs/resources/overview#llm-access-patterns).
 
+## Moving a document into `references/`
+
+Moving the file is usually the whole job. One case needs a second step, and it is quiet enough to be worth knowing about: if anything ever wrote that document while it was in `resources/`, the written body is still stored, and a stored body is what an agent reads. Move the file and the agent keeps reading the old write — the file looks authoritative in your repository and reaches nobody.
+
+`clearShadowedReferences` finds those and clears them, so the file is the source again:
+
+```ts
+import { clearShadowedReferences, describeShadowedReferences } from "@flow-state-dev/workforce";
+
+const result = await clearShadowedReferences({
+  references: referencesFromDocs(references.documents),
+  orgId,
+  content: stores.content,
+});
+console.log(describeShadowedReferences(result));
+// references: 1 of 4 were shadowed by a stored write and have been cleared — handbook.
+```
+
+It reports before it is believed: `result.cleared` names each reference and carries the body that had been served in the file's place, which is the last moment that text exists anywhere. Pass `dryRun: true` to see the finding and change nothing.
+
+Run it once per organization after the move. It is safe to run again — a tree whose files are already the source reports nothing cleared — and it never touches a `resources/` document.
+
 ## What stays in TypeScript
 
 `defineResource` is the other route into the same map, and the two sit side by side, as `ticket` and the file-declared documents do above.
@@ -272,4 +367,6 @@ A document that needs a state schema of its own, a `render` function, [reactive 
 - It does not follow symlinks, at any level of the walk.
 - It does not install anything. `readResourcesDirectory` hands back records, `resourcesFromDocs` hands back a map, and you put the map on your flow.
 - It does not read `WORKER.md` or any `skills/` folder. Those are [Workers on disk](./workers-on-disk.md) and [Skills](../skills/overview.md). It reads a worker folder only to find a `resources/` folder inside it.
-- It does not decide which seat may read which document. `flowIsolation` in a document gives each seat its own copy; nothing here refuses a read.
+- It does not put a document on an agent's bash mount. A mount carries collections; a document is a single resource, so a shell on the sandbox will not find the handbook as a file.
+- It does not watch a reference for changes within a request. The file is read when an execution context is built, so an edit reaches the next request rather than a read already running.
+- For a `resources/` document, it does not decide which seat may read which one. `flowIsolation` gives each seat its own copy; nothing there refuses a read. A `references/` document is the exception, and [Who reaches what](#who-reaches-what) is the rule.

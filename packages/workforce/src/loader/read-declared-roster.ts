@@ -24,9 +24,11 @@
  * must not pull a consumer onto `node:fs`.
  */
 
+import path from "node:path";
 import { readChannelsDirectory } from "./read-channels-directory";
-import { readResourcesDirectory } from "./read-resources-directory";
+import { readReferencesDirectory, readResourcesDirectory } from "./read-resources-directory";
 import { readWorkforce } from "./read-workforce";
+import { REFERENCES_SLOT, RESOURCES_SLOT } from "./resource-convention";
 import type {
   ChannelManifest,
   ResourceDoc,
@@ -51,6 +53,8 @@ export type DeclaredProblemLayer =
   | "team"
   /** A document under `org/resources/` or a team's or worker's `resources/`. */
   | "document"
+  /** A reference under `org/references/` or a team's or worker's `references/`. */
+  | "reference"
   /** A channel folder under `teams/<id>/channels/`. */
   | "channel";
 
@@ -99,6 +103,15 @@ export interface DeclaredRoster {
    */
   documents: ResourceDoc[];
   /**
+   * One record per reference that loaded, in walk order, each carrying the
+   * `filePath` its content is served from.
+   *
+   * Separate from {@link DeclaredRoster.documents} rather than merged with a
+   * flag: the two go to different install halves, and one list a caller has to
+   * partition is one a caller can partition wrongly.
+   */
+  references: ResourceDoc[];
+  /**
    * One record per channel that loaded, in walk order.
    *
    * This inherits `readChannelsDirectory` exactly, including that it walks
@@ -142,6 +155,7 @@ export async function readDeclaredRoster(root: string): Promise<DeclaredRoster> 
   // once, at boot, off the request path.
   const workforce = await readWorkforce(root);
   const resources = await readResourcesDirectory(root);
+  const references = await readReferencesDirectory(root);
   const channels = await readChannelsDirectory(root);
 
   const problems: DeclaredProblem[] = [
@@ -156,14 +170,73 @@ export async function readDeclaredRoster(root: string): Promise<DeclaredRoster> 
     ),
     ...workforce.teamErrors.map((e) => ({ layer: "team" as const, path: e.path, error: e.error })),
     ...resources.errors.map((e) => ({ layer: "document" as const, path: e.path, error: e.error })),
+    ...references.errors.map((e) => ({ layer: "reference" as const, path: e.path, error: e.error })),
     ...channels.errors.map((e) => ({ layer: "channel" as const, path: e.path, error: e.error })),
+    ...collidingRefs(resources.documents, references.documents),
   ];
 
   return {
     workers: workforce.workers,
     teams: workforce.teams,
     documents: resources.documents,
+    references: references.documents,
     channels: channels.channels,
     problems,
   };
+}
+
+/**
+ * One problem per ref claimed by a `resources/` file and a `references/` file
+ * at the same level.
+ *
+ * Both slots mint into one namespace, so `org/resources/handbook.md` and
+ * `org/references/handbook.md` are two files claiming the accessor `handbook`.
+ * They cannot both have it, and they must not silently resolve to one: a
+ * reference is read from its file and sealed, a document seeds a row and then
+ * evolves, so whichever won would decide a behaviour nobody chose.
+ *
+ * Reported here rather than in either reader because neither reader can see
+ * the other's slot — this is the one place both lists exist. It is collected
+ * like every other problem; `hireWorkforce` throws on the same collision at its
+ * own door, for a catalog that never passed a loader.
+ *
+ * Named by PATH, and both paths, because that is what an author has to go and
+ * change. Only the reference carries one — a `resources/` record deliberately
+ * does not, so that adding references changed nothing about what the mutable
+ * reader hands back. The document's path is DERIVED rather than looked up, and
+ * it is exact: a collision means one basename in two slots at one level, so the
+ * two files are siblings and differ in that one path segment. A hand-built
+ * record with no path at all falls back to the ref.
+ */
+function collidingRefs(
+  documents: readonly ResourceDoc[],
+  references: readonly ResourceDoc[],
+): DeclaredProblem[] {
+  if (documents.length === 0 || references.length === 0) return [];
+  const claimed = new Set(documents.map((doc) => doc.ref));
+  const problems: DeclaredProblem[] = [];
+
+  for (const reference of references) {
+    if (!claimed.has(reference.ref)) continue;
+    const at = reference.filePath ?? reference.ref;
+    const sibling =
+      reference.filePath === undefined
+        ? reference.ref
+        : reference.filePath.replace(
+            `${path.sep}${REFERENCES_SLOT}${path.sep}`,
+            `${path.sep}${RESOURCES_SLOT}${path.sep}`,
+          );
+    problems.push({
+      layer: "reference",
+      path: at,
+      error: new Error(
+        `"${at}" and "${sibling}" both claim the ref "${reference.ref}". A references/ file ` +
+          `and a resources/ file at one level are two spellings of one document, and they do ` +
+          `not behave the same — a reference is read from its file and nothing can write it, ` +
+          `while a resource seeds a row that then becomes the source. Keep one.`,
+      ),
+    });
+  }
+
+  return problems;
 }

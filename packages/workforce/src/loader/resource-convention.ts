@@ -1,17 +1,25 @@
 /**
  * Where a resource lives, and what names it.
  *
- * The `resources/` convention is read by two doors: the Markdown reader in
- * `read-resources-directory.ts`, and the module walk in `../codegen` that finds
- * the TypeScript beside it. They are separate readers on purpose — one reader
- * holding two conventions is the mega-loader the shared walk primitives exist
- * to prevent — but they are not allowed to disagree about **which folders the
- * convention covers** or **what a file in one is called**.
+ * The convention covers two slots — `resources/` and `references/` — read by
+ * two doors: the Markdown reader in `read-resources-directory.ts`, and the
+ * module walk in `../codegen` that finds the TypeScript beside it. They are
+ * separate readers on purpose — one reader holding two conventions is the
+ * mega-loader the shared walk primitives exist to prevent — but they are not
+ * allowed to disagree about **which folders the convention covers** or **what a
+ * file in one is called**.
  *
  * So the folder names, the document extension and the ref rule live here, once.
  * Two spellings of one ref is how a module and a document silently overwrite
  * each other, and the check that refuses a basename claimed by both can only
  * refuse what both sides minted the same way.
+ *
+ * **Both slots mint into ONE namespace.** `references/handbook.md` and
+ * `resources/handbook.md` at the same level are two spellings of the ref
+ * `handbook`, which is why the collision is refused rather than resolved: the
+ * two behave differently — one is read from the file and sealed, the other
+ * seeds a row and then evolves — so whichever won would be a coin flip an
+ * author never sees.
  *
  * Pure: no `node:fs`. It ships behind `./loader` because that is where its
  * callers are, not because it touches a disk.
@@ -21,6 +29,30 @@ import { validateSegment } from "./segments";
 
 /** The slot a resource sits in, under any of the roots the convention reads. */
 export const RESOURCES_SLOT = "resources";
+
+/**
+ * The slot a REFERENCE sits in, at the same levels {@link RESOURCES_SLOT} sits
+ * at and minted by the same {@link mintResourceRef}.
+ *
+ * A reference is a read path, not a second kind of resource: its body is read
+ * from the file rather than from a stored row, and no write path reaches it.
+ * The folder is what carries that — a file does not opt in, and cannot opt out.
+ * What "no write path" covers exactly, and the one thing it does not, is in
+ * `../references-from-docs`.
+ */
+export const REFERENCES_SLOT = "references";
+
+/**
+ * Both slots, in the order a collision refusal lists them.
+ *
+ * Read from here by every walk, never spelled as a literal, for the reason the
+ * ref rule lives here: a door that knows one slot and not the other is a folder
+ * an author writes into and nothing reads.
+ */
+export const DOCUMENT_SLOTS = [RESOURCES_SLOT, REFERENCES_SLOT] as const;
+
+/** One of {@link DOCUMENT_SLOTS}. */
+export type DocumentSlot = (typeof DOCUMENT_SLOTS)[number];
 
 /** The level a worker's folder sits in, under `org/` and under every team. */
 export const WORKERS_LEVEL = "workers";

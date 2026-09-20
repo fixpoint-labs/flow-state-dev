@@ -498,6 +498,22 @@ export interface ResourceDoc {
   declared: Record<string, unknown>;
   /** The document itself: Markdown body verbatim, frontmatter removed. */
   body: string;
+  /**
+   * The absolute path the record was read from.
+   *
+   * **Absent on a hand-built record**, which is the difference between "read
+   * from this file" and "there was no file" — the same shape
+   * {@link WorkerManifest.skills} uses, and the reason this is optional rather
+   * than `""`.
+   *
+   * A `references/` document needs it: its content is served FROM the file on
+   * every execution context rather than copied into a stored row, so the path
+   * is the thing the install half installs. A `resources/` document carries it
+   * too — the walk knows where it read, and one walk that records provenance
+   * beats two walks that disagree about whether to — but nothing consumes it
+   * there, and {@link ResourceDoc.body} stays that document's source.
+   */
+  filePath?: string;
 }
 
 /**
@@ -560,6 +576,75 @@ export function refusedDeclarationMessage(
         `code with defineResource() instead.`
       );
     }
+  }
+
+  if (declared["prefetchMode"] === REFUSED_PREFETCH_MODE) {
+    return (
+      `declares \`prefetchMode: "${REFUSED_PREFETCH_MODE}"\`, which a file-declared ` +
+      `resource cannot be: it is installed at flow level, and a flow-level declaration ` +
+      `has no per-block load trigger to load it on. Drop the key.`
+    );
+  }
+
+  return undefined;
+}
+
+/**
+ * The three settings a REFERENCE derives on top of
+ * {@link DERIVED_RESOURCE_KEYS}, and therefore refuses to let a file declare.
+ *
+ * All three are the seal, and the seal is the folder's rather than the file's.
+ * That is the whole difference between this convention and "rename the folder
+ * and set `writable: false` in each file": a key an author writes is a key an
+ * author forgets, and one forgotten key puts the document back on the
+ * seed-then-evolve path where a write shadows the file permanently.
+ *
+ * - `writable` — gates code. Refused at **either value**: agreeing with the
+ *   install half is still a second place the same fact lives, and the next
+ *   author to read the file cannot tell a load-bearing key from a decorative
+ *   one.
+ * - `llmWritable` — gates the model's own write tool. Two doors on one
+ *   document; closing one would leave a mode that holds against the
+ *   implementer and not against the model.
+ * - `render` — the per-read transform that strips the file's frontmatter, so a
+ *   reader gets the document and not the YAML above it. A file that supplied
+ *   its own would serve its own frontmatter, or throw at read time when a YAML
+ *   scalar is called as a function.
+ *
+ * **Deliberately NOT added to {@link DERIVED_RESOURCE_KEYS}.** A `resources/`
+ * document may legitimately declare `writable:` — that path is unchanged, and
+ * widening the shared list would break it.
+ */
+export const DERIVED_REFERENCE_KEYS = [
+  ...DERIVED_RESOURCE_KEYS,
+  "writable",
+  "llmWritable",
+  "render",
+] as const;
+
+/**
+ * Say why a REFERENCE's declaration is refused, or `undefined` when nothing is.
+ *
+ * {@link refusedDeclarationMessage}'s rule over the wider
+ * {@link DERIVED_REFERENCE_KEYS} set, with the same two-door reason for
+ * existing and the same "names no subject" contract: the loader supplies the
+ * file, the install half supplies the ref.
+ *
+ * @param declared The file's frontmatter, uninterpreted.
+ * @returns The reason, ready to be prefixed with what the caller can name.
+ */
+export function refusedReferenceDeclarationMessage(
+  declared: Record<string, unknown>,
+): string | undefined {
+  for (const key of DERIVED_REFERENCE_KEYS) {
+    if (!Object.hasOwn(declared, key)) continue;
+    return (
+      `declares \`${key}:\`, which is a setting the \`references/\` convention derives from ` +
+      `where the file sits, not one a reference declares. A reference is read from its file ` +
+      `and nothing can write it — the folder carries that, so no file has to ask for it and ` +
+      `no file can turn it off. Drop the key, or move this document to \`resources/\`, where ` +
+      `it seeds a row and can be written.`
+    );
   }
 
   if (declared["prefetchMode"] === REFUSED_PREFETCH_MODE) {

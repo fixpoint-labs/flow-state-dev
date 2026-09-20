@@ -744,6 +744,19 @@ A team's shared documents — a handbook, a glossary, an escalation procedure �
 instead of `defineResource` stanzas. Frontmatter is settings and the body is the document, the same
 bargain `WORKER.md` makes.
 
+**Two slots, one namespace.** The convention reads `references/` and `resources/` at the same four
+levels, and mints refs for both by the same rule — so one basename claimed in both at one level is
+refused rather than resolved. What differs is what the document IS afterwards:
+
+| Slot | Content an agent reads | Writable | Reach |
+| --- | --- | --- | --- |
+| `references/` | the file, re-read on each execution context | no — `writable`, `llmWritable` and `render` are derived, and a file declaring any of them is refused | derived from the tree: the org's, the seat's own team's, and the seat's own folder |
+| `resources/` | the file's body seeds a row; the row is the source from then on | yes, unless the file says otherwise | every document the flow was installed with |
+
+Put standing material an author owns in the repository under `references/`; put anything an agent
+writes under `resources/`. The `resources/` half is unchanged — same reader, same records, same
+install, same reach.
+
 **A resource is a file, not a folder.** A document is `<name>.md` directly in `resources/`, unlike
 a worker or a skill, which is a folder with a fixed file inside it. A directory in a `resources/`
 slot lands in `errors` rather than being passed over.
@@ -772,7 +785,19 @@ Escalate anything customer-visible within 15 minutes.
 ```
 
 `readResourcesDirectory` walks all four and returns one record per document; `resourcesFromDocs`
-turns those records into the resource map you already pass to a flow.
+turns those records into the resource map you already pass to a flow. `readReferencesDirectory` and
+`referencesFromDocs` are the same pair over `references/`, and both maps spread into one flow.
+
+A reference's record also carries the `filePath` it was read from — that path is what the install
+half points the resource at, and it is why editing the file reaches agents on the next request.
+Pass both maps to `hireWorkforce` (`documents` and `references`) so it can hold each seat to the
+references at or above its place in the tree.
+
+Moving a file from `resources/` into `references/` needs one extra step when anything ever wrote
+that document: the written body is still stored, and a stored body wins over the file.
+`clearShadowedReferences({ references, orgId, content })` finds those rows, reports each one with
+the body it had been serving, and clears them. It is idempotent, takes `dryRun`, and never touches
+a `resources/` document.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";

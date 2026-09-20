@@ -25,6 +25,7 @@
 
 import type { DeclaredResources } from "@flow-state-dev/core";
 import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
+import { describe } from "./describe-value";
 import { emptyMap } from "./empty-map";
 
 /**
@@ -200,15 +201,6 @@ const catalogRefHoldsSomethingElseMessage = (ref: string, kind: string): string 
   `cannot be resolved: the "${kind}" kind declares \`${ref}\` at flow level, but what it declares ` +
   `there is not the document the app passed under that ref. A seat's grants narrow documents and ` +
   `nothing else, and these two cannot be told apart. Rename one of them.`;
-
-/** A value as a refusal names it: short, quoted, and never a sprawling dump. */
-function describe(value: unknown): string {
-  if (value === undefined) return "undefined";
-  if (typeof value === "string") return JSON.stringify(value);
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? String(value);
-  if (Array.isArray(value)) return `a list of ${value.length}`;
-  return `a mapping of ${Object.keys(value as object).length} key(s)`;
-}
 
 /** What {@link parseSeatResources} found: the grants, or every reason it could not read them. */
 export interface ParsedSeatResources {

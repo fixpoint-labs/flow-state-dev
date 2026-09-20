@@ -75,6 +75,7 @@ export {
 } from "./read-teams-directory";
 
 export {
+  readReferencesDirectory,
   readResourcesDirectory,
   type ReadResourcesDirectoryResult,
   type ResourceDocError,
@@ -107,8 +108,11 @@ export { validateSegment, type SegmentLabel } from "./segments";
 
 export {
   DOCUMENT_EXTENSION,
+  DOCUMENT_SLOTS,
+  REFERENCES_SLOT,
   RESOURCES_SLOT,
   WORKERS_LEVEL,
+  type DocumentSlot,
   mintResourceRef,
 } from "./resource-convention";
 
