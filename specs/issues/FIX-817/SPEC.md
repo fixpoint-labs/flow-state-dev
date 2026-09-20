@@ -19,7 +19,7 @@ what it can compose, and today that planner is the only part we never built.
 
 ## What changes
 
-![Today four domain readers already exist but each reaches an orchestrator differently — skills by an ambient prompt dump, resources by an ungated tool with no callers, seats and channels not at all. After, the same four readers project into one manifest shape behind one scoped on-demand door](figures/what-changes.svg)
+![Today four domain readers already exist but each reaches an orchestrator differently — skills by an ambient prompt dump, resources by two ungated tools, seats and channels not at all. After, the same four readers project into one manifest shape behind one scoped on-demand door](figures/what-changes.svg)
 
 The four readers on the left already ship — that is the whole point. Nothing in the top half is
 missing a *capability*; what is missing is that the four reach an orchestrator four different
@@ -67,7 +67,13 @@ twice, and the readers do not learn that discovery exists.
 - **Door B ([FIX-1388](https://linear.app/fixpoint-labs/issue/FIX-1388))**, which installs and
   selects modules at author and boot time. This is the runtime question — *what is in scope for
   me now* — and the two do not merge into one loader.
-- **Boards, dispatch and assign.** Introspection feeds planning; it does not route work.
+- **Boards, dispatch and assign.** Introspection feeds planning; it does not route work. The
+  deterministic board/task work-query ([FIX-1482](https://linear.app/fixpoint-labs/issue/FIX-1482))
+  stays a **separate surface** — *what work is queued for me* is a query over rows, not a catalog
+  of what exists, and boards and tasks do not become a fifth domain behind this door.
+- **Capabilities and tools get no domain of their own.** A generator already receives its tool
+  list from its provider, and what another seat can do belongs on that seat's entry. Four
+  domains, not six.
 - **The skills catalog in the prompt** stays on by default, so no app that ships today changes
   behaviour. It becomes a preset an app can turn off once the door is there.
 - **The resource manifest the browser already reads.** A flow-static description of what a

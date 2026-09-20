@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 376" width="940" height="376" role="img"
-     aria-label="Today: four domain readers already exist, but each reaches an orchestrator differently — skills by an ambient prompt dump, resources by an ungated full-state tool with no callers, seats and channels not at all. After: the same four readers project into one manifest shape behind one scoped on-demand door."
+     aria-label="Today: four domain readers already exist, but each reaches an orchestrator differently — skills by an ambient prompt dump, resources by two ungated full-state tools, seats and channels not at all. After: the same four readers project into one manifest shape behind one scoped on-demand door."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -53,7 +53,7 @@
 
       <path class="arr-b" d="M166 155 L293 155"/><path d="M300 155 L293 158.6 L293 151.4 z" fill="var(--gone)"/>
       <rect class="n-bad" x="302" y="140" width="230" height="30" rx="4"/>
-      <text class="t-bad" x="312" y="159">listResources · ungated, 0 callers</text>
+      <text class="t-bad" x="312" y="159">2 ungated: listResources, globResources</text>
     </g>
 
     <g id="today-planner">

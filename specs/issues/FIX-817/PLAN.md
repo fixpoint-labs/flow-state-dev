@@ -12,9 +12,9 @@ the door and its first adopter ship and are usable before any other domain adopt
 |---|---|---|---|
 | S1 | `contracts` · the shared record | The manifest entry shape — identity, kind, purpose, optional contract hints — and the type of a source producing entries for one domain. Zero-dep, node-free, re-exported by `core` | BR-12 |
 | S2 | `core` · the scope's resource registry and the tool surface beside it | Register a **source** per domain the way a resource registers today; build the door over what the registry carries. Gated at the registry, not filtered in the tool | BR-1 BR-2 BR-3 BR-4 BR-5 BR-6 BR-12 |
-| S3 | `core` · `resourceTools()` | **Remove `listResources`** — the ungated full-state enumerator the door replaces, called by nothing (BR-17). Add the resources source in its place, over the existing `collectReadableResources`, which already gates | BR-8 BR-17 |
-| S4 | `orchestration` · the skills capability | Add the skills source over the existing `listEnabledSkills` — no new reader. Move the ambient catalog formatters behind a preset defaulting **on**, so today's apps are unchanged | BR-7 BR-13 BR-14 |
-| S5 | `workforce` · `createWorkforceCapability` | **Refresh the stub.** Install the seats and channels sources, projecting the declared roster and FIX-1405's live inventory rows (D2). **Remove** its `agents: Agent[] \| AgentRegistry` option, the dead duplicate-name check, the unused `catalog` field and the `TODO` | BR-15 BR-16 |
+| S3 | `core` · `resourceTools()` **and** `resourceSearchTools()` | **Remove `listResources`** — the ungated full-state enumerator the door replaces, called by nothing (BR-17). **Gate `globResources`** — the *second* ungated enumerator, found in review: a null pattern lists everything with no `llmReadable` gate, and unlike `listResources` it has a live caller, so it is gated rather than removed (BR-18). Add the resources source in its place, over `collectReadableResources` **plus the external collections it does not reach** (BR-8a) | BR-8 BR-8a BR-17 BR-18 |
+| S4 | `orchestration` · the skills capability | Add the skills source over the existing `listEnabledSkills`, **filtered to what the binding will actually accept** — its `allowed` set and `inline` mode, exactly as `buildLoadCatalogContext` already filters the ambient catalog (BR-7a) — no new reader. Move the ambient catalog formatters behind a preset defaulting **on**, so today's apps are unchanged | BR-7 BR-7a BR-13 BR-14 |
+| S5 | `workforce` · `createWorkforceCapability` | **Refresh the stub.** Install the seats and channels sources, projecting the declared roster and FIX-1405's live inventory rows (D2) — **filtered for liveness**, because those rows are append-only and mean *was registered*, not *still open* (BR-12a). **Remove** its `agents: Agent[] \| AgentRegistry` option, the dead duplicate-name check, the unused `catalog` field and the `TODO` | BR-15 BR-16 |
 | S6 | `workforce` · the worker file | A `discover:` key selecting which domains this seat sees. Adds selection, never reach — reuse the path `seat-capabilities.ts` already enforces rather than writing a second one | BR-9 BR-10 BR-11 |
 | S7 | Docs | [DOCS.md](DOCS.md)'s operations. One `minor` changeset for `core`, `orchestration`, `workforce`; `contracts` too if it publishes | — |
 
@@ -77,6 +77,8 @@ is yours to name.
 | The four readers are not modified | D1's whole claim is that the capability exists and the shape does not. A change that edits a reader has stopped being a unification |
 | A removed key fails loudly; a missing optional field does not (BP-030) | BR-16 and BR-15 are the two halves. `agents` was public, so its removal must be a type error with a pointer, not a silent ignore |
 | The catalog preset ships **on** | BR-13. An app that upgrades and finds its model no longer knows its skills exist has been broken by a refactor it did not ask for |
+| Declared seat and channel purpose is projected from **boot/install state**, never by calling `readDeclaredRoster` on the discover path | `readDeclaredRoster` is a synchronous filesystem tree walk. D2 says read cost tracks the underlying reader — that is a statement about *which* reader, not a licence to put a disk walk behind a tool a model may call every step. S5 projects from the state the workforce already resolved at boot, so the door stays cheap while still not modifying any reader |
+| The `discover:` worker-file key narrows and never widens | Exactly the contract `seat-capabilities.ts` already establishes for `capabilities:` — a seat may subtract from the scope it was granted, never add to it. It is the same add-never-widen pattern applied to a new domain, **not a second install door beside Door B's `uses`/presets**: installing and selecting stay at author/boot time (FIX-1388), and this key only narrows what an already-installed door answers. BR-9/10/11 are the cases; V6 is the check |
 
 ## Docs
 
@@ -120,6 +122,32 @@ the assertion D1 rests on. The premise held; nothing in the design changed becau
   rather than shipping two (locked distinction 2).
 - **Check whether the skills capability's preset surface moved.** S4 adds a preset there, and
   that file is actively edited.
+
+## Notes from review
+
+Recorded from the spec PR's review round, verbatim, for the implementer to weigh against real
+code. None of these changed the approach; they are below the altitude a directional plan settles.
+
+- **POC header length** (Cursor, `4058496248`): *"The ~30-line file header largely restates
+  SPEC/D1/DECISIONS. For a throwaway POC, a short runbook (how to run, what fails, `--plant`)
+  plus a link upstream would cut noise without losing tenet-7 negative control."*
+- **Fence stated three ways** (Cursor, `4058496262`): *"Simplify nit: the scope fence is
+  explained three ways (prose + SVG + mermaid). One diagram plus a cross-link in SPEC would
+  preserve the invariant for implementers with less duplication."*
+- **DOCS drafted ahead of Open-1** (Cursor, `4058496259`): *"Open-1 recommends one tool +
+  optional `detail`, but DOCS.md already drafts full `discover({ domain })` prose. That is fine
+  if labeled draft-only; if you want a leaner spec PR, consider shortening DOCS to an outline
+  until VO/owner closes Open-1."* Not folded: `DOCS.md` is required to carry real reader-facing
+  prose, and an outline would not satisfy it. `PLAN.md → Docs` already says the draft reconciles
+  once the tool name is known.
+- **Census graduation** (Cursor, `4058496252`): once S2 defines a single registration point, the
+  durable checks could graduate into package tests plus a thin `rg` for BR-17, leaving the census
+  as historical premise evidence. Worth weighing at S2; the census's own defect is fixed, so this
+  is a choice rather than a repair.
+- **Optional alternatives** (Cursor, review `5262189775`): defer VO (and possibly VG) to a
+  follow-up; put the entry types in `core` only and skip the `contracts` surface in S1. Both were
+  offered as optional and neither is clearly right — the `contracts` split buys zero-dep sharing,
+  and VO is already scoped as non-gating.
 
 ## Follow-ups
 

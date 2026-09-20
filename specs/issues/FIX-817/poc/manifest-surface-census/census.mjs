@@ -14,10 +14,26 @@
  * trust, and a hand-derived list cannot report the entry nobody wrote down. So
  * this walks the tree and asserts them.
  *
- * TOTALITY, not a spot check. The load-bearing assertion is not "these four
- * tools are classified correctly" — it is that EVERY model-facing tool found in
- * the scanned packages falls into a named class. A census that only checks the
- * rows it already knows about cannot surface the row that breaks the claim.
+ * TOTALITY, not a spot check — and stated at the width it actually proves.
+ * The load-bearing assertion is not "these four tools are classified correctly"
+ * — it is that EVERY tool-shaped `name:` literal the scan finds in SCAN_ROOTS
+ * falls into a named class. A census that only checks the rows it already knows
+ * about cannot surface the row that breaks the claim.
+ *
+ * WHAT THE SCAN DOES NOT SEE, stated so the next reader can see what would
+ * break it. The scan matches `name: "identifier"` and cannot match a hyphen, so
+ * it rests on a convention this repo follows but does not enforce: model-facing
+ * tools are camelCase, while kebab-case `name:` values are BLOCK names. Those
+ * are correctly excluded — a block is not a door. `channel-read`
+ * (`packages/workforce/src/channel/channel-flow.ts`) and
+ * `apply-skill-activation`
+ * (`packages/orchestration/src/skills/apply-skill-activation.ts`) are both
+ * `handler({...})`, and they reach a model only under camelCase action keys
+ * (`read`, `fileTask`, `readBoard`). Checked at review: SCAN_ROOTS contains no
+ * quoted kebab-case object key, so no model-facing tool there carries a
+ * kebab-case name. If that convention ever breaks — a tool registered under a
+ * hyphenated name — this scan would not see it and the claim would need the
+ * registration site S2 defines, not a regex.
  *
  * NEGATIVE CONTROL. Run with `--plant` to inject a synthetic unclassified tool
  * into the scan. The totality assertion MUST fail. A green check nobody has
@@ -30,7 +46,7 @@
  *   node specs/issues/FIX-817/poc/manifest-surface-census/census.mjs --plant
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const REPO = process.argv[2]?.startsWith("--") ? process.cwd() : process.argv[2] ?? process.cwd();
@@ -54,6 +70,9 @@ const SCAN_ROOTS = [
  *   act      — acts on a thing the caller already names. Does not enumerate.
  *   content  — reads or writes the content of a thing already identified.
  *   control  — a knob or mode, not a discovery surface at all.
+ *   work     — enumerates rows INSIDE a board the seat is already bound to.
+ *              FIX-1482's surface, fenced out of this door's four domains: a
+ *              work queue is not a catalog of what exists.
  */
 const CLASSIFICATION = {
   // --- core/tools -----------------------------------------------------------
@@ -62,7 +81,13 @@ const CLASSIFICATION = {
   readResource: "act",
   updateResource: "act",
   deleteResource: "act",
-  globResources: "content",
+  // UNGATED, found in review. Its own header says a null pattern lists
+  // everything, "Discovery only — no content is read, no `llmReadable` gate",
+  // and `execute` calls `collectAllResources`, not `collectReadableResources`.
+  // It was hand-labelled "content" here, which is how Claim 3a ever read as
+  // "exactly one". Unlike `listResources` it HAS a caller
+  // (`examples/knowledge-base/src/capability.ts`), so it is gated, not removed.
+  globResources: "ungated",
   grepResourceContent: "content",
   searchResources: "content",
   readResourceContent: "content",
@@ -72,6 +97,17 @@ const CLASSIFICATION = {
   runSkill: "act",
   skillInlineActivate: "act",
   taskTools: "act",
+  // Constructed as `name: named("…")` — invisible until the scan learned that
+  // form. `listTasks` is a real enumerator, board-scoped, and belongs to
+  // FIX-1482 rather than to this door.
+  addTask: "work",
+  assignTask: "work",
+  updateTask: "work",
+  completeTask: "work",
+  failTask: "work",
+  blockTask: "work",
+  cancelTask: "work",
+  listTasks: "work",
   // --- capability / preset names, not tools ---------------------------------
   skills: "control",
   workforce: "control",
@@ -100,18 +136,32 @@ const AMBIENT = [
   ["packages/orchestration/src/skills/load-tool.ts", "buildLoadCatalogContext"],
 ];
 
+/** Never part of the source tree being censused. */
+const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage"]);
+
 function walk(dir, out = []) {
   let entries;
   try {
-    entries = readdirSync(dir);
+    // `withFileTypes` answers directory-or-file from the directory entry
+    // itself, so nothing here ever resolves a path and nothing follows a link.
+    entries = readdirSync(dir, { withFileTypes: true });
   } catch {
     return out;
   }
   for (const entry of entries) {
-    const full = join(dir, entry);
-    const st = statSync(full);
-    if (st.isDirectory()) walk(full, out);
-    else if (entry.endsWith(".ts") && !entry.includes(".test.")) out.push(full);
+    // A symlink is never walked. pnpm's layout is a symlink farm, and a link
+    // pointing at an ancestor makes the walk descend until the OS refuses with
+    // ELOOP — which aborted this script before it printed any verdict, on
+    // every checkout that had actually installed. A check that does not finish
+    // is not evidence (BP-003), so the walk refuses links outright; the source
+    // files these claims are about are real files, never links.
+    if (entry.isSymbolicLink()) continue;
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      walk(join(dir, entry.name), out);
+    } else if (entry.name.endsWith(".ts") && !entry.name.includes(".test.")) {
+      out.push(join(dir, entry.name));
+    }
   }
   return out;
 }
@@ -143,29 +193,56 @@ for (const [domain, file, symbol] of READERS) {
 // ---------------------------------------------------------------------------
 console.log("\n## Claims 2 & 3 · classify every model-facing tool in the scanned packages\n");
 
+/**
+ * Both construction forms this repo uses for a model-facing tool name. The
+ * literal form was the only one the scan knew, which silently hid the twelve
+ * `name: named("…")` tools in `task-tools-capability.ts` — `listTasks`, a real
+ * enumerator, among them. A scan that cannot see a construction form cannot
+ * report the tool that breaks the claim.
+ */
+const NAME_FORMS = [
+  /name:\s*"([A-Za-z_][A-Za-z0-9_]*)"/g,
+  /name:\s*named\(\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*\)/g,
+];
+
+/**
+ * The negative control plants a real FILE inside a scan root, so the control
+ * exercises the ENUMERATION and not just the assertion. The previous version
+ * wrote straight into `found`, downstream of the regex — so it went red while
+ * a genuinely unfindable tool stayed invisible, which is the exact failure the
+ * control exists to catch, inside the control (BP-003).
+ */
+const PLANT_FILE = join(REPO, "packages/orchestration/src/__census_plant__.ts");
+
 const found = new Map(); // name -> Set(relative file)
-for (const root of SCAN_ROOTS) {
-  for (const file of walk(join(REPO, root))) {
-    const src = readFileSync(file, "utf8");
-    for (const m of src.matchAll(/name:\s*"([A-Za-z_][A-Za-z0-9_]*)"/g)) {
-      const name = m[1];
-      if (!found.has(name)) found.set(name, new Set());
-      found.get(name).add(relative(REPO, file));
+try {
+  if (PLANT) {
+    writeFileSync(
+      PLANT_FILE,
+      'export const planted = handler({ name: "plantedUnclassifiedTool" });\n',
+    );
+    console.log("  (--plant active: planted `__census_plant__.ts` into a scan root)\n");
+  }
+  for (const root of SCAN_ROOTS) {
+    for (const file of walk(join(REPO, root))) {
+      const src = readFileSync(file, "utf8");
+      for (const re of NAME_FORMS) {
+        for (const m of src.matchAll(re)) {
+          const name = m[1];
+          if (!found.has(name)) found.set(name, new Set());
+          found.get(name).add(relative(REPO, file));
+        }
+      }
     }
   }
-}
-
-if (PLANT) {
-  // Negative control: a tool the classification table has never heard of.
-  // The totality assertion below MUST reject it.
-  found.set("plantedUnclassifiedTool", new Set(["<planted by --plant>"]));
-  console.log("  (--plant active: injected `plantedUnclassifiedTool`)\n");
+} finally {
+  if (PLANT) rmSync(PLANT_FILE, { force: true });
 }
 
 const unclassified = [...found.keys()].filter((n) => !(n in CLASSIFICATION)).sort();
 note(
   unclassified.length === 0,
-  "TOTALITY · every model-facing tool found is classified",
+  "TOTALITY · every tool-shaped `name:` found in SCAN_ROOTS is classified",
   unclassified.length === 0
     ? `${found.size} tools, all classified`
     : `unclassified: ${unclassified.join(", ")}`,
@@ -180,8 +257,9 @@ note(
 
 const ungated = [...found.keys()].filter((n) => CLASSIFICATION[n] === "ungated");
 note(
-  ungated.length === 1 && ungated[0] === "listResources",
-  "Claim 3a · exactly one ungated enumerator, and it is listResources",
+  ungated.length === 2 &&
+    ["globResources", "listResources"].every((n) => ungated.includes(n)),
+  "Claim 3a · the ungated enumerators are exactly listResources and globResources",
   `found: ${ungated.join(", ") || "none"}`,
 );
 

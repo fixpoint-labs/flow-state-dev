@@ -22,11 +22,14 @@ work.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-7 | A skill is `disable-model-invocation` | Absent from the skills manifest. Not present-and-flagged | CI |
+| BR-7a | A skill is enabled, but the generator's binding has an `allowed` set that excludes it, or its mode is not `inline` | Absent from the skills manifest. Discovery must match what `loadSkill` will actually accept — `buildLoadCatalogContext` already filters the ambient catalog on both, and a door built on `listEnabledSkills` alone would advertise a skill the binding refuses | CI · the refused case is the one to assert |
 | BR-8 | A resource collection is not `llmReadable` | Absent from the resources manifest, and the collection is never enumerated to find that out | CI |
+| BR-8a | A collection is externally backed and **is** `llmReadable` | Present in the resources manifest. `collectReadableResources` reaches only static resources and `collectCollections`, and `collectCollections` drops external refs (`isExternalRef`) — so a manifest built on that helper alone would report an in-scope resource as absent. A manifest that lies by omission is worse than none; the external collections are reached too (`collectExternalCollections`) | CI · assert an external `llmReadable` collection appears |
 | BR-9 | A seat's own file names a `discover:` list | It sees those domains and no others. A domain it did not name is absent, not empty-with-a-reason | CI |
 | BR-10 | A seat's file names no `discover:` key | It sees every domain its scope carries — today's reach, unchanged | CI |
 | BR-11 | A seat names a domain in `discover:` that its scope does not carry | It still sees nothing for that domain. A seat file adds selection, never reach (the `seat-capabilities` rule) | CI |
 | BR-12 | Any manifest is read | It is computed from the domain's reader at call time. No row is written anywhere | CI |
+| BR-12a | A channel was opened and has since closed, or a seat was registered and is no longer declared | Absent from the manifest, or present and explicitly marked not-current. **Found in review:** inventory rows are append-only — `open-inventory.ts` says "Nothing is ever deleted. A row means *was registered in this org*, not *still declared*", and the docs confirm there is no reconcile pass — so `openedAt` with no `closedAt` cannot by itself mean live. An orchestrator must never be handed a closed channel as somewhere to send work | CI · the closed-channel case is the one to assert |
 
 ![A dashed fence between what the scope carries and what the seat asked for; three paths approach it and only the one that is both in scope and named crosses](figures/scope-fence.svg)
 
@@ -50,6 +53,7 @@ flowchart LR
 | BR-15 | An inventory row was written before this change | It reads and projects normally. Missing optional fields `== null`-guard rather than failing the entry (BP-030) | CI |
 | BR-16 | An app calls `createWorkforceCapability({ agents })` | It fails to type-check with a message naming the replacement. A removed key is refused loudly, never silently ignored (BP-030) | CI |
 | BR-17 | Anything in the repo called `resourceTools().listResources` | Nothing does. Its removal breaks no caller | CI · the census asserts the count is zero |
+| BR-18 | A model calls `globResources` with a null pattern, or one matching a non-`llmReadable` collection | Only `llmReadable` resources come back. **Found in review:** this is a *second* ungated enumerator — its own header says "no `llmReadable` gate" and it calls `collectAllResources` — and unlike `listResources` it has a live caller (`examples/knowledge-base`). So it is **gated, not removed**: closing the leak means closing both, or the door ships beside an open path | CI · the non-readable collection must be absent from the glob result |
 
 ## Failure taxonomy
 

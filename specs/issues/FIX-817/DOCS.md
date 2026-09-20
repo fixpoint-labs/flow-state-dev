@@ -89,9 +89,18 @@ policy then says how it is routed. `sidebar_label: Discovery`.
 > ## When a domain has nothing, or fails
 >
 > A domain with no entries returns an empty list. That is an ordinary answer — a workforce with
-> no open channels is not an error, and an agent should read it as "none right now" rather than
-> as a fault. If one domain cannot be read at all, the others still answer and that domain
-> reports the problem, so a single misconfigured collection does not cost the agent its turn.
+> no channels registered yet is not an error, and an agent should read it as "nothing here"
+> rather than as a fault. If one domain cannot be read at all, the others still answer and that
+> domain reports the problem, so a single misconfigured collection does not cost the agent its
+> turn.
+>
+> ## What an entry does and does not promise
+>
+> An entry says a thing was **registered or declared** in this workspace. It does not promise the
+> thing is open, running, or still there. Seats and channels are projected from a record that is
+> only ever appended to, so a channel that has since closed can still have an entry. Treat an
+> entry as "this exists and here is what it is for", and confirm the state of anything you are
+> about to act on the same way you would without the catalog.
 >
 > ## Not to be confused with
 >
@@ -111,8 +120,8 @@ policy then says how it is routed. `sidebar_label: Discovery`.
 >
 > This manifest is for a client: it is fixed for a flow, describes permissions, and is read by
 > DevTool and React UIs at session bootstrap. An agent asking what it can work with at runtime
-> uses [discovery](../orchestration/discovery.md) instead, which is read live and carries
-> purpose rather than permissions.
+> uses [discovery](../orchestration/discovery.md) instead, which is read at call time and
+> carries purpose rather than permissions.
 
 The existing page says "Runtime introspection" in its *When to use it* list. Reword that bullet
 to "Session bootstrap" so the two pages do not both claim the phrase.

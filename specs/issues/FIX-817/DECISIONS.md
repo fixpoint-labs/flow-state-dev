@@ -51,13 +51,23 @@ shape makes both worse. Then this is two surfaces and the unification is the wro
 | **Locks in** | Read cost tracks the underlying reader, so a domain with an expensive reader makes discovery expensive and the fix has to be in that reader, not in a cache we control. It also settles that **FIX-1405's inventory feeds the seats/channels manifest rather than being it** |
 
 The second half closes an open wall. The inventory rows carry `{id, kind}` for a seat and
-`{id, kind, members, openedAt}` for a channel — join keys and liveness, nothing an orchestrator
-could plan *against*. A manifest entry must carry purpose. So 817's shape generalizes the
-**declared** layer across domains while 1405's live resource supplies the liveness half.
+`{id, kind, members, openedAt}` for a channel — **join keys**, nothing an orchestrator could plan
+*against*. A manifest entry must carry purpose. So 817's shape generalizes the **declared** layer
+across domains, and takes its join keys from 1405's rows.
 
-> **Pending architect confirmation.** This reading of FIX-1405's two-layer resolution was put to
-> the FSD Architect on the W4 mailbox handle and the reply is not back. If refuted it changes
-> D2's second half and nothing else. It blocks no work.
+**What a manifest entry therefore means: registered or declared — never "currently open."** The
+inventory is append-only. `open-inventory.ts` states "Nothing is ever deleted. A row means *was
+registered in this org*, not *still declared*", and the workforce docs confirm there is no
+reconcile pass and no removal call: there is an `openedAt` and no `closedAt`. So a row's
+existence cannot carry liveness, and this spec does not pretend otherwise — the projection says
+what was registered, and neither the entries nor the docs claim a thing is open, live or still
+there ([BR-12a](BUSINESS-RULES.md)). **True liveness — a tombstone on close, or a
+session-existence filter at projection time — is a follow-on and deliberately outside this
+ship:** it means mutating the inventory, which is the one thing D2 promises not to do.
+
+> **Confirmed, then partly retracted — see [Settled](#settled).** The *feeds-not-is* reading was
+> stamped by the FSD Architect; the liveness half of that same stamp was withdrawn by the
+> Architect ten minutes later, on the evidence above.
 
 ## Decided, not asked
 
@@ -81,6 +91,11 @@ could plan *against*. A manifest entry must carry purpose. So 817's shape genera
   still uses the type and is untouched — see [EVOLUTION.md](EVOLUTION.md).
 - **Capabilities and tools get no domain of their own.** A generator already receives its tool
   list from the provider; what another seat can do belongs on that seat's entry. Four, not six.
+- **Boards and tasks are not a fifth domain.** FIX-1482's deterministic board/task work-query
+  stays its own surface: it answers *what work is queued for me*, which is a query over rows an
+  orchestrator acts on, not a catalog of what exists to plan against. Folding it into this door
+  would put a work queue behind a discovery enum and make both harder to change. The door stays
+  at four domains.
 - **The skills catalog context stays on by default** — otherwise every app that upgrades gets a
   model that does not know its skills exist (BP-030).
 
@@ -124,6 +139,62 @@ it before this ships rather than arguing it.
 additive and the entries keep their shape, so nothing a caller stored becomes wrong. Going four
 → one is a breaking change to a model-facing surface apps have written prompts against. The
 cheap mistake is to start narrow, which is what the recommendation does.
+
+<a name="settled"></a>
+## Settled
+
+- **FIX-1405's inventory feeds the seats/channels manifest; it is not the manifest.** D2's second
+  half, confirmed by the FSD Architect in the coherence review on the spec PR
+  ([#1981, 2026-09-20](https://github.com/fixpoint-labs/flow-state-dev/pull/1981#issuecomment-5753626408)).
+  Inventory rows supply **join keys** — `{id, kind}` for a seat, members and `openedAt` for a
+  channel — while the purpose / plan-against contract is this ticket's. The reading matches
+  FIX-1916's D3 / ER-3 contrast and the shipped FIX-1405. This half stands; the *liveness* half
+  of the same stamp does not, and its retraction is recorded immediately below. Resolved with
+  evidence: do not reopen.
+  - **The liveness half of that stamp was retracted by the Architect, and D2 was rewritten to
+    match.** Review found the rows are **append-only** — `open-inventory.ts`: "Nothing is ever
+    deleted. A row means *was registered in this org*, not *still declared*"; the workforce docs:
+    "There is no reconcile pass, no removal call" — so `openedAt` with no `closedAt` cannot mean
+    live, and a closed channel would have projected as somewhere to send work. Put back to the
+    Architect, who withdrew that half in the same review
+    ([#1981, 2026-09-20](https://github.com/fixpoint-labs/flow-state-dev/pull/1981#issuecomment-5753672402)):
+    *"Prior stamp that 1405 supplies the liveness half is wrong given `open-inventory` never
+    deletes ("was registered" ≠ still open). Closed channels must not project as present."* The
+    ruling takes the **narrow contract**: a manifest entry is a *registered / declared*
+    projection, entry and doc copy never claim open or live from inventory alone
+    ([BR-12a](BUSINESS-RULES.md)), and true liveness is a follow-on rather than a widening of
+    this PR into inventory mutation. Recorded rather than quietly amended: the reading was
+    stamped, then withdrawn, and a future reader should see both.
+- **The census re-derives D1's factual base — after a review round found it aborting, and fixed
+  it.** Review reported that the walk followed symlinks into `node_modules`, so on any checkout
+  that had actually installed it died with an uncaught `ELOOP` before printing a verdict. That
+  was real: a bare checkout hid it, and it reproduced the moment a pnpm-style symlink loop was
+  planted. `PLAN.md → V7` makes this script the ongoing factual gate, and a gate that aborts is
+  not a gate (BP-003). The walk now refuses symlinks and skips `node_modules`, and the fix was
+  proved against the planted loop rather than the bare tree: green end to end (0 doors, 1 ungated
+  enumerator — `listResources` — 0 callers of `resourceTools()`), with `--plant` still going red
+  on the totality assertion. **The counts D1 rests on did not move.** Resolved with evidence.
+- **The census's totality assertion was structurally broken, and is now repaired.** Three defects,
+  all found in review and all fixed on this branch. (a) **Claim 3a was false.** `globResources` is
+  a *second* ungated enumerator — its own header says a null pattern lists everything with "no
+  `llmReadable` gate", and it calls `collectAllResources` — but `census.mjs` hand-labelled it
+  `"content"`, which is the only reason the claim ever read "exactly one". Unlike `listResources`
+  it has a live caller, so the spec now **gates** it rather than removing it ([BR-18](BUSINESS-RULES.md)),
+  and Claim 3a asserts both. (b) **The scan could not see computed names.** Twelve tools are built
+  as `name: named("…")` in `task-tools-capability.ts` — `listTasks`, a real enumerator, among them
+  — and the regex never found them; the scan now covers both construction forms, and the tool
+  count moves 24 → 32. (c) **The negative control did not test the scanner.** `--plant` wrote
+  straight into the results map, downstream of the regex, so it could go red while a genuinely
+  unfindable tool stayed invisible — the exact failure the control exists to prevent, inside the
+  control (BP-003). It now plants a real source file into a scan root and is removed in a
+  `finally`. **D1's direction is unchanged and arguably stronger:** two ungated enumerators is a
+  better argument for one gated door than one was.
+- **The census's totality claim is narrowed to what it proves.** The scan matches
+  `name: "identifier"` and cannot match a hyphen, so it rested on an unstated convention:
+  model-facing tools are camelCase, kebab-case `name:` values are block names. The excluded
+  kebab names are `handler({...})` blocks, not doors, so Claim 2's "zero doors" is not falsified
+  — but the header claimed more width than the scan had. The claim and its dependency are now
+  stated in the header. Scope unchanged. Resolved with evidence.
 
 ## How it got here
 
