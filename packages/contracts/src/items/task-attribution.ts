@@ -21,15 +21,31 @@
  * this can over-include, which the previous timestamp model also could not
  * resolve.
  *
- * Bookend `task-change` and `task-board-meta` items are always excluded — they
- * are substrate scaffolding (status grouping / mounting `<TaskPlan />`), not
- * worker emissions, even though a terminal `task-change` emitted by the worker
- * body itself carries a `taskId`.
+ * Substrate components are always excluded — they are the board's own
+ * emissions, not the worker's, even though they are emitted inside a worker
+ * scope and so carry a `taskId`. Three types qualify:
+ * `task-change` and `task-board-meta` (status grouping / mounting
+ * `<TaskPlan />`), and `task-board-recorder-failure` (FIX-963 — the board
+ * failed to announce a result it had already saved).
+ *
+ * The test for membership is *whose* event it is, not what it looks like. A
+ * recorder failure is stamped with the task it was recording, so a reader
+ * asking "what did this worker produce?" would otherwise be handed the
+ * board's own bookkeeping trouble as though the worker had emitted it — and
+ * the worker may well have succeeded. Anything a task-scoped block emits
+ * ABOUT the substrate rather than as the worker's work belongs on this list.
  */
 import type { OutputItem, ComponentItem } from "./types";
 
 const TASK_CHANGE_COMPONENT = "task-change";
 const TASK_BOARD_META_COMPONENT = "task-board-meta";
+/**
+ * Mirrors `TASK_BOARD_RECORDER_FAILURE_COMPONENT_TYPE` in
+ * `@flow-state-dev/orchestration`. Duplicated as a literal for the same reason
+ * the two above are: this package is the zero-dependency layer and cannot
+ * import the producer.
+ */
+const TASK_BOARD_RECORDER_FAILURE_COMPONENT = "task-board-recorder-failure";
 
 type TaskChangeData = {
   collectionId?: string;
@@ -42,14 +58,16 @@ function isComponentItem(item: OutputItem): item is ComponentItem {
 }
 
 /**
- * True for substrate scaffolding items that drive `<TaskPlan />` status
- * grouping / mount the board component. Never part of a task's item bucket.
+ * True for items the substrate emitted about itself — `<TaskPlan />` status
+ * grouping, the board component's mount, and a recorder that could not
+ * announce a result it had saved. Never part of a task's item bucket.
  */
-function isBookendComponent(item: OutputItem): boolean {
+function isSubstrateComponent(item: OutputItem): boolean {
   return (
     isComponentItem(item) &&
     (item.component === TASK_CHANGE_COMPONENT ||
-      item.component === TASK_BOARD_META_COMPONENT)
+      item.component === TASK_BOARD_META_COMPONENT ||
+      item.component === TASK_BOARD_RECORDER_FAILURE_COMPONENT)
   );
 }
 
@@ -78,7 +96,7 @@ function collectionTaskIds(
  * Group the items emitted under each task of `collectionId`, in stream order.
  * Every returned item belongs to exactly one task; concurrent siblings and
  * sequential turns are disjoint by construction. Items with no `taskId`
- * (emitted outside any task scope) and bookend components are excluded.
+ * (emitted outside any task scope) and substrate components are excluded.
  */
 export function attributeItemsToTasks(
   items: readonly OutputItem[],
@@ -89,7 +107,7 @@ export function attributeItemsToTasks(
   if (ids.size === 0) return buckets;
 
   for (const item of items) {
-    if (isBookendComponent(item)) continue;
+    if (isSubstrateComponent(item)) continue;
     const taskId = item.taskId;
     if (taskId === undefined || !ids.has(taskId)) continue;
     let bucket = buckets.get(taskId);
@@ -119,7 +137,7 @@ export function itemsForTask(
 
   const result: OutputItem[] = [];
   for (const item of items) {
-    if (isBookendComponent(item)) continue;
+    if (isSubstrateComponent(item)) continue;
     if (item.taskId !== taskId) continue;
     result.push(item);
   }
@@ -130,8 +148,9 @@ export function itemsForTask(
  * The set of `item.id` for every item owned by some task, across all
  * collections. The chat-level `<RequestGroupRenderer>` uses this to skip items
  * that belong to a task so they render inside the task's `<TaskPlan />`
- * expansion only, not also inline in the thread. Bookend components are
- * excluded — they mount/group the board rather than belonging to a task.
+ * expansion only, not also inline in the thread. Substrate components are
+ * excluded — they mount/group the board, or report on the board's own
+ * bookkeeping, rather than belonging to a task.
  *
  * Unlike the other two helpers, this does NOT gate on a collection's
  * `task-change` task ids: it is collection-agnostic by design (the chat thread
@@ -145,7 +164,7 @@ export function collectAttributedItemIds(
   const owned = new Set<string>();
   for (const item of items) {
     if (item.taskId === undefined) continue;
-    if (isBookendComponent(item)) continue;
+    if (isSubstrateComponent(item)) continue;
     owned.add(item.id);
   }
   return owned;

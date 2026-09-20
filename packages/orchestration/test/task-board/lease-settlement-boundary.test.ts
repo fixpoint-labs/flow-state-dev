@@ -235,3 +235,87 @@ describe("a recorder whose own write FAILS leaves renewal for its successor", ()
     expect(fx.pending()).toBe(0);
   });
 });
+
+describe("the swallow path releases the driver itself (FIX-963)", () => {
+  // The exception above is narrow, and this is its other edge. When
+  // `complete()` throws having ALREADY COMMITTED, no `.rescue()` follows: the
+  // recorder reports the failure and returns rather than handing the error on.
+  // So nothing is coming to make a further fenced write, and leaving the driver
+  // running would renew a lease on a row nobody is coming back for — the timer
+  // ticking on against a settled task until the request's signal aborts it.
+  //
+  // The test above and this one are the two halves of "stop once no further
+  // fenced write can follow": there, one can; here, none can.
+
+  /** A ctx that accepts an awaited component emit and records what it got. */
+  function ctxWith(
+    fx: Fixture,
+    emitted: Array<{ component: string; data: Record<string, unknown> }>
+  ): BlockContext {
+    return {
+      sequencer: fx.sequencer,
+      _emitComponentAwaited: async (
+        component: string,
+        data: Record<string, unknown>
+      ) => {
+        emitted.push({ component, data });
+      },
+    } as unknown as BlockContext;
+  }
+
+  it("recordSuccess stops renewal when complete() committed and then threw", async () => {
+    openLeaseRenewalScope();
+    const fx = await claimedUnderRenewal();
+
+    const announceFails = {
+      ...fx.collection,
+      complete: async (...args: Parameters<TaskCollectionRef["complete"]>) => {
+        await fx.collection.complete(...args);
+        throw new Error("change announcement blew up");
+      },
+    } as unknown as TaskCollectionRef;
+
+    const emitted: Array<{ component: string; data: Record<string, unknown> }> =
+      [];
+    const block = createRecordSuccess({
+      name: "record-success",
+      collection: async () => announceFails,
+    });
+
+    // It returns rather than throwing — the deferring site leaves the raise to
+    // the drain's tail.
+    await runForTest(block, { ok: true }, ctxWith(fx, emitted));
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]?.data).toMatchObject({ verdict: "committed" });
+    // The assertion this block exists for.
+    expect(fx.pending()).toBe(0);
+  });
+
+  it("recordError stops renewal on the same path", async () => {
+    openLeaseRenewalScope();
+    const fx = await claimedUnderRenewal();
+
+    const announceFails = {
+      ...fx.collection,
+      fail: async (...args: Parameters<TaskCollectionRef["fail"]>) => {
+        await fx.collection.fail(...args);
+        throw new Error("change announcement blew up");
+      },
+    } as unknown as TaskCollectionRef;
+
+    const emitted: Array<{ component: string; data: Record<string, unknown> }> =
+      [];
+    const block = createRecordError({
+      name: "record-error",
+      collection: async () => announceFails,
+      onError: "skip",
+    });
+
+    await runForTest(block, new Error("boom"), ctxWith(fx, emitted));
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]?.data).toMatchObject({ recorder: "fail" });
+    expect(fx.pending()).toBe(0);
+  });
+});

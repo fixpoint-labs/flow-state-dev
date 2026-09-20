@@ -337,6 +337,10 @@ A `false` says your write changed nothing. It does not say why. If you need to k
 
 **A collection ref you wrote yourself** maintains none of this. Absence of a record reads as `undefined`, never as "your write did not land".
 
+**This is a different question from the advisory guards above.** `ifAllowed`, `claim` and `refuseWhenParked` cover a write that was *declined* — the store looked at the task, decided the write no longer made sense, and saved nothing. That is a value, not an error, and it never throws. A write token covers the other side of the commit: the write was taken, and something after it went wrong. Neither answers the other's question, and a caller that cares about both reads the outcome for the first and the token for the second.
+
+The task board is built on this. Its own recorders correlate every result write and report one that landed but could not be announced, rather than leaving a run looking clean — see [When the board cannot record a result](./task-board#when-the-board-cannot-record-a-result).
+
 ## The three backings
 
 Where a collection stores its tasks decides how long they live. `getOrCreateTaskCollection` resolves the same `TaskCollectionRef` API over any of three backings, so your pattern code doesn't change when the storage does.

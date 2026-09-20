@@ -424,6 +424,30 @@ A worker's result is not always the last word on its task. A coordinator can can
 
 The board drops those results. A cancel stays cancelled, output the worker recorded for itself stays, and a second worker's claim is left alone. The drop is silent and affects exactly one task: the rest of the board keeps draining, and under `onError: "fail"` the error that surfaces is the worker's own rather than a conflict on the write-back.
 
+### When the board cannot record a result
+
+A task going wrong and the board failing to write down what happened are different events, and `onError` governs only the first.
+
+Saving a result is two steps: the store commits the write, then the change is announced to everything watching the board. The second step can fail on its own — a block reacting to task changes throws, a resource hook rejects — and by then the work is already saved. When that happens the board says so. It emits a `task-board-recorder-failure` entry naming the task, which of the two write-backs hit it, and what it could establish about the write:
+
+| Verdict | Means |
+| --- | --- |
+| `committed` | The result is saved. Only the announcement failed. |
+| `undetermined` | The board cannot tell whether the result was saved. |
+
+Then the run fails — after every other task has finished. Ordering is the point: you get the honest verdict *and* the work that completed. `onError: "skip"` does not suppress it, because `skip` is a statement about tasks, not about the board's own bookkeeping.
+
+`undetermined` is never reported as "it wasn't saved". You get it in two situations, and in both it is the permanent answer rather than a transient one:
+
+- **On a task store you wrote yourself.** The board answers this question from a record it writes inside the same commit as the task, and a store built against `TaskCollectionRef` keeps no such record. There is no way to opt in.
+- **On rows that were already in a persistent store before you upgraded.** Those rows carry no write record and nothing adds one to them, so they answer `undetermined` for as long as they live. New rows the board creates answer definitely.
+
+A row the board is unsure about is handed back rather than left claimed, so it settles or returns to the queue on the same pass instead of waiting out its lease.
+
+On a [seat that hands off](#seats-that-hand-off) there is no batch to drain and no run to defer to, so the failure fails that child session directly — again regardless of `onError`.
+
+Nothing retries a failed announcement. The entry and the run's failure are the whole of what the board does about it.
+
 A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unblock`, `unpark`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling. A task handed back out because its worker died is not one of those paths: it is bounded by its own allowance and settles `errored` once that runs out.
 
 `maxTotalRetries` bounds what the board **spends**: it counts failure retries across every task, and at the bound the next failing task settles instead of re-dispatching. `maxIterations` bounds how long a worker loops, per worker, including idle polls that claim nothing — at `concurrency: 4` a board can spend four times `maxIterations` before every worker has tripped. Neither `reclaim()` nor `unblock` spends the retry budget, so on a board looping through those, `maxIterations` is what ends it.

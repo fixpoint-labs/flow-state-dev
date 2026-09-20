@@ -132,6 +132,7 @@ import {
   createRecordSuccess,
   createRecordError,
 } from "./blocks/record-result";
+import { createRaiseRecorderFailures } from "./blocks/raise-recorder-failures";
 import { createCheckBoard } from "./blocks/check-board";
 import {
   createBoardMetaActive,
@@ -141,6 +142,7 @@ import {
   createFlowPolicyResolver,
   createInstallBoardFlowState,
   createTeardownBoardFlowState,
+  currentBoardRunId,
   stampCurrentClaim,
 } from "./flow-policy-wiring";
 import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
@@ -203,7 +205,20 @@ export {
 export type {
   RecordSuccessOptions,
   RecordErrorOptions,
+  RecorderFailureWiring,
 } from "./blocks/record-result";
+// FIX-963 — a board that saved a result and could not announce it.
+export {
+  TASK_BOARD_RECORDER_FAILURE_COMPONENT_TYPE,
+  TaskBoardRecorderFailureError,
+  TaskBoardReportFailureError,
+  recorderFailuresForRun,
+} from "./blocks/recorder-failure";
+export type {
+  RecorderFailureReport,
+  RecorderKind,
+  RecorderWriteVerdict,
+} from "./blocks/recorder-failure";
 export { createCheckBoard } from "./blocks/check-board";
 export type { CheckBoardOptions } from "./blocks/check-board";
 export { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
@@ -911,15 +926,29 @@ export function taskBoard<
     resolveFlowPolicy: createFlowPolicyResolver(name),
   });
 
+  // FIX-963. On the inline batch a recorder failure is REPORTED here and
+  // raised at the drain's tail, so every sibling finishes first.
+  const recorderFailure = {
+    runId: (ctx: BlockContext) => currentBoardRunId(name, ctx),
+    onRecorderFailure: "defer" as const,
+  };
+
   const recordSuccess = createRecordSuccess({
     name: `${name}-worker-record-success`,
     collection: collectionFactory,
+    recorderFailure,
   });
 
   const recordError = createRecordError({
     name: `${name}-worker-record-error`,
     collection: collectionFactory,
     onError,
+    recorderFailure,
+  });
+
+  const raiseRecorderFailures = createRaiseRecorderFailures({
+    name,
+    runId: (ctx: BlockContext) => currentBoardRunId(name, ctx),
   });
 
   const checkBoard = createCheckBoard({
@@ -1202,6 +1231,12 @@ export function taskBoard<
     // the drain tests catch the unconditional one, and an `any`-typed insert on
     // a board configuration those tests do not exercise is still silent.
     .tap(boardExitsConnector, boardMetaCompleted)
+    // FIX-963: the run fails here if this drain saved a result it could not
+    // announce. Deliberately AFTER the exits tap — the adjacency above is a
+    // compile-checked rule, and inserting between the two would replace the
+    // pool's exit outputs — and deliberately BEFORE teardown, whose sibling
+    // `.rescue` below still tears the run state down when this throws.
+    .tap(raiseRecorderFailures)
     // FIX-610: teardown on the success path. The `.rescue` below also
     // runs teardown on errors so cleanup is symmetric — leaving stale
     // run-state across re-entries inside the same request would
