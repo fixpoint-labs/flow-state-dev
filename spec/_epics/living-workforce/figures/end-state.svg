@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 376" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box for W5. In the box, three items. First, shaped this cycle: the human-input path — an agent seat owns the task and parks the row with a reason, the parked row's audience derives to a principal, and the person answers through a flow action bound to that principal, after which the flow decides what the answer means and continues; the org chart holds the durable bind of people alongside agent seats, as inventory, members and principals, so a redeploy does not forget who owed a sign-off. People are not board drainers. Then a dashed ship fence band saying that the fence lifted on September 20, when W4's first cut landed, and that neither row below it has started. Below the fence, two items, unfenced but not yet begun: the reference consumer, which is the kitchen-sink rebuild as a runnable app with durable hire, channels, seats, boards and inventory, running its own epic lifecycle; and working assemblies, reference surfaces composing the W3 floor with the W4 first cut, whose child cut is undecided. A note says everything in the box is made of W3 and W4 pieces, and only the top row is new. Composed in by the app: its own channel kinds and CHANNEL.md files, and its own approval and Waiting-on-you rendering. Consumed, not owned: the W3 floor, which has landed, and the W4 first cut, which has also landed. Below a second fence, what is not built: no Human, Team, Channel or Agent as an L1 type; no parallel HITL plane and no human-only side boards; no merged board-assignee and seat registry; no new L1 TaskStatus for Waiting-on-you or Idle; no Collab RC as the whole of W5; no kitchen-sink-only APIs, KS-only durable store or in-memory-only hire; no DevForce or CyberForce Lab product inside the kitchen-sink; no seats plugged into supervisor or patterns factories as L2 primitives; no nested sessions as the work control plane; no second skill registry and no second memory story for human principals; and, removed by the D2 flip on September 20, no person as a board drainer and no flow-colon-human drain kind on the W5 spine.">
+<svg viewBox="0 0 940 520" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box for W5. The objective is to prove Workforce is shippable, shown as three proving surfaces stacked in a box. First, the reference app: the kitchen-sink upgraded so a cloned app hires a durable team, opens channels and boards, and still has them after a redeploy. It has a producer, the held child epic FIX-1455. Second, the live view: devtool improved so a run is observed as it unfolds across channels and workers, rather than reconstructed from a trace afterwards. It is drawn as an empty slot marked no child, because nothing in the set produces it. Third, the real configuration: a basic DevForce running one genuine task through a workforce end to end, watched doing it. It is also an empty slot marked no child; its first build slice, FIX-1426, is done, but basically working has no owner. Beneath the three sits the one running thing they are all views of: the living assembly, which is durable hire, channels, CHANNEL.md seats, boards and inventory; agent isolation, where read-only handbooks are ambient down the org, team and worker tree while mutable resources need an explicit grant, which is FIX-1467's exploration; and park and answer, where an agent seat parks a row with a reason and the person answers through a flow action carrying the request's own principal. A boundary line under the box reads: one user, one org. Agents are isolated from each other, not people from people. To the right, composed in by the app: its own channel kinds as CHANNEL.md flow factories rather than new L1, and its own rendering of Waiting-on-you which never adds a status value. Below that, consumed and not owned: the W3 floor, FIX-1351, landed, and the W4 first cut, FIX-1407, landed. Below that a note says the set is open and more children are expected, per rule ER-23. Then a band headed grow into later, deferred and not refused, revisited when multi-user or sign-off pain is real, containing: multi-user with more than one principal; the org chart of people as a product; originator not equal to reviewer; a durable reviewedBy bind; the FIX-1455 bind requirements the canceled explore would have handed down; multi-principal walls covering one person across many desks, whether channel members are principals, and where a board lives once several principals reach it; and CyberForce. Finally, below a fence, what is not built: no Human, Team, Channel or Agent as an L1 type; no parallel HITL plane and no human-only side boards; no merged board-assignee and seat registry; no new L1 TaskStatus for Waiting-on-you or Idle, including to render a devtool column; no Collab RC as this epic; no kitchen-sink-only APIs, kitchen-sink-only store or in-memory-only hire; no Lab product inside the kitchen-sink, though DevForce now runs beside it; no seats plugged into supervisor or patterns factories as L2 primitives; no nested sessions as the work control plane; no second skill registry and no second memory story; and no multi-human machinery, which is deferred rather than refused.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -10,43 +10,56 @@
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
     .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
     .gate  { fill:var(--code-soft); stroke:var(--code); stroke-width:2.2; }
+    .slot  { fill:none; stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:5 4; }
     .held  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
     .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
     .inp   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .later { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
     .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .bound { fill:none; stroke:var(--accent); stroke-width:1.6; }
     .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
              font-size:9.5px; letter-spacing:.1em; }
     .t-gat { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
              font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
     .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-bm  { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
     .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
-    .t-fen { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.06em; }
     .t-out { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-out-l { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
                font-size:9.5px; letter-spacing:.1em; }
   </style>
 
   <g id="in-the-box">
-    <rect class="box" x="16" y="26" width="560" height="232" rx="5"/>
-    <text class="t-lbl" x="32" y="46">IN THE BOX — W5, A COMPOSITION</text>
+    <rect class="box" x="16" y="26" width="560" height="298" rx="5"/>
+    <text class="t-lbl" x="32" y="46">IN THE BOX — PROVE WORKFORCE IS SHIPPABLE, ON THREE SURFACES</text>
 
-    <rect class="gate" x="32" y="58" width="528" height="44" rx="4"/>
-    <text class="t-gat" x="44" y="70">SHAPED THIS CYCLE — FIX-1458</text>
-    <text class="t-b" x="44" y="86">a seat parks the row &#8594; the person answers via a bound action</text>
-    <text class="t-s" x="44" y="98">the org chart holds the durable bind &#8212; inventory &#183; members &#183; principals</text>
+    <rect class="gate" x="32" y="58" width="528" height="48" rx="4"/>
+    <text class="t-gat" x="44" y="72">1 · THE REFERENCE APP — FIX-1455, ITS OWN LIFECYCLE</text>
+    <text class="t-b" x="44" y="88">clone it, it hires a team, and still has it after a redeploy</text>
+    <text class="t-s" x="44" y="100">durable hire &#183; CHANNEL.md seats &#183; channels &#183; boards &#183; inventory</text>
 
-    <rect class="fence" x="32" y="108" width="528" height="16" rx="2"/>
-    <text class="t-fen" x="44" y="120">SHIP FENCE &#183; LIFTED Sep 20, W4’s first cut landed &#8212; neither row below has started</text>
+    <rect class="slot" x="32" y="112" width="528" height="48" rx="4"/>
+    <text class="t-non" x="44" y="126">2 · THE LIVE VIEW — NO CHILD</text>
+    <text class="t-bm" x="44" y="142">watch the run unfold in devtool, not a trace read afterwards</text>
+    <text class="t-s" x="44" y="154">channels &#183; workers &#183; the activity moving between them</text>
 
-    <rect class="held" x="32" y="130" width="528" height="40" rx="4"/>
-    <text class="t-b" x="44" y="147">the reference consumer &#8212; FIX-1455, its own lifecycle</text>
-    <text class="t-s" x="44" y="161">durable hire &#183; CHANNEL.md seats &#183; boards &#183; inventory &#183; survives a redeploy</text>
+    <rect class="slot" x="32" y="166" width="528" height="48" rx="4"/>
+    <text class="t-non" x="44" y="180">3 · THE REAL CONFIGURATION — NO CHILD</text>
+    <text class="t-bm" x="44" y="196">a basic DevForce runs one genuine task, end to end</text>
+    <text class="t-s" x="44" y="208">first build slice FIX-1426 is done &#8212; &#8220;basically working&#8221; has no owner</text>
 
-    <rect class="held" x="32" y="176" width="528" height="40" rx="4"/>
-    <text class="t-b" x="44" y="193">working assemblies &#8212; the child cut is undecided</text>
-    <text class="t-s" x="44" y="207">reference surfaces composing the W3 floor with the W4 first cut</text>
+    <rect class="held" x="32" y="224" width="528" height="72" rx="4"/>
+    <text class="t-lbl" x="44" y="240">ALL THREE ARE VIEWS OF ONE RUNNING THING</text>
+    <text class="t-s" x="44" y="256">the living assembly &#8212; durable hire &#183; channels &#183; seats &#183; boards &#183; inventory</text>
+    <text class="t-s" x="44" y="270">agent isolation &#8212; references/ ambient RO by tree &#183; resources/ by grant &#183; FIX-1467</text>
+    <text class="t-s" x="44" y="284">park and answer &#8212; the seat parks; the person answers with the request&#8217;s own principal</text>
 
-    <text class="t-s" x="32" y="240">All of it is made of W3 and W4 pieces. Only the top row is new, and it is shaped, not shipped.</text>
+    <path class="bound" d="M32 306 L560 306"/>
+    <text class="t-acc" x="32" y="318">BOUNDARY &#183; ONE USER, ONE ORG &#8212; agents isolated from each other, not people</text>
   </g>
 
   <g id="composed-in">
@@ -56,8 +69,8 @@
     <text class="t-b" x="620" y="75">its own channel kinds</text>
     <text class="t-s" x="620" y="88">CHANNEL.md &#183; flow factories, not new L1</text>
     <rect class="comp" x="608" y="100" width="300" height="36" rx="4"/>
-    <text class="t-b" x="620" y="117">its own approval UX</text>
-    <text class="t-s" x="620" y="130">renders Waiting-on-you; never adds a status</text>
+    <text class="t-b" x="620" y="117">its own Waiting-on-you rendering</text>
+    <text class="t-s" x="620" y="130">a view over parked + reason; never a status</text>
   </g>
 
   <g id="consumed">
@@ -69,13 +82,26 @@
     <text class="t-s" x="620" y="239">W4 first cut &#183; FIX-1407 &#8212; landed</text>
   </g>
 
+  <g id="open-set">
+    <rect class="box" x="592" y="290" width="332" height="34" rx="5"/>
+    <text class="t-s" x="608" y="304">THE SET IS OPEN &#8212; more children expected</text>
+    <text class="t-s" x="608" y="317">filing one is normal course, not a re-scope &#183; ER-23</text>
+  </g>
+
+  <g id="grow-into-later">
+    <rect class="later" x="16" y="340" width="908" height="62" rx="5"/>
+    <text class="t-lbl" x="32" y="358">GROW INTO LATER — DEFERRED, NOT REFUSED &#183; revisit when multi-user or sign-off pain is real</text>
+    <text class="t-s" x="32" y="376">multi-user (a second principal) &#183; the org chart of people as a product &#183; originator &#8800; reviewer &#183; durable reviewedBy:</text>
+    <text class="t-s" x="32" y="392">the FIX-1455 bind requirements the canceled explore would have handed down &#183; multi-principal walls &#183; CyberForce</text>
+  </g>
+
   <g id="not-built">
-    <path class="fence" d="M16 274 L924 274"/>
-    <text class="t-out-l" x="16" y="296">NOT BUILT</text>
-    <text class="t-out" x="104" y="296">no Human / Team / Channel / Agent as an L1 type &#183; no parallel HITL plane &#183; no human-only side boards</text>
-    <text class="t-out" x="104" y="312">no merged board-assignee + seat registry &#183; no new L1 TaskStatus for Waiting-on-you or Idle</text>
-    <text class="t-out" x="104" y="328">no Collab RC as this epic &#183; no KS-only APIs / KS-only store / in-memory-only hire &#183; no Lab product in KS</text>
-    <text class="t-out" x="104" y="344">no seats in supervisor() or patterns factories &#183; no nested sessions as control plane &#183; no second skill or memory story</text>
-    <text class="t-out" x="104" y="360">no person as a board drainer &#183; no <tspan font-style="italic">flow: human</tspan> drain kind on the W5 spine &#8212; both removed by the D2 flip, Sep 20</text>
+    <path class="fence" d="M16 418 L924 418"/>
+    <text class="t-out-l" x="16" y="440">NOT BUILT</text>
+    <text class="t-out" x="104" y="440">no Human / Team / Channel / Agent as an L1 type &#183; no parallel HITL plane &#183; no human-only side boards</text>
+    <text class="t-out" x="104" y="456">no merged board-assignee + seat registry &#183; no new L1 TaskStatus for Waiting-on-you or Idle, not even for a devtool column</text>
+    <text class="t-out" x="104" y="472">no Collab RC as this epic &#183; no KS-only APIs / KS-only store / in-memory-only hire &#183; no person as a board drainer</text>
+    <text class="t-out" x="104" y="488">no Lab product inside the kitchen-sink &#8212; DevForce runs beside it, never in it &#183; no seats in supervisor() or patterns factories</text>
+    <text class="t-out" x="104" y="504">no nested sessions as control plane &#183; no second skill or memory story &#183; no multi-human machinery (deferred above, not refused)</text>
   </g>
 </svg>

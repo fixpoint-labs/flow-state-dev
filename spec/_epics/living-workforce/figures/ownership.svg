@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 356" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: a matrix of five cross-cutting rules against the three rows of the W5 set — FIX-1458, the held child epic FIX-1455, and the unfiled working-assemblies row. ER-1, a non-human seat owns the task and people act on a parked row through principal-bound flow actions rather than draining the board, is decided by FIX-1458 and consumed by both others. ER-2, Waiting-on-you is parked and Idle is runtime, is decided by FIX-1458 and consumed by both others. ER-3, the reference runs and its org chart survives a redeploy, is built by FIX-1455 and consumed by the assemblies row. ER-4, assemblies compose and add no layer, is conditional: a dashed cell under FIX-1455 reading BUILDS IF NOT CUT, and a dashed cell under the assemblies row reading BUILDS IF CUT. ER-19, the done condition, is likewise conditional: a dashed cell under FIX-1455 reading PROVISIONAL OWNER, and a dashed cell under the assemblies row reading OWNS IF CUT — FIX-1455 holds it unless the assemblies cut says otherwise, so the collapse path has a defined owner rather than none. Four of the five rules in the matrix have one committed owner; the fifth’s is provisional, which is the epic’s structural gap and is Open 2 and 3. Sixteen further rules sit outside this matrix because they bind every row equally and need no column: ten prohibitions, ER-5 to ER-14; four rules for how the set is run, ER-15 to ER-18; and two more proof rules, ER-20 and ER-21.">
+<svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: a matrix of six cross-cutting rules against the four live rows of the W5 set — the exploration FIX-1467, the held child epic FIX-1455, and two unfiled rows, the devtool view and a basic DevForce. ER-1, a non-human seat owns the task and the person answers through a flow action carrying the request's own principal, is decided and built by FIX-1455 and consumed by both unfiled rows. ER-2, Waiting-on-you is parked and Idle is runtime, is decided by FIX-1455 and consumed by the devtool view, which renders it, and by DevForce. ER-3, the reference runs and its hired team survives a redeploy, is built by FIX-1455 and consumed by DevForce. ER-4, every proving surface composes and adds no layer, is built by FIX-1455 and is conditional on the other two rows being filed, drawn as dashed cells reading BUILDS IF FILED. ER-18, the downstream-blocking walls, is decided by FIX-1467 and consumed by FIX-1455, which teaches the convention. ER-19, the done condition, is split across three legs: leg a, the reference app, is owned by FIX-1455; leg b, the live view, and leg c, the real configuration, each fall in an unfiled column and are drawn as empty dashed cells reading NO CHILD. Those two empty cells are the finding — the done condition is owned in one third, and an empty cell here means no child produces this, which is different from a blank cell meaning the row does not touch the rule. A note records that the canceled FIX-1458 no longer has a column, and that ER-1 and ER-2, which it used to own, moved to FIX-1455 while ER-18's walls were retargeted to FIX-1467. Seventeen further rules sit outside this matrix because they bind every row equally and need no column: eleven prohibitions, ER-5 to ER-14 and ER-22; four rules for how the set is run, ER-15 to ER-17 and ER-23; and two more proof rules, ER-20 and ER-21.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -12,69 +12,91 @@
     .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
     .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
     .prov  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; stroke-dasharray:5 3; }
+    .none  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
     .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
              font-size:9.5px; letter-spacing:.1em; }
     .t-col { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-colg{ fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
     .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
     .t-own { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
              font-weight:700; font-size:9.5px; letter-spacing:.06em; }
     .t-use { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-prov{ fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
              font-weight:700; font-size:9px; letter-spacing:.04em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-weight:700; font-size:9px; letter-spacing:.04em; }
   </style>
 
-  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; FOUR RULES HAVE ONE OWNER; THE FIFTH’S IS PROVISIONAL</text>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; TWO OF THE DONE CONDITION&#8217;S THREE LEGS HAVE NO CHILD</text>
 
   <g id="columns">
-    <text class="t-col" x="330" y="50">FIX-1458</text>
-    <text class="t-col" x="500" y="50">FIX-1455 &#183; epic</text>
-    <text class="t-col" x="670" y="50">FIX-XXX &#183; assemblies</text>
+    <text class="t-col" x="316" y="50">FIX-1467</text>
+    <text class="t-col" x="464" y="50">FIX-1455 &#183; epic</text>
+    <text class="t-colg" x="622" y="50">devtool &#183; unfiled</text>
+    <text class="t-colg" x="776" y="50">DevForce &#183; unfiled</text>
   </g>
 
   <g id="r1">
     <text class="t-row" x="16" y="78">ER-1 &#183; a non-human seat owns the task</text>
-    <rect class="own" x="300" y="60" width="160" height="30"/><text class="t-own" x="352" y="79">DECIDES</text>
-    <rect class="use" x="470" y="60" width="160" height="30"/><text class="t-use" x="522" y="79">consumes</text>
-    <rect class="use" x="640" y="60" width="160" height="30"/><text class="t-use" x="692" y="79">consumes</text>
+    <rect class="cell" x="296" y="60" width="150" height="30"/>
+    <rect class="own" x="454" y="60" width="150" height="30"/><text class="t-own" x="504" y="79">DECIDES</text>
+    <rect class="use" x="612" y="60" width="150" height="30"/><text class="t-use" x="658" y="79">consumes</text>
+    <rect class="use" x="770" y="60" width="150" height="30"/><text class="t-use" x="816" y="79">consumes</text>
   </g>
 
   <g id="r2">
     <text class="t-row" x="16" y="112">ER-2 &#183; Waiting-on-you is parked</text>
-    <rect class="own" x="300" y="94" width="160" height="30"/><text class="t-own" x="352" y="113">DECIDES</text>
-    <rect class="use" x="470" y="94" width="160" height="30"/><text class="t-use" x="522" y="113">consumes</text>
-    <rect class="use" x="640" y="94" width="160" height="30"/><text class="t-use" x="692" y="113">consumes</text>
+    <rect class="cell" x="296" y="94" width="150" height="30"/>
+    <rect class="own" x="454" y="94" width="150" height="30"/><text class="t-own" x="504" y="113">DECIDES</text>
+    <rect class="use" x="612" y="94" width="150" height="30"/><text class="t-use" x="654" y="113">renders it</text>
+    <rect class="use" x="770" y="94" width="150" height="30"/><text class="t-use" x="816" y="113">consumes</text>
   </g>
 
   <g id="r3">
-    <text class="t-row" x="16" y="146">ER-3 &#183; the reference runs</text>
-    <rect class="cell" x="300" y="128" width="160" height="30"/>
-    <rect class="own" x="470" y="128" width="160" height="30"/><text class="t-own" x="526" y="147">BUILDS</text>
-    <rect class="use" x="640" y="128" width="160" height="30"/><text class="t-use" x="692" y="147">consumes</text>
+    <text class="t-row" x="16" y="146">ER-3 &#183; the reference runs, and comes back</text>
+    <rect class="cell" x="296" y="128" width="150" height="30"/>
+    <rect class="own" x="454" y="128" width="150" height="30"/><text class="t-own" x="508" y="147">BUILDS</text>
+    <rect class="cell" x="612" y="128" width="150" height="30"/>
+    <rect class="use" x="770" y="128" width="150" height="30"/><text class="t-use" x="816" y="147">consumes</text>
   </g>
 
   <g id="r4">
-    <text class="t-row" x="16" y="180">ER-4 &#183; assemblies compose, add no layer</text>
-    <rect class="cell" x="300" y="162" width="160" height="30"/>
-    <rect class="prov" x="470" y="162" width="160" height="30"/><text class="t-prov" x="490" y="181">BUILDS IF NOT CUT</text>
-    <rect class="prov" x="640" y="162" width="160" height="30"/><text class="t-prov" x="672" y="181">BUILDS IF CUT</text>
+    <text class="t-row" x="16" y="180">ER-4 &#183; every surface composes, adds no layer</text>
+    <rect class="cell" x="296" y="162" width="150" height="30"/>
+    <rect class="own" x="454" y="162" width="150" height="30"/><text class="t-own" x="508" y="181">BUILDS</text>
+    <rect class="prov" x="612" y="162" width="150" height="30"/><text class="t-prov" x="640" y="181">BUILDS IF FILED</text>
+    <rect class="prov" x="770" y="162" width="150" height="30"/><text class="t-prov" x="798" y="181">BUILDS IF FILED</text>
   </g>
 
   <g id="r5">
-    <text class="t-row" x="16" y="214">ER-19 &#183; the done condition</text>
-    <rect class="cell" x="300" y="196" width="160" height="30"/>
-    <rect class="prov" x="470" y="196" width="160" height="30"/><text class="t-prov" x="496" y="215">PROVISIONAL OWNER</text>
-    <rect class="prov" x="640" y="196" width="160" height="30"/><text class="t-prov" x="684" y="215">OWNS IF CUT</text>
+    <text class="t-row" x="16" y="214">ER-18 &#183; the downstream-blocking walls</text>
+    <rect class="own" x="296" y="196" width="150" height="30"/><text class="t-own" x="346" y="215">DECIDES</text>
+    <rect class="use" x="454" y="196" width="150" height="30"/><text class="t-use" x="502" y="215">teaches it</text>
+    <rect class="cell" x="612" y="196" width="150" height="30"/>
+    <rect class="cell" x="770" y="196" width="150" height="30"/>
+  </g>
+
+  <g id="r6">
+    <text class="t-row" x="16" y="248">ER-19 &#183; the done condition &#183; three legs</text>
+    <rect class="cell" x="296" y="230" width="150" height="30"/>
+    <rect class="own" x="454" y="230" width="150" height="30"/><text class="t-own" x="482" y="249">LEG a &#183; OWNED</text>
+    <rect class="none" x="612" y="230" width="150" height="30"/><text class="t-non" x="638" y="249">LEG b &#183; NO CHILD</text>
+    <rect class="none" x="770" y="230" width="150" height="30"/><text class="t-non" x="796" y="249">LEG c &#183; NO CHILD</text>
   </g>
 
   <g id="legend">
-    <rect class="own" x="16" y="244" width="16" height="14"/>
-    <text class="t-use" x="40" y="256">the one committed owner — decides or builds it</text>
-    <rect class="use" x="380" y="244" width="16" height="14"/>
-    <text class="t-use" x="404" y="256">consumes it, and must not re-decide it — not a wait</text>
-    <rect class="prov" x="16" y="266" width="16" height="14"/>
-    <text class="t-use" x="40" y="278">provisional or conditional — a default place to look, settled by the assemblies cut, not a commitment</text>
-    <text class="t-use" x="16" y="306">Only one column is live this cycle. FIX-1455 runs its own epic lifecycle; the assemblies column is not filed at all.</text>
-    <text class="t-use" x="16" y="324">ER-19 is the epic's done condition. FIX-1455 holds it provisionally, unless the assemblies cut says otherwise — Open 2 and 3.</text>
-    <text class="t-use" x="16" y="342">Sixteen further rules bind every row equally and need no column: ten prohibitions ER-5–14, four run-the-set ER-15–18, two proofs ER-20/21.</text>
+    <rect class="own" x="16" y="278" width="16" height="14"/>
+    <text class="t-use" x="40" y="290">the one committed owner — decides or builds it</text>
+    <rect class="use" x="380" y="278" width="16" height="14"/>
+    <text class="t-use" x="404" y="290">consumes it, and must not re-decide it — not a wait</text>
+    <rect class="prov" x="16" y="300" width="16" height="14"/>
+    <text class="t-use" x="40" y="312">conditional — applies once that row is filed</text>
+    <rect class="none" x="380" y="300" width="16" height="14"/>
+    <text class="t-use" x="404" y="312">NO CHILD — nothing in the set produces this</text>
+    <text class="t-use" x="16" y="334">A blank cell is different: it means the row does not touch that rule.</text>
+    <text class="t-use" x="16" y="352">The two empty cells are the finding: ER-19 names three artifacts and one has a producer. Until both gaps are filed, W5 cannot reach its own done condition.</text>
+    <text class="t-use" x="16" y="370">FIX-1458 was canceled Sep 20 and no longer has a column. ER-1 and ER-2 moved to FIX-1455; ER-18’s walls were retargeted to FIX-1467. Neither was left ownerless.</text>
+    <text class="t-use" x="16" y="388">Seventeen further rules bind every row equally and need no column: eleven prohibitions ER-5–14 + ER-22, four run-the-set ER-15–17 + ER-23, two proofs ER-20/21.</text>
+    <text class="t-use" x="16" y="406">The set is open (ER-23) — a child filed later gets a column here and inherits every rule.</text>
   </g>
 </svg>
