@@ -15,7 +15,7 @@
  * comments here point at it rather than restating it.
  *
  * What it deliberately does NOT do — these stay with the coordinator (the session), because
- * a workflow script cannot do them at all: prompt the human (every gate), hold a PR
+ * a workflow script cannot do them at all: prompt the human (decision gates), hold a PR
  * subscription or receive a webhook, schedule anything, or read/write `.orchestration/`.
  * State arrives via `args` and leaves via the return value.
  *
@@ -798,8 +798,11 @@ function jumpsTheApprovalGate(row, reportedPhase) {
   // otherwise have that report refused as a bypass, and the row would report progress it made and
   // then be told it did not make it.
   if (isDirectRoute(row)) return false
-  if (!reportedPhase || row.specApproved) return false
-  return PRE_APPROVAL_PHASES.has(row.phase) && POST_SPEC_PHASES.has(reportedPhase)
+  if (!reportedPhase) return false
+  const beforeImplementation = PRE_APPROVAL_PHASES.has(row.phase) || row.phase === 'NEEDS_IMPLEMENTATION'
+  if (!beforeImplementation) return false
+  if (!row.specApproved) return POST_SPEC_PHASES.has(reportedPhase)
+  return !row.specMerged && ['PR_FEEDBACK', 'DONE'].includes(reportedPhase)
 }
 
 /**
@@ -1096,6 +1099,14 @@ function nextRow(row, { worker, action, landed, folded }) {
 
   if (!worker) return { ...row, ...cursor, verdicts, ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}) }
 
+  // The existing implement action may merge an approved spec as its first step. Accept its
+  // receipt only for the exact PR and reviewed source head this wake authorized.
+  const receipt = worker.specMerge
+  const mergedByWorker = action === 'implement' && row.specApproved && row.specPr &&
+    row.approvedHeadSha && receipt && receipt.pr === row.specPr &&
+    receipt.headSha === row.approvedHeadSha && !!receipt.mergeCommitSha
+  const transitionRow = mergedByWorker ? { ...row, specMerged: true } : row
+
   // Both budgets charge by the SAME three rules — see `chargeRound`. They were written out twice,
   // identical but for the action string and the field, which made "the same rules" a claim in a
   // comment rather than something the code enforced.
@@ -1106,10 +1117,12 @@ function nextRow(row, { worker, action, landed, folded }) {
     ...row,
     ...cursor,
     ...consumedFlags,
-    phase: jumpsTheApprovalGate(row, worker.phase) ? row.phase : worker.phase || row.phase,
+    phase: jumpsTheApprovalGate(transitionRow, worker.phase) ? row.phase : worker.phase || row.phase,
+    specMerged: !!transitionRow.specMerged,
+    specMergeCommitSha: mergedByWorker ? receipt.mergeCommitSha : row.specMergeCommitSha,
     // `== null`, not `=== undefined` — an explicit null from a worker wiped the handle the same way an
     // omission would have, and the guard only covered the omission.
-    specPr: worker.specPr == null ? row.specPr : worker.specPr,
+    specPr: row.specMerged || mergedByWorker ? row.specPr : worker.specPr == null ? row.specPr : worker.specPr,
     implPr: worker.implPr == null ? row.implPr : worker.implPr,
     // Same rule for a multi-PR issue's sub-PR table: only a worker that reported one replaces it.
     // These are the handles the coordinator subscribes to, so silently clearing them would make
@@ -1262,6 +1275,7 @@ function nextRow(row, { worker, action, landed, folded }) {
   // exists to prevent, since the merges do not satisfy the assembled goal. Deriving it in only one
   // of the two places it can be set is deriving it nowhere.
   const derived = multiPrPhase(next) || approvalGatedPhase(next) || mergeDerivedPhase(next)
+  if (derived && jumpsTheApprovalGate(transitionRow, derived)) return { ...next, phase: row.phase, readyToMerge: false }
   return derived && derived !== next.phase ? { ...next, phase: derived } : next
 }
 
@@ -1616,27 +1630,25 @@ function approvedInSessionFor(row, fresh, refreshedLive) {
   return false
 }
 
-/**
- * THE spec-approval decision. Every channel and every veto lives here, and nothing outside computes
- * approval from parts.
- *
- * Approval arrives three ways — an approving human comment/review on the current head, the
- * `spec approved` label, or an in-session go-ahead the coordinator recorded — and a human
- * `CHANGES_REQUESTED` vetoes all of them.
- *
- * It is one function because it was three expressions, and a rule added to a scattered OR has to be
- * remembered at every branch. It wasn't: the change-request veto was added to the comment/review and
- * label branches and missed on the in-session one, which let a spec enter implementation past a
- * change request. Review had caught the same shape one round earlier on a different branch. Composing
- * the channels in one place makes the next rule impossible to half-apply.
- */
+/** A landed spec is historical approval, bound to its original PR and reviewed source head. */
+function historicalSpecFor(row) {
+  return !!(row.specMerged && row.approvedHeadSha && row.specPr)
+}
+
+/** Direction approval is head-bound; merge completion is a separate observation. */
 function specApprovalFor(row, fresh, refreshedLive) {
-  // A veto needs a live observation to be trusted. Without one there is nothing to veto WITH, and the
-  // channels below already refuse to release on a dead scout.
-  if (refreshedLive && fresh.humanChangesRequested) return false
-  const byReview = refreshedLive && !!(fresh.specApproved && fresh.headSha)
-  const byLabel = refreshedLive && !!fresh.specApprovedByLabel
-  return byReview || byLabel || approvedInSessionFor(row, fresh, refreshedLive)
+  if (historicalSpecFor(row)) return true
+  if (!refreshedLive || (fresh.humanChangesRequested && !specMergedFor(row, fresh, refreshedLive))) return false
+  const currentHeadApproved = !!fresh.headSha && fresh.approvedHeadSha === fresh.headSha
+  return (currentHeadApproved && !!(fresh.specApproved || fresh.specApprovedByLabel)) ||
+    approvedInSessionFor(row, fresh, refreshedLive)
+}
+
+/** Missing observations cannot invent a merge or erase an already retained historical merge. */
+function specMergedFor(row, fresh, refreshedLive) {
+  return !!((row.specMerged && row.specPr) ||
+    (refreshedLive && fresh.specMerged && (fresh.specPr || row.specPr) &&
+      (!row.specPr || fresh.specPr == null || fresh.specPr === row.specPr)))
 }
 
 function bindByPosition(results, ids, onMismatch) {
@@ -1696,37 +1708,29 @@ const GATE_SCHEMA = {
   required: [
     'approved',
     'approvedByLabel',
-    'labelPresent',
-    'labelProvenanceUnreadable',
     'humanChangesRequested',
     'newReviewEvents',
     'headSha',
     'latestActivityAt',
+    'approvedHeadSha',
+    'specMerged',
   ],
   properties: {
     approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human — or by the configured owner, who counts even as the PR author' },
     approvedByLabel: {
       type: 'boolean',
       description:
-        'The `epic approved` label is present on the PR AND the configured owner applied it. Presence alone — a label is standing state the owner can remove, so removal is the revocation and no staleness rule applies.',
-    },
-    labelPresent: {
-      type: 'boolean',
-      description:
-        'The `epic approved` label is currently on the PR, REGARDLESS of who applied it or whether provenance could be read at all. Reported separately from `approvedByLabel` so the wake can tell "the label is gone" (a revocation) from "the label is there but I could not attribute it" (ignorance). Never infer it from body text.',
-    },
-    labelProvenanceUnreadable: {
-      type: 'boolean',
-      description:
-        'TRUE only when you could not READ the label\'s provenance at all — the timeline/events API was unavailable, denied, or returned nothing for a label that is present. FALSE when you read it successfully, including when it named somebody other than the owner. This is the difference between "I do not know who applied it" and "I know, and it was not the owner": the first is ignorance the wake may ride out on a previously recorded approval, the second is a verified rejection that must never release work. If the label channel is off, report FALSE — a disabled check is not a failed read.',
+        'The configured owner applied the label to the reviewed source head. Report approvedHeadSha from that approval event; a standing label alone never approves a later push.',
     },
     humanChangesRequested: {
       type: 'boolean',
       description:
-        "A human's LATEST review state on the epic PR is CHANGES_REQUESTED. Outranks the label, which is standing state the owner revokes by removing and which therefore survives a later change request. Bots never count.",
+        "A human's latest review requests changes. This vetoes approval of an open spec; a merged original remains historical and amendments need their own review.",
     },
     approver: { type: ['string', 'null'] },
     headSha: { type: ['string', 'null'] },
+    approvedHeadSha: { type: ['string', 'null'], description: 'Source commit the human actually reviewed and approved, not the current head inferred from label presence. For merged originals recover the historical approved source commit.' },
+    specMerged: { type: 'boolean', description: 'Observed this original spec PR merged; never infer from approval, closure, or an implementation PR.' },
     newReviewEvents: { type: 'boolean', description: 'Review activity STRICTLY NEWER than the activity cursor it was given' },
     latestActivityAt: { type: ['string', 'null'], description: 'ISO timestamp of the newest comment/review seen — the real cursor, since comments never move the head SHA' },
   },
@@ -1784,7 +1788,7 @@ const PR_STATE_SCHEMA = {
   // schema while omitting it, and `cursorUsable` correctly refused the batch — but the planner had no
   // way to tell that refusal apart from a genuinely converged review, so it logged "converged" for a
   // fold that was actually withheld. `['string','null']` still lets a scout say "no activity to date".
-  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha', 'latestActivityAt'],
+  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'approvedHeadSha', 'specMerged', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha', 'latestActivityAt'],
   properties: {
     issueId: { type: 'string' },
     observed: {
@@ -1805,15 +1809,17 @@ const PR_STATE_SCHEMA = {
     specPr: { type: ['number', 'null'] },
     implPr: { type: ['number', 'null'] },
     specApproved: { type: 'boolean', description: 'Approving human comment/review on the CURRENT head — never a stale one' },
+    approvedHeadSha: { type: ['string', 'null'], description: 'The source head actually approved by the human. For an already merged spec, recover its historical approval, not an implementation head.' },
+    specMerged: { type: 'boolean', description: 'The SPEC PR was observed merged. Separate from merged, which describes implementation.' },
     specApprovedByLabel: {
       type: 'boolean',
       description:
-        'The `spec approved` label is present on the spec PR. Presence alone — the owner signs off this way too, and a label is standing state whose removal is the revocation, so it does not expire on a push.',
+        'The configured owner applied the label to the reviewed source head. Presence without a matching approvedHeadSha is not approval.',
     },
     humanChangesRequested: {
       type: 'boolean',
       description:
-        "A human's LATEST review state on the spec PR is CHANGES_REQUESTED. Reported separately because it must outrank the label: `spec approved` is standing state revoked only by removal, so a label the owner applied and then left in place would otherwise carry an issue past a change request nobody addressed. Bots never count.",
+        "A human's latest review requests changes on the open spec. This vetoes every approval channel before merge, including an owner label.",
     },
     newSpecReviewEvents: { type: 'boolean', description: 'Spec-PR review activity STRICTLY NEWER than the cursor it was given' },
     newPrEvents: { type: 'boolean', description: 'Impl-PR activity STRICTLY NEWER than the cursor it was given' },
@@ -1852,7 +1858,7 @@ const PR_STATE_SCHEMA = {
       description:
         'ISO timestamp of the newest comment/review seen. REQUIRED to be non-null whenever newSpecReviewEvents or newPrEvents is true — without it the cursor cannot advance past the batch a worker just consumed, and the same events are rediscovered every wake.',
     },
-    headSha: { type: ['string', 'null'], description: 'Current head SHA of the open PR this row is waiting on' },
+    headSha: { type: ['string', 'null'], description: 'Source head of the spec PR whenever one exists, including merged history. Only a direct-route issue with no spec uses its implementation head.' },
   },
 }
 
@@ -1900,6 +1906,17 @@ const WORKER_SCHEMA = {
     // is not a state the coordinator can act on, so it is rejected at the schema instead.
     phase: { type: 'string', enum: LIFECYCLE_PHASES },
     specPr: { type: ['number', 'null'] },
+    specMerge: {
+      type: ['object', 'null'],
+      additionalProperties: false,
+      required: ['pr', 'headSha', 'mergeCommitSha'],
+      properties: {
+        pr: { type: 'number' },
+        headSha: { type: 'string' },
+        mergeCommitSha: { type: 'string' },
+      },
+      description: 'Only the implement backstop: receipt from observing the approved SPEC PR actually merged before any implementation edits. Never an implementation merge.',
+    },
     implPr: { type: ['number', 'null'] },
     // A multi-PR issue's implementation is a DAG of sub-PRs, not one `implPr`. Without this the
     // worker has nowhere to return the table `issue-multi-pr` produced (`additionalProperties` is
@@ -1989,10 +2006,10 @@ const WORKER_SCHEMA = {
 }
 
 /**
- * The epic-spec STATUS refresh — dispatched when a row's phase changed and no fold ran this wake.
+ * The premerge epic-spec STATUS refresh — dispatched when a row's phase changed and no fold ran.
  * A fold already refreshes the set table as part of its update pass; this is the same refresh
- * on its own, outside the review budget, so the epic PR reads as current on every transition
- * (`epic-spec-template.md` → "What refreshes, and when").
+ * on its own, outside the review budget. After merge, live status comes from Linear and
+ * implementation PRs, not edits to the historical spec (`epic-spec-template.md` → "What refreshes, and when").
  */
 const EPIC_REFRESH_SCHEMA = {
   type: 'object',
@@ -2146,16 +2163,14 @@ if (carriedForward.size) {
 const [gate, linear, prScan] = await parallel([
   () =>
     agent(
-      `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head, ${approverRule}. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
+      `Scan epic PR #${epic.prNumber} for objective approval AND spec merge. Report specMerged from actual PR merge metadata, never closure or labels. Report approvedHeadSha as the exact source revision the human reviewed. For an open spec, approved:true requires a human approving comment or latest APPROVED review on its CURRENT head, ${approverRule}; a later push invalidates it. For an already merged original, recover the historical human approval and source head from its review record even if labels or the source branch were deleted. Never substitute main's current SHA or the merge commit for the reviewed source head. Exclude bots (Bugbot, Codex, Copilot) and agent self-approval.\n` +
         (approvalOwner
           ? `SEPARATELY, report approvedByLabel:true whenever the PR currently carries the \`epic approved\` LABEL **and \`${approvalOwner}\` applied it**. Two independent checks, and conflating them is the bug this wording exists to prevent:\n` +
             `  · WHO — verify provenance. Read the PR's timeline for \`labeled\` events naming \`epic approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\`. Not "a human" — this label is that account's authorization channel specifically, and a label is writable by every collaborator and every bot with write access, so accepting it from anyone else releases every child issue without the sign-off the gate exists to require. If the timeline is unreadable, or no \`labeled\` event can be found for a label that is present, or the most recent one was applied by anybody else, report FALSE — an approval you cannot attribute to \`${approvalOwner}\` is not an approval.\n` +
-            `  · WHEN — do NOT check. Once the actor is \`${approvalOwner}\`, presence is the whole test: do not compare the label against the head commit and do not treat a later push as invalidating it. An epic-spec PR takes commits continuously as feedback is folded, so a staleness rule would revoke the approval on the next edit and hold the entire set. A label is standing state the owner can REMOVE; removal is the revocation.\n` +
+            `  · WHEN — bind the label event to the source head the owner reviewed, reported as approvedHeadSha. Verify the event against the PR timeline; a standing label from before a later push does not approve the changed head. If the reviewed source revision cannot be established, report approvedByLabel:false and approvedHeadSha:null rather than guessing.\n` +
             `Check the labels even when you find no approving comment. Report it independently of \`approved\` — do not fold one into the other, and do not infer it from body text claiming approval.\n`
           : `The \`epic approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report approvedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
-        `SEPARATELY AND ALWAYS, report labelPresent:true whenever the \`epic approved\` label is on the PR right now — whoever applied it, and even if you could not read the timeline to find out. Read it off the PR's CURRENT label list, which is a plain read that does not need timeline access. This is NOT an approval signal and must never be inferred from body text; it exists only so the wake can distinguish a label that was REMOVED (the owner's revocation) from one it merely could not attribute. Report it even when approvedByLabel is false, and even when the label channel is off.\n` +
-        `ALSO report labelProvenanceUnreadable — and be exact, because the wake treats the two failures differently. TRUE only when the provenance READ ITSELF failed: no timeline/events access, the call was denied, or it returned no \`labeled\` event for a label that is present. FALSE when you read the timeline successfully and it named somebody who is not the owner — that is a verified rejection, not ignorance, and it must never release work. FALSE also when the label is absent, and FALSE when the label channel is off.\n` +
-        `ALSO report humanChangesRequested:true when any human's LATEST review state is CHANGES_REQUESTED. It outranks the label, which is standing state that survives a later change request until the owner removes it. Bots never count.\n` +
+        `ALSO report humanChangesRequested:true for any human's latest CHANGES_REQUESTED review. It vetoes approval of an OPEN spec across every channel; amendments to a merged original get their own review. Bots never count.\n` +
         `ACTIVITY CURSOR: last seen activity at ${epic.lastSeenActivityAt || 'never'} (head ${epic.lastSeenSha || 'unknown'}). Set newReviewEvents ONLY for comments/reviews strictly newer than that TIMESTAMP — a comment never changes the head SHA, so the SHA alone cannot tell you what was already folded. Report latestActivityAt = the newest comment/review timestamp you saw.`,
       { label: 'gate:epic', phase: 'Refresh', schema: GATE_SCHEMA, agentType: 'scout' },
     ),
@@ -2213,11 +2228,11 @@ const [gate, linear, prScan] = await parallel([
                 )
                 .join('') +
               `\nFor EVERY issue above:\n` +
-              `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head, ${approverRule}. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
+              `Read PR comments, reviews, check-runs and merge metadata. Report specMerged for the SPEC PR, separately from merged for implementation. headSha is the SPEC source head whenever a spec exists, not the implementation head. Report approvedHeadSha as the source revision actually approved. For an open spec, specApproved requires a current-head human approving comment or latest APPROVED review, ${approverRule}. Any human's latest CHANGES_REQUESTED vetoes open-spec approval. For merged originals recover historical approval and source-head provenance even after branch deletion or label removal. Never infer approval from merge alone, body claims, or bot reviews.\n` +
               (approvalOwner
-                ? `SEPARATELY report specApprovedByLabel:true whenever that issue's spec PR currently carries the \`spec approved\` LABEL **and \`${approvalOwner}\` applied it**. Same two independent checks as the epic gate. WHO: read the PR timeline for \`labeled\` events naming \`spec approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\` — not merely "a human". Labels are writable by every collaborator and every bot with write access, so a label from any other actor would release implementation without the sign-off the gate requires; if the timeline is unreadable, carries no \`labeled\` event for a present label, or names anybody else, report FALSE. WHEN: do not check — once the actor is \`${approvalOwner}\`, presence alone passes: do not compare the label against the head commit and do not treat a later push as invalidating it, since a spec PR takes commits while review is folded and expiring the label would revoke the approval on the next round. Removal is the revocation. Report it independently of specApproved.\n`
+                ? `SEPARATELY report specApprovedByLabel:true only for a \`spec approved\` label that \`${approvalOwner}\` applied to the reviewed source head. Read the most recent labeling event and require that exact owner's login, not merely any human. Establish approvedHeadSha from the event and PR timeline; a label left on a later push is stale. Unreadable provenance or an unknown reviewed revision means FALSE, not inherited approval.\n`
                 : `The \`spec approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report specApprovedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
-              `ALSO report humanChangesRequested:true when any human's LATEST review state on the spec PR is CHANGES_REQUESTED. This OUTRANKS the label: the label is standing state that stays on the PR after a change request lands, so without this it carries the issue into implementation past feedback nobody addressed. Bots never count.\n` +
+              `ALSO report humanChangesRequested:true when any human's latest review requests changes on the open spec. It outranks every approval channel, including an owner label. Bots never count.\n` +
               `Also report whether CI is failing.`,
             { label: 'refresh:issues', phase: 'Refresh', schema: PR_SCAN_SCHEMA, agentType: 'scout' },
           ),
@@ -2225,105 +2240,24 @@ const [gate, linear, prScan] = await parallel([
     : []),
 ])
 
-// The epic gate holds every sub-issue at NEEDS_SPEC until the objective is signed off — but it
-// does NOT hold the epic-spec's own review (see allocate()). A dead gate scout is treated as
-// "not approved": failing closed can only delay work, where failing open would ramp an epic
-// nobody approved.
-// A live scan is authoritative in both directions. Only when the scout DIED do we fall back to
-// the durable approval the coordinator already recorded — re-locking an approved epic on an
-// infrastructure failure would stall every sub-issue for a wake.
-// An approval with no head cannot release work: `epicHead` would fall back to the carried,
-// possibly pre-approval SHA, and workers are told to align to it without re-fetching.
-// A LIVE scan is authoritative even when it is incomplete. `headSha` is what workers align to, so a
-// scan that returns none cannot release anything — falling back to the carried approval would ramp
-// child workers against a possibly-superseded objective SHA. The durable approval is only for the
-// case where there was no scan at all (the scout died); an infrastructure failure must not re-lock
-// an epic that was already signed off, but a partial observation must not release one either.
+// Approval authorizes the coordinator to dispatch spec merge under the canonical worker contract.
+// It does not release children until that merge is observed. Landed originals are historical
+// provenance: labels or a deleted source branch cannot revoke the intent already on main.
 const scanned = !!gate
 const gateUsable = !!(gate && gate.headSha)
-if (scanned && !gate.headSha) {
-  log(
-    `Epic gate scan returned no current head — holding work this wake rather than aligning to a stale objective${gate.approved ? ' (it reported approval, which needs a head to be actionable)' : ''}.`,
-  )
-}
-// Holding the CURRENT wake is not enough: the hold has to survive into the next one. A headless scan
-// left `approved: true` persisted next to the old head, so a dead scout on the following wake took the
-// dead-scout branch, read the durable `true`, and released every child worker against an objective the
-// last real observation could not confirm was current. `headUnconfirmed` is that hold made durable —
-// set by a live scan with no head, cleared by any usable scan, and preserved (like the approval
-// itself) when there was no scan at all.
-// NO dead-scout fallback at all, which REVERSES an earlier decision here. Carrying the approval through a
-// dead scan was sound while the epic approval was a one-time objective sign-off; round-29 work made it
-// HEAD-SENSITIVE (a push invalidates it), and nothing revisited the fallback. The hole that left: H1 is
-// approved, a push creates H2, and the scout dies on the next wake — `headUnconfirmed` is still false
-// because no live scan has seen H2, so the carried `true` released every child worker against an objective
-// nobody approved. `headUnconfirmed` only ever covered the case where a LIVE scan came back headless.
-//
-// The cost is one wake of held work whenever the scout flakes, and the next usable scan releases it. The
-// alternative is children authoring specs and PRs against an objective that may have just changed, which
-// costs their rework. This is the gate the file says everywhere must not be bypassable.
-// Either channel signs the objective off. The owner marks approval with the `epic approved` LABEL as
-// well as by comment, and reading only comments held a fully-approved epic's entire set indefinitely
-// while the label sat on the PR — the coordinator has no way to assert the gate from `args`, because
-// a live scan's answer overrides the carried one by design.
-//
-// The label does NOT expire on a push, and that difference from a review approval is deliberate. An
-// epic-spec PR takes commits for the life of the epic — every fold is one, #993 carries 94 — so a
-// staleness rule would revoke the objective on the next edit and re-hold the whole set, which is the
-// stall this change exists to remove. A label is standing state the owner can remove at any time, so
-// REMOVAL is the revocation, and it is a control a comment does not have.
-// A label the scan can SEE but cannot ATTRIBUTE is ignorance, not revocation — and conflating the
-// two silently un-approved an epic the owner had signed off days earlier. Provenance needs the PR's
-// `labeled` timeline; in an environment that exposes labels but not the timeline (no events API on
-// the MCP surface, REST events denied) `approvedByLabel` is false on EVERY wake, so the gate re-locked
-// a running epic forever and dispatched nothing. Fail-closed is right for an epic nobody approved; it
-// is wrong as a way to REVOKE one the coordinator durably recorded.
-// So the carried approval survives exactly one gap: the label is still on the PR and the only thing
-// missing is who put it there. Removal still revokes — `labelPresent` false drops it — and an epic
-// never approved has no carried `true` to survive, so this cannot manufacture a sign-off. A human
-// CHANGES_REQUESTED still outranks everything.
-// The carry rides IGNORANCE, never a verified rejection. `approvedByLabel:false` covers both "the
-// timeline was unreadable" and "the timeline read fine and the applier was not the owner", and
-// conflating them opened a real hole: a comment approves H1, a push invalidates it on H2, any
-// collaborator applies the label, and a carry keyed on presence alone releases every child on a
-// label the scan had actively rejected. `labelProvenanceUnreadable` is what separates them.
-// (Re-adding a removed label cannot resurrect anything: the removal wake persists `approved:false`,
-// so there is no carried `true` left for the next wake to ride.)
-const labelUnattributable = !!(gate && gate.labelPresent && !gate.approvedByLabel && gate.labelProvenanceUnreadable)
-const carriedApprovalHolds = labelUnattributable && !!epic.approved
-// ONE expression owns the objective decision, because two of them already drifted: this term was
-// duplicated into `epicOut.approved` and the copy missed `carriedApprovalHolds`, which made the
-// carry a one-shot (gate opens, `false` persists, next wake re-locks). Same reason
-// `specApprovalFor()` exists for the issue-level gate — a scattered OR gets updated in one place.
-// Two different questions, and collapsing them destroyed durable state. `standingApproval` is what
-// the OWNER has signed off — revoked by removing the label or by a verified non-owner applier, and
-// nothing else. `objectiveHolds` is whether work may dispatch on THIS wake, which additionally
-// requires that nothing transient is holding it.
-// A change request is transient: reviews get dismissed. Persisting it into the standing approval
-// meant a CHANGES_REQUESTED landing while provenance was unreadable wrote `approved: false`, and
-// once that review was dismissed there was no carried `true` left to ride — every child locked
-// permanently, on a label still sitting on the PR, with no revocation ever performed.
-const standingApproval = () => !!gate.approved || !!gate.approvedByLabel || carriedApprovalHolds
-const objectiveHolds = () => !gate.humanChangesRequested && standingApproval()
-const epicApproved = scanned && gateUsable && objectiveHolds()
-// Guarded on the carry being what DECIDED it — otherwise this logs "holding a recorded approval"
-// on wakes where a live comment or an attributable label already signed the objective off.
-if (epicApproved && carriedApprovalHolds && !gate.approved && !gate.approvedByLabel) {
-  log(
-    `Epic gate: \`epic approved\` is on #${epic.prNumber} but its applier could not be verified (timeline unreadable). Holding the approval the coordinator already recorded rather than revoking it on an unreadable provenance check — removal of the label is still the revocation.`,
-  )
-}
-let headUnconfirmed = scanned ? !gateUsable : !!epic.headUnconfirmed
-if (!scanned && epic.approved) {
-  log(
-    `Epic gate scout died — holding child work for this wake rather than releasing it against an approval no live scan could confirm is still current.`,
-  )
-}
-
-// The head workers align to. It has to be THIS wake's observation: the wake that first sees
-// approval is also the wake that releases the specs, and passing the carried SHA would align
-// them to the objective as it stood before the fold that made it approvable.
-const epicHead = (gate && gate.headSha) || epic.headSha || null
+const epicRecord = { ...epic, specPr: epic.prNumber }
+const epicObservation = gate
+  ? { ...gate, specPr: epic.prNumber, specApproved: gate.approved, specApprovedByLabel: gate.approvedByLabel }
+  : {}
+const epicApproved = specApprovalFor(epicRecord, epicObservation, scanned)
+const epicSpecMerged = specMergedFor(epicRecord, epicObservation, scanned)
+const epicDecisionPending = !!((epic.openQuestions || []).length || (epic.unsettled || []).length || (epic.answers || []).length)
+const epicReady = epicApproved && epicSpecMerged && !epicDecisionPending
+const historicalEpic = historicalSpecFor(epicRecord)
+let headUnconfirmed = !epicSpecMerged && (scanned ? !gateUsable : !!epic.headUnconfirmed)
+if (!scanned && !epicSpecMerged) log('Epic gate scout died — holding child work until approval and merge can be observed.')
+if (scanned && !gateUsable && !epicSpecMerged) log('Epic gate scan returned no current head — holding child work.')
+const epicHead = historicalEpic ? epic.approvedHeadSha : (gate && gate.headSha) || epic.headSha || null
 
 // The scout is asked for HUMAN identifiers, and Linear has two ids per issue. Every reader below keys
 // on the identifier — `linearById`, the discovery filter, `openBlockers` — so a UUID in `id` matches
@@ -2563,8 +2497,13 @@ const refreshed = [...rows, ...discovered].map((row) => {
   // Hoisted for the same reason `scanApproved` is: the route depends on the RESOLVED spec handle
   // (an existing spec PR keeps the issue on the spec route whatever its label says), and an object
   // literal cannot read its own fields.
-  const resolvedSpecPr = fresh.specPr == null ? row.specPr : fresh.specPr
+  // Like the worker receipt path, follow-up PRs cannot replace a merged original.
+  const resolvedSpecPr = row.specMerged || fresh.specPr == null ? row.specPr : fresh.specPr
   const route = routeFor(row, li, observedInLinear, resolvedSpecPr)
+  const specMerged = specMergedFor(row, fresh, refreshedLive)
+  const approvedHeadSha = scanApproved
+    ? historicalSpecFor(row) ? row.approvedHeadSha : fresh.headSha
+    : null
   return {
     ...row,
     ...fresh,
@@ -2599,11 +2538,13 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // dispatched implementation on direction the human may never have seen. The scan channel was the
     // looser of the two, which is backwards — it is the one with no human in the loop this wake.
     specApproved: scanApproved,
+    approvedHeadSha,
+    specMerged,
     // The SCOUT jumps the gate too. `jumpsTheApprovalGate` was applied to the worker's report, but the
     // refresh is an INDEPENDENT producer of `phase`: a scan reporting `PR_FEEDBACK` with an impl handle on a
     // row still awaiting approval walked straight past it, and `approvalGatedPhase` only repairs the one
     // intermediate phase. Same rule, other channel.
-    phase: scoutPhaseFor(row, fresh.phase, scanApproved, route),
+    phase: scoutPhaseFor({ ...row, specMerged }, fresh.phase, scanApproved, route),
     // Same rule: a push or a new review invalidates merge-readiness, so a live scan is the only
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
     readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,
@@ -2660,6 +2601,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // is a bug loop rather than a stall: the correction knocks the row to NEEDS_SPEC and the wake
     // authors the spec this route exists to skip.
     const derived = multiPrPhase(row) || directRoutePhase(row) || approvalGatedPhase(row) || mergeDerivedPhase(row)
+    if (derived && jumpsTheApprovalGate(row, derived)) return row
     return derived && derived !== row.phase ? { ...row, phase: derived } : row
   })
 
@@ -2736,7 +2678,7 @@ if (routeConvergedEpicFeedback) {
 
 // The cross-spec gate, as state — computed from the REFRESHED rows, because `specApproved` is scan-derived
 // and never carried, so the incoming table cannot answer "is every spec approved". It is OWED once every
-// planned spec is open and individually approved and the pass has not cleared; the coordinator is the only
+// planned spec is individually approved and the pass has not cleared; the coordinator is the only
 // thing that can clear it, since running the pass needs the user's approval first.
 // Two DIFFERENT conditions, which the first version of this conflated — and the conflation released the
 // very first approved spec while its siblings were still being written.
@@ -2795,7 +2737,7 @@ const crossSpecComing = crossSpecRows.filter(
 // asked is the deadlock again by a different route.
 crossSpecHold = !input.crossSpecCleared && crossSpecSet.length + crossSpecComing.length > 1
 // The ASK is narrower, and that is the skill's other precondition: the pass runs only once every spec is
-// open and individually approved, because aligning a good spec to an unvalidated one spreads the flaw.
+// individually approved, because aligning a good spec to an unvalidated one spreads the flaw.
 // No "and the set has two entries" clause: the hold already requires `set + coming > 1`, so with nothing
 // still coming the set holds at least two by construction. Adding it back would be a guard that cannot
 // fire, and the surfaced `issueIds` relies on that derivation rather than on a second test of it.
@@ -2803,23 +2745,18 @@ const crossSpecAskable = crossSpecHold && crossSpecComing.length === 0
 if (crossSpecHold && refreshed.some((r) => r.specApproved && !POST_SPEC_PHASES.has(r.phase))) {
   log(
     crossSpecAskable
-      ? `All ${crossSpecSet.length} specs in the set are open and individually approved — holding implementation until the cross-spec coherence pass clears. Surface it: the user approves running it.`
+      ? `All ${crossSpecSet.length} specs in the set are individually approved — holding implementation until the cross-spec coherence pass clears. Surface it: the user approves running it.`
       : `Holding approved specs: the cross-spec coherence pass has not cleared, and the set is checked before any of it is built. Not askable yet — ${crossSpecComing.map((r) => r.id).join(', ')} ${crossSpecComing.length === 1 ? 'has' : 'have'} no approved spec.`,
   )
 }
 
-const plan = allocate(refreshed, claims, cap, foldEpicWanted, epicApproved)
+const plan = allocate(refreshed, claims, cap, foldEpicWanted, epicReady)
 
 // No silent caps — say what was held back and why.
-if (!epicApproved) {
+if (!epicReady) {
   log(
-    `Epic objective not signed off — holding ${plan.held.length} issue(s) before their first action` +
-      `${plan.foldEpic ? ', but still folding epic-PR review so the objective can be revised' : ''}.` +
-      // The carry-case line above says "timeline unreadable" only when a recorded approval rode it; with
-      // nothing recorded the gate simply holds, and the label sitting on the PR would go unmentioned.
-      // Keyed on `!epic.approved`, not on `labelUnattributable` alone: a carried approval held for
-      // another reason (a change request, an unusable head) is not "nothing recorded".
-      `${labelUnattributable && !epic.approved ? ` The \`epic approved\` label is on #${epic.prNumber} but its applier could not be read (timeline unreadable), and no earlier approval was recorded to hold, so it releases nothing.` : ''}`,
+    `${epicDecisionPending ? 'Epic direction has an outstanding decision' : epicApproved ? 'Epic objective approved; spec merge not confirmed' : 'Epic objective not signed off'} — holding ${plan.held.length} issue(s) before their first action` +
+      `${plan.foldEpic ? ', but still folding epic-PR review so the objective can be revised' : ''}.`,
   )
 }
 for (const row of plan.blocked) {
@@ -2918,8 +2855,12 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
     plan.advance.map((item) => () =>
       agent(
         `Advance ${item.row.id} to its next external wait, in your own worktree. Reason it is pending: ${item.why}.\n` +
-          `Epic: ${epic.issueId} on branch ${epic.branch} (head ${epicHead || 'fetch it'}) — align to the epic-spec without re-fetching the epic.\n` +
-          `A satisfied gate is NOT a wait — chain through it: a just-approved spec goes close-spec-PR → implement → open the impl PR in this one run.\n` +
+          `Epic: ${epic.issueId}, retained at specs/epics/${epic.issueId}/ (review PR #${epic.prNumber}, approved source ${epicHead || 'fetch it'}). Read fresh main for merged specs; the original source branch may be deleted.\n` +
+          `A satisfied gate is NOT a wait: spec-route implementation requires an observed merge of its approved spec. Only an authorized implement backstop below may merge under the canonical worker contract in docs/contributing/orchestration.md → "Merging and amending a spec". Otherwise return the actual merge wait without implementation edits. Never self-approve or merge an implementation PR.\n` +
+          (item.action === 'implement' && !isDirectRoute(item.row) && !item.row.specMerged
+            ? `MERGE BACKSTOP AUTHORIZED: spec PR #${item.row.specPr}, approved source head ${item.row.approvedHeadSha || 'UNCONFIRMED'}. Execute the canonical worker merge contract in docs/contributing/orchestration.md → "Merging and amending a spec", including its atomic expected-head precondition. Return specMerge: { pr, headSha, mergeCommitSha } only after observing this exact approved spec merged. Do not edit implementation before that observation. Missing approval/merge evidence means stop in the current phase.\n`
+            : '') +
+          `Retained issue content is canonical at specs/issues/${item.row.id}/; Linear carries status and links only. Merged original spec PRs are historical review records. Any later amendment, decision fold or POC uses a follow-up PR from fresh main; never reopen or push the original merged branch. For materially changed direction, return a blocker naming that follow-up and its reviewed head; do not implement the amendment or report the decision resolved. Keep the original canonical until the coordinator confirms renewed human approval AND actual follow-up merge through the existing resolution path.\n` +
           // The route has to travel: the worker is a fresh sub-agent that cannot read the coordinator's
           // table, so an unrouted bug worker looks for a spec, finds none, and reports the absence as a
           // readiness problem — the stall the direct route exists to remove.
@@ -2975,7 +2916,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
               `\nThose are decisions, not suggestions — implement them as given rather than re-deriving the choice, and do not escalate the same forks again. A \`[slice]\` prefix names which sub-PR the answer belongs to. If one turns out not to answer the fork you actually hit, say so as a new \`blocker\` naming precisely what is still open.\n`
             : '') +
           (item.action === 'implement' && settlingClaimFor(item.row.id)
-            ? `A POC settlement is IN FLIGHT on a load-bearing claim for this issue: ${settlingClaimFor(item.row.id)}. Chain into implementation as normal, but do NOT close the spec PR yet — a REFUTED verdict has to be folded into that live artifact and replied to on its thread. The coordinator closes it once the claim is settled. (The spec branch is never deleted in any case.)\n`
+            ? `A POC settlement is IN FLIGHT on a load-bearing claim for this issue: ${settlingClaimFor(item.row.id)}. Preserve its evidence and thread. It does not waive the spec merge prerequisite. A late verdict on merged history is delivered through a follow-up PR from fresh main, never by reopening the original.\n`
             : '') +
           (item.row.closedBlocker
             ? `A PR on this issue was CLOSED WITHOUT MERGING — that is what the answer above is about. The handle is dead: do not try to push to it or reopen it. If the decision is to rebuild, open a NEW PR for that slice from fresh origin/main and report its handles; if the human reopened it themselves, the next scan will see it and there is nothing to do here.\n` +
@@ -3016,7 +2957,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
             ? `Some of this row's unhandled activity is on its SPEC PR ${item.row.specPr ? `#${item.row.specPr}` : '(retained or closed)'}, not on the implementation PR. Read it and carry it as implementer notes — do not spend a spec review round on it and do not reopen the spec. The spec is approved; this is late commentary that must not be lost, and this pass is the only one that sees it.\n`
             : '') +
           (item.action === 'implement' && item.row.newSpecReviewEvents
-            ? `The approving batch on spec PR ${item.row.specPr || '(the spec PR)'} ALSO carries outstanding review feedback. Read it and carry it as implementer notes BEFORE you close the spec PR — do not spend a review round on it and do not fold it into the spec. This is the only pass that sees it: nothing looks at spec-PR review activity once this row reaches PR_FEEDBACK.\n`
+            ? `The approving batch on spec PR ${item.row.specPr || '(the spec PR)'} ALSO carries outstanding review feedback. Read it and carry it as implementer notes; do not spend another spec review round. Direction-changing feedback needs renewed human approval, not silent implementation. Preserve the original PR as the review record.\n`
             : '') +
           // `issue-multi-pr` only builds pending nodes, rebases stacked ones and advances assembly —
           // it has no notion of an ordinary open PR's review comments. Dispatched for `pr-feedback`
@@ -3085,9 +3026,11 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           : '') +
         (epicAtBudget || !newEpicReviewEvents
           ? `Fold what is listed above and NOTHING ELSE — there is no new review feedback to fold${epicAtBudget ? ' and the review budget is spent' : ''}, so do not re-read or re-fold already-consumed comments, and report roundsSpent: 0. The exemption covers the verdict and the answers only.\n`
-          : `Fold the outstanding review feedback on epic PR #${epic.prNumber} into the epic-spec on branch ${epic.branch}, in your worktree.\n` +
+          : `Fold the outstanding review feedback on epic PR #${epic.prNumber} into specs/epics/${epic.issueId}/ in your worktree.\n` +
             `Triage against the bar first: only objective-level or cross-cutting-decision-level feedback is folded. Anything about a single issue's internals is routed to that issue as an implementer note, never into the epic-spec — return each as a fanOut entry with the note text and the issues it concerns.\n`) +
-          `In the same pass, do the status refresh from the PR handles already recorded: the set table in SPEC.md (status, PR links, the as-of date, the counts line), the dependency graph (a newly filed issue gets its real id, a finished one a heavy border), PLAN.md's path figure, and the PR body's as-of line and figure pins. Never re-review to satisfy a bot.\n` +
+          (epicSpecMerged
+            ? `The original spec PR is MERGED and historical. Fetch fresh main and open a follow-up PR for meaningful amendments or POC evidence; never reopen or push the original branch. Materially changed direction MUST return aboveBar:true and a durable openQuestions entry naming the follow-up PR, reviewed head, and the pending human-approval/merge decision. Do not self-clear it on a later generic successful fold: the original stays canonical until the coordinator verifies current-head approval AND actual follow-up merge, then supplies its explicit answer through the existing resolution path. Do not commit status churn or rewrite the original PR body. Linear and implementation PRs are the live status source.\n`
+            : `Update the dated pre-merge status snapshot in this same pass where needed. Repository content is canonical; Linear receives status and links, not a mirrored document.\n`) +
           `Report the rounds you ACTUALLY spent — a batch of only factual corrections or broken references costs zero — and whether anything folded was above the bar.\n` +
           `Do not prompt the user.`,
         { label: 'fold:epic', phase: 'Advance', schema: EPIC_FOLD_SCHEMA, agentType: 'epic-agent', isolation: 'worktree' },
@@ -3121,13 +3064,14 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
 // dispatched when there is something to fold, so a fold that came back wrote. Withholding one wake's
 // child gates on a fold that genuinely changed nothing costs a wake; getting it wrong invites approval of
 // a superseded objective, and that approval is durable.
-const epicRevisedThisWake = !!epicFold
-// The head recorded for the next wake is the one the gate scout saw, which the fold has now moved. Marking
-// it unconfirmed is what stops a dead scout on the next wake from reading the durable approval as good.
-if (epicRevisedThisWake) headUnconfirmed = true
+const materialAmendmentPending = !!(epicSpecMerged && epicFold &&
+  (epicFold.aboveBar || (epicFold.openQuestions || []).length))
+const epicRevisedThisWake = !!epicFold && (!epicSpecMerged || materialAmendmentPending)
+// An amendment holds gates without rewriting the original merged head's provenance.
+if (epicRevisedThisWake && !epicSpecMerged) headUnconfirmed = true
 if (epicRevisedThisWake) {
   log(
-    `The epic-spec was revised this wake, so its approval no longer sits on the current head — withholding child spec-approval and merge gates until the next wake re-scans the folded objective.`,
+    `Epic direction requires review — withholding child spec-approval and merge gates until the open revision or material amendment is approved and merged.`,
   )
 }
 
@@ -3238,6 +3182,12 @@ const epicOpenQuestions = [...(epic.openQuestions || [])].filter((q) => !answere
 for (const q of (epicFold && epicFold.openQuestions) || []) {
   if (!epicOpenQuestions.includes(q)) epicOpenQuestions.push(q)
 }
+// A material fold cannot silently omit the outstanding gate. Existing questions are the durable
+// mechanism; only an explicit coordinator answer (after approval AND merge) can consume one.
+if (materialAmendmentPending && epicFold.aboveBar && !(epicFold.openQuestions || []).length) {
+  const question = `Material amendment awaiting human approval of its reviewed head and confirmed follow-up merge: ${epicFold.folded}`
+  if (!epicOpenQuestions.includes(question)) epicOpenQuestions.push(question)
+}
 
 // Same removal for an INCONCLUSIVE claim the human has now decided: `unsettled` entries are questions
 // too, keyed by their claim text, and they were subject to the identical drop-without-applying gap.
@@ -3259,10 +3209,10 @@ const issues = refreshed.map((row) =>
 
 // ---------------------------------------------------------------------------
 // The epic-spec's status refresh. The set table, the dependency graph, the path figure and the
-// PR body's pins move whenever a row's phase changed (`epic-spec-template.md` → "What refreshes,
-// and when"), so a reader of the epic PR sees the set as it is, not as it was at the gate. A
-// FOLD already refreshes as part of its update pass, so this runs only when no fold did — and
-// outside the review budget, because a status refresh is not an opinion.
+// PR body's pins move when a row's phase changes, only BEFORE spec merge
+// (`epic-spec-template.md` → "What refreshes, and when"). After merge, live status comes from
+// Linear and implementation PRs; the original spec is historical. A FOLD already refreshes
+// as part of its update pass, so this runs only when no fold did, outside the review budget.
 //
 // Compared against the rows the coordinator PASSED IN, not against the scan: a transition the
 // scan itself detected (a merge, an approval) is exactly what a reader wants reflected, and a
@@ -3279,11 +3229,11 @@ const priorPhaseById = new Map(rows.map((r) => [r.id, r.phase]))
 const phaseTransitions = issues
   .filter((r) => r.phase !== priorPhaseById.get(r.id))
   .map((r) => ({ id: r.id, from: priorPhaseById.get(r.id) || null, to: r.phase }))
-const refreshEpicWanted = phaseTransitions.length > 0 && !plan.foldEpic && !!epic.prNumber
+const refreshEpicWanted = phaseTransitions.length > 0 && !plan.foldEpic && !!epic.prNumber && !epicSpecMerged
 const epicRefresh = refreshEpicWanted
   ? await agent(
       `Refresh the epic-spec on branch ${epic.branch} for epic PR #${epic.prNumber}, in your worktree — the STATUS refresh only, no fold. Phases that moved this wake: ${phaseTransitions.map((t) => `${t.id} ${t.from || 'new'} → ${t.to}`).join('; ')}.\n` +
-        `Update SPEC.md's set table (status column, PR links, the as-of date, the counts line) and its dependency graph (a newly filed issue gets its real id and a solid border; a finished one a heavy border); redraw PLAN.md's path figure (bars and the now line); re-pin the PR body's figure images to the new head and update its as-of line; mirror the Linear document. Change nothing else — the objective, the decisions and the rules are not yours this dispatch. Report refreshed: what moved, or "nothing" if the set already read that way. Do not prompt the user.`,
+        `Update the dated pre-merge status snapshot and links in the repository spec and PR body. Change nothing else — the objective, decisions and rules are not yours this dispatch. Linear carries status and links only, not a mirrored spec document. Report refreshed: what moved, or "nothing" if the set already read that way. Do not prompt the user.`,
       { label: 'refresh:epic', phase: 'Settle', schema: EPIC_REFRESH_SCHEMA, agentType: 'epic-agent', isolation: 'worktree' },
     )
   : null
@@ -3307,9 +3257,8 @@ const pendingClaims = [...plan.settle, ...plan.queuedClaims, ...unsettled, ...ne
 const contestedClaimFor = (issueId) => {
   const hit = pendingClaims.find((c) => (c.issues || [c.issueId]).includes(issueId))
   if (hit) return hit.claim
-  // A verdict that LANDED but hasn't been folded yet (cap-deferred, or its folder died) is still
-  // in flight for disclosure purposes: the coordinator must not close the spec PR while a REFUTED
-  // fold still needs that live artifact and thread.
+  // Pending evidence remains deliverable after merge through a follow-up PR; retaining the
+  // historical review handle is sufficient and never requires keeping the original open.
   const row = issues.find((r) => r.id === issueId)
   const unfolded = row && row.verdicts && row.verdicts.length ? row.verdicts[0] : null
   return unfolded ? `${unfolded.claim} (verdict ${unfolded.verdict}, not yet folded)` : null
@@ -3318,6 +3267,8 @@ const contestedClaimFor = (issueId) => {
 const gates = [
   // The objective gate comes first: until it's signed off, it's the only one that can move.
   ...(epicApproved ? [] : [{ kind: 'epic-objective', pr: epic.prNumber }]),
+  ...(epicApproved && !epicSpecMerged && !epicRevisedThisWake && !epicDecisionPending
+    ? [{ kind: 'spec-merge', issueId: epic.issueId, pr: epic.prNumber }] : []),
   // Child gates only while the objective stands. Surfacing them alongside a closed epic gate isn't
   // just noise: a human would be approving specs aligned to an objective the epic is in the middle
   // of revising, and once the objective is re-approved those stale child approvals release
@@ -3332,7 +3283,7 @@ const gates = [
   // releases implementation, so the human would be signing off an artifact whose open question is
   // unanswered and whose answer changes it. The question is surfaced in `blockers`; the gate appears
   // once it has been answered and folded, which is the only order that means anything.
-  ...(!epicApproved || epicRevisedThisWake
+  ...(!epicReady || epicRevisedThisWake
     ? []
     : issues
         // `cursorUsable` for the same reason the merge gates have it, one gate kind over: a scan reporting
@@ -3353,6 +3304,11 @@ const gates = [
           pr: r.specPr,
           settlingInFlight: contestedClaimFor(r.id),
         }))),
+  ...(!epicReady || epicRevisedThisWake ? [] : issues)
+    .filter((r) => !isDirectRoute(r) && r.specApproved && !r.specMerged && r.specPr &&
+      !r.linearTerminal && !awaitingHumanDecision(r) &&
+      (PRE_APPROVAL_PHASES.has(r.phase) || r.phase === 'NEEDS_IMPLEMENTATION'))
+    .map((r) => ({ kind: 'spec-merge', issueId: r.id, pr: r.specPr })),
   // A child the human closed or dropped must not keep asking them to merge it.
   // A merge gate is only actionable with a PR NUMBER, so it is emitted per HANDLE, not per row.
   // A multi-PR row has no `implPr` at all — one aggregate gate for it carried `pr: null`, which the
@@ -3362,7 +3318,7 @@ const gates = [
   // outcome the gate cannot undo. (Only the spec-approval gate had this condition; the merge gate is the
   // more consequential of the two to miss.) Deliberately not a dead end: the human is shown the
   // epic-objective gate in the same list, and approving it releases these on the next wake.
-  ...(!epicApproved || epicRevisedThisWake ? [] : issues)
+  ...(!epicReady || epicRevisedThisWake ? [] : issues)
     // `pendingAction` parks a row carrying an unresolved decision or an open prerequisite, but the
     // merge gate is independent of it — so the human was still told to merge work whose blocker they
     // had not answered, or whose dependency had not landed. Parking has to mean parked everywhere.
@@ -3380,6 +3336,7 @@ const gates = [
     // Keeping the handle but refusing the gate loses nothing — an orphaned PR still needs tracking — while
     // a merge gate on a row that is still AWAITING_SPEC_APPROVAL is incoherent whatever produced it.
     .filter((r) => POST_SPEC_PHASES.has(r.phase))
+    .filter((r) => r.phase !== 'NEEDS_IMPLEMENTATION' || isDirectRoute(r) || r.specMerged)
     // ...and not while a VERDICT is still unfolded. Settle runs after Advance, so a POC returning REFUTED
     // or INCONCLUSIVE lands in the same wake a refresh may have marked the PR ready — and merging then locks
     // in an implementation whose load-bearing premise the evidence just contradicted, before any wake has
@@ -3446,20 +3403,11 @@ const epicOut = {
     // `epic.headSha` and are told not to re-fetch it, so a stale one aligns their specs and
     // implementations to a superseded objective. This is not the review cursor.
     headSha: epicHead,
-    // A previously recorded approval is DURABLE (the owner's label is standing state), so a
-    // dead scout must not re-lock an epic that was already signed off — that would stall every
-    // sub-issue on an infrastructure failure. A live scan still revokes it (a push after
-    // approval re-opens the gate), which is the case failing closed actually protects.
-    // Same rule as `epicApproved` above: a live scan decides, but a scan with no head is not a
-    // usable observation, so it neither grants nor revokes — the durable value stands.
-    // The STANDING approval, not this wake's effective gate — they are computed from one shared
-    // expression each (`standingApproval` / `objectiveHolds`) rather than written out twice, since
-    // a divergent copy of the gate term is what made the carry a one-shot the first time.
-    // Deliberately excludes `humanChangesRequested`: that holds dispatch for as long as it is the
-    // latest review, but it is not a revocation, and burning the durable approval on it left the
-    // epic locked forever once the review was dismissed. Revocation is label removal or a verified
-    // non-owner applier — both of which DO drop this to false, through `standingApproval`.
-    approved: gateUsable ? standingApproval() : !!epic.approved,
+    approved: gateUsable || epicSpecMerged ? epicApproved : !!epic.approved,
+    approvedHeadSha: epicApproved
+      ? historicalEpic ? epic.approvedHeadSha : gate.headSha
+      : !epicSpecMerged && !gateUsable ? epic.approvedHeadSha || null : null,
+    specMerged: epicSpecMerged,
     // ...and the fact that it could not be confirmed is persisted WITH it, or the next wake's
     // dead-scout fallback reads the durable approval as good and releases work this wake refused to.
     // Clearing path: any scan that returns a head. (The coordinator persists this verbatim.)
@@ -3535,6 +3483,7 @@ const epicBlockers = [
 // Every `mayWrap` term except the drop guard, so the log below can say the drop is the ONLY thing
 // still holding the wrap rather than a generic reminder that fires even when other work is open.
 const wrapReadyButForDrops =
+  epicReady &&
   issues.every((r) => r.linearTerminal || r.merged || r.phase === 'DONE') &&
   !issues.some((r) => pendingAction(r) !== null) &&
   !issues.some((r) => (r.unsettled || []).length && !CANCELLED_LINEAR.test((r.linearState || '').trim())) &&
@@ -3615,10 +3564,10 @@ return {
     // These three are not: DAG work the nested step reported, a verdict still owed a fold (Settle runs
     // after Advance, so the planner never saw it), and a queued human answer. Pairing them with
     // `pendingAction` is what keeps a parked or cancelled row out — that was the original defect.
-    issues.some(
+    (epicReady && issues.some(
       (r) =>
         (r.multiPrPending || (r.verdicts || []).length || (r.blockerResolutions || []).length) && pendingAction(r) !== null,
-    ) ||
+    )) ||
     // A ROUTE PROMOTION is the fourth internal trigger. A direct worker that refused to build
     // returns `specRequired` and leaves the row at NEEDS_SPEC — spec authoring is runnable
     // immediately, and the row has no PR, so nothing external will ever wake it. Same reasoning as
@@ -3628,7 +3577,7 @@ return {
     // present: the field is sticky by design, so testing presence would keep re-asserting
     // "work now" for the rest of the row's life. `issues` is a 1:1 map of `refreshed`, so the
     // index is the carried counterpart.
-    issues.some((r, i) => r.specRequired && !refreshed[i].specRequired && pendingAction(r) !== null),
+    (epicReady && issues.some((r, i) => r.specRequired && !refreshed[i].specRequired && pendingAction(r) !== null)),
   // SAFE TO WRAP: every row is terminal, nothing is dispatchable, and no human decision is outstanding.
   // The blockers list is the authority on the last of those, because it is exactly what gets surfaced —
   // so "nothing left to show the human" and "safe to close the surface" cannot disagree. Cancelled rows

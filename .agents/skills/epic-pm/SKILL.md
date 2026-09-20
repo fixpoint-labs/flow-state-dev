@@ -64,9 +64,9 @@ a fold changes the objective.
 
 | | Under `epic-pm` |
 |---|---|
-| The three gates — epic objective · spec approval · merge | Theirs, unchanged. **Never absorbed** |
-| A product call the five lines already answer | **Yours.** Decide it; name it in the next report |
-| **Cutting** scope inside an approved objective | **Yours** |
+| Human gates — epic/issue direction approval and implementation merge | Theirs, unchanged. Spec merge follows approval plus required checks; implementation waits for confirmed spec merge |
+| A product call the five lines already answer | **Yours**, within approved direction |
+| **Cutting** scope inside an approved objective | **Yours** only when it does not materially change approved direction; otherwise propose an amendment for renewed sign-off |
 | **Adding** scope | **Theirs, always.** `epic-lifecycle` → Intake already surfaces every addition, and the asymmetry is the point of this posture: a cut is re-filed in a minute, an addition is surface we carry (tenet 3) |
 | An engineering fork | **Yours**, per `epic-em` — including its never-absorbable list, inherited unchanged |
 

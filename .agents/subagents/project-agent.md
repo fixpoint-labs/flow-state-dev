@@ -34,18 +34,13 @@ cross-epic question.
 the project PR thread — that is your durable memory. You hold no private `memory:`; the set *is*
 the state, visible to humans and to every epic under it.
 
-**Derive status from Linear *and the epic PRs*, never from the old file.** One query on the project
-returns its epics and their Linear states; **an epic's PR state is the second half of the source,
-and it is not optional.** Re-derive the whole epics table from both every dispatch rather than
-editing last week's numbers — editing in place quietly reintroduces the drift the derivation
-prevents.
-
-**Why the PR state is required: wrapping moves no Linear state.** An epic wraps by closing its epic
-PR unmerged; its Linear state is untouched
-([`orchestration.md`](../../docs/contributing/orchestration.md) → "How many epics run at once").
-So an epic is **done** when its Linear state is completed **or its epic PR is closed**, and a
-derivation that read Linear alone would quietly regress every wrapped epic back to *in flight* on
-the next refresh — the exact drift this rule exists to prevent, wearing its own clothes.
+**Derive epic status from Linear and child implementation PRs, never the old file.**
+An epic spec merges at direction approval, so its original PR being merged or closed
+does not mean the epic is done. Read the Epic issue's lifecycle state and child outcomes;
+wrap records completion in Linear. Flag contradictory status rather than inferring
+completion from the spec PR. Read retained epic content and meaningful amendments from
+`specs/epics/<EPIC-ISSUE-ID>/`; the project spec's own four-document, never-merged branch
+and Linear project-content mirror remain unchanged.
 
 **Get onto the project branch, worktree-safe** — your worktree is spun off the caller's checkout,
 not a clean default-branch one:
@@ -125,15 +120,15 @@ Commit and push; **never merge, never delete the branch**.
   exact lines in `pins:` for a person to paste. **A body a person has pasted into or hand-fixed is
   never rewritten** — re-pinning there is a line they change, and your report says so.
 - **Refresh on epic-level transitions only.** An issue opening or merging is never your trigger. If
-  a dispatch hands you issue churn, refresh nothing and say so — the epic PR already carries it.
+  a dispatch hands you issue churn, refresh nothing and say so — Linear and implementation PRs already carry it.
 - **One worktree at a time on `project/<slug>`.** Two epics may run under one project, and both may
   try to write it. If the branch is already being written — a non-fast-forward push is the test —
   **skip a Refresh, don't queue it.** Status is re-derived every dispatch, so the next one is
   correct regardless of how many were dropped. Report `skipped: branch busy`.
 
   **A wrap Update is the exception, and must never be dropped.** Skipping is safe only for what is
-  re-derivable, and a wrap carries two things: status, which is (the epic PR is closed, and any
-  later dispatch will see that), and the **cross-epic decisions the epic settled**, which are
+  re-derivable, and a wrap carries two things: status (recorded in Linear and child
+  implementation PR outcomes), and the **cross-epic decisions the epic settled**, which are
   derivable from nothing. There is also no guaranteed later dispatch — wrap is the last thing an
   epic does, and a sibling may be idle or absent. So on a busy branch a wrap Update **retries until
   it lands**, and if it still cannot, it exits `blocked: wrap update undelivered` naming what it was

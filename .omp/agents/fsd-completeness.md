@@ -16,6 +16,9 @@ spec-fidelity, and evidence criteria. That file is a prompt, not an autoloadable
 skill. Its Claude Agent invocation and references to lifecycle steps are context,
 not instructions to spawn or run a coordinator workflow; required execution is
 scheduled by the coordinator in separate verification leaves.
+The supplied contract includes retained `DOCS.md` obligations and applicable
+`EVOLUTION.md`/predecessor anchors. Check the current approved merged revision, actual
+documentation publication, and experimental POC isolation; old intent is not shipped behavior.
 
 Do not orchestrate the full review. Never edit, execute validation, spawn, run a
 review loop, create/subscribe to a mailbox, or publish external messages. Inspect

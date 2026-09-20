@@ -1,7 +1,7 @@
-# Spec template — one directory, four documents, the figures
+# Spec template — one directory, five required documents, retained artifacts
 
 A spec has three readers with different needs, so it is not one document. It is a directory,
-`spec/<ISSUE-ID>/`, on branch `spec/<ISSUE-ID>`, holding:
+`specs/issues/<ISSUE-ID>/`, on branch `spec/<ISSUE-ID>`, holding:
 
 | File | Reader | Reads it to | Budget (prose words, fences excluded) |
 |---|---|---|---|
@@ -9,6 +9,8 @@ A spec has three readers with different needs, so it is not one document. It is 
 | **`DECISIONS.md`** | Whoever asks *why* — the owner on demand, the reviewer, the implementer when a rule bites | See what was considered, what was chosen, what lost, and what each choice locks in | ~900 |
 | **`BUSINESS-RULES.md`** | A human reviewer, then the implementer | Check the cases: when → then → proved by | ~900 |
 | **`PLAN.md`** | The implementing agent | Build it: surfaces, order, checks, pinned names, guardrails | ~1,000 |
+| **`DOCS.md`** | The reader of the eventual documentation, then the implementer | Review actual proposed prose and examples, with destination operations | Only changed material |
+| **`EVOLUTION.md`** (conditional) | The reviewer and implementer | Trace retained, amended or superseded parts of earlier designs | Only relevant lineage |
 | **`figures/*.svg`** | Everyone | Look at the pictures where position is the content | — |
 
 The set is longer than the one-file spec it replaces, and that is honest: **no single reader
@@ -21,15 +23,17 @@ for its reader alone and points at the others rather than repeating them.
 bold and unlinked:
 
 ```md
-**Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+**Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 ```
 
-A reader lands on any one of the four from a PR comment, a review thread, or a Linear link, and
-the nav line is how they flip to the other three without climbing to the directory. It is the
-third line of every file, so the verify block can check for it.
+A reader may land on any document from a PR or Linear link. The nav line, on the third
+line of each file, links the siblings; append `[Evolution](EVOLUTION.md)` only when it
+exists. Authored `assets/` and `poc/<experiment>/` stay beside `figures/` under this owner.
+The storage, authority and lifecycle contract is
+[`orchestration.md` → Spec retention and authority](orchestration.md#spec-retention-and-authority).
 
-**The pictures carry the meaning; the prose reads them.** Every document except the plan opens on
-a table or a figure, and every figure has one sentence under it saying what to look at. What a
+**The pictures carry the meaning; the prose reads them.** The spec, decisions and rules open on
+a table or figure, and every figure has one sentence under it saying what to look at. What a
 figure is, which each document carries, and how one is drawn and checked is canonical in
 [`spec-figures.md`](spec-figures.md). The plan carries no figures, on purpose: it is written for
 an agent, which reads tables and a DAG faster than a picture.
@@ -42,6 +46,10 @@ decisions are the ones we want. Not a finished design, and never held open until
 to nitpick. Below-the-bar feedback goes to `PLAN.md → Notes from review` for the implementer. The
 bar, the dispositions, and the two-round budget are canonical in
 [`orchestration.md`](orchestration.md) → "Spec review: the bar and the convergence rule".
+
+Approval precedes merge; required checks and required review-thread policy still apply.
+Implementation starts only after confirmed merge. See
+[Merging and amending a spec](orchestration.md#merging-and-amending-a-spec) for later changes.
 
 > **Anti-addenda rule.** A review-driven pivot gets the affected document **re-drafted.** Never
 > bolt an "AUTHORITATIVE reconciliation" section onto a body that now contradicts it — an
@@ -59,10 +67,10 @@ Everything they carried still exists; it moved to the document whose reader want
 | Was | Now |
 |---|---|
 | §1 Problem · §2 Solution · §5 What using it looks like | `SPEC.md` — the people table, the figures, the file-shaped surface as a diff |
-| §6 Decisions · §3 Tradeoffs & alternatives · §12 Open questions & settled claims · Spec evolution | `DECISIONS.md` — the cards, *considered and dropped*, *open / settled*, *how it got here* |
+| §6 Decisions · §3 Tradeoffs & alternatives · §12 Open questions & settled claims | `DECISIONS.md` — the cards, *considered and dropped*, *open / settled*, *how it got here*; prior-design lineage goes in conditional `EVOLUTION.md` |
 | §9 Edge cases & error handling · the acceptance criteria | `BUSINESS-RULES.md` |
 | §4 Focus practices | `PLAN.md → Guardrails`, each with a *because* |
-| §7 Technical design · §8 Sequence & PR plan · §10 Testing · §11 Docs plan · §13 Review notes | `PLAN.md` |
+| §7 Technical design · §8 Sequence & PR plan · §10 Testing · §13 Review notes | `PLAN.md`; §11 Docs plan becomes concrete proposed prose in `DOCS.md` |
 | The explainer | Retired. Its panels became the figures in `SPEC.md` and `DECISIONS.md` |
 
 **How to read the rest of this file.** Every document below is its instruction followed by a
@@ -87,7 +95,7 @@ it says the same thing on every spec PR, which is why it sits **below the fold**
 collapsed markdown normally, a human skips it in one line. The description's visible half is
 authored per PR. Layout and rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
 
-This is a **direction document in four files**, not an implementation. Reviewing it well means
+This is a **direction set**, not an implementation. Reviewing it well means
 answering one question: **is this the right approach?**
 
 **In scope to challenge:**
@@ -97,6 +105,8 @@ answering one question: **is this the right approach?**
 - Any numbered **decision** in `DECISIONS.md` — that's the sign-off surface.
 - A case `BUSINESS-RULES.md` misses, or a rule that would **invalidate** the design.
 - Scope — a deliverable that shouldn't ship, or one that's missing.
+- The reader-facing promises in `DOCS.md` and their fit with the rules; a missing or
+  misleading lineage claim in conditional `EVOLUTION.md`.
 
 **Out of scope — deliberately unsettled here, and owned by the implementing agent:**
 
@@ -114,10 +124,10 @@ answering one question: **is this the right approach?**
   and is not what will ship. **Review it for directional viability only.** Do **not** report
   that it lacks error handling, omits edge cases, names things that don't exist in the repo, or
   wouldn't build: all of that is true on purpose.
-- **Any POC files on this branch, entirely.** This PR is never merged, so it may carry throwaway
-  proof-of-concept code, characterization tests, or an HTML mockup built to validate the
-  direction ([`spec-poc`](../../.agents/skills/spec-poc/SKILL.md)). None of it ships. Read it to
-  judge whether the *shape* holds; **do not review it as code.**
+- **POC implementation polish.** Experiments under the owning spec's `poc/` are retained,
+  not production code. Read them for directional evidence, not production completeness.
+  Their isolation from production/default discovery and absence of secrets or generated
+  dependencies **are in scope**; retention is not permission to weaken repository checks.
 
 **One request, if you are an automated reviewer:** the two lists above are the whole difference
 between a useful review of this document and a long one. Volume is not signal here — a single
@@ -131,22 +141,25 @@ will not be folded into the design prose. Please don't re-raise it: one mention 
 recorded — there is nothing for an implementer to weigh about code that isn't shipping. Feedback
 about their **direction** is not line-level and is treated like any other above-the-bar finding.
 
+Direction approval does not waive merge-time required checks, approvals or thread policy.
+Optional comments do not require another design round merely to reach zero comments.
+
 ---
 
 ## The PR body
 
 *(Authored fresh for every spec PR. The layout and the rules are
 [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md); what follows is the spec-PR instance.
-Budget ~400 prose words above the fold. The body is not a fifth document: every line in it is
-in `SPEC.md` too, shorter.)*
+Budget ~400 prose words above the fold. The body is not another spec document: every line
+in it is in `SPEC.md` too, shorter.)*
 
 The people table from `SPEC.md`, cut to five rows. The *what changes* figure, as a pinned raw
 image ([`spec-figures.md`](spec-figures.md) → "In the PR body"), with its one sentence. One line
 on **how**. Then **Sign off**: the decisions, numbered, hardest first, each a bold line and an
 *If wrong:* clause, with the one to weigh named and a pointer to the decisions doc. Then
 **Reviewers · look here**: one to three items, each naming where and the question, plus what is
-deliberately not here. Then the links line: the four documents, the Linear issue, the epic, what
-it builds on, and that it never merges. Then the contract, collapsed.
+deliberately not here. Then the links line: the document set, Linear issue, epic, what
+it builds on, and that merge follows approval and required checks. Then the collapsed contract.
 
 > ```md
 > # spec(FIX-775): resume a stream after a disconnect
@@ -159,7 +172,7 @@ it builds on, and that it never merges. Then the contract, collapsed.
 > | **sends no cursor at all** | Today's behaviour | Today's behaviour, byte for byte |
 > | **runs a proxy that strips headers** | Nothing to strip yet | Resume still works: the cursor also rides a query param |
 >
-> <img src="https://raw.githubusercontent.com/<owner>/<repo>/<sha>/spec/<ISSUE-ID>/figures/resume.svg" width="940" alt="Two timelines: today a reconnect replays from item 1; after, it continues from the item after the cursor" />
+> <img src="https://raw.githubusercontent.com/<owner>/<repo>/<sha>/specs/issues/<ISSUE-ID>/figures/resume.svg" width="940" alt="Two timelines: today a reconnect replays from item 1; after, it continues from the item after the cursor" />
 >
 > Same request, two reconnects. The top row is today; the bottom is what the cursor buys.
 >
@@ -188,8 +201,8 @@ it builds on, and that it never merges. Then the contract, collapsed.
 >
 > **Not here:** client reconnect *policy* (backoff, retry limits) — a named non-goal.
 >
-> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
-> · Linear FIX-775 · no epic · never merges
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
+> · Linear FIX-775 · no epic · merges after human approval and required checks
 >
 > <details>
 > <summary><b>How to review this</b> — altitude, what's in scope, what's deliberately unsettled</summary>
@@ -213,7 +226,7 @@ ones. Zero to two per spec; more than that and the direction isn't ready for rev
 The document the product owner reads. It answers *who feels this, what do they see before and
 after, and what am I signing*, in observable behaviour with no file paths. Sections, in order:
 
-1. **The header line** — kind · packages · size · PR count · epic, and links to the other three.
+1. **The header line** — kind · packages · size · PR count · epic, and sibling links.
 2. **People, before and after** — a table: someone who… · today · after. Three to six rows.
    Each row is a person doing one thing and what they see. This table is the spec's problem
    statement and its solution statement at once, and the PR body cuts it to five rows.
@@ -228,7 +241,7 @@ after, and what am I signing*, in observable behaviour with no file paths. Secti
 
 > # FIX-775 · Resume a stream after a disconnect
 >
-> **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+> **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 >
 > Feature · `engine` + `client` · medium · 1 PR · no epic
 >
@@ -342,7 +355,7 @@ open or settled, then how the document got here. Sections, in order:
 
 > # FIX-775 · Decisions
 >
-> [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+> [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 >
 > What was considered, what was chosen, why, and what each choice locks in. Three decisions are
 > the sign-off surface. Everything else here is context for them.
@@ -442,7 +455,7 @@ mermaid companion when the figure could be misread. Then the **failure taxonomy*
 
 > # FIX-775 · Business rules
 >
-> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md)
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 >
 > The cases, written as rules. Each says what a person or the system does and what happens. The
 > *proved by* column is the check the plan runs. A human reviews this page; the plan turns it
@@ -520,8 +533,8 @@ No figures, no prose that restates the spec. Sections, in order:
    implementer's.
 6. **Guardrails** — a table: the rule · **because**. The focus practices that this change lives
    or dies by, each tied to a reason, never a re-list of the global BPs.
-7. **Docs** — per page, CREATE or EXTEND, the placement, the one voice risk. Or "no docs change"
-   with the reason. Never "update the README".
+7. **Docs** — link `DOCS.md`; name when its drafts are reconciled and published, not a
+   second prose draft or a list standing in for one.
 8. **The sketch, if any** — pseudocode, roles not function names, illustrative. And the POC
    line: what was built, what it showed, including when the premise held.
 9. **At implement time** — what to re-check against the repo before building: a sibling that
@@ -532,7 +545,7 @@ No figures, no prose that restates the spec. Sections, in order:
 
 > # FIX-775 · Plan
 >
-> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan**
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 >
 > Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
 > (BR-n) and [DECISIONS.md](DECISIONS.md) (D-n). `tdd`. One PR.
@@ -590,11 +603,8 @@ No figures, no prose that restates the spec. Sections, in order:
 >
 > ## Docs
 >
-> - **EXTEND** `apps/docs/docs/streaming/overview.md` — "Resuming after a disconnect", after
->   "Sequence numbers": the cursor format, the three reconnect cases, the completed-request
->   boundary, the `useSession` example. *Voice risk:* "seamless" is the obvious adjective. Don't.
-> - **EXTEND** `packages/engine/README.md` — one line under the stream seam's entry.
-> - **No new page.** Resume is one section under an existing concept.
+> Reconcile and publish [DOCS.md](DOCS.md) after the reconnect checks pass. Its destination
+> operations own the changed prose; this plan only sequences publication. No new page.
 >
 > ## Sketch · pseudocode, illustrative, react to the shape
 >
@@ -608,7 +618,7 @@ No figures, no prose that restates the spec. Sections, in order:
 > completed request: same loop, reading the persisted log   (D2)
 > ```
 >
-> **POC:** `spec-poc/FIX-775-resume-seam/` on this branch, cited from the spec PR. It showed the
+> **POC:** `poc/resume-seam/` inside this spec, cited from the spec PR. It showed the
 > seam already sees every item with its sequence attached, so the filter is one predicate. The
 > premise held; nothing changed.
 >
@@ -617,6 +627,8 @@ No figures, no prose that restates the spec. Sections, in order:
 > - The store's iterator may have gained a `from` option since this was written. If so, the
 >   filter still sits at the seam (decided, not asked); use the option only if it is strictly
 >   cheaper.
+> - Compare [Evolution](EVOLUTION.md)'s predecessor claims with current architecture docs
+>   and code; approved intent alone does not establish shipped behavior.
 >
 > ## Notes from review
 >
@@ -645,15 +657,85 @@ labelled illustrative. **Real code belongs on the spec branch** as a POC
 
 ---
 
-## Publishing and mirroring
+## `DOCS.md` — proposed documentation, not a plan
 
-The directory is committed to `spec/<ISSUE-ID>` and opened as the spec PR. The Linear document
-attached to the issue is **the four files in reading order** — `SPEC`, `DECISIONS`,
-`BUSINESS-RULES`, `PLAN` — under their own H1s, with every figure line replaced by a link to the
-file on the retained branch (`https://github.com/<owner>/<repo>/blob/spec/<ISSUE-ID>/spec/<ISSUE-ID>/figures/<name>.svg`)
-and **every cross-document link rewritten the same way** — `DECISIONS.md#d2` becomes
-`https://github.com/<owner>/<repo>/blob/spec/<ISSUE-ID>/spec/<ISSUE-ID>/DECISIONS.md#d2`, since in
-one concatenated document a relative sibling path addresses nothing. Linear renders neither
-`<details>` nor a repo-relative image, so the document carries links and the ordering carries
-the fold. Every edit to the branch is mirrored in the same change set; the
-Linear copy is the one that survives the PR.
+Apply the [canonical documentation contract](orchestration.md#spec-retention-and-authority).
+For each operation, identify the destination and section, then write only the changed
+reader-facing material. The following continues the fictional FIX-775 example; its
+destinations and prose are illustrative, not a statement of current behavior.
+
+> # FIX-775 · Documentation draft
+>
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
+>
+> ## UPDATE · `apps/docs/docs/streaming/overview.md` · after “Sequence numbers”
+>
+> ### Resuming after a disconnect
+>
+> Save the last item ID you received. To resume, reconnect to the same request with
+> that ID in `starting_after` or `Last-Event-ID`. If both are present, `starting_after`
+> wins. For example, after item `request-a:41`, send `Last-Event-ID: request-a:41`;
+> the response starts with the next available item, not item 41.
+>
+> A malformed cursor or one from another request is ignored: the stream starts from
+> the beginning. A cursor beyond the final item produces an empty replay. Sequence
+> numbers increase but need not be contiguous, so a gap in numbering is not evidence
+> that an item was lost.
+>
+> A client reconnecting after its request finished receives the remaining persisted
+> items and then a clean close. This does not let a new client read an old response
+> it was never attached to; use the store's history API for that.
+>
+> Existing callers that send no cursor keep their current behavior. When adopting
+> resume, stop appending a replay from the beginning as new content: carry the cursor
+> across reconnects instead. Reconnect timing and retry limits remain the app's policy.
+>
+> ## UPDATE · `packages/engine/README.md` · stream seam
+>
+> The stream seam resumes from a supplied item cursor without changing producers.
+> See the streaming guide for cursor precedence and completed-request boundaries.
+>
+> ## Publication ownership
+>
+> FIX-775 publishes these changes after checking them against the real reconnect path;
+> it does not duplicate the unchanged sequence-number introduction. If an epic owns the
+> overview's shared introduction, reconcile with that draft before publishing.
+
+For a change with no reader-facing impact, replace the operations with a specific
+justification, for example: “No documentation impact: this changes only the internal
+allocation of the existing cursor parser; syntax, precedence and failure behavior stay
+unchanged.” “Docs later” is not a no-impact statement.
+
+## `EVOLUTION.md` — conditional, precise design lineage
+
+Use the [canonical lineage contract](orchestration.md#spec-retention-and-authority).
+Do not create this file merely to list dependencies. The example below extends the
+fictional FIX-775 story with two **invented predecessor designs**, not actual repository
+artifacts. Link syntax is shown as code to avoid pretending the predecessors exist.
+In a real set, use verified clickable links with precise anchors; when only historical
+PR/Linear material exists, cite its real URL and section instead.
+
+> # FIX-775 · Evolution
+>
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · **Evolution**
+>
+> | Prior intent and precise source | Treatment | Why / evidence | Replacement | Compatibility |
+> |---|---|---|---|---|
+> | FIX-701 D2: recover by replaying the whole response; source `../FIX-701/DECISIONS.md#d2` | **Amended**, only reconnect delivery; the original no-cursor path is retained | The resume-seam experiment (`poc/resume-seam/`) shows the seam already receives sequenced items | [D1](DECISIONS.md#d1), implemented by BR-1: client supplies the cursor, seam skips earlier items | No-cursor clients unchanged; cursor clients must persist the last delivered ID |
+> | FIX-702 BR-4: a completed request cannot be reattached; source `../FIX-702/BUSINESS-RULES.md#br-4` | **Superseded in part** for previously attached clients; refusal for never-attached clients retained | Existing persisted items make tail replay possible; validate the completed-request boundary in PLAN V3 | [D2](DECISIONS.md#d2) | No history API is added; empty tails close normally |
+>
+> Neither predecessor is wholly superseded. The store-history issue is a dependency,
+> not a replaced design. Before implementation, compare these intents against current
+> `docs/architecture/streaming.md` and code; the experiment does not prove the full
+> proposed reconnect contract has shipped.
+
+When a predecessor has no retained file, replace the local-source cell with, for example,
+the **actual** original spec PR's file/section permalink or its Linear document URL plus
+decision ID. Record that provenance gap, not an invented `specs/` path. Keep predecessors
+historical; no registry or mandatory backlink edits.
+
+## Publishing and later amendments
+
+The repository set is canonical. Link it and its review PR from Linear rather than
+concatenating a second editable copy. Merge and subsequent amendments follow
+[Merging and amending a spec](orchestration.md#merging-and-amending-a-spec).

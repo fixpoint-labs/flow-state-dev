@@ -50,8 +50,8 @@ export interface ImplementPhaseOptions {
  * which is the exact defect class this lab exists to close, re-entering through
  * the completion check itself.
  *
- * Not hypothetical: a closed-unmerged pull request is an ordinary artifact of
- * this repo's own process (every spec PR closes unmerged by design).
+ * Not hypothetical: abandoned attempts and superseded PRs leave closed-unmerged
+ * pull requests behind. A completion probe must never treat one as delivered work.
  */
 const COMPLETING_PR_STATES = new Set(["OPEN", "MERGED"]);
 

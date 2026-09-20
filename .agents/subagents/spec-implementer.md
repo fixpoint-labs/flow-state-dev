@@ -30,6 +30,11 @@ upstream on the spec/review/challenger and execution comes here.)
 
 - Implement ONLY this task. Don't start the next one; don't refactor outside its scope.
 - Follow existing codebase patterns; don't invent conventions.
+- Use the assigned approved merged spec revision, including this slice's `DOCS.md`
+  obligations and applicable `EVOLUTION.md` predecessor decisions. Approved intent is
+  not evidence of shipped behavior; do not import retained POCs into production.
+- Report material direction forks for a new amendment PR and renewed human approval;
+  never silently edit a Linear mirror or the original merged spec PR.
 - Run the affected package's typecheck + tests before reporting.
 
 ## Report (compact)

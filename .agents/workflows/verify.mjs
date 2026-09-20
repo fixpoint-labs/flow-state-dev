@@ -250,14 +250,22 @@ function product(spec) {
 // Shared stubs
 // ---------------------------------------------------------------------------
 
+// Most lifecycle scenarios run after the epic spec has landed. Merge-wait scenarios override
+// specMerged explicitly; approval remains a separate flag and cannot be inferred from this fixture.
+const gateRes = (over = {}) => ({
+  approvedHeadSha: over.headSha === undefined ? 'abc' : over.headSha,
+  specMerged: true,
+  ...over,
+})
+
 /** Build an epic-wake responder from per-issue fresh PR state and per-issue worker results. */
-function epicResponder({ approved = true, approvedByLabel = false, labelPresent = approvedByLabel, labelProvenanceUnreadable = labelPresent && !approvedByLabel, gateChangesRequested = false, gateHeadSha = 'abc', epicReviewEvents = false, fresh = {}, worker = {}, poc = {}, fold = {}, refresh = {}, linear = {}, nulls = [] } = {}) {
+function epicResponder({ approved = true, approvedByLabel = false, gateChangesRequested = false, gateHeadSha = 'abc', gateApprovedHeadSha = gateHeadSha, gateSpecMerged = true, epicReviewEvents = false, fresh = {}, worker = {}, poc = {}, fold = {}, refresh = {}, linear = {}, nulls = [] } = {}) {
   return (prompt, opts) => {
     const label = opts.label || ''
     // `nulls` names labels whose agent "died" — the harness returns null for those.
     if (nulls.includes(label)) return null
     if (label === 'gate:epic') {
-      return { approved, approvedByLabel, labelPresent, labelProvenanceUnreadable, humanChangesRequested: gateChangesRequested, approver: approved ? 'jake' : null, headSha: gateHeadSha, newReviewEvents: epicReviewEvents, latestActivityAt: '2026-07-05T00:00:00Z' }
+      return gateRes({ approved, approvedByLabel, humanChangesRequested: gateChangesRequested, approver: approved ? 'jake' : null, headSha: gateHeadSha, approvedHeadSha: gateApprovedHeadSha, specMerged: gateSpecMerged, newReviewEvents: epicReviewEvents, latestActivityAt: '2026-07-05T00:00:00Z' })
     }
     if (label === 'fold:epic') return { roundsSpent: 1, aboveBar: false, folded: 'tightened the objective', fanOut: [], ...fold }
     if (label === 'refresh:epic') return { refreshed: 'set table, path', ...refresh }
@@ -299,6 +307,10 @@ const freshRow = (over = {}) => ({
   phase: 'NEEDS_SPEC',
   specApproved: false,
   specApprovedByLabel: false,
+  // A retained spec is the ordinary implementation fixture. Open-spec merge tests say false;
+  // this observation alone still cannot authorize an unapproved spec or one without a PR.
+  specMerged: true,
+  approvedHeadSha: over.headSha === undefined ? 'abc' : over.headSha,
   humanChangesRequested: false,
   newSpecReviewEvents: false,
   newPrEvents: false,
@@ -355,6 +367,414 @@ const epicArgs = (over = {}) => ({
 const checks = []
 const check = (name, fn) => checks.push({ name, fn })
 
+// Retention regressions exercise consumer transitions through the injected Workflow boundary.
+// Fresh scout observations are distinct from coordinator-retained historical provenance.
+const retainedEpic = (over = {}) => ({
+  issueId: 'FIX-1',
+  name: 'retained objective',
+  prNumber: 100,
+  branch: null, // GitHub may delete the branch after merge; the historical PR still exists.
+  headSha: 'abc',
+  approved: true,
+  approvedHeadSha: 'abc',
+  specMerged: true,
+  ...over,
+})
+
+check('RETENTION: direction approval without an observed epic-spec merge cannot release children', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic({ branch: 'epic/thing', specMerged: false }),
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({
+      approved: true, gateSpecMerged: false,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 201 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'current-head direction approval is not proof the epic spec landed')
+  assert.deepEqual(result.held, ['FIX-2'], 'child authoring waits for the coordinator to confirm the merge')
+})
+
+check('RETENTION: an approved epic awaiting merge exposes the merge wait rather than requesting approval again', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic({ branch: 'epic/thing', specMerged: false }),
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({
+      approved: true, gateSpecMerged: false,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+      nulls: ['spec:FIX-2'],
+    }),
+  })
+  assert.ok(
+    result.gates.some((g) => g.kind === 'spec-merge' && g.pr === 100),
+    'the coordinator needs the approved spec PR handle whose merge it must confirm',
+  )
+  assert.ok(!result.gates.some((g) => g.kind === 'epic-objective'), 'direction approval and merge completion are distinct gates')
+})
+
+check('RETENTION: an approved but unmerged epic is not ready to wrap', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ epic: retainedEpic({ branch: 'epic/thing', specMerged: false }) }),
+    respond: epicResponder({ approved: true, gateSpecMerged: false }),
+  })
+  assert.equal(result.mayWrap, false, 'an empty child set cannot turn approval into a completed spec merge')
+})
+
+check('RETENTION: observing a merge records the fact without manufacturing direction approval', async () => {
+  const first = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic({ specMerged: false }),
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({
+      approved: false, gateSpecMerged: true, gateHeadSha: 'unreviewed', gateApprovedHeadSha: null,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+    }),
+  })
+  assert.equal(first.result.epic.specMerged, true, 'observed merge and approval are independent facts')
+  assert.equal(first.result.epicApproved, false)
+  assert.equal(first.result.epic.approvedHeadSha, null, 'an older approval cannot become provenance for the unreviewed merge')
+  assert.deepEqual(workerLabels(first.calls), [])
+  const next = await run('epic-wake.js', {
+    args: epicArgs({ epic: first.result.epic, issues: first.result.issues }),
+    respond: epicResponder({ nulls: ['gate:epic'], fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.equal(next.result.epic.specMerged, true, 'a dead scout does not erase an observed merge')
+  assert.equal(next.result.epicApproved, false, 'the merge cannot turn into historical approval next wake')
+  assert.deepEqual(workerLabels(next.calls), [])
+})
+
+check('RETENTION: first observed epic merge recovers approval without waiving the source-head bind', async () => {
+  for (const approvedHeadSha of ['abc', 'stale']) {
+    const { result, calls } = await run('epic-wake.js', {
+      args: epicArgs({
+        epic: retainedEpic({ specMerged: false, approvedHeadSha: null }),
+        issues: [row('FIX-2')],
+      }),
+      respond: epicResponder({
+        approved: true, gateSpecMerged: true, gateChangesRequested: true,
+        gateHeadSha: 'abc', gateApprovedHeadSha: approvedHeadSha,
+        fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+        nulls: ['spec:FIX-2'],
+      }),
+    })
+    const approved = approvedHeadSha === 'abc'
+    assert.equal(result.epicApproved, approved)
+    assert.equal(result.epic.approvedHeadSha, approved ? 'abc' : null)
+    assert.equal(workerLabels(calls).includes('spec:FIX-2'), approved)
+  }
+})
+
+check('RETENTION: a worker cannot cross into implementation review without a spec-merge receipt', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic(),
+      issues: [row('FIX-2', {
+        phase: 'AWAITING_SPEC_APPROVAL', specPr: 7,
+        approvedHeadSha: 'abc', specMerged: false,
+      })],
+    }),
+    respond: epicResponder({
+      // An implement worker may merge as a backstop, but an impl handle alone is not a receipt.
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specApproved: true, specMerged: false } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true } },
+    }),
+  })
+  const issue = result.issues[0]
+  assert.ok(
+    !['PR_FEEDBACK', 'DONE'].includes(issue.phase),
+    'approval plus an implementation handle must not substitute for the missing spec merge',
+  )
+  assert.deepEqual(result.gates.filter((g) => g.kind === 'merge'), [], 'no implementation merge gate can escape the prerequisite')
+})
+
+check('RETENTION: the existing implement backstop must receipt the authorized spec PR and source head', async () => {
+  for (const [specMerge, accepted] of [
+    [{ pr: 7, headSha: 'abc', mergeCommitSha: 'merged-commit' }, true],
+    [{ pr: 8, headSha: 'abc', mergeCommitSha: 'merged-commit' }, false],
+    [{ pr: 7, headSha: 'old', mergeCommitSha: 'merged-commit' }, false],
+    [{ pr: 7, headSha: 'abc', mergeCommitSha: '' }, false],
+  ]) {
+    const { result, calls } = await run('epic-wake.js', {
+      args: epicArgs({
+        epic: retainedEpic(),
+        issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specMerged: false })],
+      }),
+      respond: epicResponder({
+        fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specApproved: true, specMerged: false } },
+        worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, specMerge, readyToMerge: true } },
+      }),
+    })
+    assert.deepEqual(workerLabels(calls), ['implement:FIX-2'], 'the backstop uses the existing action')
+    assert.equal(result.issues[0].phase, accepted ? 'PR_FEEDBACK' : 'NEEDS_IMPLEMENTATION', JSON.stringify(specMerge))
+    assert.equal(result.issues[0].specMerged, accepted, 'only the matching observed receipt establishes the merge')
+    if (accepted) {
+      assert.equal(result.issues[0].specMergeCommitSha, 'merged-commit', 'merge provenance is retained')
+      assert.ok(!result.gates.some((g) => g.kind === 'spec-merge'))
+    } else {
+      assert.ok(result.gates.some((g) => g.kind === 'spec-merge' && g.pr === 7))
+      assert.ok(!result.gates.some((g) => g.kind === 'merge'), 'a rejected receipt cannot expose an implementation merge')
+    }
+  }
+})
+
+check('RETENTION: a returned sub-PR table cannot derive its way around the spec-merge prerequisite', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic(),
+      issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION', specPr: 7 })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specApproved: true, specMerged: false } },
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'open', pr: 9, branch: 'fix/a' }],
+        },
+      },
+    }),
+  })
+  assert.equal(result.issues[0].phase, 'NEEDS_IMPLEMENTATION', 'derived DAG state cannot override the missing spec merge')
+  assert.equal(result.issues[0].specMerged, false)
+  assert.ok(!result.gates.some((g) => g.kind === 'merge'))
+})
+
+check('RETENTION: a scout cannot skip the issue spec-merge prerequisite by reporting PR_FEEDBACK', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic(),
+      issues: [row('FIX-2', {
+        phase: 'AWAITING_SPEC_APPROVAL', specPr: 7,
+        approvedHeadSha: 'abc', specMerged: false,
+      })],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK', specPr: 7, specApproved: true, specMerged: false, implPr: 9, readyToMerge: true,
+        },
+      },
+      nulls: ['implement:FIX-2'],
+    }),
+  })
+  assert.ok(!['PR_FEEDBACK', 'DONE'].includes(result.issues[0].phase), 'a reported phase is not spec-merge evidence')
+  assert.deepEqual(result.gates.filter((g) => g.kind === 'merge'), [], 'the scout cannot manufacture a downstream merge gate')
+})
+
+check('RETENTION: an owner label from an older epic head does not approve the changed direction', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      owner: 'jake',
+      epic: retainedEpic({ branch: 'epic/thing', specMerged: false, headSha: 'old', approvedHeadSha: 'old' }),
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({
+      approved: false, approvedByLabel: true, gateHeadSha: 'new', gateApprovedHeadSha: 'old', gateSpecMerged: false,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+    }),
+  })
+  assert.equal(result.epicApproved, false, 'owner provenance does not bind a standing label to a later commit')
+  assert.equal(result.epic.approved, false, 'persisted approval must not revive the stale label on the next wake')
+})
+
+check('RETENTION: a standing issue label does not approve a head pushed after the reviewed revision', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      owner: 'jake',
+      epic: retainedEpic(),
+      issues: [row('FIX-2', {
+        phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specApproved: true,
+        headSha: 'old', approvedHeadSha: 'old', specMerged: false,
+      })],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, headSha: 'new',
+          specApproved: false, specApprovedByLabel: true, approvedHeadSha: 'old', specMerged: false,
+        },
+      },
+    }),
+  })
+  assert.equal(result.issues[0].specApproved, false, 'the issue label must be tied to the reviewed head too')
+  assert.deepEqual(labels(calls, 'implement:'), [], 'neither implementation nor its merge backstop is authorized on stale direction')
+})
+
+check('RETENTION: merged historical specs remain usable after branch deletion and label removal', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic(),
+      issues: [row('FIX-2', {
+        phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specBranch: null,
+        specApproved: true, approvedHeadSha: 'abc', specMerged: true,
+      })],
+    }),
+    respond: epicResponder({
+      approved: false, approvedByLabel: false,
+      fresh: {
+        'FIX-2': {
+          phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specApproved: false, specApprovedByLabel: false,
+        },
+      },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-2'], 'the approved merged artifact is canonical, not an open branch or label')
+  assert.equal(result.issues[0].phase, 'PR_FEEDBACK')
+  assert.equal(result.issues[0].specPr, 7, 'the original PR remains the historical review handle')
+  assert.ok(!result.gates.some((g) => ['epic-objective', 'spec-approval'].includes(g.kind)), 'historical approval is not asked for again')
+})
+
+check('RETENTION: a scout follow-up cannot replace a merged original spec or revoke its approval', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic(),
+      issues: [row('FIX-2', {
+        phase: 'NEEDS_IMPLEMENTATION', specPr: 7,
+        specApproved: true, approvedHeadSha: 'original-reviewed', specMerged: true,
+      })],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'NEEDS_IMPLEMENTATION', specPr: 8, headSha: 'follow-up',
+          approvedHeadSha: null, specApproved: false, specApprovedByLabel: false,
+          specMerged: false, humanChangesRequested: true,
+        },
+      },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, specPr: 8 } },
+    }),
+  })
+  const issue = result.issues[0]
+  assert.equal(issue.specPr, 7, 'the scout and worker follow-up cannot overwrite the original review handle')
+  assert.equal(issue.approvedHeadSha, 'original-reviewed', 'historical approval retains its reviewed source head')
+  assert.equal(issue.specApproved, true, 'a follow-up review does not revoke historical approval')
+  assert.equal(issue.specMerged, true, 'an unmerged follow-up does not undo the original merge')
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-2'])
+  assert.equal(issue.phase, 'PR_FEEDBACK')
+  assert.ok(!result.gates.some((g) => ['spec-approval', 'spec-merge'].includes(g.kind)))
+})
+
+check('RETENTION: a scout merge observation must match the expected spec PR', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic(),
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specMerged: false })],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK', specPr: 8, specApproved: true, specMerged: true,
+          implPr: 9, readyToMerge: true,
+        },
+      },
+      nulls: ['implement:FIX-2'],
+    }),
+  })
+  assert.equal(result.issues[0].specPr, 8, 'an unmerged spec handle may legitimately be replaced')
+  assert.equal(result.issues[0].specMerged, false, 'a different PR cannot satisfy the expected merge on this wake')
+  assert.ok(!['PR_FEEDBACK', 'DONE'].includes(result.issues[0].phase))
+  assert.ok(!result.gates.some((g) => g.kind === 'merge'), 'the mismatched merge cannot authorize an implementation merge')
+})
+
+check('RETENTION: a scout can discover the first merged spec when no prior handle exists', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ epic: retainedEpic(), issues: [row('FIX-2')] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specApproved: true, specMerged: true } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.equal(result.issues[0].specPr, 7)
+  assert.equal(result.issues[0].specMerged, true, 'first discovery can establish a merge without a prior handle')
+  assert.equal(result.issues[0].specApproved, true)
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-2'])
+  assert.equal(result.issues[0].phase, 'PR_FEEDBACK')
+})
+
+check('RETENTION: child completion after epic-spec merge updates live status without a spec-writing worktree', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic(),
+      issues: [row('FIX-2', {
+        phase: 'PR_FEEDBACK', specPr: 7, specMerged: true, implPr: 9,
+      })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', specPr: 7, implPr: 9, merged: true } },
+      linear: { 'FIX-2': 'Done' },
+    }),
+  })
+  assert.equal(result.issues[0].phase, 'DONE', 'the live implementation merge is reflected in the returned status')
+  assert.equal(result.mayWrap, true, 'wrap remains reachable after approval-time merge')
+  assert.deepEqual(
+    calls.filter((c) => c.agentType === 'epic-agent' && c.isolation === 'worktree'),
+    [],
+    'a status-only transition cannot push to the merged original or create per-tick amendment commits',
+  )
+})
+
+check('RETENTION: late notes on a merged issue spec reach implementation without another spec round', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic(),
+      issues: [row('FIX-2', {
+        phase: 'PR_FEEDBACK', specPr: 7, specBranch: null, specMerged: true,
+        implPr: 9, specReviewRounds: 2,
+      })],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK', specPr: 7, implPr: 9,
+          newSpecReviewEvents: true, latestActivityAt: 'late-note', readyToMerge: true,
+        },
+      },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['pr-feedback:FIX-2'])
+  assert.equal(result.issues[0].specReviewRounds, 2, 'late notes are not a renewed spec review loop')
+  assert.equal(result.issues[0].lastSeenActivityAt, 'late-note', 'the delivered note is acknowledged')
+  assert.equal(result.issues[0].specPr, 7, 'delivery preserves the historical review handle')
+  assert.deepEqual(result.gates.filter((g) => g.kind === 'merge'), [], 'pre-delivery implementation readiness is invalidated')
+})
+
+check('RETENTION: a late POC on a merged completed spec survives failed delivery and is retried', async () => {
+  const verdict = { claim: 'the retained design handles re-entry', verdict: 'REFUTED', evidence: 'isolated probe: duplicate dispatch', threads: '#7 discussion' }
+  const args = epicArgs({
+    epic: retainedEpic(),
+    issues: [row('FIX-2', {
+      phase: 'DONE', specPr: 7, specBranch: null, specMerged: true,
+      implPr: 9, merged: true, verdicts: [verdict],
+    })],
+  })
+  const fresh = { 'FIX-2': { phase: 'DONE', specPr: 7, implPr: 9, merged: true } }
+  const first = await run('epic-wake.js', {
+    args,
+    respond: epicResponder({
+      fresh, linear: { 'FIX-2': 'Done' }, nulls: ['apply-verdict:FIX-2'],
+    }),
+  })
+  assert.deepEqual(workerLabels(first.calls), ['apply-verdict:FIX-2'], 'merged history does not make new evidence disappear')
+  assert.deepEqual(first.result.issues[0].verdicts, [verdict], 'failed delivery keeps the exact evidence for a follow-up')
+  assert.equal(first.result.mayWrap, false, 'the epic cannot finish while the verdict is owed')
+  const second = await run('epic-wake.js', {
+    args: { ...args, epic: first.result.epic, issues: first.result.issues },
+    respond: epicResponder({
+      fresh, linear: { 'FIX-2': 'Done' },
+      worker: { 'FIX-2': { phase: 'DONE', implPr: 9 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(second.calls), ['apply-verdict:FIX-2'], 'the existing delivery action retries; no replacement lifecycle is needed')
+  assert.deepEqual(second.result.issues[0].verdicts, [], 'a returned delivery consumes the verdict once')
+  assert.equal(second.result.issues[0].specPr, 7, 'the original merged PR remains the historical handle')
+})
+
 check('epic gate unmet holds every issue and dispatches no worker', async () => {
   const { result, calls, logs } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2'), row('FIX-3')] }),
@@ -367,158 +787,41 @@ check('epic gate unmet holds every issue and dispatches no worker', async () => 
   assert.match(logs.join('\n'), /Epic objective not signed off — holding 2 issue\(s\)/)
 })
 
-check('the `epic approved` label signs the objective off, and only its removal revokes that', async () => {
-  // The owner marks the objective approved with the LABEL as well as by comment. Reading only
-  // comments held a fully-approved epic's entire set indefinitely while the label sat on the PR —
-  // and the coordinator cannot assert the gate from `args`, because a live scan overrides the
-  // carried value by design. So the label has to reach the gate, or that epic never starts.
+check('an owner label approves only its reviewed epic head, and merge is a separate gate', async () => {
   const byLabel = await run('epic-wake.js', {
-    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })] }),
-    respond: epicResponder({ approved: false, approvedByLabel: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
-  })
-  assert.equal(byLabel.result.epicApproved, true, 'the label alone signs the objective off')
-  assert.deepEqual(byLabel.result.held, [], 'and releases the set')
-  assert.ok(workerLabels(byLabel.calls).length > 0, 'so work is actually dispatched')
-
-  // The label does NOT expire on a push. An epic-spec PR takes commits for the whole life of the
-  // epic — every fold is one — so a staleness rule would revoke the objective on the next edit and
-  // re-hold the set, which is the stall this exists to remove. Removing the label is the revocation,
-  // so absence, and only absence, holds the gate.
-  const noLabel = await run('epic-wake.js', {
-    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })] }),
-    respond: epicResponder({ approved: false, approvedByLabel: false, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
-  })
-  assert.equal(noLabel.result.epicApproved, false, 'no label and no approving comment holds the gate')
-  assert.deepEqual(noLabel.result.held, ['FIX-2'], 'and the set stays held')
-  assert.deepEqual(noLabel.result.gates, [{ kind: 'epic-objective', pr: 100 }], 'with the gate surfaced')
-
-  // A label the scan can SEE but cannot ATTRIBUTE is ignorance, not revocation. Provenance needs the
-  // PR's `labeled` timeline, and an environment that exposes labels but not the timeline reports
-  // approvedByLabel:false on EVERY wake — so a running epic re-locked itself forever and dispatched
-  // nothing, days after its owner signed the objective off. The carried approval survives that gap.
-  const unattributable = await run('epic-wake.js', {
-    args: epicArgs({
-      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, approved: true },
-      issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })],
-    }),
-    respond: epicResponder({ approved: false, approvedByLabel: false, labelPresent: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
-  })
-  assert.equal(unattributable.result.epicApproved, true, 'an unreadable provenance check does not revoke a recorded approval')
-  assert.deepEqual(unattributable.result.held, [], 'so the set is not re-held')
-  assert.ok(workerLabels(unattributable.calls).length > 0, 'and work keeps moving')
-  // The PERSISTED twin has to agree with the gate, or the carry is a one-shot: dispatch once, write
-  // `false` next to a label that is still there, and the next wake re-locks with nothing carried.
-  // The gate opening is only half the fix; the coordinator persists this field verbatim.
-  assert.equal(unattributable.result.epic.approved, true, 'and the approval is persisted, so the next wake still carries it')
-
-  // Removal is still the revocation — that is the owner's control and it must survive the fix above.
-  // The label being GONE is a different fact from the label being unattributable, which is the whole
-  // point of reporting them separately.
-  const labelRemoved = await run('epic-wake.js', {
-    args: epicArgs({
-      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, approved: true },
-      issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })],
-    }),
-    respond: epicResponder({ approved: false, approvedByLabel: false, labelPresent: false, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
-  })
-  assert.equal(labelRemoved.result.epicApproved, false, 'removing the label revokes the objective even with a carried approval')
-  assert.deepEqual(labelRemoved.result.held, ['FIX-2'], 'and the set is held again')
-  assert.equal(labelRemoved.result.epic.approved, false, 'and the revocation is persisted, so it does not come back next wake')
-
-  // A VERIFIED non-owner label is a rejection, not ignorance, and must never ride the carry. This is
-  // the hole the presence-only version opened: a comment approves H1, a push invalidates it on H2,
-  // any collaborator applies the label, and the scan reports approved:false / approvedByLabel:false /
-  // labelPresent:true having read the timeline perfectly well. Releasing there would hand the epic to
-  // whoever can add a label, which is the authorization the provenance check exists to enforce.
-  const rejectedProvenance = await run('epic-wake.js', {
-    args: epicArgs({
-      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, approved: true },
-      issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })],
-    }),
+    args: epicArgs({ owner: 'jake', issues: [row('FIX-2')] }),
     respond: epicResponder({
-      approved: false,
-      approvedByLabel: false,
-      labelPresent: true,
-      labelProvenanceUnreadable: false, // the timeline READ fine — it just named the wrong person
+      approved: false, approvedByLabel: true, gateApprovedHeadSha: 'abc', gateSpecMerged: false,
       fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
     }),
   })
-  assert.equal(rejectedProvenance.result.epicApproved, false, 'a label verified as applied by a non-owner never carries the approval')
-  assert.deepEqual(rejectedProvenance.result.held, ['FIX-2'], 'and the set stays held')
-  assert.equal(rejectedProvenance.result.epic.approved, false, 'and the rejection is persisted')
+  assert.equal(byLabel.result.epicApproved, true, 'verified current-head owner approval counts')
+  assert.deepEqual(workerLabels(byLabel.calls), [], 'direction alone cannot release children')
+  assert.ok(byLabel.result.gates.some((g) => g.kind === 'spec-merge' && g.pr === 100))
 
-  // And it cannot MANUFACTURE a sign-off: an epic nobody ever approved has no carried `true` to
-  // survive, so the unattributable-label path leaves it exactly as fail-closed as before.
-  const neverApproved = await run('epic-wake.js', {
-    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })] }),
-    respond: epicResponder({ approved: false, approvedByLabel: false, labelPresent: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
-  })
-  assert.equal(neverApproved.result.epicApproved, false, 'an unattributable label never approves an epic on its own')
-  assert.deepEqual(neverApproved.result.held, ['FIX-2'], 'the set stays held')
-
-  // A human CHANGES_REQUESTED still outranks the carried approval, same as it outranks the label.
-  const carriedButChangesRequested = await run('epic-wake.js', {
-    args: epicArgs({
-      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, approved: true },
-      issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })],
-    }),
+  const merged = await run('epic-wake.js', {
+    args: epicArgs({ epic: byLabel.result.epic, issues: byLabel.result.issues }),
     respond: epicResponder({
-      approved: false,
-      approvedByLabel: false,
-      labelPresent: true,
-      gateChangesRequested: true,
+      approved: false, approvedByLabel: true, gateApprovedHeadSha: 'abc', gateSpecMerged: true,
       fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
     }),
   })
-  assert.equal(carriedButChangesRequested.result.epicApproved, false, 'a human change request outranks the carried approval')
-  // ...but it must not BURN it. A change request is transient — reviews get dismissed — while the
-  // standing approval is revoked only by label removal or a verified non-owner. Persisting `false`
-  // here left nothing to carry once the review cleared, so the epic stayed locked forever on a label
-  // still sitting on the PR, with no revocation ever performed.
-  assert.equal(
-    carriedButChangesRequested.result.epic.approved,
-    true,
-    'and holds dispatch without destroying the standing approval, which no revocation has touched',
-  )
+  assert.deepEqual(workerLabels(merged.calls), ['spec:FIX-2'], 'observing the approved merge releases the held child')
 
-  // The other half of that: once the change request clears, the carried approval is still there and
-  // the gate reopens with no fresh sign-off needed — because none was ever withdrawn.
-  const changesRequestCleared = await run('epic-wake.js', {
-    args: epicArgs({
-      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, approved: true },
-      issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })],
-    }),
+  const rejected = await run('epic-wake.js', {
+    args: epicArgs({ epic: byLabel.result.epic, issues: byLabel.result.issues }),
     respond: epicResponder({
-      approved: false,
-      approvedByLabel: false,
-      labelPresent: true,
-      labelProvenanceUnreadable: true,
-      gateChangesRequested: false, // the review was dismissed; nothing else changed
+      approved: false, approvedByLabel: false,
+      gateSpecMerged: false,
       fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
     }),
   })
-  assert.equal(changesRequestCleared.result.epicApproved, true, 'a dismissed change request reopens the gate on the standing approval')
-  assert.deepEqual(changesRequestCleared.result.held, [], 'and the set is released')
-
-  // Fold activity must not disturb it: the label still approves on a wake that is folding new
-  // epic-PR feedback, which is exactly the wake a commit-based staleness rule would have broken.
-  const whileFolding = await run('epic-wake.js', {
-    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 }, issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })] }),
-    respond: epicResponder({
-      approved: false,
-      approvedByLabel: true,
-      epicReviewEvents: true,
-      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
-    }),
-  })
-  assert.equal(whileFolding.result.epicApproved, true, 'a labelled epic stays approved while its spec is being folded')
+  assert.equal(rejected.result.epicApproved, false, 'a rejected owner provenance check cannot ride the carried approval')
+  assert.deepEqual(workerLabels(rejected.calls), [])
 })
 
 check('a human change request outranks an approval label on both gates', async () => {
-  // The owner's label is STANDING state — it sits on the PR until they remove it. Without this,
-  // a later CHANGES_REQUESTED flips `specApproved` false while the label carries the issue into
-  // implementation past feedback nobody addressed — a bypass the label channel introduces
-  // precisely because presence, not recency, is its whole test.
+  // An owner-applied label on an open spec cannot overrule a human's outstanding change request.
   const spec = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
     respond: epicResponder({
@@ -528,6 +831,7 @@ check('a human change request outranks an approval label on both gates', async (
           specPr: 8,
           specApproved: false,
           specApprovedByLabel: true,
+          specMerged: false,
           humanChangesRequested: true,
           headSha: 'abc',
         },
@@ -558,6 +862,7 @@ check('a human change request outranks an approval label on both gates', async (
       approved: false,
       approvedByLabel: true,
       gateChangesRequested: true,
+      gateSpecMerged: false,
       fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
     }),
   })
@@ -565,11 +870,8 @@ check('a human change request outranks an approval label on both gates', async (
   assert.deepEqual(epicBlocked.result.held, ['FIX-2'], 'and the set is held')
 })
 
-check('a change request vetoes an in-session approval too', async () => {
-  // The veto has to sit over the COMBINED decision, not per channel. It was added to the
-  // comment/review and label branches and missed on this one, so an in-session go-ahead carried a
-  // spec into implementation past a change request. Now that all three compose in one function,
-  // this is the case that proves the veto is not per-branch.
+check('an open spec change request vetoes an in-session approval too', async () => {
+  // An open spec's change request vetoes every approval channel.
   const { calls } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, approvedInSession: 'abc' })] }),
     respond: epicResponder({
@@ -578,6 +880,7 @@ check('a change request vetoes an in-session approval too', async () => {
           phase: 'AWAITING_SPEC_APPROVAL',
           specPr: 8,
           specApproved: false,
+          specMerged: false,
           specApprovedByLabel: false,
           humanChangesRequested: true,
           headSha: 'abc',
@@ -788,36 +1091,22 @@ check('epic-PR review still folds while the objective is unapproved', async () =
   assert.match(logs.join('\n'), /still folding epic-PR review so the objective can be revised/)
 })
 
-check('a phase transition with no fold dispatches the epic-spec status refresh, outside the review budget', async () => {
-  // The epic PR is read for the life of the epic, so its set table, graph and path have to move
-  // when a row does — and a fold is not the only time a row moves.
-  const { result, calls, logs } = await run('epic-wake.js', {
-    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 }, issues: [row('FIX-2')] }),
+check('a pre-merge epic snapshot can reflect an already-existing child merge without spending review budget', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 },
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 300 })],
+    }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
-      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 201 } },
+      gateSpecMerged: false,
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', merged: true } },
     }),
   })
-  assert.deepEqual(labels(calls, 'refresh:epic'), ['refresh:epic'], 'the transition dispatches the refresh')
-  const refresh = calls.find((c) => c.label === 'refresh:epic')
-  assert.equal(refresh.agentType, 'epic-agent')
-  assert.equal(refresh.isolation, 'worktree', 'it writes the epic branch, so it takes a worktree')
-  assert.match(refresh.prompt, /FIX-2 NEEDS_SPEC → AWAITING_SPEC_APPROVAL/, 'the prompt names what moved')
-  assert.match(refresh.prompt, /STATUS refresh only, no fold/, 'and forbids folding')
-  assert.equal(result.epic.reviewRounds, 0, 'a status refresh spends no review round')
-  assert.ok(result.dispatched.includes('refresh:epic'), 'and is reported as dispatched')
-  assert.equal(result.epic.headUnconfirmed, true, 'it moved the head, so the next scan re-derives the approval')
-  assert.match(logs.join('\n'), /Epic-spec status refreshed for FIX-2/)
-})
-
-check('a transition the scan detected refreshes the epic-spec too — a merge is what a reader wants reflected', async () => {
-  const { calls } = await run('epic-wake.js', {
-    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100 }, issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 300 })] }),
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', merged: true } } }),
-  })
-  const refresh = calls.find((c) => c.label === 'refresh:epic')
-  assert.ok(refresh, 'the merge is a transition even though no worker ran')
-  assert.match(refresh.prompt, /FIX-2 PR_FEEDBACK → DONE/)
+  assert.equal(result.issues[0].phase, 'DONE', 'the live implementation merge is reflected')
+  assert.deepEqual(labels(calls, 'refresh:epic'), ['refresh:epic'], 'the still-open epic can refresh its dated snapshot')
+  assert.equal(result.epic.reviewRounds, 0, 'status is not a review round')
+  assert.equal(result.epic.headUnconfirmed, true, 'a snapshot write invalidates the open PR head observation')
+  assert.equal(result.mayWrap, false, 'the original spec merge is still required')
 })
 
 check('no transition, no refresh — a wake that moved nothing writes nothing', async () => {
@@ -829,7 +1118,7 @@ check('no transition, no refresh — a wake that moved nothing writes nothing', 
   assert.ok(!result.dispatched.includes('refresh:epic'))
 })
 
-check('a fold this wake refreshes in its own pass — no second worktree races it', async () => {
+check('an epic fold does not dispatch a second status-writing worktree beside it', async () => {
   const { calls } = await run('epic-wake.js', {
     args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 }, issues: [row('FIX-2')] }),
     respond: epicResponder({
@@ -840,20 +1129,22 @@ check('a fold this wake refreshes in its own pass — no second worktree races i
   })
   assert.deepEqual(labels(calls, 'fold:epic'), ['fold:epic'], 'the fold runs')
   assert.deepEqual(labels(calls, 'refresh:epic'), [], 'and carries the refresh, so none is dispatched beside it')
-  assert.match(calls.find((c) => c.label === 'fold:epic').prompt, /status refresh/, 'the fold prompt asks for it')
 })
 
-check('a dead refresh agent is nothing happened — logged as stale, never invented', async () => {
-  const { result, logs } = await run('epic-wake.js', {
-    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100 }, issues: [row('FIX-2')] }),
+check('a dead pre-merge status refresh leaves the head observation unchanged', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100 },
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 300 })],
+    }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
-      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 201 } },
+      gateSpecMerged: false,
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', merged: true } },
       nulls: ['refresh:epic'],
     }),
   })
-  assert.match(logs.join('\n'), /status refresh returned nothing/)
-  assert.notEqual(result.epic.headUnconfirmed, true, 'a refresh that did not write moved no head')
+  assert.deepEqual(labels(calls, 'refresh:epic'), ['refresh:epic'])
+  assert.equal(result.epic.headUnconfirmed, false, 'a refresh that did not return cannot claim to have moved the head')
 })
 
 check('an issue with an open blocked-by relation is tracked, not dispatched', async () => {
@@ -861,7 +1152,7 @@ check('an issue with an open blocked-by relation is tracked, not dispatched', as
     args: epicArgs({ issues: [row('FIX-2'), row('FIX-3')] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') {
         return {
           issues: [
@@ -1079,7 +1370,7 @@ check('two verdicts on one issue both survive to be folded', async () => {
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'x', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK' }))
       if (label === 'poc:claim one') return { claim: 'claim one', verdict: 'CONFIRMED', evidence: 'a' }
@@ -1112,7 +1403,7 @@ check('a present Linear row clears a resolved blocker', async () => {
     args: epicArgs({ issues: [row('FIX-2', { blockedBy: ['FIX-9'] })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       // A present row is authoritative and CLEARS a resolved relation — but it has to SAY it has no
       // blockers. This fixture used to omit the field and assert the omission meant "none", which is
       // precisely the reading that admitted a still-blocked issue alongside its prerequisite.
@@ -1138,7 +1429,7 @@ check('a Linear scout that answers with UUIDs is discarded per entry, not believ
     args: epicArgs({ issues: [row('FIX-2', { blockedBy: ['FIX-9'], linearState: 'Todo' }), row('FIX-3')] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') {
         return {
           issues: [
@@ -1173,7 +1464,7 @@ check('a dropped Linear entry for a NEW child holds the epic wrap, not just a ca
     args: epicArgs({ issues: [row('FIX-2', { phase: 'DONE', implPr: 9, merged: true, linearTerminal: true })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') {
         return {
           issues: [
@@ -1194,106 +1485,7 @@ check('a dropped Linear entry for a NEW child holds the epic wrap, not just a ca
   assert.match(logs.join('\n'), /Holding the epic's wrap this wake: 1 Linear refresh entry was dropped/)
 })
 
-check("the issue scout is told a human's CHANGES_REQUESTED beats another's approval", async () => {
-  // The epic gate prompt has carried this rule from the start; the issue scout asked only for a current-head
-  // approved review, so a spec could read approved while a human's latest state was CHANGES_REQUESTED — or
-  // while the SAME human had approved and then requested changes.
-  const { calls } = await run('epic-wake.js', {
-    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
-  })
-  const scout = calls.find((c) => c.label === 'refresh:issues')
-  assert.ok(scout)
-  assert.match(scout.prompt, /Collapse each human's reviews to their latest state first/)
-  assert.match(scout.prompt, /ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved/)
-  assert.match(scout.prompt, /even when the same person approved earlier/)
-})
 
-check('both scouts must attribute an approval label to a human before it passes a gate', async () => {
-  // The label is the OWNER'S authorization channel, so "the label is present" is only half the test.
-  // Labels are writable by any collaborator and by every bot with write access — so a scan that reads
-  // presence alone lets a bot release an epic's whole child set, or one issue's implementation, without
-  // the sign-off the gate exists to require (BP-031: never derive an auth decision from an actor nobody
-  // verified). The WHEN half stays deliberately unchecked — that is the staleness rule the owner rejected,
-  // and it is a different question from WHO.
-  const withOwner = await run('epic-wake.js', {
-    args: { ...epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }), owner: 'the-owner' },
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
-  })
-  for (const label of ['gate:epic', 'refresh:issues']) {
-    const scout = withOwner.calls.find((c) => c.label === label)
-    assert.ok(scout, `${label} scout ran`)
-    assert.match(scout.prompt, /`the-owner` applied it/, `${label} names the owner, not "a human"`)
-    assert.match(scout.prompt, /timeline/i, `${label} says where provenance is read`)
-    assert.match(scout.prompt, /report (it )?FALSE/i, `${label} fails closed on an unattributable label`)
-    // ...and the staleness rule stays OUT. Re-adding it here is what broke the gate before.
-    assert.match(scout.prompt, /do not treat a later push as invalidating it/, `${label} keeps presence-not-recency`)
-  }
-
-  // No owner configured → the label channel is OFF rather than widened to any human. Fail-closed,
-  // because a label nobody can be held to is not a sign-off at all.
-  const noOwner = await run('epic-wake.js', {
-    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
-  })
-  for (const label of ['gate:epic', 'refresh:issues']) {
-    const scout = noOwner.calls.find((c) => c.label === label)
-    assert.ok(scout, `${label} scout ran`)
-    assert.match(scout.prompt, /LABEL channel is OFF/, `${label} turns the label channel off`)
-    assert.doesNotMatch(scout.prompt, /require its actor/, `${label} asks for no provenance it cannot check`)
-  }
-})
-
-check("both scouts count the owner's own approval even though the owner is every PR's author", async () => {
-  // Every PR in this repo is opened under the owner's login, so "not the PR author" excluded the owner by
-  // construction: the owner's "Approved. Lets proceed." on their own spec PR read as a self-approval and
-  // released nothing. The exclusion exists so a WORKER cannot approve its own PR; the owner is not a
-  // worker. Every other login keeps the exclusion, and with no owner configured nobody is exempted.
-  const withOwner = await run('epic-wake.js', {
-    args: { ...epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }), owner: 'the-owner' },
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
-  })
-  for (const label of ['gate:epic', 'refresh:issues']) {
-    const scout = withOwner.calls.find((c) => c.label === label)
-    assert.ok(scout, `${label} scout ran`)
-    assert.match(scout.prompt, /not the PR author — EXCEPT `the-owner`/, `${label} exempts the owner from the author exclusion`)
-    assert.match(scout.prompt, /counts even when that login is also the PR's author/, `${label} says the owner counts as author`)
-    assert.match(scout.prompt, /Every other login is still excluded when it authored the PR/, `${label} keeps the exclusion for workers`)
-  }
-  const noOwner = await run('epic-wake.js', {
-    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
-  })
-  for (const label of ['gate:epic', 'refresh:issues']) {
-    const scout = noOwner.calls.find((c) => c.label === label)
-    assert.match(scout.prompt, /not the PR author\./, `${label} keeps the plain rule with no owner`)
-    assert.doesNotMatch(scout.prompt, /EXCEPT/, `${label} exempts nobody when no owner is configured`)
-  }
-})
-
-check('an unattributable label on a never-approved epic is said out loud when the gate holds', async () => {
-  // The carry-case line ("timeline unreadable") fires only when a recorded approval rode the gap. With
-  // nothing recorded the gate simply held, and the label sitting on the PR went unmentioned.
-  const { result, logs } = await run('epic-wake.js', {
-    args: epicArgs({ issues: [row('FIX-2')] }),
-    respond: epicResponder({ approved: false, approvedByLabel: false, labelPresent: true, labelProvenanceUnreadable: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
-  })
-  assert.equal(result.epicApproved, false, 'nothing recorded, nothing released')
-  assert.match(logs.join('\n'), /Epic objective not signed off.*applier could not be read \(timeline unreadable\)/, 'the hold names the unreadable label')
-
-  // A CARRIED approval held for another reason — here a human change request — is not "nothing
-  // recorded". Keyed on the label alone the sentence fired here too, and said so falsely.
-  const carriedButHeld = await run('epic-wake.js', {
-    args: epicArgs({
-      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, approved: true },
-      issues: [row('FIX-2')],
-    }),
-    respond: epicResponder({ approved: false, approvedByLabel: false, labelPresent: true, labelProvenanceUnreadable: true, gateChangesRequested: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
-  })
-  assert.equal(carriedButHeld.result.epicApproved, false, 'the change request still holds the gate')
-  assert.match(carriedButHeld.logs.join('\n'), /Epic objective not signed off/, 'the hold is still logged')
-  assert.doesNotMatch(carriedButHeld.logs.join('\n'), /no earlier approval was recorded/, 'but it does not claim nothing was recorded when a carried approval exists')
-})
 
 check('an owner-applied label still passes both gates', async () => {
   // The provenance check must not break the channel it guards — the whole point of reading the label
@@ -1494,18 +1686,6 @@ check('a blocked sibling does not deadlock the cross-spec hold', async () => {
   assert.deepEqual(workerLabels(blockedButSpecced.calls), [], 'and both are held until the pass clears')
 })
 
-check('the cross-spec hold clears on a LANDED alignment, not a routed one', async () => {
-  // Nothing in the script can see this, which is why it is pinned as a documented rule: a PR comment
-  // asking for an alignment leaves the target spec's approval exactly as it was, so `specApproved` still
-  // reads true and the next wake starts implementation on the unaligned spec. `crossSpecCleared` is the
-  // coordinator's field and the only thing standing between "conflict found" and "conflict built".
-  const flat = readFileSync(join(HERE, '..', 'skills', 'epic-lifecycle', 'SKILL.md'), 'utf8').replace(/\s+/g, ' ')
-  assert.match(flat, /alignment edit has \*\*landed in its spec\*\* and every spec it changed has \*\*cleared approval again\*\*/)
-  assert.match(flat, /Not when the edits are \*routed\*/)
-  // And the walkthrough step it defers to still says both things, or the condition above points at nothing.
-  assert.match(flat, /\*\*Re-review the aligned specs\*\* and keep the \*\*stop-before-implement\*\* gate/)
-})
-
 check('a failed build goes behind its siblings, not in front of them', async () => {
   // Restoring the prior status was right — it still needs building — but left it first in a stable order, so
   // under a cap smaller than the ready set the same failing node was picked every wake and independent
@@ -1588,7 +1768,7 @@ check('converged epic feedback is actually routed, not just claimed', async () =
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: 'new' }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: 'new' })
       if (label === 'linear:epic-children') return { issues: [] }
       if (label === 'route:epic-notes') return { notes: [{ summary: 'rename the helper', fanOut: ['FIX-2'] }] }
       return null
@@ -1637,7 +1817,7 @@ check('GATE: a stale specApproved can never survive a live refresh', async () =>
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specApproved: true })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'x', blockedBy: [] }] }
       // Schema-valid, reports the pushed head, omits nothing required — but says NOT approved.
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, headSha: 'pushed' }))
@@ -1940,7 +2120,7 @@ check('a newly discovered epic child enters the table at NEEDS_SPEC', async () =
     args: epicArgs({ issues: [row('FIX-2')] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       // issue-manager parented FIX-7 under the epic mid-run; the Linear scan is where it appears.
       if (label === 'linear:epic-children') {
         return {
@@ -2318,7 +2498,7 @@ check('the epic itself is never added as one of its own children', async () => {
     args: epicArgs({ issues: [] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-1', state: 'Todo', blockedBy: [] }] }
       return null
     },
@@ -2343,7 +2523,7 @@ check('a converged epic folds only the verdict while routing ordinary feedback',
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: 'new' }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: 'new' })
       if (label === 'linear:epic-children') return { issues: [] }
       if (label === 'fold:epic') return { roundsSpent: 0, aboveBar: false, folded: 'recorded the verdict', fanOut: [] }
       if (label === 'route:epic-notes') return { notes: [{ summary: 'rename the helper', fanOut: ['FIX-2'] }] }
@@ -2382,15 +2562,6 @@ check('an apply-verdict does not consume concurrent review activity', async () =
   assert.equal(result.issues[0].lastSeenActivityAt, 'old', 'the review feedback is still owed a round')
 })
 
-check('workers align to the head the gate scan just observed', async () => {
-  const { calls } = await run('epic-wake.js', {
-    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, headSha: 'stale' }, issues: [row('FIX-2')] }),
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
-  })
-  const p = calls.find((c) => c.label === 'spec:FIX-2').prompt
-  assert.match(p, /head abc/, 'the wake that releases the spec must pass the fresh head, not the pre-fold one')
-  assert.ok(!p.includes('stale'))
-})
 
 check('the epic cursor holds when requested note routing fails', async () => {
   const { result } = await run('epic-wake.js', {
@@ -2840,8 +3011,8 @@ check('work that authors against the objective is held for one wake while it fol
   assert.deepEqual(workerLabels(second.calls), ['spec:FIX-2'])
 })
 
-check('a ready-to-merge issue surfaces a merge gate and is never merged here', async () => {
-  const { result, calls } = await run('epic-wake.js', {
+check('a ready-to-merge issue surfaces its implementation merge gate', async () => {
+  const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
     respond: epicResponder({
       fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 9 } },
@@ -2849,7 +3020,6 @@ check('a ready-to-merge issue surfaces a merge gate and is never merged here', a
     }),
   })
   assert.deepEqual(result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }])
-  assert.equal(calls.filter((c) => /merge/i.test(c.prompt || '') && c.agentType === 'issue-worker').length, 0)
 })
 
 check('a refresh scan echoing a sibling id is discarded, not bound to the wrong row', async () => {
@@ -2862,7 +3032,7 @@ check('a refresh scan echoing a sibling id is discarded, not bound to the wrong 
     // FIX-2 and start implementing a spec the human approved for FIX-3.
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' })
       if (label === 'linear:epic-children') return { issues: [] }
       if (label === 'refresh:issues') {
         return {
@@ -2887,7 +3057,7 @@ check('a worker echoing a sibling id is discarded and its settle request does no
     args: epicArgs({ issues: [row('FIX-2'), row('FIX-3')] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' })
       if (label === 'linear:epic-children') return { issues: [] }
       if (label === 'refresh:issues') return prScan(prompt)
       if (label === 'refresh:epic') return { refreshed: 'set table, path' }
@@ -3154,7 +3324,7 @@ check("a multi-PR issue's sub-PR handles survive the epic wake", async () => {
   const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })] }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: true } },
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specApproved: true } },
       worker: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrs } },
     }),
   })
@@ -3223,9 +3393,6 @@ check('approval arriving with fresh feedback implements AND carries the feedback
     }),
   })
   assert.deepEqual(workerLabels(calls), ['implement:FIX-2'], 'approval still releases the issue')
-  const prompt = calls.find((c) => c.label === 'implement:FIX-2').prompt
-  assert.match(prompt, /ALSO carries outstanding review feedback/)
-  assert.match(prompt, /carry it as implementer notes BEFORE you close the spec PR/)
   assert.equal(result.issues[0].lastSeenActivityAt, 'new', 'and the batch is consumed by the pass that read it')
   assert.equal(result.issues[0].newSpecReviewEvents, false)
 })
@@ -3255,7 +3422,7 @@ check("a multi-PR issue's assemble state and sub-PR handles both survive", async
   const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })] }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: true } },
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specApproved: true } },
       worker: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrs, assembledGoal } },
     }),
   })
@@ -3599,7 +3766,7 @@ check('a worker reporting deferred DAG work is dispatched again next wake', asyn
       issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })],
     }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: true } },
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specApproved: true } },
       worker: {
         'FIX-2': {
           phase: 'PR_FEEDBACK',
@@ -3820,7 +3987,7 @@ check('a headless live epic scan holds work even when the epic was already appro
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: null, newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, specMerged: false, headSha: null, newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [] }
       if (label === 'refresh:issues') return prScan(prompt)
       if (label === 'refresh:epic') return { refreshed: 'set table, path' }
@@ -3984,7 +4151,7 @@ check('a parked row is never offered for merge', async () => {
       args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, ...park })] }),
       respond: (prompt, opts) => {
         const label = opts.label || ''
-        if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+        if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
         if (label === 'linear:epic-children') return { issues: [] }
         if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', readyToMerge: true, implPr: 9 }))
         return workerRes({ issueId: 'FIX-2' })
@@ -4392,7 +4559,7 @@ check('an epic approval that could not be confirmed does not release work on the
       epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, approved: true, headSha: 'old' },
       issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })],
     }),
-    respond: epicResponder({ gateHeadSha: null, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+    respond: epicResponder({ gateHeadSha: null, gateSpecMerged: false, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
   })
   assert.equal(headless.result.epicApproved, false, 'this wake holds')
   assert.equal(headless.result.epic.headUnconfirmed, true, 'and records why, so the next wake can too')
@@ -4430,7 +4597,7 @@ check("a resolved blocker's answer reaches the next worker, exactly once", async
       ],
     }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: true } },
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specApproved: true } },
       worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
     }),
   })
@@ -4452,7 +4619,7 @@ check("a resolved blocker's answer reaches the next worker, exactly once", async
       ],
     }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: true } },
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specApproved: true } },
       nulls: ['implement:FIX-2'],
     }),
   })
@@ -4879,10 +5046,8 @@ check('a PARTIAL per-handle scan consumes nothing either', async () => {
   assert.equal(result.issues[0].lastSeenActivityAt, 'old')
 })
 
-check('an implement dispatch keeps the spec PR open while a settlement is live', async () => {
-  // A late REFUTED verdict has to be folded into the spec and replied to on its thread, so closing
-  // the artifact on the way into implementation destroys what the fold needs.
-  const { calls } = await run('epic-wake.js', {
+check('an implementation and concurrent settlement preserve evidence for a later delivery on retained history', async () => {
+  const { result, calls } = await run('epic-wake.js', {
     args: epicArgs({
       cap: 3,
       issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })],
@@ -4891,12 +5056,15 @@ check('an implement dispatch keeps the spec PR open while a settlement is live',
     respond: epicResponder({
       fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specApproved: true, specPr: 7 } },
       worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, specPr: 7 } },
+      poc: { verdict: 'REFUTED', evidence: 'probe: duplicate dispatch' },
     }),
   })
-  const prompt = calls.find((c) => c.label === 'implement:FIX-2').prompt
-  assert.match(prompt, /settlement is IN FLIGHT on a load-bearing claim/)
-  assert.match(prompt, /do NOT close the spec PR yet/)
-  assert.match(prompt, /does the router re-enter\?/)
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-2'])
+  assert.equal(result.issues[0].specMerged, true, 'the settled claim does not require keeping the original unmerged')
+  assert.equal(result.issues[0].specPr, 7)
+  assert.deepEqual(result.issues[0].verdicts.map((v) => [v.claim, v.verdict, v.evidence]), [
+    ['does the router re-enter?', 'REFUTED', 'probe: duplicate dispatch'],
+  ], 'the later delivery retains the requested claim and observed evidence')
 })
 
 check('a stacked sub-PR is not offered for merge before its rebase', async () => {
@@ -5026,7 +5194,7 @@ check('a worker transition without its durable handle is refused', async () => {
   const multi = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })] }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: true } },
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7, specApproved: true } },
       worker: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] } },
     }),
   })
@@ -5043,7 +5211,7 @@ check('converged epic feedback is not re-routed when the cursor cannot move', as
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [] }
       return { notes: [] }
     },
@@ -5059,7 +5227,7 @@ check('epic activity reported without a timestamp is not folded and lost', async
     args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0, lastSeenActivityAt: 'old' }, issues: [] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [] }
       return {}
     },
@@ -5075,7 +5243,7 @@ check('a terminal issue stops asking the human to approve its spec', async () =>
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 }))
       return workerRes({ issueId: 'FIX-2' })
@@ -5370,75 +5538,61 @@ check('an assembled goal that passed without evidence is not DONE, and re-runs',
   assert.equal(withEvidence.result.issues[0].phase, 'DONE')
 })
 
-check('a fold that revised the objective withholds this wake\'s child gates', async () => {
-  // The gate is scanned before the fold pushes, so the approval this wake emitted gates from is already
-  // stale — a push after approval re-opens the gate, and the fold IS a push. `heldForFold` does not
-  // cover it: that defers WORK, and a wake whose children are all merely awaiting a human gate holds
-  // nothing and still emits those gates. A child spec approval is durable, so accepting one releases
-  // implementation against an objective nobody signed off.
-  const { result, logs } = await run('epic-wake.js', {
+check('a material post-merge epic amendment holds children until the coordinator resolves its approval-and-merge decision', async () => {
+  const fresh = {
+    'FIX-2': { phase: 'NEEDS_SPEC' },
+    'FIX-3': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true },
+  }
+  const first = await run('epic-wake.js', {
     args: epicArgs({
-      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, reviewRounds: 0, lastSeenActivityAt: 'old' },
-      issues: [
-        row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }),
-        row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 9 }),
-      ],
+      epic: retainedEpic(),
+      issues: [row('FIX-2'), row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 9 })],
     }),
     respond: epicResponder({
-      epicReviewEvents: true,
-      fold: { roundsSpent: 1, aboveBar: true, folded: 'narrowed the objective', fanOut: [] },
-      fresh: {
-        'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 },
-        'FIX-3': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true },
+      epicReviewEvents: true, fresh,
+      // Even an agent that omitted openQuestions cannot let material direction escape the gate.
+      fold: { aboveBar: true, folded: 'follow-up #101 narrows the objective', openQuestions: [] },
+    }),
+  })
+  assert.deepEqual(first.result.gates, [], 'no implementation merge gate escapes a material amendment')
+  assert.equal(first.result.epic.headUnconfirmed, false, 'the original merged source head has not changed')
+  assert.equal(first.result.epic.approvedHeadSha, 'abc')
+  assert.equal(first.result.epic.openQuestions.length, 1, 'the material follow-up leaves a durable decision')
+  const question = first.result.epic.openQuestions[0]
+
+  const genericFold = await run('epic-wake.js', {
+    args: epicArgs({ epic: first.result.epic, issues: first.result.issues }),
+    respond: epicResponder({
+      epicReviewEvents: true, fresh,
+      fold: { aboveBar: false, folded: 'answered an unrelated comment', openQuestions: [] },
+    }),
+  })
+  assert.deepEqual(workerLabels(genericFold.calls), [], 'outstanding material direction holds child dispatch')
+  assert.deepEqual(genericFold.result.gates, [], 'and holds already-green implementation merge gates')
+  assert.deepEqual(genericFold.result.epic.openQuestions, [question], 'generic success cannot self-clear the decision')
+
+  const resolved = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: {
+        ...genericFold.result.epic,
+        answers: [{ question, answer: 'Coordinator verified human approval of follow-up #101 head def and its actual merge.' }],
       },
-    }),
-  })
-  assert.deepEqual(
-    result.gates.filter((g) => g.kind !== 'epic-objective'),
-    [],
-    'no child spec-approval or merge gate is emitted against a pre-fold approval',
-  )
-  assert.equal(result.epic.headUnconfirmed, true, 'and the moved head is marked so the next wake re-scans it')
-  assert.match(logs.join('\n'), /withholding child spec-approval and merge gates/)
-
-  // A ZERO-ROUND fold withholds too, and that is the point rather than an accident. This sub-case used to
-  // assert the opposite — that a fold reporting `roundsSpent: 0` and an empty `folded` left the gates
-  // alone — which was the hole: a verdict fold and an answer fold are TOLD to report zero rounds, and
-  // those are the two folds most certain to have written the epic-spec.
-  const zeroRound = await run('epic-wake.js', {
-    args: epicArgs({
-      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'e' }] },
-      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })],
+      issues: genericFold.result.issues,
     }),
     respond: epicResponder({
-      // BOTH signals absent, which is the hole: `folded` empty and zero rounds, exactly what a verdict or
-      // answer fold is told to report. Under the old keying this emitted gates against a stale approval.
-      fold: { roundsSpent: 0, aboveBar: false, folded: '', fanOut: [] },
-      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } },
+      fresh,
+      fold: { roundsSpent: 0, aboveBar: false, folded: 'recorded the verified follow-up merge', openQuestions: [] },
     }),
   })
-  assert.deepEqual(zeroRound.result.gates.filter((g) => g.kind === 'spec-approval'), [], 'a verdict fold wrote, so it withholds')
-  // And the fold always REPORTS what it did, since `folded` is the coordinator's only window into an
-  // artifact it deliberately never reads. Asserted as a contract rather than a behaviour: nothing branches
-  // on it any more (that is the point of keying the guard on the fold having returned at all), so no
-  // fixture could tell required from optional.
-  assert.ok(
-    loadSchemas('epic-wake.js').EPIC_FOLD_SCHEMA.required.includes('folded'),
-    'a fold that reports nothing about what it changed leaves the coordinator blind',
-  )
+  assert.deepEqual(resolved.result.epic.openQuestions, [], 'the explicit coordinator resolution is applied')
+  assert.deepEqual(resolved.result.epic.answers, [], 'and consumed once')
 
-  // What actually discriminates is whether a fold ran AT ALL. A quiet wake must not stall the epic's
-  // gates, or the withholding would never lift.
-  const noFold = await run('epic-wake.js', {
-    args: epicArgs({
-      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100 },
-      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })],
-    }),
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  const resumed = await run('epic-wake.js', {
+    args: epicArgs({ epic: resolved.result.epic, issues: resolved.result.issues }),
+    respond: epicResponder({ fresh }),
   })
-  assert.deepEqual(labels(noFold.calls, 'fold:epic'), [], 'no fold this wake')
-  assert.deepEqual(noFold.result.gates.filter((g) => g.kind === 'spec-approval').map((g) => g.pr), [8])
-  assert.equal(noFold.result.epic.headUnconfirmed, false, 'and the head is not marked stale by a fold that never ran')
+  assert.deepEqual(workerLabels(resumed.calls), ['spec:FIX-2'], 'the next wake resumes the held child')
+  assert.equal(resumed.result.epic.prNumber, 100, 'the original historical review handle remains intact')
 })
 
 check('the documented snake_case cache fields are read, not silently ignored', async () => {
@@ -5866,7 +6020,7 @@ check('an answered decision on a completed issue is still applied', async () => 
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'DONE', merged: true, implPr: 9 }))
       return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
@@ -5883,7 +6037,7 @@ check('an answered decision on a completed issue is still applied', async () => 
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', implPr: 9 }))
       return workerRes({ issueId: 'FIX-2' })
@@ -6092,7 +6246,7 @@ check("a cancelled row's open question is dropped, out loud", async () => {
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', implPr: 9 }))
       return workerRes({ issueId: 'FIX-2' })
@@ -6151,7 +6305,7 @@ check('a cancelled row does not strand the epic short of wrap', async () => {
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', implPr: 9 }))
       return workerRes({ issueId: 'FIX-2' })
@@ -6177,7 +6331,7 @@ check('a carried epic verdict blocks wrap', async () => {
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'DONE', merged: true, implPr: 9 }))
       if (label === 'fold:epic') return null // the fold died, so the verdict is still carried
@@ -6291,7 +6445,7 @@ check('an epic with an unanswered question may not wrap', async () => {
       args: epicArgs({ issues: [doneRow(over)] }),
       respond: (prompt, opts) => {
         const label = opts.label || ''
-        if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+        if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
         if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
         if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'DONE', merged: true, implPr: 9 }))
         return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
@@ -6314,7 +6468,7 @@ check('an epic with an unanswered question may not wrap', async () => {
     args: epicArgs({ issues: [doneRow({ verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it' }] })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'DONE', merged: true, implPr: 9 }))
       return null // the folding worker died, so the verdict is still owed
@@ -7582,7 +7736,7 @@ check('a POC verdict that lands after the issue completed is still folded', asyn
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'DONE', merged: true, implPr: 9 }))
       return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
@@ -7597,7 +7751,7 @@ check('a POC verdict that lands after the issue completed is still folded', asyn
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', implPr: 9 }))
       return workerRes({ issueId: 'FIX-2' })
@@ -8062,7 +8216,7 @@ check('a terminal Linear issue stops asking the human to merge it', async () => 
     args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true }))
       return { issueId: 'FIX-2', ...workerRes() }
@@ -8085,7 +8239,7 @@ check('an approval with no current head holds work for the wake', async () => {
     respond: (prompt, opts) => {
       const label = opts.label || ''
       // Schema-valid but headSha null: we cannot align workers to the approved objective.
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: null, newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, specMerged: false, headSha: null, newReviewEvents: false, latestActivityAt: null })
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Todo', blockedBy: [] }] }
       if (label === 'refresh:issues') return prScan(prompt)
       if (label === 'refresh:epic') return { refreshed: 'set table, path' }
@@ -8094,7 +8248,6 @@ check('an approval with no current head holds work for the wake', async () => {
   })
   assert.equal(result.epicApproved, false, 'a live scan with no head releases nothing, whatever it says about approval')
   assert.deepEqual(workerLabels(calls), [], 'no worker aligns to a pre-approval objective')
-  assert.match(logs.join('\n'), /Epic gate scan returned no current head — holding work this wake/)
 })
 
 check('a node declaring an unknown dependency fails closed', async () => {
@@ -8416,7 +8569,7 @@ check('INVARIANT: every gating field is schema-required', async () => {
   // if the script BRANCHES on a schema field, that field must be required.
   const gating = {
     'epic-wake.js': {
-      GATE_SCHEMA: ['approved', 'newReviewEvents', 'approvedByLabel', 'labelPresent', 'labelProvenanceUnreadable', 'humanChangesRequested'],
+      GATE_SCHEMA: ['approved', 'approvedHeadSha', 'specMerged', 'newReviewEvents', 'approvedByLabel', 'humanChangesRequested'],
       // `merged` joined this list once completion was derived from it in both directions: optional, a
       // scan could report DONE and omit it, and the corrected demotion then had no action and no gate,
       // parking the row for good.
@@ -8433,7 +8586,7 @@ check('INVARIANT: every gating field is schema-required', async () => {
       // schema while omitting it, `cursorUsable` correctly refused the batch, and the planner — with
       // no way to tell that refusal apart from a genuinely converged review — logged "converged" for a
       // fold that never ran. FIX-1303.
-      PR_STATE_SCHEMA: ['specApproved', 'observed', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'headSha', 'latestActivityAt'],
+      PR_STATE_SCHEMA: ['specApproved', 'approvedHeadSha', 'specMerged', 'observed', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'headSha', 'latestActivityAt'],
       // `multiPrPending` earns its place here for a reason the others don't share: it was optional AND
       // had no clearing path, because the prompt asked only for the true case. So an omission had to
       // preserve the carried value (coercing it to false strands cap-deferred slices no event will
@@ -8951,7 +9104,7 @@ check('INVARIANT: an agent-reported id never decides which row a result lands on
           args: epicArgs({ issues: ids.map((id) => row(id, { phase, specPr: ownPr[id] })) }),
           respond: (prompt, opts) => {
             const label = opts.label || ''
-            if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+            if (label === 'gate:epic') return gateRes({ approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' })
             if (label === 'linear:epic-children') return { issues: [] }
             if (label === 'refresh:issues') {
               // The batch answers in the prompt's order — the bind is positional — but one entry
