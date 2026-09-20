@@ -123,8 +123,10 @@ const { workers, teams, errors, skillErrors, teamErrors } = await readWorkforce(
 | `skillErrors` | One entry per seat whose skills loaded short, carrying that seat's id and its own error list. |
 
 All three are collected rather than thrown. Treating any of them as fatal is the caller's call.
-`errors` and `teamErrors` are flat `{ path, error }` lists; `skillErrors` is one entry per affected
-seat, `{ worker, errors }`, so it needs flattening before it reads like the other two.
+`errors` and `teamErrors` are flat `{ path, error, kind }` lists, where `kind` is that reader's own
+closed union of conditions — narrow on it rather than matching `error.message`. `skillErrors` is one
+entry per affected seat, `{ worker, errors }`, so it needs flattening before it reads like the other
+two.
 
 A `TEAM.md` refuses `id:`, `flow:`, `instructions:` and `teamInstructions:` — the first two because
 the convention derives them, the last two because the body is already the instructions.
@@ -411,10 +413,13 @@ is what the `documents` option answers: `board` above is not one, and no seat's 
 the same whether it is passed or not, and a seat that does declare one while `documents` is absent
 is refused, naming what is missing.
 
-Every problem with a list refuses the whole roster, naming the seat: a ref no document matches, a
-ref naming a document the app declared but did not install on this seat's kind, a mode that is
-neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says
-`writable: false`, and a ref colliding with a name the kind's own blocks already declare.
+Every problem with a list refuses the whole roster, naming the seat: a `resources:` that is not a
+list at all, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document
+matches, a ref naming a document the app declared but did not install on this seat's kind, a mode
+that is neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says
+`writable: false`, a ref colliding with a name the kind's own blocks already declare, and a ref the
+kind does declare at flow level while what it holds there is not the document the app passed — the
+two cannot be told apart, so the hire refuses rather than guessing.
 
 One more is checked on the seat after it is built rather than on the list: if a document the seat
 did **not** name is reachable anyway — because one of the kind's blocks declares that same document,
@@ -1436,7 +1441,7 @@ membershipPrefix("");
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
-| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource or `requireOrg`, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a ref no document matches, a ref naming a document the app declared but did not install on this seat's kind, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, or the key itself with no `documents` passed), `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:` key. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource or `requireOrg`, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this seat's kind, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a seat did not name that its minted flow reaches anyway because one of the kind's blocks declares it, `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:` key. Collected: one error names every bad worker |
 | A `resources/` slot, `org/`, `teams/`, a team folder, a `workers/` level or a worker folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
 | Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |
