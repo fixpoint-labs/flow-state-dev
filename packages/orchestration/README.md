@@ -528,8 +528,11 @@ board worker may be seated with for this execution, and the seats are narrowed t
 them — an empty array means none. It only narrows, and it leaves the declared agent
 roster alone.
 
-A binding contributes the library's whole `catalog` to its generator, never the
-subset a skill's `allowed-tools` names. `registerCatalogTools: false` turns that
+A binding that contributes the catalog contributes all of it, never the subset a
+skill's `allowed-tools` names. It contributes the catalog when it preloads skills
+(`active`), when it installs the load tool (`dynamicActivation`), and when it
+pairs `activeState` with `allowed`; an `activeState` binding with neither
+contributes no catalog tools at all. `registerCatalogTools: false` turns that
 grant off while leaving the validation on, for a host that owns tool registration
 itself; pair it with `toolSeatFence` so a held skill's delegated workers cannot
 reach past the same fence.

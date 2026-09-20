@@ -92,7 +92,7 @@ const handbook = await ctx.resources["teams/engineering/handbook"].readContent()
 
 Document, team and worker names follow [the tree's name rule](./workers-on-disk.md#names-in-the-tree): lowercase letters, digits and single hyphens, at most 64 characters. So `on-call.md` is fine. `On Call.md` and `on.call.md` are reported when the tree is read, with the rule in the message.
 
-A worker folder's documents load whether or not the folder holds a `WORKER.md`. This reader is answering a question about a file; whether the folder also describes a seat is [the roster reader's](./workers-on-disk.md) question, and it reports a folder missing its `WORKER.md` separately.
+A worker folder's documents load whether or not the folder holds a `WORKER.md`. A folder missing its `WORKER.md` is reported separately, by [the roster loader](./workers-on-disk.md).
 
 ## Reading the tree
 

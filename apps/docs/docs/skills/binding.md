@@ -38,26 +38,30 @@ const analyst = generator({
 The library owns seeding. Bundled `initialSkills` are seeded on a binding's first render, so even a generator that only preloads a static skill sees a populated catalog on turn 1.
 
 :::note One skills surface per generator
-`createSkillsLibrary` and the older `createSkillsCapability` both register a `skills` resource collection under the same key, so don't mount both on the same generator — the duplicate collection key fails loudly at build time. Pick the per-generator library or the session-global capability for a given generator, not both.
+`createSkillsLibrary` and `createSkillsCapability` both register a `skills` resource collection under the same key, so don't mount both on the same generator. The duplicate collection key fails loudly at build time. Pick the per-generator library or the session-global capability for a given generator, not both.
 :::
 
 ## What tools the generator gets
 
 A skill's `allowed-tools` does not answer this. That key describes the tools a skill's body is written around; it grants none of them. What the generator can call comes from the library's `catalog` and from the generator's own `tools:` slot.
 
-Bind a skill and the binding contributes the library's whole `catalog`, not the subset any one skill names.
+A binding that contributes the catalog contributes all of it, never the subset any one skill names. Whether it contributes the catalog at all depends on how you bound the skills:
 
-| Setup | What the generator can call |
+| Binding | Catalog tools on the generator |
 |---|---|
-| A binding, and no `tools:` on the generator | Every tool in the library's `catalog` |
-| A library built with `registerCatalogTools: false` | No catalog tools. You register them yourself, which is what the built-in worker kind does |
-| A generator that declares `tools:` | Exactly the tools it names. `tools: []` means none |
+| `with({ active: [...] })` | Yes |
+| `with({ dynamicActivation: true })`, with or without `allowed` | Yes |
+| `with({ activeState, allowed })` | Yes |
+| `with({ activeState })`, no `allowed` and no `dynamicActivation` | No. Bodies written to that field still render |
+| Any binding, on a library built with `registerCatalogTools: false` | No. You register the tools yourself |
+
+A generator that declares `tools:` gets exactly the tools it names, whichever row it is on. `tools: []` means none.
 
 Declaring the slot is what draws the line, not what you put in it. So if you declare `tools:`, name the skill's tools there too. [Tools a capability contributes](../fundamentals/capabilities#capability-tools) is the same rule for every capability.
 
 `registerCatalogTools: false` turns off the grant, not the check. A bound skill's `allowed-tools` is still validated against the catalog, so a typo in a skill file is still reported.
 
-`loadSkill` and the delegation surface are controls rather than catalog tools. They arrive whatever `tools:` says.
+`loadSkill` and the delegation surface are controls, not catalog tools. A `tools:` list never takes a control away: a generator with `tools: []` still has them.
 
 Delegation is where `allowed-tools` does restrict: a delegating skill can assign a task only to a tool it lists, and a skill that lists none makes the whole catalog assignable. See [Delegation](./delegation).
 
@@ -87,9 +91,9 @@ const worker = generator({
 
 - `allowed` is the set the load tool may pull from. Omit it for the whole catalog. Either way the binding contributes the library's tool catalog, so a loaded skill can call the tools its body references. See [What tools the generator gets](#what-tools-the-generator-gets).
 
-By default the activation is stored in the generator's **own block state** — request-scoped and private. So it stays with this generator, and it does not carry into the next turn. That's usually what you want for a mid-task pickup.
+By default the activation is stored in the generator's **own block state**, which is request-scoped and private. So it stays with this generator, and it does not carry into the next turn. That's usually what you want for a mid-task pickup.
 
-The `loadSkill` tool runs as a child of the generator, so it writes the generator's state through `ctx.parent`; the reader runs in the generator's own scope and reads it through `ctx.self`. Same container, two sides. See [Block state](/docs/advanced/block-state) for the addressing model. The binding installs that block-state field (`activeSkills`) for you — you don't declare a `stateSchema` on the generator. (If you already declare one referencing `activeSkillsArraySchema`, it dedups with the binding's contribution rather than colliding.) If you'd rather store the activation somewhere shared or durable, use an explicit `activeState` instead.
+The binding installs that block-state field (`activeSkills`) for you, so you don't declare a `stateSchema` on the generator. (If you already declare one referencing `activeSkillsArraySchema`, it dedups with the binding's contribution rather than colliding.) See [Block state](/docs/advanced/block-state) for the addressing model. If you'd rather store the activation somewhere shared or durable, use an explicit `activeState` instead.
 
 ## `with({ activeState })` — put the activation somewhere shared or durable
 
@@ -103,14 +107,14 @@ skills.with({
 ```
 
 - `scope` is `request`, `session`, `user`, or `org`. `session` / `user` / `org` persist across turns; `request` does not.
-- `field` is the state key the activations live under. Two generators that name the same field share their activations — an explicit choice, not an accident.
-- Set `allowed` when skills read from this field need tools. The binding validates those skills and makes the library's tool catalog available to the generator. Without `allowed` or `dynamicActivation`, skill bodies from the field can render, but catalog tools are unavailable.
+- `field` is the state key the activations live under. Two generators that name the same field share their activations, which is an explicit choice rather than an accident.
+- Set `allowed` when skills read from this field need tools. The binding validates those skills and makes the library's tool catalog available to the generator. Without `allowed` or `dynamicActivation`, skill bodies from the field still render, but no catalog tools come with them. See [What tools the generator gets](#what-tools-the-generator-gets).
 
-Declare that field in the scope's state schema where it's **written**. The upstream matcher does this for you (see below). If code or the generator writes it, add the field to the writer's own `sessionStateSchema` (or the matching scope schema) with `activeSkillsArraySchema` as its shape. The reader tolerates an absent field — it just renders nothing — so reads never need the declaration, only writes that must persist do.
+Declare that field in the scope's state schema where it's **written**. The upstream matcher does this for you (see below). If code or the generator writes it, add the field to the writer's own `sessionStateSchema` (or the matching scope schema) with `activeSkillsArraySchema` as its shape. An absent field renders nothing rather than failing, so only a write that must persist needs the declaration.
 
 ### Who writes the activation
 
-Three writers, and the storage choice follows from which one you have:
+The storage choice follows from what writes the activation:
 
 - **The load tool** (the LLM, mid-turn) writes the generator's block state by default, or the explicit `activeState` field if you set one.
 - **Code** writes an explicit `activeState` field directly (`ctx.session.patchState(...)`).
@@ -120,17 +124,16 @@ Three writers, and the storage choice follows from which one you have:
 const activator = createSkillActivator({
   activeState: { scope: "session", field: "activeAnalystSkills" },
   allowed: ["detailed-analysis", "cite-sources"],
-  // Seed the catalog before the tiers run — the matcher runs upstream of the
-  // generator, so it can't rely on the binding reader's lazy seeding. Pass the
-  // same `initialSkills` you gave `createSkillsLibrary`, or a fresh collection
-  // scans an empty catalog on turn 1 and matches nothing.
+  // The matcher runs before the generator, so pass the same `initialSkills`
+  // you gave `createSkillsLibrary`. Without them it scans an empty catalog on
+  // turn 1 and matches nothing.
   initialSkills,
 });
 ```
 
 ## What renders, and when
 
-The reader is a per-step context function. The generator re-runs it before every tool-loop step, so a skill the load tool writes mid-turn shows up on the *next* step of the same execution, not a later turn. Only `inline`-mode entries render as context. Each entry keeps its input argument (substituted into `$ARGUMENTS`) and its activation source (slash / keyword / classifier), so an argument-dependent skill still works and the badge keeps its label.
+Skill bodies are re-resolved before every tool-loop step, so a skill the load tool writes mid-turn shows up on the *next* step of the same execution, not a later turn. Only `inline`-mode entries render as context. Each entry keeps its input argument (substituted into `$ARGUMENTS`) and its activation source (slash / keyword / classifier), so an argument-dependent skill still works and the badge keeps its label.
 
 ## Choosing a storage location
 

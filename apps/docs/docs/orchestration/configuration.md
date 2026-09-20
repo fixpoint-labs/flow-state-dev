@@ -93,7 +93,7 @@ Narrative: [GoalSeekLoop](./goal-seek-loop).
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `collection` | `string` | `"skills"` | Resource key for the skills collection. |
-| `catalog` | tool map | omitted | The tools a bound generator can call, and the set a skill's `allowed-tools` is validated against. |
+| `catalog` | tool map | omitted | The tools a bound generator can call, and the set a skill's `allowed-tools` is validated against. Which bindings contribute it, and what `registerCatalogTools: false` leaves you to do yourself: [What tools the generator gets](../skills/binding#what-tools-the-generator-gets). |
 | `registerCatalogTools` | `boolean` | `true` | Whether a binding contributes `catalog` to the generator. `false` validates a skill's `allowed-tools` against the catalog without granting any of it, leaving registration to you. See [What tools the generator gets](../skills/binding#what-tools-the-generator-gets). |
 | `initialSkills` | bundled skills | omitted | Seeded the first time a generator binds this library. Required if you bind skills by name. |
 | `scope` | `"org"` \| `"user"` \| `"session"` | `"org"` | Where the skills collection lives. `"org"` shares seeded skills across users. |
@@ -105,7 +105,7 @@ Narrative: [GoalSeekLoop](./goal-seek-loop).
 | `agentRegistry` | `AgentRegistry` | omitted | Your own agent catalog, resolving `agent-ref` entries by name. A statically-`active` skill with `agent-ref` and no registry fails at build time. |
 | `materializeAgent` | function | omitted | Your own function turning a resolved agent into a board worker. Required alongside `agentRegistry`; neither works without the other. See [Borrowing an agent from a registry](./agents#borrowing-an-agent-from-a-registry). |
 | `capabilityCatalog` | name → capability | omitted | Forwarded to `materializeAgent`. |
-| `toolSeatFence` | `(ctx) => string[] \| undefined` | omitted | A ceiling on which `catalog` keys a delegated board worker may be seated with, read once per execution. It only ever narrows; `[]` means no catalog seats. Reach for it when the host fences its own tools and holds skills it did not choose. |
+| `toolSeatFence` | `(ctx) => string[] \| undefined` | omitted | A ceiling on which `catalog` keys a delegated board worker may be seated with. It only ever narrows; `[]` means no catalog seats. Called each time the delegation surface resolves, so keep it cheap and free of side effects. Reach for it when the generator's own tools are fenced and it runs skills you didn't author, so a skill's agents can't be seated with tools the generator itself can't call. |
 
 ## `skills.with` options
 
@@ -114,7 +114,7 @@ Per-generator binding. Two generators, two different `active` sets, and neither 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `active` | `string[]` | omitted | Skills preloaded from the start. Unknown names fail at build time. |
-| `allowed` | `string[]` | whole catalog | Skills the load tool may pull, and the skills an `activeState` field may render with tools. Either way the library's whole `catalog` is contributed, not these skills' `allowed-tools`. |
+| `allowed` | `string[]` | omitted | Skills the load tool may pull; omitted, it may pull any skill in the library. Also the skills an `activeState` field may render with tools: an `activeState` binding with neither `allowed` nor `dynamicActivation` gets no catalog tools at all. When the catalog is contributed it is the whole `catalog`, not these skills' `allowed-tools`. See [What tools the generator gets](../skills/binding#what-tools-the-generator-gets). |
 | `activeState` | `{ scope, field }` | this generator's block state | Where dynamic activations live. Set a named scope to share across generators or persist across turns. |
 | `delegation` | `boolean` | on iff a bound skill declares `agents:` | `false` suppresses the board + `taskTools` + `runBoard` surface. `true` installs it even with an empty roster. |
 | `guidance` | `boolean` | on when delegation installs | Delegation playbook + live agent roster in context. `false` turns that context off. |

@@ -17,9 +17,9 @@ skills/
     assets/           # optional: templates, data files
 ```
 
-`scripts/`, `references/`, and `assets/` are the conventional names; any file or folder layout works, and the examples on this page use a `reference/` folder. The skill name is the folder name. It's 1 to 64 characters of lowercase letters, digits, and hyphens, with no hyphen at the start or end and no two hyphens in a row.
+`scripts/`, `references/`, and `assets/` are the conventional names, and any other file or folder layout works too. The skill name is the folder name. It's 1 to 64 characters of lowercase letters, digits, and hyphens, with no hyphen at the start or end and no two hyphens in a row.
 
-Files inside the folder are bundled with the skill when it's seeded into the resource collection. They're addressable from the body via the `${SKILL_DIR}` substitution (see below), so your body can say "open `${SKILL_DIR}/reference/rubric.md`" and the agent knows where to find it.
+Files inside the folder are bundled with the skill when it's seeded into the resource collection. They're addressable from the body via the `${SKILL_DIR}` substitution (see below), so your body can say "open `${SKILL_DIR}/references/rubric.md`" and the agent knows where to find it.
 
 A symlinked skill folder is reported as an error and not loaded. A symlink inside a skill folder is skipped.
 
@@ -43,6 +43,8 @@ allowed-tools: search fetch
 
 Body goes here.
 ```
+
+`description` is the only key you have to write. Everything else, `name` included, is optional.
 
 ### Frontmatter keys
 
@@ -110,14 +112,14 @@ Example:
 
 ```markdown
 ---
-description: Research a topic using the method in reference/method.md
+description: Research a topic using the method in references/method.md
 ---
 
 # Research
 
 The user asked about: $ARGUMENTS
 
-Open ${SKILL_DIR}/reference/method.md for the step-by-step process,
+Open ${SKILL_DIR}/references/method.md for the step-by-step process,
 then follow it exactly.
 ```
 
@@ -131,7 +133,7 @@ For skills with structured processes, put the process in a reference file rather
 skills/
   competitor-analysis/
     SKILL.md
-    reference/
+    references/
       dimensions.md
       scoring-rubric.md
 ```
@@ -146,8 +148,8 @@ description: Competitor analysis. Use for landscape, comparison, or "who compete
 # Competitor Analysis
 
 Before drafting, open:
-- `${SKILL_DIR}/reference/dimensions.md` — the evaluation axes
-- `${SKILL_DIR}/reference/scoring-rubric.md` — how to rate each axis
+- `${SKILL_DIR}/references/dimensions.md` — the evaluation axes
+- `${SKILL_DIR}/references/scoring-rubric.md` — how to rate each axis
 
 Follow the sections in order.
 ```
@@ -175,7 +177,7 @@ Without bash, reference files still exist as resources but the agent needs a dif
 
 ## Bundling scripts
 
-Because mounted skill files are materialized on real filesystem paths, scripts work too. The kitchen-sink's `check-news` skill ships a `scripts/date-window.py` helper that returns an ISO date range for different news recency targets:
+Because mounted skill files are materialized on real filesystem paths, scripts work too. A `check-news` skill can ship a `scripts/date-window.py` helper that returns an ISO date range for a news recency target:
 
 ```
 skills/
@@ -183,7 +185,7 @@ skills/
     SKILL.md
     scripts/
       date-window.py
-    reference/
+    references/
       ai-news.md
       world-events.md
       business-markets.md
@@ -217,6 +219,4 @@ This gives the agent concrete ground truth (today's date) that it can't always r
 
 ## Editing skills at runtime
 
-Skills live in a resource collection at the scope you chose (`org`, `user`, or `session`). Once seeded, they're editable via any surface that can write to resources — the DevTool, a custom admin UI, or a CLI command. Changes take effect on the next generator turn since the catalog context formatter re-reads the collection each step.
-
-This is the main operational reason skills exist as Markdown resources rather than imports: you can adjust how the agent handles a class of requests without shipping code.
+Skills live in a resource collection at the scope you chose (`org`, `user`, or `session`). Once seeded, they're editable via any surface that can write to resources — the DevTool, a custom admin UI, or a CLI command. Changes take effect on the next generator turn, since the catalog context formatter re-reads the collection each step. You can adjust how the agent handles a class of requests without shipping code.
