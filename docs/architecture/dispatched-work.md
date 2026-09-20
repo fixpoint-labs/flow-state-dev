@@ -189,11 +189,14 @@ current** — the row exists, `attempts` matches, `createdAt` and
 `incarnationId` match (so a row deleted and recreated under the same id is
 caught), the status is still `in_progress`, and the row still routes to this
 seat. Any miss throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and
-writes nothing; the row stays `in_progress` until its lease runs out and the
-next drain reclaims it. Every one of those arms is an identity check, decided
-by reading, and they run before the lease arm — which writes — so a dispatch
-about to be refused never extends a lease on a row someone else is entitled
-to.
+writes nothing, so the row is left exactly as the gate found it. What that
+leaves behind depends on which arm refused: a superseded attempt or a row
+routed elsewhere is still a live `in_progress` claim, and stays one until its
+lease runs out and the next drain reclaims it; a row already settled, parked
+or deleted has nothing left to reclaim. Every one of those arms is an identity
+check, decided by reading, and they run before the lease arm — which writes —
+so a dispatch about to be refused never extends a lease on a row someone else
+is entitled to.
 
 A **lapsed lease is not one of those arms**. Nothing renews the row's lease
 while the dispatch waits in the host's queue, so a child that starts more than
