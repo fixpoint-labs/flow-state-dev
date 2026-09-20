@@ -1,0 +1,83 @@
+<svg viewBox="0 0 940 268" role="img"
+     aria-label="Left: one recorder write on a timeline, with a dashed fence at the moment the durable write commits; everything before the fence is contained upstream, everything at or after it belongs to this issue. Right: the three answers the write token gives, each with what happens today and what happens after. Landed and cannot-tell are swallowed today and reported after; did-not-land is unchanged."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-com  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-bad  { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.2; }
+    .n-new  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:5 4; }
+    .rule   { stroke:var(--rule); stroke-width:1; }
+    .arrow  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-m    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+
+  <g id="timeline">
+    <text class="t-lbl" x="16" y="24">ONE RECORDER WRITE</text>
+    <rect class="n-box" x="16" y="38" width="96" height="40" rx="5"/>
+    <text class="t-s" x="28" y="63">mint a token</text>
+    <rect class="n-com" x="128" y="38" width="128" height="40" rx="5"/>
+    <text class="t-s" x="140" y="57">the write</text>
+    <text class="t-s" x="140" y="72">commits</text>
+    <rect class="n-bad" x="296" y="38" width="140" height="40" rx="5"/>
+    <text class="t-s" x="308" y="57">announcing it</text>
+    <text class="t-gone" x="308" y="72">throws</text>
+    <path class="arrow" d="M112 58 H126"/>
+    <path class="arrow" d="M256 58 H294"/>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M276 30 V214"/>
+    <text class="t-lbl" x="194" y="100">THE COMMIT</text>
+    <rect class="n-box" x="16" y="116" width="248" height="62" rx="5"/>
+    <text class="t-b" x="28" y="137">Before it</text>
+    <text class="t-s" x="28" y="155">a write a good store would have</text>
+    <text class="t-s" x="28" y="170">refused. Already contained.</text>
+    <rect class="n-new" x="288" y="116" width="148" height="62" rx="5"/>
+    <text class="t-b" x="300" y="137">At or after it</text>
+    <text class="t-s" x="300" y="155">the work is saved and</text>
+    <text class="t-s" x="300" y="170">nobody is told. Ours.</text>
+  </g>
+
+  <g id="verdicts">
+    <path class="rule" d="M468 16 V252"/>
+    <text class="t-lbl" x="492" y="24">THE TOKEN ANSWERS</text>
+    <text class="t-lbl" x="676" y="24">TODAY</text>
+    <text class="t-lbl" x="808" y="24">AFTER</text>
+    <path class="rule" d="M492 32 H924"/>
+
+    <rect class="n-com" x="492" y="44" width="164" height="54" rx="5"/>
+    <text class="t-b" x="504" y="66">it landed</text>
+    <text class="t-m" x="504" y="86">the work is saved</text>
+    <text class="t-gone" x="676" y="72">run says success</text>
+    <text class="t-s" x="808" y="64">reported, and the</text>
+    <text class="t-s" x="808" y="80">run fails</text>
+
+    <rect class="n-box" x="492" y="110" width="164" height="54" rx="5"/>
+    <text class="t-b" x="504" y="132">it did not land</text>
+    <text class="t-m" x="504" y="152">nothing was saved</text>
+    <text class="t-s" x="676" y="140">an ordinary failure</text>
+    <text class="t-s" x="808" y="140">unchanged</text>
+
+    <rect class="n-new" x="492" y="176" width="164" height="54" rx="5"/>
+    <text class="t-b" x="504" y="198">it cannot tell</text>
+    <text class="t-m" x="504" y="218">no record kept</text>
+    <text class="t-gone" x="676" y="206">run says success</text>
+    <text class="t-s" x="808" y="198">reported, and the</text>
+    <text class="t-s" x="808" y="214">run fails</text>
+
+    <text class="t-lbl" x="492" y="250">THE THIRD ROW IS THE ONE BEING DECIDED</text>
+  </g>
+</svg>
