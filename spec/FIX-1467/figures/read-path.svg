@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 320" role="img"
+     aria-label="Today, a markdown file under resources slash seeds one org-wide database row on first boot; every seat on the kind reads and writes that row, crossing the team wall unchecked, and the file in git goes stale. After, references slash is served from disk on every read and stops at the team wall, while resources slash keeps the seed-then-evolve database path behind an explicit grant."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface);    stroke:var(--rule);   stroke-width:1.2; }
+    .n-db   { fill:var(--prose-soft); stroke:var(--prose);  stroke-width:1.2; }
+    .n-ref  { fill:var(--code-soft);  stroke:var(--code);   stroke-width:1.4; }
+    .n-res  { fill:var(--accent-soft);stroke:var(--accent); stroke-width:1.2; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink);   font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-bad  { fill:var(--gone);  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-ok   { fill:var(--code);  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .flow    { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .flow-bad{ stroke:var(--gone);  stroke-width:1.6; fill:none; }
+    .flow-ok { stroke:var(--code);  stroke-width:1.6; fill:none; }
+    .wall-open { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:3 4; }
+    .wall-shut { stroke:var(--code); stroke-width:2.4; }
+    .h     { fill:var(--ink-3); stroke:none; }
+    .h-bad { fill:var(--gone);  stroke:none; }
+    .h-ok  { fill:var(--code);  stroke:none; }
+  </style>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="20">TODAY · ONE FOLDER, ONE PATH</text>
+
+    <rect class="n-box" x="16" y="32" width="196" height="54" rx="5"/>
+    <text class="t-b" x="30" y="54">resources/handbook.md</text>
+    <text class="t-s" x="30" y="72">in git · the author's copy</text>
+
+    <path class="flow" d="M212,59 L286,59"/>
+    <path class="h" d="M279,55 L286,59 L279,63 z"/>
+    <text class="t-s" x="216" y="51">seeded ONCE</text>
+
+    <rect class="n-db" x="288" y="32" width="180" height="54" rx="5"/>
+    <text class="t-b" x="302" y="54">one org-wide row</text>
+    <text class="t-s" x="302" y="72">writable · the real source</text>
+
+    <line class="wall-open" x1="560" y1="26" x2="560" y2="96"/>
+    <text class="t-bad" x="524" y="20">TEAM WALL</text>
+
+    <path class="flow-bad" d="M468,59 L700,59"/>
+    <path class="h-bad" d="M693,55 L700,59 L693,63 z"/>
+    <text class="t-bad" x="478" y="51">read + WRITE</text>
+
+    <rect class="n-box" x="702" y="32" width="222" height="54" rx="5"/>
+    <text class="t-b" x="716" y="54">any seat on the kind</text>
+    <text class="t-s" x="716" y="72">incl. another team's</text>
+
+    <path class="flow-bad" d="M378,86 L378,98 L120,98 L120,88" stroke-dasharray="3 3"/>
+    <path class="h-bad" d="M116,95 L120,88 L124,95 z"/>
+    <text class="t-bad" x="30" y="118">after any write the file above is dead weight</text>
+    <text class="t-bad" x="478" y="118">the wall is only a line the app remembered to write</text>
+  </g>
+
+  <line x1="16" y1="140" x2="924" y2="140" stroke="var(--rule)" stroke-width="1"/>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="166">AFTER · TWO FOLDERS, TWO PATHS</text>
+
+    <rect class="n-ref" x="16" y="180" width="196" height="50" rx="5"/>
+    <text class="t-b" x="30" y="201">references/handbook.md</text>
+    <text class="t-s" x="30" y="218">in git · the ONLY source</text>
+    <path class="flow-ok" d="M212,205 L552,205"/>
+    <path class="h-ok" d="M545,201 L552,205 L545,209 z"/>
+    <text class="t-ok" x="230" y="197">served from disk on EVERY read · no row, no write path</text>
+
+    <line class="wall-shut" x1="560" y1="174" x2="560" y2="286"/>
+    <text class="t-ok" x="524" y="168">TEAM WALL</text>
+    <path class="flow-ok" d="M568,205 L700,205"/>
+    <path class="h-ok" d="M693,201 L700,205 L693,209 z"/>
+    <text class="t-ok" x="576" y="197">derived from the path</text>
+
+    <rect class="n-box" x="702" y="180" width="222" height="50" rx="5"/>
+    <text class="t-b" x="716" y="201">seats under that scope</text>
+    <text class="t-s" x="716" y="218">and no others</text>
+
+    <rect class="n-res" x="16" y="244" width="196" height="50" rx="5"/>
+    <text class="t-b" x="30" y="265">resources/scratch.md</text>
+    <text class="t-s" x="30" y="282">seed → row, as today</text>
+    <path class="flow" d="M212,269 L552,269"/>
+    <path class="h" d="M545,265 L552,269 L545,273 z"/>
+    <text class="t-s" x="250" y="261">seed-then-evolve · content lives in the row</text>
+    <path class="flow" d="M568,269 L700,269"/>
+    <path class="h" d="M693,265 L700,269 L693,273 z"/>
+    <text class="t-s" x="576" y="261">explicit grant</text>
+
+    <rect class="n-box" x="702" y="244" width="222" height="50" rx="5"/>
+    <text class="t-b" x="716" y="265">seats that named it</text>
+    <text class="t-s" x="716" y="282">ro or rw, as #1943 ships</text>
+  </g>
+</svg>
