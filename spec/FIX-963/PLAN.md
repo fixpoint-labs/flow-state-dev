@@ -8,9 +8,9 @@ For the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RUL
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `orchestration` · `task-board/blocks/record-result.ts`, `createRecordSuccess` (~:157) | Mint `beginTaskWrite(collection.get(claim.taskId))` before the write, pass it as `write` on the existing options bag (~:188), branch on `didWriteLand` in a `catch`: `false` rethrows, `true`/`undefined` report and return | BR-1 BR-2 BR-3 BR-6 BR-7 |
-| S2 | same file · `createRecordError` (~:234) | Same branch around `advisoryFail` (~:262). `true`/`undefined` report, then take `onError`'s **return** rather than its throw (~:274–277) | BR-1 BR-2 BR-3 BR-9 |
-| S3 | same file · `stopLeaseRenewal` (~:91) and its contract comment (~:53–93) | On the swallow path the recorder settles the row and **no `.rescue()` follows**, so renewal must stop there. Today `recordSuccess` deliberately leaves the driver running when the write throws (~:196–206) because `recordError` is about to make a fenced write — a premise this path breaks. Update the comment with the code | BR-1 BR-3 |
+| S1 | `orchestration` · `task-board/blocks/record-result.ts`, `createRecordSuccess` (~:157) | Mint `beginTaskWrite(collection.get(claim.taskId))` before the write, pass it as `write` on the existing options bag (~:188), branch on `didWriteLand` in a `catch`: `false` rethrows, `true`/`undefined` report and return. **`undefined` must also release the row** — the rethrow it replaces is what used to hand the task to the rescue's fenced `fail()`, and nothing else settles it. An advisory fenced write is declined harmlessly if the row did commit, so the same write serves both halves of the uncertainty; another shape is fine, the outcome is the requirement | BR-1 BR-2 BR-3 BR-3b BR-6 BR-7 BR-7b |
+| S2 | same file · `createRecordError` (~:234) | Same branch around `advisoryFail` (~:262). `true`/`undefined` report, then take `onError`'s **return** rather than its throw (~:274–277). Same release requirement as S1, and here it is sharper: nothing follows this recorder at all | BR-1 BR-2 BR-3 BR-3b BR-9 |
+| S3 | same file · `stopLeaseRenewal` (~:91) and its contract comment (~:53–93) | On the swallow path the recorder settles the row and **no `.rescue()` follows**, so renewal must stop there. Today `recordSuccess` deliberately leaves the driver running when the write throws (~:196–206) because `recordError` is about to make a fenced write — a premise this path breaks. Update the comment with the code. Ordering follows that contract: the release write is fenced, so renewal stops **after** it, not before | BR-1 BR-3 BR-3b |
 | S4 | `contracts` · `src/items/task-attribution.ts`, the exclusion set (~:31–32) | Add the new component type beside `task-change` and `task-board-meta`, with its tests and `docs/architecture/items.md` | BR-17 BR-18 |
 | S5 | `orchestration` · the report channel | An **awaited** emit carrying the task, which recorder, the verdict, the error text and a per-run stamp. `ctx.emit.component` can't carry it: `createEmitComponent` (`engine/src/context/createExecutionContext.ts` ~:215) is `=> void` and `void`s both emitter calls (~:269–270). The seam is one level down — `emitItemAdded`/`emitItemDone` are `Promise<unknown>` (~:149–150), already chained in that file (~:391–394). Requirements: awaited · outside the worker rescue · its own failure tested | BR-1 BR-3 BR-13 BR-16 |
 | S6 | `orchestration` · `task-board/index.ts`, the drain tail | Raise after the fan-out, reading this run's report entries off the response's item buffer. **Place it after `.tap(boardExitsConnector, boardMetaCompleted)` (~:1204), not between that and the `forEach`** — FIX-1238 made the adjacency a compile-checked rule (~:1178–1203) — and before `.tap(teardownFlowState)` (~:1209), whose sibling `.rescue` (~:1210) still tears down when it throws | BR-8 BR-9 BR-10 BR-12 |
@@ -43,6 +43,8 @@ No PR plan: single node.
 | V0 | — | Both halves fail against `main` with today's symptoms, at **both** sites; the FIX-951 containment scenario still passes. The harnesses that reproduced this were thrown away — this re-establishes them |
 | V1 | S1 | BR-1, BR-2, BR-6, BR-7 on both built-in backings |
 | V2 | S1 | BR-3 against a ref keeping no provenance. **Assert *undetermined* is its own value**, distinct from both neighbours |
+| V2b | S1, S2 | BR-3b at both recorders. Red state: take the release out and assert the row is still `in_progress` with renewal stopped after the batch ends — the check has to fail before it can be trusted |
+| V2c | S1 | BR-7b: a task row carrying no `incarnationId`, on a built-in backing, answers *undetermined* and not `false`. This is the case a fixture built by the board's own add path cannot produce |
 | V3 | S3 | The lease driver stops on the swallow path. Red state: leave it running, assert the row keeps renewing after the batch ends |
 | V4 | S4 | BR-17, BR-18 — absent from that task's item view, no extra board card, completion card intact |
 | V5 | S5 | BR-13: make the reporting seam reject; the run surfaces it, including under `onError: "skip"` |
@@ -67,6 +69,7 @@ Everything else is yours, including the component type's name.
 |---|---|
 | Mint the token **before** the write, from the task you hold; never reconstruct it afterwards | The baseline it records is what makes the answer mean anything, and the primitive says so in its own contract |
 | Surface `undefined` as its own condition; never collapse it into either boolean | Collapsing restores the confident wrong answer the primitive exists to remove, and it is the permanent answer for every custom store — so the collapse would be silent and total |
+| A path that stops rethrowing owes the row whatever the rethrow used to buy it | The rethrow's real job was not loudness, it was reaching the fenced write that settles the task. Dropping it silently drops that too, and the row is stuck until a lease expires |
 | The fix lives in the two recorder blocks. Editing either backing means stop | That is the signal it drifted below the point where all three stores converge (tenet 5) |
 | Every settlement site goes through the same branch | An invariant enforced at one of three is the review class that costs most: the reviewer finds the others for you |
 | The report is awaited, and its own failure escapes every safety net | An unawaited report is not a report, and getting it wrong reproduces this bug inside its own fix |
@@ -74,7 +77,7 @@ Everything else is yours, including the component type's name.
 
 ## Docs
 
-- **EXTEND** `apps/docs/docs/orchestration/task-board.md` → after *"Concurrency and error handling"*: a task failing and the board failing to record it are different events, `onError` governs only the first, the board finishes draining first, and on your own store it will say it cannot tell. *Voice risk:* match that section's dense register and introduce "recorder" in plain terms.
+- **EXTEND** `apps/docs/docs/orchestration/task-board.md` → after *"Concurrency and error handling"*: a task failing and the board failing to record it are different events, `onError` governs only the first, the board finishes draining first, and on your own store — or on rows that were already in the database before you upgraded — it will say it cannot tell. *Voice risk:* match that section's dense register and introduce "recorder" in plain terms.
 - **EXTEND** `apps/docs/docs/orchestration/task-substrate.md` → *"Recording a result that may no longer apply"* and the write-provenance section below it (~:305). One paragraph: the advisory options cover a *declined* write, not one saved and then not announced.
 - **UPDATE** `docs/architecture/items.md` with S4 — which types attribution excludes and **why** this one joins them. The *why* stops the next author adding a type in task scope.
 - `packages/orchestration/README.md` — check only. **No new page.**
@@ -92,6 +95,7 @@ in each recorder, around its existing advisory write:
             false     → rethrow err            unchanged from today
             true      → report "committed"
             undefined → report "undetermined"  ← D1
+                        AND release the row, since no rescue follows
         stop lease renewal, clear the claim, return without rethrowing
 
 at the drain tail, after the exits tap:
@@ -108,6 +112,7 @@ at the hand-off gate, which has no tail:
 - **Read `packages/orchestration/src/tasks/write-provenance.ts` whole, first.** Most of its 390 lines are the contract you depend on, and its header is this recorder written out.
 - **Verify the token survives the advisory seam.** It rides `TaskTransitionOptions` and both wrappers pass options through unchanged — everything rests on it, so check.
 - `stampWrite` is package-internal by design (`tasks/index.ts` ~:44–48). **Do not export it** to let a custom store opt in; that constraint is what D1 prices.
+- **A row that predates FIX-989 answers *undetermined* forever on the not-committed path.** `incarnationId` is minted only in `buildInitialTask` (`tasks/collection/internal.ts` ~:84) and a claim carries it forward without adding one (~:838–845), so `didWriteLand`'s incarnation arm withholds before the revision arms are reached. Its own contract names this case (BP-030); do not "fix" it by backfilling a nonce onto an existing row — a manufactured identity is the confident wrong answer the field exists to prevent. If D1 lands on *fail*, this is the population that feels it on upgrade.
 - Check whether a per-run stamp already exists for S5. Entries live on the per-*request* buffer and a request can run several batches. A high-water mark is not equivalent — two overlapping batches take theirs before either reports.
 
 ## Notes from review

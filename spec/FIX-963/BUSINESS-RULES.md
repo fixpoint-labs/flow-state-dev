@@ -10,11 +10,13 @@ The cases, written as rules. Each says what happens and what proves it. A human 
 |---|---|---|---|
 | BR-1 | The write saved the work and announcing it threw | Reported on a saved entry naming the task and which recorder. The original error is not re-raised here; the run reports at its boundary | Integration |
 | BR-2 | The write saved nothing and threw | Exactly today's behaviour. The success recorder hands the error to the safety net; the error recorder honours `onError` | Integration + unit |
-| BR-3 | The board cannot tell which of the two happened | Same as BR-1 ([D1](DECISIONS.md#d1)). It is reported as *undetermined*, not as *failed to save* — the two are different entries, never collapsed | Integration + unit |
+| BR-3 | The board cannot tell which of the two happened | Same as BR-1 ([D1](DECISIONS.md#d1)). It is reported as *undetermined*, not as *failed to save* — the two are different entries, never collapsed. **And the row is released**: the recorder does not swallow the write and walk away leaving the task claimed, because an unsettled row is recoverable only by waiting out the lease | Integration + unit |
+| BR-3b | The board cannot tell, and the write in fact never landed | The task ends up settled or back in the queue on the same pass, not left `in_progress` under a lease nobody is renewing. Today the rethrow into the safety net does this for free; the swallow path removes that, so it has to be done deliberately | Integration |
 | BR-4 | The write was declined rather than failing — the task was cancelled, reclaimed, or already settled by someone else | Nothing reported. A decline is not a failure, and this is FIX-951's containment property | Integration |
 | BR-5 | The worker parked its own task for a human before returning or throwing | Neither recorder writes at all, so there is nothing to report | Unit |
 | BR-6 | A task still has retries left, so its failure re-queues it rather than ending it | Treated identically to any other saved write. Nothing in the rule names a status, which is what keeps this correct | Integration + unit |
 | BR-7 | The store is simply down, and the task is untouched | Not reported as a bookkeeping failure on our own stores — the token says nothing was saved. On a custom store this is BR-3 | Unit |
+| BR-7b | The same, on a row that was already in a persistent store before the record shipped | This is BR-3, not BR-7, and permanently so: the row carries no identity nonce, nothing backfills one, and the answer is withheld before the revision proof is reached. It is the only way a built-in store gives *cannot tell* | Unit |
 
 ## What the run reports
 

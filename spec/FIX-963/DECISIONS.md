@@ -26,17 +26,17 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Treating *cannot tell* as *nothing was saved* — today's behaviour, and free to keep |
 | **Because** | A board that cannot say whether it saved your work has not done its job, and the people who get this answer run storage we know nothing about |
-| **Locks in** | Anyone running their own task store gets a new failure on any storage error the board cannot attribute, and cannot turn it off. Nor can they make the answer definite: the stamp that records a write is internal to the stores we ship, deliberately |
+| **Locks in** | Anyone running their own task store gets a new failure on any storage error the board cannot attribute, and cannot turn it off. Nor can they make the answer definite: the stamp that records a write is internal to the stores we ship, deliberately. **And it is not only them** — a board upgraded with tasks already sitting in a persistent store gets the same answer on those rows, for as long as they live |
 
-**Plain terms.** After a save fails, the board now asks whether the write went through. On our own stores it gets a real yes or no. On a store somebody wrote themselves it gets "no way to know" — every time, because nothing there keeps the record the question is answered from.
+**Plain terms.** After a save fails, the board now asks whether the write went through. On our own stores it gets a real yes or no — for rows created after the record shipped. On a store somebody wrote themselves it gets "no way to know" every time, because nothing there keeps the record the question is answered from. And on a row that predates the record, on our own stores, it gets the same "no way to know" *permanently*: the row carries no identity nonce, and an ordinary claim does not add one.
 
-**The trade-off.** Failing is safe and noisy. On our stores it costs nothing, because the answer is almost always definite. On somebody else's, every unattributable storage error now fails the whole batch, where today it is one recorded task failure and the batch continues.
+**The trade-off.** Failing is safe and noisy. On our stores it costs nothing for rows the board created itself. On somebody else's, and on rows already in the store at upgrade, every unattributable storage error now fails the whole batch, where today it is one recorded task failure and the batch continues.
 
 **My recommendation: fail.** The issue is that the board reports success on a run it knows nothing about, and *cannot tell* is that situation wearing a different hat. Staying quiet ships a fix that works on our stores and leaves the original lie standing for the group with the least visibility into their own storage. Failing loses no work; worst case it stops a batch that would have finished, which is obvious and recoverable. Staying quiet loses the signal, which is neither.
 
-**What would change my mind:** if custom task stores are something people actually run, rather than a documented extension point nobody has taken up. I have no evidence either way. If you know of anyone, that flips me to reporting without failing — the saved entry still appears, which already beats today.
+**What would change my mind:** if custom task stores are something people actually run, rather than a documented extension point nobody has taken up. I have no evidence either way. If you know of anyone, that flips me to reporting without failing — the saved entry still appears, which already beats today. The upgrade case pulls the same way but less hard, because it drains: those rows finish and are replaced by ones the board can answer for.
 
-**Cost of being wrong: moderate, and it lands on a small group loudly.** They see a batch fail on their first storage hiccup after upgrading and say so immediately; softening it later is a small change, not a contract we are stuck with.
+**Cost of being wrong: moderate, and it lands loudly.** A custom-store user sees a batch fail on their first storage hiccup after upgrading and says so immediately. Anyone upgrading a board with live rows sees it on those rows until they drain. Softening it later is a small change, not a contract we are stuck with.
 
 <a name="d2"></a>
 ## D2 · The run reports failure, and only once every task has drained
@@ -63,6 +63,7 @@ The hand-off gate wraps the same recorders around a task entry in a child run, w
 ## Decided, not asked
 
 - **The write token, not a read-back of the task.** FIX-989 shipped a token minted before the write and recorded inside the same save. It survives another worker claiming the task; inferring from the task afterwards cannot.
+- **A swallowed write still releases the row.** Today the rethrow hands the task to the safety net, which settles it. The swallow path has no safety net behind it, so it owes the same release itself — otherwise *cannot tell* costs a row stuck `in_progress` under a lease nobody renews, which is a worse outcome than the failure it reports. Independent of which way D1 goes.
 - **The report is awaited, and its own failure never swallowed.** The obvious emit discards the promise, which would make a failing report invisible — this issue's defect inside its own fix.
 - **A new entry type, and per-task attribution learns to ignore it.** Anything stamped with a task counts as that worker's output unless named as an exception.
 - **No count on the board's completion summary.** Derivable from the entries already saved.
@@ -91,5 +92,6 @@ The hand-off gate wraps the same recorders around a task entry in a child run, w
 - **Review, three rounds** — replaced the read-back rule twice as each round found a history it misread; required the report to be awaited; forced the attribution exception once both cheaper remedies were refuted.
 - **Closed on a documented limit** — reading the task back can never be exact, and what would remove the ceiling is a record of the write itself, durable enough to survive the next claim.
 - **Revision** — that record shipped as FIX-989 and has no caller, so the answer is read rather than inferred, and the read-back rule and its ceiling are gone. Scope grew by one settlement site nobody had found. And *cannot tell* is a question the old design never had to ask, so it is now D1.
+- **Review** — the swallow path now owes the row a release, because dropping the rethrow also dropped the settlement that came with it; and D1's price widened from custom stores to any board upgraded with rows already in it, because nothing backfills the identity nonce those rows lack.
 
 **Open: D1.**

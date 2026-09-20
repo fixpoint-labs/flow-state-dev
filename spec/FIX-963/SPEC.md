@@ -4,7 +4,7 @@
 
 Bug · `orchestration` + `contracts` · medium · 1 PR · epic [FIX-980 — Honest task substrate](https://linear.app/fixpoint-labs/issue/FIX-980)
 
-## Five people, before and after
+## Six people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
@@ -13,6 +13,7 @@ Bug · `orchestration` + `contracts` · medium · 1 PR · epic [FIX-980 — Hone
 | **reads the stream to find out what went wrong** | Nothing. The failure survives only on breadcrumbs that are never saved | A saved entry naming the task and which recorder fell over |
 | **hands a task off to a child run instead of draining inline** | The same silence, in a second place | The same report, and the child run fails |
 | **plugs in their own task store** | Same silence | The board says it cannot tell whether the result was saved, and fails ([D1](DECISIONS.md#d1)) |
+| **upgrades a board that already has tasks in a database** | Same silence | The same *cannot tell* on those rows, until they drain and are replaced by rows the board can answer for ([D1](DECISIONS.md#d1)) |
 
 This is reachable in ordinary use, not a contrived case: announcing a task's result runs the framework's reactive dispatch and resource-change hooks inline, so any block reacting to task changes can make the announcement throw. The save already happened. Nobody is told.
 
@@ -61,7 +62,7 @@ The token is minted before the write and recorded inside the same save, so it su
 
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · When the board cannot tell whether a task's result was saved, the run fails.** If wrong: anyone running their own task store gets a failed run on an ordinary storage hiccup, where today they get one recorded task failure and a batch that carries on. A live fork; the full ask is on the card.
+1. **[D1](DECISIONS.md#d1) · When the board cannot tell whether a task's result was saved, the run fails.** If wrong: anyone running their own task store — and anyone upgrading a board with tasks already in a database, until those drain — gets a failed run on an ordinary storage hiccup, where today they get one recorded task failure and a batch that carries on. A live fork; the full ask is on the card.
 2. **[D2](DECISIONS.md#d2) · A run whose bookkeeping fell over reports failure, and reports it only once every task has drained.** If wrong: runs that quietly succeeded today start failing, and `onError: "skip"` stops meaning "nothing stops this batch".
 3. **[D3](DECISIONS.md#d3) · All three places a board settles a task are in scope, not the one the ticket named.** If wrong: the issue closes with the bug live in two of three places.
 
