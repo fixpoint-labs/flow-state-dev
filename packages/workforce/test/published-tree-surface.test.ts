@@ -50,9 +50,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WorkforceCodeError, discoverWorkforceCode } from "../src/codegen/discover";
 import { readChannelsDirectory } from "../src/loader/read-channels-directory";
-import { readResourcesDirectory } from "../src/loader/read-resources-directory";
+import {
+  readReferencesDirectory,
+  readResourcesDirectory,
+} from "../src/loader/read-resources-directory";
 import { readSeatSkills } from "../src/loader/read-seat-skills";
 import { readWorkforce } from "../src/loader/read-workforce";
+import { DOCUMENT_SLOTS } from "../src/loader/resource-convention";
 
 /** Repo root, from this file: `packages/workforce/test/` is three levels down. */
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
@@ -61,8 +65,10 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 interface Readout {
   /** Worker ids that loaded. */
   workers: string[];
-  /** Document refs that loaded. */
+  /** Document refs that loaded, from the `resources/` slot. */
   documents: string[];
+  /** Reference refs that loaded, from the `references/` slot. Its own field, not merged into `documents`: the two slots go to different install halves, and a shape accounted for by the wrong one is a shape nobody reads. */
+  references: string[];
   /** Channel ids that loaded. */
   channels: string[];
   /** Ids of teams whose `TEAM.md` loaded. */
@@ -143,7 +149,7 @@ const WORKER_REFS_RESOLVE: ReadonlyArray<{ file: string; quote: string }> = [
   },
   {
     file: "packages/workforce/README.md",
-    quote: "| `<root>/org/workers/<worker>/resources/<name>.md` | `workers/<worker>/<name>` |",
+    quote: "| `<root>/org/workers/<worker>/<slot>/<name>.md` | `workers/<worker>/<name>` |",
   },
 ];
 
@@ -201,12 +207,31 @@ const RESERVED = new Set([
   "org",
   "teams",
   "workers",
-  "resources",
+  // Both documents slots, read from the convention rather than spelled here:
+  // this suite exists to notice a folder the pages publish and the code does
+  // not, so its own vocabulary must not be a second place the slot names live.
+  // A third slot added later arrives here on its own.
+  ...DOCUMENT_SLOTS,
   "skills",
   "channels",
   "flows",
   "blocks",
 ]);
+
+/**
+ * The metavariable the pages use when a rule holds for BOTH documents slots.
+ *
+ * The ref rule is one rule over `resources/` and `references/`, and the README
+ * states it once as `<root>/org/<slot>/<name>.md` rather than writing every
+ * level twice. That is a notation, not a path — so a shape carrying it is
+ * expanded into the concrete slots before anything compares it to the table.
+ * Read literally it would be a folder nobody implements, which is the opposite
+ * of what it says.
+ *
+ * Expanding rather than tabling it also makes the check STRICTER: the page's
+ * one generic sentence is now verified against each slot separately.
+ */
+const SLOT_PLACEHOLDER = "<slot>";
 /** Filenames the convention fixes, which stay literal in a shape. */
 const FIXED_LEAVES = new Set(["WORKER.md", "CHANNEL.md", "SKILL.md"]);
 
@@ -256,7 +281,14 @@ function toShape(token: string): string | undefined {
       const extension = /\.([a-z]+)$/.exec(segment)?.[1];
       if (grandparent === "flows") return `<kind>.${extension}`;
       if (parent === "blocks") return `<name>.${extension}`;
-      if (parent === "resources") return `<name>.${extension}`;
+      // Either documents slot, for the reason `RESERVED` reads them from the
+      // convention: a file under `references/` is an author's own name exactly
+      // as one under `resources/` is, and normalizing only one of them left
+      // half the convention's shapes spelled as whatever the page's example
+      // happened to call them.
+      if (parent !== undefined && (DOCUMENT_SLOTS as readonly string[]).includes(parent)) {
+        return `<name>.${extension}`;
+      }
       if (parent === "teams") return "<team>";
       if (parent === "workers") return "<worker>";
       if (parent === "skills") return "<skill>";
@@ -331,7 +363,14 @@ function shapesDeclaredIn(text: string): Set<string> {
   const shapes = new Set<string>();
   for (const token of tokens) {
     const shape = toShape(token);
-    if (shape !== undefined) shapes.add(shape);
+    if (shape === undefined) continue;
+    // A `<slot>` shape is one sentence standing for both slots, so it becomes
+    // both. Everything else passes through untouched.
+    if (shape.includes(SLOT_PLACEHOLDER)) {
+      for (const slot of DOCUMENT_SLOTS) shapes.add(shape.replace(SLOT_PLACEHOLDER, slot));
+      continue;
+    }
+    shapes.add(shape);
   }
   return shapes;
 }
@@ -444,10 +483,59 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.reported.includes("teams/alpha/channels/standup"),
   },
   {
+    shape: "org/references/<name>.md",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/documents-on-disk.md",
+      quote: "| `<root>/org/references/code-of-conduct.md` | `code-of-conduct` |",
+    },
+    write: (root) => writeFile(root, "org/references/coc.md", doc("A code of conduct.")),
+    accountedFor: (out) =>
+      out.references.includes("coc") || out.reported.includes("org/references/coc.md"),
+  },
+  {
+    shape: "teams/<team>/references/<name>.md",
+    publishedIn: {
+      file: "packages/workforce/README.md",
+      quote: "| `<root>/teams/<teamId>/<slot>/<name>.md` | `teams/<teamId>/<name>` |",
+    },
+    write: (root) => writeFile(root, "teams/alpha/references/handbook.md", doc("A handbook.")),
+    accountedFor: (out) =>
+      out.references.includes("teams/alpha/handbook") ||
+      out.reported.includes("teams/alpha/references/handbook.md"),
+  },
+  {
+    shape: "teams/<team>/workers/<worker>/references/<name>.md",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/documents-on-disk.md",
+      quote:
+        "| `<root>/teams/engineering/workers/ada/references/runbook.md` | `teams/engineering/workers/ada/runbook` |",
+    },
+    write: (root) =>
+      writeFile(root, "teams/alpha/workers/lead/references/runbook.md", doc("A runbook.")),
+    accountedFor: (out) =>
+      out.references.includes("teams/alpha/workers/lead/runbook") ||
+      out.reported.includes("teams/alpha/workers/lead/references/runbook.md"),
+  },
+  {
+    // The level with no seat below it: documents here load and are minted, and
+    // no seat can be hired at this address, so nothing reaches them. Tabled
+    // anyway — the pages publish the shape, and a shape that reaches nobody is
+    // exactly the kind this suite must not let go unnoticed.
+    shape: "org/workers/<worker>/references/<name>.md",
+    publishedIn: {
+      file: "packages/workforce/README.md",
+      quote: "| `<root>/org/workers/<worker>/<slot>/<name>.md` | `workers/<worker>/<name>` |",
+    },
+    write: (root) => writeFile(root, "org/workers/build/references/playbook.md", doc("A playbook.")),
+    accountedFor: (out) =>
+      out.references.includes("workers/build/playbook") ||
+      out.reported.includes("org/workers/build/references/playbook.md"),
+  },
+  {
     shape: "teams/<team>/resources/<name>.md",
     publishedIn: {
       file: "apps/docs/docs/workforce/documents-on-disk.md",
-      quote: "| `<root>/teams/engineering/resources/handbook.md` | `teams/engineering/handbook` |",
+      quote: "| `<root>/teams/engineering/resources/scratch.md` | `teams/engineering/scratch` |",
     },
     write: (root) => writeFile(root, "teams/alpha/resources/handbook.md", doc("A handbook.")),
     accountedFor: (out) =>
@@ -457,9 +545,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/workers/<worker>/resources/<name>.md",
     publishedIn: {
-      file: "apps/docs/docs/workforce/documents-on-disk.md",
+      file: "packages/workforce/README.md",
       quote:
-        "| `<root>/teams/engineering/workers/on-call/resources/runbook.md` | `teams/engineering/workers/on-call/runbook` |",
+        "| `<root>/teams/<teamId>/workers/<worker>/<slot>/<name>.md` | `teams/<teamId>/workers/<worker>/<name>` |",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/workers/lead/resources/runbook.md", doc("A runbook.")),
@@ -494,8 +582,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "org/resources/<name>.md",
     publishedIn: {
-      file: "apps/docs/docs/workforce/documents-on-disk.md",
-      quote: "| `<root>/org/resources/code-of-conduct.md` | `code-of-conduct` |",
+      file: "packages/workforce/README.md",
+      quote: "| `<root>/org/<slot>/<name>.md` | `<name>` |",
     },
     write: (root) =>
       writeFile(root, "org/resources/code-of-conduct.md", doc("How we behave.")),
@@ -704,6 +792,9 @@ async function readEverything(root: string): Promise<Readout> {
   const resources = await readResourcesDirectory(root);
   for (const error of resources.errors) reported.push(error.path);
 
+  const references = await readReferencesDirectory(root);
+  for (const error of references.errors) reported.push(error.path);
+
   const channels = await readChannelsDirectory(root);
   for (const error of channels.errors) reported.push(error.path);
 
@@ -750,6 +841,7 @@ async function readEverything(root: string): Promise<Readout> {
   return {
     workers: workforce.workers.map((worker) => worker.id),
     documents: resources.documents.map((document) => document.ref),
+    references: references.documents.map((reference) => reference.ref),
     channels: channels.channels.map((channel) => channel.id),
     teams: workforce.teams.map((team) => team.id),
     resourceModules,

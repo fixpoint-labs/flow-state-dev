@@ -15,6 +15,20 @@
  * **Symlinks are never followed**, at any level. And a path is judged by the
  * slot it occupies, not by what it looks like.
  *
+ * **One walk, two slots.** The same convention covers `resources/` and
+ * `references/` at the same four levels, so this module reads a slot rather
+ * than a folder name: {@link readResourcesDirectory} and
+ * {@link readReferencesDirectory} are the same walk with a different slot and a
+ * different refusal set. A second ~400-line reader would be a second answer to
+ * "where does the convention look", and the two would drift at the first level
+ * added.
+ *
+ * What differs between them is not the walk. A `resources/` document's body
+ * becomes a stored row that then evolves; a `references/` document's file stays
+ * the source, so its record carries the {@link ResourceDoc.filePath} the
+ * install half points at and refuses a wider set of declarations. Both are the
+ * caller's business, not this walk's.
+ *
  * **This reader is one of two over the same folder.** A `resources/` folder
  * takes Markdown documents and TypeScript modules side by side; the `.ts` files
  * are the module walk's (`../codegen/discover-resource-modules`), which mints
@@ -38,11 +52,17 @@ import {
   parseFrontmatterYaml,
   splitFrontmatter,
 } from "@flow-state-dev/orchestration";
-import { refusedDeclarationMessage, type ResourceDoc } from "../manifest";
+import {
+  refusedDeclarationMessage,
+  refusedReferenceDeclarationMessage,
+  type ResourceDoc,
+} from "../manifest";
 import {
   DOCUMENT_EXTENSION,
+  REFERENCES_SLOT,
   RESOURCES_SLOT,
   WORKERS_LEVEL,
+  type DocumentSlot,
   mintResourceRef,
 } from "./resource-convention";
 import {
@@ -132,6 +152,53 @@ export interface ReadResourcesDirectoryResult {
 export async function readResourcesDirectory(
   root: string,
 ): Promise<ReadResourcesDirectoryResult> {
+  return await readDocumentSlot(root, RESOURCES_SLOT, refusedDeclarationMessage, false);
+}
+
+/**
+ * Read every `<name>.md` in a `references/` folder anywhere the convention puts
+ * one, and return one neutral record per document — each carrying the
+ * {@link ResourceDoc.filePath} it was read from.
+ *
+ * The same walk as {@link readResourcesDirectory}, at the same four levels,
+ * minting refs into the same namespace. Two things differ, and both belong to
+ * what a reference IS rather than to where it sits:
+ *
+ * - **The record carries its file path**, because the install half points the
+ *   resource at the file instead of copying the body into a row. The body is
+ *   still parsed here, because `description` is required of every file in this
+ *   dialect and a file that cannot be parsed is a load failure either way.
+ * - **A wider declaration refusal.** `writable:`, `llmWritable:` and `render:`
+ *   are derived for a reference and refused by name
+ *   ({@link refusedReferenceDeclarationMessage}), because the folder carries
+ *   the seal and a file that could unseal itself would make the folder a
+ *   suggestion.
+ *
+ * Errors, symlink discipline and the collect-don't-throw bargain are the walk's
+ * and are identical. Throws only when `root` itself is refused.
+ *
+ * @param root The workforce tree — the folder holding `org/` and `teams/`.
+ * @returns One record per reference that loaded, and one entry per path that
+ *   should have produced one and did not.
+ */
+export async function readReferencesDirectory(
+  root: string,
+): Promise<ReadResourcesDirectoryResult> {
+  return await readDocumentSlot(root, REFERENCES_SLOT, refusedReferenceDeclarationMessage, true);
+}
+
+/**
+ * The walk both readers are. Parameterized by the slot it looks in and the
+ * declaration refusal that slot imposes; everything else — the four levels, the
+ * symlink rule, the directory-in-a-documents-slot report — is the convention's
+ * and is shared by construction rather than by two copies kept in step.
+ */
+async function readDocumentSlot(
+  root: string,
+  slot: DocumentSlot,
+  refuseDeclaration: (declared: Record<string, unknown>) => string | undefined,
+  carriesFilePath: boolean,
+): Promise<ReadResourcesDirectoryResult> {
   const documents: ResourceDoc[] = [];
   const errors: ResourceDocError[] = [];
 
@@ -152,9 +219,12 @@ export async function readResourcesDirectory(
     report("org", org.refusal.error);
   }
   if (org.entries !== undefined) {
-    await readSlot(path.join(root, "org", RESOURCES_SLOT), `org/${RESOURCES_SLOT}`, {
+    await readSlot(path.join(root, "org", slot), `org/${slot}`, {
       documents,
       errors,
+      slot,
+      refuseDeclaration,
+      carriesFilePath,
       mintRef: (name) => mintResourceRef(undefined, undefined, name),
     });
     // Org workers are rare shared-infra seats, and their documents load for the
@@ -163,16 +233,31 @@ export async function readResourcesDirectory(
     // reader passes over `org/workers/` in silence and a worker id requires a
     // team — which is a larger gap than this reader closes, and not a reason
     // for the documents to go on being unread.
-    await walkWorkers(path.join(root, "org"), "org", undefined, { documents, errors });
+    await walkWorkers(path.join(root, "org"), "org", undefined, {
+      documents,
+      errors,
+      slot,
+      refuseDeclaration,
+      carriesFilePath,
+    });
   }
 
   for await (const team of walkTeams(root, report)) {
-    await readSlot(path.join(team.dir, RESOURCES_SLOT), `${team.path}/${RESOURCES_SLOT}`, {
+    await readSlot(path.join(team.dir, slot), `${team.path}/${slot}`, {
       documents,
       errors,
+      slot,
+      refuseDeclaration,
+      carriesFilePath,
       mintRef: (name) => mintResourceRef(team.id, undefined, name),
     });
-    await walkWorkers(team.dir, team.path, team.id, { documents, errors });
+    await walkWorkers(team.dir, team.path, team.id, {
+      documents,
+      errors,
+      slot,
+      refuseDeclaration,
+      carriesFilePath,
+    });
   }
 
   return { documents, errors };
@@ -200,7 +285,7 @@ async function walkWorkers(
   parentDir: string,
   parentPath: string,
   teamId: string | undefined,
-  ctx: { documents: ResourceDoc[]; errors: ResourceDocError[] },
+  ctx: Omit<SlotContext, "mintRef">,
 ): Promise<void> {
   const workersPath = `${parentPath}/${WORKERS_LEVEL}`;
   const slots = await openStructuralDirectory(
@@ -264,24 +349,50 @@ async function walkWorkers(
       continue;
     }
 
-    await readSlot(path.join(workerDir, RESOURCES_SLOT), `${entryPath}/${RESOURCES_SLOT}`, {
+    await readSlot(path.join(workerDir, ctx.slot), `${entryPath}/${ctx.slot}`, {
       documents: ctx.documents,
       errors: ctx.errors,
+      slot: ctx.slot,
+      refuseDeclaration: ctx.refuseDeclaration,
+      carriesFilePath: ctx.carriesFilePath,
       mintRef: (name) => mintResourceRef(teamId, workerName, name),
     });
   }
 }
 
-/** Everything reading one `resources/` slot needs that differs between roots. */
+/** Everything reading one documents slot needs that differs between roots. */
 interface SlotContext {
   documents: ResourceDoc[];
   errors: ResourceDocError[];
+  /** Which slot is being read — the folder name, and what a refusal names. */
+  slot: DocumentSlot;
+  /**
+   * Why this slot refuses a declaration, or `undefined` when it does not.
+   *
+   * Passed rather than branched on {@link SlotContext.slot}, so the two slots'
+   * refusal sets stay one export each in `../manifest` and this walk stays a
+   * walk.
+   */
+  refuseDeclaration: (declared: Record<string, unknown>) => string | undefined;
+  /**
+   * Whether the record carries the absolute path it was read from.
+   *
+   * **True for `references/` only, and that is not symmetry lost — it is the
+   * mutable path left alone.** A reference IS its file, so the path is what the
+   * install half installs. A `resources/` document's source is its stored row,
+   * so a path on that record would be a field nothing reads, and it would
+   * change what the reader hands back for every tree that has one. Two records
+   * read from different roots would stop comparing equal, which is exactly how
+   * the existing suite caught this being added everywhere.
+   */
+  carriesFilePath: boolean;
   /** Mint this slot's ref for a document name. Throws on a bad segment. */
   mintRef: (name: string) => string;
 }
 
 /**
- * Read one `resources/` slot. An absent slot is silent — a team may have no
+ * Read one documents slot — `resources/` or `references/`, whichever
+ * {@link SlotContext.slot} names. An absent slot is silent — a team may have no
  * documents — and a slot that is there and cannot be walked is reported under
  * its own path, because the documents beneath it cannot be named individually.
  */
@@ -307,7 +418,7 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
         path: entryPath,
         error: new Error(
           `"${entryName}" is a directory. A resource is a file, not a folder — write the ` +
-            `document as "${entryName}${DOCUMENT_EXTENSION}" in this ${RESOURCES_SLOT}/ ` +
+            `document as "${entryName}${DOCUMENT_EXTENSION}" in this ${ctx.slot}/ ` +
             `folder instead.`,
         ),
         kind: "folder-where-file-belongs",
@@ -342,15 +453,18 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
     // neither, and is the one thing this branch still drops in silence.
     if (!entryName.endsWith(DOCUMENT_EXTENSION)) continue;
 
-    let loaded: { ref: string; declared: Record<string, unknown>; body: string };
+    let loaded: ResourceDoc;
     try {
       const name = entryName.slice(0, -DOCUMENT_EXTENSION.length);
       // Identity first: a document whose segments break the rules has no ref to
       // be keyed under, so there is nothing to be gained by reading its file.
       const ref = ctx.mintRef(name);
-      const text = await fs.readFile(path.join(slotDir, entryName), "utf8");
+      const filePath = path.resolve(slotDir, entryName);
+      const text = await fs.readFile(filePath, "utf8");
       const { declared, body } = parseResourceMd(text, entryName);
-      loaded = { ref, declared, body };
+      // The path rides only on a record whose slot needs it. See
+      // `SlotContext.carriesFilePath` for why that is not an asymmetry to tidy.
+      loaded = ctx.carriesFilePath ? { ref, declared, body, filePath } : { ref, declared, body };
     } catch (err) {
       ctx.errors.push({ path: entryPath, error: err as Error, kind: "document-load-failed" });
       continue;
@@ -360,7 +474,7 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
     // that could not be read is an author's typo, and a file declaring what the
     // convention derives is an author's misunderstanding. Checked here rather
     // than inside the parse so the two stay tellable apart by control flow.
-    const refused = refusedDeclarationMessage(loaded.declared);
+    const refused = ctx.refuseDeclaration(loaded.declared);
     if (refused !== undefined) {
       ctx.errors.push({
         path: entryPath,

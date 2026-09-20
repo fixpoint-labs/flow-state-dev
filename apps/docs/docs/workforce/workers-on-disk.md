@@ -62,6 +62,8 @@ request into tasks, assign them, and report what came back.
 
 Only documents are narrowed. The stores and boards its kind declares stay reachable and writable whatever the list says, and so do the resources the kind's own blocks declare. Where the documents come from is [below](#supplying-the-documents-a-seat-may-name).
 
+`references:` is the companion list, over the documents in [`references/` folders](./documents-on-disk.md#who-reaches-what). Each entry is a ref on its own, with no mode, because nothing writes a reference. The list narrows what the worker's place in the tree already gives it — the organization's references, its own team's, and its own folder's — and naming one from outside that refuses the hire. Leave the key out and the worker reaches all of them; `references: []` is how you say it gets none.
+
 Reading the file checks no other key. Whatever else you write lands on the record spelled exactly as you spelled it. The flow a worker names has the final say: at hiring it [refuses a setting it never declared](#the-flow-decides-what-a-worker-may-declare).
 
 The frontmatter is the same dialect a [`SKILL.md`](../skills/overview.md) uses. If you have written one of those, you already know the shape.
@@ -116,9 +118,9 @@ configuration, so a worker on another team never sees them.
 Documents under `teams/<team>/resources/` work the other way. They are installed on a worker
 *kind*, so every worker of that kind can read every team's documents. The folder addresses a
 document; it does not fence it. To give one team's workers only its own documents, filter the
-records before installing them: [A folder is a namespace, not a visibility
-boundary](./documents-on-disk.md#a-folder-is-a-namespace-not-a-visibility-boundary) shows how, and
-covers a worker's own folder too.
+records before installing them: [Who reaches what](./documents-on-disk.md#who-reaches-what) shows
+how, and covers a worker's own folder too. A document under `teams/<team>/references/` is the other
+case: that folder does fence it, to that team's workers.
 
 ## A worker's identity
 
@@ -404,6 +406,8 @@ One catalog, spread into the flow and handed to the hire. Which entries in that 
 
 `documents` is consulted only for a worker that declares `resources:`. A roster where none does hires the same whether you pass it or not. A worker that does declare one while `documents` is absent is refused, naming what is missing.
 
+References go under a `references` option holding the map `referencesFromDocs` returned, and that one works the other way round: the tree wall is derived against it, so a kind holding references has to be hired with it. Leave it out, or pass a map missing one of them, and the whole roster is refused, naming every reference the hire was not given. [Installing the documents](./documents-on-disk.md#installing-the-documents) has the call with both maps.
+
 A list the hire step cannot resolve refuses the whole roster, naming the worker and what was wrong. The message calls one entry a grant and quotes the ref as the file spelled it, which here is `handbook` with two letters swapped:
 
 ```
@@ -426,6 +430,8 @@ A record is refused when it:
 - declares `instructions:` and carries a body;
 - declares `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:`, none of which is a setting a worker declares;
 - declares `teamInstructions:` in its frontmatter, wherever that frontmatter came from — a team's instructions come from its [`TEAM.md`](#what-a-teammd-says) body, read by the loader;
+- declares a `references:` list the hire step cannot resolve: a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this worker cannot reach from where its folder sits — which includes every ref when no `references` map was passed. A worker whose id names no place in the tree is refused too, once its kind holds references;
+- reaches a reference it did not name, the same way a document can come back through one of its kind's blocks;
 - declares a `resources:` list the hire step cannot resolve: a `resources:` that is not a list at all, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this worker's kind, a mode that is neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind does declare at flow level while what it holds there is not that document, or the key at all when no `documents` were passed;
 - reaches a document it never named, because one of its kind's blocks declares that document and a block's declaration merges back in after the worker's narrowed list is applied. Keep the document at flow level and let the block reach it there, or grant it to the worker deliberately;
 - shares an id with another record in the same call, which is two workers claiming one address.

@@ -55,18 +55,28 @@ import {
   verifySeatNarrowing,
   type SeatResourceGrant
 } from "./seat-resources";
+import {
+  SEAT_REFERENCES_KEY,
+  applyReferenceWall,
+  verifySeatReferenceWall
+} from "./seat-references";
 import { workerConfigSchema } from "./worker-config";
 
 /**
  * The keys the factory itself reads. Everything else is the worker's settings.
  *
- * `resources` joins them rather than travelling to the kind as a setting: it
- * is an instruction to THIS step about which documents to mint the seat with,
- * not a value any kind declares. A kind that happened to declare a `resources`
- * setting of its own no longer receives an authored one — the key is public
- * and pinned here, and a seat file cannot mean both things at once.
+ * `resources` and `references` join them rather than travelling to the kind as
+ * settings: each is an instruction to THIS step about what to mint the seat
+ * with, not a value any kind declares. A kind that happened to declare a
+ * setting of either name no longer receives an authored one — both keys are
+ * public and pinned here, and a seat file cannot mean two things at once.
  */
-const RESERVED_KEYS = ["flow", "description", SEAT_RESOURCES_KEY] as const;
+const RESERVED_KEYS = [
+  "flow",
+  "description",
+  SEAT_RESOURCES_KEY,
+  SEAT_REFERENCES_KEY
+] as const;
 
 /**
  * The stock `agent` kind, built once for the life of the module.
@@ -151,6 +161,25 @@ export interface HireOptions {
    * resolving every ref to nothing — a lockout that reads like a typo.
    */
   documents?: DeclaredResources;
+
+  /**
+   * The references this app declared, keyed by ref — the map
+   * `referencesFromDocs(references)` returns, handed over unchanged.
+   *
+   * **Handed over for the reason `documents` is, and used for more.** It says
+   * which entries on a kind's map are references, which is what the derived
+   * tree wall narrows: a seat reaches the references at or above its place in
+   * the tree, and no others. That wall applies whether or not the seat declares
+   * `references:` — the key narrows within it, and can never widen past it.
+   *
+   * Optional. Absent, no entry is a reference, no wall applies, and every seat
+   * is minted exactly as it was before this existed.
+   *
+   * A ref may not appear in both this map and {@link HireOptions.documents}:
+   * the two behave differently and one accessor cannot be both, so the pair is
+   * refused rather than resolved.
+   */
+  references?: DeclaredResources;
 }
 
 /** A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere. */
@@ -386,6 +415,24 @@ export function hireWorkforce(
   // carries an empty tool catalog, because nothing ever merges into ours.
   const kinds: Record<string, AnyFlowType> = { [AGENT_KIND]: builtInAgentWorkerFlow, ...options.kinds };
 
+  // One ref cannot be both a document and a reference. Checked here as well as
+  // at the loader, the same two-door reason every other refusal in this file
+  // has: a hand-built catalog never passes the loader. Thrown rather than
+  // collected — it is the app's wiring, not one worker's file, so there is no
+  // worker to report it against and no roster that hires correctly around it.
+  const bothKinds = Object.keys(options.references ?? {}).filter((ref) =>
+    Object.hasOwn(options.documents ?? {}, ref)
+  );
+  if (bothKinds.length > 0) {
+    throw new Error(
+      `hireWorkforce was given ${bothKinds.map((ref) => `"${ref}"`).join(", ")} as both a ` +
+        `document and a reference. One ref is one accessor, and the two behave differently — a ` +
+        `reference is read from its file and sealed, a document seeds a row and then evolves — ` +
+        `so whichever won would be a coin flip. Keep one: leave the file in \`resources/\`, or ` +
+        `move it to \`references/\`.`
+    );
+  }
+
   const kindNames = Object.keys(kinds);
   const available = kindNames.length > 0 ? kindNames.map((k) => `"${k}"`).join(", ") : "(none)";
 
@@ -595,7 +642,14 @@ export function hireWorkforce(
     // map changes. Absent is not empty here, at either end.
     let seatResources: DeclaredResources | undefined;
     let seatGrants: readonly SeatResourceGrant[] = [];
-    if (Object.hasOwn(manifest.declared, SEAT_RESOURCES_KEY)) {
+    // Whether the seat NARROWED its documents, which is no longer the same
+    // question as whether it is minted with a map: the reference wall below
+    // gives a map to a seat that granted nothing. `verifySeatNarrowing` asks
+    // about the grant, so it has to read this and not the map — keyed on the
+    // map, a seat that declared no `resources:` would have every document on
+    // its kind reported as having escaped a narrowing nobody asked for.
+    const narrowedDocuments = Object.hasOwn(manifest.declared, SEAT_RESOURCES_KEY);
+    if (narrowedDocuments) {
       const parsed = parseSeatResources(manifest.declared[SEAT_RESOURCES_KEY]);
       if (parsed.problems.length > 0) {
         for (const problem of parsed.problems) refuse(problem);
@@ -621,6 +675,30 @@ export function hireWorkforce(
       seatGrants = parsed.grants ?? [];
     }
 
+    // The reference wall: derived from where this seat and each reference sit
+    // in the tree, and applied to whatever map the seat would otherwise get.
+    //
+    // **Unconditional, unlike the block above.** A `resources:` grant is a
+    // narrowing a seat asks for, so it runs only when the seat asks; the wall
+    // is a boundary, so it runs for every seat whether or not its file says
+    // anything. What keeps that from touching an app with no references is the
+    // wall itself: a kind holding none hands `base` straight back, including
+    // handing back `undefined` so the seat is minted with no map at all.
+    const wall = applyReferenceWall({
+      seatId: manifest.id,
+      declared: manifest.declared[SEAT_REFERENCES_KEY],
+      hasDeclared: Object.hasOwn(manifest.declared, SEAT_REFERENCES_KEY),
+      catalog: options.references,
+      kindResources: (factory.resources ?? {}) as DeclaredResources,
+      kindFlowLevelKeys: factory.flowLevelResourceKeys ?? new Set<string>(),
+      base: seatResources
+    });
+    if (wall.problems.length > 0) {
+      for (const problem of wall.problems) refuse(problem);
+      continue;
+    }
+    seatResources = wall.resources;
+
     try {
       // Always a bag, so always admitted. The branch that stood here passed no
       // bag at all for a record that declared nothing — which is admission
@@ -640,7 +718,7 @@ export function hireWorkforce(
       // distinguishes that document from one no block mentions. Only the
       // instance knows. Skipped when the seat narrowed nothing, which denies
       // nothing.
-      if (seatResources !== undefined && options.documents !== undefined) {
+      if (narrowedDocuments && options.documents !== undefined) {
         const escaped = verifySeatNarrowing({
           minted: seat.resources as DeclaredResources | undefined,
           grants: seatGrants,
@@ -651,6 +729,22 @@ export function hireWorkforce(
           for (const problem of escaped) refuse(problem);
           continue;
         }
+      }
+
+      // The same check for the wall, and it exists for the same substrate
+      // reason: a reference a block ALSO declares comes back after the seat's
+      // map removed it, and only the built instance shows that. Read off the
+      // minted flow rather than predicted from the kind.
+      const crossed = verifySeatReferenceWall({
+        minted: seat.resources as DeclaredResources | undefined,
+        allowed: wall.reachable,
+        catalog: options.references,
+        seatId: manifest.id,
+        kind
+      });
+      if (crossed.length > 0) {
+        for (const problem of crossed) refuse(problem);
+        continue;
       }
 
       seats.push(seat);

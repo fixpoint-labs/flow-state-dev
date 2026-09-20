@@ -46,6 +46,23 @@ export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { hireWorkforce, type HireOptions } from "./hire";
 export { resourcesFromDocs } from "./resources-from-docs";
+export { referencesFromDocs, referenceBody } from "./references-from-docs";
+export {
+  clearShadowedReferences,
+  describeShadowedReferences,
+  type ClearShadowedReferencesInput,
+  type ClearShadowedReferencesResult,
+  type ReferenceContentStore,
+  type ReferenceInstallFlow,
+  type ShadowedReference,
+} from "./clear-shadowed-references";
+export {
+  SEAT_REFERENCES_KEY,
+  placeOfReference,
+  placeOfSeat,
+  referenceReachableBySeat,
+  type TreePlace,
+} from "./seat-references";
 export { splitResourceModules, type ResourceModuleHalves } from "./split-resource-modules";
 export type {
   ResourceModuleExport,
