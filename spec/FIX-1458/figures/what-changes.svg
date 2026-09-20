@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 320" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two pictures side by side, the same roster drawn twice. Today, on the left: one box labelled the roster holds three agent seats and a board row assigned to desk-one and running. Below a dashed fence, outside that box, sits a detached approval prompt carrying a userId, a resolvedBy and a message, with no seat, no row and no board; an arrow leaves it, ends in nothing, and is labelled nobody owes it. After, on the right: the same roster box holds two agent seats and a third seat drawn in green, eng.reviewer of kind human with principal u dana, and a board row assigned to review-desk and parked. Below the same fence there is nothing at all, and the words read: the same board, the same inventory, the same status set, one more kind of seat; waiting on you is parked plus the row's own reason, and who owes it is review-desk resolved through the roster to eng.reviewer, stored nowhere.">
+<svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two pictures side by side. Today, on the left: one box labelled the roster holds three agent seats and a board row assigned to desk-one and running. Below a dashed fence, outside that box, sits a detached approval prompt carrying a userId, a resolvedBy and a message, with no seat, no row and no board; an arrow leaves it, ends in nothing, and is labelled nobody owes it. After, on the right: the same roster box holds the same three agent seats — no seat is a person — and one of them, eng.builder, carries the setting reviewedBy u dana and holds its own board row, parked, with the reason on it. Outside the box and above it stands u dana, drawn in green and labelled a principal, not a seat. A dashed arrow runs from the parked row up to her, labelled derived: row to desk to seat to principal. A solid arrow runs back from her into the roster box, labelled flow action, caller is the request's principal, and lands on the same seat that parked the row, which continues. Below the fence there is nothing at all. The closing words read: the row never changes owner; the person answers through an action; the flow decides what the answer means.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -8,74 +8,101 @@
       :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
               --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
-    .n-box    { fill:var(--surface);   stroke:var(--rule);   stroke-width:1.2; }
     .n-roster { fill:var(--surface-2); stroke:var(--rule);   stroke-width:1.4; }
     .n-seat   { fill:var(--surface);   stroke:var(--ink-3);  stroke-width:1; }
+    .n-bound  { fill:var(--surface);   stroke:var(--accent); stroke-width:1.6; }
+    .n-row    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
     .n-person { fill:var(--code-soft); stroke:var(--code);   stroke-width:1.6; }
     .n-loose  { fill:var(--prose-soft);stroke:var(--gone);   stroke-width:1.4; stroke-dasharray:4 3; }
     .fence    { stroke:var(--rule); stroke-width:1.2; stroke-dasharray:6 4; }
     .dead     { stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; fill:none; }
+    .derive   { stroke:var(--code); stroke-width:1.2; stroke-dasharray:4 3; fill:none; }
+    .act      { stroke:var(--accent); stroke-width:1.6; fill:none; }
     .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
     .t-b   { fill:var(--ink);   font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
     .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-g   { fill:var(--code);  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-a   { fill:var(--accent);font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-r   { fill:var(--gone);  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-n   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
   </style>
 
+  <defs>
+    <marker id="hA" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--accent)"/>
+    </marker>
+    <marker id="hG" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--code)"/>
+    </marker>
+  </defs>
+
+  <!-- ─────────────────────────────── TODAY ─────────────────────────────── -->
   <g id="today">
     <text class="t-lbl" x="24" y="20">TODAY</text>
-    <rect class="n-roster" x="24" y="30" width="416" height="140" rx="6"/>
+    <rect class="n-roster" x="24" y="30" width="416" height="146" rx="6"/>
     <text class="t-b" x="40" y="52">the roster</text>
     <text class="t-s" x="40" y="68">seats · channels · inventory · the board</text>
-    <rect class="n-seat" x="40" y="80" width="98" height="34" rx="4"/>
-    <text class="t-s" x="50" y="101">eng.builder-a</text>
-    <rect class="n-seat" x="146" y="80" width="98" height="34" rx="4"/>
-    <text class="t-s" x="156" y="101">eng.builder-b</text>
-    <rect class="n-seat" x="252" y="80" width="98" height="34" rx="4"/>
-    <text class="t-s" x="262" y="101">eng.manager</text>
-    <rect class="n-box" x="40" y="124" width="384" height="30" rx="4"/>
-    <text class="t-s" x="50" y="143">board row · assignee: desk-one · running</text>
+
+    <rect class="n-seat" x="40" y="80" width="96" height="32" rx="4"/>
+    <text class="t-s" x="52" y="100">eng.builder</text>
+    <rect class="n-seat" x="146" y="80" width="96" height="32" rx="4"/>
+    <text class="t-s" x="158" y="100">eng.filer</text>
+    <rect class="n-seat" x="252" y="80" width="96" height="32" rx="4"/>
+    <text class="t-s" x="264" y="100">eng.coord</text>
+
+    <rect class="n-row" x="40" y="124" width="308" height="34" rx="4"/>
+    <text class="t-a" x="52" y="145">row · assignee desk-one · running</text>
+
+    <line class="fence" x1="24" y1="200" x2="440" y2="200"/>
+
+    <rect class="n-loose" x="40" y="222" width="250" height="60" rx="5"/>
+    <text class="t-r" x="54" y="242">approval prompt</text>
+    <text class="t-r" x="54" y="258">userId · resolvedBy · message</text>
+    <text class="t-r" x="54" y="272">no seat · no row · no board</text>
+    <path class="dead" d="M296 252 H 386" marker-end="url(#hA)" style="stroke:var(--gone)"/>
+    <text class="t-r" x="300" y="244">nobody owes it</text>
+
+    <text class="t-n" x="24" y="316">Who owed the answer was never written</text>
+    <text class="t-n" x="24" y="332">down, so nothing could be held to it.</text>
   </g>
 
-  <g id="today-loose">
-    <path class="fence" d="M24 190 H440"/>
-    <text class="t-lbl" x="24" y="206">OUTSIDE IT</text>
-    <rect class="n-loose" x="24" y="216" width="264" height="62" rx="6"/>
-    <text class="t-b" x="40" y="238">approval prompt</text>
-    <text class="t-s" x="40" y="256">userId · resolvedBy · a message</text>
-    <text class="t-s" x="40" y="270">no seat, no row, no board</text>
-    <path class="dead" d="M292 247 H392"/>
-    <text class="t-r" x="300" y="241">nobody owes it</text>
-    <text class="t-r" x="396" y="251">?</text>
-  </g>
-
+  <!-- ─────────────────────────────── AFTER ─────────────────────────────── -->
   <g id="after">
     <text class="t-lbl" x="500" y="20">AFTER</text>
-    <rect class="n-roster" x="500" y="30" width="416" height="140" rx="6"/>
-    <text class="t-b" x="516" y="52">the roster</text>
-    <text class="t-s" x="516" y="68">seats · channels · inventory · the board</text>
-    <rect class="n-seat" x="516" y="80" width="98" height="34" rx="4"/>
-    <text class="t-s" x="526" y="101">eng.builder-a</text>
-    <rect class="n-seat" x="622" y="80" width="98" height="34" rx="4"/>
-    <text class="t-s" x="632" y="101">eng.manager</text>
-    <rect class="n-person" x="728" y="80" width="172" height="34" rx="4"/>
-    <text class="t-g" x="738" y="95">eng.reviewer · human</text>
-    <text class="t-g" x="738" y="108">principal: u_dana</text>
-    <rect class="n-box" x="516" y="124" width="384" height="30" rx="4"/>
-    <text class="t-s" x="526" y="143">board row · assignee: review-desk · parked</text>
-  </g>
 
-  <g id="after-empty">
-    <path class="fence" d="M500 190 H916"/>
-    <text class="t-lbl" x="500" y="206">OUTSIDE IT</text>
-    <text class="t-g" x="500" y="234">nothing. the same board, the same inventory,</text>
-    <text class="t-g" x="500" y="250">the same status set — one more kind of seat.</text>
-    <text class="t-s" x="500" y="270">waiting on you = parked + the row&apos;s own reason;</text>
-    <text class="t-s" x="500" y="284">who owes it = review-desk, resolved through the roster</text>
-    <text class="t-s" x="500" y="298">to eng.reviewer, and stored nowhere.</text>
-  </g>
+    <!-- the person: outside the roster, and deliberately so -->
+    <rect class="n-person" x="690" y="26" width="200" height="46" rx="5"/>
+    <text class="t-g" x="704" y="46">u_dana</text>
+    <text class="t-g" x="704" y="62">a principal, not a seat</text>
 
-  <g id="divider">
-    <path class="fence" d="M470 14 V306"/>
+    <rect class="n-roster" x="500" y="88" width="416" height="146" rx="6"/>
+    <text class="t-b" x="516" y="110">the roster · unchanged</text>
+    <text class="t-s" x="516" y="126">every seat is an agent · no human kind</text>
+
+    <rect class="n-bound" x="516" y="138" width="126" height="32" rx="4"/>
+    <text class="t-a" x="528" y="152">eng.builder</text>
+    <text class="t-a" x="528" y="164">reviewedBy: u_dana</text>
+    <rect class="n-seat" x="652" y="138" width="90" height="32" rx="4"/>
+    <text class="t-s" x="664" y="158">eng.filer</text>
+    <rect class="n-seat" x="752" y="138" width="90" height="32" rx="4"/>
+    <text class="t-s" x="764" y="158">eng.coord</text>
+
+    <rect class="n-row" x="516" y="182" width="326" height="34" rx="4"/>
+    <text class="t-a" x="528" y="203">row · owned by eng.builder · parked, with its reason</text>
+
+    <!-- derived: the row's audience -->
+    <path class="derive" d="M842 190 H 872 V 76" marker-end="url(#hG)"/>
+    <text class="t-g" x="690" y="248">derived · row → desk → seat → principal · stored nowhere</text>
+
+    <!-- the answer, through an action -->
+    <path class="act" d="M690 54 H 476 V 154 H 512" marker-end="url(#hA)"/>
+    <text class="t-a" x="466" y="42">flow action · answer</text>
+    <text class="t-a" x="466" y="56">caller = the request's principal</text>
+
+    <line class="fence" x1="500" y1="264" x2="916" y2="264"/>
+    <text class="t-s" x="516" y="286">nothing down here any more</text>
+
+    <text class="t-n" x="500" y="316">The row never changes owner. The person answers</text>
+    <text class="t-n" x="500" y="332">through an action, and the flow decides what it means.</text>
   </g>
 </svg>
