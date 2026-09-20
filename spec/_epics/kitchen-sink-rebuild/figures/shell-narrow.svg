@@ -53,7 +53,8 @@
     <text class="t-r" x="478" y="88">the turn stream</text>
     <rect class="tab" x="600" y="56" width="44" height="18" rx="3"/>
     <text class="t-acc" x="605" y="68">boards</text>
-    <text class="t-acc" x="478" y="230">boards + roster &#8594; a sheet from the header</text>
+    <text class="t-acc" x="478" y="218">boards + roster &#8594; a sheet</text>
+    <text class="t-acc" x="478" y="229">from the header</text>
   </g>
 
   <g id="narrow">

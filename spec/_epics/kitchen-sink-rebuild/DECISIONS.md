@@ -69,7 +69,7 @@ on. Then this epic returns to design and POC and the fence goes back up.
 |---|---|
 | **Instead of** | A third "Workforce UI" package beside `react` and `client` · leaving the components in the app and letting readers copy files |
 | **Because** | The rebuild's value is that it can be imported, not that it can be admired. A shape that needs kitchen-sink-specific plumbing to work is a design finding for FIX-1477's spec, not a licence to leave it in the app |
-| **Locks in** | **Inline** = renders from the current turn's stream. **Resource-backed** = subscribes to a standing collection. Both ship from the existing client packages. Kitchen-sink defines no UI API of its own; if it has to, that is a cross-cutting question and comes up here |
+| **Locks in** | **Inline** = renders from the current turn's stream. **Resource-backed** = subscribes to a standing collection. Both ship from the existing client packages. Kitchen-sink defines no UI API of its own; if it has to, that is a cross-cutting question and comes up here. **A component ships once.** Any component W5's reference assemblies would also need is exported from the client package and imported there — not copied into an assembly, and not re-exported through one. Two copies of a component with one behaviour is the same defect as a kitchen-sink-only UI API, reached from the other side ([ER-9](BUSINESS-RULES.md)) |
 
 <a name="d6"></a>
 ## D6 · Patterns is shed as a dependency, and never bridged to seats
@@ -115,6 +115,11 @@ are the ones that bind three children each, and an owner moving there moves a fi
   implementer's, resolved toward durable hire, and is *not* an epic-level fork.
 - **Runtime channel-admin verbs are not in this set.** FIX-1415 is parked and adjacent. FIX-1476
   teaches the declarative convention and no worker-facing admin verbs.
+- **A component ships once, not twice** — recorded on FIX-1477 from the project-spec pass. It
+  follows from spine item 3 and the invent-kill on a kitchen-sink-only UI, so it is a
+  confirmation rather than a new call: a component W5's reference assemblies would also need is
+  imported from the client package, not copied into an assembly or re-exported through one.
+  FIX-1477 owns it under [D5](#d5) and [ER-9](BUSINESS-RULES.md); no child re-opens it.
 
 ## What the end-state POC showed
 

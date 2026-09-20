@@ -23,7 +23,7 @@ who owns it and where it is checked.
 | # | Rule | Because |
 |---|---|---|
 | ER-8 | No kitchen-sink-only durable store, and no roster that lives only in process memory | [D2](DECISIONS.md#d2). A fifth persistence layer taught by the reference app |
-| ER-9 | No kitchen-sink-only UI API, and no third Workforce UI package beside `react` / `client` | [D5](DECISIONS.md#d5). A shape that cannot be exported is a finding, not a workaround |
+| ER-9 | No kitchen-sink-only UI API, and no third Workforce UI package beside `react` / `client`. No component ships twice: one W5's reference assemblies would also need is imported from the client package, never copied or re-exported | [D5](DECISIONS.md#d5). A shape that cannot be exported is a finding, not a workaround; a shape exported twice is the same finding from the other side |
 | ER-10 | No hired seat inside `supervisor()` or any pattern factory | [D6](DECISIONS.md#d6). It collapses the roster the epic exists to show |
 | ER-11 | No Agent, Team, Channel or Board minted as a Layer 1 type | [D3](DECISIONS.md#d3). Workforce is L2 on orchestration |
 | ER-12 | No ambient "all boards" seat drain, and no widget that renders one | [D4](DECISIONS.md#d4). Board v1 is explicit per-seat wiring |
