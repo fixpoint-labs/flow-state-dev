@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 332" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path: lanes against time, with a now line at September 19, 2026. A ship-fence band under the axis says W4's first cut has not shipped, so every W5 ship lane is fenced and only the exploration crosses. Two input lanes from other epics: the W3 floor, FIX-1351, carries a bar that reaches the now line and reads landed — seats, channels and skills on disk. The W4 first cut, FIX-1407, carries a bar that reaches the now line and then a dashed continuation running forward to the fence-lift line, reading In Development, first cut not shipped. That dashed vertical fence-lift line sits ahead of the now line, marked W4 first cut, fence lifts, with no date. Then the three lanes of the set. FIX-1458, humans in seats, opens a dashed ready bar exactly at the now line — the one lane that crosses the fence — reading needs spec, no PR yet. FIX-1455, the kitchen-sink child epic, has no bar before the fence-lift line and a dashed not-started line after it, reading held, its own lifecycle, ship fenced. The working-assemblies lane has no bar at all, only a label, reading not filed, cut undecided, no duration to draw. The critical path is drawn in the gutter from the exploration lane to the assemblies lane. Under a divider, three related lanes that are not in the set: the manager-queue lab FIX-1430, org never optional FIX-1442, and the Collab park FIX-1341 — each consumed or deferred, none holding this epic's wrap.">
+     aria-label="The path: lanes against time, with a now line at September 20, 2026. A ship-fence band under the axis says W4's first cut has not shipped, so every W5 ship lane is fenced and only the exploration crosses. Two input lanes from other epics: the W3 floor, FIX-1351, carries a bar that reaches the now line and reads landed — seats, channels and skills on disk. The W4 first cut, FIX-1407, carries a bar that reaches the now line and then a dashed continuation running forward to the fence-lift line, reading In Development, first cut not shipped. That dashed vertical fence-lift line sits ahead of the now line, marked W4 first cut, fence lifts, with no date. Then the three lanes of the set. FIX-1458, humans in seats, opens a dashed ready bar exactly at the now line — the one lane that crosses the fence — reading needs spec, no PR yet. FIX-1455, the kitchen-sink child epic, has no bar before the fence-lift line and a dashed not-started line after it, reading held, its own lifecycle, ship fenced. The working-assemblies lane has no bar at all, only a label, reading not filed, cut undecided, no duration to draw. The critical path is drawn in the gutter with a stop on all three set lanes: it runs from the exploration lane through FIX-1455, which is the reference app the proof is observed on and the done condition’s provisional owner, and only then to the assemblies lane. The proof is not reachable while the reference is still held. Under a divider, three related lanes that are not in the set: the manager-queue lab FIX-1430, org never optional FIX-1442, and the Collab park FIX-1341. The manager-queue lab and the Collab park are consumed or deferred and hold nothing, but org never optional is wrap-gating: the done condition requires an org-bound assembly, so W5 cannot wrap without it even though it is not a child.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -32,7 +32,7 @@
   <g id="axis">
     <path class="axis" d="M200 42 L924 42"/>
     <text class="t-s" x="200" y="34">Sep 16</text>
-    <text class="t-now" x="300" y="34">now &#183; Sep 19</text>
+    <text class="t-now" x="300" y="34">now &#183; Sep 20</text>
     <text class="t-s" x="632" y="34">ahead &#183; no dates set</text>
   </g>
 
@@ -49,6 +49,7 @@
   <g id="critical-path">
     <path class="crit" d="M190 146 L190 190"/>
     <circle class="critd" cx="190" cy="146" r="3.2"/>
+    <circle class="critd" cx="190" cy="168" r="3.2"/>
     <circle class="critd" cx="190" cy="190" r="3.2"/>
   </g>
 
@@ -80,7 +81,7 @@
     <text class="t-ln" x="16" y="244">FIX-1430 manager-queue lab</text>
     <text class="t-s" x="616" y="244">W4-side &#183; the drain story human seats plug into</text>
     <text class="t-ln" x="16" y="266">FIX-1442 org never optional</text>
-    <text class="t-s" x="616" y="266">soft-related &#183; assemblies open under org identity</text>
+    <text class="t-s" x="616" y="266">wrap-gating &#183; ER-19 is not observable without org identity</text>
     <text class="t-ln" x="16" y="288">FIX-1341 Collab park</text>
     <text class="t-s" x="616" y="288">later &#183; never the whole of W5</text>
   </g>
@@ -96,6 +97,6 @@
     <text class="t-s" x="556" y="321">the ship fence</text>
     <circle class="critd" cx="668" cy="318" r="3.2"/>
     <path class="crit" d="M668 312 L668 324"/>
-    <text class="t-s" x="684" y="321">critical path to the proof</text>
+    <text class="t-s" x="684" y="321">critical path to the proof &#8212; through FIX-1455</text>
   </g>
 </svg>

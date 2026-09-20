@@ -3,9 +3,10 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
 The calls that sit above any single issue in W5: what was chosen, what lost, and what each locks in
-for the children under it. Four are the sign-off surface; the fifth records a deliberate process
-breach. The exploration's own four walls are **open by instruction** and are listed at the bottom
-rather than answered here.
+for the children under it. Two of them ([D2](#d2), [D4](#d4)) are on the sign-off surface with the
+done-condition fork; [D3](#d3) is **consumed from W4 with no re-gate** and [D5](#d5) is **recorded
+news, not an ask**. The exploration's walls are open by instruction, except where one binds a
+downstream child ([ER-18](BUSINESS-RULES.md)).
 
 ## The tree
 
@@ -65,7 +66,7 @@ exploration's open walls, and it is the wall that could reach up and change this
 |---|---|
 | **Instead of** | Nesting W5 under W4 and starting nothing · or holding the exploration along with the ship work |
 | **Because** | W5 is a **sibling** of W4, not a child: the W3→W4→W5 chain is a sequence of outcomes, not a containment. Ship work composes the W4 first cut, so building it against a floor still in motion means rebuilding it. The **exploration** composes nothing — it produces a shape — so holding it buys nothing and costs a cycle |
-| **Locks in** | FIX-1458 runs now. FIX-1455 and the assemblies cut are **fenced** until the W4 first cut lands. This is a fence on *starting*, not a dependency edge some child can satisfy early ([ER-10](BUSINESS-RULES.md)) |
+| **Locks in** | **The ship fence, defined here once and linked everywhere else.** FIX-1458 runs now; FIX-1455 and the assemblies cut may not *start* ship work until the W4 first cut lands. It is a fence on starting, not a dependency edge a child can satisfy early, and it lifts on an event in another epic — nothing a child here does can lift it ([ER-10](BUSINESS-RULES.md)) |
 
 <a name="d5"></a>
 ## D5 · W5 starts as the fourth active epic, against a cap of two
@@ -74,21 +75,40 @@ exploration's open walls, and it is the wall that could reach up and change this
 |---|---|
 | **Instead of** | Forcing W3 ([#1718](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)), W4 ([#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905)) or LAB-162 ([#1612](https://github.com/fixpoint-labs/flow-state-dev/pull/1612)) to wrap to free a slot |
 | **Because** | The board was already at three open epic PRs against a cap of two when W5 was opened. The owner chose the breach on 2026-09-19 rather than wrap an epic early — W5's live work this cycle is a **single exploration**, which is close to free, and forcing a wrap would have cost real closure quality on an epic that isn't finished |
-| **Locks in** | The cap is knowingly breached, not forgotten. If W5 ship work starts before two of the four wrap, that is a **second** decision and this card does not cover it |
+| **Locks in** | The cap is knowingly breached, not forgotten. If W5 ship work starts before two of the four wrap, that is a **second** decision and this card does not cover it. It binds no child and drives no ER — it is here as the record, and it is **not** on the sign-off surface |
 
 ## Who owns what
 
-![Who owns what: a matrix of five cross-cutting rules against the three rows of the set — FIX-1458, the held child epic FIX-1455, and the unfiled assemblies row. Four rules have exactly one live owner; the done condition's owner is the unfiled row, drawn as a gap rather than an owner.](figures/ownership.svg)
+![Who owns what: a matrix of five cross-cutting rules against the three rows of the set — FIX-1458, the held child epic FIX-1455, and the unfiled assemblies row. Four rules have one committed owner; the done condition has a provisional owner in FIX-1455 and moves to the assemblies row if that row is cut. The figure's aria-label carries every cell and the count of the sixteen rules that sit outside the matrix.](figures/ownership.svg)
 
-Four of the five rules have exactly one live owner. The fifth — **ER-19, the done condition** — has
-none, because the only row that could own it is not filed. That cell is drawn as a gap on purpose:
-it is [Open 4](#open), and it is the thing about this set most worth arguing with at the gate. A
-*consumes* cell is a place a child must not re-decide.
+Four of the five rules in the matrix have one committed owner. The fifth — **ER-19, the done
+condition** — has a **provisional** one: FIX-1455, unless the assemblies cut says otherwise, which
+is why its cell is drawn dashed and why ER-4 carries the same conditional. Provisional is not
+committed, and it is [Open 3](#open) — still the thing about this set most worth arguing with at the
+gate. A *consumes* cell is a place a child must not re-decide.
+
+**Five rules need a column; the other sixteen don't** — ten prohibitions, four run-the-set rules and
+two further proofs bind every row equally, so the matrix leaves them out.
 
 ## Decided in review, recorded so no child reopens them
 
-Nothing yet — this is the first draft. Answers to cross-cutting questions raised on this PR land
-here.
+**Round 1 (2026-09-20)** — four reviewers on head `1d9218e`.
+
+- **ER-19 gets a provisional owner rather than none: FIX-1455, unless the assemblies cut says
+  otherwise**, and ER-4 travels with it. The collapse path had no defined owner, so a coordinator
+  could not tell whether to file assemblies work or wrap on FIX-1455. W4's ER-20 → FIX-1430 sets the
+  precedent. **The row itself is not pre-empted** — collapsing the set to two children was proposed
+  and **rejected** the same round, because the evidence that would decide it does not exist yet.
+- **An exploration may not exit with a wall open that a downstream child needs** — the identity model
+  and durable-hire persistence resolve, or the owner signs off leaving them open
+  ([ER-18](BUSINESS-RULES.md)). No conflict with *keep the opens open*: that guards the **assemblies
+  cut**, not a prerequisite reporting complete while the contract it supplies is undecided.
+- **ER-19 now requires org-bound execution**, which the objective promises and the old condition
+  could be satisfied without.
+- **ER-20 gains a wrap-time sweep of the shipped child diffs.** A spec-time check cannot see a child
+  that ships what its spec never claimed, and invent-kills are this epic's core fence.
+- **D5 is news, not an ask.** `SPEC.md` carried it as a fourth sign-off item while the PR body
+  correctly listed it as not-asked. The two surfaces disagreed; `SPEC.md` was the wrong one.
 
 ## What the end-state POC showed
 
@@ -105,22 +125,30 @@ and a rough end-state could falsify it.
 - **Drafted (Sep 19)** — from Jake's three-point spine, the Cycle PM stamp and the Architect EM
   fences on FIX-1457, all locked input. Two children filed, one spine point uncut. D5 records the
   epic-slot breach the same day.
+- **Review round 1 folded (Sep 20)** — greptile, cursor, codex and `second-look` on head `1d9218e`.
+  ER-19 gained a provisional owner and org identity, ER-18 a downstream-blocking clause, ER-20 a
+  wrap-time check; the sign-off surface dropped to three live asks. The objective did not move.
 
 <a name="open"></a>
 ## Open
 
-Four, plus the exploration's own walls.
+Three, plus the exploration's own walls. (Old Open 1 — *nothing names the proof surface* — is
+answered provisionally above; its committed form is now Open 3.)
 
-1. **Nothing in the set names its proof surface.** ER-19 describes what done looks like; no artifact
-   runs it. This resolves with Open 3 or it doesn't resolve.
-2. **Whether the kitchen-sink rebuild *is* spine point 3.** If it is, the assemblies row closes and
-   W5 is two children. The locked input leans this way and stops short of saying it.
-3. **The assemblies child cut.** Locked as *"exact child cut for assemblies after W4 first-cut
+1. **Whether the kitchen-sink rebuild *is* spine point 3.** If it is, the assemblies row closes and
+   W5 is two children. The locked input leans this way and stops short of saying it, and round 1
+   declined to pre-empt it.
+2. **The assemblies child cut.** Locked as *"exact child cut for assemblies after W4 first-cut
    lands"* — deliberately open, not a gap in this document.
-4. **Who owns the done condition once it is cut** — the assemblies row, or FIX-1455.
+3. **Whether ER-19's provisional owner becomes the committed one.** FIX-1455 holds it today; the cut
+   either confirms that or moves ER-19 and ER-4 to the assemblies row.
 
-**The exploration's four walls stay open by instruction** and are FIX-1458's to lean on, not this
-document's to close: human seat as its own kind vs an agent-shaped seat with a `principal:` bind ·
-one human ↔ many seats · whether channel members *are* seats or may be unbound principals · how
-durable hire persists a human seat (ties FIX-1455). Exploration may lean; **no wall closes without
-the owner**.
+**The exploration's four walls** are FIX-1458's to lean on, not this document's to close: human seat
+as its own kind vs an agent-shaped seat with a `principal:` bind · one human ↔ many seats · whether
+channel members *are* seats or may be unbound principals · how durable hire persists a human seat
+(ties FIX-1455). Exploration may lean; **no wall closes without the owner**.
+
+**Two of the four are downstream-blocking** — the identity model (first) and durable-hire
+persistence (fourth). FIX-1458 does not report complete with either still open unless the owner
+signs off leaving it open; the other two may stay open where the exploration shows they bind neither
+FIX-1455 nor the assemblies cut ([ER-18](BUSINESS-RULES.md)).
