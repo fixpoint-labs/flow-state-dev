@@ -23,7 +23,7 @@ the substrate stops being substrate, and it is deliberately **not** a fourth sub
 
 ## What's in the box
 
-![What's in the box: humans-in-seats as the same roster slot with a Waiting-on-you drain, the reference consumer, and assemblies that compose the W3 floor with the W4 first cut — with a ship fence showing that everything but the exploration waits on W4's first cut, and below a second fence the list of what the set refuses to build. The figure's aria-label carries every item.](figures/end-state.svg)
+![What's in the box: humans-in-seats as the same roster slot with a Waiting-on-you drain, the reference consumer, and assemblies that compose the W3 floor with the W4 first cut — with a ship fence, lifted on Sep 20 when W4's first cut landed, above two rows that have still not started, and below a second fence the list of what the set refuses to build. The figure's aria-label carries every item.](figures/end-state.svg)
 
 The box is a **composition**, not a layer ([D1](DECISIONS.md#d1)). The only genuinely new thing is
 what a seat is when a person sits in it, and it is **shaped, not shipped**, this cycle — the dashed
@@ -45,13 +45,15 @@ pre-empts nothing — the row stays, and [Open 1, 2 and 3](DECISIONS.md#open) st
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1458](https://linear.app/fixpoint-labs/issue/FIX-1458) · Explore: humans-in-seats | The **shape** of a human seat: the same roster slot, a Waiting-on-you drain, and the four walls answered — or left open only where the exploration shows they bind nothing downstream ([ER-18](BUSINESS-RULES.md)) | Spine point 1, and the gate on the other two — nothing else in the set can be specced until a person in a seat has a shape | **Needs spec** · route `spec` (Design + Feature) · no PR yet · **the one child sanctioned to run now** ([D4](DECISIONS.md#d4)) |
-| [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) · Kitchen-sink rebuild | The reference consumer people copy: durable hire, `CHANNEL.md` seats, boards, inventory, inline vs resource-backed UI | Spine point 2 — the living app the objective is proved in rather than described in, and ER-19's **provisional** owner until the cut | **Held child epic** · own `Epic` label, own child [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) (a `Bug`) · runs its **own** lifecycle ([ER-15](BUSINESS-RULES.md)) · ship fenced. No spec PR here **by design** |
-| FIX-XXX · working assemblies | Reference surfaces composing the W3 floor and the W4 first cut into runnable product shape | Spine point 3, and where [ER-19](BUSINESS-RULES.md) and [ER-4](BUSINESS-RULES.md) land if the cut names work FIX-1455 cannot carry | **Not filed** · the child cut is **undecided** until W4 first cut lands ([Open 2](DECISIONS.md#open)). One row standing for a spine point, **not** a promise of one issue |
+| [FIX-1458](https://linear.app/fixpoint-labs/issue/FIX-1458) · Explore: humans-in-seats | The **shape** of a human seat: the same roster slot, a Waiting-on-you drain, and the four walls answered — or left open only where the exploration shows they bind nothing downstream ([ER-18](BUSINESS-RULES.md)) | Spine point 1, and the gate on the other two — nothing else in the set can be specced until a person in a seat has a shape | **Spec in review** · route `spec` (Design + Feature) · spec [#1955](https://github.com/fixpoint-labs/flow-state-dev/pull/1955) |
+| [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) · Kitchen-sink rebuild | The reference consumer people copy: durable hire, `CHANNEL.md` seats, boards, inventory, inline vs resource-backed UI | Spine point 2 — the living app the objective is proved in rather than described in, and ER-19's **provisional** owner until the cut | **Held child epic** · own `Epic` label, own child [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) (a `Bug`) · runs its **own** lifecycle ([ER-15](BUSINESS-RULES.md)) · **ship fence lifted 2026-09-20** — W4's first cut landed; no ship ticket opened yet. No spec PR here **by design** |
+| FIX-XXX · working assemblies | Reference surfaces composing the W3 floor and the W4 first cut into runnable product shape | Spine point 3, and where [ER-19](BUSINESS-RULES.md) and [ER-4](BUSINESS-RULES.md) land if the cut names work FIX-1455 cannot carry | **Not filed** · the child cut is still **undecided**, but W4's first cut has landed, so it is now decidable ([Open 2](DECISIONS.md#open)). One row standing for a spine point, **not** a promise of one issue |
 
-**0 done · 1 ready to spec · 1 held child epic · 1 not filed.** W4 (FIX-1407) is *In Development*
-and its first cut has **not** shipped, so two of the three rows are fenced and the third is the
-whole of this cycle's W5 work.
+**0 done · 1 spec in review · 1 held child epic · 1 not filed.** W4 (FIX-1407) is *In Review* and
+every first-cut child is Done — only FIX-1460 (a dead-code call) and FIX-1461 (a docs page) are
+still Backlog — so **the ship fence has lifted**. FIX-1458's spec is the only W5 work in flight; no
+ship ticket has been opened and the assemblies cut has not been made
+([Open 2 and 3](DECISIONS.md#open)).
 
 **Is three really two?** The assemblies row is the one that can collapse: the locked input already
 leans against a third demo stack. **Collapse trigger:** an assemblies cut whose every item is

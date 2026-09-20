@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box for W5. In the box, three items. First, shaped this cycle: humans in seats — a person occupies the same roster slot an agent does, appearing in inventory, holding channel membership, and claiming or receiving board rows, with a Waiting-on-you drain instead of a model loop. Then a dashed ship fence band saying that W4's first cut has not shipped, so everything below it is fenced: explore crosses now, ship does not. Below the fence, two fenced items: the reference consumer, which is the kitchen-sink rebuild as a runnable app with durable hire, channels, seats, boards and inventory, running its own epic lifecycle; and working assemblies, reference surfaces composing the W3 floor with the W4 first cut, whose child cut is undecided. A note says everything in the box is made of W3 and W4 pieces, and only the top row is new. Composed in by the app: its own channel kinds and CHANNEL.md files, and its own approval and Waiting-on-you rendering. Consumed, not owned: the W3 floor, which has landed, and the W4 first cut, which is still in development. Below a second fence, what is not built: no Human, Team, Channel or Agent as an L1 type; no parallel HITL plane and no human-only side boards; no merged board-assignee and seat registry; no new L1 TaskStatus for Waiting-on-you or Idle; no Collab RC as the whole of W5; no kitchen-sink-only APIs, KS-only durable store or in-memory-only hire; no DevForce or CyberForce Lab product inside the kitchen-sink; no seats plugged into supervisor or patterns factories as L2 primitives; no nested sessions as the work control plane; no second skill registry and no second memory story for human principals.">
+     aria-label="What's in the box for W5. In the box, three items. First, shaped this cycle: humans in seats — a person occupies the same roster slot an agent does, appearing in inventory, holding channel membership, and claiming or receiving board rows, with a Waiting-on-you drain instead of a model loop. Then a dashed ship fence band saying that the fence lifted on September 20, when W4's first cut landed, and that neither row below it has started. Below the fence, two items, unfenced but not yet begun: the reference consumer, which is the kitchen-sink rebuild as a runnable app with durable hire, channels, seats, boards and inventory, running its own epic lifecycle; and working assemblies, reference surfaces composing the W3 floor with the W4 first cut, whose child cut is undecided. A note says everything in the box is made of W3 and W4 pieces, and only the top row is new. Composed in by the app: its own channel kinds and CHANNEL.md files, and its own approval and Waiting-on-you rendering. Consumed, not owned: the W3 floor, which has landed, and the W4 first cut, which has also landed. Below a second fence, what is not built: no Human, Team, Channel or Agent as an L1 type; no parallel HITL plane and no human-only side boards; no merged board-assignee and seat registry; no new L1 TaskStatus for Waiting-on-you or Idle; no Collab RC as the whole of W5; no kitchen-sink-only APIs, KS-only durable store or in-memory-only hire; no DevForce or CyberForce Lab product inside the kitchen-sink; no seats plugged into supervisor or patterns factories as L2 primitives; no nested sessions as the work control plane; no second skill registry and no second memory story for human principals.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -35,7 +35,7 @@
     <text class="t-b" x="44" y="90">humans in seats &#8212; a person occupies the same roster slot</text>
 
     <rect class="fence" x="32" y="108" width="528" height="16" rx="2"/>
-    <text class="t-fen" x="44" y="120">SHIP FENCE &#183; W4 first cut has not shipped &#8212; explore crosses now, ship does not</text>
+    <text class="t-fen" x="44" y="120">SHIP FENCE &#183; LIFTED Sep 20, W4’s first cut landed &#8212; neither row below has started</text>
 
     <rect class="held" x="32" y="130" width="528" height="40" rx="4"/>
     <text class="t-b" x="44" y="147">the reference consumer &#8212; FIX-1455, its own lifecycle</text>
@@ -65,7 +65,7 @@
     <rect class="inp" x="608" y="186" width="300" height="30" rx="4"/>
     <text class="t-s" x="620" y="205">W3 floor &#183; FIX-1351 &#8212; landed</text>
     <rect class="inp" x="608" y="220" width="300" height="30" rx="4"/>
-    <text class="t-s" x="620" y="239">W4 first cut &#183; FIX-1407 &#8212; in development</text>
+    <text class="t-s" x="620" y="239">W4 first cut &#183; FIX-1407 &#8212; landed</text>
   </g>
 
   <g id="not-built">

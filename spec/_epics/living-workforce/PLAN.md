@@ -9,13 +9,15 @@ run ([ER-15](BUSINESS-RULES.md)). IDs cross-reference [DECISIONS.md](DECISIONS.m
 
 ## The path
 
-![Lanes against time. Two input lanes carry the W3 floor, landed, and the W4 first cut, still in development. A ship fence band says W4's first cut has not shipped, so every W5 ship lane is fenced. Below it the three lanes of the set: FIX-1458 opens a bar at the now line, the only lane that crosses the fence; FIX-1455 is a dashed line beginning after the fence lifts; the assemblies lane carries no bar at all. The figure's aria-label carries every lane.](figures/path.svg)
+![Lanes against time. Two input lanes carry the W3 floor and the W4 first cut, both landed. A ship fence band says the fence lifted on Sep 20 when W4's first cut landed, and that no W5 ship lane has opened yet. Below it the three lanes of the set: FIX-1458 carries a live in-flight bar across the now line, its spec in review; FIX-1455 is a dashed not-started line beginning just after the now line; the assemblies lane carries no bar at all. The figure's aria-label carries every lane.](figures/path.svg)
 
-One lane crosses the now line: **FIX-1458 is the whole of this cycle's W5 work.** Everything else is
-behind the ship fence, which [D4](DECISIONS.md#d4) defines. The dashed assemblies lane has no bar at
-all rather than a zero-width one — a row whose cut is undecided has no duration to draw. The
-dependency graph is in [the spec](SPEC.md#how-the-issues-flow-into-each-other); this figure adds time
-to it, and the critical path runs through FIX-1455 because the proof surface is the reference app.
+One lane carries a live bar: **FIX-1458's spec is in review, and it is still the only W5 work in
+flight.** The ship fence [D4](DECISIONS.md#d4) defines has **lifted** — W4's first cut landed on
+Sep 20 — so neither FIX-1455 nor the assemblies cut is fenced any more, and neither has started. The
+dashed assemblies lane has no bar at all rather than a zero-width one — a row whose cut is undecided
+has no duration to draw. The dependency graph is in
+[the spec](SPEC.md#how-the-issues-flow-into-each-other); this figure adds time to it, and the
+critical path runs through FIX-1455 because the proof surface is the reference app.
 
 ## What each issue entails
 
@@ -31,10 +33,11 @@ Status lives in one place: [the set table in the spec](SPEC.md#the-set--as-of-20
 above carry the same state as a picture of time and are redrawn when it moves.
 
 **The inputs from other epics, and their verified state as of 2026-09-20:** the **W3 floor**
-(FIX-1351) has landed the pieces W5 needs. The **W4 first cut** (FIX-1407) is *In Development* and
-has **not** shipped — FIX-1385, FIX-1394, FIX-1408 and FIX-1451 are Done, FIX-1405 is In Review,
-FIX-1381 In Spec Review, FIX-1430 Spec Approved, and FIX-1460 and FIX-1461 are Backlog. W5 is a
-**sibling** of W4, never nested under it; the W3→W4→W5 chain is unbroken.
+(FIX-1351) has landed the pieces W5 needs. The **W4 first cut** (FIX-1407) has **landed** — the epic
+is *In Review* and FIX-1381, FIX-1385, FIX-1394, FIX-1405, FIX-1408, FIX-1430 and FIX-1451 are all
+Done; the two rows left open, FIX-1460 (a dead-code call) and FIX-1461 (a docs page), are Backlog
+strays outside the first cut. W5 is a **sibling** of W4, never nested under it; the W3→W4→W5 chain
+is unbroken.
 
 ## What unblocks what, from here
 
@@ -45,7 +48,8 @@ FIX-1381 In Spec Review, FIX-1430 Spec Approved, and FIX-1460 and FIX-1461 are B
    exploration that exits with either still open releases its dependants onto nothing.
 2. **W4's first cut ships** (channel/org board → seat runs · assign team seats) → the ship fence
    lifts, FIX-1455's ship tickets may open, and the assemblies cut is made
-   ([Open 3](DECISIONS.md#open)).
+   ([Open 3](DECISIONS.md#open)). **This happened on 2026-09-20** — the fence is down, and nothing
+   downstream of it has been started.
 3. **The assemblies cut is made** → ER-19's owner turns from provisional into committed, either
    staying with FIX-1455 or moving to the new row. If the cut names nothing outside FIX-1455's set,
    the row **closes** instead and W5 is two children.
