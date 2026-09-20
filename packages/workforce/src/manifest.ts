@@ -46,6 +46,64 @@ export interface WorkerManifest {
    * mint reads, so the record is where a per-seat set has to ride.
    */
   skills?: InitialSkill[];
+  /**
+   * The instructions this seat's TEAM wrote — its team's, never its own.
+   *
+   * Filled by the joined loader (`readWorkforce`) from the team's
+   * {@link TEAM_MD}, and **absent on a hand-built record**, which is the
+   * difference between "this seat's team wrote none" and "nobody read a team
+   * file for it" — the same shape and the same story as {@link
+   * WorkerManifest.skills}.
+   *
+   * Absent rather than empty when a team wrote nothing, all the way down: it
+   * reaches a hired flow as `config.teamInstructions` ({@link
+   * TEAM_INSTRUCTIONS_KEY}) only when it is here, so a team with no file
+   * changes nothing about the bag its seats receive.
+   *
+   * Never merged with {@link WorkerManifest.body}. Two layers that cannot be
+   * told apart at the seam are one layer, and a kind that wants only the seat's
+   * own charter must be able to have it.
+   */
+  teamInstructions?: string;
+}
+
+/**
+ * One team, as read off disk.
+ *
+ * The record {@link TEAM_MD} produces, and the fourth in this dialect beside
+ * {@link WorkerManifest}, {@link ChannelManifest} and {@link ResourceDoc}.
+ * Declared here with them for the reason they are: node-free, so the reader
+ * (which reads folders) and the join (which reads nothing) never hold two
+ * spellings of one record.
+ *
+ * A team is not a seat. This record declares no flow, reaches no `hireWorkforce`
+ * roster, and mints no address — it carries what a team says about itself and
+ * what it tells its seats, and nothing else.
+ */
+export interface TeamManifest {
+  /** The team's id, which is its folder's name. Derived, never declared. */
+  id: string;
+  /**
+   * What this team is, in one line — its file's required `description`.
+   *
+   * Surfaced here rather than parsed and discarded. **Nothing reads it yet**:
+   * no roster view exists, and building one is not this convention's job.
+   * Required all the same, because the dialect requires it on every file an
+   * author writes by hand, and validating a value only to drop it is worse than
+   * either reading it or not asking for it.
+   */
+  description: string;
+  /** Frontmatter exactly as written — keys as the file spelled them, values uninterpreted. */
+  declared: Record<string, unknown>;
+  /**
+   * What every seat on this team is told: the file's Markdown body, verbatim.
+   *
+   * **Absent when the body is empty or whitespace**, never `""`. Whitespace is
+   * not instructions — the rule the seat factory already applies one level up,
+   * where an empty body handed over as a setting turned every thin seat into a
+   * failed hire.
+   */
+  instructions?: string;
 }
 
 /**
@@ -131,10 +189,12 @@ export const SEAT_SKILLS_KEY = "seatSkills";
  * `teamInstructions` — where a seat's TEAM-level instructions will arrive in
  * its flow's settings bag.
  *
- * **Nothing imposes it yet.** The factory imposes `instructions` and
- * `seatSkills`; this key is declared by the contract and reserved, so a kind
- * reading it today gets `undefined` however many instructions a team has
- * written. What fills it is the team-level file, which FIX-1377 reads.
+ * Filled from the team's own {@link TEAM_MD}: the loader reads that file once
+ * per team, joins its body onto every worker record under it, and the factory
+ * imposes this key for the records that carry one. A kind reading it for a
+ * seat whose team wrote none gets `undefined` — the key is ABSENT, never an
+ * empty string, so "this team said nothing" is not a value every team without
+ * a file hands its seats.
  *
  * Declared here, beside {@link INSTRUCTIONS_KEY} and {@link SEAT_SKILLS_KEY},
  * because it is the same sort of thing as both — a value the framework will
@@ -146,13 +206,21 @@ export const SEAT_SKILLS_KEY = "seatSkills";
  * name this constant rather than a literal, so a rename moves every refusal
  * with it instead of leaving a door open with nothing said.
  *
- * The contract declares the key ({@link workerConfigSchema}) and the doors
- * refuse an authored one from today. What FILLS it is a team's own file, which
- * FIX-1377 reads — so until that lands the key is a declared door with nothing
- * coming through it, which is the point: a kind composes the contract once and
- * does not change again when the layer arrives.
+ * The contract declared this key before anything filled it, and that was the
+ * point: a kind composes the contract once and did not have to change again
+ * when the team-level file arrived to fill it.
  */
 export const TEAM_INSTRUCTIONS_KEY = "teamInstructions";
+
+/**
+ * The document that describes a team — the one name in this convention an
+ * author types, and the architect's locked file contract.
+ *
+ * Optional, unlike every other file in this dialect: a team folder with no
+ * {@link TEAM_MD} is not a problem of any kind, and its seats hire exactly as
+ * they do without one.
+ */
+export const TEAM_MD = "TEAM.md";
 
 /**
  * The one wording for {@link TEAM_INSTRUCTIONS_KEY}, shared by every door that
@@ -166,8 +234,74 @@ export const TEAM_INSTRUCTIONS_KEY = "teamInstructions";
  * are its team's to write.
  */
 export const REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE =
-  `declares \`${TEAM_INSTRUCTIONS_KEY}:\`, which is not a setting a worker declares. ` +
-  `A seat's team-level instructions belong to its team, and reading them is the loader's job.`;
+  `declares \`${TEAM_INSTRUCTIONS_KEY}:\`, which is not a setting any file declares. ` +
+  `A team's instructions are the body of its ${TEAM_MD}, and reading them is the loader's job.`;
+
+/**
+ * The keys a {@link TEAM_MD} may not declare, each with why.
+ *
+ * Three, and they are refused for three different reasons rather than one:
+ *
+ * - `id` is the folder's name. A derived field frontmatter can overwrite was
+ *   never derived.
+ * - `flow` would read this file as a second place a seat can be declared. A
+ *   second seat list is the one failure this convention refuses outright — a
+ *   team file describes a team, and every seat is a `WORKER.md`.
+ * - `instructions` is what the body already is, and two sources for one value
+ *   have no precedence rule. The same collision the seat factory refuses rather
+ *   than resolves.
+ *
+ * {@link TEAM_INSTRUCTIONS_KEY} is refused too, and deliberately not from this
+ * list: it is refused at three doors from one constant, and its wording is
+ * {@link REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE}, shared with them.
+ */
+const REFUSED_TEAM_KEYS: ReadonlyArray<{ key: string; because: string }> = [
+  {
+    key: "id",
+    because: `A team's id is its folder's name.`,
+  },
+  {
+    key: "flow",
+    because:
+      `A ${TEAM_MD} describes a team, not a seat — every seat is a WORKER.md in ` +
+      `this team's \`workers/\` folder.`,
+  },
+  {
+    key: INSTRUCTIONS_KEY,
+    because:
+      `A team's instructions are this file's body, and there is no precedence rule ` +
+      `between the two. Write them below the frontmatter.`,
+  },
+];
+
+/**
+ * Say why a `TEAM.md`'s declaration is refused, or `undefined` when nothing is.
+ *
+ * Names no subject — the caller supplies the path it read, exactly as
+ * {@link REFUSED_PERSONA_KEY_MESSAGE} and {@link refusedDeclarationMessage} do.
+ *
+ * The imposed key is checked here rather than left to the caller so that one
+ * function answers for the whole file, and it reads {@link
+ * TEAM_INSTRUCTIONS_KEY} rather than a literal: its spelling is not locked, and
+ * a literal here would keep refusing a name the framework had since renamed —
+ * leaving this door open with nothing said, in the file that looks most like
+ * the right place to write it.
+ */
+export function refusedTeamDeclarationMessage(
+  declared: Record<string, unknown>,
+): string | undefined {
+  if (Object.hasOwn(declared, TEAM_INSTRUCTIONS_KEY)) {
+    return REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE;
+  }
+
+  for (const { key, because } of REFUSED_TEAM_KEYS) {
+    if (Object.hasOwn(declared, key)) {
+      return `declares \`${key}:\`, which is not a setting a team declares. ${because}`;
+    }
+  }
+
+  return undefined;
+}
 
 /**
  * The one wording for {@link SEAT_SKILLS_KEY}, shared by the loader and the
@@ -236,6 +370,98 @@ export const duplicateSkillNameMessage = (
 ): string =>
   `Skill "${name}" reaches seat "${seat}" from ${paths.length} levels — ` +
   `${paths.join(" and ")}. Remove one: there is no precedence rule.`;
+
+/**
+ * `seatTools` — imposed by the seat factory on every record, and where the
+ * blocks a seat's `tools:` resolved to **from its own levels** arrive in its
+ * flow's settings bag.
+ *
+ * The fourth contract key, and the one that carries live blocks rather than
+ * strings. A tool name in a `WORKER.md` resolves worker folder → team folder →
+ * the app's catalog, first match wins; the first two resolve to a block the
+ * hire step already holds, and they ride here, already resolved. The names that
+ * fell through to the app's catalog stay in `tools:`, which is what the kind
+ * checks its catalog against and what the delegation fence narrows a board
+ * worker to.
+ *
+ * Spelled `seatTools` rather than `seatBlocks` because the two are different
+ * things and one name for both is the collision this package refuses rather
+ * than resolves: `seatBlocks` is the generated map of what a seat's folders
+ * REGISTER, and this is the subset the seat's file DECLARED out of it.
+ * Registration makes a name resolvable; declaration grants use.
+ *
+ * Declared here for the reason {@link SEAT_SKILLS_KEY} is: the factory imposes
+ * it, every door refuses an authored one, and two spellings of one key is the
+ * bug.
+ */
+export const SEAT_TOOLS_KEY = "seatTools";
+
+/**
+ * The one wording for {@link SEAT_TOOLS_KEY}, shared by every door that refuses
+ * an authored one. Names no subject — the caller supplies what it can name.
+ *
+ * Refused for the reason `seatSkills` is: a kind composing the contract
+ * declares this key and would take an authored one happily, so a seat could run
+ * carrying tools no folder of its backs — and only that seat, silently.
+ */
+export const REFUSED_SEAT_TOOLS_KEY_MESSAGE =
+  `declares \`${SEAT_TOOLS_KEY}:\`, which is not a setting a worker declares. ` +
+  `A seat names its tools in \`tools:\`, and resolving each name against the blocks its ` +
+  `folders register is the loader's job.`;
+
+/**
+ * The one wording for a block registered under a name its own `name` does not
+ * match — the one-name rule, on either map.
+ *
+ * A function rather than a string because the useful part is the two spellings
+ * and which of them the model would have been advertised: a seat authorizes by
+ * the map's key and the generator advertises the block's own `name`, so a
+ * disagreement is a seat authorizing one tool and a model calling another. The
+ * caller names the map, because the two maps are refused at different doors —
+ * the app's catalog when the kind is built, a seat's own when it is hired.
+ */
+export const oneNameMessage = (key: string, blockName: string, whichMap: string): string =>
+  `${whichMap} registers "${key}", and the block under that key calls itself "${blockName}". ` +
+  `One tool has one name: the file's, the map key's and the block's own must agree. ` +
+  `The model would be advertised "${blockName}", so a seat authorizing "${key}" would never ` +
+  `reach it. Rename the block to "${key}", or rename the file to "${blockName}".`;
+
+/**
+ * The one wording for a block that arrives on a seat's own map and declares its
+ * own resources.
+ *
+ * A seat's folder is ONE seat's and a store is the kind's, so there is nowhere
+ * to install it that does not also install it for every sibling seat of that
+ * kind. Refused by name at the door, with both fixes, because the alternative
+ * is the defect this epic exists to kill: the tool is hired, advertised to the
+ * model, called, and its handle is simply not there.
+ */
+export const colocatedResourceMessage = (key: string, accessors: string[]): string =>
+  `registers block "${key}" in its own folder, and that block declares ` +
+  `${accessors.map((a) => `"${a}"`).join(", ")}. A seat's own folder is one seat's and a store ` +
+  `is the kind's, so there is nowhere to install it that would not also install it for every ` +
+  `other seat of this kind. Either declare the store on the kind ` +
+  `(\`defineAgentWorkerFlow({ uses })\`), or move the block to \`workforce/blocks/\` and name ` +
+  `it in this worker's \`tools:\`.`;
+
+/**
+ * The one wording for a block that arrives on a seat's own map and declares
+ * that it needs org context.
+ *
+ * The second axis of {@link colocatedResourceMessage}, refused for its reason.
+ * `requiresOrg` is the KIND's — it is what the transport checks before a
+ * request is admitted — so raising it from inside one worker's folder would
+ * change the admission rule for every sibling seat of that kind. The supported
+ * route is the one a store already takes: the kind declares it, and the
+ * colocated block runs inside a flow that has it.
+ */
+export const colocatedRequiresOrgMessage = (key: string): string =>
+  `registers block "${key}" in its own folder, and that block declares ` +
+  `\`requireOrg\`. Whether a seat's flow needs org context is the kind's to ` +
+  `declare — the transport reads it before a request is admitted — so one ` +
+  `worker's folder cannot raise it without raising it for every other seat of ` +
+  `this kind. Declare it on the kind, or move the block to \`workforce/blocks/\` ` +
+  `and name it in this worker's \`tools:\`.`;
 
 /**
  * One file-declared document, as read off disk or hand-built. The resources

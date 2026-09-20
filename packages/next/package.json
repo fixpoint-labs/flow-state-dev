@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/next",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Next.js deployment adapter for flow-state-dev.",
   "keywords": [
     "ai",
@@ -64,7 +64,7 @@
     "zod": "^3.25.76"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run --root .",
     "test:watch": "vitest --root ."

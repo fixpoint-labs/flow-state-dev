@@ -21,6 +21,7 @@
 
 import type {
   ActionConfig,
+  BlockDefinition,
   DeclaredResourceEntry,
   FlowInstance,
   FlowType,
@@ -35,12 +36,18 @@ import {
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
   REFUSED_SEAT_SKILLS_KEY_MESSAGE,
+  REFUSED_SEAT_TOOLS_KEY_MESSAGE,
   REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
   SEAT_SKILLS_KEY,
+  SEAT_TOOLS_KEY,
   TEAM_INSTRUCTIONS_KEY,
+  colocatedRequiresOrgMessage,
+  colocatedResourceMessage,
+  oneNameMessage,
   type WorkerManifest
 } from "./manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
+import { workerConfigSchema } from "./worker-config";
 
 /** The two keys the factory itself reads. Everything else is the worker's settings. */
 const RESERVED_KEYS = ["flow", "description"] as const;
@@ -65,6 +72,47 @@ export interface HireOptions {
    * under `agent` replaces the built-in for every seat.
    */
   kinds?: Record<string, AnyFlowType>;
+
+  /**
+   * The blocks each seat's own folders REGISTER, keyed by worker id and then by
+   * block name — `fsdev gen`'s `seatBlocks` export, passed straight through.
+   *
+   * **Registration, not a grant.** An entry here makes that name resolvable by
+   * that seat; the seat's `tools:` is still what decides whether it may call
+   * it, and a registered block the file never names is not on the model's
+   * toolset. A name resolves worker folder → team folder → the app's catalog,
+   * first match wins; the first two arrive here already collapsed by the
+   * generated map, and this step is where the last hop happens.
+   *
+   * Per seat and never installed on the kind: a kind's capabilities and
+   * resources are shared by every seat of it, so one worker's folder installed
+   * there would change every sibling. That is why a block here may USE a store
+   * the kind has and may not DECLARE one — see
+   * {@link colocatedResourceMessage}.
+   *
+   * Optional. Omitted, every seat hires exactly as it did before this existed.
+   */
+  seatBlocks?: Record<string, Record<string, BlockDefinition<any, any>>>;
+
+  /**
+   * The ledger ids this app's channels declared — `channelBoardIds(channels)`.
+   *
+   * Handed over so this step can say when a channel holds a board **no flow
+   * hired here declares**: the rows would sit `pending` forever with nothing
+   * said, which is the one failure a declared board can produce silently. Each
+   * unattended id gets a `console.warn` naming the channel and the id.
+   *
+   * **A warning, never a refusal**, and the reason is in the evidence rather
+   * than in a preference: a seat may legitimately live in another process, and
+   * this check cannot see it. So a missing declaration is *probably* a mistake
+   * and cannot be proved to be one, which is exactly the shape a warning is
+   * for.
+   *
+   * Optional. Omitted, nothing is checked and nothing is said — the check
+   * cannot invent a roster's ids, and every caller that predates boards hires
+   * exactly as it did.
+   */
+  channelBoards?: readonly string[];
 }
 
 /** A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere. */
@@ -119,8 +167,23 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The keys the contract declares, in the order an author reads them. */
-const CONTRACT_KEYS = [INSTRUCTIONS_KEY, TEAM_INSTRUCTIONS_KEY, SEAT_SKILLS_KEY] as const;
+/**
+ * The keys the contract declares, in the order an author reads them — **read
+ * off the contract rather than listed here.**
+ *
+ * A hand-maintained copy of this membership is the same defect one level up
+ * from the one {@link admissionHint} exists to prevent: the hint's whole job is
+ * to name the key an author has to add, and the key it is needed for most is
+ * the NEWEST one, which is exactly the one a hand-written list is missing the
+ * day it is added. The refusal still fires either way, so the symptom is a
+ * diagnostic that goes quiet on the one case nobody has heard of yet — and an
+ * author reads that silence as "not that".
+ *
+ * `workerConfigSchema()` is the one definition of the set, so it is the one
+ * thing consulted. Built once at module scope: the schema is a fresh object per
+ * call, and its SHAPE is what is read.
+ */
+const CONTRACT_KEYS: readonly string[] = Object.keys(workerConfigSchema().shape);
 
 /**
  * Why a mint refused, in one added sentence — **or nothing, which is the
@@ -155,8 +218,9 @@ function admissionHint(refusal: string): string | undefined {
   // than reporting a key. No door of any kind, no ambiguity, nothing to infer.
   if (refusal.includes("declares no configSchema")) {
     return (
-      `A hireable kind must declare somewhere for a seat's instructions and resolved skills to ` +
-      `arrive: \`configSchema: workerConfigSchema()\`, extended with this kind's own settings.`
+      `A hireable kind must declare somewhere for what the hire step imposes — ` +
+      `${CONTRACT_KEYS.map((key) => `\`${key}\``).join(", ")} — to arrive: ` +
+      `\`configSchema: workerConfigSchema()\`, extended with this kind's own settings.`
     );
   }
 
@@ -179,10 +243,76 @@ function admissionHint(refusal: string): string | undefined {
   const named = missing.map((key) => `\`${key}\``).join(", ");
   return (
     `${missing.length === 1 ? "That key is" : "Those keys are"} the framework's: every hireable kind ` +
-    `admits ${named} by composing \`workerConfigSchema()\`, which is where a seat's instructions and ` +
-    `its resolved skills arrive. Wrap this kind's settings: ` +
+    `admits ${named} by composing \`workerConfigSchema()\`, which is where everything the hire step ` +
+    `imposes on a seat arrives. Wrap this kind's settings: ` +
     `\`configSchema: workerConfigSchema().extend({ ...its own settings })\`.`
   );
+}
+
+/**
+ * Why one seat's own block registry cannot be used as written — every reason,
+ * or an empty list.
+ *
+ * Checked against the REGISTRY rather than against the names the seat declared,
+ * on purpose: registering a name is a promise that the name resolves to
+ * something callable, so a registry the framework cannot keep that promise over
+ * is broken whether or not this particular seat happens to name it. Waiting
+ * until it is named would make the same tree pass or fail depending on one line
+ * of a Markdown file.
+ *
+ * Collected, not thrown, so one run names every problem — the bargain the rest
+ * of this step makes.
+ */
+function seatBlockProblems(registry: Record<string, BlockDefinition<any, any>>): string[] {
+  const problems: string[] = [];
+  for (const [key, block] of Object.entries(registry)) {
+    const blockName = (block as { name?: unknown }).name;
+    if (typeof blockName === "string" && blockName !== key) {
+      problems.push(oneNameMessage(key, blockName, "This worker's own folder"));
+    }
+    const declared = (block as { declaredResources?: Record<string, unknown> }).declaredResources;
+    const accessors = declared === undefined ? [] : Object.keys(declared);
+    if (accessors.length > 0) problems.push(colocatedResourceMessage(key, accessors));
+    // The second axis. `requiresOrg` is aggregated onto a composite block from
+    // its children, so this catches a sequencer whose leaf asked for it as well
+    // as a handler that asked directly.
+    if ((block as { requiresOrg?: boolean }).requiresOrg === true) {
+      problems.push(colocatedRequiresOrgMessage(key));
+    }
+  }
+  return problems;
+}
+
+/**
+ * Split a seat's declared tool names by where each one resolved.
+ *
+ * The seat's own registry is nearer than the app's catalog, so it answers first
+ * — the worker → team → org precedence, with the first two already collapsed
+ * onto the registry. What resolved there becomes a live block on
+ * {@link SEAT_TOOLS_KEY}; what did not stays a NAME on `tools`, which is what
+ * the kind checks its catalog against and what the delegation fence narrows a
+ * board worker to. A colocated tool therefore does not travel through a
+ * delegation, and that falls out of where the name landed rather than from a
+ * second rule.
+ *
+ * A `tools:` that is not an array of strings is left exactly as the author
+ * wrote it: the kind's own schema is what refuses a malformed setting, and
+ * guessing here would refuse it twice, differently.
+ */
+function resolveDeclaredTools(
+  declared: unknown,
+  registry: Record<string, BlockDefinition<any, any>>
+): { catalogNames: unknown; seatTools: Array<BlockDefinition<any, any>> } {
+  if (!Array.isArray(declared) || declared.some((name) => typeof name !== "string")) {
+    return { catalogNames: declared, seatTools: [] };
+  }
+  const catalogNames: string[] = [];
+  const seatTools: Array<BlockDefinition<any, any>> = [];
+  for (const name of declared as string[]) {
+    if (Object.hasOwn(registry, name)) seatTools.push(registry[name]!);
+    else catalogNames.push(name);
+  }
+  return { catalogNames, seatTools };
 }
 
 /**
@@ -219,6 +349,7 @@ export function hireWorkforce(
   const seats: FlowInstance[] = [];
   const problems: string[] = [];
   const seen = new Set<string>();
+  const seatBlocks = options.seatBlocks ?? {};
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
@@ -268,6 +399,15 @@ export function hireWorkforce(
     // instructions belong to its team.
     if (Object.hasOwn(settings, TEAM_INSTRUCTIONS_KEY)) {
       refuse(REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE);
+      continue;
+    }
+
+    // The fourth contract key, refused for the reason the other two imposed
+    // keys are: a kind composing the contract declares it, so an authored one
+    // would be accepted and the seat would run carrying tools no folder of its
+    // backs — silently, and only for that seat.
+    if (Object.hasOwn(settings, SEAT_TOOLS_KEY)) {
+      refuse(REFUSED_SEAT_TOOLS_KEY_MESSAGE);
       continue;
     }
 
@@ -360,6 +500,42 @@ export function hireWorkforce(
     // that distinction stays on the record, where it belongs.
     settings[SEAT_SKILLS_KEY] = manifest.skills ?? [];
 
+    // The seat's TEAM-level instructions — and **only when the record carries
+    // them**, which is the opposite of the line above and deliberately so.
+    //
+    // `seatSkills` is imposed on every record because present-and-empty is a
+    // real answer for a seat's skills: the folders were read and held nothing.
+    // A team layer has no such answer. A team that wrote no instructions and a
+    // team with no file at all both mean *this seat is told nothing extra*, and
+    // handing `""` over would make them a value every kind's schema can see —
+    // a different bag for every team in every tree that has no file, and the
+    // trap the body rule above already names.
+    //
+    // Whitespace is not instructions here either. The loader will not produce
+    // such a record, but a hand-built roster never passes the loader, and this
+    // is the same one-line rule its neighbour applies to a body.
+    if (
+      typeof manifest.teamInstructions === "string" &&
+      manifest.teamInstructions.trim().length > 0
+    ) {
+      // Verbatim: the check is on the trimmed value, the value is the value.
+      settings[TEAM_INSTRUCTIONS_KEY] = manifest.teamInstructions;
+    }
+
+    // The seat's own block registry, and the names its file resolved out of it.
+    // Imposed on EVERY record for the reason `seatSkills` is: present-and-empty
+    // is the answer for *nothing registered*, and the bag is handed over all
+    // the same.
+    const registry = seatBlocks[manifest.id] ?? {};
+    const registryProblems = seatBlockProblems(registry);
+    if (registryProblems.length > 0) {
+      for (const problem of registryProblems) refuse(problem);
+      continue;
+    }
+    const { catalogNames, seatTools } = resolveDeclaredTools(settings["tools"], registry);
+    if (Object.hasOwn(settings, "tools")) settings["tools"] = catalogNames;
+    settings[SEAT_TOOLS_KEY] = seatTools;
+
     try {
       // Always a bag, so always admitted. The branch that stood here passed no
       // bag at all for a record that declared nothing — which is admission
@@ -377,6 +553,20 @@ export function hireWorkforce(
     }
   }
 
+  // **An entry addressed to a worker this call is not hiring is not a problem.**
+  // A short roster is a supported mode — `readWorkforce` reports a folder that
+  // produced no worker and loads the rest, and a caller may hire what loaded —
+  // while `seatBlocks` is generated from the WHOLE tree. So the two sets
+  // legitimately differ, and refusing the difference broke the documented mode:
+  // one skipped worker turned every other seat's hire into a refusal, which is
+  // how `refused 2 of 1 worker` became a sentence this function could print.
+  //
+  // Nothing is lost by staying quiet. The generated map cannot address a worker
+  // the tree does not hold, because one walk produces both; a hand-built map is
+  // the caller's business in the same way a hand-built roster is. What is
+  // validated is every registry belonging to a manifest actually being hired,
+  // which happens in the loop above.
+
   if (problems.length > 0) {
     throw new Error(
       `hireWorkforce refused ${problems.length} of ${ordered.length} worker${ordered.length === 1 ? "" : "s"}; ` +
@@ -384,5 +574,46 @@ export function hireWorkforce(
     );
   }
 
+  // After the refusals, deliberately: a roster that did not hire has nothing
+  // to be unattended by, and a warning printed beside a fatal error is noise.
+  warnUnattendedBoards(options.channelBoards ?? [], seats);
+
   return seats;
+}
+
+/**
+ * Say which channel boards nobody hired here drains.
+ *
+ * Read off the hired instances' merged `resources` rather than off the kinds:
+ * a board reaches a flow either as a flow-level declaration or by bubbling up
+ * from a capability, and only the minted instance has both.
+ */
+function warnUnattendedBoards(
+  boardIds: readonly string[],
+  seats: readonly FlowInstance[]
+): void {
+  if (boardIds.length === 0) return;
+
+  const declared = new Set<string>();
+  for (const seat of seats) {
+    for (const key of Object.keys(seat.resources ?? {})) declared.add(key);
+  }
+
+  for (const boardId of boardIds) {
+    if (declared.has(boardId)) continue;
+    // A board id is its channel's id, a dot, and a name carrying no dot.
+    const channelId = boardId.slice(0, boardId.lastIndexOf("."));
+    // The LOCAL name in the prose, because that is what the `CHANNEL.md` says
+    // and what an operator goes looking for. The minted id appears once, in
+    // the fix, where it is the thing to copy.
+    const boardName = boardId.slice(channelId.length + 1);
+    console.warn(
+      `[workforce] channel "${channelId}" holds board "${boardName}" (ledger "${boardId}"), ` +
+        `and no flow hired in this ` +
+        `call declares it. Rows filed there will sit pending until something drains them — ` +
+        `declare the board on the seat that runs the work ` +
+        `(\`resources: { [board.id]: board }\` with \`channelBoard("${channelId}", "${boardName}")\`), ` +
+        `or ignore this if that seat runs in another process.`
+    );
+  }
 }

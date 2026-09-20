@@ -8,6 +8,8 @@ sidebar_position: 3
 
 The tool installs as part of `mem.capability` by default. If you want context-only memory, turn it off with `mem.capability.with({ recall: false })`. The same tool is installed by the `recall` preset on the capability returned by [`createMemoryCapability`](./configuration#creatememorycapability-options), so a read-only flow gets it without `system()`.
 
+A generator that declares a `tools:` list of its own gets that list and nothing else, so the preset does not reach it. Put the tool in the list to keep it: `tools: [lookupOrder, mem.tool.recall()]`.
+
 ## Default behavior
 
 The agent sees a tool with a `query` argument and an optional `limit`. Under the hood, the system runs the configured retrieval strategy (default: `llm-filter`) over candidate semantic facts and recent episodes, ranks them, and returns a capped list of items the model can read.

@@ -163,6 +163,8 @@ generator({
 
 Default-on presets: `digest`, `working`, `recall`. Off by default: `episodic` and `semantic` context entries. The recall tool covers them already; turn the context entries on when you also want them auto-injected each turn.
 
+A generator that declares its own `tools:` list is a different case: that list is the complete set of tools the model may call, so the recall preset adds nothing to it. Name the tool yourself, `tools: [lookupOrder, mem.tool.recall()]`, or leave `tools:` off the generator. See [Tools a capability contributes](../fundamentals/capabilities#capability-tools).
+
 ## Per-tier capabilities
 
 Sometimes you want a single tier without the full unified system. A pre-prompt step that only cares about working memory, for example. Each tier ships as a standalone capability for that case:

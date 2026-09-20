@@ -1,0 +1,148 @@
+/**
+ * The second fact the completion check is handed, and the three rules that
+ * keep it honest.
+ *
+ * A run reports two things when it ends: whether it ended cleanly, and HOW it
+ * stopped. Only the first used to reach a decision, so a run that exhausted its
+ * budget, committed the half it managed and said `stopped-at-limit` settled its
+ * row done — the done-condition answered from the branch alone, because the
+ * branch was all it could see.
+ *
+ * ## Why parts of this read the source
+ *
+ * The seam is inside `decide`, which needs a board, a claim and a dispatched
+ * child session to reach — `labs/conductor` drives that whole loop and is where
+ * the settle behaviour is staged. But conductor's suite runs the Claude Code
+ * SDK harness, and that harness ties `status` to `outcome === "finished"`, so it
+ * cannot produce the one combination this file is about. The shape checks below
+ * guard the invariants at the place they actually live, the way
+ * `fences.spec.ts` does for the same reason.
+ */
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { harnessRunHandleSchema } from "@flow-state-dev/core";
+import type { CompletionRunContext, PromptRunContext } from "../src";
+
+const MANAGER = readFileSync(join(__dirname, "..", "src", "manager.ts"), "utf8");
+
+describe("the contract permits the combination this exists for", () => {
+  it("parses a handle that ended cleanly AND stopped at its limit", () => {
+    // The premise of the whole change, and the reason it is not dead code:
+    // `status` and `outcome` are independent fields, so a conforming harness
+    // may honestly report "my stream ended cleanly, and the reason I stopped
+    // was my turn limit". No harness shipped in this repo reports that pairing
+    // today — all three derive `status` from `outcome === "finished"` — but the
+    // slot exists precisely so a harness this package never sees can be driven,
+    // and the DevForce lab's own fake harness reports it.
+    //
+    // If the contract is ever tightened to couple the two, this goes red and
+    // the completion-side field should be re-examined rather than left behind.
+    const handle = harnessRunHandleSchema.parse({
+      source: "fake/test",
+      status: "completed",
+      sessionId: "sess",
+      url: null,
+      dispatchedAt: 0,
+      outcome: "stopped-at-limit",
+    });
+
+    expect(handle.status).toBe("completed");
+    expect(handle.outcome).toBe("stopped-at-limit");
+  });
+});
+
+describe("the stop report crosses as reported", () => {
+  it("is handed to the completion check as the handle's own value", () => {
+    // Not narrowed to a boolean, not defaulted, not re-read from the row.
+    // Quietly reading the word as `finished` would be the same silent partial
+    // success one layer down, and `null` has to stay `null`, since "reported
+    // nothing" is a different fact from "reported finished".
+    expect(MANAGER).toContain("stopReport: handle.outcome,");
+
+    // Nothing between the handle and the check. `??`, a cast, a ternary or a
+    // comparison here would all be the manager deciding something about a word
+    // whose meaning belongs to the phase.
+    expect(MANAGER).not.toMatch(/stopReport:\s*handle\.outcome\s*(\?\?|\|\||===|!==)/);
+  });
+
+  it("is read only to phrase a failure, never to decide one", () => {
+    // The authority rule, as a check rather than a comment. The manager may say
+    // WHICH kind of clean end a phase refused — that text becomes the next
+    // attempt's feedback — but it may not decide anything on it. So every read
+    // of the field is classified, rather than one operator being pattern-
+    // matched: an inversion written with `!==`, a `switch`, or an `includes`
+    // is the same defect as one written with `===`, and the first draft of this
+    // check caught only the last of those.
+    const reads = [...MANAGER.matchAll(/handle\.outcome/g)];
+
+    // Found the sites at all, or everything below examined nothing. The count
+    // is asserted rather than bounded so a NEW read has to come here and be
+    // classified deliberately, which is the whole point of the check.
+    expect(reads.length).toBe(5);
+
+    for (const read of reads) {
+      // Asymmetric on purpose: a read is either the pass-through it sits in,
+      // or it feeds a phrase bound just above the `throw` that consumes it, so
+      // the evidence for a legitimate site is always AHEAD of the read.
+      const site = MANAGER.slice(Math.max(0, read.index - 260), read.index + 700);
+      const isPassThrough = /stopReport: handle\.outcome,/.test(site);
+      const isFailureText = site.includes("HarnessAttemptFailed");
+
+      expect(
+        isPassThrough || isFailureText,
+        `a read of the run's stop report that is neither the pass-through to the ` +
+          `completion check nor a failure message: ...${site.slice(200, 320)}...`,
+      ).toBe(true);
+    }
+
+    // And every comparison that exists is naming a clean end for the failure
+    // text, which is why the set is pinned rather than the count: a third word
+    // appearing here means the manager started distinguishing cases, and a
+    // missing one means a kind of clean end got folded back into another's
+    // wording — the defect this file's own subject is an instance of.
+    const comparisons = [...MANAGER.matchAll(/handle\.outcome\s*(===|!==|==|!=)\s*"([a-z_-]+)"/g)];
+    expect(comparisons.map((m) => m[2]).sort()).toEqual(["finished", "stopped-at-limit"]);
+  });
+});
+
+describe("the prompt side and the completion side stay apart", () => {
+  it("puts the stop report on the completion context and nowhere else", () => {
+    // `feedback` describes the attempt BEFORE this one; `stopReport` describes
+    // THIS one. A single field meaning both, depending on which hook reads it,
+    // lies by position — which is the argument that split `PromptRunContext`
+    // off the base to begin with.
+    const completion: Pick<CompletionRunContext, "stopReport"> = {
+      stopReport: "stopped-at-limit",
+    };
+    expect(completion.stopReport).toBe("stopped-at-limit");
+
+    // @ts-expect-error a prompt builder is not handed this attempt's stop report
+    const leaked: PromptRunContext["stopReport"] = null;
+    expect(leaked).toBeNull();
+  });
+
+  it("accepts a word outside the contract's three, and the absent case", () => {
+    // Both at the type level, which is where a narrowing would be introduced.
+    //
+    // A *conforming* harness reports only the three words — `harnessRunHandle`
+    // is a closed union. The widening is not about what the contract offers,
+    // it is about what this manager can actually be handed: `decide` reads the
+    // handle's `outcome` as `z.string().nullable()`, so a harness that reports
+    // something else arrives here rather than being refused at the door. The
+    // guard below pins that the loose read and this type stay in agreement.
+    //
+    // Anchored to a line the schema owns, not merely to the text: the first
+    // draft of this guard matched the doc comment three hundred lines above
+    // that quotes the same declaration, so tightening the schema left it green.
+    expect(MANAGER).toMatch(/^\s+outcome: z\.string\(\)\.nullable\(\),$/m);
+
+    const unknown: Pick<CompletionRunContext, "stopReport"> = {
+      stopReport: "error_context_window_exhausted",
+    };
+    const absent: Pick<CompletionRunContext, "stopReport"> = { stopReport: null };
+
+    expect(unknown.stopReport).toBe("error_context_window_exhausted");
+    expect(absent.stopReport).toBeNull();
+  });
+});

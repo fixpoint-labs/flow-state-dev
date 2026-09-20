@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/patterns",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Higher-level composition patterns for flow-state-dev.",
   "keywords": [
     "ai",
@@ -129,7 +129,7 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",

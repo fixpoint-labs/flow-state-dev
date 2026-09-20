@@ -93,7 +93,7 @@ packages/store-<name>/
     "@types/node": "^22.0.0"
   },
   "scripts": {
-    "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/engine build && tsc -p tsconfig.json",
+    "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/engine build && tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/engine build && node ../../scripts/typecheck.mjs",
     "test": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/engine build && vitest run --root .",
     "test:watch": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/engine build && vitest --root ."

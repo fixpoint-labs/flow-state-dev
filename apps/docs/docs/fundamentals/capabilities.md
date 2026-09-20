@@ -139,9 +139,32 @@ A capability can contribute any of:
 | State schemas | Merged into block-level state schemas |
 | Helper functions | Available at `ctx.cap.{name}` during execution |
 | Context formatters | Merged into the generator's context array |
-| Tools | Merged into the generator's tool list |
+| Tools | The generator's tool list, unless the generator declares `tools:` itself (see below) |
 
 Capabilities are validated at factory time, so most install mistakes show up before your code runs.
+
+## Tools a capability contributes {#capability-tools}
+
+A generator's `tools:` is the complete list of tools the model may call. Declare it and the tools a capability would have contributed are dropped, so the model sees your list and nothing else.
+
+```ts
+const support = generator({
+  name: "support",
+  model: "openai/gpt-5.4-mini",
+  prompt: "Answer the customer's question.",
+  tools: [lookupOrder],
+  // Memory's context still arrives. Its recall tool does not.
+  uses: [memoryCapability],
+});
+```
+
+Declaring the slot is what draws the line, not what you put in it. `tools: []` means no tools at all. Leave `tools:` out and you have said nothing about tools, so a capability's tools do reach the model, which is how a generator that never mentions tools picks up memory's recall or an MCP server's tool set.
+
+To keep one, name it in the list yourself. Capabilities that expect that hand you the tool: memory's `system()` exposes its recall tool as `mem.tool.recall()`, ready to drop into `tools:`.
+
+The rest of what a capability installs is untouched. Context formatters, resources, state schemas, and helpers arrive either way.
+
+Some capabilities also contribute **controls**: tools that are there because the block's own configuration asked for them, like the skill loader a block switches on, or the task board a delegating skill installs. A control is usually built inside the capability and never exported, so no `tools:` list could name it. Those reach the model whatever `tools:` says.
 
 ## Type inference from capability declarations
 

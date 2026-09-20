@@ -29,10 +29,13 @@ export default handler({
   inputSchema: deskNoteInput,
   outputSchema: deskNoteOutput,
   execute: (input, ctx) => {
-    const config = ctx.flow.config as { desk: string; instructions?: string };
+    const config = ctx.flow.config as { desk?: string; instructions?: string };
     return {
       answered: input.note,
-      desk: config.desk,
+      // Absent on a kind that declares no desk — this block is reachable
+      // both as a flow action and as a seat's tool, and only one of those
+      // kinds has the setting.
+      desk: config.desk ?? "unassigned",
       instructions: config.instructions ?? "",
     };
   },

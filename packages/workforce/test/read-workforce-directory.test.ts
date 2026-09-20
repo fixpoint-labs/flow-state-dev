@@ -336,7 +336,8 @@ Body.
     // The third contract key, refused at this door for the reason the other two
     // are: a hand-built roster never passes the loader, and a file that reaches
     // a caller carrying this key is a file whose seat runs on team
-    // instructions its team never wrote. Two doors, one wording.
+    // instructions its team never wrote. THREE doors — this one, hire, and the
+    // team's own TEAM.md — one constant, one wording.
     it("refuses a worker file that declares the team-instructions key", async () => {
       const { workers, errors } = await readWorkforceDirectory(
         tree({
@@ -353,8 +354,34 @@ Body.
       expect(message).toContain("WORKER.md");
       expect(message).toContain("intake/");
       expect(message).toContain("teamInstructions");
+      expect(message).toContain("not a setting any file declares");
+      // The route, not just the refusal: an author who wrote the key here has
+      // somewhere to put the text, and the message is where they find out.
+      expect(message).toContain("body of its TEAM.md");
+    });
+
+    // The fourth. Refused here and not only at the hire, because this door is
+    // the one an author's file meets first — and because a key that is refused
+    // at one door and accepted at the other is how the same file gets two
+    // answers depending on who read it.
+    it("refuses a worker file that declares the seat-tools key", async () => {
+      const { workers, errors } = await readWorkforceDirectory(
+        tree({
+          "teams/engineering/workers/intake/WORKER.md":
+            "---\ndescription: The front door.\nseatTools: []\n---\nBody.\n",
+        }),
+      );
+
+      expect(workers).toEqual([]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.path).toBe("teams/engineering/workers/intake");
+
+      const { message } = errors[0]!.error;
+      expect(message).toContain("WORKER.md");
+      expect(message).toContain("intake/");
+      expect(message).toContain("seatTools");
       expect(message).toContain("not a setting a worker declares");
-      expect(message).toContain("belong to its team");
+      expect(message).toContain("tools:");
     });
 
     it("reports a worker segment breaking the name rules, with the rule in the message", async () => {

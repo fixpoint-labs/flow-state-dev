@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/node",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Node HTTP host adapter for flow-state-dev — serve a long-lived FSD server in one call.",
   "keywords": [
     "ai",
@@ -82,7 +82,7 @@
     "zod": "^3.24.1"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run --root .",
     "test:watch": "vitest --root ."

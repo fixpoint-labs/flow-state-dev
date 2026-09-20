@@ -13,7 +13,7 @@ import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { hireWorkforce } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
-import { INSTRUCTIONS_KEY, SEAT_SKILLS_KEY, TEAM_INSTRUCTIONS_KEY } from "../src/manifest";
+import { INSTRUCTIONS_KEY, SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, TEAM_INSTRUCTIONS_KEY } from "../src/manifest";
 import { workerConfigSchema, type WorkerConfig } from "../src/worker-config";
 
 const inputSchema = z.object({ note: z.string() });
@@ -42,9 +42,9 @@ describe("workerConfigSchema — the bag itself", () => {
   // The whole contract in one assertion: an empty bag is valid, and what comes
   // out of it is an empty skills list and nothing else. Present-and-empty is
   // the answer for "nothing to give".
-  it("parses an empty bag into an empty seatSkills and no other key", () => {
+  it("parses an empty bag into the two imposed collections, empty, and no other key", () => {
     const parsed = workerConfigSchema().parse({});
-    expect(parsed).toEqual({ [SEAT_SKILLS_KEY]: [] });
+    expect(parsed).toEqual({ [SEAT_SKILLS_KEY]: [], [SEAT_TOOLS_KEY]: [] });
   });
 
   // Absent, not empty — both of them. An empty string would be a different
