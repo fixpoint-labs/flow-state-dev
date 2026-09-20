@@ -194,7 +194,7 @@ Every file-declared document is installed at `org` scope, with the file's body a
 
 Spread the map rather than passing it on its own. A flow copy created with `supportFlow({ resources })` *replaces* the definition's map instead of merging with it, so a copy handed only `resourcesFromDocs(documents)` loses whatever the flow kind declared.
 
-`resourcesFromDocs` throws rather than collecting. A record it cannot turn into a resource stops startup, naming the ref, the same way a refused hire does.
+`resourcesFromDocs` throws rather than collecting. A record it cannot turn into a resource stops startup, naming the ref.
 
 ### The request needs an org
 
@@ -221,7 +221,7 @@ const engineering = resourcesFromDocs(
 );
 ```
 
-The same is true one level down, and it is worth being plain about. Putting a document under `workers/on-call/` addresses it to that seat. It does not keep it from the others. Seats hired into one kind share that kind's flow definition, so by default every one of them reads the same row.
+The same holds one level down. Putting a document under `workers/on-call/` addresses it to that seat. It does not keep it from the others. Seats hired into one kind share that kind's flow definition, so by default every one of them reads the same row.
 
 Filtering decides what a whole kind installs. To narrow one seat within a kind, the seat's own file names the documents it may touch, and can take one read-only: see [what a `WORKER.md` says](./workers-on-disk.md#what-a-workermd-says). A seat naming a document its kind was not installed with is refused at the hire, so the filter holds.
 

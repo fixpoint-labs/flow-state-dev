@@ -33,22 +33,43 @@ const analyst = generator({
 });
 ```
 
-`createSkillsLibrary` returns a capability. You bind to it per generator with `.with({ ... })` — the flat builder that routes config (`active` / `allowed` / `activeState`) and the `dynamicActivation` preset in one call. (It's sugar over the `.config()` / `.presets()` primitives; either works, but `.with()` is the one-call form these examples use.) The library owns seeding: bundled `initialSkills` are seeded on a binding's first render, so even a generator that only preloads a static skill sees a populated catalog on turn 1.
+`createSkillsLibrary` returns a capability. You bind to it per generator with `.with({ ... })`, the flat builder that routes config (`active` / `allowed` / `activeState`) and the `dynamicActivation` preset in one call. It's sugar over the `.config()` and `.presets()` primitives; either works, and `.with()` is the one-call form these examples use.
+
+The library owns seeding. Bundled `initialSkills` are seeded on a binding's first render, so even a generator that only preloads a static skill sees a populated catalog on turn 1.
 
 :::note One skills surface per generator
 `createSkillsLibrary` and the older `createSkillsCapability` both register a `skills` resource collection under the same key, so don't mount both on the same generator — the duplicate collection key fails loudly at build time. Pick the per-generator library or the session-global capability for a given generator, not both.
 :::
 
+## What tools the generator gets
+
+A skill's `allowed-tools` does not answer this. That key describes the tools a skill's body is written around; it grants none of them. What the generator can call comes from the library's `catalog` and from the generator's own `tools:` slot.
+
+Bind a skill and the binding contributes the library's whole `catalog`, not the subset any one skill names.
+
+| Setup | What the generator can call |
+|---|---|
+| A binding, and no `tools:` on the generator | Every tool in the library's `catalog` |
+| A library built with `registerCatalogTools: false` | No catalog tools. You register them yourself, which is what the built-in worker kind does |
+| A generator that declares `tools:` | Exactly the tools it names. `tools: []` means none |
+
+Declaring the slot is what draws the line, not what you put in it. So if you declare `tools:`, name the skill's tools there too. [Tools a capability contributes](../fundamentals/capabilities#capability-tools) is the same rule for every capability.
+
+`registerCatalogTools: false` turns off the grant, not the check. A bound skill's `allowed-tools` is still validated against the catalog, so a typo in a skill file is still reported.
+
+`loadSkill` and the delegation surface are controls rather than catalog tools. They arrive whatever `tools:` says.
+
+Delegation is where `allowed-tools` does restrict: a delegating skill can assign a task only to a tool it lists, and a skill that lists none makes the whole catalog assignable. See [Delegation](./delegation).
+
 ## `with({ active })` — preload a skill
 
-`active` is the one-line common case. Name the skills this generator should always have, and their bodies (plus the tools they declare) are in context from the start.
+`active` is the one-line common case. Name the skills this generator should always have, and their bodies are in context from the start, along with the library's tool catalog.
 
 ```ts
 uses: [skills.with({ active: ["detailed-analysis", "cite-sources"] })];
 ```
 
-- **The catalog rides along, not the skill's list.** A binding contributes the library's `catalog`. `allowed-tools` is validated against that catalog but never selects what gets contributed, so it is not the unit here. Two things decide what the generator actually ends up with. A library built with `registerCatalogTools: false` contributes no catalog tools at all and leaves registration to you, which is what the built-in worker kind does. And a generator that declares its own `tools:` gets exactly that list: declaring the slot at all is what raises the fence, so `tools: []` means no catalog tools, while omitting the slot lets the contributed catalog through. If you declare `tools:`, name the skill's tools there too. `loadSkill` and the delegation surface below are not tools from your catalog and arrive either way. See [Tools a capability contributes](../fundamentals/capabilities#capability-tools).
-- **A preloaded skill can delegate.** If the skill declares an `agents:` field, binding it installs the delegation surface (a private board, the `taskTools`, and `runBoard`) on this generator. This is the one path where `allowed-tools` restricts rather than describes: the catalog keys it lists are the tools that can be assigned a task, and a skill that lists none makes the whole catalog assignable. `delegation: true`/`false` are explicit overrides of that default (install iff `agents:` is declared): `false` suppresses it, and `true` forces it on even when the skill declares no `agents:`, relying on the board's default worker. See [Delegation](./delegation).
+- **A preloaded skill can delegate.** If the skill declares an `agents:` field, binding it installs the delegation surface on this generator: a private board, the `taskTools`, and `runBoard`. The tools a task can be assigned to are the ones the skill lists in `allowed-tools`, or the whole catalog when it lists none. `delegation: true` and `delegation: false` override that default, which is to install the surface exactly when `agents:` is declared. `false` suppresses it; `true` forces it on with no `agents:`, relying on the board's default worker. See [Delegation](./delegation).
 - **Fails loud on a typo.** A name that isn't a known skill throws at build time. Binding by name validates against the library's bundled `initialSkills`, so pass them to `createSkillsLibrary`; binding a name with no catalog to check against is itself an error.
 
 ## `with({ dynamicActivation })` — let the agent load a skill mid-turn
@@ -64,7 +85,7 @@ const worker = generator({
 });
 ```
 
-- `allowed` is the set the load tool may pull from. Omit it for the whole catalog. Like `active`, it contributes those skills' declared tools so a loaded skill can call the tools its body references.
+- `allowed` is the set the load tool may pull from. Omit it for the whole catalog. Either way the binding contributes the library's tool catalog, so a loaded skill can call the tools its body references. See [What tools the generator gets](#what-tools-the-generator-gets).
 
 By default the activation is stored in the generator's **own block state** — request-scoped and private. So it stays with this generator, and it does not carry into the next turn. That's usually what you want for a mid-task pickup.
 

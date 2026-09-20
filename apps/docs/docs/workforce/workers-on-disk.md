@@ -109,20 +109,17 @@ A broken `TEAM.md` lands in `teamErrors`, keyed by its path, and the team's work
 without the layer. Treat a non-empty `teamErrors` as fatal for the same reason you treat `errors`
 that way: booting past it runs those workers short of instructions someone wrote for them.
 
-### What a team folder does, and does not, keep to itself
+### What a team folder keeps to itself
 
-A team's folder looks like one rule and is two. What sits in it scopes two different ways.
-
-**Instructions written in a `TEAM.md` reach only that team's workers.** They ride each worker's own
+Instructions written in a `TEAM.md` reach only that team's workers. They ride each worker's own
 configuration, so a worker on another team never sees them.
 
-**Documents under `teams/<team>/resources/` do not work that way.** They are installed on a worker
-*kind*, so every worker of that kind can read every team's documents — the folder addresses a
-document, it does not fence it. To give one team's workers only its own documents, filter the
-records before installing them; [Documents on disk](./documents-on-disk.md#a-folder-is-a-namespace-not-a-visibility-boundary)
-shows how, and covers the same point one level further down for a worker's own folder.
-
-Both are true, for different reasons, and neither is a special case of the other.
+Documents under `teams/<team>/resources/` work the other way. They are installed on a worker
+*kind*, so every worker of that kind can read every team's documents. The folder addresses a
+document; it does not fence it. To give one team's workers only its own documents, filter the
+records before installing them: [A folder is a namespace, not a visibility
+boundary](./documents-on-disk.md#a-folder-is-a-namespace-not-a-visibility-boundary) shows how, and
+covers a worker's own folder too.
 
 ## A worker's identity
 
@@ -232,7 +229,7 @@ condition the entry is — match on it rather than on `error.message`. `skillErr
 per affected seat, `{ worker, errors }`, carrying that seat's own list — so it needs flattening
 before it reads like the other two.
 
-Logging a warning and carrying on is the tempting alternative, and it fails quietly. A reported folder is a worker your app was supposed to have, so the app boots one worker short and says nothing about it. A reported team file or skill costs a seat its instructions instead of costing you the seat, which is quieter still. Fail on all three at startup unless you have a specific reason to run a short roster.
+A reported folder is a worker your app was supposed to have, so logging a warning and carrying on boots the app one worker short and says nothing else about it. A reported team file or skill costs a seat its instructions rather than costing you the seat, which is quieter still. Fail on all three at startup unless you have a specific reason to run a short roster.
 
 ### What is passed over in silence
 
@@ -298,14 +295,13 @@ said, when its team wrote one. Your kind's settings go on top with `.extend()`, 
 schema stays closed around all of them.
 
 You do not have to read any of it. A kind that composes the contract and never looks at the skills
-runs exactly as it would otherwise. But a kind with nowhere to put them stops hiring: the seat
-factory hands every worker the same settings, and a schema that cannot take them refuses at
-startup, naming the worker and the line to add. The alternative was a seat that hired, ran, and
-quietly held none of what its author's folders declared.
+runs exactly as it would otherwise. A kind with nowhere to put them stops hiring: the seat factory
+hands every worker the same settings, and a schema that cannot take them refuses at startup, naming
+the worker and the line to add.
 
-What hiring checks is what your schema accepts, not which function built it. Declaring those keys
-by hand works too — composing is how you stay current, since a key added to the contract reaches a
-composed kind for free and makes a hand-rolled one refuse at startup until you add it as well.
+What hiring checks is what your schema accepts, not which function built it, so declaring those
+keys by hand works too. Composing is how you stay current: a key added to the contract reaches a
+composed kind for free, and makes a hand-rolled one refuse at startup until you add it as well.
 
 `cardinality: "collection"` is what lets one definition have many copies. A roster is exactly that: one copy per worker, each with its own id and its own settings. [Copies that differ by settings](../fundamentals/flows.md#copies-that-differ-by-settings) covers how a copy is configured, and [how an instance is addressed](../fundamentals/flows.md#how-an-instance-is-addressed) covers the URL each one answers on.
 
@@ -346,9 +342,9 @@ Settings are spelled the way the flow declares them.
 
 A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. Hiring imposes four settings in all: `instructions`, when the body is not empty; `seatSkills` and `seatTools`, always; and `teamInstructions`, when the record carries what its team's [`TEAM.md`](#what-a-teammd-says) said.
 
-What the refusals cover is what a **file** declares. `teamInstructions`, `seatSkills` and `seatTools` are the framework's to fill, so no frontmatter may set them — refused in a `WORKER.md`, and at hiring for a record built by hand. `teamInstructions` is refused in a `TEAM.md` as well, the file an author would most reasonably try it in. The record *fields* of the same name are the channel the loader fills, and hiring reads them: if you build records yourself rather than reading a tree, you are the loader, and what you put there is what the seat gets. That is the same arrangement `skills` has, and it is why the refusals talk about frontmatter rather than about the record.
+What the refusals cover is what a **file** declares. `teamInstructions`, `seatSkills` and `seatTools` are the framework's to fill, so no frontmatter may set them — refused in a `WORKER.md`, and at hiring for a record built by hand. `teamInstructions` is refused in a `TEAM.md` as well, the file an author would most reasonably try it in. The record *fields* of the same name are the channel the loader fills, and hiring reads them: if you build records yourself rather than reading a tree, you are the loader, and what you put there is what the seat gets. `skills` works the same way.
 
-The two instruction settings stay apart. A worker's own text is never merged into its team's, so a kind can read one without the other. On the [built-in worker kind](./built-in-worker.md) both go into the prompt, the team's first and the worker's own last. That order is fixed, and it is an order rather than a ranking: nothing resolves a contradiction between the two, so a team rule and a worker rule that genuinely disagree are left to the model that reads them.
+The two instruction settings stay apart. A worker's own text is never merged into its team's, so a kind can read one without the other. On the [built-in worker kind](./built-in-worker.md) both go into the prompt, the team's first and the worker's own last. That order is fixed, and it is an order rather than a ranking: nothing resolves a contradiction between the two, so a team rule and a worker rule that disagree are left to the model that reads them.
 
 Every hireable kind has that setting, because `workerConfigSchema()` declares it — so a worker's body always has somewhere to arrive, and no worker flow has to check for one. A kind whose schema will not take what hiring imposes is the one that refuses, and it refuses every record on the roster rather than just the ones with a body:
 
@@ -363,10 +359,6 @@ hireWorkforce refused 1 of 3 workers; nothing was hired:
     Wrap this kind's settings: `configSchema:
     workerConfigSchema().extend({ ...its own settings })`.
 ```
-
-Note what the message does *not* say. It names the keys the schema would not take, not whether you
-called a particular helper — hiring cannot tell the difference, and the sentence above about
-hand-declaring is why.
 
 The instructions are available at `config.instructions`. What the flow does with them is the flow's business: a worker flow usually hands them to its generator as the system prompt. A flow that never reads them hires cleanly and ignores what the file said.
 

@@ -528,6 +528,12 @@ board worker may be seated with for this execution, and the seats are narrowed t
 them — an empty array means none. It only narrows, and it leaves the declared agent
 roster alone.
 
+A binding contributes the library's whole `catalog` to its generator, never the
+subset a skill's `allowed-tools` names. `registerCatalogTools: false` turns that
+grant off while leaving the validation on, for a host that owns tool registration
+itself; pair it with `toolSeatFence` so a held skill's delegated workers cannot
+reach past the same fence.
+
 Every delegation board also gets an on-demand **default worker**: it materializes on
 demand and runs any task whose assignee is unset, so a task with no named agent still
 runs, and an empty roster still delegates.

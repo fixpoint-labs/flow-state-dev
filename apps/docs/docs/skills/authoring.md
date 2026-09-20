@@ -55,7 +55,7 @@ Body goes here.
 | `metadata` | no | map of string → string | Extra properties of your own. Keep the key names distinctive so they don't collide with anyone else's. |
 | `keywords` | no | string[] | Lowercased tokens for the up-front router's tier-2 keyword scan. Plain substring matches against the user message. Ignored on the `runSkill` path. See below. |
 | `context` | no | `inline` | Activation mode. Only `inline` is supported — a matched skill's body is injected into the parent generator's prompt. |
-| `allowed-tools` | no | space-separated string, or string[] | The tool names this skill is written around. It never widens access, and it does not decide what a generator can call — [Binding](./binding) covers what a generator actually gets. It does gate delegation: when the skill declares `agents:`, the tools listed here are the ones that can be [assigned to a task](./delegation#assigning-a-task-to-a-tool), and listing none makes the whole catalog assignable. |
+| `allowed-tools` | no | space-separated string, or string[] | The tool names this skill's body is written around. It grants nothing: see [What tools the generator gets](./binding#what-tools-the-generator-gets). It does gate delegation. When the skill declares `agents:`, the tools listed here are the ones that can be [assigned to a task](./delegation#assigning-a-task-to-a-tool), and listing none makes the whole catalog assignable. |
 | `agents` | no | map | Agent declarations (inline `prompt`/`prompt-ref`, or `agent-ref`) that turn on delegation. See [Delegation](./delegation). |
 | `when-to-use` | no | string | Extra guidance appended to the description for the classifier and the `runSkill` catalog. Keep it short. |
 | `disable-model-invocation` | no | boolean | When `true`, the skill stays in the collection but every activation path skips it (no slash, no keyword match, hidden from the classifier and the `runSkill` catalog). Useful for drafts or admin-only skills. |
@@ -97,7 +97,7 @@ Treat the body as an imperative playbook, not a conversation. Short sections. Bu
 
 ## Substitution
 
-Two variables are substituted into the body at runtime:
+The body picks up two variables at runtime:
 
 - `$ARGUMENTS` — the `input` string passed to `runSkill`, if any. Lets the model pass a topic or target through to the playbook.
 - `${SKILL_DIR}` — the filesystem path where the skill's bundled files live when the bash capability is mounted. Derived from the skills collection's pattern prefix: for the default `skills/**` collection, it resolves to `/workspace/skills/<skill-name>/`. If you configure a custom collection prefix (`collectionConfig: { prefix: "playbooks" }`), the path follows automatically.
