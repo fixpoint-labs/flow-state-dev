@@ -60,7 +60,12 @@ Agent tool (general-purpose):
       the passing output after. "Tests pass" with no failing-output evidence
       is not proof the test verifies anything — FAIL it and require the
       implementer to re-demonstrate red (write-test-first, or temporarily
-      revert the fix and re-run) before accepting. Exceptions: pure
+      revert the fix and re-run) before accepting. A check with no
+      before-state — one grading a claim the change itself makes (an
+      equivalence, a count, an identity, an absence, a verdict) — owes a
+      **blast radius** in place of the failing output: what the implementer
+      broke, which checks went red, and that nothing else did. A report
+      missing the third part is not evidence; FAIL it. Exceptions: pure
       characterization/parity work holding pre-existing tests green across
       a swap, and trivial mechanical edits with no behavioural surface —
       neither needs red evidence.
