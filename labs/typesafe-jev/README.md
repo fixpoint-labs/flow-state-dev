@@ -16,6 +16,7 @@ the transport (`OPENROUTER_API_KEY` on the host, never on action input).
 | `typesafeEvaluate` / `jevDecide` | handler | Low-level: `state` + `questions` → `answers` |
 | `systemOneChoice` / `systemOneScore` / `systemOneNoul` | handler | One-shot wrappers. Input is the state; output is one answer |
 | `choice` / `score` / `noul` | builders | Question objects for `typesafeEvaluate` |
+| `createSystemOneIndexCapability` | capability | Optional. Classify-on-write + deterministic facet search. Absent = those tools are missing |
 
 A `generator` is the wrong primitive. Options are yours before the call;
 probabilities come back calibrated; the next step is a child block or an
@@ -49,6 +50,37 @@ const routeMode = systemOneRouter({
 
 If low confidence should escalate, pass your escalate pipeline as `default`.
 The selected child receives the **same input** the router received.
+
+## Index-time classifier (not query-time RAG)
+
+System One belongs on **write / reindex**, not on every search. Facets are
+anticipated (`kind`, `topic`, `status`, `urgency` — schema is open; bump
+`FACET_SCHEMA_VERSION` when it changes) and stored on **resource state**.
+Search is a deterministic filter over those stored fields. There is no
+embeddings path and no ambient body dump.
+
+```ts
+const index = createSystemOneIndexCapability({ client });
+
+// Host `uses: [index]` on a generator → `searchIndexedDocuments` lights up.
+// Omit the capability → that tool does not exist. No silent RAG stub.
+
+await run(index.classifyOnWrite, { key: "dup-charge", title, body });
+await run(index.searchIndexed, { kind: "ticket" }); // no model
+```
+
+Rules this sketch pins:
+
+- Classify on write (and on reindex when `contentHash` or `schemaVersion` is stale).
+- Store facets on the mutable resource lane, not under RO `references/`.
+- Search never calls Jev. `classifyQuery` exists as an escape hatch only.
+- The capability is optional. Core would own the seam later; this lab owns the sketch.
+
+```bash
+pnpm fsdev run system-one-index ingest -i '{"key":"dup-charge","title":"Duplicate charge","body":"Card charged twice"}'
+pnpm fsdev run system-one-index search -i '{"kind":"ticket"}'
+pnpm fsdev run system-one-index reindex -i '{}'
+```
 
 ## Low-level evaluate
 
@@ -99,5 +131,6 @@ This lab talks only to OpenRouter.
 ## Out of scope
 
 Published package, replacing `generator`, a fifth block kind, workforce hire,
-a spec / architecture D-n. The candidate that would move is this export
-surface, still talking to Decisions.
+first-class RAG / embeddings as resource search, baking System One into
+required core, a spec / architecture D-n. The candidate that would move is
+this export surface, still talking to Decisions.

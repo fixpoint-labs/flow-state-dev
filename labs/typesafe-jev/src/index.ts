@@ -5,6 +5,7 @@
  *   typesafeEvaluate    — low-level state + questions → answers
  *   systemOneChoice / systemOneScore / systemOneNoul — one-shot wrappers
  *   choice / score / noul — question builders
+ *   createSystemOneIndexCapability — index-time classify + deterministic facet search
  */
 
 export {
@@ -62,6 +63,66 @@ export {
   type SystemOneRouteMap,
   type SystemOneRouterConfig,
 } from "./router";
+export {
+  FACET_KIND_QUESTION,
+  FACET_STATUS_QUESTION,
+  FACET_TOPIC_QUESTION,
+  FACET_URGENCY_QUESTION,
+  INDEX_FACET_QUESTIONS,
+  facetsFromAnswers,
+  filterByFacets,
+  hashIndexedContent,
+  needsReindex,
+  stripIndexedPrefix,
+  type FacetQuery,
+  type IndexedHit,
+} from "./facets";
+export {
+  SEARCH_INDEXED_DOCUMENTS_TOOL,
+  classifyOnWrite,
+  classifyQuery,
+  createSearchIndexedDocumentsTool,
+  reindexIndexedDocuments,
+  searchIndexedDocuments,
+  type ClassifyQueryInput,
+  type ClassifyQueryOutput,
+  type IndexBlockOptions,
+  type IngestInput,
+  type IngestOutput,
+  type ReindexInput,
+  type ReindexOutput,
+  type SearchInput,
+  type SearchOutput,
+} from "./index-blocks";
+export {
+  createSystemOneIndexCapability,
+  systemOneIndexTools,
+  type CreateSystemOneIndexCapabilityOptions,
+  type SystemOneIndexCapability,
+} from "./index-capability";
+export {
+  INDEXED_DOCS_FLOW_KIND,
+  createIndexedDocsFlow,
+  type IndexedDocsFlowOptions,
+} from "./index-flow";
+export {
+  FACET_SCHEMA_VERSION,
+  INDEXED_DOCS,
+  documentKindSchema,
+  documentStatusSchema,
+  documentTopicSchema,
+  documentUrgencySchema,
+  indexedDocsCollection,
+  indexedDocsResources,
+  indexedDocumentFacetsSchema,
+  indexedDocumentStateSchema,
+  type DocumentKind,
+  type DocumentStatus,
+  type DocumentTopic,
+  type DocumentUrgency,
+  type IndexedDocumentFacets,
+  type IndexedDocumentState,
+} from "./indexed-docs-resource";
 export { asTypeSafeState, runTypeSafeDecision } from "./run-decision";
 export {
   DEFAULT_TYPESAFE_MODEL,

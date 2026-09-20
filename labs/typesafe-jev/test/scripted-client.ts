@@ -9,12 +9,14 @@ export interface ScriptedCall {
   request: TypeSafeRequest;
 }
 
-export function scriptedClient(result: TypeSafeEvaluateOutput) {
+export function scriptedClient(
+  result: TypeSafeEvaluateOutput | ((request: TypeSafeRequest) => TypeSafeEvaluateOutput),
+) {
   const calls: ScriptedCall[] = [];
   const client: TypeSafeDecisionsClient = {
     async evaluate(request) {
       calls.push({ request });
-      return result;
+      return typeof result === "function" ? result(request) : result;
     },
   };
   return { client, calls };
