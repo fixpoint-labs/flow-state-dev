@@ -171,6 +171,13 @@ export function createFsdCodingFlow(options: FsdCodingHostOptions) {
         throw new Error("FSD_CODING_ADD_DIR is only supported with FSD_CODING_HARNESS=codex");
       }
       agent = claudeCodeAgent({
+        permissionMode: "bypassPermissions",
+        // Coding doors do their own work instead of spawning unbounded subagents.
+        disallowedTools: ["Agent"],
+        sandbox: () => ({
+          enabled: true,
+          filesystem: { allowWrite: [options.cwd] },
+        }),
         ...options.claude,
         ...resolvers,
         detached: true,

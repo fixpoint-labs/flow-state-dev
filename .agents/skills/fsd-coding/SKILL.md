@@ -41,25 +41,63 @@ same set on every door, including `fixFsd` and the retry.
 
 ### Pass values on each invocation
 
-Config search is cwd-only: set the command tool's `cwd` to the absolute
-`labs/fsd-coding-skill` directory; without a `cwd` field, use
-`cd <absolute-lab-path> && ...`. Pin that same lab copy for the session:
-its `.fsdev/data` holds the resume state. Keep the target checkout in the
-separate `FSD_CODING_CWD` value. For example, a session that has selected
-Codex can invoke a command tool with:
+Every door (`implement`, `fix`, `openPr`, `fixFsd`) MUST run as a **supervised live
+stream**, for every target harness. Never launch it with a completion-only
+background command and wait blindly for exit. `fsdev run` already streams; the
+outer tool must expose that stream while the process is alive.
+
+Config search is cwd-only. Set `cwd` to the absolute `labs/fsd-coding-skill`
+directory and pin that lab copy for the session: `.fsdev/data` holds resume state.
+Keep the target checkout in the separate `FSD_CODING_CWD` value.
+
+Use the lab's `progress.jq` to project compact progress while `tee` retains the
+full NDJSON trace. This requires Bash, `tee`, and `jq` with `--unbuffered` support.
+Check those prerequisites before starting paid work; do not silently fall back
+to buffered output. `pnpm --silent` keeps package-script banners out of JSON
+stdout. `--quiet` suppresses routine runtime logs, not progress or startup errors.
+
+**Native OMP:** use `hub` with `op: "start"`; for example, after selecting Codex:
 
 ```json
 {
-  "command": "pnpm fsdev run fsd-coding implement -i '{\"task\":\"<what to build>\"}' --session work-1",
+  "op": "start",
+  "name": "coding-work-1",
+  "application": "env",
+  "args": [
+    "-u", "FSD_CODING_MODEL",
+    "bash", "-o", "pipefail", "-c",
+    "mkdir -p .fsdev/runs && pnpm --silent fsdev run fsd-coding \"$FSD_DOOR\" -i \"$FSD_INPUT\" --session \"$FSD_SESSION\" --quiet --capture \"$FSD_CAPTURE\" | tee \"$FSD_TRACE\" | jq --unbuffered -c -f progress.jq"
+  ],
   "cwd": "/absolute/path/to/implementation/labs/fsd-coding-skill",
   "env": {
     "FSD_CODING_HARNESS": "codex",
     "FSD_CODING_CWD": "/absolute/path/to/target-checkout",
     "FSD_CODING_NETWORK_ACCESS": "0",
-    "FSD_CODING_ADD_DIR": ""
-  }
+    "FSD_CODING_ADD_DIR": "",
+    "FSD_DOOR": "implement",
+    "FSD_INPUT": "{\"task\":\"<what to build>\"}",
+    "FSD_SESSION": "work-1",
+    "FSD_TRACE": ".fsdev/runs/work-1-implement-1.ndjson",
+    "FSD_CAPTURE": ".fsdev/runs/work-1-implement-1.json"
+  },
+  "pty": false,
+  "ready": { "log": "\"event\":\"started\"", "timeout": 60 }
 }
 ```
+
+The input JSON is a quoted environment argument, never interpolated into shell
+source. Trace/capture paths are host-chosen, unique per door attempt, and remain
+in the pinned lab. They are evidence files, not another resume store. Keep the
+raw trace local: it contains the full task and tool payloads, potentially secrets.
+Do not paste it wholesale into chat or publish it.
+
+`pipefail` is required: a successful renderer must not hide a failed coding run
+or a failed trace write. Keep stderr visible so bootstrap errors surface even
+when no JSON event was emitted. Do not redirect everything to a file.
+
+For other outer harnesses, use their managed-process/live-output equivalent
+with this same pipeline. A tool that returns only after completion is not
+a streaming supervisor.
 
 These paths and the harness are examples, not defaults. Apply the env values
 over the inherited environment, preserving `PATH`, `HOME`, and credentials.
@@ -73,8 +111,10 @@ an `env` field can use command-local `env NAME=value ... pnpm ...`
 assignments instead. Do not persist exports, edit shell profiles, or create
 an env/config sidecar.
 
-Use `fix` or `openPr` in place of `implement` for those doors.
-Do not switch providers to escape a failure.
+Use `FSD_DOOR=fix`, `openPr`, or `fixFsd` with the same supervised pipeline.
+For an explicit model override, remove the example's `-u FSD_CODING_MODEL` pair
+and pass the resolved `FSD_CODING_MODEL` in `env`. Do not switch providers to
+escape a failure.
 
 `--session` names the FSD session, not the vendor conversation. Reuse the same id so filesystemStores keep the confirmed Codex / Cursor / Claude ids `onSession` wrote. Do not invent a JSON sidecar or a second runner.
 
@@ -88,16 +128,42 @@ For Codex only, set `FSD_CODING_ADD_DIR` to extra writable directories (`thread.
 
 For Codex only, pass `FSD_CODING_NETWORK_ACCESS=1` when an authorized sandboxed run needs outbound network, such as `git push`. Cursor and Claude cannot honor either permission; pass disabled network and no extra directories for them. The host refuses enabled Codex-only permissions on another adapter. If a door fails and you call `fixFsd`, pass the same host values to `fixFsd` and to the one retry of the original door.
 
+### Follow progress without filling the context
+
+- Observe readiness **or exit**. `started` means the flow entered its root block,
+  not that authentication, permissions, or implementation succeeded. On a readiness
+  timeout, inspect the live logs before deciding whether it is still starting.
+- In OMP, read `hub logs` with `follow: true`, the returned `cursor`, and a bounded
+  `lines` limit (start with 20). Keep the cursor and consume only unseen output.
+  Do not repeatedly dump the log from its beginning or wait only on process status.
+- The compact feed includes status, completed assistant messages, tool starts and
+  outcomes, failures, and the terminal claim. It omits token deltas, reasoning,
+  state bookkeeping, full arguments/output, and duplicate lifecycle copies.
+  Text is an excerpt, not a model-generated summary; use the raw trace for detail.
+- Tell the user about meaningful phase changes, successful edits/checks, and
+  blockers. Do not narrate every read or forward every compact line to chat.
+  A quiet interval means **no new event observed**, not proof of progress.
+- On `tool_denied` for `Write`, `Edit`, or `Bash`, stop the managed process
+  immediately (`hub stop` in OMP). Do not wait for completion, more discovery,
+  or a repeated denial. Inspect the specific raw failure after stopping and
+  report the blocker. Never bypass permissions to restore progress.
+- Assistant completion, flow termination, and artifact acceptance are different.
+  A `finished` event reports a claim; obtain the process exit status and verify
+  the requested artifact. If the process remains alive after a terminal event,
+  inspect shutdown rather than claiming the process exited.
+- `--capture` is written at completion, so it is not a live channel. Use the
+  incrementally written `.ndjson` for bounded, targeted diagnosis; read the
+  final capture's result after exit. Never load the entire raw transcript merely
+  to produce a status update.
+
 ## Self-heal — do this before retrying
 
 If a **declared door started** and then FSD or the selected harness errors while doing real work, **do not retry the same door**. Call `fixFsd` with the repro first, keeping the **same selected harness**, host model choice, checkout, and `--session`:
 
-```bash
-pnpm fsdev run fsd-coding fixFsd \
-  -i '{"repro":"<verbatim error + what you ran>","notes":"<what you were trying to do>"}' \
-  --session "<same id>"
-```
-The snippet shows only the command; reuse the original tool `cwd` and `env`.
+Use the same supervised pipeline with `FSD_DOOR=fixFsd` and set `FSD_INPUT` to
+`{"repro":"<verbatim error + what you ran>","notes":"<what you were trying to do>"}`.
+Preserve the original host values, lab `cwd`, and session; choose new trace and
+capture filenames for this attempt. The repair door must stream too.
 
 Then retry the original door once. If it still fails, stop and report the two outputs. Do not invent a third path.
 
@@ -114,7 +180,8 @@ These apply on a local machine or Grok box, where this skill is the path. On a C
 
 ## What you return
 
-After each `fsdev run`, read the NDJSON on stdout (or `--capture`) and the process exit status.
+After each supervised run, inspect the compact terminal event, the process exit
+status, and the relevant final result in `--capture` (or the targeted raw event).
 
 `outcome: "finished"` only means the vendor turn ended. It is not success by itself.
 
