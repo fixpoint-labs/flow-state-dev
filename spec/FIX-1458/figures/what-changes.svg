@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 320" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two pictures side by side, the same roster drawn twice. Today, on the left: one box labelled the roster holds three agent seats and a board row assigned to desk-one and running. Below a dashed fence, outside that box, sits a detached approval prompt carrying a userId, a resolvedBy and a message, with no seat, no row and no board; an arrow leaves it, ends in nothing, and is labelled nobody owes it. After, on the right: the same roster box holds two agent seats and a third seat drawn in green, eng.reviewer of kind human with principal u dana, and a board row assigned to review-desk and parked. Below the same fence there is nothing at all, and the words read: the same board, the same inventory, the same status set, one more kind of seat; waiting on you is parked plus the row's own reason, and who owes it is review-desk resolved through the roster to eng.reviewer, stored nowhere.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box    { fill:var(--surface);   stroke:var(--rule);   stroke-width:1.2; }
+    .n-roster { fill:var(--surface-2); stroke:var(--rule);   stroke-width:1.4; }
+    .n-seat   { fill:var(--surface);   stroke:var(--ink-3);  stroke-width:1; }
+    .n-person { fill:var(--code-soft); stroke:var(--code);   stroke-width:1.6; }
+    .n-loose  { fill:var(--prose-soft);stroke:var(--gone);   stroke-width:1.4; stroke-dasharray:4 3; }
+    .fence    { stroke:var(--rule); stroke-width:1.2; stroke-dasharray:6 4; }
+    .dead     { stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink);   font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g   { fill:var(--code);  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-r   { fill:var(--gone);  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+
+  <g id="today">
+    <text class="t-lbl" x="24" y="20">TODAY</text>
+    <rect class="n-roster" x="24" y="30" width="416" height="140" rx="6"/>
+    <text class="t-b" x="40" y="52">the roster</text>
+    <text class="t-s" x="40" y="68">seats · channels · inventory · the board</text>
+    <rect class="n-seat" x="40" y="80" width="98" height="34" rx="4"/>
+    <text class="t-s" x="50" y="101">eng.builder-a</text>
+    <rect class="n-seat" x="146" y="80" width="98" height="34" rx="4"/>
+    <text class="t-s" x="156" y="101">eng.builder-b</text>
+    <rect class="n-seat" x="252" y="80" width="98" height="34" rx="4"/>
+    <text class="t-s" x="262" y="101">eng.manager</text>
+    <rect class="n-box" x="40" y="124" width="384" height="30" rx="4"/>
+    <text class="t-s" x="50" y="143">board row · assignee: desk-one · running</text>
+  </g>
+
+  <g id="today-loose">
+    <path class="fence" d="M24 190 H440"/>
+    <text class="t-lbl" x="24" y="206">OUTSIDE IT</text>
+    <rect class="n-loose" x="24" y="216" width="264" height="62" rx="6"/>
+    <text class="t-b" x="40" y="238">approval prompt</text>
+    <text class="t-s" x="40" y="256">userId · resolvedBy · a message</text>
+    <text class="t-s" x="40" y="270">no seat, no row, no board</text>
+    <path class="dead" d="M292 247 H392"/>
+    <text class="t-r" x="300" y="241">nobody owes it</text>
+    <text class="t-r" x="396" y="251">?</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="500" y="20">AFTER</text>
+    <rect class="n-roster" x="500" y="30" width="416" height="140" rx="6"/>
+    <text class="t-b" x="516" y="52">the roster</text>
+    <text class="t-s" x="516" y="68">seats · channels · inventory · the board</text>
+    <rect class="n-seat" x="516" y="80" width="98" height="34" rx="4"/>
+    <text class="t-s" x="526" y="101">eng.builder-a</text>
+    <rect class="n-seat" x="622" y="80" width="98" height="34" rx="4"/>
+    <text class="t-s" x="632" y="101">eng.manager</text>
+    <rect class="n-person" x="728" y="80" width="172" height="34" rx="4"/>
+    <text class="t-g" x="738" y="95">eng.reviewer · human</text>
+    <text class="t-g" x="738" y="108">principal: u_dana</text>
+    <rect class="n-box" x="516" y="124" width="384" height="30" rx="4"/>
+    <text class="t-s" x="526" y="143">board row · assignee: review-desk · parked</text>
+  </g>
+
+  <g id="after-empty">
+    <path class="fence" d="M500 190 H916"/>
+    <text class="t-lbl" x="500" y="206">OUTSIDE IT</text>
+    <text class="t-g" x="500" y="234">nothing. the same board, the same inventory,</text>
+    <text class="t-g" x="500" y="250">the same status set — one more kind of seat.</text>
+    <text class="t-s" x="500" y="270">waiting on you = parked + the row&apos;s own reason;</text>
+    <text class="t-s" x="500" y="284">who owes it = review-desk, resolved through the roster</text>
+    <text class="t-s" x="500" y="298">to eng.reviewer, and stored nowhere.</text>
+  </g>
+
+  <g id="divider">
+    <path class="fence" d="M470 14 V306"/>
+  </g>
+</svg>

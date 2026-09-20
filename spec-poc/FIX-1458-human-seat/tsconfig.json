@@ -1,0 +1,26 @@
+{
+  "//": "Throwaway. `spec-poc/` is deliberately not a workspace package, so it has no node_modules of its own and bare `@flow-state-dev/*` specifiers do not resolve. These paths point tsx straight at the source, which is what every package's own `exports` default already does. Not referenced by the root tsconfig and not in turbo's graph.",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2022",
+    "strict": false,
+    "baseUrl": ".",
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@flow-state-dev/core": ["../../packages/core/src/index.ts"],
+      "@flow-state-dev/core/*": ["../../packages/core/src/*/index.ts", "../../packages/core/src/*.ts"],
+      "@flow-state-dev/contracts": ["../../packages/contracts/src/index.ts"],
+      "@flow-state-dev/contracts/*": ["../../packages/contracts/src/*/index.ts"],
+      "@flow-state-dev/engine": ["../../packages/engine/src/index.ts"],
+      "@flow-state-dev/orchestration/tasks": ["../../packages/orchestration/src/tasks/index.ts"],
+      "@flow-state-dev/orchestration/task-board": ["../../packages/orchestration/src/task-board/index.ts"],
+      "@flow-state-dev/orchestration/*": ["../../packages/orchestration/src/*/index.ts"],
+      "@flow-state-dev/orchestration": ["../../packages/orchestration/src/index.ts"],
+      "@flow-state-dev/testing": ["../../packages/testing/src/index.ts"],
+      "@flow-state-dev/workforce/loader": ["../../packages/workforce/src/loader/index.ts"],
+      "@flow-state-dev/workforce": ["../../packages/workforce/src/index.ts"],
+      "@flow-state-dev/memory": ["../../packages/memory/src/index.ts"]
+    }
+  }
+}
