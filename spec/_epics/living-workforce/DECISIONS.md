@@ -8,14 +8,18 @@ done-condition fork; [D3](#d3) is **consumed from W4 with no re-gate** and [D5](
 news, not an ask**. The exploration's walls are open by instruction, except where one binds a
 downstream child ([ER-18](BUSINESS-RULES.md)).
 
+**[D2](#d2) was flipped by the owner on 2026-09-20**, after the objective gate had already ratified
+the old answer. The card below carries both the superseded lean and the one that replaces it, and
+**the objective gate is therefore re-taken on this version** — D2 is a live ask again, not settled.
+
 ## The tree
 
 ```mermaid
 flowchart TD
   E["FIX-1457 · W5"] --> D1["D1 · a put-it-together epic, not new substrate"]
   D1 -.->|"rejected"| X1["a fourth substrate epic · new L1 for human / team / channel"]
-  E --> D2["D2 · a person occupies the same seat slot"]
-  D2 -.->|"rejected"| X2["a parallel HITL plane · ambient tools with no roster identity"]
+  E --> D2["D2 · the work plane changes; the org chart stays<br/>supersedes the seat-drain lean, Sep 20"]
+  D2 -.->|"rejected"| X2["a person as a drain seat · a parallel HITL plane · ambient tools with no org identity"]
   E --> D3["D3 · assignee stays a drain key · no new status enum"]
   D3 -.->|"rejected"| X3["assignee equals seat · an L1 TaskStatus for Waiting-on-you"]
   E --> D4["D4 · explore now, ship after W4 first cut"]
@@ -33,22 +37,27 @@ flowchart TD
 | **Because** | The feature-complete bar is W3 closed, W4 first cut shipped, org never optional, and Labs running without special wrappers. That bar is a claim about what already exists. A fourth substrate epic would move the bar instead of testing it, and nothing would ever have proved the first three |
 | **Locks in** | Every child composes existing pieces. A child that finds it needs new L1 has found a **gap in W3 or W4**, and comments up on this PR rather than building it here ([ER-5](BUSINESS-RULES.md), [ER-17](BUSINESS-RULES.md)) |
 
-**What would change my mind:** the exploration finding that a human seat cannot be expressed in the
-existing seat slot at all. Then W5's first spine point is substrate work and belongs in a W4
-follow-on, not here.
+**What would change my mind:** the exploration finding that a parked row cannot carry an audience
+that derives to a principal, or that no existing action surface can take a person's answer back into
+the flow. Then W5's first spine point is substrate work and belongs in a W4 follow-on, not here.
 
 <a name="d2"></a>
-## D2 · A person occupies the same seat slot an agent does
+## D2 · The work plane changes; the org chart stays
+
+> **Flipped on 2026-09-20.** This card used to read *"a person occupies the same seat slot an agent
+> does"* — a person as a board drainer, differing from an agent only in drain UX. The owner
+> **superseded that lean** in session on 2026-09-20, after the objective gate had ratified it. What
+> follows is the replacement, and it is why the gate is being re-taken.
 
 | | |
 |---|---|
-| **Instead of** | HITL as ambient approval tools with no roster identity · a parallel human work plane beside boards and seats · human-only side boards agent seats cannot see |
-| **Because** | The thing an org needs from a human step is **assignment and accountability**, and both are properties of the roster. A human step that lives outside the roster is invisible to inventory, to channel membership, and to the manager queue — so it can be assigned but not tracked. One slot means the queue does not care which kind of thing drains a row |
-| **Locks in** | Human seats appear in inventory, hold channel membership, and claim or receive board rows like any seat. The **drain UX** differs — Waiting-on-you / approve / edit rather than a model loop — and that is the only difference the substrate sees. FIX-1458 explores **how**, never **whether** |
+| **Instead of** | **The superseded lean** — a person as a drain seat, claiming and draining board rows beside the agents · HITL as ambient approval tools with no org identity · a parallel human work plane beside boards and seats · human-only side boards agent seats cannot see |
+| **Because** | A task already needs human review **while a non-human owns the work**, and even when a person supplies something, the system still has to know what to do with it — **the flow owns the machine**, not the person. People realistically drive through actions, not by draining a queue. So the **work plane** is what changes, and the **org chart** is what survives |
+| **Locks in** | A **non-human seat owns the task** and **parks it with a reason** when it needs human input. The human acts through **flow actions bound to a principal** — approve, provide input, unpark — and the flow decides what that input *means* and continues. **Humans are not board drainers.** Audience derives **parked row → desk → principal**, or an explicit review audience → principal. One place lists people alongside agent seats (inventory / members / principals) with a **durable bind**, so a redeploy does not forget who owed a sign-off. `flow: human` as a drain kind is **optional Lab chrome, not the W5 spine**. **Multi-human** is *who may call which actions* plus channel membership — never humans racing each other as drainers |
 
-**What would change my mind:** evidence that the seat slot's obligations (a kind, a flow, a session)
-are meaningless enough for a person that satisfying them is pure ceremony. That is one of the
-exploration's open walls, and it is the wall that could reach up and change this card.
+**What would change my mind:** the exploration finding that a principal-bound action cannot carry
+enough for the flow to continue from — that a person's answer needs a worker's whole turn rather
+than an action's input. Then the drain seat is back, and so is the superseded lean.
 
 <a name="d3"></a>
 ## D3 · Board assignee stays a drain key, and no L1 enum grows for a human's state
@@ -57,7 +66,7 @@ exploration's open walls, and it is the wall that could reach up and change this
 |---|---|
 | **Instead of** | Collapsing board assignee and the Workforce seat registry into one noun · adding `waiting_on_you` and `idle` to L1 `TaskStatus` |
 | **Because** | The assignee is *who a row drains to*; the seat is *who exists on the roster*. They resolve to each other and are not the same thing, and a merge is irreversible in a way neither is on its own (the W4 invent-kill stands). **Waiting on you** is already expressible — parked, with a reason and an audience — and **Idle** is seat/session runtime, not a property of the work. A status enum mirroring a UI's columns is a UI leaking into L1 |
-| **Locks in** | The human drain story is a **view** over existing status plus seat runtime. Any child that finds itself wanting a new status value has hit a cross-cutting question, not a local one ([ER-8](BUSINESS-RULES.md)) |
+| **Locks in** | The Waiting-on-you story is a **view** over existing status plus seat runtime. Any child that finds itself wanting a new status value has hit a cross-cutting question, not a local one ([ER-8](BUSINESS-RULES.md)) |
 
 <a name="d4"></a>
 ## D4 · Explore now; ship after W4's first cut
@@ -99,10 +108,11 @@ two further proofs bind every row equally, so the matrix leaves them out.
   could not tell whether to file assemblies work or wrap on FIX-1455. W4's ER-20 → FIX-1430 sets the
   precedent. **The row itself is not pre-empted** — collapsing the set to two children was proposed
   and **rejected** the same round, because the evidence that would decide it does not exist yet.
-- **An exploration may not exit with a wall open that a downstream child needs** — the identity model
-  and durable-hire persistence resolve, or the owner signs off leaving them open
+- **An exploration may not exit with a wall open that a downstream child needs**
   ([ER-18](BUSINESS-RULES.md)). No conflict with *keep the opens open*: that guards the **assemblies
-  cut**, not a prerequisite reporting complete while the contract it supplies is undecided.
+  cut**, not a prerequisite reporting complete while the contract it supplies is undecided. The
+  clause stands as round 1 wrote it; **which two walls it names changed with the D2 flip** — see
+  [Open](#open).
 - **ER-19 now requires org-bound execution**, which the objective promises and the old condition
   could be satisfied without.
 - **ER-20 gains a wrap-time sweep of the shipped child diffs.** A spec-time check cannot see a child
@@ -128,6 +138,11 @@ and a rough end-state could falsify it.
 - **Review round 1 folded (Sep 20)** — greptile, cursor, codex and `second-look` on head `1d9218e`.
   ER-19 gained a provisional owner and org identity, ER-18 a downstream-blocking clause, ER-20 a
   wrap-time check; the sign-off surface dropped to three live asks. The objective did not move.
+- **Objective gate taken, then D2 flipped (Sep 20)** — the owner approved the set in the morning and
+  **superseded D2 the same day**: the work plane changes, the org chart stays. Not a review round
+  and not review feedback. It moved ER-1, ER-2's wording, ER-3, ER-6, ER-18's two named walls, ER-19
+  and ER-21, both the box and ownership figures, and the manager-queue seam. **The gate is re-taken
+  on this version**; nothing about the assemblies cut, D1, D3, D4 or D5 moved with it.
 
 <a name="open"></a>
 ## Open
@@ -143,12 +158,33 @@ answered provisionally above; its committed form is now Open 3.)
 3. **Whether ER-19's provisional owner becomes the committed one.** FIX-1455 holds it today; the cut
    either confirms that or moves ER-19 and ER-4 to the assemblies row.
 
-**The exploration's four walls** are FIX-1458's to lean on, not this document's to close: human seat
-as its own kind vs an agent-shaped seat with a `principal:` bind · one human ↔ many seats · whether
-channel members *are* seats or may be unbound principals · how durable hire persists a human seat
-(ties FIX-1455). Exploration may lean; **no wall closes without the owner**.
+**The exploration's four walls**, re-cut by the D2 flip, are FIX-1458's to lean on and not this
+document's to close:
 
-**Two of the four are downstream-blocking** — the identity model (first) and durable-hire
-persistence (fourth). FIX-1458 does not report complete with either still open unless the owner
-signs off leaving it open; the other two may stay open where the exploration shows they bind neither
-FIX-1455 nor the assemblies cut ([ER-18](BUSINESS-RULES.md)).
+1. **The principal bind and action authorization** — what binds a person in the org chart to a
+   principal, and **which principals may call which actions** on a parked row.
+2. **What a redeploy must round-trip** for that bind to survive — principal / member identity, not
+   a seat's whole settings bag.
+3. One person ↔ many desks and memberships.
+4. Whether channel members *are* principals, or may be unbound.
+
+Exploration may lean; **no wall closes without the owner**.
+
+**Walls 1 and 2 are the downstream-blocking pair**, and they are a **rename, not a new clause**.
+ER-18 used to name *the identity model* and *durable-hire persistence* — both questions about a
+human **seat kind**, which Model B deletes. What actually blocks FIX-1455 and the assemblies cut now
+is the bind plus authorization (FIX-1455 renders those actions and calls them) and what the bind's
+persistence must carry (FIX-1455 owns the store). FIX-1458 does not report complete with either
+still open unless the owner signs off leaving it open; walls 3 and 4 may stay open where the
+exploration shows they bind neither FIX-1455 nor the cut ([ER-18](BUSINESS-RULES.md)).
+
+**The `unparkAndDrain` caller question — narrowed, not closed, and not a fifth wall.** Round 1
+raised it against FIX-1458 (this document never carried it): nothing binds the caller to the seat's
+principal, so the system records an answer without proving who gave it. **Model B closes half by
+construction** — `unparkAndDrainInputSchema` is `{ taskId, feedback? }` and carries no caller at
+all, while a flow action arrives with a `ResolvedPrincipal` the host resolves from the transport
+*before* dispatch (`packages/core/src/types/auth.ts`: "the runtime's authoritative caller
+identity"). **The other half stands**: nothing compares that principal to the one the row's audience
+derives to, and BP-031 requires that comparison be made against the resolved principal, never a
+`userId` in the action's input. Unbuilt — so it is wall 1's sharpest test rather than a wall of its
+own, and wall 1 is downstream-blocking.

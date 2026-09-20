@@ -23,8 +23,8 @@ critical path runs through FIX-1455 because the proof surface is the reference a
 
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
-| **FIX-1458** humans-in-seats | `spec` → explore/spec PR | The W3 seat slot · W4 boards and inventory · the manager-queue lab's drain story · [FIX-277](https://linear.app/fixpoint-labs/issue/FIX-277) HITL consumers | The **shape** of a human seat ([ER-1](BUSINESS-RULES.md), [ER-2](BUSINESS-RULES.md)), with the four walls answered or explicitly still open | FIX-1455's human-seat surfaces · the assemblies cut | Medium |
-| **FIX-1455** kitchen-sink rebuild | **own epic lifecycle** | W4 first cut · existing Postgres-backed persistence · FIX-1458's seat shape · org identity from [FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442) | A runnable reference consumer that survives a redeploy ([ER-3](BUSINESS-RULES.md)) | The surface [ER-19](BUSINESS-RULES.md) is observed on — it is ER-19's **provisional** owner until the cut | Its own set |
+| **FIX-1458** humans-in-seats | `spec` → explore/spec PR | The W3 seat slot · W4 boards and inventory · the manager-queue lab's park-and-answer story · [FIX-277](https://linear.app/fixpoint-labs/issue/FIX-277) HITL consumers | The **shape of the human-input path** ([ER-1](BUSINESS-RULES.md), [ER-2](BUSINESS-RULES.md)) — park with a reason, audience to principal, the bound actions — with the four walls answered or explicitly still open | FIX-1455's human-input surfaces · the assemblies cut | Medium |
+| **FIX-1455** kitchen-sink rebuild | **own epic lifecycle** | W4 first cut · existing Postgres-backed persistence · FIX-1458's human-input shape · org identity from [FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442) | A runnable reference consumer whose **org chart** survives a redeploy ([ER-3](BUSINESS-RULES.md)) | The surface [ER-19](BUSINESS-RULES.md) is observed on — it is ER-19's **provisional** owner until the cut | Its own set |
 | **FIX-XXX** working assemblies | not cut | W3 floor · W4 first cut · both children above | Reference surfaces that prove the composition ([ER-4](BUSINESS-RULES.md)) | The epic's wrap. If cut, ER-4 and [ER-19](BUSINESS-RULES.md) move here from FIX-1455 | Unknown |
 
 ## Where it is
@@ -41,11 +41,12 @@ is unbroken.
 
 ## What unblocks what, from here
 
-1. **FIX-1458's exploration produces a shape** → FIX-1455 can spec its human-seat surfaces, and the
+1. **FIX-1458's exploration produces a shape** → FIX-1455 can spec its human-input surfaces, and the
    assemblies cut can be argued with something concrete in hand. It does **not** lift the ship fence.
-   A shape only releases them once its **downstream-blocking walls** — the identity model and
-   durable-hire persistence — are resolved or signed off open ([ER-18](BUSINESS-RULES.md)). An
-   exploration that exits with either still open releases its dependants onto nothing.
+   A shape only releases them once its **downstream-blocking walls** — the **principal bind and
+   action authorization**, and **what a redeploy must round-trip to keep that bind** — are resolved
+   or signed off open ([ER-18](BUSINESS-RULES.md)). An exploration that exits with either still open
+   releases its dependants onto nothing.
 2. **W4's first cut ships** (channel/org board → seat runs · assign team seats) → the ship fence
    lifts, FIX-1455's ship tickets may open, and the assemblies cut is made
    ([Open 3](DECISIONS.md#open)). **This happened on 2026-09-20** — the fence is down, and nothing
@@ -61,9 +62,10 @@ is unbroken.
 
 | Seam | Between | Rule |
 |---|---|---|
-| Durable hire of a **human** seat | FIX-1458 and FIX-1455 | 1458 owns the identity; 1455 owns persisting it. 1455 must not settle the `principal:`-vs-own-kind wall by picking whatever its store makes easy |
+| The **durable bind** in the org chart | FIX-1458 and FIX-1455 | 1458 owns what binds a person to a principal; 1455 owns persisting it. 1455 round-trips **principal / member identity only** — it must not settle the bind by storing whatever its schema makes easy, and it inherits **no human-seat store requirement** ([D2](DECISIONS.md#d2)) |
 | The **Waiting-on-you** surface | FIX-1458 and FIX-1455 | The state shape is 1458's ([ER-2](BUSINESS-RULES.md)); the rendering is 1455's. A UI need is not a reason to grow a status value ([ER-8](BUSINESS-RULES.md)) |
-| The **manager-queue** drain story | FIX-1458 and [FIX-1430](https://linear.app/fixpoint-labs/issue/FIX-1430) (W4, not a child) | Human seats plug into the same drain the lab proved. A second drain path is the parallel plane ER-6 forbids |
+| The **manager-queue** park-and-answer story | FIX-1458 and [FIX-1430](https://linear.app/fixpoint-labs/issue/FIX-1430) (W4, not a child) | A row needing a person parks on the **same board the lab proved**, and the answer returns through a bound action — not through a second way of draining. A second path is the parallel plane ER-6 forbids |
+| **Who may answer** a parked row | FIX-1458 and FIX-1455 | The check compares the action's **resolved principal** against the one the row's audience derives to. Per BP-031 it is never made from a `userId` in the action's input, and 1455 must not invent a looser one for its UI |
 | **Org identity** on every assembly | Every child and [FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442) | Assemblies open under org identity, and [ER-19](BUSINESS-RULES.md) is not observable without it — so FIX-1442 is a **wrap-gating input**, not merely soft-related. The security pass itself is still **not** a W5 redesign |
 
 ## Not children, deliberately
@@ -77,8 +79,9 @@ epic's. Linked from the rules, never re-parented.
 
 ## Wrap
 
-When [ER-19](BUSINESS-RULES.md) holds — a person draining a row in an **org-bound** running
-reference — and every row is terminal: run [ER-20](BUSINESS-RULES.md)'s **wrap-time sweep over the
+When [ER-19](BUSINESS-RULES.md) holds — a seat parking a row in an **org-bound** running reference,
+the person who owes it answering through a bound action, and the flow carrying on — and every row is
+terminal: run [ER-20](BUSINESS-RULES.md)'s **wrap-time sweep over the
 shipped child diffs** for a new L1 type, a widened `TaskStatus` or a second work plane, run the
 lessons pass over the set's review rounds, dispatch the docs polish over the Workforce pages the
 children each edited in isolation, refresh the set table and the path one last time, and close the
