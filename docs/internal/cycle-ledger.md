@@ -2968,7 +2968,8 @@ covering exactly these cases to an author who has just written a check over exis
 ### The recommended upstream fix — one sharpening, in `issue-implement`
 
 **Add the blast radius to the existing "Red is a gate" rule, and extend its unit to checks with no
-before-state.** Not a new BP; not a seventh BP-003 bullet; not a new paragraph. The rule already
+before-state.** One new paragraph under Core Principles, wired into Step 6 and the PR evidence
+bullet — not a new BP, and not a seventh BP-003 bullet. The rule already
 demands red. What is absent — everywhere in the grounding, despite being the repo's own consistent
 successful practice — is **"and nothing else went red."**
 
