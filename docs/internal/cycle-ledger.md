@@ -3037,7 +3037,7 @@ and by the same measurement.
   open: `vacuous-assertion` has now been the dominant shape in every cycle that sampled asserting code.
 - **Claim 5 — "are the loop's fixes landed at the gate?"** This cycle's fix is proposed at wrap, on a
   draft PR, unmerged. Third consecutive cycle landing at the gate; baseline holds.
-- **`stale-restatement` — collapsed to 1 of 62**, against cycle 13's 12 of 38. Same caveat in the other
+- **`stale-restatement` — collapsed to 1 of 61**, against cycle 13's 12 of 38. Same caveat in the other
   direction: this set is nine code PRs and one epic-spec, and cycle 13's was mostly documentation. Not
   scoreable as progress on 10.6's checklist line. The one instance is #1905's *"Open: two"* against
   three items in DECISIONS — an epic-spec sign-off disagreeing with its own decision list.
