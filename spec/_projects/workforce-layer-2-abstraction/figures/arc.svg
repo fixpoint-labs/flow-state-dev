@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 348" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The arc: six epic lanes against twelve days. W2 ran Sep 8 to Sep 12 and is done. The default agent flow ran Sep 12 to Sep 16 and is done. W3 started Sep 16 and is in flight at the now line, Sep 19, with 19 of 22 issues closed. W4 stood up its epic-spec on Sep 18, cleared its objective gate on Sep 19, and is in flight with four of nine issues done. W5 was filed on Sep 19 and sits at its objective gate, drawn as a dashed marker on the now line. W1 was created Sep 8 and has not started.">
+     aria-label="The arc: six epic lanes against thirteen days. W2 ran Sep 8 to Sep 12 and is done. The default agent flow ran Sep 12 to Sep 16 and is done. W3 ran Sep 16 to Sep 20 and is done, with 19 of 20 issues closed. W4 stood up its epic-spec on Sep 18, cleared its objective gate on Sep 19, and wrapped on Sep 20 with five of nine issues done. W5 was filed on Sep 19, passed its objective gate on Sep 20, and is the only bar crossing the now line. W1 was created Sep 8 and has not started.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -12,7 +12,6 @@
     .tick   { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
     .done   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
     .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
-    .gate   { fill:none; stroke:var(--accent); stroke-width:1.4; stroke-dasharray:4 3; }
     .now    { stroke:var(--gone); stroke-width:1.6; }
     .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
               font-size:9.5px; letter-spacing:.1em; }
@@ -46,23 +45,23 @@
 
   <g id="w3">
     <text class="t-lane" x="16" y="152">W3 · file surface</text>
-    <text class="t-s"    x="16" y="166">FIX-1351 · 19/22</text>
-    <rect class="flight" x="676" y="138" width="186" height="26" rx="4"/>
-    <text class="t-s" x="668" y="155" text-anchor="end">channels · resources · skills · pentest lab</text>
+    <text class="t-s"    x="16" y="166">FIX-1351 · 19/20</text>
+    <rect class="done" x="676" y="138" width="248" height="26" rx="4"/>
+    <text class="t-s" x="688" y="155">channels, resources, skills + the lab</text>
   </g>
 
   <g id="w4">
     <text class="t-lane" x="16" y="200">W4 · routing</text>
-    <text class="t-s"    x="16" y="214">FIX-1407 · 4/9</text>
-    <rect class="flight" x="800" y="186" width="62" height="26" rx="4"/>
-    <text class="t-s" x="792" y="203" text-anchor="end">spec Sep 18 · gate cleared Sep 19 · five ratified, four added since</text>
+    <text class="t-s"    x="16" y="214">FIX-1407 · 5/9</text>
+    <rect class="done" x="800" y="186" width="124" height="26" rx="4"/>
+    <text class="t-s" x="792" y="203" text-anchor="end">spec Sep 18 · gate Sep 19 · wrapped Sep 20, PR closed</text>
   </g>
 
   <g id="w5">
     <text class="t-lane" x="16" y="248">W5 · living workforce</text>
     <text class="t-s"    x="16" y="262">FIX-1457 · 0/2</text>
-    <rect class="gate" x="848" y="234" width="14" height="26" rx="4"/>
-    <text class="t-s" x="840" y="251" text-anchor="end">filed Sep 19 · at its objective gate · explore now, ship after W4</text>
+    <rect class="flight" x="862" y="234" width="62" height="26" rx="4"/>
+    <text class="t-s" x="854" y="251" text-anchor="end">filed Sep 19 · gate passed Sep 20 · the only lane still open</text>
   </g>
 
   <g id="w1">
@@ -72,7 +71,7 @@
   </g>
 
   <g id="now">
-    <path class="now" d="M862 30 V328"/>
-    <text class="t-now" x="856" y="28" text-anchor="end">NOW · SEP 19</text>
+    <path class="now" d="M924 30 V328"/>
+    <text class="t-now" x="918" y="28" text-anchor="end">NOW · SEP 20</text>
   </g>
 </svg>

@@ -20,9 +20,10 @@ is a wish.
 - Expose the **agent bundle** — Persona, Skills, Memory, Instructions, Strategy — as the public
   API. An Agent is invoked or assigned work, not decomposed (PD-3).
 - Run the **propagation pass** before the vocabulary locks (PD-4). Renaming an unratified model
-  costs the rename twice. W4 going in flight does not start it: the pass rides FIX-1385, a ship
-  ticket, and W4's ship fence holds every W4 ship PR until every W3 child that carries an
-  implementation is merged to main (W4 ER-14).
+  costs the rename twice. The pass rode FIX-1385 behind W4's ship fence (W4 ER-14); **W4 wrapped on
+  Sep 20 and the fence went with it**, so the prohibition now stands on PD-4 alone with no epic
+  holding it. Whether the pass ran, and who owns it next, is W4's owed wrap Update — not settled
+  here.
 - Put a concept here **because it is convenient**. PR-1 is a test, not a preference.
 
 ---

@@ -94,7 +94,9 @@ Answers settled at project altitude, so no later epic reopens them.
 
 **`org/channels/` is locked open, read by nothing, and owned by no issue.** W3 ships channels at
 **team** scope (FIX-1352, done); the `org/` door is declared and unread — the open half of its
-D3/D7. It binds W3 and W4, so it is named here rather than left inside one epic.
+D3/D7. It bound W3 and W4, which is why it was named here rather than left inside one epic —
+and **both epics wrapped on Sep 20 without closing it**. It now belongs to whichever epic next
+touches the channel surface, and nothing currently does.
 
 *An earlier version asked whether rooms had a declaration surface. The zero it found was the
 `room` → `channel` fold (PD-5) working, not a gap.*

@@ -7,10 +7,10 @@ deliberately not next. Each epic's own plan owns its checks.
 
 ![The arc](figures/arc.svg)
 
-Twelve days, not three months. The project opened in June, but every epic here was filed from
-**Sep 8** onward; the vocabulary era before it left 45 issues under no epic. Until this week only
-one epic had ever been in flight at a time. W3 and W4 were the first overlap; **W5, filed Sep 19,
-makes three epics live at once** — two building and one at its gate.
+Thirteen days, not three months. The project opened in June, but every epic here was filed from
+**Sep 8** onward; the vocabulary era before it left 47 issues under no epic. The overlap this
+project ran all week collapsed on Sep 20: **W4 and W3 wrapped three minutes apart**, and W5 is the
+only bar crossing the now line. Four lanes closed, one open, one that never opened.
 
 ## What each epic consumes and releases
 
@@ -31,21 +31,21 @@ issue says only *Todo* ([Decisions](DECISIONS.md) → Open).
 
 ## Coordination seams
 
-- **W3 → W4 — the deferral ended on Sep 19; PD-4's concern did not.** This plan said starting W4
-  early bought nothing and risked renaming twice. The objective gate went the other way, so the
-  reasoning was not overturned — it was **re-aimed from the start to the ship**. W4's D2 lets
-  filing, specs and POCs run now and fences every *ship* PR until every W3 child that carries an
-  implementation is merged to main (W4 ER-14); the PR-5 propagation pass rides FIX-1385 (W4 ER-19),
-  which is a ship ticket and therefore behind that fence. The rename-twice risk is held by a
-  mechanism, not retired.
-- **W4 → W5 is soft, and only on the ship half.** W5 explores and specs now; it waits on W4's first
-  cut before it ships, because a human in a seat is routed to the same way an agent is, and routing
-  is W4's. Sanctioned-now versus held is per child: FIX-1458 runs, FIX-1455 is held.
+- **W3 → W4 — both ends of this seam wrapped, and it closed unexamined.** This plan said starting
+  W4 early risked renaming twice; the Sep 19 gate re-aimed that concern **from the start to the
+  ship**, holding it in W4's ER-14 ship fence rather than retiring it. Whether the fence discharged
+  or simply stopped applying is a **wrap question**, and no wrap has been folded here — so the seam
+  is recorded open, not resolved.
+- **W4 → W5 was soft, and only on the ship half — and its upstream is now done.** W5 explores and
+  specs now; its ship half waited on W4's first cut, because a human in a seat is routed to the
+  same way an agent is, and routing was W4's. W4 has wrapped, so what was a hold is now W5's own
+  sequencing call. Sanctioned-now versus held is still per child: FIX-1458 runs, FIX-1455 is held.
 - **W3's lab is the proof for PR-3**, so any epic that ships a convention before the lab exists is
-  asserting the rule rather than checking it.
-- **The `org/channels/` door in [Decisions](DECISIONS.md) → Open binds W3 and W4 both.** It is
-  declared in the tree and read by nothing, and no issue owns closing it. Whichever epic reaches it
-  first answers it and records it there, so it is not answered twice.
+  asserting the rule rather than checking it. The lab shipped with W3 (FIX-1355, done).
+- **The `org/channels/` door in [Decisions](DECISIONS.md) → Open outlived both epics that bound
+  it.** It is declared in the tree and read by nothing, and no issue owns closing it. The plan was
+  that whichever of W3 or W4 reached it first would answer it; **both wrapped on Sep 20 and neither
+  did**, so it is now an unowned door rather than a race — which is what the Open entry says.
 
 ## What is deliberately not next
 
