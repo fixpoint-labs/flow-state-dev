@@ -187,12 +187,23 @@ state belongs on the task, not on a session that may run many of them.
 **The gate re-reads the row and runs the worker only if the claim is still
 current** — the row exists, `attempts` matches, `createdAt` and
 `incarnationId` match (so a row deleted and recreated under the same id is
-caught), the status is still `in_progress`, the lease has not lapsed, and the
-row still routes to this seat. Any miss throws `StaleTaskClaimError`
-(`code: "stale-task-claim"`) and writes nothing; the row keeps its lapsed
-lease and the next drain takes it back. Refused rather than adopted, because
-the expensive direction is a worker whose side effects commit before the
-refusal arrives.
+caught), the status is still `in_progress`, and the row still routes to this
+seat. Any miss throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and
+writes nothing; the row stays `in_progress` until its lease runs out and the
+next drain reclaims it. Every one of those arms is an identity check, decided
+by reading, and they run before the lease arm — which writes — so a dispatch
+about to be refused never extends a lease on a row someone else is entitled
+to.
+
+A **lapsed lease is not one of those arms**. Nothing renews the row's lease
+while the dispatch waits in the host's queue, so a child that starts more than
+a lease later finds a row the queue already counts as free. It takes that row
+back rather than refusing it: `adoptLapsedLease` renews on the same attempt,
+and the run proceeds if that write lands. It refuses only when the renewal is
+declined — the case where another drain has already reclaimed the row and is
+running it elsewhere. Adopted rather than refused, because this claimant has
+run nothing yet, so there are no side effects to double up; refusing here
+would strand handed-off work behind nothing worse than a deep queue.
 
 Past the gate, the same read does three more jobs: it marks the task scope so
 the worker's items are attributed, it **re-mints the claim ticket** from the
