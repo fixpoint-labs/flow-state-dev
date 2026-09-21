@@ -141,9 +141,16 @@ Re-check these against the repo before building; each of them moves.
 - **Has FIX-1475 landed?** `S5` reads the roster collection it ships, at `workforce/roster/*`.
   Its plan says PR-A ships that read surface first, precisely so this issue does not wait for the
   whole thing. Read its `problems` dialect rather than inventing a third word for a skipped seat.
-- **Has FIX-1476 landed?** `S6` needs its channel kinds and the board names on `CHANNEL.md`. A
-  board's ledger id is `<channelId>.<boardName>`, minted by the workforce package — do not
-  re-derive that join in the UI.
+- **Has FIX-1476 landed, and which kind names did it settle on?** `S6` needs its channel kinds
+  and the board names on `CHANNEL.md`. A board's ledger id is `<channelId>.<boardName>`, minted
+  by the workforce package — do not re-derive that join in the UI. Put whatever kind names it
+  settled into S8's Channels section; until then the section names `channel`, the one the
+  framework ships. **FIX-1476 hands over convention and data and no rail UI at all** — not the
+  navigator, not a channel-only list, not a temporary one. If a `ChannelList` appears anywhere,
+  the seam has been breached.
+- **Do not plan or make edits in `apps/kitchen-sink/fsdev.config.ts` or `workforce/hire.ts`.**
+  They are contested between FIX-1475 (in implementation) and FIX-1476. No surface in this plan
+  needs them; if one appears to, that is a finding to raise rather than an edit to make.
 - **Has FIX-1478's collapse trigger fired?** If the patterns shed folded into this issue, the
   control strip and the four modes become S8's, and `apps/kitchen-sink/e2e/mode-switching.spec.ts`
   goes with them. If it did not, leave both alone and read its keep-notes.

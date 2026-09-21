@@ -38,14 +38,18 @@ is the one thing the app already gets right, so it keeps its shape and only stop
 
 - <SessionSidebar sessions={sessions} onSelect={…} />
 + <FlowNavigator
-+   sections={[{ label: "Channels", kinds: channelKinds },
++   sections={[{ label: "Channels", kinds: ["channel"] },
 +              { label: "Seats",    kinds: ["agent"] }]}
 +   onSelectSession={…}
 + />
 ```
 
-You name which kinds go in which section. You never say how deep a kind goes — that is read off
-the flow ([D3](DECISIONS.md#d3), and [D8](../../epics/FIX-1455/DECISIONS.md#d8) above it).
+A section is a label and a set of kind names. `channel` is the one channel kind the framework
+ships today, and `agent` is the seat kind; an app that declares a channel kind of its own adds
+that name to the same list, which is a value, not a second component. You never say how deep a
+kind goes — that is read off the flow ([D3](DECISIONS.md#d3), and
+[D8](../../epics/FIX-1455/DECISIONS.md#d8) above it), so the Channels section is two levels and
+the Seats section is three without either saying so.
 
 **And the right panel, which stops being a build-mode feature:**
 

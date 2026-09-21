@@ -69,6 +69,12 @@ migration become a follow-up instead of a gate.
 - **The component is called `FlowNavigator`.** The epic left the name to this issue. It browses
   flows — kinds, instances, sessions — and its second host browses flows that are not a
   workforce at all, so a Workforce-flavoured name would be wrong there on day one.
+- **Every example filters on `channel` and `agent`, the kinds the framework actually ships.**
+  `defineChannelFlow` takes no kind parameter and builds `kind: "channel"`, so an example naming
+  two channel kinds teaches something that one factory cannot produce. **Which channel kind names
+  a deployment ends up with is [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476)'s
+  call, not this issue's** — and it does not reach the component either way, because a section's
+  `kinds` is a value. A different answer there is a different array, never a second component.
 - **Nothing takes the freed control row.** The six controls above the prompt go with the modes
   and thinking styles they drove. A reference app that refills the row it just emptied has not
   shed anything.

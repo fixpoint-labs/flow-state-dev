@@ -36,12 +36,16 @@ components from the client packages.`
 >
 > <FlowNavigator
 >   sections={[
->     { label: "Channels", kinds: ["topic", "dm"] },
+>     { label: "Channels", kinds: ["channel"] },
 >     { label: "Seats",    kinds: ["agent"] },
 >   ]}
 >   onSelectSession={setSessionId}
 > />
 > ```
+>
+> `channel` is the channel kind the framework ships; `agent` is the seat kind. A section is a
+> label and a set of kind names and nothing else, so an app that declares a channel kind of its
+> own adds that name to the same list.
 >
 > You name the kinds each section covers. You do not name anything else about the shape — the
 > navigator reads that from your flows. Generic conversation and item rendering is unchanged and
@@ -57,9 +61,10 @@ components from the client packages.`
 > the seats you hired, open a seat and you get that seat's sessions.
 >
 > A flow with `cardinality: "singleton"` is one instance whose address is its kind, so it is
-> **two levels**: kind, then sessions. Channel kinds work this way, and the reason is worth
-> knowing: a channel **is** a session on the channel kind. A hundred channels are a hundred
-> sessions on one instance. There is no middle level to show, so the navigator does not draw one.
+> **two levels**: kind, then sessions. A channel kind works this way, and the reason is worth
+> knowing: a channel **is** a session on that kind. A hundred channels are a hundred sessions on
+> one instance. There is no middle level to show, so the navigator does not draw one — and you
+> will not find your channels one level deeper than you expected.
 >
 > You do not tell it which shape to use, and there is no prop that would let you. That is
 > deliberate: a depth you passed in would be a second opinion about your own flow, and it would
