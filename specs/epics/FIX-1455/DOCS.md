@@ -168,10 +168,14 @@ components from the client packages.`
 > **The navigator does not scope by organization.** It shows the flow kinds your server has
 > registered, and under them the sessions the caller can see — which today means the caller's own
 > sessions within their tenant. There is no organization filter, so a user whose sessions span two
-> organizations inside one tenant sees both under the same kind. If that matters for your app,
-> render one navigator per kind you have already partitioned by other means, and treat the session
-> list as tenant-scoped rather than org-scoped. Org-aware listing needs the flow and session
-> inventory to carry an organization, which it does not yet.
+> organizations **inside one tenant** sees both under the same kind. Separate tenants stay
+> separate; organizations within a tenant do not.
+>
+> A session does carry an organization when you read it on its own, but the list shape does not
+> include one, so the navigator cannot filter or group by it without reading every session
+> individually — which is the one thing it is careful not to do. If organization scoping matters
+> for your app, treat the session list as tenant-scoped and partition by other means until the
+> listing contract carries an organization.
 
 ---
 
@@ -217,6 +221,14 @@ reader will find in it, not by what it used to host.
 | `durable-hire.md`, and the durability limits it states | FIX-1475 | Its `DOCS.md` |
 | `ui.md`, the `packages/react/README.md` exports, the kitchen-sink README rewrite | FIX-1477 | Its `DOCS.md` |
 | The patterns line in the kitchen-sink README, and any `@flow-state-dev/patterns` mention the audit retires | FIX-1478 | Its PR, with its *keep because…* notes |
+
+**The navigator page's organization limit is tracked as
+[FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)** — flow and session listing carry no
+org identity, which blocks FIX-1477's org-aware behaviour only. **The id is cited here and not in
+the drafted page**: everything inside the quoted block above is published to `apps/docs`, where
+tracking ids are forbidden ([user-docs.md](../../../docs/contributing/user-docs.md), the outsider
+rule). The page states the *behaviour* and its limit; this document holds the ticket. When FIX-1486
+lands, the limits paragraph is rewritten — by FIX-1477, which publishes the page.
 
 **`FlowNavigator` is a placeholder name, not a lock.** [D8](DECISIONS.md#d8) settles that there is
 *one* navigator and that its depth comes from `cardinality`; what it is called, and what its props

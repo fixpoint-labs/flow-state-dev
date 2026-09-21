@@ -23,7 +23,7 @@ absorbs what the other two produce rather than waiting for it. The dependency sh
 | **FIX-1429** serve the demo | direct → impl PR | The W3 floor · `workforce/hire.ts`, which nothing imports today | Those seats in the served flow map, over the real HTTP route of the Next-built app. Its own open question (async `fsdev.config` boot vs a post-construction `createFlowState` registry) is resolved toward durable hire | FIX-1475 | Medium |
 | **FIX-1475** durable hire | spec → impl PR | FIX-1429's served workforce · the app's existing Postgres path · D2 | Runtime hire writing org-scoped durable state the next boot reloads — seats and the roster, the proof's scope ([answered](DECISIONS.md#answered-runtime-admin)). Channels and boards stay file-declared; runtime channel administration is FIX-1415's and out (ER-16) | The roster and seat data FIX-1477 renders (D7) · the epic's proof | Large |
 | **FIX-1476** channels and boards | spec → impl PR | The W4 first cut (boards, inventory) · D4 | The shipped pair — a channel kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — written as real kind files, one ChannelFlow factory with dm / topic / workstream clones, boards as a bare name list, explicit per-seat drain, the unattended-board warning. **The convention and its data, not its rendering** — it ships no rail UI, and **its spec must say it consumes the D8 navigator rather than inventing a `ChannelList`** (D8, ER-7, ER-9) | The channels and boards FIX-1477 renders | Large |
-| **FIX-1477** UI package split | spec → impl PR | D5 · D7 · D8 · FIX-1475's roster · FIX-1476's channels and boards · the three shell figures below | Inline and resource-backed components as client-package exports; kitchen-sink consuming them; **every region of the rebuilt shell, both halves of the rail included** — among them **the one navigator**, parameterized by kind and deriving its depth from each flow's `cardinality` (D8), promoted out of the devtool rather than re-invented. Ships **tenant-scoped**; org-aware listing waits on the org-inventory prerequisite (below) and is not in this row | The rebuild people can copy | Large |
+| **FIX-1477** UI package split | spec → impl PR | D5 · D7 · D8 · FIX-1475's roster · FIX-1476's channels and boards · the three shell figures below | Inline and resource-backed components as client-package exports; kitchen-sink consuming them; **every region of the rebuilt shell, both halves of the rail included** — among them **the one navigator**, parameterized by kind and deriving its depth from each flow's `cardinality` (D8), promoted out of the devtool rather than re-invented. Ships **tenant-scoped**; org-aware listing is blocked by [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) (below) and is not in this row | The rebuild people can copy | Large |
 | **FIX-1478** patterns shed | spec → impl PR | D6 · the five `@flow-state-dev/patterns` imports under `flows/chat-agent/` | An audit with a Workforce path or a *keep because…* per surface; the dependency dropped if no keep-notes remain; the six-control strip's justification gone | The freed control row | Small |
 
 **Inherited by FIX-1477 with the navigator — implementation notes, not decisions.** They are
@@ -97,19 +97,22 @@ decision). Neither is re-parented here (ER-17).
 
 ## The one prerequisite outside this set
 
-**Org-scoped flow and session inventory.** [D8](DECISIONS.md#d8) records the evidence: the flow
-list is the global registry, and session listing filters by flow, user and **tenant** — never by
-org. So the navigator FIX-1477 ships is **tenant-scoped**, and a user whose sessions span two orgs
-inside one tenant sees both under one kind. `DOCS.md` states that limit on the page rather than
-documenting an `orgId` prop the stack cannot honour.
+**[FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) — flow and session listing carry no
+org identity.** [D8](DECISIONS.md#d8) records the evidence: the flow list is the global registry,
+and session listing filters by flow, user and **tenant** — never by org. The org is missing from
+the *listing shape*, not from the system: `SessionDetail` carries an `orgId` and `SessionSummary`
+does not, so post-filtering would mean fetching detail per session — the N+1 the note above exists
+to prevent. So the navigator FIX-1477 ships is **tenant-scoped**, and the exposure is **between
+organizations inside a single tenant**, not across tenants. `DOCS.md` states that limit on the page
+rather than documenting an `orgId` prop the stack cannot honour.
 
-**FIX-1477 depends on this prerequisite for its org-aware behaviour only.** The navigator itself is
-**not blocked** — it ships tenant-scoped, and org scoping is added when the inventory can carry an
-org. The prerequisite issue is being filed in parallel and **its FIX- id is pending at the time of
-writing**; cite it here once it lands rather than inferring one. It is the same ground as
+**FIX-1486 blocks FIX-1477's org-aware behaviour only.** The navigator itself is **not blocked** —
+it ships tenant-scoped, and org scoping is added when the listing contract can carry an org.
+FIX-1486 is a `Bug` against the engine/client substrate, priority High, and lives in the
+**Framework simplification & cleanup** project — not this epic. It is not a child here and is not
+re-parented ([ER-17](BUSINESS-RULES.md)). It sits **alongside**
 [FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442) (*org is never optional — require org
-identity everywhere*), which this set already consumes without owning ([ER-17](BUSINESS-RULES.md)),
-surfacing from the rendering side.
+identity everywhere*), which is a flat related issue with no sub-issues, not a parent.
 
 ## Coordination seams to watch
 
