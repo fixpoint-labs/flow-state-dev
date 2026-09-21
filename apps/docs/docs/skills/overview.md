@@ -42,6 +42,8 @@ Skills are not always-on. Something has to decide a skill applies before its bod
 
 Both paths can coexist. See [Activation paths](./activation) for the full breakdown — when to use which, the tier behavior, the preset toggles, and how to compose them.
 
+By default, the names and descriptions of the skills an agent can load are supplied to it as context, so it knows they exist from its first step. In an app with many skills you can turn that off and let the agent look them up through [discovery](../orchestration/discovery.md) instead, which it pays for only when it asks.
+
 ## What a matched skill does
 
 A matched skill is inline instructions. Its substituted body is injected into the parent generator's system prompt on the next step, and the conversation continues in the parent context with the parent's tools. That's the whole model.

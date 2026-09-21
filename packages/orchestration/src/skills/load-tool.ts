@@ -71,6 +71,27 @@ export interface LoadSkillToolOptions {
    * generator, so it sees the same flow config the binding reader does.
    */
   initialSkills?: InitialSkillsSource;
+  /**
+   * Whether the ambient catalog listing reaches this generator's prompt —
+   * the binding's `catalogContext` preset (FIX-817), which ships on.
+   *
+   * It changes one sentence of the tool's description, and that sentence is
+   * the only thing telling the model where the names come from. With the
+   * listing off they are behind the discovery door instead, and a tool that
+   * still said "provided in the system context" would point at something that
+   * is no longer there.
+   *
+   * Defaults to `true`, so a caller that does not pass it gets today's
+   * wording unchanged.
+   */
+  catalogInContext?: boolean;
+}
+
+/** Where the model is told to find the names it may pass. */
+function whereTheNamesAre(catalogInContext: boolean): string {
+  return catalogInContext
+    ? "The list of loadable skills is provided in the system context — call this with one of those names."
+    : "Call `discover` with domain \"skills\" to see which skills you can load, then call this with one of those names.";
 }
 
 /**
@@ -87,7 +108,7 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
     name: "loadSkill",
     description:
       "Load a named skill's instructions into your context for the rest of this turn. " +
-      "The list of loadable skills is provided in the system context — call this with one of those names.",
+      whereTheNamesAre(opts.catalogInContext !== false),
     inputSchema,
     outputSchema,
     parentStateSchema: z.object({ [BLOCK_STATE_FIELD]: activeSkillsArraySchema }),

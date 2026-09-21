@@ -119,6 +119,6 @@ Per-generator binding. Two generators, two different `active` sets, and neither 
 | `delegation` | `boolean` | on iff a bound skill declares `agents:` | `false` suppresses the board + `taskTools` + `runBoard` surface. `true` installs it even with an empty roster. |
 | `guidance` | `boolean` | on when delegation installs | Delegation playbook + live agent roster in context. `false` turns that context off. |
 
-`dynamicActivation` is a preset on the same `.with({ ... })` call, not a field on this table. It installs the `loadSkill` tool. See [Binding skills](../skills/binding).
+`dynamicActivation` and `catalogContext` are presets on the same `.with({ ... })` call, not fields on this table. `dynamicActivation` installs the `loadSkill` tool. `catalogContext` is on by default and puts the loadable skills' names and descriptions into the prompt beside it; set `catalogContext: false` to take that listing out and let the agent find skills through [discovery](./discovery) instead. Both belong in the same call — preset overrides replace rather than merge, so chaining `.presets()` and `.with()` drops whichever came first. See [Binding skills](../skills/binding).
 
 Narrative for authoring a skill and the delegation surface: [Authoring](../skills/authoring), [Delegation](../skills/delegation).

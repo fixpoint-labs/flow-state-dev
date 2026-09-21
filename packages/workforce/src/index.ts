@@ -78,6 +78,20 @@ export type {
   WorkerResourceModuleExport,
 } from "./resource-modules";
 export type { SeatCapabilitySelection } from "./seat-capabilities";
+// Agent discovery (FIX-817) — the workforce's two domains, and the worker-file
+// key that narrows which of a scope's domains one seat reads.
+export {
+  workforceManifestSources,
+  type DeclaredWorkforce,
+  type InventoryKeys,
+  type WorkforceManifestSourceOptions,
+} from "./manifest-sources";
+// `seatDiscoverSelection` / `narrowToSeatSelection` stay internal: the
+// capability is their only caller, and an export with no consumer is a
+// contract nobody asked for. `SEAT_DISCOVER_KEY` is public because the key it
+// names is authored by hand in a `WORKER.md` and a second spelling of it is
+// the bug this package refuses rather than resolves.
+export { SEAT_DISCOVER_KEY } from "./seat-discovery";
 export { workerConfigSchema, seatSkillSchema, type WorkerConfig } from "./worker-config";
 export type { WorkerManifest, TeamManifest, ResourceDoc } from "./manifest";
 export * from "./channel";

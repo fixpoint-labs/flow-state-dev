@@ -90,6 +90,7 @@ const worker = generator({
 ```
 
 - `allowed` is the set the load tool may pull from. Omit it for the whole catalog. Either way the binding contributes the library's tool catalog, so a loaded skill can call the tools its body references. See [What tools the generator gets](#what-tools-the-generator-gets).
+- The catalog the model reads is supplied as context, so the agent knows what it can load from its first step. With a long library that cost lands on every turn. Add `catalogContext: false` to the same call and the listing leaves the prompt; the agent finds skills through [discovery](../orchestration/discovery.md) instead, which it pays for only when it asks.
 
 By default the activation is stored in the generator's **own block state**, which is request-scoped and private. So it stays with this generator, and it does not carry into the next turn. That's usually what you want for a mid-task pickup.
 

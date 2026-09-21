@@ -59,7 +59,7 @@
  * `controlTools` — see the paragraph above.
  */
 
-import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, sequencer, MANIFEST_DOMAINS } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
   BlockDefinition,
@@ -85,6 +85,7 @@ import {
   type SeatCapabilityCatalog,
   type SeatCapabilitySelection
 } from "./seat-capabilities";
+import { SEAT_DISCOVER_KEY } from "./seat-discovery";
 import { seatSkillSchema, workerConfigSchema } from "./worker-config";
 
 /**
@@ -417,7 +418,31 @@ function settingsSchema(
         for (const message of seatCapabilityProblems(seatCapabilities, selection)) {
           ctx.addIssue({ code: z.ZodIssueCode.custom, message });
         }
-      })
+      }),
+
+    /**
+     * Which discovery domains this seat sees (FIX-817).
+     *
+     * ```yaml
+     * discover: [seats, channels]
+     * ```
+     *
+     * **Omit the key to see every domain the seat's scope carries** — today's
+     * reach, unchanged. Naming domains NARROWS to those; an empty list asks to
+     * see none. There is no spelling that widens: a domain the app did not
+     * install is not reached by a file naming it, because the narrowing is an
+     * intersection over the registry the app built.
+     *
+     * A misspelled domain is refused **at the mint**, by name, listing the four
+     * — a typo that silently narrowed a seat to nothing would surface as a
+     * planner that quietly stopped finding anybody. A correctly spelled domain
+     * the scope does not carry is NOT a refusal: it is the add-never-widen rule
+     * doing its job, and the seat simply sees nothing for it.
+     *
+     * Read per turn by `createWorkforceCapability`'s door — see
+     * `./seat-discovery`.
+     */
+    [SEAT_DISCOVER_KEY]: z.array(z.enum(MANIFEST_DOMAINS)).optional()
   });
 }
 

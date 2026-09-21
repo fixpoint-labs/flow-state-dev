@@ -258,3 +258,7 @@ const rows = await ctx.resources.memberships.list(membershipPrefix(seatId));
 **What the prefix does not buy:**
 
 Narrowing is not pushed into the store. The runtime fetches every membership row under the org before the prefix narrows it, so the cost grows with the org rather than with the seat.
+
+## Reaching the inventory from an agent
+
+The rows on this page are what the framework knows about seats and channels. An agent does not read them directly: it calls [discovery](../orchestration/discovery.md), which turns the same rows into short entries it can plan against. Nothing here changes when it does — discovery reads these rows and writes none.

@@ -39,6 +39,13 @@ export {
 
 export type { ExplicitActivationScope } from "./activation-store";
 
+// The skills domain's projection into the discovery door (FIX-817). Registered
+// on a scope's manifest registry beside the other domains' sources.
+export {
+  skillsManifestSource,
+  type SkillsManifestSourceOptions,
+} from "./manifest-source";
+
 export {
   defineSkillsCollection,
   skillStateSchema,
