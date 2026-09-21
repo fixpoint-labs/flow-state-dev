@@ -63,7 +63,7 @@ on. Then this epic returns to design and POC and the fence goes back up.
 |---|---|
 | **Instead of** | A `CHANNELS.md` family file, which the epic body named and **the framework does not read** · a ChannelFlow implementation per family · boards minted by a BoardFlow · seats that see every board on the channel |
 | **Because** | Board v1 is settled upstream (FIX-1385/FIX-1922). A channel holds conversation; a seat does work. Which boards a seat drains is seat wiring, and making it ambient hides the one thing the example exists to show. And a reference app that teaches a convention nothing loads inverts its own objective |
-| **Locks in** | The reference teaches **the pair that shipped**: a channel **kind** is TypeScript at `workforce/flows/channels/<kind>.ts`, picked up by `fsdev gen` into `channelKinds`; a channel **instance** is a `CHANNEL.md` under its team, naming its kind with an optional `flow:`. **Board v1 is unchanged and stays whole:** boards are a bare local name list in `CHANNEL.md` frontmatter, the framework mints a ledger per name, code wires drain only via `channelBoard` / `taskBoard`, an unattended board warns, and one factory carries the kind clones. FIX-1476 owns all of it — including writing the demo kinds as real `flows/channels/*.ts` files, not labels — and every other row consumes it without re-deciding it. Paths, frontmatter keys and the factory's shape are FIX-1476's spec, not this card |
+| **Locks in** | The reference teaches **the pair that shipped**: a channel **kind** is TypeScript at `workforce/flows/channels/<kind>.ts`, picked up by `fsdev gen` into `channelKinds`; a channel **instance** is a `CHANNEL.md` under its team, naming its kind with an optional `flow:`. **Board v1 is unchanged and stays whole:** boards are a bare local name list in `CHANNEL.md` frontmatter, the framework mints a ledger per name, code wires drain only via `channelBoard` / `taskBoard`, an unattended board warns, and one factory carries the kind clones. FIX-1476 owns all of it — including writing the demo kinds as real `flows/channels/*.ts` files, not labels — and every other row consumes it without re-deciding it. Paths, frontmatter keys and the factory's shape are FIX-1476's spec, not this card — bounded by what `defineChannelFlow` can actually build, which is one kind name and no more ([recorded below](#custom-kind)) |
 
 <a name="d5"></a>
 ## D5 · Both UI shapes ship in the client packages; kitchen-sink only consumes
@@ -188,11 +188,22 @@ are the ones that bind three children each, and an owner moving there moves a fi
   superseding it. `FlowNavigator` stands as a placeholder name for FIX-1477 to settle. **This is
   a review stamp, not the gate** — the owner signed D8 off by merging
   [#1986](https://github.com/fixpoint-labs/flow-state-dev/pull/1986) on 2026-09-21.
-- **A channel running a kind of its own cannot hold boards.** `boards:` is refused by name on a
-  custom kind, because boards belong to the built-in channel kind
-  ([channels.md](../../../apps/docs/docs/workforce/channels.md)). FIX-1476's worked example has
-  to show the drain on a built-in-kind channel; it is a shape of the example, not a fork, and it
-  is recorded here so the demo kinds are not built against a combination the framework refuses.
+<a name="custom-kind"></a>
+- **A channel running a kind of its own cannot hold boards — and "a kind of its own" means a
+  whole second ChannelFlow.** `defineChannelFlow` takes no `kind` parameter (its options are
+  exactly `notify`, `boards`, `inventory`) and calls `defineFlow({ kind: CHANNEL_KIND })` on the
+  literal `"channel"`, so **one factory can only ever produce one kind name** —
+  [`channel-flow.ts`](../../../packages/workforce/src/channel/channel-flow.ts), whose header
+  says it outright: *the one channel kind the framework ships*. A custom kind is therefore a
+  hand-written `defineFlow` carrying its own state schema and post/read graph — D4's own
+  invent-kill, a ChannelFlow implementation per kind, reached from the other side — and it is
+  board-incapable, because `withBoards` is deliberately off `ChannelKind`, `holdsBoards()` gates
+  it, and `channelInstances` refuses `boards:` by name
+  ([`channel-binder.ts`](../../../packages/workforce/src/channel/channel-binder.ts)). The
+  published page said this before the fence was written: a standup, a direct message and an
+  announcement channel are all channels on the one built-in kind, told apart by their members
+  and their charter ([channels.md](../../../apps/docs/docs/workforce/channels.md)). FIX-1476's
+  worked example shows the drain on a built-in-kind channel; a shape of the example, not a fork.
 - **Shell region detail is FIX-1477's, not the epic's.** The first draft carried four shell
   figures and a long narrative in `SPEC.md`. Cursor's simplify pass, `second-look` and the
   Architect all read that as issue altitude, and the owner's approval took the Architect's call.
