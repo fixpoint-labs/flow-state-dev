@@ -68,7 +68,7 @@ Output looks like:
   Data:   .fsdev/data/
 ```
 
-The DevTool opens in your browser. Work down the navigator: open a flow's kind, pick a copy by its ID, create or open a session under it, then dispatch an action and read the request that comes back. If more than one copy of a flow is registered, the ID is what tells them apart — see [Flow overview](./overview.md#flow-overview).
+The DevTool opens in your browser. Work down the navigator: open your flow, create or open a session under it, then dispatch an action and read the request that comes back. A flow registered as a collection opens into its copies first, and the ID is what tells them apart — see [Flow overview](./overview.md#flow-overview).
 
 ## Custom flow directories
 

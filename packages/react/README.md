@@ -385,7 +385,7 @@ Register renderers via `FlowProvider` or pass them directly to `ItemRenderer`.
 
 You give it sections. A section is a label and a set of flow kind names, so an app that declares a channel kind of its own adds that name to the same list.
 
-Leave `kinds` out and the section covers every kind the server registers. That is what you want when the kinds are not yours to write down, such as a tool pointed at whatever deployment is running. An empty array is not the same thing: it is a filter you did name, and it matches nothing.
+Leave `kinds` out and the section covers every kind the server registers. That is what you want when the kinds are not yours to write down, such as a tool pointed at whatever deployment is running. `kinds: []` is different: an empty filter matches no kinds, so the section renders empty.
 
 ```tsx
 import { FlowNavigator } from "@flow-state-dev/react";
@@ -400,7 +400,7 @@ import { FlowNavigator } from "@flow-state-dev/react";
 />
 ```
 
-How deep the tree goes comes from each flow's declared `cardinality`. A flow declared `singleton` is a single instance and sits as one row. A flow declared `collection` has many addressable copies, and its row expands into them. There is no `depth` prop, and adding one is not an oversight we left open: a depth you passed in would be a second opinion about your own flow, and it would be wrong the first time that flow changed shape.
+How deep the tree goes comes from each flow's declared `cardinality`. A flow declared `singleton` is a single instance and sits as one row. A flow declared `collection` has many addressable copies, and its row expands into them. Depth comes from the flow, not from a prop.
 
 `onSelectSession(sessionId, flow)` fires when a session row is picked. The second argument describes the instance that session was listed under: `{ kind, address, cardinality }`, where `address` is the kind name for a singleton and the instance id for one copy of a collection. Selection is yours to keep; pass it back as `selectedSessionId` to mark the current row.
 
@@ -410,9 +410,9 @@ The navigator reads through a `client` and a `sessionClient`. Pass your own thro
 
 The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` beside any row's name, `leafToolbar` inside an open instance, and `emptySection` for a section whose kinds the server does not have.
 
-`leafToolbar` is handed that instance's session list, a `refresh` for it, and the flow-list entry the row was drawn from. The entry is there so you can show what the flow declares, its actions for example, without reading the flow list a second time to find out.
+`leafToolbar` is handed that instance's session list, a `refresh` for it, and the flow-list entry the row was drawn from. The entry carries what the flow declares — its actions, for example — so the toolbar can render them without fetching the flow list itself.
 
-One limit worth knowing before you put this in front of end users: the flow listing it reads carries no organization, and the framework does not guard that route. Anyone who can reach your app can read the list unless you put your own check in front of it, so treat it as public information about your deployment's shape. The navigator has no `orgId` prop, because the listing could not honour one, and a filter that silently does nothing is worse than no filter.
+Before you put this in front of end users: the flow listing it reads carries no organization, and the framework does not guard that route. Anyone who can reach your app can read the list unless you put your own check in front of it, so treat it as public information about your deployment's shape. There is no `orgId` prop.
 
 ### Presentational components moved to `@flow-state-dev/ui`
 

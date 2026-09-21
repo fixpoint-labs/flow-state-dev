@@ -67,11 +67,11 @@ The navigator groups flows by kind, and how far a kind opens comes from how it w
     engineer-b
 ```
 
-Opening a kind asks the server nothing — the copies are already in the flow listing. Sessions are read when you open the row you are going to work in, which is a singleton's kind row or one copy under a collection kind. A kind with a hundred copies under it costs one request when you open the copy you want, not a hundred when you open the kind.
+Expanding a kind costs no request. Sessions are read when you open the row you are going to work in — a singleton's kind row, or one copy under a collection kind.
 
 A long ID is shortened to fit, so each copy's row carries a copy button at its end. That is the string you address the instance by, so copy it rather than retyping what the row shows. A singleton's ID is its kind and is already shown whole.
 
-Open a copy to see its sessions, re-read them, or start a new one. The actions that copy declares sit behind the count beside them. Two copies of a kind declare the same action names but can run entirely different blocks, so what you see there belongs to the copy you opened.
+Open a copy to see its sessions, re-read them, or start a new one. An open copy also shows how many actions it declares — click that count to list them. Two copies of a kind declare the same action names but can run entirely different blocks, so what you see there belongs to the copy you opened.
 
 ## Session management
 
