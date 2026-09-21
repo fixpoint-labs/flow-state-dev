@@ -1,0 +1,75 @@
+<svg viewBox="0 0 940 430" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The same three shell regions twice, aligned column for column. Today the rail holds a session list written in the app, the centre holds the turn stream rendered by files copied into the app with five of twenty-five copies drifted from their source, a six-control strip sits above the prompt, and the right panel holds artifacts only in build mode — every region is app-local. After, the rail holds one navigator imported from the react package, the centre keeps the same turn stream with its copies reconciled to one source of record, the control strip is gone, and the right panel holds boards and the roster imported from the react package and no longer conditional on a mode.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F2DEDC; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A2220; } }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .app   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; }
+    .pkg   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .reg   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-src { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.04em; }
+    .src-app { fill:var(--gone); }
+    .src-pkg { fill:var(--code); }
+    .src-reg { fill:var(--accent); }
+    .sep { stroke:var(--rule); stroke-width:1; stroke-dasharray:3 3; }
+  </style>
+
+  <g id="today">
+    <text class="t-lbl" x="24" y="24">TODAY · EVERY REGION IS WRITTEN IN THE APP</text>
+    <rect class="app" x="24" y="36" width="150" height="150" rx="5"/>
+    <text class="t-b" x="36" y="58">session list</text>
+    <text class="t-s" x="36" y="74">256px, flat</text>
+    <text class="t-src src-app" x="36" y="176">apps/kitchen-sink</text>
+
+    <rect class="app" x="186" y="36" width="420" height="106" rx="5"/>
+    <text class="t-b" x="198" y="58">the turn stream</text>
+    <text class="t-s" x="198" y="74">reads the session's persisted items</text>
+    <text class="t-src src-app" x="198" y="132">components/flow-state · 5 of 25 copies drifted</text>
+
+    <rect class="app" x="186" y="150" width="420" height="36" rx="5"/>
+    <text class="t-b" x="198" y="166">six controls, then the prompt</text>
+    <text class="t-src src-app" x="198" y="180">apps/kitchen-sink</text>
+
+    <rect class="app" x="618" y="36" width="298" height="150" rx="5"/>
+    <text class="t-b" x="630" y="58">artifacts</text>
+    <text class="t-s" x="630" y="74">only while mode is build</text>
+    <text class="t-src src-app" x="630" y="176">apps/kitchen-sink</text>
+  </g>
+
+  <path class="sep" d="M24 212 H916"/>
+
+  <g id="after">
+    <text class="t-lbl" x="24" y="250">AFTER · THE SAME COLUMNS, IMPORTED</text>
+    <rect class="pkg" x="24" y="262" width="150" height="150" rx="5"/>
+    <text class="t-b" x="36" y="284">one navigator</text>
+    <text class="t-s" x="36" y="300">CHANNELS</text>
+    <text class="t-s" x="36" y="314">SEATS</text>
+    <text class="t-s" x="36" y="332">depth read off</text>
+    <text class="t-s" x="36" y="344">each flow's</text>
+    <text class="t-s" x="36" y="356">cardinality</text>
+    <text class="t-src src-pkg" x="36" y="402">@flow-state-dev/react</text>
+
+    <rect class="reg" x="186" y="262" width="420" height="106" rx="5"/>
+    <text class="t-b" x="198" y="284">the turn stream</text>
+    <text class="t-s" x="198" y="300">unchanged — it is the one thing the app gets right</text>
+    <text class="t-src src-reg" x="198" y="358">the ui registry · every copy back on its source</text>
+
+    <rect class="n-box" x="186" y="376" width="420" height="36" rx="5"/>
+    <text class="t-b" x="198" y="392">the prompt</text>
+    <text class="t-s" x="198" y="406">the control row closes; nothing takes it</text>
+
+    <rect class="pkg" x="618" y="262" width="298" height="150" rx="5"/>
+    <text class="t-b" x="630" y="284">boards, and the roster</text>
+    <text class="t-s" x="630" y="300">standing — no longer a mode</text>
+    <text class="t-s" x="630" y="318">both org-scoped at the store</text>
+    <text class="t-src src-pkg" x="630" y="402">@flow-state-dev/react</text>
+  </g>
+</svg>
