@@ -359,6 +359,10 @@ A record carrying `flow: my-channel` then runs on that kind's own instance, and 
 
 That map is the whole registration surface. There is no second API, and a custom factory carries the same contract the built-in does: one kind, one instance.
 
+Two things come with it, and both are worth knowing before you write the file. The factory the framework ships builds one kind, the built-in one, so a kind of your own is a flow you write: its own state, its own post, its own read. And it cannot hold a board — `boards:` on a record naming your kind is refused when you bind the roster, because a board's ledgers are handed to the built-in kind at bind time and a custom factory takes no arguments.
+
+So the question to ask is not "is this channel different" but "does this channel's *workflow* diverge". Different members, a different charter and a different set of boards are all one kind. A different `read` is not.
+
 ## What channels do not do yet
 
 - No join or leave. Membership is the declared list; changing it means changing the record and opening a fresh channel.
