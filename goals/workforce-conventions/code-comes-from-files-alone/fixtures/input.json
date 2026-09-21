@@ -1,0 +1,9 @@
+{
+  "userId": "goal-code-from-files",
+  "note": "is the printer fixed?",
+  "port": 3987,
+  "seats": ["support.ada", "support.grace"],
+  "kind": "desk-clerk",
+  "block": "desk-note",
+  "controlKinds": ["chat-agent", "rich-text-component", "weekly-digest"]
+}

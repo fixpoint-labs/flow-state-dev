@@ -30,12 +30,18 @@ export default handler({
   outputSchema: deskNoteOutput,
   execute: (input, ctx) => {
     const config = ctx.flow.config as { desk?: string; instructions?: string };
+    const desk = config.desk ?? "unassigned";
+    // Say the answer where a caller can hear it. A handler's return value rides
+    // its own `block_trace` row, and trace items are `{ client: false, history:
+    // false }` by type — so without this the demonstration is invisible to
+    // anyone holding the HTTP route, which is the only place a reader meets it.
+    ctx.emit.message(`[${desk} desk] ${input.note}`);
     return {
       answered: input.note,
-      // Absent on a kind that declares no desk — this block is reachable
+      // `unassigned` on a kind that declares no desk — this block is reachable
       // both as a flow action and as a seat's tool, and only one of those
       // kinds has the setting.
-      desk: config.desk ?? "unassigned",
+      desk,
       instructions: config.instructions ?? "",
     };
   },

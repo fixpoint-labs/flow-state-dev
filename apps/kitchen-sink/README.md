@@ -40,6 +40,26 @@ Actions:
 
 Exported as `richTextComponentFlow` (`kind: "rich-text-component"`). Consumed by the artifact editor UI. Not mounted at a dedicated route.
 
+### The support team (`workforce/`)
+
+A hired team, declared in files rather than wired in code. Each seat is a `WORKER.md` under `workforce/teams/support/workers/`, and its frontmatter is the whole of its configuration — which flow kind it runs, and the settings that kind offers. `support.ada` and `support.grace` both run the `desk-clerk` kind and declare different desks; `support.iris` and `support.otto` run the built-in agent kind with different tools.
+
+Worker kinds, blocks and capabilities are picked up the same way: a file under `workforce/flows/workers/`, `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That generated module is committed, so what the app serves is decided at build time and not by a scan at startup.
+
+Each seat is addressed by its own id, so a seat answers on the same route as any other flow:
+
+```bash
+# A note to the front desk, from the CLI
+pnpm fsdev run support.ada answer -i '{"note":"is the printer fixed?"}'
+
+# Or over HTTP
+curl -X POST localhost:3000/api/flows/support.ada/actions/answer \
+  -H 'content-type: application/json' \
+  -d '{"input":{"note":"is the printer fixed?"},"userId":"you"}'
+```
+
+Adding a seat means adding a folder and restarting; adding a kind means adding a file and re-running `fsdev gen`. There is no second place to edit.
+
 ## Web Application (`app/`)
 
 - Three-column layout: session sidebar, conversation, artifact panel
