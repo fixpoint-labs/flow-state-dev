@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="620" viewBox="0 0 980 620" role="img" aria-labelledby="title desc">
+  <title id="title">Evaluator vs generator, with System 2 fallback</title>
+  <desc id="desc">A generator writes tokens you parse. An evaluator takes state plus typed questions and returns answers. Evaluation-capable models use experimental_evaluate (Jev on AI Gateway). Other models fall back to structured-output System 2. Apps do not require Jev.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f6f4ef; }
+      .ink { fill: #1f1b16; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .muted { fill: #6b635a; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .label { fill: #fffdf8; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; font-weight: 650; }
+      .card { fill: #fffdf8; stroke: #d7d0c6; stroke-width: 1.25; }
+      .line { stroke: #b8b0a5; stroke-width: 1.5; fill: none; }
+      .arrow { stroke: #8a8278; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .chip-gen { fill: #5b4d9a; }
+      .chip-eval { fill: #0d7377; }
+      .chip-s2 { fill: #9a6700; }
+      .soft-gen { fill: #ebe7f7; }
+      .soft-eval { fill: #d7eeef; }
+      .soft-s2 { fill: #f6e9c8; }
+      .soft-ans { fill: #1f1b16; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1.2 L 8.5 5 L 0 8.8 Z" fill="#8a8278"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="980" height="620" rx="18"/>
+
+  <text class="ink" x="36" y="42" font-size="20" font-weight="650">Sibling blocks. Different jobs.</text>
+  <text class="muted" x="36" y="66" font-size="13">A generator writes. An evaluator answers questions you already know how to ask.</text>
+
+  <!-- Generator card -->
+  <rect class="card" x="36" y="92" width="440" height="230" rx="14"/>
+  <rect class="chip-gen" x="56" y="112" width="108" height="26" rx="13"/>
+  <text class="label" x="110" y="130" font-size="12" text-anchor="middle">generator</text>
+  <text class="ink" x="176" y="130" font-size="13" font-weight="600">write, then parse</text>
+
+  <rect class="soft-gen" x="56" y="156" width="400" height="44" rx="8"/>
+  <text class="ink" x="256" y="184" font-size="13" text-anchor="middle">prompt  ’  generate / streamText  ’  tokens</text>
+
+  <text class="muted" x="76" y="228" font-size="13">You decide what the text meant after it arrives.</text>
+  <text class="muted" x="76" y="250" font-size="13">Right primitive when the model should compose.</text>
+  <text class="ink" x="76" y="286" font-size="13" font-weight="600">Wrong primitive for a known question set.</text>
+
+  <!-- Evaluator card -->
+  <rect class="card" x="504" y="92" width="440" height="230" rx="14"/>
+  <rect class="chip-eval" x="524" y="112" width="108" height="26" rx="13"/>
+  <text class="label" x="578" y="130" font-size="12" text-anchor="middle">evaluator</text>
+  <text class="ink" x="644" y="130" font-size="13" font-weight="600">ask, then branch</text>
+
+  <rect class="soft-eval" x="524" y="156" width="400" height="44" rx="8"/>
+  <text class="ink" x="724" y="184" font-size="13" text-anchor="middle">state + questions  ’  typed answers</text>
+
+  <text class="muted" x="544" y="228" font-size="13">choice / score / boolean. Options are yours first.</text>
+  <text class="muted" x="544" y="250" font-size="13">You combine answers in code. One call stays atomic.</text>
+  <text class="ink" x="544" y="286" font-size="13" font-weight="600">Trees live in cascadingRouter, not here.</text>
+
+  <!-- Capability fork -->
+  <text class="ink" x="36" y="360" font-size="16" font-weight="650">How one evaluator call actually runs</text>
+
+  <rect class="card" x="36" y="380" width="200" height="56" rx="10"/>
+  <text class="ink" x="136" y="414" font-size="13" font-weight="600" text-anchor="middle">state + questions</text>
+
+  <path class="arrow" d="M236 408 H300"/>
+
+  <rect class="card" x="300" y="372" width="220" height="72" rx="10"/>
+  <text class="ink" x="410" y="402" font-size="13" font-weight="600" text-anchor="middle">isEvaluationCapable?</text>
+  <text class="muted" x="410" y="422" font-size="11" text-anchor="middle">model has doEvaluate, or is Jev</text>
+
+  <path class="arrow" d="M520 392 H590"/>
+  <path class="arrow" d="M410 444 V476 H590"/>
+
+  <rect class="soft-eval" x="590" y="360" width="354" height="64" rx="10"/>
+  <rect class="chip-eval" x="606" y="374" width="86" height="20" rx="10"/>
+  <text class="label" x="649" y="388" font-size="10" text-anchor="middle">evaluate</text>
+  <text class="ink" x="704" y="388" font-size="12">experimental_evaluate</text>
+  <text class="muted" x="606" y="408" font-size="11">Gateway · typesafe-ai/jev · TypeSafe confidence</text>
+
+  <rect class="soft-s2" x="590" y="440" width="354" height="64" rx="10"/>
+  <rect class="chip-s2" x="606" y="454" width="86" height="20" rx="10"/>
+  <text class="label" x="649" y="468" font-size="10" text-anchor="middle">System 2</text>
+  <text class="ink" x="704" y="468" font-size="12">structured generateObject</text>
+  <text class="muted" x="606" y="488" font-size="11">same questions · apps work without Jev</text>
+
+  <path class="arrow" d="M767 424 V520"/>
+  <path class="arrow" d="M767 504 V520"/>
+
+  <rect class="soft-ans" x="590" y="528" width="354" height="56" rx="10"/>
+  <text class="label" x="767" y="552" font-size="13" text-anchor="middle">typed answers your code branches on</text>
+  <text class="muted" x="767" y="572" font-size="11" text-anchor="middle" fill="#d7d0c6">evaluate: calibrated confidence · System 2: synthetic 1 or fail-closed</text>
+</svg>

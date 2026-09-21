@@ -3,6 +3,8 @@
 Private lab sketching a core `evaluator` block — sibling of `generator`.
 Do not merge as a published package. There is no `@flow-state-dev/system-one`.
 
+Teaching page (DNM / POC, not Atlas): [`docs/README.md`](./docs/README.md).
+
 `evaluator` takes `state` plus typed questions (`choice` / `score` / `boolean`)
 and returns answers your code branches on. When the model is
 evaluation-capable it calls AI SDK `experimental_evaluate` (Jev on AI
