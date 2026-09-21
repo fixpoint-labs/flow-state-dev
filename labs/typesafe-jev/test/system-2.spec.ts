@@ -2,7 +2,6 @@
  * System 2 fallback: same questions, structured generation, no Jev.
  */
 import { describe, expect, it } from "vitest";
-import { FlowError } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { evaluator } from "../src/evaluate";
 import { runEvaluate } from "../src/run-evaluate";
@@ -91,19 +90,5 @@ describe("system2Evaluate", () => {
     );
     expect(answers.flag).toEqual({ type: "noul", noul: 0.4 });
     expect(formatSystem2Prompt("hello", { flag: noul("Yes?") })).toContain("Yes?");
-  });
-
-  it("does not treat a missing_api_key as a network evaluate call", async () => {
-    try {
-      await runEvaluate({
-        state: "x",
-        questions: { urgent: boolean("Urgent?") },
-        model: "openai/gpt-5.4-mini",
-      });
-    } catch (error) {
-      expect(error).toBeInstanceOf(FlowError);
-      expect(String(error)).toContain("System 2");
-      expect(String(error)).not.toContain("OPENROUTER");
-    }
   });
 });

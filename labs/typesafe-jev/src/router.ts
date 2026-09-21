@@ -182,7 +182,13 @@ export function systemOneRouter<
       });
 
       const answer = result.answers[SYSTEM_ONE_ROUTE_QUESTION];
-      if (!isChoiceAnswer(answer) || answer.confidence < minConfidence) {
+      const confidence = isChoiceAnswer(answer) ? answer.confidence : undefined;
+      if (
+        !isChoiceAnswer(answer) ||
+        typeof confidence !== "number" ||
+        !Number.isFinite(confidence) ||
+        confidence < minConfidence
+      ) {
         return defaultBlock;
       }
       return described[answer.choice]?.block ?? defaultBlock;

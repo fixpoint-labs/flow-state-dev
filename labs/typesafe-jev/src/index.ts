@@ -3,7 +3,8 @@
  *
  *   evaluator           — state + questions (choice/score/boolean) → answers
  *   typesafeEvaluate    — alias of evaluator
- *   systemOneRouter     — choice + confidence-gated dispatch (composition)
+ *   cascadingRouter     — evaluate trees in code, confidence-gated edges
+ *   systemOneRouter     — one-level choice + confidence-gated dispatch
  *   createSystemOneIndexCapability — index-time facets on evaluator answers
  *   createSystemOneSkillClassifier — optional skill-activator tier 3
  *   createSystemOneMemoryDecision — sketch: optional memory classifier
@@ -72,6 +73,32 @@ export {
   type RouteByChoiceOptions,
   type RouteDecision,
 } from "./route";
+export {
+  CASCADING_AMBIGUOUS,
+  DEFAULT_CASCADE_QUESTION,
+  cascadeGateOpen,
+  cascadingRouter,
+  type CascadeBranch,
+  type CascadeFork,
+  type CascadeGate,
+  type CascadeLeaf,
+  type CascadeQuestion,
+  type CascadingRouterConfig,
+} from "./cascading-router";
+export {
+  CASCADING_FLOW_KIND,
+  billingQueueLeaf,
+  cascadeInputSchema,
+  cascadeOutputSchema,
+  createCascadingTriageFlow,
+  createCascadingTriageRouter,
+  escalateLeaf,
+  reviewLeaf,
+  techQueueLeaf,
+  type CascadeInput,
+  type CascadeOutput,
+  type CascadingTriageOptions,
+} from "./cascading-flow";
 export {
   SYSTEM_ONE_DEFAULT_ROUTE,
   SYSTEM_ONE_ROUTE_QUESTION,
@@ -220,6 +247,7 @@ export {
   scoreQuestionSchema,
   stateSchema,
   truthProbability,
+  usableConfidence,
   type AnswerFor,
   type AnswersFor,
   type BooleanAnswer,

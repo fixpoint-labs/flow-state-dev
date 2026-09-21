@@ -39,14 +39,18 @@ export interface RouteByChoiceOptions {
  * Intent-route a Choice answer, with confidence as a second axis.
  *
  * High confidence → the choice. Low confidence → `escalate`. An optional
- * A boolean / noul can force escalate on a high-stakes combination
+ * boolean / noul can force escalate on a high-stakes combination
  * (urgent + billing).
  */
 export function routeByChoice(options: RouteByChoiceOptions): RouteDecision {
   const min = options.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
   const { choice } = options.choice;
 
-  if (options.choice.confidence < min) {
+  if (
+    typeof options.choice.confidence !== "number" ||
+    !Number.isFinite(options.choice.confidence) ||
+    options.choice.confidence < min
+  ) {
     return {
       destination: "escalate",
       reason: `confidence ${options.choice.confidence} < ${min} on "${choice}"`,

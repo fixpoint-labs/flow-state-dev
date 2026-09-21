@@ -118,7 +118,7 @@ function readChoice<T extends string>(
       `Index classify expected a Choice answer for "${key}".`,
     );
   }
-  if (answer.confidence < minConfidence) return null;
+  if (answer.confidence === undefined || answer.confidence < minConfidence) return null;
   if (!allowed.has(answer.choice as T)) {
     throw new TypeSafeError(
       "unexpected_answer",

@@ -61,6 +61,26 @@ describe("createAiSdkEvaluateClient", () => {
     expect(out.answers.severity).toMatchObject({ type: "score", score: 1.2, confidence: 0.64 });
   });
 
+  it("does not invent confidence when TypeSafe omitted it", async () => {
+    const client = createAiSdkEvaluateClient({
+      evaluate: async () => ({
+        answers: {
+          team: { type: "choice", choice: "billing", probabilities: { billing: 0.9 } },
+        },
+      }),
+    });
+    const out = await client.evaluate({
+      state: "x",
+      questions: { team: choice("Which team?", { billing: "Pay" }) },
+    });
+    expect(out.answers.team).toEqual({
+      type: "choice",
+      choice: "billing",
+      probabilities: { billing: 0.9 },
+    });
+    expect("confidence" in (out.answers.team ?? {})).toBe(false);
+  });
+
   it("keeps boolean answers as boolean when the question was boolean", async () => {
     const client = createAiSdkEvaluateClient({
       evaluate: async () => ({

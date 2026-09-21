@@ -111,7 +111,7 @@ function fromSdkAnswer(
       type: "choice",
       choice: raw.choice,
       probabilities,
-      confidence: confidence ?? 1,
+      ...(confidence !== undefined ? { confidence } : {}),
     };
   }
   const legend: Record<string, string> =
@@ -123,6 +123,6 @@ function fromSdkAnswer(
     score: raw.score,
     legend,
     probabilities: raw.probabilities ?? {},
-    confidence: confidence ?? 1,
+    ...(confidence !== undefined ? { confidence } : {}),
   };
 }

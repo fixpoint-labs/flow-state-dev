@@ -180,7 +180,7 @@ export function createSystemOneSkillClassifier(
       });
 
       const answer = result.answers[SYSTEM_ONE_SKILL_QUESTION];
-      const confidence = isChoiceAnswer(answer) ? answer.confidence : 0;
+      const confidence = isChoiceAnswer(answer) ? (answer.confidence ?? 0) : 0;
       const picked = isChoiceAnswer(answer) ? answer.choice : SYSTEM_ONE_SKILL_NONE;
 
       if (

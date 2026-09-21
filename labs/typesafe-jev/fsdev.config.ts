@@ -14,6 +14,10 @@
 import path from "node:path";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
+import {
+  CASCADING_FLOW_KIND,
+  createCascadingTriageFlow,
+} from "./src/cascading-flow";
 import { createTicketTriageFlow, FLOW_KIND } from "./src/flow";
 import { createIndexedDocsFlow, INDEXED_DOCS_FLOW_KIND } from "./src/index-flow";
 import { createSystemOneDemoFlow, SYSTEM_ONE_FLOW_KIND } from "./src/mode-flow";
@@ -36,6 +40,7 @@ export default createFlowState({
     [INDEXED_DOCS_FLOW_KIND]: createIndexedDocsFlow({ systemOne: true }),
     [SKILL_ACTIVATOR_FLOW_KIND]: createSkillActivatorDemoFlow({ systemOne: true }),
     [FLOW_KIND]: createTicketTriageFlow(),
+    [CASCADING_FLOW_KIND]: createCascadingTriageFlow(),
   },
   modelResolver: Object.assign(neverResolvesAModel, {
     resolveId: neverResolvesAModel,

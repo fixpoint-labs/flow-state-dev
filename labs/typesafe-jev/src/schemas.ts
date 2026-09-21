@@ -79,7 +79,8 @@ export const choiceAnswerSchema = z.object({
   type: z.literal("choice"),
   choice: z.string(),
   probabilities: z.record(z.string(), z.number()),
-  confidence: z.number(),
+  /** Missing on evaluate when TypeSafe did not return it — fail-closed. */
+  confidence: z.number().optional(),
 });
 
 export const scoreAnswerSchema = z.object({
@@ -87,7 +88,7 @@ export const scoreAnswerSchema = z.object({
   score: z.number(),
   legend: z.record(z.string(), z.string()),
   probabilities: z.record(z.string(), z.number()),
-  confidence: z.number(),
+  confidence: z.number().optional(),
 });
 
 export const answerSchema = z.discriminatedUnion("type", [
@@ -224,4 +225,11 @@ export function truthProbability(answer: TypeSafeAnswer | undefined): number | u
   if (answer.type === "boolean") return answer.probability;
   if (answer.type === "noul") return answer.noul;
   return undefined;
+}
+
+/**
+ * Finite confidence only. Missing / NaN is not a guess — callers fail closed.
+ */
+export function usableConfidence(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
