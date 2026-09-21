@@ -7,6 +7,7 @@
  *   choice / score / noul — question builders
  *   createSystemOneIndexCapability — index-time classify + deterministic facet search
  *   createSystemOneSkillClassifier — optional Jev drop-in for skill-activator tier 3
+ *   createSystemOneMemoryDecision — sketch: optional Jev store/salience/kind for memory
  */
 
 export {
@@ -125,6 +126,18 @@ export {
   type IndexedDocumentFacets,
   type IndexedDocumentState,
 } from "./indexed-docs-resource";
+export {
+  MEMORY_KIND_NONE,
+  MEMORY_KIND_QUESTION,
+  MEMORY_SALIENCE_QUESTION,
+  MEMORY_STORE_QUESTION,
+  createSystemOneMemoryDecision,
+  memoryDecisionInputSchema,
+  memoryDecisionOutputSchema,
+  type MemoryDecisionInput,
+  type MemoryDecisionOutput,
+  type SystemOneMemoryDecisionOptions,
+} from "./memory-decision";
 export {
   DEMO_SKILLS,
   SKILL_ACTIVATOR_FLOW_KIND,

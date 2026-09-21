@@ -18,6 +18,7 @@ the transport (`OPENROUTER_API_KEY` on the host, never on action input).
 | `choice` / `score` / `noul` | builders | Question objects for `typesafeEvaluate` |
 | `createSystemOneIndexCapability` | capability | Optional. Classify-on-write + deterministic facet search. Absent = those tools are missing |
 | `createSystemOneSkillClassifier` | handler | Optional drop-in for skill-activator tier 3. Host passes it as `classifier`. Absent = today's generator (or deterministic-only) |
+| `createSystemOneMemoryDecision` | handler | Sketch. Store / salience / kind on a candidate snippet. Host may pass it as `memory.system({ classifier })`. Absent = today's capture |
 
 A `generator` is the wrong primitive. Options are yours before the call;
 probabilities come back calibrated; the next step is a child block or an
@@ -109,6 +110,23 @@ runs — today's generator, or deterministic-only.
 ```bash
 pnpm fsdev run system-one-skills activate -i '{"message":"the card was charged twice"}'
 ```
+
+## Memory capture (sketch / seam only)
+
+Same optional rule as skills. `@flow-state-dev/memory` does not import this
+package. Capture stays on today's observer unless a host passes a classifier:
+
+```ts
+memory.system({
+  model: "openai/gpt-5.4-mini",
+  working: true,
+  classifier: createSystemOneMemoryDecision({ client }),
+});
+```
+
+`mem.classifier` is the injected block. Omit it (or pass `null`) and memory
+still works. This is not a memory rewire — classify / salience / what-to-store
+are the questions the block answers; wiring them into observe/reflect is later.
 
 ## Low-level evaluate
 

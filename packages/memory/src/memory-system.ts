@@ -1,5 +1,5 @@
 import { defineResource } from '@flow-state-dev/core'
-import type { CapabilityRef } from '@flow-state-dev/core'
+import type { BlockDefinition, CapabilityRef } from '@flow-state-dev/core'
 import { z } from 'zod'
 import type { ZodTypeAny } from 'zod'
 import type {
@@ -385,6 +385,16 @@ export interface MemorySystemConfig {
    * stores grow without bound.
    */
   hygiene?: HygieneConfig | true | false
+  /**
+   * Optional System One / Jev classifier for capture decisions
+   * (store / salience / facet tags). When omitted or `null`, capture
+   * stays on today's generator observer — memory is usable without Jev.
+   *
+   * This package does not import System One. The host passes the block
+   * when that package is mounted. Capture is not rewritten in this
+   * sketch; the block is hung on `mem.classifier` for compose.
+   */
+  classifier?: BlockDefinition | null
 }
 
 // ---------------------------------------------------------------------------
@@ -418,6 +428,11 @@ export interface MemorySystem extends MemoryProvider {
   janitor?: ReturnType<typeof memorySystemJanitor>
   /** Session-scoped janitor tracking resource (when janitor is configured). */
   janitorResource?: typeof janitorResource
+  /**
+   * Optional System One classifier the host injected. Undefined when the
+   * package is off — capture still runs on today's observer.
+   */
+  classifier?: BlockDefinition
   /** Cross-store recall helper. */
   recall: (ctx: any, cue?: string) => RankedMemoryItem[]
   /**
@@ -926,6 +941,10 @@ export function system(config: MemorySystemConfig): MemorySystem {
 
   if (memCap.tiers.digest) {
     result.digestMemoryCapability = memCap.tiers.digest
+  }
+
+  if (config.classifier) {
+    result.classifier = config.classifier
   }
 
   return result

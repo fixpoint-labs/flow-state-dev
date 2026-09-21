@@ -1,6 +1,8 @@
 import { runForTest } from "@flow-state-dev/testing";
 import { describe, it, expect } from 'vitest'
+import { handler } from '@flow-state-dev/core'
 import type { ResourceRef } from '@flow-state-dev/core/types'
+import { z } from 'zod'
 import {
   workingMemoryStateSchema,
 } from '../src/working-memory.js'
@@ -278,6 +280,38 @@ describe('memory/memorySystem', () => {
       })
 
       expect(mem.episodic).toBeDefined()
+    })
+
+    it('omits classifier when System One is not injected', () => {
+      const mem = system({ model: 'gpt-5-mini', working: true })
+      expect(mem.classifier).toBeUndefined()
+      expect(mem.capture).toBeDefined()
+    })
+
+    it('exposes an injected classifier without rewriting capture', () => {
+      const classifier = handler({
+        name: 'stub-memory-decision',
+        inputSchema: z.object({ text: z.string() }),
+        outputSchema: z.object({ store: z.boolean() }),
+        execute: () => ({ store: false }),
+      })
+      const mem = system({
+        model: 'gpt-5-mini',
+        working: true,
+        classifier,
+      })
+      expect(mem.classifier).toBe(classifier)
+      expect(mem.capture).toBeDefined()
+    })
+
+    it('treats classifier: null as the package-off path', () => {
+      const mem = system({
+        model: 'gpt-5-mini',
+        working: true,
+        classifier: null,
+      })
+      expect(mem.classifier).toBeUndefined()
+      expect(mem.capture).toBeDefined()
     })
 
     it('exposes all working memory helpers', () => {
