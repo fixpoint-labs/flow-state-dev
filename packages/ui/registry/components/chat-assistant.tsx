@@ -35,8 +35,10 @@ function TaskBoardMeta({ item }: { item: ComponentItem }) {
  * Sources are excluded (source: false) — render them grouped via
  * <SourcesGroup items={session.items} /> alongside <ItemsRenderer>.
  *
- * Component renderers (routedSpecialists, audit-annotation, task-board-meta) receive
- * a single ComponentItem with the full snapshot data.
+ * Component renderers (audit-annotation, task-board-meta) receive a single
+ * ComponentItem with the full snapshot data. Container renderers
+ * (evented-actors, debate, routedSpecialists) receive a ContainerItem and
+ * read their nested keyed component snapshot via useContainerItems.
  */
 export const chatAssistantRenderers: RendererRegistry = {
   message: Message,
@@ -52,9 +54,9 @@ export const chatAssistantRenderers: RendererRegistry = {
   container: {
     "evented-actors": EventedActors,
     debate: Debate,
+    routedSpecialists: RoutedSpecialists,
   },
   component: {
-    routedSpecialists: RoutedSpecialists,
     "audit-annotation": AuditAnnotation,
     "task-board-meta": TaskBoardMeta,
     "task-change": false,

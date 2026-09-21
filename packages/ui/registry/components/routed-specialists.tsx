@@ -1,6 +1,7 @@
 "use client";
 
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { ContainerItem } from "@flow-state-dev/core/items";
+import { useContainerItems } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import {
   CheckCircle2Icon,
@@ -9,7 +10,9 @@ import {
   Loader2Icon,
   UserIcon,
 } from "lucide-react";
+import { useMemo } from "react";
 import Markdown from "react-markdown";
+import { useSessionItems } from "./session-items-context";
 
 type RoutedSpecialistsData = {
   state: Record<string, unknown>;
@@ -19,13 +22,31 @@ type RoutedSpecialistsData = {
 };
 
 /**
- * Renders a routedSpecialists pattern component item — showing the shared
- * workspace state that specialists have written to across iterations.
+ * Container renderer for the routedSpecialists pattern. The pattern
+ * sequencer emits a single keyed "routedSpecialists" component item inside
+ * a "routedSpecialists" container. This renderer reads that child component
+ * to display the shared workspace state.
+ *
+ * Register via:
+ *   <FlowProvider renderers={{ container: { routedSpecialists: RoutedSpecialists } }}>
  */
-export function RoutedSpecialists({ item }: { item: ComponentItem }) {
-  const data = item.data as RoutedSpecialistsData;
-  const { state, iteration, specialist } = data;
+export function RoutedSpecialists({ item }: { item: ContainerItem }) {
+  const allItems = useSessionItems();
+  const { componentsByKey } = useContainerItems(item, allItems);
 
+  const data = useMemo(() => {
+    for (const [, value] of componentsByKey) {
+      const candidate = value as unknown as RoutedSpecialistsData;
+      if (candidate && typeof candidate.state === "object") {
+        return candidate;
+      }
+    }
+    return undefined;
+  }, [componentsByKey]);
+
+  if (!data) return null;
+
+  const { state, iteration, specialist } = data;
   const isFinished = item.status === "completed";
 
   const entries = Object.entries(state).filter(

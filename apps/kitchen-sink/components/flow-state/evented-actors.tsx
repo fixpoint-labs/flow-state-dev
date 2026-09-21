@@ -244,6 +244,13 @@ export function EventedActors({ item }: { item: ContainerItem }) {
           aria-hidden="true"
         />
         <span className="text-sm font-medium">Evented Actors</span>
+        <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+          {isFinished ? (
+            <CheckCircle2Icon className="h-3 w-3 text-emerald-500" />
+          ) : (
+            <Loader2Icon className="h-3 w-3 animate-spin" />
+          )}
+        </span>
       </button>
 
       {/* Content — timeline */}
@@ -350,7 +357,7 @@ function Step({
   return (
     <div className="pt-3">
       {/* Header — status check + icon + label, all aligned on one line */}
-      <div className={cn("flex items-center gap-1.5", status !== 'complete' ? 'mb-2' : '')}>
+      <div className="flex items-center gap-1.5">
         <div className="shrink-0">
           {status === "complete" ? (
             <CheckCircle2Icon className="h-4 w-4 text-emerald-500" />
