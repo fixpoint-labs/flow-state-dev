@@ -398,7 +398,7 @@ import { FlowNavigator } from "@flow-state-dev/react";
 />
 ```
 
-How deep the tree goes comes from each flow's declared `cardinality`. A flow declared `singleton` is a single instance and sits as one row. A flow declared `collection` has many addressable copies, and its row expands into them.
+How deep the tree goes comes from each flow's declared `cardinality`. A flow declared `singleton` is a single instance and sits as one row. A flow declared `collection` has many addressable copies, and its row expands into them. There is no `depth` prop, and adding one is not an oversight we left open: a depth you passed in would be a second opinion about your own flow, and it would be wrong the first time that flow changed shape.
 
 `onSelectSession(sessionId, flow)` fires when a session row is picked. The second argument describes the instance that session was listed under: `{ kind, address, cardinality }`, where `address` is the kind name for a singleton and the instance id for one copy of a collection. Selection is yours to keep; pass it back as `selectedSessionId` to mark the current row.
 
@@ -407,6 +407,8 @@ Sessions load when you open a single flow instance, which is a singleton's row o
 The navigator reads through a `client` and a `sessionClient`. Pass your own through those props when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Left out, the navigator builds its own pair against the nearest `FlowProvider`'s `baseUrl` and `userId`.
 
 The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` beside any row's name, `leafToolbar` inside an open instance, and `emptySection` for a section whose kinds the server does not have.
+
+One limit worth knowing before you put this in front of end users: the flow listing it reads carries no organization and is not behind your authentication. Treat it as public information about your deployment's shape. The navigator has no `orgId` prop, because the listing could not honour one, and a filter that silently does nothing is worse than no filter.
 
 ### Presentational components moved to `@flow-state-dev/ui`
 
