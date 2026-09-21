@@ -1,29 +1,35 @@
 /**
  * Optional System One index capability.
  *
- * When a host `uses` this, classify-on-write and facet search light up.
- * When the package is absent, those tools are missing — there is no
- * silent RAG / embeddings stub. Core would own this seam later; the lab
- * owns the sketch.
+ * When a host `uses` this, classify-on-write and facet search light up on
+ * `ctx.cap["system-one-index"]`. Generators also get the search tool
+ * (default-on preset). Handlers that only want the fns drop it with
+ * `.presets({ tools: false })`. When the package is absent, those tools
+ * and fns are missing — there is no silent RAG / embeddings stub.
  */
 
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core";
 import type { TypeSafeDecisionsClient } from "./client";
+import { filterByFacets, hashIndexedContent, needsReindex, type FacetQuery } from "./facets";
 import {
-  classifyOnWrite,
-  classifyQuery,
-  createSearchIndexedDocumentsTool,
-  reindexIndexedDocuments,
-  searchIndexedDocuments,
   SEARCH_INDEXED_DOCUMENTS_TOOL,
+  createSearchIndexedDocumentsTool,
 } from "./index-blocks";
 import {
-  INDEXED_DOCS,
-  indexedDocsCollection,
-  indexedDocsResources,
-} from "./indexed-docs-resource";
-import { filterByFacets, hashIndexedContent, needsReindex } from "./facets";
+  classifyQueryEscape,
+  collectionOf,
+  ingestIndexedDocument,
+  reindexIndexedCollection,
+  searchIndexedCollection,
+  type ClassifyQueryOutput,
+  type IngestInput,
+  type IngestOutput,
+  type ReindexInput,
+  type ReindexOutput,
+  type SearchOutput,
+} from "./index-ops";
+import { INDEXED_DOCS, indexedDocsResources } from "./indexed-docs-resource";
 
 export interface CreateSystemOneIndexCapabilityOptions {
   client?: TypeSafeDecisionsClient;
@@ -34,18 +40,17 @@ export interface CreateSystemOneIndexCapabilityOptions {
   minConfidence?: number;
 }
 
-export interface SystemOneIndexCapability extends DefinedCapability {
-  readonly collectionKey: string;
-  readonly collection: typeof indexedDocsCollection;
-  readonly searchTool: BlockDefinition;
-  readonly classifyOnWrite: ReturnType<typeof classifyOnWrite>;
-  readonly searchIndexed: ReturnType<typeof searchIndexedDocuments>;
-  readonly reindex: ReturnType<typeof reindexIndexedDocuments>;
-  readonly classifyQuery: ReturnType<typeof classifyQuery>;
-  readonly filterByFacets: typeof filterByFacets;
-  readonly needsReindex: typeof needsReindex;
-  readonly hashIndexedContent: typeof hashIndexedContent;
-}
+export type SystemOneIndexFns = {
+  ingest: (input: IngestInput) => Promise<IngestOutput>;
+  search: (query: FacetQuery) => Promise<SearchOutput>;
+  reindex: (input: ReindexInput) => Promise<ReindexOutput>;
+  classifyQuery: (query: string) => Promise<ClassifyQueryOutput>;
+  filterByFacets: typeof filterByFacets;
+  needsReindex: typeof needsReindex;
+  hashIndexedContent: typeof hashIndexedContent;
+};
+
+export type SystemOneIndexCapability = DefinedCapability<"system-one-index", SystemOneIndexFns>;
 
 /**
  * Tools a generator would see. Empty when the capability was never created
@@ -53,43 +58,42 @@ export interface SystemOneIndexCapability extends DefinedCapability {
  */
 export function systemOneIndexTools(
   cap: SystemOneIndexCapability | null | undefined,
+  options: CreateSystemOneIndexCapabilityOptions = {},
 ): BlockDefinition[] {
-  return cap == null ? [] : [cap.searchTool];
+  return cap == null ? [] : [createSearchIndexedDocumentsTool(options)];
 }
 
 /**
  * Factory for the future `@flow-state-dev/system-one` index surface.
+ *
+ * Helpers live on `ctx.cap["system-one-index"]` — not a bag glued onto
+ * the capability object.
  */
 export function createSystemOneIndexCapability(
   options: CreateSystemOneIndexCapabilityOptions = {},
 ): SystemOneIndexCapability {
   const collectionKey = options.collectionKey ?? INDEXED_DOCS;
   const searchTool = createSearchIndexedDocumentsTool(options);
-  const classify = classifyOnWrite(options);
-  const search = searchIndexedDocuments(options);
-  const reindex = reindexIndexedDocuments(options);
-  const query = classifyQuery(options);
 
-  const cap = defineCapability({
+  return defineCapability({
     name: "system-one-index",
     resources: indexedDocsResources,
     presets: {
       tools: { tools: [searchTool] },
       default: ["tools"],
     },
-  });
-
-  return Object.assign(cap, {
-    collectionKey,
-    collection: indexedDocsCollection,
-    searchTool,
-    classifyOnWrite: classify,
-    searchIndexed: search,
-    reindex,
-    classifyQuery: query,
-    filterByFacets,
-    needsReindex,
-    hashIndexedContent,
+    fns: (ctx): SystemOneIndexFns => {
+      const collection = collectionOf(ctx, collectionKey);
+      return {
+        ingest: (input) => ingestIndexedDocument(collection, input, options),
+        search: (query) => searchIndexedCollection(collection, query, collectionKey),
+        reindex: (input) => reindexIndexedCollection(collection, input, options),
+        classifyQuery: (query) => classifyQueryEscape(query, options),
+        filterByFacets,
+        needsReindex,
+        hashIndexedContent,
+      };
+    },
   });
 }
 

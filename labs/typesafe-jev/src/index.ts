@@ -99,6 +99,7 @@ export {
   systemOneIndexTools,
   type CreateSystemOneIndexCapabilityOptions,
   type SystemOneIndexCapability,
+  type SystemOneIndexFns,
 } from "./index-capability";
 export {
   INDEXED_DOCS_FLOW_KIND,

@@ -11,6 +11,12 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import type { TypeSafeDecisionsClient } from "./client";
 import {
+  classifyOnWrite,
+  classifyQuery,
+  reindexIndexedDocuments,
+  searchIndexedDocuments,
+} from "./index-blocks";
+import {
   SEARCH_INDEXED_DOCUMENTS_TOOL,
   createSystemOneIndexCapability,
   systemOneIndexTools,
@@ -63,10 +69,10 @@ export function createIndexedDocsFlow(options: IndexedDocsFlowOptions = {}) {
     actions: enabled && cap !== undefined
       ? {
           status: { block: status },
-          ingest: { block: cap.classifyOnWrite },
-          search: { block: cap.searchIndexed },
-          reindex: { block: cap.reindex },
-          classifyQuery: { block: cap.classifyQuery },
+          ingest: { block: classifyOnWrite(options) },
+          search: { block: searchIndexedDocuments(options) },
+          reindex: { block: reindexIndexedDocuments(options) },
+          classifyQuery: { block: classifyQuery(options) },
         }
       : {
           status: { block: status },

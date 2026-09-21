@@ -62,11 +62,14 @@ embeddings path and no ambient body dump.
 ```ts
 const index = createSystemOneIndexCapability({ client });
 
-// Host `uses: [index]` on a generator → `searchIndexedDocuments` lights up.
-// Omit the capability → that tool does not exist. No silent RAG stub.
+// Host `uses: [index]` → ctx.cap["system-one-index"] + (on generators) the search tool.
+// Handlers that only want the fns: `uses: [index.presets({ tools: false })]`.
+// Omit the capability → those tools and fns do not exist. No silent RAG stub.
 
-await run(index.classifyOnWrite, { key: "dup-charge", title, body });
-await run(index.searchIndexed, { kind: "ticket" }); // no model
+execute: async (input, ctx) => {
+  await ctx.cap["system-one-index"].ingest({ key: "dup-charge", title, body });
+  return ctx.cap["system-one-index"].search({ kind: "ticket" }); // no model
+}
 ```
 
 Rules this sketch pins:
