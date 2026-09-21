@@ -392,6 +392,98 @@ describe("the tool's four affordances, as slots", () => {
   });
 });
 
+describe("the async fence around starting a session", () => {
+  it("does not move the workspace to the created session once the operator has opened a different copy while the create was in flight", async () => {
+    let resolvePost!: (response: Response) => void;
+    const postPending = new Promise<Response>((resolve) => {
+      resolvePost = resolve;
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({
+          url,
+          authorization: new Headers(init?.headers).get("authorization"),
+        });
+        if (init?.method === "POST") {
+          return postPending;
+        }
+        const body = url.includes("/api/flows/sessions")
+          ? {
+              sessions: (
+                Object.entries(SESSIONS).find(([key]) => url.includes(key))?.[1] ?? []
+              ).map((session) => ({
+                ...session,
+                flowKind: "x",
+                userId: "devuser",
+                createdAt: "2026-01-01T00:00:00.000Z",
+                updatedAt: "2026-01-01T00:00:00.000Z",
+              })),
+            }
+          : { flows: FLOWS };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    mount();
+    await waitFor(() => expect(kindRow("engineer")).toBeTruthy());
+    await click(kindRow("engineer"));
+    await click(instanceRow("engineer-b"));
+    await waitFor(() => expect(screen.queryByTitle("New session")).toBeTruthy());
+
+    // Start a session on engineer-b. The POST hangs, unresolved.
+    await click(screen.getByTitle("New session"));
+    await waitFor(() =>
+      expect(
+        calls.some((c) => c.url.includes("engineer-b") && !c.url.includes("flowId")),
+      ).toBe(true),
+    );
+
+    // While it's in flight, the operator opens a DIFFERENT copy's existing
+    // session — the workspace moves to engineer-a/sess-a.
+    await click(instanceRow("engineer-a"));
+    await click(await screen.findByText("A's work"));
+    await waitFor(() =>
+      expect(Object.keys(localStorage).some((key) => key.includes("engineer-a"))).toBe(
+        true,
+      ),
+    );
+
+    // Now the stale create resolves.
+    await act(async () => {
+      resolvePost(
+        new Response(JSON.stringify({ session: { id: "brand-new" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    // The stale resolution must not yank the workspace back to engineer-b
+    // under the session it just created — the operator is on engineer-a now.
+    // The hint's KEY carries the instance id; its VALUE is the session id
+    // (see `config.ts`), so engineer-b's hint (if any) must not have become
+    // "brand-new".
+    const engineerBKey = Object.keys(localStorage).find((key) => key.includes("engineer-b"));
+    const engineerBHint = engineerBKey ? localStorage.getItem(engineerBKey) : null;
+    expect(engineerBHint).not.toBe("brand-new");
+
+    // engineer-a's hint — the workspace the operator actually moved to —
+    // must still be the one they picked, not overwritten by the late create.
+    const engineerAKey = Object.keys(localStorage).find((key) => key.includes("engineer-a"));
+    expect(engineerAKey ? localStorage.getItem(engineerAKey) : null).toBe("sess-a");
+
+    // And no stale error banner from a create that no longer belongs here.
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
 describe("what the rail reports to the rest of the tool", () => {
   it("moves the workspace to the exact copy a picked session was listed under", async () => {
     mount();

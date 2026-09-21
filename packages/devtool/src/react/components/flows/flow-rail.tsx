@@ -42,6 +42,7 @@ import {
 import { Button } from "../ui/button";
 import { EmptyState } from "../shared/empty-state";
 import { useDevTool } from "../../context/devtool-context";
+import { useWorkspaceFence } from "../../hooks/use-workspace-fence";
 
 /**
  * One section, covering every kind.
@@ -190,21 +191,38 @@ function LeafToolbar({
   const address = leaf.address;
   const refresh = leaf.refresh;
 
+  // Fences the create below. Keyed on the leaf's own address and the operator
+  // identity, on top of the workspace token `useWorkspaceFence` always
+  // supplies (which retires on any workspace transition, including a
+  // credential change) — the same axes the fence this replaces used: the
+  // client, the exact copy the request was addressed to, and who it was
+  // addressed as. This component itself unmounts when the leaf collapses,
+  // which retires the fence too.
+  const fence = useWorkspaceFence([address, config.userId]);
+
   const handleCreate = useCallback(async () => {
     setError(null);
+    const stillCurrent = fence.begin();
+    if (stillCurrent === null) return;
     try {
       const detail = await sessionClient.createSession({
         flowKind: address,
         userId: config.userId,
       });
+      // The operator may have collapsed this row, or opened another copy,
+      // while the create was in flight. The session exists — it just isn't
+      // this navigator row's to open, and handing its id back would select it
+      // under whichever instance is now expanded.
+      if (!stillCurrent()) return;
       // Open it under the copy it was created for, then re-list so the row it
       // was created as is there to be highlighted.
       selectWorkspace(address, detail.id);
       refresh();
     } catch (err) {
+      if (!stillCurrent()) return;
       setError(err instanceof Error ? err.message : "Failed to create session");
     }
-  }, [sessionClient, config.userId, address, selectWorkspace, refresh]);
+  }, [fence, sessionClient, config.userId, address, selectWorkspace, refresh]);
 
   return (
     <>
