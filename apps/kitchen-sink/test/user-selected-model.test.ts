@@ -36,9 +36,7 @@ const testFlow = defineFlow({
       inputSchema: z.object({
         message: z.string(),
         mode: z.enum(["ask", "build", "interview", "debate"]).default("ask"),
-        thinkingStyle: z
-          .enum(["auto", "default", "plan-and-execute", "supervisor", "routed-specialists"])
-          .default("auto"),
+        thinkingStyle: z.enum(["default", "background-work"]).default("default"),
       }),
       block: assistantGenerator,
     },
@@ -46,9 +44,7 @@ const testFlow = defineFlow({
   session: {
     stateSchema: z.object({
       mode: z.enum(["ask", "build", "interview", "debate"]).default("ask"),
-      thinkingStyle: z
-        .enum(["plan-and-execute", "supervisor", "routed-specialists", "default"])
-        .optional(),
+      thinkingStyle: z.enum(["default", "background-work"]).optional(),
       features: z.object({ biasCheck: z.boolean().default(false) }).default({}),
     }),
     resources: {
@@ -98,7 +94,7 @@ describe("persisted user selectedModel", () => {
       input: {
         message: "hello",
         mode: "ask",
-        thinkingStyle: "auto",
+        thinkingStyle: "default",
         features: {
           biasCheck: false,
           search: true,

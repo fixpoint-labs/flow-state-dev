@@ -3,17 +3,11 @@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { User, Cpu, Wand2, Workflow } from "lucide-react";
-import { getStyleOption } from "@/components/thinking-style-selector";
-import { cn } from "@/lib/utils";
 
 interface ClientDataBarProps {
   displayName?: string;
   /** Concrete gateway model string the user has selected. */
   selectedModel?: string;
-  /** The user's thinking style selection ("auto", "default", etc.). */
-  thinkingStyleMode?: string;
-  /** The resolved thinking style from the most recent request. */
-  thinkingStyle?: string;
   /**
    * Skills activated by `skillActivator` for the most recent turn (FIX-421).
    * Each entry carries the skill name and the tier that matched it
@@ -25,15 +19,8 @@ interface ClientDataBarProps {
 export function ClientDataBar({
   displayName,
   selectedModel,
-  thinkingStyleMode,
-  thinkingStyle,
   activeSkills,
 }: ClientDataBarProps) {
-  // Only show resolved thinking style when user selected "auto".
-  const showThinkingStyle = thinkingStyleMode === "auto" && thinkingStyle;
-  const styleOption = showThinkingStyle ? getStyleOption(thinkingStyle as any) : null;
-  const StyleIcon = styleOption?.icon;
-
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-xs">
       <div className="hidden items-center gap-1.5 text-muted-foreground sm:flex">
@@ -46,15 +33,6 @@ export function ClientDataBar({
           <div className="hidden items-center gap-1.5 text-muted-foreground md:flex">
             <Cpu className="h-3.5 w-3.5" />
             <span>{selectedModel}</span>
-          </div>
-        </>
-      )}
-      {showThinkingStyle && StyleIcon && (
-        <>
-          <Separator orientation="vertical" className="hidden h-4 md:block" />
-          <div className="hidden items-center gap-1.5 text-muted-foreground md:flex">
-            <StyleIcon className={cn("h-3.5 w-3.5", styleOption.color)} />
-            <span>{styleOption.label}</span>
           </div>
         </>
       )}

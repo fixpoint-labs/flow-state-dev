@@ -14,7 +14,6 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 import type { ModelResolver } from "@flow-state-dev/core";
 import {
   assistantMock,
-  thinkingStyleClassifierMock,
   skillClassifierMock,
   autoTitleMock,
   sideChainBriefMock,
@@ -25,7 +24,6 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
   return createMockModelResolver({
     generators: {
       "assistant-generator": assistantMock,
-      "thinking-style-classifier": thinkingStyleClassifierMock,
       "skill-classifier": skillClassifierMock,
       "auto-title": autoTitleMock,
       "background-brief": sideChainBriefMock,

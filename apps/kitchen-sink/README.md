@@ -2,7 +2,9 @@
 
 The canonical reference application for `@flow-state-dev`. A full Next.js app demonstrating every framework building block with a polished UI built on [Vercel AI Elements](https://sdk.vercel.ai/docs/ai-sdk-ui/ai-elements) and [shadcn/ui](https://ui.shadcn.com).
 
-Kitchen sink is a reference app, not a minimal example. It hosts multiple flows, integrates every subsystem (DevTool, skills, thinking style, advisor, patterns), and is the place we test new features end-to-end. For small, focused, copy-paste-able demos see `examples/`.
+Kitchen sink is a reference app, not a minimal example. It hosts multiple flows, integrates every subsystem (DevTool, skills, thinking style, advisor, workforce), and is the place we test new features end-to-end. For small, focused, copy-paste-able demos see `examples/`.
+
+The chat agent either answers in the turn or files the work to a durable board, where a child session picks it up and the result comes back on a later turn. For coordination that happens inside a single request, see the [patterns documentation](../docs/docs/patterns/overview.md); each pattern page carries its own runnable example. The one pattern this app still uses is the response auditor, which annotates an answer after it is produced.
 
 ## Flows
 

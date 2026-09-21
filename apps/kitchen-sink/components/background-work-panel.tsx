@@ -124,9 +124,9 @@ export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPane
   // internal), which is exactly the gap FIX-1109 closes. Until it lands this
   // gate is the whole of the mitigation available to an app.
   //
-  // Detected from `task-board-meta`, the same signal `lib/item-inference.ts`
-  // uses, and NOT from `task-change` — this board declares those invisible to
-  // the client on purpose (see `backgroundWorkLedger`).
+  // Detected from `task-board-meta`, and NOT from `task-change` — this board
+  // declares those invisible to the client on purpose (see
+  // `backgroundWorkLedger`).
   const usesBackgroundWork =
     childSessions.length > 0 ||
     items.some(
