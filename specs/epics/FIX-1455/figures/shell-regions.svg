@@ -1,0 +1,112 @@
+<svg viewBox="0 0 940 388" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The rebuilt shell with every region tagged as either inline or resource-backed. The tag names the source a region reads, not how long its content lives: resource-backed regions subscribe to a standing collection, inline regions render from the session's own item stream. Both survive a reload, because those items are persisted. The left rail is entirely resource-backed: the org and team badge, the channel list, and the seat list each subscribe to a collection. The centre column is mixed: its channel header, showing members and boards, is resource-backed, while the turn stream, the task updates and the approval cards are all inline, rendering from the session's item stream, so earlier turns and already-resolved approvals are still there after a reload. The prompt input is neither — it is a control. The right panel is entirely resource-backed: the board columns subscribe to the channel's board ledger, and the roster subscribes to the seat inventory. The roster's home is this panel; the rail carries the seat list, which is navigation into it. A key on the right records that the split is not new: it already exists in the code today, unnamed. Resource-backed today means useResourceCollectionList on the artifacts collection, useClientData, and useSession on a child session inside the background-work panel. Inline today means the Conversation and ConversationContent components, the request-group renderer, TaskPlan, and every renderer under the flow-state folder. The key names TaskPlan as the seam to watch, because it renders task-change and task-board-meta items inline today and its own file header says a board-style layout is a per-app concern — which is exactly the resource-backed sibling this epic ships. A closing note says spine item 3 moves both shapes into the client packages rather than inventing them, that the split is a source and never a lifetime, and that a region whose shape cannot be expressed as a package export is a design finding for FIX-1477's spec, not a licence to leave it in the app.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .shell { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .res   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .inl   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .ctl   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .key   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-res { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-weight:700; font-size:8px; letter-spacing:.08em; }
+    .t-inl { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-weight:700; font-size:8px; letter-spacing:.08em; }
+    .t-r   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-g   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+  </style>
+
+  <text class="t-lbl" x="16" y="20">EVERY REGION IS ONE SHAPE OR THE OTHER — AND SAYS WHICH</text>
+
+  <g id="shell">
+    <rect class="shell" x="16" y="32" width="584" height="300" rx="4"/>
+
+    <rect class="res" x="24" y="40" width="104" height="30" rx="3"/>
+    <text class="t-res" x="30" y="52">RESOURCE-BACKED</text>
+    <text class="t-r" x="30" y="64">org / team</text>
+    <rect class="res" x="24" y="74" width="104" height="94" rx="3"/>
+    <text class="t-res" x="30" y="86">RESOURCE-BACKED</text>
+    <text class="t-r" x="30" y="98">channels</text>
+    <text class="t-g" x="30" y="112">dm &#183; topic &#183;</text>
+    <text class="t-g" x="30" y="124">workstream</text>
+    <text class="t-g" x="30" y="142">subscribes to</text>
+    <text class="t-g" x="30" y="154">the collection</text>
+    <rect class="res" x="24" y="172" width="104" height="152" rx="3"/>
+    <text class="t-res" x="30" y="184">RESOURCE-BACKED</text>
+    <text class="t-r" x="30" y="196">seat list</text>
+    <text class="t-g" x="30" y="212">ada</text>
+    <text class="t-g" x="30" y="226">desk-clerk</text>
+    <text class="t-g" x="30" y="248">from runtime</text>
+    <text class="t-g" x="30" y="260">inventory</text>
+
+    <rect class="res" x="134" y="40" width="280" height="26" rx="3"/>
+    <text class="t-res" x="140" y="52">RESOURCE-BACKED</text>
+    <text class="t-r" x="140" y="62">channel header &#183; members &#183; boards</text>
+
+    <rect class="inl" x="134" y="70" width="280" height="132" rx="3"/>
+    <text class="t-inl" x="140" y="82">INLINE</text>
+    <text class="t-r" x="140" y="96">the turn stream</text>
+    <text class="t-g" x="140" y="114">renders from the session&#8217;s item stream &#8212; the same</text>
+    <text class="t-g" x="140" y="126">persisted items a reload replays</text>
+
+    <rect class="inl" x="134" y="206" width="136" height="60" rx="3"/>
+    <text class="t-inl" x="140" y="218">INLINE</text>
+    <text class="t-r" x="140" y="232">task updates</text>
+    <text class="t-g" x="140" y="248">from the item stream</text>
+    <rect class="inl" x="278" y="206" width="136" height="60" rx="3"/>
+    <text class="t-inl" x="284" y="218">INLINE</text>
+    <text class="t-r" x="284" y="232">approval cards</text>
+    <text class="t-g" x="284" y="248">resolved ones persist</text>
+
+    <rect class="ctl" x="134" y="270" width="280" height="54" rx="3"/>
+    <text class="t-g" x="140" y="284">NEITHER &#8212; a control</text>
+    <text class="t-r" x="140" y="300">PromptInput</text>
+
+    <rect class="res" x="420" y="40" width="172" height="166" rx="3"/>
+    <text class="t-res" x="426" y="52">RESOURCE-BACKED</text>
+    <text class="t-r" x="426" y="66">board columns</text>
+    <text class="t-g" x="426" y="82">subscribes to the</text>
+    <text class="t-g" x="426" y="94">channel&#8217;s board ledger</text>
+    <text class="t-g" x="426" y="112">one ledger per local</text>
+    <text class="t-g" x="426" y="124">name &#183; D4</text>
+    <rect class="res" x="420" y="210" width="172" height="114" rx="3"/>
+    <text class="t-res" x="426" y="222">RESOURCE-BACKED</text>
+    <text class="t-r" x="426" y="236">roster</text>
+    <text class="t-g" x="426" y="252">the roster proper &#8212;</text>
+    <text class="t-g" x="426" y="264">the rail lists names</text>
+  </g>
+
+  <g id="key">
+    <rect class="key" x="616" y="32" width="308" height="300" rx="4"/>
+    <text class="t-lbl" x="628" y="52">THE SPLIT ALREADY EXISTS IN THE CODE</text>
+    <rect class="res" x="628" y="62" width="284" height="106" rx="3"/>
+    <text class="t-res" x="636" y="76">RESOURCE-BACKED, TODAY</text>
+    <text class="t-g" x="636" y="92">useResourceCollectionList(session,</text>
+    <text class="t-g" x="636" y="104">&#8195;&#8195;&#8220;artifacts&#8221;)</text>
+    <text class="t-g" x="636" y="120">useClientData(session, &#8230;)</text>
+    <text class="t-g" x="636" y="136">useSession(childSessionId)</text>
+    <text class="t-g" x="636" y="152">&#8195;in BackgroundWorkPanel</text>
+    <rect class="inl" x="628" y="176" width="284" height="92" rx="3"/>
+    <text class="t-inl" x="636" y="190">INLINE, TODAY</text>
+    <text class="t-g" x="636" y="206">Conversation &#183; ConversationContent</text>
+    <text class="t-g" x="636" y="222">RequestGroupRenderer</text>
+    <text class="t-g" x="636" y="238">TaskPlan</text>
+    <text class="t-g" x="636" y="254">every renderer under flow-state/</text>
+    <text class="t-s" x="628" y="288">TaskPlan is the seam: it renders task-change</text>
+    <text class="t-s" x="628" y="302">items inline, and its own header says a board</text>
+    <text class="t-s" x="628" y="316">layout is &#8220;a per-app concern&#8221; &#8212; which is the</text>
+    <text class="t-s" x="628" y="330">resource-backed sibling FIX-1477 ships.</text>
+  </g>
+
+  <text class="t-s" x="16" y="352">Spine item 3 moves both shapes into the client packages. It does not invent them &#8212; it names what the app already does in two ways.</text>
+  <text class="t-s" x="16" y="368">A region whose shape cannot be expressed as a package export is a design finding for FIX-1477&#8217;s spec, not a reason to leave it in the app (ER-4).</text>
+  <text class="t-s" x="16" y="384">Both shapes survive a reload. The split is which source a region reads &#8212; the session&#8217;s item stream, or a standing collection &#8212; never how long its content lives (D5).</text>
+</svg>
