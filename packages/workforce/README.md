@@ -1523,7 +1523,9 @@ membershipPrefix("");
 | `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. |
 | `AGENT_KIND` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
-| `createWorkforceCapability(opts)` | Optional capability for DevTool surfacing. |
+| `createWorkforceCapability({ roster, inventory, sources? })` | The discovery door. Installs the seat and channel sources for a workforce — projected from the declared roster joined to the live inventory rows — plus whatever other domains' sources you pass, and contributes one control tool, `discover`, so an agent in this flow can ask what seats exist and which channels are open. **Changed:** the `agents` option has been removed; pass the declared roster and the inventory registry keys instead. |
+| `workforceManifestSources({ roster, inventory })` | The seat and channel sources on their own, for an app assembling its own manifest registry. `createWorkforceCapability` is the ordinary door and calls this. |
+| `SEAT_DISCOVER_KEY` | The pinned worker-file key, `"discover"` — the domains one seat sees, out of what its scope carries. Narrows only: a seat can never reach a domain the app did not install. |
 | `readDeclaredRoster(root)` | Read the whole tree in one call — workers with their skills, teams, documents and channels — plus one list of everything that failed to load, each entry tagged with the layer that reported it. Collects rather than throws, so the boot policy stays yours. Ships from the `./loader` subpath (Node only). |
 | `readWorkforce(root)` | Read the tree into worker records that already carry their own skills — `readWorkforceDirectory` joined with `readSeatSkills` per seat. Reach for it when seats are all you need. Ships from the `./loader` subpath (Node only). |
 | `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker, without their skills. Ships from the `./loader` subpath (Node only). |
@@ -1594,7 +1596,8 @@ membershipPrefix("");
 
 | Error | When |
 |-------|------|
-| Duplicate agent name | `createWorkforceCapability` construction |
+| Two sources claiming one discovery domain | `createWorkforceCapability` construction, naming both registration sites |
+| A worker file's `discover:` names something that is not one of the four domains | The mint, by name, listing `seats`, `channels`, `skills`, `resources`. A correctly spelled domain the scope does not carry is *not* an error — the seat simply sees nothing for it |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable or symlinked | `readWorkforceDirectory` and `readWorkforce` throw — the root is never followed through a link |
 | Anything below the root, read as one tree | Collected in `readDeclaredRoster`'s `problems`, one entry per thing that did not load, tagged with the layer that reported it — never thrown |

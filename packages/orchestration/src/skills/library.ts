@@ -492,21 +492,40 @@ export function createSkillsLibrary(
       // could not name it back in — fencing it would leave the seat advertising
       // a tool in its prompt that it cannot call. The catalog registered above
       // stays in `tools`, where the fence can see it.
+      // The loader's own description names where the skill names come from,
+      // so it has to know which of the two places that is (FIX-817).
+      const catalogInContext = resolveCtx.presets.has("catalogContext");
       controlTools.push(
         createLoadSkillTool({
           collectionKey,
           location,
+          catalogInContext,
           ...(cfg.allowed ? { allowed: cfg.allowed } : {}),
           ...(initialSkills ? { initialSkills } : {}),
         }),
       );
-      contextEntries.push(
-        buildLoadCatalogContext({
-          collectionKey,
-          ...(cfg.allowed ? { allowed: cfg.allowed } : {}),
-          ...(initialSkills ? { initialSkills } : {}),
-        }),
-      );
+      // The ambient catalog listing, behind a preset that ships ON (FIX-817).
+      //
+      // Default-on is the whole point rather than a convenience: an app that
+      // upgrades and finds its model no longer knows its skills exist has been
+      // broken by a refactor it did not ask for. Turning it off is what an app
+      // with a long catalog does once it has installed the discovery door, so
+      // the names are fetched when the model goes looking instead of being
+      // paid for on every step of every turn.
+      //
+      // Gated inside `dynamic` because the listing only ever made sense beside
+      // the load tool: it names `loadSkill` and lists what that tool accepts.
+      // A binding with no loader contributes no listing with the preset on or
+      // off, exactly as before.
+      if (catalogInContext) {
+        contextEntries.push(
+          buildLoadCatalogContext({
+            collectionKey,
+            ...(cfg.allowed ? { allowed: cfg.allowed } : {}),
+            ...(initialSkills ? { initialSkills } : {}),
+          }),
+        );
+      }
     }
 
     // Block-state default: contribute the generator's own `activeSkills` field
@@ -721,7 +740,16 @@ export function createSkillsLibrary(
     presets: {
       // Flag-only preset; the resolver reads `ctx.presets` to install the tool.
       dynamicActivation: {},
-      default: [],
+      /**
+       * The ambient catalog listing in the prompt (FIX-817). Flag-only, and
+       * **on by default** — an app that upgrades sees turn 1 unchanged.
+       *
+       * Turn it off (`library.presets({ catalogContext: false })`) once the
+       * discovery door is installed, and the model finds skills by asking
+       * rather than by being told on every step.
+       */
+      catalogContext: {},
+      default: ["catalogContext"],
     },
     config: {
       schema: bindingConfigSchema,

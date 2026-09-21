@@ -151,10 +151,11 @@ gone; `docs/architecture/capabilities.md` → *The tools fence* is canonical for
 
 **The carve-out is controls, and it is deliberate.** A capability contributes through two slots:
 `tools` (a grant from the app's catalog, fenced) and `controlTools` (a framework control, never
-fenced). A seat holds a control only because its own configuration asked for one, and a control is
-built inside its capability and never exported — so no `tools:` list could name it back in, and
-fencing it would leave the seat advertising a tool in its prompt it cannot call. Two ship in this
-kind:
+fenced). A control is built inside its capability and never exported — so no `tools:` list could
+name it back in, and fencing it would leave the seat advertising a tool in its prompt it cannot
+call. Three ship in this kind. The first two are held only because the seat's own configuration
+asked for them; the third is held by every seat in the kind, and a seat's configuration narrows it
+rather than requesting it:
 
 - **The skill loader.** A seat that sets `skills.activateTool: true` is bound with
   `dynamicActivation`, which installs the loader as a control. It reaches the model without
@@ -163,6 +164,18 @@ kind:
   board's eight tools, also as controls, so `tools: []` does not cut a worker off from the board
   it was given. FIX-1362's `toolSeatFence` still scopes which *catalog* tools reach a skill's
   agents; the board itself is not a catalog grant.
+- **The discovery door (FIX-817).** `createWorkforceCapability` contributes `discover` as a
+  control, and it ships **on**. This is the one control a seat does not ask for: composing the
+  capability is itself the declaration that a seat may ask what is around it, so a second per-seat
+  switch would have nothing to add, and defaulting it off would leave an upgraded app's seats
+  unable to see the domains their kind already installed. A worker file's `discover:` key only
+  **narrows** it — the key lists the domains that seat sees, an empty list sees nothing, and
+  omitting the key sees every domain the scope carries. It can never widen past what the app
+  installed: naming a domain the scope does not carry does not reach it, and neither does asking
+  the tool for that domain directly, because the narrowing is applied to the registry rather than
+  filtered in the tool. An app that wants the sources installed but the tool withheld turns off
+  the capability's `door` preset. The domains themselves, and what each entry promises, are in
+  [the discovery guide](../../apps/docs/docs/orchestration/discovery.md).
 
 Note what this leaves standing: the skills library registers the app's catalog through `tools`, so
 that half is fenced normally. The exemption is per-contribution, not per-capability — which is why

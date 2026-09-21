@@ -165,7 +165,7 @@ Both forms default to `scope: "org"`, so a persona is shared across users unless
 
 ## `createWorkforceCapability`
 
-`createWorkforceCapability({ agents })` takes an agent list or an `AgentRegistry` and returns a capability named `workforce`. Given a list, it throws at construction when two agents share a name. It contributes no tools, context, or resources to a block that puts it in `uses`.
+`createWorkforceCapability({ roster, inventory })` returns a capability named `workforce` that gives every seat of the kind one tool: `discover`, which answers what seats exist, which channels are open, and whatever other domains you hand it. Pass the declared roster and the registry keys the live seat and channel rows are mounted under. See [Discovery](./discovery).
 
 ## Hired workers
 

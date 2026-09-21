@@ -197,6 +197,7 @@ const sidebars: SidebarsConfig = {
       items: [
         "orchestration/overview",
         "orchestration/task-substrate",
+        "orchestration/discovery",
         "orchestration/task-board",
         "orchestration/configuration",
         "orchestration/agents",

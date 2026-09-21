@@ -1,0 +1,36 @@
+{
+  "note": "Every routing signal EXCEPT the purpose line has been removed on purpose. (1) Seat ids are opaque — an id like 'engineering.reviewer' would route a review task with the purposes blanked, and the control would pass for the wrong reason. (2) The expected seat sorts LAST: the door returns entries sorted by id, and a model with nothing to go on picks the first one, which made an earlier three-seat version of this control hit the answer by position. (3) Five seats, so the blanked-purpose baseline is 1 in 5 rather than 1 in 3.",
+  "seats": [
+    {
+      "id": "delta.one",
+      "kind": "agent",
+      "purpose": "Reconciles month-end ledgers and files the quarterly revenue statement with the auditors."
+    },
+    {
+      "id": "delta.two",
+      "kind": "agent",
+      "purpose": "Draws and maintains the architecture diagrams that ship with the published documentation."
+    },
+    {
+      "id": "kappa.one",
+      "kind": "agent",
+      "purpose": "Answers billing questions from customers and issues refunds inside the agreed limit."
+    },
+    {
+      "id": "sigma.one",
+      "kind": "agent",
+      "purpose": "Runs the weekly on-call rotation and writes the incident report after an outage."
+    },
+    {
+      "id": "sigma.two",
+      "kind": "agent",
+      "purpose": "Reads a pull request's diff line by line and flags correctness regressions before anyone merges it."
+    }
+  ],
+  "task": "Somebody pushed a change to the payments service and nobody has looked at whether it breaks anything. Get it checked over before it lands.",
+  "expectedSeat": "sigma.two",
+  "orchestrator": {
+    "id": "omega.coordinator",
+    "instructions": "You route incoming work to whoever can do it. You do not do the work yourself and you do not know who exists until you look. First call `discover` to find out which seats are in scope for you. Then call `assign` exactly once with the id of the seat whose purpose answers the task. Then stop."
+  }
+}

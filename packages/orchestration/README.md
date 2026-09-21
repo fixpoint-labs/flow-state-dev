@@ -684,6 +684,29 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `active` / `allowed` / `activeState` surface and
 [Delegation](https://flow-state.dev/docs/skills/delegation) for the `agents:` shape.
 
+### skillsManifestSource
+
+```ts
+import { skillsManifestSource } from "@flow-state-dev/orchestration";
+```
+
+`skillsManifestSource({ collectionKey?, allowed?, initialSkills? })` is the
+skills domain's projection into the agent discovery door
+(`discoveryTools` / `createManifestRegistry` in `@flow-state-dev/core`). It
+lists what `loadSkill` will actually accept: enabled, `inline`-mode, and inside
+the binding's `allowed` set when it declares one — pass the same array the
+binding was given. Advertising a skill the loader then refuses sends the agent
+somewhere it cannot go, so the two filters are the point rather than a
+nicety. A collection key this scope does not hold throws, which the door
+reports as a problem on the skills domain while every other domain still
+answers.
+
+The ambient catalog listing in the prompt is now the **`catalogContext`
+preset**, on by default — an app that upgrades sees turn 1 unchanged. Pass
+`catalogContext: false` in the same `.with({ ... })` call to take the listing
+out and let the agent find skills through the door instead. Preset overrides
+replace rather than merge, so put both flags in one call.
+
 ### resolveCatalogTools
 
 ```ts
