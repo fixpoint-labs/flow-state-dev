@@ -59,7 +59,7 @@ It comes from one of two places, and never from the caller:
 
 - **A configured resolver** returns the organization it verified. If it
   returns none, a blank one, or the reserved default below, the request is
-  refused with 401. Returning `null` is refused too — `defaultUserId` fills in
+  refused with 401. Returning `null` is refused too: `defaultUserId` fills in
   a user, never an organization.
 - **No configured resolver at all**, which is the development case. The
   framework supplies `DEFAULT_ORG_ID`, exported from `@flow-state-dev/core`,
@@ -71,7 +71,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 
 `DEFAULT_ORG_ID` is a reserved id for running a single organization without
 authentication. It is not a security boundary, and a configured resolver
-cannot claim it — an app that authenticates has its own organization to name.
+cannot claim it.
 
 **A machine caller** with no end user returns the organization on its own and
 lets `defaultUserId` name the system user:
@@ -84,7 +84,7 @@ authentication: {
 ```
 
 **Calling the runtime directly**, below any transport, means there is no
-resolver to supply an identity — so you pass one:
+resolver to supply an identity, so you pass one:
 
 ```ts
 await runAction({
@@ -103,9 +103,12 @@ rather than trimmed, and a valid one is stored exactly as given.
 A session's organization is fixed when the session is created, like its user.
 Reopening cannot move it; create a new session instead.
 
-Records written before this was required carry no organization. The server
-preserves them and refuses to serve them — `409 migration-required` — until an
-operator attributes them offline. See
+A stored session or request can carry no organization at all. The server
+preserves such a record and refuses to serve it until an operator attributes
+it offline. An **authenticated** caller who addresses one gets
+`409 migration-required`. A caller your resolver could not identify gets the
+ordinary `401`, exactly as they would for a record that does carry an
+organization. Listings omit the record either way. See
 [Which organization a record belongs to](/docs/persistence/overview#which-organization-a-record-belongs-to).
 
 ## What `requireUser: true` does (and doesn't)
@@ -337,12 +340,17 @@ debug endpoints.
 The framework resolves a principal through your hook on each of those
 requests, then checks that the principal owns what the URL addressed. A
 session or request belongs to the `userId` it was created under, so a caller
-holding a valid credential for a different user gets a `403`:
+holding a valid credential for a different user gets a `403`. The record's
+organization is checked as well, so one person who belongs to two
+organizations cannot reach the first one's session while acting for the
+second:
 
 ```
-GET /api/flows/sessions/abc123   no credential                    -> 401
-GET /api/flows/sessions/abc123   bob's, session belongs to alice  -> 403
-GET /api/flows/sessions/abc123   alice's                          -> 200
+GET /api/flows/sessions/abc123   no credential                      -> 401
+GET /api/flows/sessions/abc123   bob's, session belongs to alice    -> 403
+GET /api/flows/sessions/abc123   alice's, session belongs to acme,
+                                 alice is acting for globex         -> 403
+GET /api/flows/sessions/abc123   alice's, acting for acme           -> 200
 ```
 
 Listing endpoints scope to the caller instead of rejecting. `GET

@@ -177,11 +177,23 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
  * authenticated collection's history to whoever the host admits. It is
  * refused with the same `409 migration-required` the record routes answer.
  *
- * The refusal is DECIDED here and delivered later: the caller is authenticated
- * first, and only then is it spent (see `pendingDenial` in
- * `authorizeManagementRoute`). An anonymous caller gets the ordinary `401`, so
- * the status cannot be used to probe which ids exist and which predate
- * organizations.
+ * Either refusal is DECIDED here and DELIVERED later, once the caller's
+ * standing is known (see `pendingDenial` in `authorizeManagementRoute`). What
+ * that means for an anonymous caller differs by axis, because the two axes
+ * leave `governing` in different states:
+ *
+ *  - **Unattributed organization, owner resolvable.** The owning instance is
+ *    returned alongside the refusal, so the caller is authenticated against
+ *    that instance's resolver first. An anonymous caller gets the ordinary
+ *    `401` — identical to what an attributed record answers them — so the
+ *    status cannot be used to probe which ids exist and which predate
+ *    organizations.
+ *  - **Owner unresolvable.** No instance governs the row, so there is no
+ *    resolver to authenticate against and `governing` stays undefined. The
+ *    refusal is spent at the unauthenticated exit instead, and an anonymous
+ *    caller does get the `409` — unchanged, and asserted by
+ *    `flow-instance-ownership.test.ts`. There is no oracle to close here: the
+ *    row is refused to everyone, on every route, with or without a credential.
  */
 function ownerFlowOf(
   ctx: RouteAuthContext,
