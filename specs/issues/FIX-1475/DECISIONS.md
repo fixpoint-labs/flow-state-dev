@@ -27,14 +27,19 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | A lazy resolver that loads a seat from the store when an address misses · reaching into `getRuntime().registry`, which already works and is nobody's supported surface |
 | **Because** | A flat address space needs its duplicates caught at one point in time, the same way construction catches them today. Lazy resolution catches them on whoever asks first, which is a different answer per deployment and per request order. And a second reload path that only this app understands is the thing [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) and the epic both refused |
-| **Locks in** | "Hired" means **hired in the process that ran the hire**, plus every process from its next boot. A deployment on more than one instance sees a new seat at different moments, and that is now a documented promise we cannot quietly tighten. It also puts a mutable registry in the public API: from here on, any code reading the registry must read it per request, and anything that caches a flow list is a bug rather than an optimisation |
+| **Locks in** | A roster change is durable immediately and **process-wide only at the next boot** — for a fire as much as for a hire. A seat fired for a reason keeps answering on sibling processes until they restart, and that is now a documented promise we cannot quietly tighten. It also puts a mutable registry in the public API: from here on, any code reading the registry must read it per request, and anything that caches a flow list is a bug rather than an optimisation |
 
-The seam already behaves this way. The router resolves an address per request
-(`registry.get(...)` on the action route, and the `resolveFlow` closure the runtime config
-carries), and `register` validates identity and cross-flow schemas *before* it touches any
-internal map — so a failed hire cannot half-land and a request either sees a seat or does not.
-What is missing is not the mechanism but the contract: what a hire promises, what a fire does to
-work already running, and what goes stale. That contract is the deliverable.
+The seam already behaves this way — the evidence is in
+[PLAN.md's POC line](PLAN.md#sketch--pseudocode-illustrative-react-to-the-shape), kept in one
+place so an amendment has one place to maintain. What is missing is not the mechanism but the
+contract: what a hire promises, what a fire does to work already running, and what goes stale.
+That contract is the deliverable.
+
+**The fire half is the uncomfortable one**, and review was right to press on it. Accepting a
+per-process window for hires and promising absoluteness for fires would have been an
+inconsistency dressed as a feature. Both get the same window, and the docs say so for both.
+Closing it properly needs cross-process invalidation — a subsystem, not a line — and nothing in
+this issue justifies standing one up.
 
 **What would change my mind:** a decision to run kitchen-sink on a single long-lived process
 only. Then the weaker promise costs nothing, and the reload could be simpler still.
@@ -88,9 +93,34 @@ collection row in this codebase is written. Nothing new persists anything.
 - **A fire removes the row and the address. It cancels nothing and deletes nothing else.** The
   seat's sessions, state and resources stay. Destroying them is a different, irreversible
   operation with its own gate, and it is not in this issue.
-- **Org comes from the resolved principal, never from the request body** (BP-031). The hire
-  action is an ordinary flow action so it inherits that for free; a helper that re-injected org
-  would be the invent-kill the issue names.
+- **The admin flow carries its own verified principal resolver, and is not registered without a
+  configured credential.** This was wrong in the first draft and review caught it: the
+  framework's stock resolver reads `userId` *and `orgId`* out of the request body, so "the org
+  comes from the resolved principal" was true and meant nothing — any caller could have hired
+  into any org. It is BP-031, and it is not the exposure in [Open](#open) below: that one is a
+  *read*, this was a *write*. Closed here rather than deferred to
+  [FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442), because an action that writes
+  durable org state cannot ship behind a fence that has not landed. The mechanism is the
+  framework's existing per-flow `authentication.resolvePrincipal`, not a new one.
+- **The org component of an address is validated by the loader's own `validateSegment`.**
+  Without it the join is not injective — org `acme` with seat `support.ada` and org
+  `acme.support` with seat `ada` both spell `acme.support.ada`. The loader already argues this
+  in its own header: `.` is the joiner, so a dotted segment makes a minted id ambiguous.
+- **A hire that fails to register deletes the row it just wrote.** Write-then-register can still
+  be refused at the registry, and "a hire that answers was written down" says nothing about a
+  hire that failed. If the compensating delete also fails, the next boot skips and names the
+  stranded row rather than failing on it — the two halves are what make a partial hire
+  recoverable rather than permanent.
+- **Seats are admitted one at a time at boot, never as a batch.** `registerMany` admits in order
+  and keeps the earlier ones when a later is refused, so a batch cannot honour "a refused
+  registration changes nothing" — and worse, its first refusal would end the reload and fail the
+  boot, which is D2's degrade path broken by mechanism. `register` therefore takes one flow.
+- **A fire unregisters only an instance that came from this org's row.** The address grammar is
+  supposed to make a mismatch unreachable; the check is there because a guarantee nobody checks
+  is exactly how this epic keeps getting surprised.
+- **No live-inventory row for a runtime-hired seat.** The inventory never deletes a row and a
+  roster must, so parity would be partial by construction. Reasoning and who owns the join:
+  [PLAN.md](PLAN.md#inventory-parity-is-out-of-scope-and-so-is-the-browse-side-join).
 - **The hire writes the row before it registers.** A hire that answers is a hire that was
   written down. The other order can serve a seat that no boot will ever see again.
 
@@ -123,7 +153,12 @@ come back in the answer.
 - **Recommendation: leave it, write it down, and make sure the reference app does not read as
   though the address were a permission.** Kitchen-sink carries no org identity at all today, and
   the seat instructions it demonstrates are demonstration text. Two guesses at the same fence,
-  a week apart, is how a security surface ends up with two answers.
+  a week apart, is how a security surface ends up with two answers. **The disclosure is the
+  mitigation, so it is a deliverable**: [DOCS.md](DOCS.md) states the behaviour concretely and
+  [V17](PLAN.md#checks) fails if the published page loses it. An accepted risk whose disclosure
+  never shipped is an unmet decision, not a documentation gap.
+- **This is the *read* half only.** Writing another org's roster is closed by the admin flow's
+  own verified resolver (*decided, not asked*, above), not deferred.
 - **What would change my mind:** anyone intending to run this app, or a copy of it, against two
   real customers' data before FIX-1442 lands. Then it stops being a documented limit and becomes
   a live exposure, and it should be closed here even at the cost of guessing the shape.
@@ -136,3 +171,10 @@ come back in the answer.
 - **Draft** — read [FIX-1429](https://github.com/fixpoint-labs/flow-state-dev/pull/1989)'s boot
   seam and the engine's registry, inventory and store contracts; framed the whole issue as one
   admission door with a durable row behind it rather than as a second reload path.
+- **Review round 1** — D1 gained its fire half, because promising an absolute fire while
+  accepting a per-process hire was an inconsistency nobody had noticed. The admin path gained a
+  verified resolver, because the stock one reads `orgId` from the body and the spec's own BP-031
+  claim was therefore vacuous. Boot admission moved to one seat at a time, because a batch
+  refusal would have failed the boot and broken D2's degrade path by mechanism. The address
+  gained a grammar, because the org/seat join was not injective. Nothing in D2 or D3's substance
+  moved.

@@ -32,17 +32,28 @@ published prose names an issue, an epic or what prompted the change.
 >
 > ## Hiring a seat
 >
-> Hiring is an ordinary flow action, so it authenticates the same way everything else does.
-> Send the seat's id, the flow kind it runs, and whatever settings that kind declares.
+> Hiring is a flow action, and it is the one action in the app that verifies a credential of its
+> own. It has to: it writes durable state that belongs to an organization, and the framework's
+> stock request handling reads `orgId` straight out of the request body. Anything that trusted
+> that would let any caller hire into any organization.
+>
+> So the organization comes from the credential, not from what the request says about itself.
+> **With no admin credential configured, the action is not registered at all** and there is no
+> hire path to reach.
 >
 > ```bash
 > curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
 >   -H 'content-type: application/json' \
->   -d '{"userId":"you","orgId":"acme",
+>   -H "authorization: Bearer $WORKFORCE_ADMIN_TOKEN" \
+>   -d '{"userId":"you",
 >        "input":{"seatId":"support.ada","flow":"desk-clerk",
 >                 "settings":{"desk":"front"},
 >                 "instructions":"You work the front desk."}}'
 > ```
+>
+> An `orgId` in the body is ignored. The organization's id must be a single address segment:
+> lowercase letters, digits and single hyphens, up to 64 characters, and no dots. A dot would
+> make the address ambiguous, since it is also what joins the organization to the seat.
 >
 > The seat answers immediately, on the same route as any other flow. Its address carries the
 > organization that hired it:
@@ -62,11 +73,13 @@ published prose names an issue, an epic or what prompted the change.
 > ```bash
 > curl -X POST localhost:3000/api/flows/workforce-admin/actions/fire \
 >   -H 'content-type: application/json' \
->   -d '{"userId":"you","orgId":"acme","input":{"seatId":"support.ada"}}'
+>   -H "authorization: Bearer $WORKFORCE_ADMIN_TOKEN" \
+>   -d '{"userId":"you","input":{"seatId":"support.ada"}}'
 > ```
 >
-> The address stops answering and the seat does not come back on the next start. Work that was
-> already running finishes and is saved. Nothing is cancelled and nothing is truncated.
+> The seat is removed from storage straight away, and the address stops answering **on the
+> process that handled the request**. Work that was already running finishes and is saved.
+> Nothing is cancelled and nothing is truncated.
 >
 > Firing removes the seat, not its history. Sessions, state and resources it wrote are left
 > alone. If you want those gone, delete them yourself.
@@ -81,8 +94,11 @@ published prose names an issue, an epic or what prompted the change.
 > through the same storage adapter as everything else the app persists, so a Postgres-backed app
 > keeps its roster in Postgres and an in-memory app keeps it for as long as the process lives.
 >
-> Seats hired this way also appear in the [live inventory](inventory.md), the same as seats
-> declared in files. Anything browsing a workforce sees both without knowing which is which.
+> The roster is its own thing, and it is **not** the [live inventory](inventory.md). The
+> inventory answers *what was registered in this organization* and never removes a row, which is
+> right for browsing and wrong for a roster you can fire a seat out of. A seat hired at runtime
+> gets a roster row and no inventory row. Anything that wants one list of every seat, declared
+> and hired, joins the two itself.
 >
 > ## Limits worth knowing before you build on this
 >
@@ -92,6 +108,19 @@ published prose names an issue, an epic or what prompted the change.
 > row is the real roster; what a process serves is that row, loaded when it started. Plan for a
 > short window rather than an instant one, or restart after hiring if you need every instance in
 > step.
+>
+> **Firing has the same window, and it is the sharper end of it.** A fired seat is gone from
+> storage immediately and will not come back at any start. But a sibling instance that is
+> already serving it keeps serving it until that instance restarts. If you fire a seat because
+> it should stop answering right now, restart the app rather than assuming the fire did it.
+>
+> **An address is not a permission.** Any caller your app already lets through can send a
+> request to any seat address it serves, including one another organization hired — for example
+> `POST /api/flows/acme.support.ada/actions/answer` from a caller in another organization. Their
+> request runs against **their own** organization's data, so no records cross. What does cross
+> is the seat's own text: the instructions whoever hired it wrote come back in the answer. If
+> the instructions on your seats are sensitive, do not rely on the address being unguessable.
+> Put your own check in front of them.
 >
 > **A restart may serve fewer seats than the roster names, and it says so.** If a stored seat
 > names a flow kind the current code no longer has, or carries settings that kind no longer
@@ -131,13 +160,18 @@ published prose names an issue, an epic or what prompted the change.
 > later, register it:
 >
 > ```ts
-> flowstate.register(seat);      // one instance, or an array
+> flowstate.register(seat);      // one instance at a time
 > flowstate.unregister(seat.id); // returns false if nothing was registered under that id
 > ```
 >
 > Registration runs the same checks construction does: a duplicate id is refused, and so is a
 > flow whose user- or org-scoped schemas conflict with one already registered. A refused
 > registration changes nothing.
+>
+> `register` takes one flow rather than a list on purpose. Admitting a batch would have to
+> either roll the whole batch back on a refusal or leave the earlier entries admitted, and a
+> caller registering several flows almost always wants to know which one was refused and keep
+> the rest. Loop, and handle each refusal where it happens.
 >
 > The registry is read once per request, so a flow registered here is served from the next
 > request onward, in this process. A request already running is unaffected either way: it holds
@@ -165,25 +199,41 @@ published prose names an issue, an epic or what prompted the change.
 >
 > `defineHiredRosterCollection()` is an org-scoped resource collection at
 > `workforce/roster/*`, one row per hired seat. Install it under the block that does the
-> hiring, and write a row before you register the seat. The collection's create-if-absent write
-> is what refuses a second hire of the same seat, so you do not need a check of your own.
+> hiring, and write the row with `create()` before you register the seat. `create()` throws when
+> the key already exists, and that throw is what refuses a second hire of the same seat,
+> including two arriving at once — so you need no lock and no check of your own. Reach for
+> `upsert()` here and you lose the refusal without any sign that you did.
+>
+> If registration then fails, delete the row you just created before reporting the failure. A
+> hire that did not take should not leave a seat waiting at the next start.
 >
 > `reloadHiredSeats` reads those rows back when the app starts:
 >
 > ```ts
-> const { seats, skipped } = await reloadHiredSeats({
+> const { seats, problems } = await reloadHiredSeats({
 >   stores,           // the runtime's resolved stores
 >   orgIds,           // which organizations to reload; you decide the policy
 >   kinds,            // the same kinds map you pass to hireWorkforce
 > });
+>
+> for (const seat of seats) {
+>   try { flowstate.register(seat); }
+>   catch (err) { problems.push(`${seat.id} — ${String(err)}`); }
+> }
 > ```
+>
+> Register the seats yourself, one at a time, and fold any refusal into the same list. That is
+> not ceremony: a seat the registry refuses is one seat that cannot run, not a reason for the
+> app to fail to start, and admitting them as a batch would make it one.
 >
 > It takes the organizations rather than discovering them, because which organizations an app
 > reloads is the app's decision and not one this package can make for it.
 >
-> `skipped` is the part to handle rather than log. A row naming a kind you no longer ship, or
+> `problems` is the part to handle rather than log — the same shape `openInventory` returns, for
+> the same reason: the caller owns start-up policy. A row naming a kind you no longer ship, or
 > carrying a setting that kind no longer accepts, comes back here with its reason instead of
-> throwing: the other seats still hire and the app still starts. The row is left as it was.
+> throwing. The other seats still hire, the app still starts, and the row is left exactly as it
+> was.
 >
 > A read the store will not complete rejects, and a set of organizations larger than the cap
 > rejects too, naming both numbers. Neither returns a partial roster, because a short roster
@@ -199,10 +249,16 @@ published prose names an issue, an epic or what prompted the change.
 > organization (`acme.support.ada`), and is still there after `pnpm build && pnpm start`.
 >
 > ```bash
-> pnpm fsdev run workforce-admin hire -i '{"seatId":"support.bo","flow":"desk-clerk","settings":{"desk":"back"},"instructions":"You work the back desk."}'
+> curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
+>   -H 'content-type: application/json' \
+>   -H "authorization: Bearer $WORKFORCE_ADMIN_TOKEN" \
+>   -d '{"userId":"you","input":{"seatId":"support.bo","flow":"desk-clerk","settings":{"desk":"back"},"instructions":"You work the back desk."}}'
 > ```
 >
-> Restart the app and ask it something. The reload runs at startup, before the app serves
+> Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no
+> organization, and this action needs one.
+>
+> Restart the app and ask the seat something. The reload runs at startup, before the app serves
 > anything, and reports any seat it could not bring back.
 
 ---

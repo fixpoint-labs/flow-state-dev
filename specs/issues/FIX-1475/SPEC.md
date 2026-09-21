@@ -14,7 +14,8 @@ Feature · `engine` + `workforce` + kitchen-sink · large · 2 PRs · epic
 | **redeploys after hiring** | The team is gone. Re-hire it, every deploy, forever | The team is still there. It was written down when it was hired, and the next boot reads it back |
 | **hires a seat whose kind was deleted from the code** | n/a | The app still boots and every other seat still answers. The seat that cannot run does not run, and the boot says which one and why |
 | **redeploys while the database is unreachable** | The app comes up and serves whatever does not need the database | The new version refuses to come up, so the running one keeps serving. A short roster is never served as if it were the whole one |
-| **fires a seat mid-answer** | n/a | The answer being written finishes and is saved. The next request to that address is a 404, and the seat is gone from the next boot too |
+| **fires a seat mid-answer** | n/a | The answer being written finishes and is saved. The address stops answering here, and on sibling processes at their next start |
+| **tries to hire into someone else's organization** | n/a | Refused. The admin path verifies a credential and takes the organization from it, so a request that names another one in its body changes nothing |
 
 The reference app is where somebody decides whether Workforce is real. A roster that dies with
 the process makes the whole story a demo: every reader who tries it loses their team on the
@@ -29,15 +30,22 @@ the second door, and that **both** a runtime hire and the next boot's reload com
 one admission path, not two ([D1](DECISIONS.md#d1)). The durable row is what survives; the
 registry is that row, loaded into one process.
 
-**Hiring a seat, as somebody writes it** — an ordinary flow action, so it authenticates and
-scopes itself the way every other action does:
+**Hiring a seat, as somebody writes it.** It is a flow action, but not an ordinary one: it
+writes durable state for an organization, so it verifies a credential of its own and reads the
+organization **from that credential**. The framework's stock resolver takes `orgId` out of the
+request body, which is fine for a demo flow and is not fine for this one
+([D1](DECISIONS.md#d1)'s *decided, not asked*).
 
 ```diff
 + POST /api/flows/workforce-admin/actions/hire
-+ { "userId": "you", "orgId": "acme",
++ Authorization: Bearer <the admin credential — this is what names the org>
++ { "userId": "you",
 +   "input": { "seatId": "support.ada", "flow": "desk-clerk",
 +              "settings": { "desk": "front" }, "instructions": "You work the front desk." } }
 ```
+
+With no credential configured the admin flow is **not registered at all**, so a default
+deployment has no hire path to reach.
 
 **And the seat that comes back, addressed like any other flow:**
 
@@ -48,17 +56,6 @@ scopes itself the way every other action does:
 The address carries the org because two orgs may both want a seat called `support.ada` and the
 registry has one flat address space ([D3](DECISIONS.md#d3)). It is an **address, not a
 permission**: who may reach it is still decided by the principal on the request.
-
-## How a hire reaches the next boot
-
-```mermaid
-flowchart LR
-  H["hire action · org from the principal"] -->|"one row"| R["durable roster<br/>org-scoped, in Postgres"]
-  H -->|"same process, at once"| G["the flow registry"]
-  R -.->|"next boot, per org"| G
-  G --> S["served on the HTTP route"]
-  F["fire action"] -.->|"removes the row<br/>and the address"| G
-```
 
 The hire writes the row first and registers second, so a hire that is served is a hire that was
 written down. A process that did not run the hire picks the seat up at **its** next boot, not
@@ -73,11 +70,14 @@ before — [D1](DECISIONS.md#d1) locks that in and [DOCS.md](DOCS.md) states it 
   ([ER-16](../../epics/FIX-1455/BUSINESS-RULES.md)). Runtime channel administration is
   [FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415)'s.
 - **The seat inventory** (`inventory/seats/*`, from
-  [FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)) keeps its job: what is
-  *registered in this org*, for anything browsing. The roster is a second, smaller thing — what
-  to hire back — and does not replace it ([D2](DECISIONS.md#d2)).
-- **Who may call what.** No new auth path. Org comes from the resolved principal and never from
-  the body.
+  [FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)). A runtime-hired seat gets **no
+  inventory row**: the inventory never deletes one and a roster must, so parity would be partial
+  by construction. This app opens no inventory today either. Joining the two for browsing is
+  [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477)'s
+  ([the reasoning](PLAN.md#inventory-parity-is-out-of-scope-and-so-is-the-browse-side-join)).
+- **Who may call a seat.** Unchanged. The one new authenticated surface is the admin path
+  itself, which fences *writing* a roster; reaching a seat is still whatever the app already
+  decided, and the limit on that is the [Open](DECISIONS.md#open).
 - **Flow listing is not org-filtered.** `/api/flows` still lists every registered instance;
   that gap is [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)'s, cited and not
   worked around here.
@@ -85,10 +85,11 @@ before — [D1](DECISIONS.md#d1) locks that in and [DOCS.md](DOCS.md) states it 
 ## Sign off
 
 1. **[D1](DECISIONS.md#d1) · One admission door. A runtime hire and the next boot's reload both
-   enter through the same public `register` / `unregister` pair, and a hire is served only in
-   the process that ran it until every other process reboots.** If wrong: we have published a
-   framework API whose promise is weaker than readers assume — "hired" means "hired here" — and
-   walking it back later breaks every app that adopted it.
+   enter through the same public `register` / `unregister` pair, and a change is process-wide
+   only at the next boot — for a **fire** as much as for a hire.** If wrong: we have published a
+   framework API whose promise is weaker than readers assume, and the fire half is the sharper
+   end of it. A seat fired for a reason keeps answering on sibling processes until they restart.
+   Walking that back later breaks every app that adopted it.
 2. **[D2](DECISIONS.md#d2) · Fail the boot on what a retry fixes; skip what it cannot.** A
    roster the store will not hand over stops the deploy; a stored seat naming a kind the code no
    longer has is skipped, named, and the app serves. If wrong: either one bad row holds a whole
@@ -98,7 +99,9 @@ before — [D1](DECISIONS.md#d1) locks that in and [DOCS.md](DOCS.md) states it 
    org-scoped.** If wrong: two customers cannot both have a seat called `support.ada`, or worse,
    they can and one silently wins.
 
-**Open: one, and it is a risk to accept rather than a fork to pick** — the cross-org address
-question in [DECISIONS.md → Open](DECISIONS.md#open). Number 1 is the one to weigh. The
-reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
+**Open: one, and it is a risk to accept rather than a fork to pick** — one org can *address*
+another's seat and read the instructions written on it (not its records), now stated to readers
+rather than left implied: [DECISIONS.md → Open](DECISIONS.md#open). *Writing* another org's
+roster is closed here, not deferred. Number 1 is the one to weigh, and its fire half is the part
+worth arguing with. The reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).
