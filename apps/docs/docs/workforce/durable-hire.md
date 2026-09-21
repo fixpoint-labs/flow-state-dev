@@ -36,8 +36,9 @@ Every seat runs a **flow kind**: one of the flows your app defines, named in a m
 
 A hire is a handler in a flow of your own, and the order it works in matters. Refuse what you can refuse before anything is written. Mint the seat, which is where the flow kind's own settings schema runs. Write the row. Register. If registering fails, delete the row you just wrote, so a hire that failed leaves nothing behind.
 
-```ts
-// flows/workforce-admin/hire.ts
+The three files below go in your app's own source tree, under `src/flows/`, where `fsdev run` looks for flows. None of them belongs in a `workforce/` tree.
+
+```ts title="src/flows/workforce-admin/hire.ts"
 import { handler } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
@@ -109,8 +110,7 @@ A row holds the seat's id within its organization, the flow kind, the settings b
 
 `registerSeat` exists because the flow needs the `FlowState` it is itself registered on, and importing that directly is a cycle. Install it instead:
 
-```ts
-// flows/workforce-admin/registry-access.ts
+```ts title="src/flows/workforce-admin/registry-access.ts"
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowState } from "@flow-state-dev/engine";
 
@@ -135,8 +135,7 @@ export function releaseSeat(id: string): boolean {
 
 The organization comes from the credential, not from the request body. A hire writes durable state that belongs to an organization, so it has to come from something the framework can trust. Configure [`resolvePrincipal`](../server/authentication.md) on the flow and the action's `orgId` comes from there; an `orgId` in the body is ignored.
 
-```ts
-// flows/workforce-admin/flow.ts
+```ts title="src/flows/workforce-admin/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
 import { defineHiredRosterCollection } from "@flow-state-dev/workforce";
 import { extractBearerToken, PrincipalResolutionError } from "@flow-state-dev/engine";
