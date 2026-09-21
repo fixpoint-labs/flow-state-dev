@@ -1,0 +1,76 @@
+/**
+ * The resources manifest source (FIX-817) — the resources domain's projection
+ * into the discovery door.
+ *
+ * Built over the readers that already ship. `collectReadableResources` is
+ * unchanged and still the gate: a collection that did not opt into
+ * `llmReadable` is skipped BEFORE it is listed, so a lazy or broken collection
+ * is never bulk-loaded just to discover it was never allowed.
+ *
+ * That helper reaches static resources and store-backed collections only —
+ * `collectCollections` classifies external refs out by their `external` brand.
+ * An externally backed collection that IS readable is in scope for the agent,
+ * so it is reached separately; a manifest that lies by omission is worse than
+ * no manifest. External collections are read-through and paged by design, so
+ * they project as ONE entry for the collection rather than a row per instance:
+ * enumerating them to build a catalog is the thing their laziness exists to
+ * avoid, and the agent reaches their rows through search.
+ */
+
+import type { ManifestEntry } from "@flow-state-dev/contracts";
+import type { BlockContext } from "../types/block";
+import type { ResourceRef } from "../types/resource";
+import { collectExternalCollections, collectReadableResources } from "../tools/resource-tools";
+import type { BlockManifestSource } from "./registry";
+
+/**
+ * What an agent chooses on. A resource that declared a description in its
+ * `metadata` says what it is for in its author's words; otherwise the entry
+ * falls back to its address, which is all the declaration actually carries.
+ */
+function purposeOf(ref: ResourceRef<any>): string {
+  const described = ref.config?.metadata?.description;
+  if (typeof described === "string" && described.trim() !== "") return described.trim();
+  return `Readable resource at ${ref.path}`;
+}
+
+/** How the agent may work with this resource — the deeper half of an entry. */
+function contractOf(ref: ResourceRef<any>): string {
+  const verbs = ref.config?.llmWritable === true ? "read and write" : "read";
+  return `Reachable by uri "${ref.uri}"; you may ${verbs} its content.`;
+}
+
+/**
+ * The resources domain, projected on demand from `collectReadableResources`
+ * plus the readable external collections that helper does not reach.
+ */
+export function resourcesManifestSource(): BlockManifestSource {
+  return {
+    domain: "resources",
+    origin: "resourcesManifestSource (@flow-state-dev/core)",
+    entries: async (ctx: BlockContext): Promise<ManifestEntry[]> => {
+      const entries: ManifestEntry[] = [];
+
+      for (const ref of await collectReadableResources(ctx)) {
+        entries.push({
+          id: ref.uri,
+          kind: "resource",
+          purpose: purposeOf(ref),
+          contract: contractOf(ref),
+        });
+      }
+
+      for (const ns of collectExternalCollections(ctx)) {
+        if (ns.ref.config?.llmReadable !== true) continue;
+        entries.push({
+          id: `${ns.scope}/${ns.name}`,
+          kind: "collection",
+          purpose: `Readable collection of resources under ${ns.name}`,
+          contract: "Search it to get uris, then read those uris. Not enumerable up front.",
+        });
+      }
+
+      return entries;
+    },
+  };
+}

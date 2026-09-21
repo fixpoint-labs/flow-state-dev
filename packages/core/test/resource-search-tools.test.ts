@@ -96,12 +96,32 @@ describe("globResources", () => {
     expect(uris).toEqual(["org/concepts/a", "org/concepts/b", "org/soul"]);
   });
 
-  it("does not gate on llmReadable (discovery, like listResources)", async () => {
-    const ctx = makeCtx([], [
-      { pattern: "concepts/**", instances: [{ path: "concepts/secret", llmReadable: false }] },
-    ]);
-    const { uris } = await runForTest(globResources,{ pattern: "concepts/**", limit: 100 }, ctx);
-    expect(uris).toEqual(["org/concepts/secret"]);
+  // FIX-817 / BR-18. A null pattern used to list every collection in the scope
+  // regardless of `llmReadable` — the second ungated enumerator, beside the
+  // removed `listResources`. A path is a disclosure even when no body is read.
+  it("omits a non-readable collection, and never enumerates it to find that out", async () => {
+    const secret = vi.fn(async () => [refOf({ path: "concepts/secret" })]);
+    const open = vi.fn(async () => [refOf({ path: "notes/standup" })]);
+    const entries: any[] = [
+      { pattern: "concepts/**", scope: "org", config: { llmReadable: false }, create: async () => {}, list: secret },
+      { pattern: "notes/**", scope: "org", config: { llmReadable: true }, create: async () => {}, list: open },
+    ];
+    const ctx = createMockContext({ resources: { list: () => entries, get: (() => undefined) as any } as any });
+
+    const { uris } = await runForTest(globResources, { pattern: null, limit: 100 }, ctx);
+
+    expect(uris).toEqual(["org/notes/standup"]);
+    // Not merely absent from the result: the collection is skipped BEFORE it is
+    // listed, so a lazy or broken one is never bulk-loaded to discover it was
+    // never allowed.
+    expect(secret).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalled();
+  });
+
+  it("omits a static resource that did not opt into llmReadable", async () => {
+    const ctx = makeCtx([{ path: "soul", llmReadable: false }, { path: "public" }], []);
+    const { uris } = await runForTest(globResources, { pattern: null, limit: 100 }, ctx);
+    expect(uris).toEqual(["org/public"]);
   });
 
   it("bounds results by limit", async () => {

@@ -16,5 +16,10 @@ export * from "./items";
 // Pure leaf types not surfaced through the items barrel.
 export type { ResumeAction, SuspensionReason, SuspensionStatus } from "./types/suspension";
 
+// Agent discovery: the shared manifest-entry record and the per-domain source
+// type that projects into it (FIX-817).
+export { MANIFEST_DOMAINS, isManifestDomain } from "./types/manifest";
+export type { ManifestDomain, ManifestEntry, ManifestSource } from "./types/manifest";
+
 // Deterministic blockInstanceId construction/parsing (pure string logic).
 export * from "./block-instance-id";

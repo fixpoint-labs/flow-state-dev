@@ -8,8 +8,13 @@
 //   - searchResources     — fuzzy ranked matching (term-frequency lexical scoring)
 //
 // All three enumerate both static resources and collection instances (both are
-// `ResourceRef`s). Glob is a discovery tool (ungated, like `listResources`);
-// grep and search read content, so they gate on `llmReadable` for parity with
+// `ResourceRef`s), and all three gate on `llmReadable`. Glob returns paths
+// rather than bodies, but a path is still a disclosure, and a null pattern used
+// to list every collection in the scope whether or not anyone marked it
+// readable (FIX-817). It now enumerates `collectReadableResources`, which skips
+// a non-readable collection BEFORE listing it — so the collection isn't
+// bulk-loaded just to discover it was never allowed. Grep and search read
+// content, so they gate for parity with
 // `readResourceContentTool` and search the *rendered* content (`readContent()`,
 // the same bytes that tool returns) — so they find what the agent can actually
 // read, including resources whose body is a state-rendered template. All three
@@ -25,7 +30,7 @@
 import { z } from "zod";
 import picomatch from "picomatch";
 import { handler } from "../blocks/handler";
-import { collectAllResources, collectExternalCollections, collectReadableResources } from "./resource-tools";
+import { collectExternalCollections, collectReadableResources } from "./resource-tools";
 import type { ExternalResourceCollectionRef } from "../types/external-resource-collection";
 
 /** Maximum snippet length returned per match, so results stay token-cheap. */
@@ -96,8 +101,9 @@ function firstMatchingLine(content: string, terms: string[]): string {
  * static resources and collections:
  *
  * - `globResources({ pattern?, limit? })` — match the within-scope path against a
- *   glob (`concepts/**`, `**\/react*`); a null pattern lists everything. Discovery
- *   only — no content is read, no `llmReadable` gate. Subsumes prefix-listing.
+ *   glob (`concepts/**`, `**\/react*`); a null pattern lists every READABLE
+ *   resource. No content is read, but the `llmReadable` gate applies.
+ *   Subsumes prefix-listing.
  * - `grepResourceContent({ pattern, prefix?, maxResults? })` — regex / substring
  *   search over `llmReadable` content bodies, returning matching lines.
  * - `searchResources({ query, prefix?, limit? })` — term-frequency ranked search
@@ -110,7 +116,7 @@ export function resourceSearchTools() {
   const globResources = handler({
     name: "globResources",
     description:
-      "Find resources whose path matches a glob pattern (e.g. 'concepts/**', '**/react*'). With no pattern, returns every resource. Returns scope-qualified uris.",
+      "Find resources whose path matches a glob pattern (e.g. 'concepts/**', '**/react*'). With no pattern, returns every resource you can read. Returns scope-qualified uris.",
     inputSchema: z.object({
       pattern: z
         .string()
@@ -123,7 +129,7 @@ export function resourceSearchTools() {
       uris: z.array(z.string()),
     }),
     execute: async (input, ctx) => {
-      const refs = await collectAllResources(ctx);
+      const refs = await collectReadableResources(ctx);
       const isMatch = input.pattern === null ? null : picomatch(input.pattern, { dot: true });
       const matched = refs.filter((ref) => isMatch === null || isMatch(ref.path)).map((ref) => ref.uri);
       matched.sort();

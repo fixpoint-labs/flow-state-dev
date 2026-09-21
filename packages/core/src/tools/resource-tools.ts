@@ -79,12 +79,18 @@ function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
  * Generic resource CRUD tool blocks for LLM tool surface.
  * Returns handler blocks that work across all registered collections.
  *
- * Provides 5 tools:
+ * Provides 4 tools, each acting on a path the caller already names:
  * - `createResource({ path, state? })` — Create a new resource instance
  * - `readResource({ path })` — Read a resource instance
  * - `updateResource({ path, state? })` — Update a resource instance
  * - `deleteResource({ path })` — Delete a resource instance
- * - `listResources({ prefix? })` — List all resource instances
+ *
+ * **`listResources` was removed (FIX-817).** It enumerated every collection's
+ * full stored state through `collectCollections`, ignoring the `llmReadable`
+ * gate this module defines two functions below — so a collection nobody marked
+ * readable was dumped to the model anyway. Enumeration is now the discovery
+ * door's job (`discoveryTools`), which answers from `collectReadableResources`
+ * and returns a planning contract rather than raw state.
  */
 export function resourceTools() {
   const createResource = handler({
@@ -158,42 +164,11 @@ export function resourceTools() {
     },
   });
 
-  const listResourcesTool = handler({
-    name: "listResources",
-    description: "List resource instances, optionally filtered by prefix.",
-    inputSchema: z.object({
-      prefix: z.string().optional().describe("Optional prefix to filter results"),
-    }),
-    outputSchema: z.object({
-      resources: z.array(z.object({
-        path: z.string(),
-        state: z.record(z.unknown()),
-      })),
-    }),
-    execute: async (input, ctx) => {
-      const collections = collectCollections(ctx);
-      const resources: Array<{ path: string; state: Record<string, unknown> }> = [];
-
-      for (const ns of collections) {
-        const instances = await ns.ref.list(input.prefix);
-        for (const instance of instances) {
-          resources.push({
-            path: instance.path,
-            state: instance.state as Record<string, unknown>,
-          });
-        }
-      }
-
-      return { resources };
-    },
-  });
-
   return {
     createResource,
     readResource,
     updateResource,
     deleteResource,
-    listResources: listResourcesTool,
   };
 }
 
@@ -233,20 +208,6 @@ export async function resolveResourceByPath(
   }
 
   return undefined;
-}
-
-/**
- * Static resources plus every instance of every collection, as one flat
- * `ResourceRef` list. Collection instances are themselves `ResourceRef`s, so
- * callers treat the two uniformly. Lists each collection in full — suited to
- * the bounded, curated collections the navigation and content tools target.
- */
-export async function collectAllResources(ctx: BlockContext): Promise<ResourceRef<any>[]> {
-  const out: ResourceRef<any>[] = [...collectStaticResources(ctx)];
-  for (const ns of collectCollections(ctx)) {
-    for (const instance of await ns.ref.list()) out.push(instance);
-  }
-  return out;
 }
 
 /**
