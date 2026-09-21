@@ -9,6 +9,7 @@
  * seams: no Redis, no real worker.
  */
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -125,6 +126,7 @@ describe("external dispatch — enqueue-time stream discoverability (FIX-828)", 
     const ts = Date.now();
 
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId,
       flowKind: FLOW_KIND,
       actionName: "run",
@@ -137,7 +139,7 @@ describe("external dispatch — enqueue-time stream discoverability (FIX-828)", 
     await stores.request.set(
       requestId,
       createInitialRequestRecord(
-        { requestId, flowKind: FLOW_KIND, actionName: "run", userId: "u_1", sessionId: "s_1", source: "http" },
+        { requestId, flowKind: FLOW_KIND, actionName: "run", userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "s_1", source: "http" },
         ts
       ),
       "any"
@@ -185,6 +187,7 @@ describe("external dispatch — enqueue-time stream discoverability (FIX-828)", 
     // is what marks it unclaimed — but old: the worker never claimed the job,
     // so it never heartbeat and never dropped the marker.
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId,
       flowKind: FLOW_KIND,
       actionName: "run",
@@ -198,7 +201,7 @@ describe("external dispatch — enqueue-time stream discoverability (FIX-828)", 
     await stores.request.set(
       requestId,
       createInitialRequestRecord(
-        { requestId, flowKind: FLOW_KIND, actionName: "run", userId: "u_1", sessionId: "s_1", source: "http" },
+        { requestId, flowKind: FLOW_KIND, actionName: "run", userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "s_1", source: "http" },
         stale
       ),
       "any"
@@ -267,6 +270,7 @@ describe("external dispatch — enqueue failure at the route boundary (FIX-828)"
 
     const requestId = "req_resume_continue_fail";
     const suspendedRecord: RequestRecord = {
+    orgId: DEFAULT_ORG_ID,
       id: requestId,
       flowKind: FLOW_KIND,
       actionName: "run",

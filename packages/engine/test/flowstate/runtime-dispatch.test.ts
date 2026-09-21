@@ -1033,6 +1033,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
         requestId: "req_abandoned",
         sessionId: "s_abandoned",
         userId: USER_ID,
+        orgId: DEFAULT_ORG_ID,
         flowKind: "runtime-sweep",
         actionName: "launch",
         status: "in_progress",
@@ -1042,6 +1043,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
       "any"
     );
     await runtime.stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_abandoned",
       sessionId: "s_abandoned",
       userId: USER_ID,
@@ -1101,6 +1103,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
         requestId: "req_abandoned",
         sessionId: "s_abandoned",
         userId: USER_ID,
+        orgId: DEFAULT_ORG_ID,
         flowKind: "sweep-race",
         actionName: "launch",
         status: "in_progress",
@@ -1110,6 +1113,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
       "any"
     );
     await activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_abandoned",
       sessionId: "s_abandoned",
       userId: USER_ID,

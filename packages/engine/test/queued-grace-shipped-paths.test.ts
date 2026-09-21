@@ -24,6 +24,7 @@
  * row that lingers `in_progress` forever.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import {
@@ -77,6 +78,7 @@ async function seedQueuedRequest(
 ): Promise<void> {
   const at = Date.now() - queuedAgoMs;
   await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
     requestId: REQUEST_ID,
     flowKind: FLOW_KIND,
     actionName: "run",
@@ -90,6 +92,7 @@ async function seedQueuedRequest(
   await stores.request.set(
     REQUEST_ID,
     {
+    orgId: DEFAULT_ORG_ID,
       id: REQUEST_ID,
       flowKind: FLOW_KIND,
       actionName: "run",

@@ -48,9 +48,59 @@ describe("detectInterruptedRequests", () => {
     stores = createInMemoryStores();
   });
 
+  it("skips an unattributed entry rather than rewriting a record it cannot attribute", async () => {
+    // BR-14, on the one path nobody asked for: the sweeper runs on its own, on
+    // a timer and at startup, and it WRITES — it moves `in_progress` to
+    // `interrupted`. A record stored before organizations were required is
+    // preserved and refused everywhere else; a scan that rewrote it anyway
+    // would be the single place the quarantine leaked, and it would do so with
+    // no caller to refuse and nothing in a log to connect it to.
+    await stores.activeRequests.register({
+      requestId: "req_legacy",
+      flowKind: "chat",
+      actionName: "run",
+      userId: "user_1",
+      startedAt: Date.now() - 60_000,
+      lastHeartbeatAt: Date.now() - 60_000
+    });
+    const legacy = makeRequestRecord("req_legacy");
+    delete (legacy as { orgId?: string }).orgId;
+    await stores.request.set("req_legacy", legacy, "any");
+
+    const interrupted = await detectInterruptedRequests({
+      stores,
+      staleThresholdMs: 30_000
+    });
+
+    expect(interrupted).toHaveLength(0);
+    expect((await stores.request.get("req_legacy"))?.status).toBe("in_progress");
+  });
+
+  it("still sweeps an attributed entry, so the skip above is not just an inert sweeper", async () => {
+    await stores.activeRequests.register({
+      requestId: "req_attributed",
+      flowKind: "chat",
+      actionName: "run",
+      userId: "user_1",
+      orgId: DEFAULT_ORG_ID,
+      startedAt: Date.now() - 60_000,
+      lastHeartbeatAt: Date.now() - 60_000
+    });
+    await stores.request.set("req_attributed", makeRequestRecord("req_attributed"), "any");
+
+    const interrupted = await detectInterruptedRequests({
+      stores,
+      staleThresholdMs: 30_000
+    });
+
+    expect(interrupted).toHaveLength(1);
+    expect((await stores.request.get("req_attributed"))?.status).toBe("interrupted");
+  });
+
   it("marks stale in_progress requests as interrupted", async () => {
     // Register a stale active request
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_stale",
       flowKind: "chat",
       actionName: "run",
@@ -82,6 +132,7 @@ describe("detectInterruptedRequests", () => {
 
   it("does not mark already completed requests", async () => {
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_done",
       flowKind: "chat",
       actionName: "run",
@@ -119,6 +170,7 @@ describe("detectInterruptedRequests", () => {
     const longAgo = Date.now() - 60_000;
 
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_alice",
       flowKind: "chat",
       actionName: "run",
@@ -133,6 +185,7 @@ describe("detectInterruptedRequests", () => {
     );
 
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_bob",
       flowKind: "chat",
       actionName: "run",
@@ -222,6 +275,7 @@ describe("detectInterruptedRequests", () => {
 
   it("skips entries with recent heartbeats", async () => {
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_fresh",
       flowKind: "chat",
       actionName: "run",

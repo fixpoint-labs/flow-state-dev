@@ -1,7 +1,7 @@
 /**
  * Interrupted request detection and recovery utilities.
  */
-import { requireAttributedOrg } from "../context/org-attribution";
+import { isOrgAttributed, requireAttributedOrg } from "../context/org-attribution";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type {
   ActiveRequestEntry,
@@ -78,6 +78,17 @@ export async function detectInterruptedRequests(options: {
 
   for (const entry of stale) {
     const requestRecord = await stores.request.get(entry.requestId);
+
+    // A record stored before organizations were required is preserved and
+    // refused everywhere a caller can reach it (BR-14). This sweep has no
+    // caller: it runs on a timer and at startup, and it WRITES — it is the one
+    // path that would quietly rewrite such a record with nobody to refuse and
+    // nothing in a log tying the write to a request. So it skips them, and an
+    // operator's `in_progress` row stays exactly as it was until the offline
+    // attribution runs.
+    // The RECORD, not the entry: the record is the thing this sweep writes,
+    // and the entry is a framework-managed index that is discarded either way.
+    if (requestRecord !== undefined && !isOrgAttributed(requestRecord)) continue;
 
     if (requestRecord !== undefined && requestRecord.status === "in_progress") {
       await stores.request.set(
