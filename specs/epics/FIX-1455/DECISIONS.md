@@ -3,8 +3,9 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 The calls that sit above any single issue. Six of them are locks the epic body and the Architect
-already made — they are recorded here so no child reopens them, not re-argued. **One is new:
-[D7](#d7)**, what the app's persistent rail is for. That is the one to read.
+already made — they are recorded here so no child reopens them, not re-argued. **Two are new:
+[D7](#d7)**, what the app's persistent rail is for, and **[D8](#d8)**, how you browse the
+workforce inside it. Those are the two to read.
 
 ## The tree
 
@@ -18,6 +19,8 @@ flowchart TD
   D5 -.->|"rejected"| X5["a Workforce UI package beside react"]
   E --> D7["D7 · the rail becomes the workforce"]
   D7 -.->|"rejected"| X7["a fourth column · a channels tab"]
+  D7 --> D8["D8 · one navigator, depth from cardinality"]
+  D8 -.->|"rejected"| X8["two navigators · a fixed three-level tree"]
 ```
 
 D3, D4 and D6 are vocabulary and invent-kill locks with no live alternative; they are cards
@@ -69,7 +72,7 @@ on. Then this epic returns to design and POC and the fence goes back up.
 |---|---|
 | **Instead of** | A third "Workforce UI" package beside `react` and `client` · leaving the components in the app and letting readers copy files |
 | **Because** | The rebuild's value is that it can be imported, not that it can be admired. A shape that needs kitchen-sink-specific plumbing to work is a design finding for FIX-1477's spec, not a licence to leave it in the app |
-| **Locks in** | **Inline** = renders from the session's item stream. **Resource-backed** = subscribes to a standing collection outside it. The split names the **source** a region reads, never how long its content lives: the items are durable, so an inline region still shows earlier channel turns and already-resolved approvals after a reload. **Where each ships:** Workforce-specific chrome — the channel list, the seat list, the roster, board columns — from `react` / `client`; generic conversation and item rendering from the `@flow-state-dev/ui` registry the app already consumes through `components/flow-state/`. `ui` is an existing package, not a third Workforce UI package, so routing to it satisfies [ER-9](BUSINESS-RULES.md) rather than breaching it. Kitchen-sink defines no UI API of its own; if it has to, that is a cross-cutting question and comes up here. **A component ships once.** Any component Labs or another consumer would also need is exported from its one package and imported there — not copied, and not re-exported through a second package. Two copies of a component with one behaviour is the same defect as a kitchen-sink-only UI API, reached from the other side |
+| **Locks in** | **Inline** = renders from the session's item stream. **Resource-backed** = subscribes to a standing collection outside it. The split names the **source** a region reads, never how long its content lives: the items are durable, so an inline region still shows earlier channel turns and already-resolved approvals after a reload. **Where each ships:** Workforce-specific chrome — the navigator over channels and seats ([D8](#d8)), the roster, board columns — from `react` / `client`; generic conversation and item rendering from the `@flow-state-dev/ui` registry the app already consumes through `components/flow-state/`. `ui` is an existing package, not a third Workforce UI package, so routing to it satisfies [ER-9](BUSINESS-RULES.md) rather than breaching it. Kitchen-sink defines no UI API of its own; if it has to, that is a cross-cutting question and comes up here. **A component ships once.** Any component Labs or another consumer would also need is exported from its one package and imported there — not copied, and not re-exported through a second package. Two copies of a component with one behaviour is the same defect as a kitchen-sink-only UI API, reached from the other side |
 
 <a name="d6"></a>
 ## D6 · Patterns is shed as a dependency, and never bridged to seats
@@ -87,24 +90,50 @@ on. Then this epic returns to design and POC and the fence goes back up.
 |---|---|
 | **Instead of** | A fourth column for channels · a tab strip inside the existing rail · a `/workforce` route beside `/` |
 | **Because** | The app has exactly one persistent region and it is spent on a session list. A fourth column does not fit — the centre already loses its minimum below `sm`, and the right panel is 280–700px on its own. A tab strip hides whichever half you are not looking at, which is the opposite of a reference. A separate route says the workforce is a subsystem you visit, when the claim is that it is the app. Sessions do not disappear: a channel's history *is* the session list, scoped |
-| **Locks in** | The rail is org → channels → **seat list**. The right panel holds boards and **the roster**, and stops being conditional on build mode. Three children build against those regions: FIX-1476 fills the channel half of the rail, FIX-1475 fills the roster, FIX-1477 ships the components for both. Reversible cheaply until FIX-1477 merges, and not after |
+| **Locks in** | The rail is org → **channels and seats**, browsed through the one navigator [D8](#d8) settles — not a flat list of either. The right panel holds boards and **the roster**, and stops being conditional on build mode. Three children build against those regions: FIX-1476 fills the channel half of the rail, FIX-1475 fills the roster, FIX-1477 ships the components for both. Reversible cheaply until FIX-1477 merges, and not after |
 
-![Today's shell beside the rebuilt shell, aligned region for region: a 256 pixel rail holding a session list becomes a rail holding the org's channels and its seat list; the centre column keeps the turn stream and loses its six-control strip; the build-mode-only artifact panel becomes a standing boards and roster panel](figures/shell-before-after.svg)
+![Today's shell beside the rebuilt shell, aligned region for region: a 256 pixel rail holding a flat session list becomes a rail holding one navigator over the org's channel kinds and seat kinds — a singleton channel kind opening straight into its sessions, a collection seat kind opening into its seats and then into each seat's sessions; the centre column keeps the turn stream and loses its six-control strip; the build-mode-only artifact panel becomes a standing boards and roster panel](figures/shell-before-after.svg)
 
 Read it by column width, not by label. The rail keeps its width and changes its content; the
 right panel stops being conditional on a mode. The centre survives unchanged, because the turn
 stream is the one thing the app already gets right.
 
-**The roster has one home: the right panel.** The rail carries a *seat list* — names and presence,
-read from the same collection, and navigation into the roster rather than a second copy of it.
-The two words are not interchangeable and the figure draws the difference: the rail shows bare
-seat names while `BOARDS + ROSTER` is the panel. A child that renders roster detail in the rail,
-or a bare name list in the panel, has breached this card and not merely styled it differently.
+**The roster has one home: the right panel.** The rail carries a *seat list* — names, presence
+and the sessions under a seat, read from the same collection, and navigation into the roster
+rather than a second copy of it. The two words are not interchangeable and the figure draws the
+difference: the rail shows seat names you drill through while `BOARDS + ROSTER` is the panel. A
+child that renders roster detail in the rail, or a bare name list in the panel, has breached this
+card and not merely styled it differently. **Drilling is not roster detail** — an expanded seat
+shows that seat's sessions, which is navigation, and nothing about its load, its boards or its
+persona ([D8](#d8)).
 
 **What would change my mind:** a rendered narrow-width pass showing the rail cannot hold channels
 and a seat list together without one of them becoming a scroll-within-a-scroll. Then the seat list
 leaves the rail entirely — the rail is channels only, and seats are reached through the panel's
 roster. It does not move the roster, which is already there.
+
+<a name="d8"></a>
+## D8 · One navigator, and its depth is read from the flow's cardinality
+
+| | |
+|---|---|
+| **Instead of** | Two navigators, one per concern — FIX-1476 builds the channel one, FIX-1477 builds the seat one, and they diverge by the end of the first week · a hard-coded three-level tree, which is wrong for every channel · a `/workforce` route to hang a browser off, which [D7](#d7) already rejected · rebuilding the drill-down from scratch when [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) shipped it in the devtool and it is Done |
+| **Because** | The app has to browse flows that *have* instances: the kinds in the rail, the instances under a kind that has them, and that instance's sessions when you click in. The framework already answers *how deep* and the answer is one field. `FlowCardinality` is `"singleton" \| "collection"` (`packages/core/src/types/flow.ts`), and `resolveInstanceId` (`packages/core/src/flow/defineFlow.ts`) makes a `collection` flow demand an explicit instance id while a `singleton` defaults its id to its kind. A hired seat is a collection instance — `packages/workforce/src/agent-worker-flow.ts` declares `cardinality: "collection"` and `hireWorkforce()` returns one `FlowInstance` per seat, keyed by its manifest id. A channel kind is a singleton — `packages/workforce/src/channel/channel-flow.ts` declares it and states the rule in the same breath: *one kind is one instance, and a hundred channels are a hundred sessions on that one instance*. **The asymmetry is the whole point.** Seats are three levels — kind → seats → sessions. Channels are two — kind → sessions — because a channel **is** a session on a singleton instance. A uniform three-level tree would draw a pointless single-node level above every channel list, and two navigators would encode the difference twice. Nobody declares which: `FlowListEntry` carries `id`, `kind` and `cardinality` out of `@flow-state-dev/client`, and the session list already branches on exactly that field — `packages/devtool/src/react/hooks/use-sessions.ts` sends `{ flowId }` for a collection and `{ flowKind: flowId }` for a singleton |
+| **Locks in** | **One navigator component, parameterized by kind, deriving its depth from the flow's declared cardinality.** The rail hosts it, for channels and for seats alike. **FIX-1477 builds it; FIX-1476 consumes it** — the seam [ER-7](BUSINESS-RULES.md) already owns, sharpened rather than a new row, so no owner moves in the matrix. It ships from the client packages under [D5](#d5) (Workforce chrome → `react` / `client`) and is **resource-backed** in D5's sense: it reads the standing flow and session collections, never one session's item stream. **Depth is derived, never declared by the consumer.** A `depth` or `levels` prop — even a kitchen-sink-only one — is the invent-kill under [ER-9](BUSINESS-RULES.md) reached from a new side: it lets the app hold an opinion the framework already holds, and the first kind whose cardinality changes makes the app wrong and silent about it. **Reversible cheaply until FIX-1477 merges**; after that it is a published component API with consumers outside this repo ([ER-24](BUSINESS-RULES.md)) |
+
+**A promotion, not a new design** — spine item 3, lifting a proven pattern out of the devtool and
+into packages people can import. Be precise about what is proven and what is not. FIX-1324 shipped
+the **instance → sessions drill-down and the cardinality branch**, and those come across whole. The
+**grouping level above them is new**: today's navigator list is deliberately flat over instances —
+*"two copies of one kind are two rows here"* (`packages/devtool/src/react/components/navigator/flow-list.tsx`)
+— so gathering rows under their kind is the part FIX-1477 adds. The navigator pattern exists in
+`packages/devtool` only; `packages/client` and `packages/react` have no instance-list surface today,
+which is why this is a promotion rather than a re-export.
+
+**What would change my mind:** the same narrow-width evidence [D7](#d7) names, one level lower — a
+rendered pass showing three levels of indentation cannot be read in a 256px rail. Then the rail
+stops at kind → instances and a seat's sessions are reached from the panel, which costs the rail a
+level and costs the card nothing else: the depth is still derived, and it is still one component.
 
 ## Who owns what
 

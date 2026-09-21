@@ -38,9 +38,12 @@ keeps it a *consumer*: nothing in this epic ships an API that only kitchen-sink 
 
 The app has two routes and one persistent region: a 256px rail spent entirely on a session
 list. There is no channel list, no seat roster and no board anywhere in it. That is the
-real-estate contest this epic resolves, and the one call the epic body had not already made.
-[D7](DECISIONS.md#d7) makes it, and pins the before-and-after beside the card. The regions
-themselves — their hooks, their tags, their narrow-width order — are FIX-1477's, under
+real-estate contest this epic resolves, and the calls the epic body had not already made.
+[D7](DECISIONS.md#d7) makes it, and pins the before-and-after beside the card.
+[D8](DECISIONS.md#d8) makes the second half of it: what fills the rail is **one navigator**, and
+how deep it drills is read from each flow's declared `cardinality` rather than declared by the
+app — which is why seats are three levels and channels are two. The regions themselves — their
+hooks, their tags, their narrow-width order — are FIX-1477's, under
 [ER-7](BUSINESS-RULES.md).
 
 ## The set · as of 2026-09-20
@@ -53,7 +56,7 @@ figures point here rather than repeating it.
 | [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) · **bug** | The file-declared workforce demo is served over the app's real HTTP route | Nothing else in the set can stand on a workforce the app never loads. It is also the only row that tests the file convention against a real build | Backlog · direct route, no spec PR |
 | [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) | A team hired at runtime — its seats and roster — survives a redeploy, on the Postgres the app already uses | The substance. "Durable" is the whole difference between a reference and a demo | Backlog · blocked by FIX-1429 |
 | [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) | The shipped channel pair — a kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — one ChannelFlow factory, board v1 seat drain | Without it there is no worked example of how a seat reaches the boards it is meant to watch — and no visible warning for the ones nobody watches | Backlog |
-| [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) | Inline and resource-backed components shipped in the client packages | The one row that makes the rebuild reusable rather than admirable. Without it every reader copies kitchen-sink files | Backlog |
+| [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) | Inline and resource-backed components shipped in the client packages, including the one navigator the rail hosts ([D8](DECISIONS.md#d8)) | The one row that makes the rebuild reusable rather than admirable. Without it every reader copies kitchen-sink files | Backlog |
 | [FIX-1478](https://linear.app/fixpoint-labs/issue/FIX-1478) | `@flow-state-dev/patterns` dropped as a kitchen-sink dependency where Workforce covers it | A reference app teaching two recipes for one job teaches neither | Backlog |
 
 0 done · 0 in flight · 5 not started. Four are substance and one (FIX-1429) is a bug the set
@@ -109,6 +112,14 @@ other rows' surfaces as they land.
    kitchen-sink store.** If wrong: a fifth config persistence layer exists and the reference app
    teaches it. This is an invent-kill from the epic body, restated because it is the one a child
    is most likely to breach quietly.
+
+**Amendment, pending sign-off — [D8](DECISIONS.md#d8): one navigator, and its depth is read from
+the flow's declared `cardinality`.** The three items above were approved as they stand and are not
+reopened. D8 is the fourth cross-cutting call and the only thing this amendment asks for: the app
+has to browse flows that *have* instances, D7 gave the rail a flat seat list, and left unstated
+FIX-1476 and FIX-1477 would each have built half of a browser, differently. If wrong: two
+navigators that diverge, or a depth the app declares and the framework contradicts. Reversible
+cheaply until FIX-1477 merges, and not after. Read the card and its asymmetry before signing.
 
 **Open: none.** Both questions were answered by the owner on 2026-09-20
 ([PR #1978](https://github.com/fixpoint-labs/flow-state-dev/pull/1978#issuecomment-5753189267)),

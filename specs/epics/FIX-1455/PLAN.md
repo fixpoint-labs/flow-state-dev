@@ -22,8 +22,8 @@ absorbs what the other two produce rather than waiting for it. The dependency sh
 |---|---|---|---|---|---|
 | **FIX-1429** serve the demo | direct → impl PR | The W3 floor · `workforce/hire.ts`, which nothing imports today | Those seats in the served flow map, over the real HTTP route of the Next-built app. Its own open question (async `fsdev.config` boot vs a post-construction `createFlowState` registry) is resolved toward durable hire | FIX-1475 | Medium |
 | **FIX-1475** durable hire | spec → impl PR | FIX-1429's served workforce · the app's existing Postgres path · D2 | Runtime hire writing org-scoped durable state the next boot reloads — seats and the roster, the proof's scope ([answered](DECISIONS.md#answered-runtime-admin)). Channels and boards stay file-declared; runtime channel administration is FIX-1415's and out (ER-16) | The roster half of the rail (D7) · the epic's proof | Large |
-| **FIX-1476** channels and boards | spec → impl PR | The W4 first cut (boards, inventory) · D4 | The shipped pair — a channel kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — written as real kind files, one ChannelFlow factory with dm / topic / workstream clones, boards as a bare name list, explicit per-seat drain, the unattended-board warning | The channel half of the rail · boards for FIX-1477 to render | Large |
-| **FIX-1477** UI package split | spec → impl PR | D5 · D7 · FIX-1475's roster · FIX-1476's boards · the three shell figures below | Inline and resource-backed components as client-package exports; kitchen-sink consuming them; the rebuilt shell's regions | The rebuild people can copy | Large |
+| **FIX-1476** channels and boards | spec → impl PR | The W4 first cut (boards, inventory) · D4 · **FIX-1477's navigator**, for the channel half of the rail (D8) | The shipped pair — a channel kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — written as real kind files, one ChannelFlow factory with dm / topic / workstream clones, boards as a bare name list, explicit per-seat drain, the unattended-board warning | The channel half of the rail · boards for FIX-1477 to render | Large |
+| **FIX-1477** UI package split | spec → impl PR | D5 · D7 · D8 · FIX-1475's roster · FIX-1476's boards · the three shell figures below | Inline and resource-backed components as client-package exports; kitchen-sink consuming them; the rebuilt shell's regions — including **the one navigator the rail hosts**, parameterized by kind and deriving its depth from each flow's `cardinality` (D8), promoted out of the devtool rather than re-invented | The rebuild people can copy · **the navigator FIX-1476 fills the channel half of the rail with** | Large |
 | **FIX-1478** patterns shed | spec → impl PR | D6 · the five `@flow-state-dev/patterns` imports under `flows/chat-agent/` | An audit with a Workforce path or a *keep because…* per surface; the dependency dropped if no keep-notes remain; the six-control strip's justification gone | The freed control row | Small |
 
 **FIX-1477 owns the regions narrative, and inherits three figures with it.**
@@ -53,6 +53,11 @@ decision). Neither is re-parented here (ER-17).
    Nothing else waits on it.
 3. **FIX-1476 and FIX-1475 merge** → FIX-1477's resource-backed components have real collections
    to subscribe to, and the rebuilt shell can be assembled. FIX-1477 can *start* before either.
+   The navigator runs the other way: **FIX-1477 ships it and FIX-1476 renders the channel half of
+   the rail with it** ([D8](DECISIONS.md#d8)). That is an exchange, not a second hard chain — it
+   is the arrangement [D7](DECISIONS.md#d7) already set for every shell component, so no lane
+   moves in the path above. What it does change is that FIX-1476 must not ship a channel list of
+   its own in the meantime.
 4. **FIX-1478's audit completes** → either the dependency drops and the control strip's
    remaining rationale goes with it, or its keep-notes tell FIX-1477 which surfaces keep their
    controls.
@@ -67,6 +72,7 @@ decision). Neither is re-parented here (ER-17).
 | `apps/kitchen-sink/app/page.tsx` — the shell | FIX-1475, FIX-1476, FIX-1477 | FIX-1477 owns the regions (ER-7). The other two fill them and neither re-lays-out the rail. Three parallel rewrites of one 600-line client component is the collision to expect |
 | The boot path — `fsdev.config.ts` / `createFlowState` | FIX-1429 and FIX-1475 | FIX-1429 picks the mechanism and FIX-1475 writes durable state through it. A second registration path and the roster reloads twice |
 | `CHANNEL.md` frontmatter — the boards list | FIX-1476 and FIX-1477 | FIX-1476 owns the shape; FIX-1477 renders it. The UI never widens the frontmatter to make a column easier |
+| The rail's navigator | FIX-1477 builds, FIX-1476 consumes | One component for both halves, depth derived from `cardinality` (D8, ER-7). FIX-1476 does **not** build a channel-only list while it waits — it builds the convention, and adopts the navigator when it lands. A second navigator is the collision to expect, and ER-9 forbids the `depth` prop that would paper over it |
 | The control strip above the prompt | FIX-1478 and FIX-1477 | FIX-1478 removes what patterns backed; FIX-1477 decides what, if anything, takes the row. Whichever lands second reads the other's notes rather than re-auditing |
 | The Workforce docs pages | FIX-1475, FIX-1476, FIX-1477 | All three will touch them. Whichever lands second links rather than repeats; the wrap's docs polish reconciles (ER-25) |
 
