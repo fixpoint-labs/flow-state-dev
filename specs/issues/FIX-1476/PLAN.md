@@ -16,30 +16,36 @@ that produced it (run from the repo root, on `origin/main`).
 | `CHANNELS.md` does not exist | `git grep -l "CHANNELS\.md" -- . \| grep -v ^specs/ \| wc -l` | `0` |
 | The app registers no channel kind of its own | `grep -n channelKinds apps/kitchen-sink/workforce/workforce.gen.ts` | `export const channelKinds = {};` |
 | Nothing in the app binds channels | `grep -rn "channelInstances\|openChannels\|readChannelsDirectory\|channelBoardIds\|channelBoard(" apps/ --include=*.ts --include=*.tsx \| grep -v node_modules \| wc -l` | `0` |
-| The app has no org | `grep -rn "orgId" apps/kitchen-sink --include=*.ts --include=*.tsx \| grep -v node_modules` | no matches |
+| ~~The app has no org~~ **False since #1996.** The app names orgs in seven files | `git grep -c orgId origin/main -- 'apps/kitchen-sink/**'` | 38 occurrences across 7 files. It was `0` when this spec was drafted; FIX-1475's PR-B landed them after the spec merged |
 | `defineChannelFlow` cannot name its kind | read `DefineChannelFlowOptions` and the `defineFlow({ kind: CHANNEL_KIND })` call | three options (`notify`, `boards`, `inventory`); kind is literal |
 | Board mechanics are already proven | `goals/channel-boards/it-runs-a-row-a-file-declared-board-holds/goal.md` | PASS, 2026-09-19, with a `by-name` control |
 | `fsdev gen --check` is a **staleness** gate over this one app | `.github/workflows/ci.yml` → *Generated workforce module is current* | `pnpm --filter @flow-state-dev/kitchen-sink run fsdev gen --check`. It compares the committed module against what the tree renders. It never reads what the map *contains*, and it passes today with `channelKinds = {}` |
 | A session's state schema is **not enforced at open** | `packages/engine/src/routes/session-routes.ts`, the `stateSchema.safeParse` branch | On a parse failure the route keeps the caller's raw state and creates the session anyway — *"validation happens at action-execution time, not session-create time"*. And a plain `z.object` strips an undeclared key and *succeeds*, so usually there is no failure to fall back from |
-| Re-opening **compares** the supplied org against the stored one | `packages/workforce/src/channel/channel-binder.ts`, the `session.orgId !== orgId` branch | Refused by name, because a session's org is fixed at creation. The value passed to `openChannels` is not ignored on the second boot |
+| ~~Re-opening **compares** the supplied org against the stored one~~ **False since FIX-1442.** `openChannels` takes no org, and nothing compares one | `git grep -n "orgId" origin/main -- packages/workforce/src/channel/channel-binder.ts` | Three hits, all comments. `OpenChannelsOptions` is `{ client, userId }` (`:113`), and the body says *"The binder no longer takes an `orgId` at all, and never did have the authority to choose one"* (`:681`) |
+| Every session carries an organization; an unauthenticated app gets the framework's | `git grep -n "DEFAULT_ORG_ID =" origin/main -- packages/core/src/types/auth.ts` | `:38`. Its doc: *"The organization every unauthenticated single-organization deployment runs under (FIX-1442) … Organization identity is never optional."* This is what replaced [D5](DECISIONS.md#d5) |
+| The notify block is handed the **addressee** and the poster in one payload | `git show origin/main:packages/workforce/src/channel/channel-flow.ts \| sed -n '522,532p'` | `channelNotifyInputSchema` carries `channelId`, `member` (*"The declared member this delivery is addressed to"*), `postId`, `body`, `principal`, and optional `author`. [BR-16](BUSINESS-RULES.md)'s author exclusion is a comparison the app's own block makes — no `packages/workforce` change |
+| `principal` **cannot** tell two members of one channel apart | `git show origin/main:packages/workforce/src/channel/channel-flow.ts \| sed -n '16,21p'` | *"a session is bound to ONE user, so the server-derived `principal` on every line of a given channel is the SAME value. The `author` label is caller-supplied, stored with `authorVerified: false`, and is the only thing distinguishing participants."* This is why the exclusion cannot be written against the verified field ([D6](DECISIONS.md#author-identity)) |
+| A resolved principal **displaces** `body.userId` at session create | `git show origin/main:packages/engine/src/routes/session-routes.ts \| sed -n '174,179p'` | `const userId = ctx.principal?.userId ?? getString(body.userId);`, with the comment *"Ownership comes from the resolved principal when one exists — never from `body.userId`, which the caller writes … Apps on the framework default resolver have no principal, and `body.userId` remains the identity."* This is why [S6](#surfaces)'s boot client owes credentials once an adopter configures a resolver |
+| A claimed `author` is roster-validated, but not authenticated | `git show origin/main:packages/workforce/src/channel/channel-flow.ts \| sed -n '200,210p'` | The post block refuses `author-not-a-member` (`:205`), so a claim can only name a declared member. The header calls it *"a validity check against the declared roster, not authentication"* |
+| A `taskBoard` runs exactly **one** collection | `packages/orchestration/src/task-board/index.ts`, `taskBoard`'s destructured `collection` | One field, read once. This is why [V8](#the-checks)'s red state has no isolating form |
+| The unattended-board warning reads the hired seats' **resources** | `packages/workforce/src/hire.ts`, `warnUnattendedBoards` | It walks `Object.keys(seat.resources ?? {})`. Declaring a board is what silences the warning — running it is a different edit, which is what [V8](#the-checks) and [V9](#the-checks) got the wrong way round |
 
 ## Surfaces
 
 | # | Where | What | Rules |
 |---|---|---|---|
 | S1 | `workforce/flows/channels/digest.ts` | The one custom channel kind. `defineFlow({ kind: "digest", cardinality: "singleton" })`, state schema admitting `members` / `instructions` / `transcript`, `post` appending a line, `read` returning the **most recent lines only**. No boards, no fan-out. Template: `customKind` in `packages/workforce/test/channel-binder.test.ts` | BR-1 BR-4 BR-5 |
-| S2 | `workforce/teams/support/channels/{desk,ada-dm,noticeboard}/CHANNEL.md` | Three instances. `desk`: five members, `boards: [followups, escalations]`. `ada-dm`: one member, no `flow:`. `noticeboard`: `flow: digest`. Each charter says in one line which lesson it carries | BR-3 BR-4 BR-6 |
+| S2 | `workforce/teams/support/channels/{desk,ada-wren,noticeboard}/CHANNEL.md` | Three instances. `desk`: five members, `boards: [followups, escalations]`. **`ada-wren`: exactly two members, `[support.ada, support.wren]`, no `flow:` — [D6](DECISIONS.md#d6).** `noticeboard`: `flow: digest`. Each charter says in one line which lesson it carries | BR-3 BR-4 BR-6 BR-17 |
 | S3 | `workforce/flows/workers/followup-runner.ts` | A worker kind (`cardinality: "collection"`, `configSchema: workerConfigSchema()`) declaring `channelBoard("support.desk", "followups")` under `resources: { [followups.id]: followups }` and exposing a `taskBoard({ collection: followups, workers: { … } })` drain as an action. Its worker body leaves an effect **outside the board** — the board's own report is generated on the path under test, so it cannot be its own evidence. That effect must be something a real followup runner would do (an org-scoped note written through the framework's storage reads well, and V7 already reaches `resourceState`); it must **not** be a filesystem write. This block ships in the reference app, where [AGENTS.md](../../../AGENTS.md)'s *Examples must be realistic* applies — `goals/channel-boards/…` keeps its outbox file inside the goal's own throwaway handler for exactly that reason | BR-7 BR-8 BR-9 |
 | S4 | `workforce/teams/support/workers/wren/WORKER.md` | The one seat on S3. `flow: followup-runner` | BR-8 BR-10 |
-| S5 | `workforce/channel-notify.ts` + `workforce/hire.ts` | The notify handler moves here out of the deleted `flows/channel/flow.ts` (top level of `workforce/`, which the generator does not walk). `hire.ts` gains `readChannelsDirectory`, builds `channelInstances(channels, { kinds: { ...channelKinds, channel: defineChannelFlow({ notify }) } })`, passes `channelBoards: channelBoardIds(channels)` to `hireWorkforce`, and returns the channels alongside the seats | BR-2 BR-10 |
-| S6 | `fsdev.config.ts` | Spread the channel instances into `flows`; **delete** the `@/flows/channel/flow` import and the file. After `createFlowState`, build a `createSessionClient` over a fetcher that calls `flowstate.getRouter()`, and `await openChannels(…)` at module scope beside the existing awaited hire | BR-4 BR-11 BR-13 |
-| S7 | `workforce/org.ts` | One exported constant, the org the file-declared channels open under ([D5](DECISIONS.md#d5)) | BR-11 |
-| S8 | `goals/workforce-conventions/a-channel-holds-the-work-a-seat-drains/` | `goal.md` + `run.mts`, run against the **app's own tree** rather than fixtures. Legs and controls below | BR-1 – BR-10 |
+| S5 | `workforce/channel-notify.ts` + `workforce/hire.ts` | The notify handler moves here out of the deleted `flows/channel/flow.ts` (top level of `workforce/`, which the generator does not walk). `hire.ts` gains `readChannelsDirectory`, builds `channelInstances(channels, { kinds: { ...channelKinds, channel: defineChannelFlow({ notify }) } })`, passes `channelBoards: channelBoardIds(channels)` to `hireWorkforce`, and returns the channels alongside the seats. **The notify block is also where [BR-16](BUSINESS-RULES.md)'s author exclusion lives** — each delivery names its addressee as `member` and carries the post's `author`, so skipping the poster is a comparison inside this file, not a framework change. It applies to **every** channel, not only the DM, and it compares `author` — [D6 → which identity](DECISIONS.md#author-identity) records why not the verified `principal`. The shape is the implementer's | BR-2 BR-10 BR-16 |
+| S6 | `fsdev.config.ts` | Spread the channel instances into `flows`; **delete** the `@/flows/channel/flow` import and the file. After `createFlowState`, build a `createSessionClient` over a fetcher that calls `flowstate.getRouter()`, and `await openChannels(…)` at module scope beside the existing awaited hire. **It also names the caller** the channels are opened as — `openChannels`'s `userId`, the one identity it takes. The organization is not named here and cannot be: it comes from what the server resolves for that caller ([D5](DECISIONS.md#d5)). **The loopback session client must carry whatever credentials the app's resolver accepts** — on the framework default there are none to carry and the named caller stands, but `createSession` reads `ctx.principal?.userId ?? getString(body.userId)` (`packages/engine/src/routes/session-routes.ts:178`), so under a configured `resolvePrincipal` an uncredentialed boot client is rejected or resolved as somebody else and the channels open under the wrong identity. Say this in the file beside the client, not only here | BR-4 BR-13 |
+| ~~S7~~ | ~~`workforce/org.ts`~~ | **Struck.** There is no org constant to export and no call that would take one; [D5](DECISIONS.md#d5) has the derivation. Its one obligation — naming *who* the channels open as — is S6's | — |
+| S8 | `goals/workforce-conventions/a-channel-holds-the-work-a-seat-drains/` | `goal.md` + `run.mts`, run against the **app's own tree** rather than fixtures. Legs and controls below | BR-1 – BR-10, BR-16, BR-17 |
 | S9 | Docs | [DOCS.md](DOCS.md)'s operations: the app README's channels section, and one paragraph in `apps/docs/docs/workforce/channels.md`. **No changeset** — kitchen-sink and goals are private and no published package changes ([BP-022](../../../docs/contributing/best-practices.md)) | — |
 
 ```mermaid
 flowchart TD
-  S7["S7 · the org constant"] --> S6
   S1["S1 · digest kind"] --> S5
   S2["S2 · three CHANNEL.md"] --> S5
   S3["S3 · followup-runner"] --> S5
@@ -49,8 +55,8 @@ flowchart TD
   S8 --> S9["S9 · docs"]
 ```
 
-S1–S4 and S7 are independent files and can land together. S5 is the join; nothing observable
-happens until S6.
+S1–S4 are independent files and can land together. S5 is the join; nothing observable happens
+until S6.
 
 ## The checks
 
@@ -63,16 +69,72 @@ and neither is one whose red state the framework cannot produce.
 |---|---|---|---|
 | V1 | S1 S5 | The committed `workforce.gen.ts` exposes `channelKinds` with exactly one key — `digest`, imported from `./flows/channels/digest` | **Red right now, before any work: the map is `{}`.** This asserts the map's *content*. Staleness — that the committed module matches what the tree renders — is already CI's `fsdev gen --check` over this same app, and `--check` never reads what the map contains, so the two do not overlap |
 | V2 | S5 S6 | Neither file names a channel kind; the map is spread from the generated module | Hand-write `digest` into `hire.ts`. Every behavioural leg still passes and this one fails |
-| V3 | S2 S6 | `support.noticeboard`'s session comes back on `flowKind: "digest"`; `support.ada-dm`'s on `"channel"` | Drop the `flow: digest` line — the noticeboard opens on the built-in |
+| V3 | S2 S6 | `support.noticeboard`'s session comes back on `flowKind: "digest"`; `support.ada-wren`'s on `"channel"` | Drop the `flow: digest` line — the noticeboard opens on the built-in |
 | V4 | S1 S6 | The noticeboard's session state, read back over the route, carries all three keys the binder writes — `members`, `instructions`, `transcript` | Drop `transcript` from `digest`'s `stateSchema`: the key is **silently stripped** and the session comes back without it. Create does *not* refuse — the route falls back to the caller's raw state on a parse failure, and a `z.object` strips an unknown key and succeeds. An earlier form of this leg asserted that refusal, which the framework cannot produce |
 | V5 | S2 | `support.desk`'s `read` returns `["followups", "escalations"]`, whole-array equal, with the names read off the manifest rather than typed | Return every board in the process, or the minted ids — not array-equal |
 | V6 | S2 S3 | No file under `apps/kitchen-sink/workforce/` contains `support.desk.followups` | Use the minted id as the resource key instead of `followups.id`. The drain still works; the leg fails |
-| V7 | S3 S4 S6 | A row filed on `followups` through the channel's `fileTask` is claimed by `wren`'s drain, the worker's own effect is visible outside the board, and the row is `completed` in `readBoard` **and** in `resourceState.get("org", ORG, "support.desk.followups/<id>")` | `GOAL_CONTROL=by-name`: point the runner at `channelBoard("support.other", "followups")`. Everything compiles, every id is well-formed, the row stays `pending` and no effect appears. Must fail at this leg, not at V6 |
-| V8 | S3 | A row filed on `escalations` is still `pending` after the drain runs | Add `escalations` to the runner's resources — it is claimed, and the subset claim is gone |
-| V9 | S5 S6 | Exactly one unattended-board warning across the boot, naming `escalations` | Wire `escalations` (count 0) or drop the runner's declaration (count 2, naming `followups`) |
+| V7 | S3 S4 S6 | A row filed on `followups` through the channel's `fileTask` is claimed by `wren`'s drain, the worker's own effect is visible outside the board, and the row is `completed` in `readBoard` **and** in `resourceState.get("org", <the org the session carries>, "support.desk.followups/<id>")` — read off the framework, not off a constant of the app's, which for this unauthenticated app is `DEFAULT_ORG_ID` ([D5](DECISIONS.md#d5)) | `GOAL_CONTROL=by-name`: point the runner at `channelBoard("support.other", "followups")`. Everything compiles, every id is well-formed, the row stays `pending` and no effect appears. Must fail at this leg, not at V6. **Not isolating:** it co-fails V9, because a runner pointed at another channel declares neither of this one's boards. No isolating form exists — see [below](#non-isolating) |
+| V8 | S3 | A row filed on `escalations` is still `pending` after the drain runs | **Corrected.** ~~Add `escalations` to the runner's resources~~ — that silences the warning instead, which is V9's red state, because `warnUnattendedBoards` reads `seat.resources` and the drain reads its own `collection`. What claims the row is **pointing the drain's `collection` at `escalations`**. **Not isolating:** a `taskBoard` runs exactly one collection, so that mutation necessarily stops `followups` being claimed — it co-fails V7 and V9, and no isolating form exists ([below](#non-isolating)) |
+| V9 | S5 S6 | Exactly one unattended-board warning across the boot, naming `escalations` | **Add `escalations` to the runner's `resources`** — the warning reads the hired seats' resource keys, so declaring the board silences it (count 0). Or drop the runner's `followups` declaration (count 2, naming `followups`). This is the isolating leg of the two, and the resource edit belongs here rather than on V8 |
 | V10 | S2 | No `description:`, charter, board name or channel id under `workforce/` uses a word from [the *is not* column](BUSINESS-RULES.md#the-words) | Write `description: The support bot's noticeboard.` |
-| V11 | S6 | Importing the config module and making the first router call finds the channels open, with no extra await in the test | Make `openChannels` fire-and-forget instead of an awaited module-scope statement — the first read misses |
+| V11 | S6 | The boot opened the tree's channels, and the check opened none of its own: every declared channel's session is readable as soon as the config module's import resolves | **Split — this row no longer carries the `await`.** Delete the `openChannels` call: nothing opens the tree's channels and the first read meets an empty session |
+| V11b | S6 | The open is an **awaited module-scope statement** in `fsdev.config.ts`, read off the file's syntax tree: one top-level statement, `await openChannels(…)` | `void openChannels(…)`, a bare call, or a stashed promise. Structural on purpose — see [why V11 is two legs](#why-v11-is-two-legs) — and it cannot catch a promise that resolves early, the open moving to another file, or ordering |
 | V12 | S9 | The published paragraph says a custom kind cannot hold a board and re-opening is not a migration | Delete either sentence. Both are framework behaviour a copier will otherwise meet as a surprise |
+| V13 | S5 S6 | **Both halves, on two channels, graded as a property and not as a field.** A post **naming its author** in `support.desk` notifies the other **four** and not that author; the same post in `support.ada-wren` notifies the one other member and not the author ([BR-16](BUSINESS-RULES.md)). Addressees are **named**, not counted as non-zero. Written against the observable outcome rather than the field the skip compares, so it survives the framework change [D6](DECISIONS.md#author-identity) names as the real fix | Two, and both are needed. **(i)** Drop the skip — the poster is notified too (`desk` 5, DM 2). **(ii)** Make the block deliver nothing — the poster still gets nothing, so the first half alone goes green on a dead channel. A leg asserting only *"the poster got none"* is the check-that-cannot-fail this table forbids. **A third leg, for the hole:** a post naming **no** author notifies **every** member including the poster ([BR-16a](BUSINESS-RULES.md#the-dm)) — asserted, not described, because an ungraded exception is how "the poster is never notified" becomes a sentence nobody can falsify. Its red state is a skip that fires on an absent author, which would exclude an arbitrary member. **Note for whoever writes it:** the skip compares `author`. A skip on `principal` fails (i) on every channel — that comparison is never true here, and [D6](DECISIONS.md#author-identity) has the reason |
+| V14 | S2 | `support.ada-wren` declares exactly two members and they are **`support.ada` and `support.wren` by name**, both seats ([BR-17](BUSINESS-RULES.md)). The identities are the assertion, not just the count | Swap the second seat — `[support.ada, support.grace]`. Two members, both seats, one other member notified, so **V13 and every other leg still pass** and this one fails alone. ~~Leave the roster at one member~~ does **not** isolate: V13 requires a post to notify *the one other member*, which a roster of one cannot do, so it co-fails — see [the note below](#v14-note) |
+
+<a name="why-v11-is-two-legs"></a>
+### Why V11 is two legs
+
+The row as first written asked for one behavioural leg: *make the open fire-and-forget and the
+first read misses.* **That leg grades a race, not the property**, and keeping the reason is the
+point of recording the split.
+
+An importer of a module with a top-level `await` is blocked by ESM until that module finishes
+evaluating, so an importer can never *observe* the pre-await state — there is nothing to look at.
+All it can observe is whether the open happened to finish before it looked. Reproduced in
+isolation, outside this repo, with `await` replaced by `void`: a read immediately after the
+import sees the work undone (red), and inserting **one** `setImmediate` before the read sees it
+done (green, with the bug still in place). The whole discriminating margin is one event-loop turn.
+
+It has already moved once. The same mutation was green before FIX-1475's PR-B ([#1996](https://github.com/fixpoint-labs/flow-state-dev/pull/1996))
+put `const runtime = await flowstate.getRuntime();` at module scope above the open in this same
+file — the measurement is the implementer's, on [#2007](https://github.com/fixpoint-labs/flow-state-dev/pull/2007),
+and the line it turns on is `apps/kitchen-sink/fsdev.config.ts:222` on `origin/main`. **A leg
+whose verdict flips with an unrelated merge is not evidence.** Nobody should re-add it.
+
+So the property is graded where it lives: **V11** grades what a behavioural check can decide —
+the boot opens the tree's channels at all — and **V11b** grades the `await` structurally, off the
+config's syntax tree, which is deterministic at any speed.
+
+<a name="non-isolating"></a>
+### Two legs have no isolating red state, and that is stated rather than hidden
+
+Every other row above fails alone. Two cannot, because of what the code is:
+
+- **V7**'s by-name control co-fails **V9** — a runner pointed at another channel declares neither
+  of this one's boards, so the warning count moves too. It still fails at V7 and not at V6, which
+  is what the row requires of it.
+- **V8**'s corrected red state co-fails **V7 and V9** — a `taskBoard` runs exactly one
+  collection, so making the drain claim `escalations` necessarily stops it claiming `followups`.
+
+Neither has an isolating form available. Recorded because a reader comparing the red-state runs
+will see the co-failures and should not read them as a check that leaked.
+
+<a name="v14-note"></a>
+**And one that got away — worth naming rather than fixing quietly.** [V14](#the-checks) shipped in
+the amendment with the red state *"leave the roster at one member — the pre-reversal shape passes
+every other leg."* **That sentence was false.** A one-member roster also fails V13, which requires
+a post to notify *the one other member*; so V14 was a third non-isolating leg, undeclared, in the
+section written to declare exactly that. It is fixed above with a red state that does isolate — a
+two-member roster carrying the **wrong** second seat — which also forced V14 to assert *which*
+seats rather than merely how many.
+
+This is the same defect the whole amendment exists to correct: **a non-vacuity claim asserted
+rather than run.** It reached the document because *"passes every other leg"* reads like a
+property of the mutation when it is really a claim about eleven other checks, and nobody
+re-derived it. Left visible here because a reader who finds it later should see that it was
+caught and how, not wonder whether the section can be trusted.
 
 ## Pins
 
@@ -82,7 +144,7 @@ Names the spec fixes on purpose. Everything else — helper shapes, error wordin
 | Thing | Pinned to | Because |
 |---|---|---|
 | The custom kind | `digest`, at `flows/channels/digest.ts` | The basename **is** the registered kind name, and `flow: digest` in a `CHANNEL.md` must match it. It may not be named `channel`, which would shadow the binder's seed |
-| Channel ids | `support.desk`, `support.ada-dm`, `support.noticeboard` | An id is minted from the folders and is retyped in S3's `channelBoard` call. Renaming a folder re-keys its boards and orphans rows |
+| Channel ids | `support.desk`, `support.noticeboard`, `support.ada-wren` | An id is minted from the folders and is retyped in S3's `channelBoard` call. Renaming a folder re-keys its boards and orphans rows — so the pin is load-bearing for `desk`, which holds two, and cheap for the other two, which hold none. `ada-wren` was renamed from `ada-dm` ([D6](DECISIONS.md#d6)) precisely because that cost is zero for a channel with no `boards:` |
 | Board names | `followups` (attended), `escalations` (not) | The warning's message names them, and the goal reads them off the tree |
 | Worker kind / seat | `followup-runner` / `support.wren` | The kind's own `kind:` must equal the basename or `hireWorkforce` refuses the seat by name |
 | Storage | `support.desk.followups`, org scope | Minted, never written. Moving a channel folder moves the key and leaves rows behind |
@@ -115,6 +177,12 @@ Names the spec fixes on purpose. Everything else — helper shapes, error wordin
 not overlap in scope — FIX-1475 admits **seats** after construction, this admits **channel
 sessions** — but they are the same two files and the same module-scope await block. Whoever lands
 second rebases; neither changes the other's statements.
+
+**Settled: FIX-1475's PR-B ([#1996](https://github.com/fixpoint-labs/flow-state-dev/pull/1996))
+landed first**, so the rebase was this issue's. It is resolved on
+[#2007](https://github.com/fixpoint-labs/flow-state-dev/pull/2007) with neither side's statements
+changed, and #1996's module-scope `await flowstate.getRuntime()` is what
+[V11](#why-v11-is-two-legs) turns out to be sensitive to.
 
 ## Before you start
 
@@ -152,10 +220,14 @@ Round 1 (`/simplify` + Codex). Direction endorsed; D1's narrowing independently 
   be realistic*).
 - **"Ignored" was wrong about the org constant** — it is compared on every later boot and a
   mismatch refuses the reopen; corrected in `DOCS.md` §2 and [D5](DECISIONS.md#d5), pinned as BR-15.
+  **Void since FIX-1442**, which removed the option and the comparison together — the round was
+  right about the code it read, and the code was replaced two hours later. BR-15 is struck.
 - **"Two legs" undersold the goal** — `SPEC.md` and `EVOLUTION.md` now state two *behaviours* plus
   the structural legs; `PLAN.md` was already honest.
 - **BR-\* mirrored V-\*** — the V table is canonical and owns every red state; BR rows carry the
-  business when/then and name their check. BR-3 and BR-11–BR-15 keep their own, since no V covers them.
+  business when/then and name their check. BR-3 and BR-11–BR-15 keep their own, since no V covers
+  them — BR-11 and BR-15 are since struck and keep none, because the framework can no longer
+  produce the state they described.
 - **D1's evidence three times** — full argument stays in [D1](DECISIONS.md#d1); §Open and
   `EVOLUTION.md` link to it.
 - **S8's harness** — use `goals/lib/driver.mts`'s `runHarness` with `apps/kitchen-sink` as cwd
@@ -165,8 +237,12 @@ Round 1 (`/simplify` + Codex). Direction endorsed; D1's narrowing independently 
 **Declined**
 
 - **Drop `ada-dm`** — it carries the one lesson the other two cannot, and it is the mistake the
-  fence itself made ([D2](DECISIONS.md#d2)).
+  fence itself made ([D2](DECISIONS.md#d2)). **Stale twice over now.** The channel is kept, but
+  not for that reason: the owner reversed the lesson it carried ([D6](DECISIONS.md#d6)), and he
+  declined deleting it when asked. Round 1 and the owner reached the same *keep* from opposite
+  arguments, which is worth knowing before anyone cites this line as support.
 - **Fold `org.ts` into `hire.ts`** — kept, now argued: FIX-1475 is editing `hire.ts` in flight.
+  **Moot:** there is no `org.ts` to fold ([D5](DECISIONS.md#d5)).
 - **ER-6 as a pointer to the epic** — kept here; the epic's ownership table assigns it to this
   issue and [D4](DECISIONS.md#d4) decides it. Said once.
 - **The `escalations` narrative four times** — *partially folded*: only the README was a full

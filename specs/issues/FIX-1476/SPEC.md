@@ -6,15 +6,23 @@ Feature · kitchen-sink + one goal check · medium · 1 PR · epic
 [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) ·
 [epic spec](../../epics/FIX-1455/SPEC.md)
 
+> **Amended after merge (2026-09-21).** Two different things, and they should be read separately.
+> **Corrections:** three premises about the framework are no longer true, one prescribed check
+> does the opposite of what it claims, and one call ([D5](DECISIONS.md#d5)) stopped being a call
+> at all because the framework now answers it. Nothing there was re-decided — the world moved and
+> the spec is catching up. **One reversal:** the product owner changed his mind about the DM
+> channel after seeing it built ([D6](DECISIONS.md#d6)). What moved, with the command behind each:
+> [EVOLUTION.md → What changed after this spec merged](EVOLUTION.md#after-merge).
+
 ## Five people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
 | **copies the app to give a team somewhere to talk** | Finds the channel kind registered and not one channel open. There is no file to copy | Finds three `CHANNEL.md` files under the team and copies the one shaped like what they want |
-| **wants the work to outlive the conversation** | Has the `boards:` line documented, and no worked example of it anywhere | Sees two board names in a channel's frontmatter, and a seat that runs the rows on one |
+| **wants the work to outlive the channel** | Has the `boards:` line documented, and no worked example of it anywhere | Sees two board names in a channel's frontmatter, and a seat that runs the rows on one |
 | **wires a seat to a board** | Guesses. Wiring is explicit on purpose, so there is nothing to copy | Copies four lines: `channelBoard`, the resource entry, `taskBoard`, the drain action |
 | **forgets to wire the second board** | Rows sit `pending` and the app says nothing, because nothing hands hire the roster's board ids | Is told at boot which board nobody watches. The app ships that way so the message is visible |
-| **thinks a DM needs its own kind** | Has one sentence in the docs saying it does not | Sees a one-member channel with no `flow:` line beside a channel that genuinely needed one |
+| **thinks a DM needs its own kind** | Has one sentence in the docs saying it does not | Sees a two-member channel with no `flow:` line — where a post reaches the other member and not its own author, because that is true of every channel — beside a channel that genuinely needed a kind ([D6](DECISIONS.md#d6)) |
 
 The reference app is where a reader decides what a Workforce app *is*, and today it says a
 workforce is four seats: `channelKinds` is `{}`, no file under `apps/` calls `channelInstances`,
@@ -58,7 +66,7 @@ nobody names is what the warning is for.
     teams/support/
 +     channels/
 +       desk/CHANNEL.md             ← built-in kind · boards: [followups, escalations]
-+       ada-dm/CHANNEL.md           ← built-in kind · one member · no boards
++       ada-wren/CHANNEL.md         ← built-in kind · two members · no boards
 +       noticeboard/CHANNEL.md      ← flow: digest · no boards
       workers/
 +       wren/WORKER.md              ← flow: followup-runner
@@ -76,7 +84,9 @@ nobody names is what the warning is for.
   Its own check adds the two **behaviours** that goal cannot reach — the unattended-board
   **warning** and the **subset** drain — and then proves the app's tree is actually wired: the
   generated kind map, each channel's kind, the board names, the minted id, the boot, and the
-  vocabulary. Twelve legs, in [PLAN.md → The checks](PLAN.md#the-checks).
+  vocabulary. Fifteen legs, in [PLAN.md → The checks](PLAN.md#the-checks) — twelve as first
+  written, plus [V11](PLAN.md#why-v11-is-two-legs) split in two because the property could not be
+  graded behaviourally without grading a race, plus two for the DM ([D6](DECISIONS.md#d6)).
 - **Runtime channel administration.** No create, delete or invite verb
   ([ER-16](../../epics/FIX-1455/BUSINESS-RULES.md)); FIX-1415 stays parked.
 - **Rail and navigator UI.** None ships here. The convention is rendered *through* FIX-1477's one
@@ -94,7 +104,14 @@ nobody names is what the warning is for.
 2. **[D3](DECISIONS.md#d3) · One board ships deliberately unattended.** The warning is a
    deliverable, so something has to trigger it. **If wrong:** a reader copies a tree with a
    known-incomplete wiring in it and misses the line saying it is on purpose.
-3. **[D4](DECISIONS.md#d4) · ER-6's vocabulary is Seat, Kind, Agent, Channel, Board, Team — and
+3. **[D6](DECISIONS.md#d6) · The DM is two seats, and no post notifies its own author — in every
+   channel, not just the DM.** *Your reversal, not a new ask* — recorded here so the spec and the
+   code say the same thing. The general form is deliberate: `desk` notifies its own poster today,
+   and fixing that generally is what leaves a DM needing no kind of its own
+   ([why](DECISIONS.md#no-dm-kind)). **If wrong:** the reference teaches that a DM is two seats
+   when what you wanted was a seat and a person, and the shape spreads to whatever FIX-1477
+   renders.
+4. **[D4](DECISIONS.md#d4) · ER-6's vocabulary is Seat, Kind, Agent, Channel, Board, Team — and
    its check is review, not a mechanism.** Every other child consumes this. **If wrong:** a word
    we did not fence spreads across four children, and renaming it after FIX-1477 publishes
    components costs an API change.
