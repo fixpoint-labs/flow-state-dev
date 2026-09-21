@@ -137,13 +137,13 @@ export function parseHiredSeatRow(value: unknown): { row: HiredSeatRow } | RowPr
  * there are no folders. Setting them to `[]` would tell the kind its seat was
  * read and found empty, which is a different and false claim.
  *
- * @returns the record, or a reason. A bad ORG still throws, via
- * {@link seatAddress} — see this file's header for why the two differ.
+ * @returns the record. There is no reason arm here — nothing about `row`
+ * itself can make this fail, since a row that reached this function has
+ * already been validated by {@link parseHiredSeatRow}. A bad ORG still
+ * throws, via {@link seatAddress} — see this file's header for why the two
+ * differ.
  */
-export function hiredSeatManifest(
-  orgId: string,
-  row: HiredSeatRow
-): { manifest: WorkerManifest } | RowProblem {
+export function hiredSeatManifest(orgId: string, row: HiredSeatRow): { manifest: WorkerManifest } {
   // `flow` is spread in as a declared key rather than handed over separately,
   // so `hireWorkforce`'s own kind resolution and its own refusals are what
   // decide it. A pre-check here would be a second gatekeeper with a second

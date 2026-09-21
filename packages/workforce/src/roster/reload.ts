@@ -191,10 +191,6 @@ export async function reloadHiredSeats(
       }
 
       const record = hiredSeatManifest(orgId, parsed.row);
-      if ("problem" in record) {
-        problems.push(`${where} — ${record.problem}`);
-        continue;
-      }
 
       // **One manifest per call, not one call for the roster.** `hireWorkforce`
       // refuses the WHOLE roster when any record is bad — it throws and hires
