@@ -5,34 +5,109 @@ import type { ComponentProps } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
-import { useCallback } from "react";
-import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import type { OutputItem } from "@flow-state-dev/core/items";
 
-export type ConversationProps = ComponentProps<typeof StickToBottom>;
+// ---------------------------------------------------------------------------
+// Scroll context (replaces use-stick-to-bottom)
+// ---------------------------------------------------------------------------
 
-export const Conversation = ({ className, ...props }: ConversationProps) => (
-  <StickToBottom
-    className={cn("relative flex-1 overflow-y-hidden", className)}
-    initial="smooth"
-    resize="smooth"
-    role="log"
-    {...props}
-  />
-);
+type ConversationScrollContextValue = {
+  isAtBottom: boolean;
+  scrollToBottom: () => void;
+};
 
-export type ConversationContentProps = ComponentProps<
-  typeof StickToBottom.Content
->;
+const ConversationScrollContext =
+  createContext<ConversationScrollContextValue | null>(null);
+
+export function useConversationScroll() {
+  const ctx = useContext(ConversationScrollContext);
+  if (!ctx) {
+    throw new Error("useConversationScroll must be used inside <Conversation>");
+  }
+  return ctx;
+}
+
+// ---------------------------------------------------------------------------
+// Conversation (scroll container + context provider)
+// ---------------------------------------------------------------------------
+
+export type ConversationProps = ComponentProps<"div">;
+
+export const Conversation = ({
+  className,
+  children,
+  ...props
+}: ConversationProps) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const checkIsAtBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const threshold = 50;
+    setIsAtBottom(
+      el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+    );
+  }, []);
+
+  // Re-check when content resizes (e.g. streaming adds text beyond viewport).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(checkIsAtBottom);
+    for (const child of el.children) {
+      observer.observe(child);
+    }
+    // Also observe the container itself for size changes.
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [checkIsAtBottom]);
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, []);
+
+  return (
+    <ConversationScrollContext.Provider value={{ isAtBottom, scrollToBottom }}>
+      <div
+        ref={scrollRef}
+        onScroll={checkIsAtBottom}
+        className={cn("relative flex-1 overflow-y-auto", className)}
+        role="log"
+        {...props}
+      >
+        {children}
+      </div>
+    </ConversationScrollContext.Provider>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// ConversationContent
+// ---------------------------------------------------------------------------
+
+export type ConversationContentProps = ComponentProps<"div">;
 
 export const ConversationContent = ({
   className,
   ...props
 }: ConversationContentProps) => (
-  <StickToBottom.Content
-    className={cn("flex flex-col gap-4 p-4", className)}
-    {...props}
-  />
+  <div className={cn("flex flex-col gap-4 p-4", className)} {...props} />
 );
+
+// ---------------------------------------------------------------------------
+// ConversationEmptyState
+// ---------------------------------------------------------------------------
 
 export type ConversationEmptyStateProps = ComponentProps<"div"> & {
   title?: string;
@@ -69,26 +144,55 @@ export const ConversationEmptyState = ({
   </div>
 );
 
+// ---------------------------------------------------------------------------
+// ScrollOnNewRequest — scrolls to bottom once per new request
+// ---------------------------------------------------------------------------
+
+/**
+ * Place inside <Conversation> to auto-scroll to bottom when a new request
+ * appears (e.g. user sends a message). Does NOT auto-scroll during streaming.
+ */
+export function ScrollOnNewRequest({ items }: { items: OutputItem[] }) {
+  const { scrollToBottom } = useConversationScroll();
+  const lastRequestIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (items.length === 0) {
+      lastRequestIdRef.current = null;
+      return;
+    }
+    const lastRequestId = items[items.length - 1].requestId;
+    if (lastRequestId !== lastRequestIdRef.current) {
+      lastRequestIdRef.current = lastRequestId;
+      scrollToBottom();
+    }
+  }, [items, scrollToBottom]);
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// ConversationScrollButton (sticky bottom, uses scroll context)
+// ---------------------------------------------------------------------------
+
 export type ConversationScrollButtonProps = ComponentProps<typeof Button>;
 
 export const ConversationScrollButton = ({
   className,
   ...props
 }: ConversationScrollButtonProps) => {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  const { isAtBottom, scrollToBottom } = useConversationScroll();
 
-  const handleScrollToBottom = useCallback(() => {
-    scrollToBottom();
-  }, [scrollToBottom]);
+  if (isAtBottom) return null;
 
   return (
-    !isAtBottom && (
+    <div className="sticky bottom-4 z-10 flex justify-center pointer-events-none">
       <Button
         className={cn(
-          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full dark:bg-background dark:hover:bg-muted",
+          "rounded-full pointer-events-auto dark:bg-background dark:hover:bg-muted",
           className
         )}
-        onClick={handleScrollToBottom}
+        onClick={scrollToBottom}
         size="icon"
         type="button"
         variant="outline"
@@ -96,9 +200,13 @@ export const ConversationScrollButton = ({
       >
         <ArrowDownIcon className="size-4" />
       </Button>
-    )
+    </div>
   );
 };
+
+// ---------------------------------------------------------------------------
+// Message types + download (unchanged)
+// ---------------------------------------------------------------------------
 
 export interface ConversationMessage {
   role: "user" | "assistant" | "system" | "data" | "tool";

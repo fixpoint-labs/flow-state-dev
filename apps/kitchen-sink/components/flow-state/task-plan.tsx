@@ -49,10 +49,10 @@ import {
 import { useSessionItems } from "./session-items-context";
 import {
   DEFAULT_HIDDEN_STATUSES,
-  TaskEntry,
-  TaskStatus,
-  StatusGroup,
-  Task,
+  type TaskEntry,
+  type TaskStatus,
+  type StatusGroup,
+  type Task,
   extractTaskItemWindows,
   extractTaskPlanState,
   groupTasksByAssignee,
@@ -815,14 +815,14 @@ function TaskWindowTimeline({
   if (total === 1) {
     if (hasOutput) {
       return (
-        <div className="py-1">
+        <div className="pt-1">
           <TaskOutput text={outputText!} />
         </div>
       );
     }
     const only = renderable[0]!;
     return (
-      <div className="py-1">
+      <div className="pt-1">
         {only.kind === "tool" ? (
           <TaskToolItem item={only.item} />
         ) : only.kind === "message" ? (
