@@ -52,9 +52,13 @@ The roster is the other half, and it is read at boot: `hireKitchenSinkWorkforce(
 
 The team also has three channels, under `workforce/teams/support/channels/`. Each one is a folder with a `CHANNEL.md` in it, and each is here to show a different thing.
 
-`desk` is the ordinary case: the built-in kind, five members, and two boards declared as plain names — `boards: [followups, escalations]`. The framework mints a ledger per name from where the folder sits, so `followups` is stored as `support.desk.followups` and no file writes that. `ada-dm` is a one-member channel with no `flow:` line, because a direct message is not a kind of its own — it is a channel with one member. `noticeboard` is the case that *is* different: it names `flow: digest`, a kind under `workforce/flows/channels/`, whose `read` returns only the most recent lines. A kind of your own cannot hold a board, which is why the boards are on `desk` and not here.
+`desk` is the ordinary case: the built-in kind, five members, and two boards declared as plain names — `boards: [followups, escalations]`. The framework mints a ledger per name from where the folder sits, so `followups` is stored as `support.desk.followups` and no file writes that. `ada-wren` is a direct message between two seats, with no `flow:` line, because a direct message is not a kind of its own — it is a channel with a roster of two. `noticeboard` is the case that *is* different: it names `flow: digest`, a kind under `workforce/flows/channels/`, whose `read` returns only the most recent lines. A kind of your own cannot hold a board, which is why the boards are on `desk` and not here.
 
 The `followups` board has a seat that runs it. `support.wren` is on the `followup-runner` kind, which names the board in code — `channelBoard("support.desk", "followups")` — declares it as a resource, and exposes its drain. That wiring is explicit on purpose: a seat sees the boards it names and no others.
+
+Posting to a channel notifies its members, and never the member who wrote the post. That rule lives in `workforce/channel-notify.ts`, which is this app's own fan-out block rather than anything the framework decides — the framework addresses every declared member and the block chooses what to deliver. It applies to all three channels: post to `desk` as `support.ada` and the other four are told, not Ada. In a two-seat direct message the same rule reads as "only the other one hears about it", which is why `ada-wren` needs no special handling.
+
+The check is on the claimed `author`, which the channel does not verify. That is the only field that names the same things `members:` does — the verified `principal` is the id the channel was opened under and is identical for every post, so it cannot identify a writer. An app with a real identity model should compare whatever it resolves a caller to.
 
 **`escalations` is left unwired deliberately.** Start the app and the boot says so:
 
