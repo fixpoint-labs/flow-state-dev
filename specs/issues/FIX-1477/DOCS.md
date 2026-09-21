@@ -2,19 +2,17 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-This issue publishes the components page, the `@flow-state-dev/react` exports entry, and the
-reference app's README opening — the three specifics the epic assigned it. The epic's shared
-"What a Workforce app looks like" overview section is also this issue's to publish, but only
-once the behaviour it promises exists; it is not drafted again here.
+This issue publishes the components page, the `@flow-state-dev/react` exports entry and the
+reference app's README opening — the three the epic assigned it. The epic's shared "What a
+Workforce app looks like" section is also this issue's, but only once the behaviour it promises
+exists; it is not drafted again here.
 
-**Two departures from the epic's draft, both deliberate.** Its example mounted the navigator
-twice; the page below mounts it once with two sections ([D3](DECISIONS.md#d3)). And its limits
-paragraph described an organization gap that this issue proposes to avoid rather than document
-([the Open fork](DECISIONS.md#open)) — the alternative wording is at the bottom, for the case
-where the fork is answered the other way.
+**Two deliberate departures from the epic's draft.** Its example mounted the navigator twice; the
+page below mounts it once with two sections ([D3](DECISIONS.md#d3)). And its limits paragraph
+documented an organization gap this issue proposes to avoid ([the Open fork](DECISIONS.md#open))
+— the wording for the other answer is at the bottom.
 
-**No tracking ids appear in any quoted block.** Everything inside the quotes publishes to
-`apps/docs` or to a package README, where the outsider rule forbids them
+**No tracking ids appear in any quoted block**, because everything inside the quotes publishes
 ([user-docs.md](../../../docs/contributing/user-docs.md)).
 
 ---
@@ -176,14 +174,15 @@ section back:
 
 ## Ownership and ordering
 
-`ui.md`, the README entry and the reference app's README publish with **PR-C**, reconciled
-against the built components rather than against this draft.
+`ui.md`, the README entry and the reference app's README publish with **PR-C or a follow-up in
+the same window**, reconciled against the built components rather than against this draft.
 
 The epic's shared overview section — *What a Workforce app looks like*, plus its two
 Related-pages entries — also publishes with PR-C, and only then: it links a durable-hire page
 that [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) owns. Whichever of the two
-lands second links the other's page rather than repeating it. The wrap's documentation pass
-reconciles the two into one narrative.
+lands second links the other's page rather than repeating it
+([ER-25](../../epics/FIX-1455/BUSINESS-RULES.md)). The wrap's documentation pass reconciles the
+two into one narrative.
 
 Nothing here restates [Channels](../../../apps/docs/docs/workforce/channels.md) or
 [Code on disk](../../../apps/docs/docs/workforce/code-on-disk.md); they already teach the

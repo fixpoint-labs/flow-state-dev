@@ -29,7 +29,7 @@ Solid edges are what you are signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Adding a styling toolchain and an icon set to `react` so the developer tool's styled navigator could move across intact · shipping the Workforce chrome through the copy-in component registry, which is where generic item rendering lives · leaving the query in `react`, where the developer tool cannot reach it without adopting React machinery it does not use today |
-| **Because** | `react` has three dependencies, all our own, and marks itself free of side effects. Its existing components render plain, unstyled controls and say so in their own docs, with the polished version delegated to the registry. A package three others depend on cannot start installing a CSS toolchain into every app that takes it. And the copy-in registry is the *wrong shelf for this*: a registry item is copied into the consumer, and a copy that can drift is the exact defect this issue exists to close — five of twenty-five already have. Separately, the cardinality branch is not React at all. It is one line of query construction, and `client` is the one place both hosts can already reach |
+| **Because** | `react` has three dependencies, all our own, and marks itself free of side effects; its existing components render plain, unstyled controls and delegate the polished version to the registry. A package three others depend on cannot start installing a CSS toolchain into every app that takes it. And the copy-in registry is the *wrong shelf for this*: a registry item is copied into the consumer, and a copy that can drift is the defect this issue exists to close. The cardinality branch is not React at all — one line of query construction, and `client` is the one place both hosts already reach |
 | **Locks in** | A published component API themed through CSS custom properties and filled through slots, not through class names. Consumers outside this repo will hold it ([ER-24](../../epics/FIX-1455/BUSINESS-RULES.md)), so changing the slot shape later is a breaking change for them. It also means the reference app's own look is *its* CSS, not something a reader gets for free — they import behaviour and supply skin |
 
 **What would change my mind:** evidence that we intend to publish `@flow-state-dev/ui` as a real
@@ -42,7 +42,7 @@ D1 becomes a split across two published packages instead of a slot API in one.
 | | |
 |---|---|
 | **Instead of** | Publishing the navigator and leaving `packages/devtool`'s navigator folder running beside it · standing up a small example app whose only job is to import the package once |
-| **Because** | The epic calls this a **promotion** out of the developer tool. A promotion that leaves the original running is a copy, and [ER-9](../../epics/FIX-1455/BUSINESS-RULES.md) forbids exactly that. The epic's own completion gate asks for "one consumer that is not the reference app, **or** the import surface demonstrably able to be" — and the second half of that sentence is a check that cannot fail, which is the defect class this epic has hit five times already. The developer tool is a real consumer, in a different styling world, that already contains the code being moved |
+| **Because** | A promotion that leaves the original running is a copy, which [ER-9](../../epics/FIX-1455/BUSINESS-RULES.md) forbids. The epic's completion gate asks for "one consumer that is not the reference app, **or** the import surface demonstrably able to be" — and that second half is a check that cannot fail, the defect class this epic has hit five times. The developer tool is a real consumer, in a different styling world, that already contains the code being moved |
 | **Locks in** | `devtool` takes a dependency on `@flow-state-dev/react`, which it does not have today. The navigator's API has to satisfy two differently-skinned hosts **before** it ships, which is the only thing that stops it being shaped for the reference app alone. The developer tool's own affordances — copy the instance id, start a session, refresh, list the flow's actions — become slots rather than reasons to keep a fork |
 
 ![Two hosts sit above one shared component. The developer tool supplies its own row chrome — a copy-id button, a new-session button, the actions list — and the reference app supplies its own; both draw their rows through one navigator shipped from the react package, which owns the grouping by kind, the cardinality branch, the fetch-on-leaf-expand rule and the shared selection. Below that, the client package owns the one session-list query that sends an instance id for a collection kind and a kind for a singleton. The developer tool's own navigator folder is deleted, which is what makes this a promotion rather than a second copy](figures/promotion.svg)
@@ -78,30 +78,27 @@ migration become a follow-up instead of a gate.
 - **Nothing takes the freed control row.** The six controls above the prompt go with the modes
   and thinking styles they drove. A reference app that refills the row it just emptied has not
   shed anything.
-- **Board columns reuse the existing seven task statuses.** No new status vocabulary is minted
-  for a UI phase — the issue's own architect note fences this, and so does
-  [ER-11](../../epics/FIX-1455/BUSINESS-RULES.md).
-- **The five drifted registry copies are reconciled, not left.** All five are components the
-  rebuilt shell renders. Two more files that share a registry filename are not registry items at
-  all and belong to the patterns shed; they are left to
+- **Board columns reuse the existing task statuses** — no new vocabulary minted for a UI phase
+  ([ER-11](../../epics/FIX-1455/BUSINESS-RULES.md), [BR-21](BUSINESS-RULES.md)).
+- **The five drifted registry copies are reconciled, not left** ([BR-14](BUSINESS-RULES.md)). All
+  five are components the rebuilt shell renders. Two more files share a registry filename without
+  being registry items; they belong to the patterns shed and are left to
   [FIX-1478](https://linear.app/fixpoint-labs/issue/FIX-1478).
-- **A session row with no recorded owning instance is listed under its kind, never guessed into
-  an instance.** Older sessions carry no instance id (BP-030); attributing one by kind would put
-  one copy's history under another.
-- **The background-work panel stays where it is, and the gap is commented up.** It is
-  resource-backed and needs no app-specific plumbing, but it is neither Workforce chrome nor item
-  rendering, so [D5](../../epics/FIX-1455/DECISIONS.md#d5)'s two destinations do not cover it.
-  Deleting a tested region to satisfy an import rule, or picking a bucket for it here, would both
-  be this issue answering an epic-level question locally ([ER-19](../../epics/FIX-1455/BUSINESS-RULES.md)).
+- **An ownerless session row is never guessed into an instance** (BP-030). Where such a row is
+  reachable at all is narrower than it first looks — [BR-12](BUSINESS-RULES.md) states it.
+- **The background-work panel stays where it is, and the gap is commented up** rather than
+  bucketed here — [D5](../../epics/FIX-1455/DECISIONS.md#d5)'s two destinations do not cover a
+  region that is resource-backed but is neither Workforce chrome nor item rendering, and answering
+  an epic-level question locally is a second authority ([ER-19](../../epics/FIX-1455/BUSINESS-RULES.md)).
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
 | A third package, `@flow-state-dev/workforce-ui`, so the chrome can be as styled as it likes | The epic's invent-kill, and it would be reached for exactly the reason the epic predicted — because styling was inconvenient somewhere else |
-| A `depth` or `levels` prop, "just for the reference app" | Forbidden by [ER-9](../../epics/FIX-1455/BUSINESS-RULES.md). It lets the app hold an opinion the framework already holds, and the first kind whose cardinality changes makes the app wrong and silent |
+| A `depth` or `levels` prop, "just for the reference app" | Forbidden by [ER-9](../../epics/FIX-1455/BUSINESS-RULES.md): the first kind whose cardinality changes makes the app wrong and silent ([BR-3](BUSINESS-RULES.md)) |
 | A third-party tree component | Adds a dependency whose semantics do not match, and removes none of the real work — the grouping, the lazy fetch and the shared selection are all still ours |
-| Pre-fetching every instance's sessions so the rail feels instant | One request per seat the moment a roster is more than a handful. The epic's plan names this and it is the one performance shape this component can get badly wrong |
+| Pre-fetching every instance's sessions so the rail feels instant | One request per seat the moment a roster is more than a handful — the one performance shape this component can get badly wrong ([BR-7](BUSINESS-RULES.md)) |
 | Rendering roster detail — load, boards, persona — in the rail, since it is already listing seats | Breaches [D7](../../epics/FIX-1455/DECISIONS.md#d7) by name. The rail is navigation into the roster; the roster's one home is the panel |
 
 <a name="open"></a>
@@ -126,17 +123,27 @@ this case: *flow listing's kinds may remain a global registry of shapes; what mu
 are the instances and sessions consumers browse*. A hired seat is a registered **instance** whose
 id carries its org, so durable hire is what walks the registry across that line.
 
+**This is an amendment to the epic, not an exit it already left open.** Two things could read as
+pre-authorising it and neither does. [D7](../../epics/FIX-1455/DECISIONS.md#d7)'s channels-only
+fallback exists, but its trigger is *"a rendered narrow-width pass showing the rail cannot hold
+the channels half and the seats half together"* — a layout finding, not this one. And what the
+epic analysed is the **session** listing: D8 verifies `handleListSessions` filters by flow, user
+and tenant, and records the exposure as *between organizations inside a single tenant*. It never
+looked at the flow list's authorization. That is what this spec found and
+[FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475)'s PR-B has since reproduced by
+execution: `list_flows` is `{ kind: "exempt" }` (`packages/engine/src/routes/route-auth.ts`), so
+the list is answered with **no credential at all** — strictly wider than what was signed off. So
+the choice is between shipping what D7 ratified and amending it knowingly.
+
 **The trade-off.** Listing seats in the rail is the picture the epic painted and the thing a
 reader clones. Holding it back means the rail ships with channels only for a few weeks, and you
 find your team in the roster panel on the right, which is already in the layout and is already
 scoped to your organization.
 
 **My recommendation: hold the seat rows until the flow list can be scoped — and do not mistake
-that for containment.** The epic's own fallback already says the first half in as many words: if
-the rail cannot carry both halves, the rail is channels only and seats are reached through the
-panel's roster. Taking it costs no new decision, no new component and no new prop — the navigator
-still ships, still derives its depth, still hosts the channels half, and the seat section switches
-on the day the list carries an organization. What it buys is narrow and worth having anyway: the
+that for containment.** It costs no new decision inside this issue, no new component and no new
+prop — the navigator still ships, still derives its depth, still hosts the channels half, and the
+seat section switches on the day the list carries an organization. What it buys is narrow and worth having anyway: the
 reference app stops **teaching** the exposure, in a file people copy, and stops making it
 convenient. What it does not buy is a closed hole. If the exposure itself is the concern rather
 than the lesson, FIX-1486's priority is the lever, not this issue's scope.
@@ -160,3 +167,8 @@ hole is open either way; the difference is whether we ship the app that walks pe
 - **Draft** — the org fork was not in the brief. It came out of reading the route table: the
   flow-list route is listed as exempt from management authorization, which is wider than the
   session-level limit the epic recorded.
+- **Review, round 1** — the fork's framing was wrong, its recommendation was not: it leaned on
+  D7's fallback, whose trigger is a layout finding. Holding the rows is now stated as an
+  amendment. Three engineering gaps folded the same round — `react` carries a third copy of the
+  cardinality branch, it has no transport seam at all, and the roster has no read path from this
+  app ([PLAN.md → Blocked on](PLAN.md#blocked-on)).

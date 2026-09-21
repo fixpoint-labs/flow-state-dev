@@ -69,8 +69,8 @@ flowchart LR
   S1 --> L
 ```
 
-Both paths end at the same fetch, and only a **leaf** triggers it. Opening a kind row costs
-nothing, which is what keeps a roster of a hundred seats from becoming a hundred requests.
+Both paths end at the same fetch, and only a **leaf** triggers it, which is what keeps a roster
+of a hundred seats from becoming a hundred requests.
 
 ## What stays as it is
 
@@ -102,9 +102,12 @@ nothing, which is what keeps a roster of a hundred seats from becoming a hundred
    argument.
 
 **Open: one, and it is yours.** The rail's seat rows would come from a list the server answers to
-anyone who asks it, and after durable hire lands that list names every organization's seats.
-Whether the reference app puts that on screen on day one is a business call, not an engineering
-one — and it is a call about what we **teach**, not a fence: the list is public whatever any
+anyone who asks it — no credential — and after durable hire lands that list names every
+organization's seats. Whether the reference app puts that on screen on day one is a business
+call, and it is a call about what we **teach**, not a fence: the list is public whatever any
 screen draws, and closing it is [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)'s.
+**Holding the rows amends the epic** — D7 ratified shipping them, having analysed the session
+listing rather than this route — so it is a decision to take knowingly, not a fallback to
+invoke.
 The full ask: [DECISIONS.md → Open](DECISIONS.md#open). The reasoning and what lost:
 [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
