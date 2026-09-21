@@ -542,7 +542,7 @@ await runGoal(() => {
         failures.push(`V9: no warning names the unwired board "${name}"`);
       }
     }
-    if (attendedBoard !== undefined && unattended.some((w) => w.includes(`"${attendedBoard}"`))) {
+    if (unattended.some((w) => w.includes(`"${attendedBoard}"`))) {
       failures.push(`V9: a warning names "${attendedBoard}", which a seat does declare`);
     }
   }
