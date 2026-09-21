@@ -78,7 +78,7 @@ GOAL_CONTROL=by-name pnpm tsx goals/channel-boards/it-runs-a-row-a-file-declared
 
 `run.mts` reads `process.env.GOAL_CONTROL` and passes it to the harness, which degrades the one behaviour the control names. Declare each one in `goal.md` under **Controls**, with the legs it must fail — *"Must FAIL, and must name legs (d)/(e) rather than leg 0"* — because a control that fails the wrong leg is itself a check that cannot fail. Record the run in the **Verdict log** as a `FAIL (expected)` row with what it printed.
 
-**When no control fits, mutate the code — and commit first.** `git restore -- <path>` on the one file you touched, never `git restore .` or `git checkout -- .`. The trap is a fix and a mutation living in the same uncommitted file: the revert looks successful, keeps the tree green, and throws the fix away.
+**When no control fits, mutate the code — and snapshot first.** `git restore -- <path>` on the one file you touched, never `git restore .` or `git checkout -- .`. The trap is a fix and a mutation living in the same uncommitted file: the revert looks successful, keeps the tree green, and throws the fix away. A commit is the easiest snapshot, but some workflows hold the first commit until a human approves the change — `git stash create` gives you a dangling snapshot commit without touching the tree or the shared stash stack, and copying the file aside works too. Snapshot, mutate, revert the one file, restore.
 
 **Say when a leg has no isolating red state** — when the mutation that fails it also fails a neighbour. Put it in the **Verdict log** notes or **Anti-game**, so the next reader reads the co-failure as a known property rather than a leak.
 
