@@ -408,7 +408,7 @@ The navigator reads through a `client` and a `sessionClient`. Pass your own thro
 
 The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` beside any row's name, `leafToolbar` inside an open instance, and `emptySection` for a section whose kinds the server does not have.
 
-One limit worth knowing before you put this in front of end users: the flow listing it reads carries no organization and is not behind your authentication. Treat it as public information about your deployment's shape. The navigator has no `orgId` prop, because the listing could not honour one, and a filter that silently does nothing is worse than no filter.
+One limit worth knowing before you put this in front of end users: the flow listing it reads carries no organization, and the framework does not guard that route. Anyone who can reach your app can read the list unless you put your own check in front of it, so treat it as public information about your deployment's shape. The navigator has no `orgId` prop, because the listing could not honour one, and a filter that silently does nothing is worse than no filter.
 
 ### Presentational components moved to `@flow-state-dev/ui`
 
