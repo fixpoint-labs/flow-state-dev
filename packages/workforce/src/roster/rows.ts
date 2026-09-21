@@ -125,9 +125,11 @@ export function parseHiredSeatRow(value: unknown): { row: HiredSeatRow } | RowPr
  *
  *   - `id` is the seat's **address** (`<org>.<seatId>`), because that is the
  *     flow instance id it will be registered under.
- *   - `declared` is `{ flow, ...settings }` — the same shape a `WORKER.md`'s
+ *   - `declared` is `{ ...settings, flow }` — the same shape a `WORKER.md`'s
  *     frontmatter produces, so a hired seat and a file-declared one reach the
- *     hire step through one path rather than two.
+ *     hire step through one path rather than two. The column wins over a
+ *     same-named settings key; see the note in the body for why the order is
+ *     load-bearing.
  *   - `body` is the instructions, which the hire step turns into the
  *     `instructions` setting exactly as it does for a file's Markdown body.
  *
@@ -148,10 +150,20 @@ export function hiredSeatManifest(orgId: string, row: HiredSeatRow): { manifest:
   // so `hireWorkforce`'s own kind resolution and its own refusals are what
   // decide it. A pre-check here would be a second gatekeeper with a second
   // wording, and the one it duplicates is already the loud one.
+  //
+  // It goes in LAST, and that order is load-bearing. `settings` is a
+  // passthrough bag (see `collections.ts`), so a row can store its own
+  // `settings.flow`; spread the other way round it would overwrite the row's
+  // authoritative `flow` column, and nothing downstream would object —
+  // `settingsOf` strips `flow` as reserved before the kind ever validates the
+  // bag. The seat would mint and register as the bag's kind while the row
+  // said the column's kind forever, and the row is the only thing read again.
+  // What `hireWorkforce` decides is unchanged; what it decides FROM can no
+  // longer be shadowed by the row's own settings.
   return {
     manifest: {
       id: seatAddress(orgId, row.seatId),
-      declared: { flow: row.flow, ...row.settings },
+      declared: { ...row.settings, flow: row.flow },
       body: row.instructions ?? "",
     },
   };

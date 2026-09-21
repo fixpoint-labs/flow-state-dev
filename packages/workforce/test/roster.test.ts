@@ -3,9 +3,13 @@
  * whole one (V5, V6, V7).
  *
  * Each case below states what would make it fail, because a check whose red
- * state nobody produced is not evidence. The four that were actually produced
+ * state nobody produced is not evidence. The six that were actually produced
  * and reverted before this file was trusted:
  *
+ *   V3 — spread the row as `{ flow: row.flow, ...row.settings }`: a row
+ *        storing its own `settings.flow` mints and registers THAT kind while
+ *        the row says its own kind forever, and the round trip writes the
+ *        shadow back over the column.
  *   V3 — give `settings` a closed shape instead of a passthrough record: the
  *        unknown-key assertion fails and a seat comes back on defaults.
  *   V4 — drop `validateSegment(orgId, "Org")` from `seatAddress`: both hires
@@ -18,6 +22,10 @@
  *   V6 — swap `withTimeout` for a bare await: the reload hangs instead of
  *        rejecting, and the assertion on elapsed time is what tells a hang
  *        from a failure.
+ *   V6 — build the timeout label before the read instead of from the progress
+ *        map: the message reads "the hired roster read for 3 organizations
+ *        timed out", naming a count where BR-17 asks for the org and the
+ *        store.
  *   V7 — slice `orgIds` to the cap instead of refusing: the "nothing was
  *        read" assertion fails.
  */
@@ -35,6 +43,7 @@ import {
   toHiredSeatRow,
   type HiredRosterStores,
 } from "../src/roster";
+import { hireWorkforce } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
 
 const inputSchema = z.object({ note: z.string() });
@@ -139,6 +148,56 @@ describe("V3 · a row round-trips to a record and back", () => {
     expect(toHiredSeatRow({ seatId: "a.b", flow: "k", instructions: "   \n " }).instructions).toBe(
       null
     );
+  });
+
+  it("does not let a `flow` inside `settings` shadow the row's own column", async () => {
+    // `settings` is a passthrough record, so `settings.flow` is storable, and
+    // `settingsOf` strips `flow` as reserved BEFORE the kind validates the
+    // bag — so nothing downstream ever objects. With the spread the other way
+    // round (`{ flow: row.flow, ...row.settings }`) this row mints and
+    // registers an `agent` while the row says `desk-clerk` forever: the
+    // roster's authoritative column and the running seat disagree, and only
+    // the row is ever read again.
+    //
+    // Red state: restore `declared: { flow: row.flow, ...row.settings }` in
+    // `hiredSeatManifest` and both assertions below flip to "agent".
+    const row = {
+      seatId: "support.ada",
+      flow: "desk-clerk",
+      settings: { flow: "agent", desk: "back" },
+      instructions: null,
+    };
+    const parsed = parseHiredSeatRow(row);
+    if (!("row" in parsed)) throw new Error("expected a row");
+
+    const record = hiredSeatManifest("acme", parsed.row);
+    expect(record.manifest.declared.flow).toBe("desk-clerk");
+
+    // …and the seat that actually mints is the row's kind, not the bag's.
+    const [seat] = hireWorkforce([record.manifest], { kinds });
+    expect(seat!.kind).toBe("desk-clerk");
+    expect(seat!.id).toBe("acme.support.ada");
+  });
+
+  it("drops a shadowing `settings.flow` on the way back, rather than restoring it", () => {
+    // The round trip is NOT byte-identical for such a row, and that is the
+    // intended loss: `hiredSeatRowFromManifest` destructures the single
+    // `flow` key out of `declared`, and after the fix above that key holds
+    // the row's authoritative kind. What comes back is the row with the
+    // shadow removed — the same seat, minus a key that could only ever have
+    // lied. Every row without a `settings.flow` still round-trips exactly,
+    // which is the case the V3 round-trip above pins.
+    const row = toHiredSeatRow({
+      seatId: "support.ada",
+      flow: "desk-clerk",
+      settings: { flow: "agent", desk: "back" },
+    });
+    const record = hiredSeatManifest("acme", row);
+    const back = hiredSeatRowFromManifest("acme", record.manifest);
+    if (!("row" in back)) throw new Error("expected a row");
+
+    expect(back.row.flow).toBe("desk-clerk");
+    expect(back.row.settings).toEqual({ desk: "back" });
   });
 });
 
@@ -290,6 +349,66 @@ describe("V6 · a store that never answers fails the boot inside its bound", () 
       // killed a hang", and those are the two outcomes it has to separate.
       await vi.advanceTimersByTimeAsync(260);
       await settled;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("names the org it stalled on and the store call, not just the count (BR-17)", async () => {
+    // BR-17 asks for "an error naming the org and the store". A count tells an
+    // operator to go looking through every tenant; the org plus the exact
+    // store method is the difference between a report and an alert.
+    //
+    // Satisfiable because `readEveryOrg` is sequential: `bravo` is the second
+    // of three and never answers, so at the bound it is exactly the first org
+    // missing from the progress map. `charlie` is here so the case cannot
+    // pass by naming "the last org" — the stall is in the MIDDLE.
+    //
+    // Red state: label the `withTimeout` call `the hired roster read for N
+    // organizations` and drop the error factory, and every assertion below
+    // fails on a message that names only the count.
+    vi.useFakeTimers();
+    try {
+      const stores: HiredRosterStores = {
+        resourceState: {
+          getByPrefix: (_scope: string, scopeId: string) =>
+            scopeId === "bravo"
+              ? new Promise<Record<string, { state: Record<string, unknown> }>>(() => {})
+              : Promise.resolve({}),
+        },
+      };
+
+      const reload = reloadHiredSeats({
+        stores,
+        orgIds: ["acme", "bravo", "charlie"],
+        kinds,
+        timeoutMs: 250,
+      });
+      const settled = expect(reload).rejects.toThrow(/timed out/i);
+      await vi.advanceTimersByTimeAsync(260);
+      await settled;
+
+      // Re-run for the message itself; the assertions are what BR-17 buys.
+      const again = reloadHiredSeats({
+        stores,
+        orgIds: ["acme", "bravo", "charlie"],
+        kinds,
+        timeoutMs: 250,
+      });
+      const captured = again.catch((error: unknown) =>
+        error instanceof Error ? error.message : String(error)
+      );
+      await vi.advanceTimersByTimeAsync(260);
+      const message = await captured;
+
+      expect(message).toContain('organization "bravo"');
+      expect(message).toContain("stores.resourceState.getByPrefix");
+      expect(message).toContain(HIRED_ROSTER_PREFIX);
+      // Not the org that answered, and not the one never reached.
+      expect(message).not.toContain('"acme"');
+      expect(message).not.toContain('"charlie"');
+      // The whole-set bound (D2) is still what is being reported.
+      expect(message).toContain("1 of 3 organizations had answered");
     } finally {
       vi.useRealTimers();
     }
