@@ -1,0 +1,106 @@
+<svg viewBox="0 0 940 592" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box for W5, recalibrated to Workforce release QA. The box holds three named exit proofs. Two are drawn as empty dashed slots marked NO CHILD, because nothing in the set produces them; the first is drawn as a solid held slot because it now has a filed child. First, ER-Devtool, held by FIX-1481 for three of its six rows with rows one to three riding FIX-1320, and not yet run: a documented six-row checklist green on a live hired Workforce, covering roster, channels, boards, inventory, parked rows and resources plus references, with no special wrapper; rows four and six fail as written today. Second, ER-DevForce: one DevForce path completes and produces a real artifact, code, a pull request or a work product, with seats and channels used honestly; it is the thinnest path that works and it stops there. Third, ER-Collab: two or more seats across at least one channel, work filed, assigned, drained, and a cross-seat handoff or reply observed in Devtool. Under the box a boundary line reads: one user, one org, agents isolated from each other, not people from people. Below that, consumed and not owned, the unchanged substrate every proof composes and none may extend: the W3 floor FIX-1351 with seats, channels and skills on disk; the W4 first cut FIX-1407 with boards FIX-1385, inventory FIX-1405, manager-queue FIX-1430, org never optional FIX-1442 and dispatch honesty FIX-1440; and the references versus resources split FIX-1467 settled and merged. To the right, outside the box, kitchen-sink FIX-1455 is drawn as a sibling epic that left the set on September 20: soft-related, running its own lifecycle, not a child and carrying no row in the set table. Below it, composed in by the app: its own channel kinds as CHANNEL.md flow factories rather than new L1, and its own rendering of Waiting-on-you, which never adds a status value. Below that, still open but explicitly not blocking the engineering manager starting polish: which DevForce artifact counts, and whether CyberForce gets a parallel thin proof this cycle. Then a band headed grow into later, deferred and not refused, revisited when multi-user or sign-off pain is real, containing multi-user with more than one principal, the org chart of people as a product, originator not equal to reviewer, a durable reviewedBy bind, and multi-principal walls. Finally, below a fence, what is not built: no Human, Team, Channel or Agent as an L1 type; no parallel HITL plane and no humans as board drain seats; no merged board-assignee and seat registry; no new L1 TaskStatus for Waiting-on-you or Idle, including to pass a Devtool checklist row; no collab RC as the whole of W5; no kitchen-sink nested under W5 again; no new substrate epic disguised as polish; no unbounded Lab product delivery and no rebuilding the whole Lab product; no nested or child sessions as the work control plane; no second skill registry and no second memory story; and no multi-human machinery, which is deferred rather than refused. One line records the reversal: the old invent-kill that said don't treat W5 as build DevForce is dead, and proof-via-DevForce is in.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .slot  { fill:none; stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:5 4; }
+    .held  { fill:none; stroke:var(--accent); stroke-width:1.6; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .inp   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .out   { fill:var(--surface-2); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
+    .later { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .bound { fill:none; stroke:var(--accent); stroke-width:1.6; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-hld { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-bm  { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.06em; }
+    .t-out { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="26" width="560" height="252" rx="5"/>
+    <text class="t-lbl" x="32" y="46">IN THE BOX &#8212; WORKFORCE RELEASE QA &#183; THREE NAMED EXIT PROOFS</text>
+
+    <rect class="held" x="32" y="58" width="528" height="62" rx="4"/>
+    <text class="t-hld" x="48" y="76">ER-DEVTOOL &#183; FIX-1481 &#183; 3 OF 6 ROWS &#183; NOT RUN</text>
+    <text class="t-b" x="48" y="95">the checklist is green on a live hired Workforce</text>
+    <text class="t-s" x="48" y="110">rows 4&#8211;6 to FIX-1481 &#183; rows 1&#8211;3 ride FIX-1320 &#8212; no special wrapper</text>
+
+    <rect class="slot" x="32" y="126" width="528" height="62" rx="4"/>
+    <text class="t-non" x="48" y="144">ER-DEVFORCE &#183; NO CHILD</text>
+    <text class="t-b" x="48" y="163">one DevForce path ships a real artifact</text>
+    <text class="t-s" x="48" y="178">code, a PR, a work product &#8212; not a mock; the thinnest path, then stop</text>
+
+    <rect class="slot" x="32" y="194" width="528" height="62" rx="4"/>
+    <text class="t-non" x="48" y="212">ER-COLLAB &#183; NO CHILD</text>
+    <text class="t-b" x="48" y="231">&#8805;2 seats collaborate across &#8805;1 channel</text>
+    <text class="t-s" x="48" y="246">filed &#8594; assigned &#8594; drained &#8594; a cross-seat handoff, observed in Devtool</text>
+  </g>
+
+  <g id="boundary">
+    <path class="bound" d="M16 296 L576 296"/>
+    <text class="t-acc" x="16" y="312">ONE USER, ONE ORG &#8212; AGENTS ISOLATED FROM EACH OTHER, NOT PEOPLE FROM PEOPLE</text>
+  </g>
+
+  <g id="substrate">
+    <rect class="inp" x="16" y="324" width="560" height="76" rx="4"/>
+    <text class="t-lbl" x="32" y="342">CONSUMED, NOT OWNED &#8212; COMPOSE IT, NEVER EXTEND IT</text>
+    <text class="t-s" x="32" y="360">W3 floor FIX-1351 &#183; seats, channels, skills on disk</text>
+    <text class="t-s" x="32" y="375">W4 first cut FIX-1407 &#183; boards 1385 &#183; inventory 1405 &#183; queue 1430</text>
+    <text class="t-s" x="32" y="390">org never optional 1442 &#183; dispatch honesty 1440 &#183; refs/resources 1467</text>
+  </g>
+
+  <g id="outside">
+    <rect class="out" x="592" y="26" width="332" height="74" rx="4"/>
+    <text class="t-non" x="608" y="46">OUTSIDE THE SET &#8212; LEFT SEP 20</text>
+    <text class="t-bm" x="608" y="65">kitchen-sink &#183; FIX-1455</text>
+    <text class="t-s" x="608" y="80">a sibling epic, soft-related &#183; own lifecycle</text>
+    <text class="t-s" x="608" y="93">not a child &#183; no row in the set table</text>
+  </g>
+
+  <g id="composed">
+    <rect class="comp" x="592" y="112" width="332" height="74" rx="4"/>
+    <text class="t-acc" x="608" y="132">COMPOSED IN BY THE APP</text>
+    <text class="t-s" x="608" y="150">its own channel kinds &#8212; CHANNEL.md flow</text>
+    <text class="t-s" x="608" y="164">factories, never new L1</text>
+    <text class="t-s" x="608" y="178">its own Waiting-on-you rendering &#8212; no status value</text>
+  </g>
+
+  <g id="still-open">
+    <rect class="later" x="592" y="198" width="332" height="74" rx="4"/>
+    <text class="t-lbl" x="608" y="218">STILL OPEN &#8212; NOT BLOCKING EM START</text>
+    <text class="t-s" x="608" y="236">which DevForce artifact counts</text>
+    <text class="t-s" x="608" y="250">whether CyberForce gets a parallel thin</text>
+    <text class="t-s" x="608" y="264">proof this cycle, or waits</text>
+  </g>
+
+  <g id="later">
+    <rect class="later" x="16" y="414" width="908" height="60" rx="4"/>
+    <text class="t-lbl" x="32" y="433">GROW INTO LATER &#8212; DEFERRED, NOT REFUSED &#183; REVISITED WHEN MULTI-USER OR SIGN-OFF PAIN IS REAL</text>
+    <text class="t-s" x="32" y="451">multi-user (&gt;1 principal) &#183; the org chart of people as a product &#183; originator &#8800; reviewer &#183; a durable reviewedBy bind &#183; multi-principal walls</text>
+    <text class="t-s" x="32" y="466">CyberForce sits above, under still-open: not deferred, just not this cycle&#8217;s call to make</text>
+  </g>
+
+  <g id="not-built">
+    <path class="fence" d="M16 492 L924 492"/>
+    <text class="t-out" x="16" y="509">NOT BUILT &#8212; no Human / Team / Channel / Agent as L1 &#183; no parallel HITL plane, no humans as board drain seats &#183; no merged assignee + seat registry</text>
+    <text class="t-out" x="16" y="524">no new L1 TaskStatus for Waiting-on-you or Idle, including to pass a checklist row &#183; no collab RC as the whole of W5 &#183; no kitchen-sink under W5 again</text>
+    <text class="t-out" x="16" y="539">no new substrate epic disguised as polish &#183; no unbounded Lab delivery, no &#8220;rebuild the whole Lab product&#8221; &#183; no nested sessions as the control plane</text>
+    <text class="t-out" x="16" y="554">no second skill registry, no second memory story &#183; no multi-human machinery (deferred above, not refused here)</text>
+    <text class="t-acc" x="16" y="574">REVERSED SEP 20 &#8212; &#8220;don&#8217;t treat W5 as build DevForce&#8221; IS DEAD. PROOF-VIA-DEVFORCE IS IN, THINNEST PATH ONLY.</text>
+  </g>
+</svg>
