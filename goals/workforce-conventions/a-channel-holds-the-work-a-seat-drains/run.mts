@@ -15,13 +15,13 @@
  * cannot reach — the unattended-board warning and the subset drain — plus the
  * structural legs that say this app's own tree is wired.
  *
- * Thirteen legs, model-free. The harness owns the real path and reports raw
+ * Fifteen legs, model-free. The harness owns the real path and reports raw
  * observations; every assertion lives here.
  *
  * Run: pnpm tsx goals/workforce-conventions/a-channel-holds-the-work-a-seat-drains/run.mts
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join, sep } from "node:path";
 import ts from "typescript";
 import { KITCHEN_SINK, repoPath, runGoal, runHarness } from "../../lib/index.mts";
 
@@ -76,7 +76,16 @@ interface Observation {
   board_escalations: { requestStatus?: string; output?: any; error?: unknown };
   orgId: string;
   followupRowKey: string | null;
-  followupRowInStorage: unknown;
+  /** The whole stored record, so V7 can assert its STATUS and not merely that a row exists. */
+  followupRowInStorage: { state?: { status?: string; goal?: string } } | null;
+  /** Channel ids a caller using the APP's own user id can list. */
+  visibleToAppUser: string[];
+  /**
+   * Per channel id, one post's fan-out: how many declared members it ADDRESSED
+   * (the framework's half, unchanged by any app rule) and who it actually
+   * DELIVERED to (the app's half).
+   */
+  notified: Record<string, { reached: number; delivered: string[]; problem?: string }>;
   notes: any;
 }
 
@@ -309,10 +318,84 @@ await runGoal(() => {
   );
 
   // ---- the boot ------------------------------------------------------------
+  // Everything the harness probes is derived HERE and handed over, so the two
+  // halves cannot drift: rename a channel folder or a board and the assertion
+  // and the probe move together. The harness spells no address of its own.
+  const runnerKindFile = readdirSync(join(WORKFORCE, "flows", "workers"))
+    .map((f) => join(WORKFORCE, "flows", "workers", f))
+    .find((path) => readFileSync(path, "utf8").includes("channelBoard("));
+  if (runnerKindFile === undefined) {
+    return { failures: ["no worker kind under flows/workers/ declares a channelBoard"], evidence: "" };
+  }
+  const runnerKind = basename(runnerKindFile, ".ts");
+  const runnerSource = readFileSync(runnerKindFile, "utf8");
+  const attendedBoard = boardHolder.boards.find((name) => runnerSource.includes(`"${name}"`));
+  const unwiredBoards = boardHolder.boards.filter((name) => name !== attendedBoard);
+  const seatFile = filesUnder(join(WORKFORCE, "teams")).find(
+    (path) =>
+      path.endsWith("WORKER.md") &&
+      splitManifest(readFileSync(path, "utf8")).frontmatter.match(/^flow:\s*(.+)$/m)?.[1]?.trim() ===
+        runnerKind,
+  );
+  const channelOwner = configSource.match(/CHANNEL_OWNER\s*=\s*"([^"]+)"/)?.[1];
+  const appUserId = readFileSync(join(KITCHEN_SINK, "app", "page.tsx"), "utf8").match(
+    /e2eUserId\s*\?\?\s*"([^"]+)"/,
+  )?.[1];
+  if (
+    attendedBoard === undefined ||
+    seatFile === undefined ||
+    channelOwner === undefined ||
+    appUserId === undefined
+  ) {
+    return {
+      failures: [
+        attendedBoard === undefined
+          ? `no board "${boardHolder.id}" declares is named in ${runnerKind}`
+          : seatFile === undefined
+            ? `no WORKER.md names \`flow: ${runnerKind}\``
+            : channelOwner === undefined
+              ? "fsdev.config.ts declares no CHANNEL_OWNER this check can read"
+              : "app/page.tsx declares no fallback userId this check can read",
+      ],
+      evidence: "",
+    };
+  }
+  // `<teamId>.<workerName>` — minted from the folders the way the loader does.
+  const seatParts = seatFile.split(sep);
+  const seatAddress = `${seatParts[seatParts.length - 4]}.${seatParts[seatParts.length - 2]}`;
+
   const o = runHarness<Observation>({
     app: KITCHEN_SINK,
     harness: new URL("./harness.mts", import.meta.url),
-    env: { FSD_ENV: "dev" },
+    env: {
+      FSD_ENV: "dev",
+      GOAL_TREE: JSON.stringify({
+        channels: manifests.map((m) => ({ id: m.id, address: m.declaredKind ?? "channel" })),
+        boardHolder: {
+          id: boardHolder.id,
+          address: boardHolder.declaredKind ?? "channel",
+          boards: boardHolder.boards,
+        },
+        attendedBoard,
+        unwiredBoard: unwiredBoards[0],
+        seatAddress,
+        seatKind: runnerKind,
+        author: (boardHolder.frontmatter.match(/^members:\s*\[(.*)\]\s*$/m)?.[1] ?? "")
+          .split(",")[0]
+          ?.trim(),
+        membersByChannel: Object.fromEntries(
+          manifests.map((m) => [
+            m.id,
+            (m.frontmatter.match(/^members:\s*\[(.*)\]\s*$/m)?.[1] ?? "")
+              .split(",")
+              .map((name) => name.trim())
+              .filter((name) => name.length > 0),
+          ]),
+        ),
+        channelOwner,
+        appUserId,
+      }),
+    },
   });
   if (o.ok !== true) {
     return { failures: ["the harness did not complete"], evidence: "" };
@@ -446,12 +529,8 @@ await runGoal(() => {
   // ---- V9: exactly one unattended-board warning, naming the unwired board --
   {
     const unattended = o.warnings.filter((w) => w.startsWith("[workforce] channel "));
-    const attendedBoard = boardHolder.boards.find((name) =>
-      readFileSync(join(WORKFORCE, "flows", "workers", "followup-runner.ts"), "utf8").includes(
-        `"${name}"`,
-      ),
-    );
-    const unwiredBoards = boardHolder.boards.filter((name) => name !== attendedBoard);
+    // `attendedBoard` / `unwiredBoards` are the ones derived above, off whichever
+    // worker kind declares a channelBoard — never a filename typed here.
     if (unattended.length !== unwiredBoards.length) {
       failures.push(
         `V9: the boot emitted ${unattended.length} unattended-board warning(s), and ` +
@@ -491,10 +570,27 @@ await runGoal(() => {
       failures.push(`V7: the row is "${row.status}", not completed`);
     }
 
-    if (o.followupRowInStorage === null) {
+    // The durable row, asserted on its STATUS. Existence alone is not the claim:
+    // a row is written to the ledger the moment it is FILED, so `!== null` holds
+    // even when nothing ever ran — it holds under V7's own by-name control,
+    // where the drain claims nothing. What this leg advertises is persistence
+    // proof independent of the board's own projection, and only the status
+    // carries that.
+    const stored = o.followupRowInStorage?.state;
+    if (stored === undefined) {
       failures.push(
         `V7: the row is not on the minted ledger — nothing at ` +
           `resourceState("org", "${o.orgId}", "${o.followupRowKey}")`,
+      );
+    } else if (stored.goal !== o.followupGoal) {
+      failures.push(
+        `V7: the row on the minted ledger records ${JSON.stringify(stored.goal)}, and the desk ` +
+          `filed ${JSON.stringify(o.followupGoal)}`,
+      );
+    } else if (stored.status !== "completed") {
+      failures.push(
+        `V7: the durable row under "${o.followupRowKey}" is "${stored.status}", not completed — ` +
+          `the board's projection and the ledger disagree, or nothing ran`,
       );
     }
 
@@ -506,6 +602,90 @@ await runGoal(() => {
       failures.push(
         `V7: the note outside the board records ${JSON.stringify(o.notes?.state?.followup)}, ` +
           `and the row asked for ${JSON.stringify(o.followupGoal)}`,
+      );
+    }
+  }
+
+  // ---- V14: the writer is not told about their own post -------------------
+  //
+  // Behavioural, and it grades DELIVERY rather than dispatch. The fan-out is
+  // declared once on the kind, so it still runs and still addresses every
+  // declared member including the writer; what the app controls from its notify
+  // slot is whether a delivery is made. The claim is "no notification goes back
+  // to the author", not "the fan-out skipped them".
+  //
+  // Asserted as a SET, against the roster minus the author, and not as a count.
+  // A count would be green on a fan-out that notified the wrong people, and
+  // "fewer than everybody" would be green on one that notified nobody — which
+  // is the shape a one-sided check invites. Every other member must still get
+  // theirs, so a broken fan-out fails here rather than passing quietly.
+  {
+    for (const m of manifests) {
+      const members = (m.frontmatter.match(/^members:\s*\[(.*)\]\s*$/m)?.[1] ?? "")
+        .split(",")
+        .map((name) => name.trim())
+        .filter((name) => name.length > 0);
+      const seen = o.notified[m.id];
+      if (seen === undefined || seen.problem !== undefined) {
+        failures.push(`V14: posting to ${m.id} did not settle — ${seen?.problem ?? "not probed"}`);
+        continue;
+      }
+      // A channel on a kind of its own declares no fan-out slot at all, so
+      // there is no delivery rule of the app's to grade. Skipped by that fact
+      // rather than by name.
+      if (m.declaredKind !== null) {
+        if (seen.reached !== 0) {
+          failures.push(
+            `V14: ${m.id} runs a kind of its own and a fan-out still reached ${seen.reached} ` +
+              `member(s) — a hand-written kind declares no notify slot`,
+          );
+        }
+        continue;
+      }
+
+      // The harness posts as the channel's first declared member.
+      const author = members[0];
+      const wanted = members.filter((name) => name !== author).sort();
+      const got = [...seen.delivered].sort();
+      if (JSON.stringify(got) !== JSON.stringify(wanted)) {
+        failures.push(
+          `V14: ${m.id} was written by ${JSON.stringify(author)} and the fan-out delivered to ` +
+            `${JSON.stringify(got)} — every other declared member and nobody else should have ` +
+            `been told, which is ${JSON.stringify(wanted)}`,
+        );
+      }
+      // The framework's half, asserted separately: the fan-out still addresses
+      // the whole roster. If this ever changed the leg above would go green for
+      // the wrong reason — the author being skipped by the framework rather
+      // than declined by the app.
+      if (seen.reached !== members.length) {
+        failures.push(
+          `V14: ${m.id}'s fan-out addressed ${seen.reached} of ${members.length} declared ` +
+            `member(s); the framework walks the whole roster and the app declines deliveries`,
+        );
+      }
+    }
+  }
+
+  // ---- V13: a caller using the app's own user id can reach the channels ---
+  //
+  // Sessions are per-user, and the session listing filters on the caller's id.
+  // The app's pages call as one id; the config opens the channels as another,
+  // and when the two differ the app ships channels no user of it can list.
+  //
+  // The LISTING is the whole leg. Acting as the wrong id is deliberately not
+  // asserted: measured on this app, a post as a non-owner is accepted (202)
+  // because no `resolvePrincipal` is configured, so the route's owner check
+  // never engages. An assertion on it could not fail here, and a leg that
+  // cannot fail is worse than no leg.
+  {
+    const wanted = manifests.map((m) => m.id).sort();
+    const seen = [...o.visibleToAppUser].filter((id) => wanted.includes(id)).sort();
+    if (JSON.stringify(seen) !== JSON.stringify(wanted)) {
+      failures.push(
+        `V13: a caller using the app's own user id ("${appUserId}") lists ${seen.length} of ` +
+          `${wanted.length} channels (${JSON.stringify(seen)}) — the config opens them as ` +
+          `"${channelOwner}", who the app's pages never call as`,
       );
     }
   }

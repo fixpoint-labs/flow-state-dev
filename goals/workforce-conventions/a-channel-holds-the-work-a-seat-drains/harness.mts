@@ -32,7 +32,36 @@
  * Not typechecked by `goals/tsconfig.json` — its imports resolve against
  * apps/kitchen-sink. See goals/README.md → "Harnesses".
  */
-const USER_ID = process.env.GOAL_USER_ID ?? "kitchen-sink";
+/**
+ * Every address this file probes, handed over by run.mts on `GOAL_TREE`.
+ *
+ * **Nothing here is typed as a literal, and that is load-bearing.** run.mts
+ * reads the channel ids, the kind each channel selected, the board names, the
+ * draining seat and a member to post as off the tree at run time, and passes
+ * them in. A harness that spelled them itself would agree with the tree only by
+ * coincidence: rename a channel folder and a correct implementation would fail
+ * the goal on the harness's stale address, which is the opposite of the
+ * "read off the tree" promise goal.md makes.
+ *
+ * `appUserId` is the id the app's own pages call as, not an id this check
+ * invents — a channel only the goal can reach is a channel no user has.
+ */
+interface TreeSpec {
+  channels: Array<{ id: string; address: string }>;
+  boardHolder: { id: string; address: string; boards: string[] };
+  attendedBoard: string;
+  unwiredBoard: string;
+  seatAddress: string;
+  seatKind: string;
+  author: string;
+  /** Declared members, per channel id — who a fan-out on that channel addresses. */
+  membersByChannel: Record<string, string[]>;
+  channelOwner: string;
+  appUserId: string;
+}
+
+const TREE = JSON.parse(process.env.GOAL_TREE ?? "") as TreeSpec;
+const USER_ID = TREE.channelOwner;
 const out: Record<string, unknown> = { ok: false };
 
 /** Every `console.warn` the boot emitted, in order. */
@@ -54,7 +83,7 @@ const { flowstate } = await import("./lib/flowstate");
 const openAtImport: string[] = [];
 {
   const stores = (await flowstate.getRuntime()).stores;
-  for (const id of ["support.desk", "support.ada-dm", "support.noticeboard"]) {
+  for (const { id } of TREE.channels) {
     if ((await stores.session.get(id)) !== undefined) openAtImport.push(id);
   }
 }
@@ -72,8 +101,10 @@ async function call(
   method: "GET" | "POST" | "DELETE",
   segs: string[],
   body?: unknown,
+  /** Appended to the URL only — `params.path` stays the route's own segments. */
+  query?: string,
 ): Promise<{ status: number; body: any }> {
-  const req = new Request("http://goal/api/flows/" + segs.join("/"), {
+  const req = new Request("http://goal/api/flows/" + segs.join("/") + (query ?? ""), {
     method,
     headers: { "content-type": "application/json", accept: "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -145,16 +176,109 @@ async function act(
 }
 
 // ---- the first router call ----------------------------------------------
-const deskRead = await act("channel", "support.desk", "read", {});
+const deskRead = await act(TREE.boardHolder.address, TREE.boardHolder.id, "read", {});
 out.deskRead = { requestStatus: deskRead.requestStatus, output: deskRead.output, error: deskRead.error };
 
 // ---- each channel's session, as the route hands it back -------------------
 const sessions: Record<string, unknown> = {};
-for (const id of ["support.desk", "support.ada-dm", "support.noticeboard"]) {
+for (const { id } of TREE.channels) {
   const res = await call("GET", ["sessions", id]);
   sessions[id] = res.status >= 400 ? { error: res.body, status: res.status } : res.body?.session;
 }
 out.sessions = sessions;
+
+// ---- V13: can a caller using the APP's own user id reach the channels? ----
+// Listed and read as `appUserId` — what `app/page.tsx` and `app/devtool/page.tsx`
+// pass — rather than as the id the config opened them under. Sessions are
+// per-user: a channel opened as somebody nobody calls as is a channel the app
+// ships and no user of it can see.
+{
+  const listed = await call(
+    "GET",
+    ["sessions"],
+    undefined,
+    "?userId=" + encodeURIComponent(TREE.appUserId),
+  );
+  const rows: Array<{ id?: string }> = Array.isArray(listed.body?.sessions)
+    ? listed.body.sessions
+    : [];
+  out.visibleToAppUser = rows
+    .map((row) => row.id)
+    .filter((id): id is string => typeof id === "string");
+}
+
+// ---- V14: who each channel's fan-out reached, and who it delivered to -----
+//
+// One post per channel, then the fan-out's own trace rows. Two numbers come
+// back per channel and they are deliberately separate:
+//
+//   `reached`   — how many members the fan-out block addressed. This is the
+//                 framework's half and it does not change when an app goes
+//                 silent: the sequencer is declared on the kind and still
+//                 walks the roster.
+//   `delivered` — how many of those deliveries the notify block actually made,
+//                 read off each invocation's own reported outcome.
+//
+// **What `delivered` can and cannot see.** The delivery itself is a TRANSIENT
+// item, and transient items are not persisted — they are absent from the
+// request's item log, so there is nothing durable to count. What is durable is
+// the notify block's trace, so `delivered` is the block's own report of what it
+// did. A block that emitted and then reported otherwise would be believed. That
+// gap is named here rather than left for a reader to find; closing it would
+// mean making the app's own delivery durable for a test's convenience, which is
+// a worse trade in a file people copy.
+//
+// The fan-out rides a SEPARATE request from the post, so this waits for a trace
+// to appear rather than reading straight away — reading early returns nothing,
+// which is indistinguishable from a channel that delivered nothing, and that is
+// the exact thing being measured.
+const NOTIFY_BLOCK = "kitchen-sink-notify-member";
+const FAN_OUT_BLOCK = "channel-fan-out";
+const notified: Record<string, { reached: number; delivered: string[]; problem?: string }> = {};
+for (const channel of TREE.channels) {
+  const posted = await act(channel.address, channel.id, "post", {
+    body: `probe ${Date.now()}`,
+    author: TREE.membersByChannel[channel.id]?.[0],
+  });
+  if (posted.requestStatus !== "completed") {
+    notified[channel.id] = {
+      reached: 0,
+      delivered: [],
+      problem: `the post ended "${posted.requestStatus}"`,
+    };
+    continue;
+  }
+  const stores = (await flowstate.getRuntime()).stores;
+  const deadline = Date.now() + 15_000;
+  let reached = 0;
+  let delivered: string[] = [];
+  let sawFanOut = false;
+  while (Date.now() < deadline) {
+    const requests = (await stores.request.list({ sessionId: channel.id })) as any[];
+    const traces = requests.flatMap((r) =>
+      (r.items ?? []).filter((item: any) => item.type === "block_trace"),
+    );
+    const fanOut = traces.filter((t: any) => t.blockName === FAN_OUT_BLOCK);
+    sawFanOut = fanOut.length > 0;
+    reached = fanOut.reduce(
+      (n: number, t: any) => n + (t.output?.shape?.entries?.length ?? 0),
+      0,
+    );
+    delivered = traces
+      .filter((t: any) => t.blockName === NOTIFY_BLOCK)
+      .map((t: any) => String(t.output?.value?.notified ?? ""))
+      .filter((who: string) => who.length > 0);
+    if (sawFanOut) break;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  notified[channel.id] = sawFanOut
+    ? { reached, delivered }
+    : // A kind with no notify slot declares no fan-out at all, which is a
+      // different thing from an app declining to deliver — reported as zero of
+      // both rather than as a failure, so run.mts can tell them apart.
+      { reached: 0, delivered: [] };
+}
+out.notified = notified;
 
 // ---- file one row on each board, then drain -------------------------------
 const followupGoal = `chase the printer quote ${Date.now()}`;
@@ -162,11 +286,11 @@ const escalationGoal = `the refund needs a person ${Date.now()}`;
 out.followupGoal = followupGoal;
 out.escalationGoal = escalationGoal;
 
-const filedFollowup = await act("channel", "support.desk", "fileTask", {
-  board: "followups",
+const filedFollowup = await act(TREE.boardHolder.address, TREE.boardHolder.id, "fileTask", {
+  board: TREE.attendedBoard,
   goal: followupGoal,
-  assignee: "followup-runner",
-  author: "support.ada",
+  assignee: TREE.seatKind,
+  author: TREE.author,
 });
 out.filedFollowup = {
   requestStatus: filedFollowup.requestStatus,
@@ -174,11 +298,11 @@ out.filedFollowup = {
   error: filedFollowup.error,
 };
 
-const filedEscalation = await act("channel", "support.desk", "fileTask", {
-  board: "escalations",
+const filedEscalation = await act(TREE.boardHolder.address, TREE.boardHolder.id, "fileTask", {
+  board: TREE.unwiredBoard,
   goal: escalationGoal,
-  assignee: "followup-runner",
-  author: "support.ada",
+  assignee: TREE.seatKind,
+  author: TREE.author,
 });
 out.filedEscalation = {
   requestStatus: filedEscalation.requestStatus,
@@ -187,12 +311,12 @@ out.filedEscalation = {
 };
 
 // Handed nothing: no row id, no assignee, no worker name.
-const drained = await act("support.wren", "s_goal_wren", "drain", {});
+const drained = await act(TREE.seatAddress, "s_goal_drain", "drain", {});
 out.drained = { requestStatus: drained.requestStatus, error: drained.error };
 
 // ---- what the boards hold now --------------------------------------------
-for (const board of ["followups", "escalations"]) {
-  const read = await act("channel", "support.desk", "readBoard", { board });
+for (const board of TREE.boardHolder.boards) {
+  const read = await act(TREE.boardHolder.address, TREE.boardHolder.id, "readBoard", { board });
   out[`board_${board}`] = { requestStatus: read.requestStatus, output: read.output, error: read.error };
 }
 

@@ -2,13 +2,13 @@
 
 **Issue:** FIX-1476 (checks V1–V12 of the spec's Checks table)
 
-**Outcome:** Somebody clones the reference app and finds channels in it. Three `CHANNEL.md` files under one team: an ordinary channel holding two boards, a one-member channel that needed no kind of its own, and one that genuinely did. One seat is wired to one of the two boards, and the boot says out loud that nobody is watching the other.
+**Outcome:** Somebody clones the reference app and finds channels in it. Three `CHANNEL.md` files under one team: an ordinary channel holding two boards, a two-seat direct message that needed no kind of its own, and one channel that genuinely did. One seat is wired to one of the two boards, and the boot says out loud that nobody is watching the other.
 
 **Input:** `apps/kitchen-sink` itself — its real `workforce/` tree and its real `fsdev.config.ts`. **Not a fixture.** Every other goal in this folder points the loader at its own `fixtures/workforce/`; the claim here is about what a reader of the reference app finds, so the app is the subject. Held out: every channel id, board name, kind name and ledger id is read off the tree at run time. Rename a channel folder or a board and a correct implementation still passes.
 
 **Expect this goal to be slow.** Importing the app's real config boots the whole runtime — every flow, every store profile, the hire and the channel open. That is the cost of proving the app's own wiring rather than a fixture's, and `goal:all` should budget for it.
 
-**Signal:** thirteen legs, model-free, over the app's own boot and its real HTTP router.
+**Signal:** fifteen legs, model-free, over the app's own boot and its real HTTP router.
 
 **Not re-proved here:** board mechanics. `channel-boards/it-runs-a-row-a-file-declared-board-holds` already covers mint → file → drain → completed and passes. What this adds is the two behaviours that goal cannot reach — the **warning** and the **subset** drain — and the structural legs that say *this app's* tree is wired.
 
@@ -32,6 +32,8 @@ Then the boot, driven by `harness.mts` inside the app:
 - **V9 — exactly one unattended-board warning.** One per board no hired flow declares, naming that board; none for the board a seat does declare. `console.warn` is captured **before** the config is imported, because the warning is emitted during the hire, inside that module's evaluation.
 - **V7 — the row is claimed, run, and settled on the minted ledger.** One row filed through the channel's own `fileTask`, then the seat's drain, handed nothing. Proof of execution is the note the worker body wrote **outside** the board, read straight out of org-scoped storage — the board's own report is generated on the path under test. The row then reads `completed` from `readBoard` **and** out of `resourceState` under the minted id.
 - **V8 — the drain is a subset.** A row filed on the unwired board is still `pending` after the drain runs.
+- **V13 — the channels are reachable by the app's own users.** Sessions are per-user, so a channel opened under an id the app's pages never call as is one the app ships and none of its users can list. Asserted on the listing; acting as a non-owner is deliberately not asserted, because this app resolves no principal and the route's owner check never engages, so such a leg could not fail.
+- **V14 — nobody is told about their own post.** One post per channel, then every delivery the fan-out made, asserted as a SET against the roster minus the writer. Two halves on purpose: the framework's fan-out still addresses the whole roster (that is asserted too), and what the app decides in its notify slot is whether a delivery happens. A count alone would pass on a fan-out that notified the wrong people, and "fewer than everybody" would pass on one that notified nobody.
 
 ## Anti-game
 
@@ -56,12 +58,23 @@ Every leg's red state is a mutation of the implementation, not of this file. `GO
 | V5 | Return every board in the process from the channel's `read`, or return the minted ids |
 | V6 | Use the minted id as the resource key in the runner kind instead of `followups.id` |
 | V7 | Point the runner at `channelBoard("support.other", "followups")` — everything compiles, every id is well-formed, and the row stays `pending` with no note written |
-| V8 | Add the unwired board to the runner's resources — it is claimed, and the subset claim is gone |
-| V9 | Wire the unwired board (count 0), or drop the runner's declaration (count 2) |
+| V8 | Point the drain's `taskBoard` at the unwired board — it is claimed, and the subset claim is gone. **Not** "add it to the runner's resources": `warnUnattendedBoards` reads `seat.resources` and `taskBoard` destructures one `collection`, so declaring the resource silences the warning and claims nothing — that mutation is V9's, below |
+| V9 | Declare the unwired board as a resource on the runner without draining it — a seat names it, so the boot warns about nothing (count 0) |
+| V13 | Open the channels as any id the app's pages do not call as |
+| V14 | Delete the author check from `workforce/channel-notify.ts` — the writer is notified of their own post |
 | V10 | Write a refused word into a `description:` or a charter |
 | V11 | Delete the `openChannels` call from `fsdev.config.ts` — nothing opens the tree's channels and the first read meets an empty session |
 | V11b | Change `await openChannels(…)` to `void openChannels(…)` |
 | V12 | Delete either sentence from the published page |
+
+## Two red states are not isolating
+
+Said here rather than only in a report, because the next person to read this table will assume each row moves one leg.
+
+- **V7**'s by-name control also fails **V9**. A runner pointed at another channel declares neither of this one's boards, so the boot warns about both. It does fail at V7 and not at V6, which is the property that control exists for.
+- **V8**'s red state also fails **V7** and **V9**, and no isolating form exists: a `taskBoard` runs exactly one collection, so making the drain claim the unwired board necessarily stops it claiming the attended one.
+
+Every other row moves its own leg. **V11**'s removes the open entirely and cascades through everything downstream of a channel existing, which is expected rather than a defect in the mutation.
 
 ## Why V11 is two legs
 

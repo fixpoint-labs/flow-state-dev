@@ -32,7 +32,7 @@ import { z } from "zod";
  * the tail is the whole projection rather than a page of a longer list — there
  * is no cursor and no way to ask for more.
  */
-export const DIGEST_TAIL = 5;
+const DIGEST_TAIL = 5;
 
 /**
  * One notice. Deliberately the smallest line that is still a record: who
@@ -42,7 +42,7 @@ export const DIGEST_TAIL = 5;
  * for the reason the built-in kind spells it out — a stored line must not let
  * a reader mistake the `author` claim for a proven one.
  */
-export const digestLineSchema = z.object({
+const digestLineSchema = z.object({
   id: z.string(),
   at: z.number(),
   author: z.string().optional(),
@@ -51,7 +51,7 @@ export const digestLineSchema = z.object({
 });
 
 /** One notice, as it is stored and as `read` hands it back. */
-export type DigestLine = z.infer<typeof digestLineSchema>;
+type DigestLine = z.infer<typeof digestLineSchema>;
 
 /**
  * The session state every channel on this kind carries.
@@ -65,14 +65,14 @@ export type DigestLine = z.infer<typeof digestLineSchema>;
  * requires them: a session something else created carries neither, and that
  * absence is what tells an open channel from an empty session.
  */
-export const digestStateSchema = z.object({
+const digestStateSchema = z.object({
   members: z.array(z.string()),
   instructions: z.string(),
   transcript: z.array(digestLineSchema).default([]),
 });
 
 /** What a caller may put in a notice. Closed — there is nowhere for an id. */
-export const digestPostInputSchema = z
+const digestPostInputSchema = z
   .object({
     body: z.string().min(1),
     author: z.string().optional(),
@@ -80,7 +80,7 @@ export const digestPostInputSchema = z
   .strict();
 
 /** What `read` projects: the newest notices, and who the channel is for. */
-export const digestReadOutputSchema = z.object({
+const digestReadOutputSchema = z.object({
   id: z.string(),
   members: z.array(z.string()),
   /** Newest first, and never more than {@link DIGEST_TAIL}. */
