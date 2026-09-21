@@ -22,8 +22,8 @@ import { SelectionProvider } from "./context/selection-context";
 import { DebugProvider } from "./context/debug-context";
 import { TraceLookupProvider } from "./context/trace-context";
 
-import { FlowList } from "./components/navigator/flow-list";
-import { SettingsSheet } from "./components/navigator/settings-sheet";
+import { FlowRail } from "./components/flows/flow-rail";
+import { SettingsSheet } from "./components/shared/settings-sheet";
 import { StreamView, type RequestGroup } from "./components/workspace/stream-view";
 import { TraceView } from "./components/workspace/trace-view";
 import { TaskCollectionsView } from "./components/workspace/task-collections-view";
@@ -44,7 +44,7 @@ import { useContinueRequest } from "./hooks/use-continue-request";
 import { useLiveMode } from "./hooks/use-live-mode";
 import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
 import { useChildSessions } from "./hooks/use-child-sessions";
-import { useReadFence } from "./hooks/use-read-fence";
+import { useReadFence } from "@flow-state-dev/react";
 import { flattenTaskItems } from "./lib/task-collection-state";
 import { pickFurthestStatus } from "./lib/request-status";
 import { shortSessionId } from "./lib/utils";
@@ -784,11 +784,13 @@ function PanelContent({ className }: { className?: string }) {
 
           {navExpanded && (
             <>
-              <div className="px-2 py-1">
-                <span className="text-[10px] font-medium uppercase text-slate-500">Flows</span>
-              </div>
-              <div className="flex-1 overflow-auto px-1">
-                <FlowList
+              {/*
+                The navigator draws its own section label and owns the ONE
+                scroll container for the rail — a wrapper with `overflow-auto`
+                here would nest a second scrollbar inside 300 pixels.
+              */}
+              <div className="min-h-0 flex-1 px-1">
+                <FlowRail
                   sessionRefreshKey={sessionRefreshKey}
                   onRefreshActiveSession={refreshActiveSession}
                 />
@@ -832,9 +834,10 @@ function PanelContent({ className }: { className?: string }) {
           - THIS KEY retires everything mounted below it: the five readers above,
             and the trace/block/item selection, which names an item inside a
             particular request of a particular session.
-          - THE READ FENCE (`use-read-fence`) retires the readers that STAY
-            mounted across a switch — the navigator's session list, and the
-            panel's own request and ChildSession lists, which live above here.
+          - THE READ FENCE (`useReadFence`, from `@flow-state-dev/react`) retires
+            the readers that STAY mounted across a switch — the panel's own
+            request and ChildSession lists, which live above here. The rail's
+            session list is fenced inside `FlowNavigator`, not here.
           - THE RENDER-PHASE RESET above retires this component's own transient
             request state (`activeRequestId`, the item maps, replay), which no
             remount covers because `PanelContent` itself does not remount.
@@ -846,7 +849,7 @@ function PanelContent({ className }: { className?: string }) {
           reads of the SAME identity resolving out of order — a mount read, a
           Refresh click and a `refreshKey` fan-out can be in flight together,
           and the oldest response may land last. That is the second hazard
-          `use-read-fence` exists for, and the fence is the only thing that
+          `useReadFence` exists for, and the fence is the only thing that
           answers it. The five readers below have never been protected against
           it, before this key or after, so this is a standing gap and not
           something traded away for the remount. A new reader added here

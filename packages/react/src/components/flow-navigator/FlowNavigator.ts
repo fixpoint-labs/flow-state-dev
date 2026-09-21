@@ -39,6 +39,17 @@ import {
 
 /** A leaf, plus the state of its session list — what a slot is handed. */
 export type FlowNavigatorLeafState = FlowNavigatorLeaf & {
+  /**
+   * The flow-list entry this leaf was drawn from — the instance's own entry
+   * under a collection kind, the kind's entry under a singleton.
+   *
+   * Here because a slot that renders what a flow DECLARES (its actions, say)
+   * would otherwise read the flow list again to look up what the navigator has
+   * already read. Two lists of one thing can disagree, and while they do the
+   * row is drawn from one and annotated from the other. `null` only if the
+   * entry went missing between the grouping and the render.
+   */
+  readonly entry: FlowListEntry | null;
   readonly sessions: readonly SessionSummary[];
   readonly isLoading: boolean;
   readonly error: string | null;
@@ -263,6 +274,7 @@ function retryLine(message: string, onRetry: () => void, depth: number): ReactNo
  */
 function LeafSessionList(props: {
   readonly leaf: FlowNavigatorLeaf;
+  readonly entry: FlowListEntry | null;
   readonly depth: number;
   readonly source: FlowNavigatorSessionSource;
   readonly userId: string | undefined;
@@ -270,11 +282,13 @@ function LeafSessionList(props: {
   readonly onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
   readonly slots: FlowNavigatorSlots;
 }): ReactNode {
-  const { leaf, depth, source, userId, selectedSessionId, onSelectSession, slots } = props;
+  const { leaf, entry, depth, source, userId, selectedSessionId, onSelectSession, slots } =
+    props;
   const state = useLeafSessions(source, leaf, userId);
 
   const toolbar = slots.leafToolbar?.({
     ...leaf,
+    entry,
     sessions: state.sessions,
     isLoading: state.isLoading,
     error: state.error,
@@ -364,7 +378,12 @@ function KindRow(props: {
     : group.leaf !== null
       ? // A singleton's kind row IS its leaf: there is no copy to pick, so the
         // instance level is not drawn and the sessions hang directly under it.
-        createElement(LeafSessionList, { leaf: group.leaf, depth: 1, ...leafProps })
+        createElement(LeafSessionList, {
+          leaf: group.leaf,
+          entry: group.entry,
+          depth: 1,
+          ...leafProps
+        })
       : createElement(
           "ul",
           { style: bareList },
@@ -399,7 +418,12 @@ function KindRow(props: {
                 })
               }),
               instanceOpen
-                ? createElement(LeafSessionList, { leaf, depth: 2, ...leafProps })
+                ? createElement(LeafSessionList, {
+                    leaf,
+                    entry: instance,
+                    depth: 2,
+                    ...leafProps
+                  })
                 : null
             );
           })

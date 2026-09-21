@@ -18,10 +18,21 @@ export type FlowCardinality = FlowListEntry["cardinality"];
 /**
  * A label and the kind names it covers. There is nothing else in a section,
  * and deliberately so — a section says *which* kinds, never how deep they go.
+ *
+ * `kinds` is omitted by a host that cannot name them. An app filtering on the
+ * kinds it ships writes them down; a general inspector is pointed at whatever
+ * server is running and learns the kind names by asking, so requiring the list
+ * would make it read the flow list itself purely to hand the answer back —
+ * one-read-per-host lost to a workaround rather than to a bug.
+ *
+ * Absent and empty are NOT the same. `kinds: []` is a filter that was named
+ * and excludes everything; omitting it is a host that never had one. A host
+ * deriving its filter starts with an empty array, and collapsing the two would
+ * show it the whole server for the frame before its own list arrives.
  */
 export type FlowNavigatorSection = {
   readonly label: string;
-  readonly kinds: readonly string[];
+  readonly kinds?: readonly string[];
 };
 
 /**
@@ -50,6 +61,14 @@ export type FlowNavigatorKindGroup = {
    * collection kind, whose leaves are its instances.
    */
   readonly leaf: FlowNavigatorLeaf | null;
+  /**
+   * The flow-list entry `leaf` was built from, so a slot filling that leaf can
+   * read what the flow DECLARES — its actions, whether it requires a user —
+   * rather than reading the flow list a second time to find out. `null`
+   * alongside a `null` leaf, for the same reason: a collection kind's entries
+   * are its instances, and each instance row carries its own.
+   */
+  readonly entry: FlowListEntry | null;
 };
 
 /** One section's rows. */
@@ -77,12 +96,14 @@ export function groupFlowsIntoSections(
   sections: readonly FlowNavigatorSection[]
 ): readonly FlowNavigatorSectionView[] {
   return sections.map((section) => {
-    const wanted = new Set(section.kinds);
+    // `undefined` is "every kind"; an array — including an empty one — is a
+    // filter the host named and this honours exactly.
+    const wanted = section.kinds === undefined ? null : new Set(section.kinds);
     const order: string[] = [];
     const byKind = new Map<string, FlowListEntry[]>();
 
     for (const entry of flows) {
-      if (!wanted.has(entry.kind)) continue;
+      if (wanted !== null && !wanted.has(entry.kind)) continue;
       const existing = byKind.get(entry.kind);
       if (existing === undefined) {
         order.push(entry.kind);
@@ -101,12 +122,13 @@ export function groupFlowsIntoSections(
         : "singleton";
 
       return cardinality === "collection"
-        ? { kind, cardinality, instances: entries, leaf: null }
+        ? { kind, cardinality, instances: entries, leaf: null, entry: null }
         : {
             kind,
             cardinality,
             instances: [],
             leaf: { kind, address: entries[0]?.id ?? kind, cardinality },
+            entry: entries[0] ?? null,
           };
     });
 
