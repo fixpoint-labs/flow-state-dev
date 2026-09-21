@@ -29,6 +29,7 @@ import channelFlow from "@/flows/channel/flow";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
+import { hireKitchenSinkWorkforce } from "@/workforce/hire";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
@@ -57,12 +58,47 @@ const pgStores = vercelPostgresStores();
 // the pool, leaving the proxy a no-op — matching in-memory's lack of scheduling).
 setScheduleIndexImpl(pgStores.scheduleIndex);
 
+// The team under `workforce/`, hired before the runtime is assembled.
+//
+// Hiring is async because a seat's configuration lives in its own `WORKER.md`:
+// the roster is read from files rather than written here, which is the whole
+// point of the demonstration. `createFlowState({ flows })` takes a resolved
+// map, so the two are reconciled by awaiting at module scope rather than by
+// registering into a running FlowState:
+//
+//   - One declaration stays one declaration. What this app serves is still the
+//     single `flows` map below, and the registry's duplicate-id and cross-flow
+//     schema checks still run at construction — a bad seat fails the boot
+//     instead of the first request that happens to address it.
+//   - An async boot is also the half a durable roster needs: reloading
+//     previously hired seats out of the store on the next boot is another
+//     await on this line. Adding a seat to an *already running* app is a
+//     different question, with ordering and in-flight-request consequences
+//     this app cannot answer by itself, and is left to FIX-1475.
+//
+// Both the Next.js route handlers and the `fsdev` CLI import this module, so
+// both serve the same seats from the same files.
+const workforce = await hireKitchenSinkWorkforce();
+
+// A folder the loader could not read is a seat this app does not have. Report
+// it once at boot rather than letting the roster come up quietly short.
+for (const failedPath of workforce.errors) {
+  console.error(`[workforce] could not read ${failedPath}`);
+}
+
+// Seats are addressed by their own ids (`support.ada`, `support.grace`, …),
+// which is what a caller puts on the URL and what `fsdev run` takes.
+const seatFlows = Object.fromEntries(
+  workforce.seats.map((seat) => [seat.id, seat])
+);
+
 const flowstate = createFlowState({
   flows: {
     channel: channelFlow,
     chatAgent: chatAgentFlow,
     richTextComponent: richTextComponentFlow,
     weeklyDigest: weeklyDigestFlow,
+    ...seatFlows,
   },
   models: {
     default: DEFAULT_KITCHEN_SINK_MODEL,

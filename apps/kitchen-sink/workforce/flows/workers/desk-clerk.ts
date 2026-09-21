@@ -16,11 +16,32 @@
  * kind that declared only its own keys would be handed a bag it has not
  * declared and refused at the mint.
  */
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, sequencer } from "@flow-state-dev/core";
 import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
-import deskNote, { deskNoteInput } from "../../blocks/desk-note";
+import deskNote, { deskNoteInput, deskNoteOutput } from "../../blocks/desk-note";
+
+/**
+ * The `answer` action: run the desk block, then say what it answered.
+ *
+ * The emission is here rather than inside `desk-note` because only this path
+ * wants it. A handler's return value rides its own `block_trace` row, and trace
+ * items are `{ client: false, history: false }` by type — so without this the
+ * demonstration is invisible to anyone holding the HTTP route, which is the
+ * only place a reader meets it. The same block is also a tool a seat can name
+ * in its `WORKER.md`, and on that path the seat gives its own answer; emitting
+ * from the block would add a second, client- and history-visible turn there.
+ */
+const answer = sequencer({
+  name: "desk-clerk-answer",
+  inputSchema: deskNoteInput,
+  outputSchema: deskNoteOutput,
+})
+  .step(deskNote)
+  .tap((said, ctx) => {
+    ctx.emit.message(`[${said.desk} desk] ${said.answered}`);
+  });
 
 export default defineFlow({
   kind: "desk-clerk",
@@ -32,6 +53,6 @@ export default defineFlow({
     desk: z.string().default("front"),
   }),
   actions: {
-    answer: { inputSchema: deskNoteInput, block: deskNote },
+    answer: { inputSchema: deskNoteInput, block: answer },
   },
 });

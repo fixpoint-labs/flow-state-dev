@@ -7,8 +7,13 @@
  * from the `teams/` folders. Adding a kind means adding a file and re-running
  * the command — there is no second place to edit.
  *
- * Deliberately isolated: this subtree is the whole of the app's Layer 2 usage,
- * and nothing in `flows/` or `app/` reaches into it.
+ * This subtree is the whole of the app's Layer 2 usage. Nothing in `flows/` or
+ * `app/` reaches into it; the one edge out is `fsdev.config.ts`, which awaits
+ * the hire below and spreads the seats into the map it serves. That edge is
+ * what makes the demonstration real — until it existed the bundler never
+ * resolved `workforce.gen.ts`'s imports, so the claim this tree exists to
+ * prove (a generated module of static imports survives a production build)
+ * was asserted and untested (FIX-1429).
  */
 import {
   defineAgentWorkerFlow,
