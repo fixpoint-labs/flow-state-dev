@@ -28,6 +28,7 @@
  * Run: pnpm tsx goals/durable-claim-safety/two-executions-one-task/run.mts
  */
 import { mkdtempSync, rmSync } from "node:fs";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -181,6 +182,7 @@ await runGoal(async (): Promise<GoalResult> => {
   const run = async (name: string, body: (tasks: Board) => Promise<unknown>) => {
     const flow = execution(name, body);
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: flow as never,
       actionName: "run",
       input: {},

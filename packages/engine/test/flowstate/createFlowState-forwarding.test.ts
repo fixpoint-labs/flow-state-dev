@@ -49,7 +49,7 @@ afterEach(() => {
 
 describe("createFlowState — router option forwarding", () => {
   it("forwards resolvePrincipal, staleSweepIntervalMs and staleSweepThresholdMs", async () => {
-    const resolvePrincipal = vi.fn(async () => ({ userId: "system" }));
+    const resolvePrincipal = vi.fn(async () => ({ userId: "system", orgId: "org_test" }));
     const fs = createFlowState({
       flows: { noop: noopFlow },
       stores: { default: { primary: inMemoryStores() } },

@@ -21,6 +21,7 @@
  * inner child settles it.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
@@ -154,6 +155,7 @@ describe("a handed-off worker can run its own handed-off board", () => {
 
     // 1. The parent drains the OUTER board and hands its row over.
     const parent = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "start",
       input: {},
@@ -173,6 +175,7 @@ describe("a handed-off worker can run its own handed-off board", () => {
     //    the SAME dispatch seam. This is the dispatch that would have nowhere
     //    to go if the flow's `tasks` map were missing the inner entry.
     const outerChild = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: dispatched[0]!.actionName as never,
       input: dispatched[0]!.input,
@@ -190,6 +193,7 @@ describe("a handed-off worker can run its own handed-off board", () => {
     //    flow's `tasks` map has to have a route for it — which is the whole
     //    point.
     const innerChild = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: dispatched[1]!.actionName as never,
       input: dispatched[1]!.input,

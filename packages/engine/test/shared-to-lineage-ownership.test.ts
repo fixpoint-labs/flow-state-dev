@@ -31,6 +31,7 @@ import {
   handler
 } from "@flow-state-dev/core";
 import { z } from "zod";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { createExecutionContext, createFlowRegistry, createInMemoryStores } from "../src";
 import { getPersistedData } from "../src/resources/internal";
@@ -57,6 +58,7 @@ async function seedSession(
   await stores.session.set(
     id,
     {
+    orgId: DEFAULT_ORG_ID,
       id,
       flowKind: flow.kind,
       userId: "u_1",
@@ -76,6 +78,7 @@ let requestCounter = 0;
 function contextFor(stores: StoreRegistry, flow: FlowInstance, sessionId: string) {
   requestCounter += 1;
   return createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId: `req_own_${requestCounter}`,

@@ -9,6 +9,7 @@
  * absence is the point: this is the sanctioned non-HTTP path.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createInMemoryStores, runAction } from "../src";
@@ -37,6 +38,7 @@ function buildMessageFlow() {
 describe("runAction — non-HTTP affordances", () => {
   it("returns the requestId on the ExecutionResult", async () => {
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: buildMessageFlow(),
       actionName: "greet",
       input: { name: "Ada" },
@@ -52,6 +54,7 @@ describe("runAction — non-HTTP affordances", () => {
 
   it("echoes a caller-supplied requestId on the result", async () => {
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: buildMessageFlow(),
       actionName: "greet",
       input: { name: "Ada" },
@@ -67,6 +70,7 @@ describe("runAction — non-HTTP affordances", () => {
   it("delivers emitted items to onItem with valid kinds", async () => {
     const received: Array<{ type: string; kind: string }> = [];
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: buildMessageFlow(),
       actionName: "greet",
       input: { name: "Ada" },
@@ -108,6 +112,7 @@ describe("runAction — non-HTTP affordances", () => {
     const stores = createInMemoryStores();
     const received: Array<{ type: string; transient?: boolean }> = [];
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -136,6 +141,7 @@ describe("runAction — non-HTTP affordances", () => {
     // `sequence_number > cursor` and would never see a restarted sequence.
     const stores = createInMemoryStores();
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: buildMessageFlow(),
       actionName: "greet",
       input: { name: "Ada" },

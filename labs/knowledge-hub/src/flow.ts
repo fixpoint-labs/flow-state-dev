@@ -254,7 +254,7 @@ const knowledgeHubFlow = defineFlow({
     resolvePrincipal: process.env.KH_MCP_SECRET
       ? createBearerSecretPrincipalResolver({
           secret: process.env.KH_MCP_SECRET,
-          principal: { userId: "owner" }, // the single personal user the inbox binds to
+          principal: { userId: "owner", orgId: "org_test" }, // the single personal user the inbox binds to
         })
       : () => {
           throw new Error("knowledgeHub: HTTP access requires KH_MCP_SECRET");

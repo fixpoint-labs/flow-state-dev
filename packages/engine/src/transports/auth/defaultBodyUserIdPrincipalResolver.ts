@@ -29,15 +29,30 @@ function getString(value: unknown): string | undefined {
  */
 export const defaultBodyUserIdPrincipalResolver: PrincipalResolver = (
   context: PrincipalResolutionContext
-): ResolvedPrincipal | null => {
+): { userId?: string } | null => {
   const body = pickBody(context);
   const userId = getString(body?.userId);
   if (userId === undefined) {
     return null;
   }
-  const orgId = getString(body?.orgId);
-  return orgId === undefined ? { userId } : { userId, orgId };
+  // Deliberately no `orgId`. The body is caller-controlled, so it is not a
+  // source an organization may come from (BP-031, FIX-1442) — an app running
+  // on this resolver has no verified organization at all, and the host
+  // supplies `DEFAULT_ORG_ID` instead. A body that still carries the old field
+  // is reported once per host by `hasLegacyBodyOrgId` and otherwise ignored.
+  return { userId };
 };
+
+/**
+ * Whether this request's body still carries the obsolete caller-supplied
+ * `orgId` field (FIX-1442).
+ *
+ * Presence only — the host warns that a wire client is still sending it and
+ * never logs the value, which names somebody's organization.
+ */
+export function hasLegacyBodyOrgId(context: PrincipalResolutionContext): boolean {
+  return getString(pickBody(context)?.orgId) !== undefined;
+}
 
 /**
  * Brand marking the framework default resolver. Keyed via the global symbol

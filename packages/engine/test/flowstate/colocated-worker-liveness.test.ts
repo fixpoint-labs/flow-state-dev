@@ -25,6 +25,7 @@
  * removed.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, handler, requireRequestHost } from "@flow-state-dev/core";
 import {
@@ -127,6 +128,7 @@ function colocatedState(kind: string, seen: Seen): {
 /** Execute one job exactly as the colocated worker would. */
 async function runAsWorker(runtime: FlowStateRuntime, kind: string, sessionId: string) {
   await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow: runtime.registry.get(kind)!,
     actionName: "run",
     input: {},

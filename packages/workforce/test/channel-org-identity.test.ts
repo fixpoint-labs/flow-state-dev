@@ -11,24 +11,21 @@
  * across the boundary (`create-request-host`). So these drive the actual route
  * and read the session back.
  *
- * The no-org case is pinned alongside it on purpose. It is the state an app
- * that passes no org still gets, and the one this change must leave exactly as
- * it was: a channel with no org identity, which is correct for an app that has
- * no orgs.
- *
- * These drive the DEFAULT resolver, which reads the request body. An app that
- * authenticates its callers binds the session to the verified principal's org
- * instead, and a caller-supplied one is ignored there (BP-031) — engine's own
- * `management-route-auth.test.ts` pins that, and repeating it here would be
- * asserting engine's rule through this package.
+ * FIX-1442 supersedes the interim `orgId` parameter these tests were written
+ * for. `openChannels` no longer takes one, and an app cannot choose the
+ * organization its channels open under: the server binds it from the verified
+ * principal, or — as here, with no resolver configured — from `DEFAULT_ORG_ID`.
+ * So what is pinned now is that a channel is never opened WITHOUT one, on every
+ * path including the repair, because "no org identity" is the state that made
+ * a woken seat fail to read its own documents.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { CHANNEL_KIND, channelFlow, openChannels, type ChannelManifest } from "../src/index";
 
 const OWNER = "u_owner";
-const ORG = "org_acme";
 
 /** The session API `openChannels` declares, wired to the real HTTP routes. */
 function hostedClient() {
@@ -106,30 +103,38 @@ function record(id: string): ChannelManifest {
 }
 
 describe("openChannels org identity", () => {
-  it("opens the channel's session bound to the org its documents are scoped to", async () => {
-    const { client, sessionOf } = hostedClient();
-
-    await openChannels([record("engineering.standup")], { client, userId: OWNER, orgId: ORG });
-
-    // The whole point: not "the binder passed a field" but "the session the
-    // seat is later woken in carries the org", which is what an org-scoped
-    // resource lookup is matched against.
-    expect(await sessionOf("engineering.standup")).toMatchObject({
-      flowKind: CHANNEL_KIND,
-      userId: OWNER,
-      orgId: ORG
-    });
-  });
-
-  it("leaves a channel unbound to any org when the app passes none", async () => {
+  it("opens the channel's session bound to an organization the app never named", async () => {
     const { client, sessionOf } = hostedClient();
 
     await openChannels([record("engineering.standup")], { client, userId: OWNER });
 
-    expect((await sessionOf("engineering.standup")).orgId).toBeUndefined();
+    // The whole point: not "the binder passed a field" but "the session the
+    // seat is later woken in carries an org", which is what an org-scoped
+    // resource lookup is matched against. This app configures no resolver, so
+    // that org is the framework default — supplied by the server, not chosen
+    // by the caller.
+    expect(await sessionOf("engineering.standup")).toMatchObject({
+      flowKind: CHANNEL_KIND,
+      userId: OWNER,
+      orgId: DEFAULT_ORG_ID
+    });
   });
 
-  it("opens a re-adopted channel under the org too, so a repair does not drop it", async () => {
+  it("never opens a channel with no organization at all", async () => {
+    // The state this whole seam exists to prevent, and the one an app used to
+    // land in by simply not passing an `orgId`: a channel whose woken seat
+    // cannot read its own org-scoped documents. It is now unreachable rather
+    // than merely discouraged — there is no input that produces it.
+    const { client, sessionOf } = hostedClient();
+
+    await openChannels([record("engineering.standup")], { client, userId: OWNER });
+
+    const session = await sessionOf("engineering.standup");
+    expect(session.orgId).toBeDefined();
+    expect(session.orgId).not.toBe("");
+  });
+
+  it("opens a re-adopted channel under an organization too, so a repair does not drop it", async () => {
     const { client, sessionOf } = hostedClient();
 
     // What a post or read on the id before the binder ran leaves behind: this
@@ -142,8 +147,8 @@ describe("openChannels org identity", () => {
       sessionId: "engineering.standup"
     });
 
-    await openChannels([record("engineering.standup")], { client, userId: OWNER, orgId: ORG });
+    await openChannels([record("engineering.standup")], { client, userId: OWNER });
 
-    expect(await sessionOf("engineering.standup")).toMatchObject({ orgId: ORG });
+    expect(await sessionOf("engineering.standup")).toMatchObject({ orgId: DEFAULT_ORG_ID });
   });
 });

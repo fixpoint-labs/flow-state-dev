@@ -100,38 +100,6 @@ describe("declaring a board", () => {
     expect(channelBoardNamesFor("eng.feature", ids)).toEqual(["triage"]);
   });
 
-  it("refuses to open a channel holding a board when there is no org, naming it", async () => {
-    const { openChannels } = await import("../src/index");
-    const client = {
-      createSession: async () => ({ id: "x" }),
-      getSession: async () => ({ flowKind: "channel", userId: "u" }),
-      deleteSession: async () => {}
-    };
-
-    // A board is org-scoped storage. Opening without an org would leave every
-    // `fileTask` and `readBoard` on this channel failing for the life of the
-    // process, so it is refused once at startup instead.
-    await expect(
-      openChannels([record("eng.feature", { boards: ["triage"] })], {
-        client: client as never,
-        userId: "u_42"
-      })
-    ).rejects.toThrow(/eng\.feature/);
-
-    // The negative control: the same roster WITH an org opens, and a channel
-    // holding no board opens without one. Without these the refusal above
-    // could be refusing every channel.
-    await expect(
-      openChannels([record("eng.feature", { boards: ["triage"] })], {
-        client: client as never,
-        userId: "u_42",
-        orgId: "org_acme"
-      })
-    ).resolves.toBeUndefined();
-    await expect(
-      openChannels([record("eng.quiet")], { client: client as never, userId: "u_42" })
-    ).resolves.toBeUndefined();
-  });
 
   it("refuses `boards:` on a kind the framework did not build, by name", () => {
     let thrown: unknown;

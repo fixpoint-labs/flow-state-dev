@@ -10,6 +10,7 @@
  * half of the "holds across store adapters" outcome.
  */
 import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import {
   continueRequest,
@@ -132,6 +133,7 @@ describe("router branch resume across a cold restart (SQLite)", () => {
     const storesA = createSQLiteStores({ filename });
     const providerA = providerFor(storesA);
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { which: "a" },

@@ -4,6 +4,7 @@
  * `read` hook, and every write route is closed.
  */
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineExternalResourceCollection, defineFlow, handler } from "@flow-state-dev/core";
 import { parseResourceTemplate } from "@flow-state-dev/core/resource-template";
@@ -59,6 +60,7 @@ async function setupCtx(coll = buildPositions()): Promise<{
   registry.register(flow);
   const sessionId = "sess_1";
   const session: SessionRecord = {
+    orgId: DEFAULT_ORG_ID,
     id: sessionId,
     flowKind: "ext-flow",
     userId: "user_1",
@@ -287,8 +289,8 @@ describe("external collection — scope clientData handle (createScopeResources)
   });
 });
 
-describe("external collection — org read without org binding", () => {
-  it("returns 200 + null (never queries an unscoped org bucket) for a session with no org", async () => {
+describe("external collection — org read for an unattributed session", () => {
+  it("refuses the read rather than querying an unscoped org bucket", async () => {
     const read = vi.fn(async ({ key }: { key: string }) => APP_STORE[key] ?? null);
     // An org-scoped external collection...
     const orgColl = defineExternalResourceCollection({
@@ -308,6 +310,7 @@ describe("external collection — org read without org binding", () => {
     const registry = createFlowRegistry();
     registry.register(flow);
     // ...read for a session with NO orgId.
+    // ...read for a session stored before organizations were required.
     await stores.session.set(
       "sess_1",
       {
@@ -321,13 +324,20 @@ describe("external collection — org read without org binding", () => {
       },
       "any"
     );
-    const res = await handleGetCollectionItemState(
-      makeReq("http://x/sessions/sess_1/resources/portfolio/AAPL"),
-      { kind: "get_collection_item_state", sessionId: "sess_1", ref: "portfolio", topic: "AAPL" },
-      { registry, stores }
-    );
-    expect(res.status).toBe(200);
-    expect(await res.json()).toBeNull();
+
+    // This used to answer `200 null`, on the reasoning that an org-scoped read
+    // for a session with no org simply has nothing to return. The scope id it
+    // reached for was the empty string — a real bucket that EVERY unattributed
+    // session shared — so "nothing to return" held only while nobody had
+    // written there (FIX-1442). It is a refusal now, and the read hook is still
+    // never called: no query is built for a boundary nobody has established.
+    await expect(
+      handleGetCollectionItemState(
+        makeReq("http://x/sessions/sess_1/resources/portfolio/AAPL"),
+        { kind: "get_collection_item_state", sessionId: "sess_1", ref: "portfolio", topic: "AAPL" },
+        { registry, stores }
+      )
+    ).rejects.toThrow(/organization/i);
     expect(read).not.toHaveBeenCalled();
   });
 });

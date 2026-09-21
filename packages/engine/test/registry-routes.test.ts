@@ -1,4 +1,4 @@
-import { defineFlow, handler, defineResource } from "@flow-state-dev/core";
+import { defineFlow, handler, defineResource, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
@@ -220,7 +220,6 @@ describe("createFlowApiRouter", () => {
           kind: "demo",
           cardinality: "singleton",
           requireUser: true,
-          requiresOrg: false,
           actions: ["run"],
           actionSchemas: {
             run: {
@@ -527,9 +526,12 @@ describe("createFlowApiRouter", () => {
     const executeResponse = await router.POST(
       new Request("http://localhost/api/flows/isolated-state-route/sess_iso_state/actions/run", {
         method: "POST",
+        // No `orgId` in the body: it is ignored now (FIX-1442), and this app
+        // configures no resolver, so it runs under the development default.
+        // The subject here is flow-ISOLATED user/org keying, which is
+        // unchanged — only the organization's spelling moved.
         body: JSON.stringify({
           userId: "user_iso_state",
-          orgId: "proj_iso_state",
           input: { value: "Ada" }
         })
       }),
@@ -562,10 +564,10 @@ describe("createFlowApiRouter", () => {
       org: { orgLabel: { title: "Project Ada" } }
     });
     expect(await stores.user.get("user_iso_state")).toBeUndefined();
-    expect(await stores.org.get("proj_iso_state")).toBeUndefined();
+    expect(await stores.org.get(DEFAULT_ORG_ID)).toBeUndefined();
 
     const request = (await stores.request.list({ sessionId: "sess_iso_state", limit: 1 }))[0];
-    expect(request?.orgId).toBe("proj_iso_state");
+    expect(request?.orgId).toBe(DEFAULT_ORG_ID);
   });
 
   it("loads isolated user resources in resource content routes", async () => {
@@ -894,7 +896,7 @@ describe("createFlowApiRouter", () => {
   // owned by the store interface and the per-process registry no longer
   // exists. The 503-at-capacity test was removed along with the registry.
 
-  describe("requiresOrg via validateDispatch", () => {
+  describe("organization identity on the action route (FIX-1442)", () => {
     function makeOrgFlow(): FlowInstance {
       return defineFlow({
         kind: "org-flow",
@@ -903,7 +905,6 @@ describe("createFlowApiRouter", () => {
             inputSchema: z.object({ value: z.string() }),
             block: handler<{ value: string }, { ok: true }>({
               name: "org-flow-run",
-              requireOrg: true,
               execute: () => ({ ok: true })
             })
           }
@@ -911,13 +912,17 @@ describe("createFlowApiRouter", () => {
       })({ id: "org-flow" });
     }
 
-    it("returns 400 OrgRequired when orgId is missing", async () => {
+    // Replaces the old `requiresOrg` pair. That contract was opt-in: a flow
+    // declared it needed an organization, and a request without one was
+    // refused with 400 while every other flow ran unbound. Organization is
+    // unconditional now, so there is no refusal to assert on this route — the
+    // request simply runs under a known organization. What is worth pinning is
+    // WHICH one, and that a caller cannot choose it.
+    it("accepts a request with no organization in the body, under the framework default", async () => {
       const registry = createFlowRegistry();
       registry.register(makeOrgFlow());
-      const router = createFlowApiRouter({
-        registry,
-        stores: createInMemoryStores()
-      });
+      const stores = createInMemoryStores();
+      const router = createFlowApiRouter({ registry, stores });
 
       const response = await router.POST(
         new Request("http://localhost/api/flows/org-flow/actions/run", {
@@ -926,32 +931,34 @@ describe("createFlowApiRouter", () => {
         }),
         { params: { path: ["org-flow", "actions", "run"] } }
       );
-      expect(response.status).toBe(400);
-      const body = (await response.json()) as { error: string; message: string };
-      expect(body.error).toBe("OrgRequired");
-      expect(body.message).toContain("requires an org-bound session");
+
+      expect(response.status).toBe(202);
     });
 
-    it("returns 202 when orgId is present", async () => {
+    it("binds the session to the framework default, not to a body-supplied organization", async () => {
       const registry = createFlowRegistry();
       registry.register(makeOrgFlow());
-      const router = createFlowApiRouter({
-        registry,
-        stores: createInMemoryStores()
-      });
+      const stores = createInMemoryStores();
+      const router = createFlowApiRouter({ registry, stores });
 
       const response = await router.POST(
         new Request("http://localhost/api/flows/org-flow/actions/run", {
           method: "POST",
           body: JSON.stringify({
             userId: "u1",
-            orgId: "o1",
+            sessionId: "s1",
+            orgId: "attacker-org",
             input: { value: "test" }
           })
         }),
         { params: { path: ["org-flow", "actions", "run"] } }
       );
       expect(response.status).toBe(202);
+
+      await vi.waitFor(async () => {
+        expect(await stores.session.get("s1")).toBeDefined();
+      });
+      expect((await stores.session.get("s1"))?.orgId).toBe(DEFAULT_ORG_ID);
     });
   });
 
@@ -1022,6 +1029,7 @@ describe("createFlowApiRouter", () => {
       await stores.request.set(
         "req_wh",
         {
+    orgId: DEFAULT_ORG_ID,
           id: "req_wh",
           flowKind: "wh-flow",
           actionName: "wh-flow-paid",
@@ -1058,6 +1066,7 @@ describe("createFlowApiRouter", () => {
       await stores.request.set(
         "req_wh2",
         {
+    orgId: DEFAULT_ORG_ID,
           id: "req_wh2",
           flowKind: "wh-flow",
           actionName: "wh-flow-paid",
@@ -1094,6 +1103,7 @@ describe("createFlowApiRouter", () => {
       await stores.request.set(
         "req_wh3",
         {
+    orgId: DEFAULT_ORG_ID,
           id: "req_wh3",
           flowKind: "wh-flow",
           actionName: "wh-flow-paid",
@@ -1155,6 +1165,7 @@ describe("createFlowApiRouter", () => {
       await stores.request.set(
         "req_sched1",
         {
+    orgId: DEFAULT_ORG_ID,
           id: "req_sched1",
           flowKind: "sched-flow",
           actionName: "run",
@@ -1192,6 +1203,7 @@ describe("createFlowApiRouter", () => {
       await stores.request.set(
         "req_sched2",
         {
+    orgId: DEFAULT_ORG_ID,
           id: "req_sched2",
           flowKind: "sched-flow2",
           actionName: "run",

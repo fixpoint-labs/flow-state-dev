@@ -31,6 +31,7 @@
  *      produces that state for a gate-suspended request.)
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { buildItemLookup, resolveBlockValue } from "@flow-state-dev/core/items";
 import {
@@ -136,6 +137,7 @@ describe("completed background `.sideChain()` trace replays across a cold restar
     const storesA = createSQLiteStores({ filename });
     const providerA = providerFor(storesA);
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

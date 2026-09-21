@@ -77,7 +77,7 @@ function captureHost(flow: ReturnType<typeof billingFlow>) {
       list: () => [flow]
     },
     stores,
-    resolvePrincipal: async () => ({ userId: "system" }),
+    resolvePrincipal: async () => ({ userId: "system", orgId: "org_test" }),
     validateDispatch: async () => undefined,
     dispatch: (envelope: InboundRequestEnvelope) => {
       dispatched.push(envelope);
@@ -220,7 +220,7 @@ describe("handleWebhook", () => {
         list: () => [flow]
       },
       stores: createInMemoryStores(),
-      resolvePrincipal: async () => ({ userId: "system" }),
+      resolvePrincipal: async () => ({ userId: "system", orgId: "org_test" }),
       validateDispatch: async () => undefined,
       dispatch: () => ({
         requestId: "req_1",
@@ -299,7 +299,7 @@ describe("handleWebhook", () => {
           set: async () => undefined
         }
       },
-      resolvePrincipal: async () => ({ userId: "system" }),
+      resolvePrincipal: async () => ({ userId: "system", orgId: "org_test" }),
       validateDispatch: async () => undefined,
       dispatch: () => ({
         requestId: "req_1",

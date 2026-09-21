@@ -16,7 +16,7 @@ function pingFlow(kind: string, authenticated: boolean) {
       ? {
           authentication: {
             // Any non-default resolver reads as "authenticated" to the rail.
-            resolvePrincipal: () => ({ userId: "owner" }),
+            resolvePrincipal: () => ({ userId: "owner", orgId: "org_test" }),
           },
         }
       : {}),

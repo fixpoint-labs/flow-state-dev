@@ -4,6 +4,7 @@
  * directly without spinning up an HTTP server.
  */
 import { describe, expect, it, beforeEach } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   defineFlow,
@@ -127,6 +128,7 @@ async function setupCtx(opts: {
     id: sessionId,
     flowKind: "test-flow",
     userId,
+    orgId: DEFAULT_ORG_ID,
     state: {},
     createdAt: Date.now(),
     updatedAt: Date.now(),

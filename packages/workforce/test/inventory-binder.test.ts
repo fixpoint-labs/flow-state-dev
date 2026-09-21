@@ -17,6 +17,7 @@
  * is green merely because the writer read back its own objects.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
@@ -40,7 +41,7 @@ import {
 import { channelSessionStateSchema } from "../src/index";
 
 const USER_ID = "u_boot";
-const ORG_ID = "org_acme";
+const ORG_ID = DEFAULT_ORG_ID;
 const OTHER_ORG = "org_other";
 
 /** The kind a hand-rolled channel runs on when a case needs a second one. */
@@ -168,8 +169,7 @@ async function host(roster: ChannelManifest[], options: HostOptions = {}) {
 
   await openChannels(options.open ?? roster, {
     client: sessionApi(runtime.stores),
-    userId: USER_ID,
-    orgId: ORG_ID
+    userId: USER_ID
   });
 
   /**
@@ -285,7 +285,10 @@ function sessionApi(stores: any) {
           flowKind: options.flowKind,
           flowId: options.flowKind,
           userId: options.userId,
-          orgId: options.orgId,
+          // `openChannels` no longer names an org (FIX-1442). This stand-in for
+          // the session route binds what the real route binds when no resolver
+          // is configured, so the rows land where the reader looks.
+          orgId: options.orgId ?? DEFAULT_ORG_ID,
           state: options.state ?? {},
           lineageId: `lin_${id}`,
           version: 0,
@@ -461,22 +464,35 @@ describe("what the binder refuses to carry", () => {
     }
   });
 
-  it("refuses a run with no org rather than writing where nothing can read (BR-11)", async () => {
+  it("refuses a run that names no org, rather than guessing one (BR-4)", async () => {
+    // An app that authenticates has a verified org and is expected to pass it.
+    // Silently substituting the development default writes that app's whole
+    // inventory into a namespace none of its sessions read back, and the only
+    // symptom is an inventory that reads empty everywhere — which points at
+    // nothing. The refusal names the wiring mistake at boot instead.
     const roster = [record("eng.standup")];
     const lab = await host(roster, { inventory: true });
     try {
-      await expect(bind(lab, { channels: roster, orgId: undefined })).rejects.toThrow(
-        /no `orgId`/
-      );
-
-      // The red state is a binder that carried on: it would report success and
-      // leave an inventory every flow reads back empty. Both halves are checked
-      // — nothing under any org, and the same call under an org does write.
+      await expect(bind(lab, { channels: roster, orgId: undefined })).rejects.toThrow(/orgId/);
       expect(await lab.keys()).toEqual([]);
-      expect(await lab.keys(OTHER_ORG)).toEqual([]);
+    } finally {
+      await lab.dispose();
+    }
+  });
 
-      await bind(lab, { channels: roster });
-      expect((await lab.keys()).length).toBeGreaterThan(0);
+  it("accepts the development default when a caller names it deliberately (D3)", async () => {
+    // The refusal above is about an ABSENT org, not about this value. A
+    // development app with no resolver binds its sessions to the framework
+    // default, and naming it here is how its inventory lands where those
+    // sessions read it — so the explicit choice goes through, and still lands
+    // in exactly one organization.
+    const roster = [record("eng.standup")];
+    const lab = await host(roster, { inventory: true });
+    try {
+      await bind(lab, { channels: roster, orgId: DEFAULT_ORG_ID });
+
+      expect((await lab.keys(DEFAULT_ORG_ID)).length).toBeGreaterThan(0);
+      expect(await lab.keys(OTHER_ORG)).toEqual([]);
     } finally {
       await lab.dispose();
     }

@@ -36,7 +36,7 @@ function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
  * a configuration the author had every reason to think was supported
  * (FIX-1074).
  *
- * Only the dispatch walk needs the tool edge. Resources and `requiresOrg` are
+ * Only the dispatch walk needs the tool edge. Resources are
  * collected off the action roots, and a handed-off board's ledger reaches the
  * flow through the task entry its seat addresses — an action root of its own —
  * so a board reached only as a tool still lands its declarations.

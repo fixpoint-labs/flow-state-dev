@@ -134,10 +134,9 @@ const referenceWithoutFileMessage = (ref: string): string =>
  * `resources/` document lands in, which is what makes a basename claimed by
  * both refusable rather than silently resolved.
  *
- * **The installing flow has to require an org**, the same way and for the same
- * reason `resourcesFromDocs`'s does: every entry here is org-scoped, and a flow
- * that declares no `requireOrg` builds no org resource registry, so every
- * reference resolves as unregistered.
+ * Every entry here is org-scoped, the same as `resourcesFromDocs`'s. Nothing
+ * needs declaring for that: organization identity is unconditional, so the org
+ * resource registry is always built (FIX-1442).
  *
  * Throws rather than collecting, matching the mutable install half: a reference
  * that cannot become a resource is startup misconfiguration.

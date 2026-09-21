@@ -42,7 +42,6 @@ import {
   SEAT_SKILLS_KEY,
   SEAT_TOOLS_KEY,
   TEAM_INSTRUCTIONS_KEY,
-  colocatedRequiresOrgMessage,
   colocatedResourceMessage,
   oneNameMessage,
   type WorkerManifest
@@ -346,12 +345,6 @@ function seatBlockProblems(registry: Record<string, BlockDefinition<any, any>>):
     const declared = (block as { declaredResources?: Record<string, unknown> }).declaredResources;
     const accessors = declared === undefined ? [] : Object.keys(declared);
     if (accessors.length > 0) problems.push(colocatedResourceMessage(key, accessors));
-    // The second axis. `requiresOrg` is aggregated onto a composite block from
-    // its children, so this catches a sequencer whose leaf asked for it as well
-    // as a handler that asked directly.
-    if ((block as { requiresOrg?: boolean }).requiresOrg === true) {
-      problems.push(colocatedRequiresOrgMessage(key));
-    }
   }
   return problems;
 }

@@ -43,13 +43,10 @@ const DERIVED_KEYS = new Set<string>(DERIVED_RESOURCE_KEYS);
  * The accessor key is the ref, so a team's handbook reaches a block as
  * `ctx.resources["teams/engineering/handbook"]`.
  *
- * **The installing flow has to require an org.** Every document here is
- * org-scoped, and `defineFlow` collects `requiresOrg` from its blocks, not from
- * its resource map — so a flow that installs documents and declares nothing
- * accepts a user-only request, builds no org resource registry, and every
- * document resolves as unregistered. Declare `requireOrg: true` on the blocks
- * that read one. Nothing here can enforce that: this function is pure and runs
- * at definition time, long before a principal exists.
+ * Every document here is org-scoped. Nothing needs declaring for that to work:
+ * organization identity is unconditional, so every admitted request carries one
+ * and the org resource registry is always built (FIX-1442). The `requireOrg`
+ * declaration this used to depend on no longer exists.
  *
  * Throws, rather than collecting, when a record cannot become a resource — a
  * declaration the convention derives, or frontmatter `defineResource` itself

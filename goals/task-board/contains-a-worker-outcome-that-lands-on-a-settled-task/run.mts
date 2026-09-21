@@ -16,6 +16,7 @@
  * Run: pnpm tsx goals/task-board/contains-a-worker-outcome-that-lands-on-a-settled-task/run.mts
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { runAction } from "@flow-state-dev/engine";
 import {
@@ -107,6 +108,7 @@ await runGoal(async () => {
   const { stores, runtimeConfig } = durableStores();
 
   const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow: flow as never,
     actionName: "run",
     input: {},

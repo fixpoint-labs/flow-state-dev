@@ -27,6 +27,7 @@ import {
   handler
 } from "@flow-state-dev/core";
 import { z } from "zod";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import {
   createExecutionContext,
@@ -102,6 +103,7 @@ async function seedSession(
 ): Promise<void> {
   const ts = 1_700_000_000_000;
   const record: SessionRecord = {
+    orgId: DEFAULT_ORG_ID,
     id,
     flowKind: flow.kind,
     userId: "u_1",
@@ -121,6 +123,7 @@ let requestCounter = 0;
 function contextFor(stores: StoreRegistry, sessionId: string) {
   requestCounter += 1;
   return createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId: `req_${requestCounter}`,
@@ -392,6 +395,7 @@ describe("FIX-1068: sharedToLineage resources across a session lineage", () => {
 
     await expect(
       createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow: conflicting,
         actionName: "run",
         requestId: "req_conflict",

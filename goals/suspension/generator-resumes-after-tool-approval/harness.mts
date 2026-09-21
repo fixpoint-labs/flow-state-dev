@@ -15,6 +15,7 @@
  * apps/kitchen-sink. See goals/README.md → "Harnesses".
  */
 import { createGateway } from "@ai-sdk/gateway";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createModelResolver, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import {
   continueRequest,
@@ -151,6 +152,7 @@ async function main(): Promise<void> {
 
   // 1. dispatch — the real model should call publish_document, which suspends.
   const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow: flow as never,
     actionName: "run",
     input: { message: `Please publish the document titled "${TITLE}".` },

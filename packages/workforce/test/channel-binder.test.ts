@@ -290,25 +290,17 @@ describe("openChannels", () => {
     });
   });
 
-  it("hands the org on to createSession, so the channel is opened under it", async () => {
+  it("sends no org key at all — the organization is the server's to decide", async () => {
+    // The binder used to take an `orgId` and hand it to `createSession`, which
+    // is browser-side organization selection wearing a server-side coat: the
+    // value came from whoever called `openChannels`. FIX-1442 removes it. What
+    // the channel is opened under is now decided where every other identity
+    // is — at principal resolution — and `channel-org-identity.test.ts` drives
+    // the real route to show the session still comes out bound to one.
     const { client, created } = sessionClient();
 
-    await openChannels([record("engineering.standup")], {
-      client,
-      userId: OWNER,
-      orgId: "org_acme"
-    });
-
-    // Not decoration: a file-declared document installs at `scope: "org"`, and
-    // a seat woken in a channel session that carries no org resolves every one
-    // of them as unregistered. `channel-org-identity.test.ts` drives the same
-    // thing through the real route.
-    expect(created[0]).toMatchObject({ orgId: "org_acme" });
-  });
-
-  it("sends no org key at all for an app that has none", async () => {
-    const { client, created } = sessionClient();
     await openChannels([record("engineering.standup")], { client, userId: OWNER });
+
     expect(created[0]).not.toHaveProperty("orgId");
   });
 
@@ -405,29 +397,7 @@ describe("openChannels", () => {
    * believing it had fixed the thing it just upgraded to fix, to find out at
    * its first post when the delivery is refused for crossing an org boundary.
    */
-  it("refuses a channel that is already open under no org when this run asks for one", async () => {
-    const { client, deleted } = sessionClient();
-    const roster = [record("engineering.standup", { members: ["a"] })];
 
-    await openChannels(roster, { client, userId: OWNER });
-
-    await expect(
-      openChannels(roster, { client, userId: OWNER, orgId: "org_acme" })
-    ).rejects.toThrow(/already open there under no org, but this run asked for org "org_acme"/);
-    expect(deleted).toEqual([]);
-  });
-
-  it("refuses a channel already open under a different org", async () => {
-    const { client, deleted } = sessionClient();
-    const roster = [record("engineering.standup", { members: ["a"] })];
-
-    await openChannels(roster, { client, userId: OWNER, orgId: "org_acme" });
-
-    await expect(
-      openChannels(roster, { client, userId: OWNER, orgId: "org_other" })
-    ).rejects.toThrow(/under org "org_acme", but this run asked for org "org_other"/);
-    expect(deleted).toEqual([]);
-  });
 
   it("stays a no-op when the open channel is already in the org asked for", async () => {
     const { client, created, deleted } = sessionClient();

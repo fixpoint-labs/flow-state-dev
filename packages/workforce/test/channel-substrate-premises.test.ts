@@ -14,6 +14,7 @@
  *    cannot name a shared channel, and so why posting addresses `{ id }`.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
@@ -89,6 +90,7 @@ describe("substrate premises the channel floor rests on", () => {
       // rather than an execution result: the request never becomes a run.
       await expect(
         runAction({
+    orgId: DEFAULT_ORG_ID,
           flow: channel,
           actionName: "post",
           input: { body: "not my channel" },
@@ -112,6 +114,7 @@ describe("substrate premises the channel floor rests on", () => {
       await bind(runtime.stores, "engineering.standup");
 
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: poster,
         actionName: "say",
         input: { channelId: "engineering.standup", body: "lost" },

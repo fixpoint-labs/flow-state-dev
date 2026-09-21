@@ -211,7 +211,12 @@ describe("createScheduledTransportAdapter — dispatch", () => {
 
     const envelope = host.dispatchCalls[0]?.envelope;
     expect(envelope?.action).toBe("noop");
-    expect(envelope?.principal).toEqual({ userId: "u_1" });
+    // A hand-written `schedules.resolve` that names only the target user
+    // inherits the gateway's organization, like a static schedule's declared
+    // principal. BR-19's stored-binding requirement is enforced in the
+    // RESOURCE-BACKED resolver, where the principal comes from data rather
+    // than from the flow definition — see resource-collection-resolver.test.ts.
+    expect(envelope?.principal).toEqual({ userId: "u_1", orgId: "org_test" });
     expect(schedMeta(envelope).origin).toBe("dynamic");
   });
 
@@ -424,7 +429,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     const host = withFlow(
       withActiveRegistry(
         createMockTransportHost({
-          resolvePrincipal: () => ({ userId: "system" })
+          resolvePrincipal: () => ({ userId: "system", orgId: "org_sys" })
         }),
         makeStubActiveRegistry()
       ),
@@ -434,14 +439,14 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     const { request, ctx } = postRequest("reminders", "for-u-7");
     const response = await route.handler(request, ctx);
     expect(response.status).toBe(202);
-    expect(host.dispatchCalls[0]?.envelope.principal).toEqual({ userId: "u_7" });
+    expect(host.dispatchCalls[0]?.envelope.principal).toEqual({ userId: "u_7", orgId: "org_sys" });
   });
 
   it("static schedule with no principal falls back to the gateway principal", async () => {
     const adapter = createScheduledTransportAdapter();
     const host = withFlow(
       withActiveRegistry(
-        createMockTransportHost({ resolvePrincipal: () => ({ userId: "system" }) }),
+        createMockTransportHost({ resolvePrincipal: () => ({ userId: "system", orgId: "org_sys" }) }),
         makeStubActiveRegistry()
       ),
       buildFlow()
@@ -450,7 +455,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     const { request, ctx } = postRequest("billing", "monthly-invoices");
     const response = await route.handler(request, ctx);
     expect(response.status).toBe(202);
-    expect(host.dispatchCalls[0]?.envelope.principal).toEqual({ userId: "system" });
+    expect(host.dispatchCalls[0]?.envelope.principal).toEqual({ userId: "system", orgId: "org_sys" });
   });
 
   it("disabled static schedule responds 404", async () => {

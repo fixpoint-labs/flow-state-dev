@@ -137,7 +137,7 @@ resolve: async (scheduleId, ctx) => {
     cron: row.cron,
     block,
     input: row.input,
-    principal: { userId: row.userId }
+    principal: { userId: row.userId, orgId: row.orgId }
   };
 }
 ```
@@ -180,6 +180,32 @@ The runtime uses `schedule.principal ?? gatewayPrincipal`. So a
 dynamic resolver that returns `{ principal: { userId: "u_abc" } }`
 runs the action as `u_abc`, even though the dispatch was authenticated
 as the system scheduler.
+
+### The organization a schedule fires into
+
+A principal names a user and an organization, and the two fall back
+separately.
+
+A **static** schedule may name a target user and leave the organization to
+the gateway. Its principal is written in your flow definition, so it is your
+own trusted config rather than stored data.
+
+A **dynamic** schedule fires into the organization it was created under. That
+value lives on the stored row, so read it off the row instead of letting it
+fall back:
+
+```ts
+principal: { userId: row.userId, orgId: row.orgId }
+```
+
+Omit it and the action lands in whichever organization fired the beat, which
+is rarely the one the schedule belongs to.
+
+`createResourceCollectionScheduleResolver` reads it for you and refuses to go
+without it. A stored schedule with no organization makes it return `null`, so
+the dispatch 404s and the schedule stays put until an operator attributes it.
+See [Which organization a record belongs to](/docs/persistence/overview#which-organization-a-record-belongs-to)
+for the attribution recipe.
 
 ## The dispatch endpoint
 

@@ -78,12 +78,12 @@ export type SeatFacts = z.infer<typeof seatFactsSchema>;
 /**
  * Read what this seat can see of itself.
  *
- * **`requireOrg: true` is the whole of BR-17.** Every file-declared document is
- * org-scoped (`resourcesFromDocs` sets `scope: "org"`), and `defineFlow`
- * collects `requiresOrg` from its *blocks*, never from its resource map — so a
- * kind that installs documents and declares nothing accepts an org-less
- * request, builds no org resource registry, and resolves every document as
- * unregistered. That failure reads as "the document was empty", which is
+ * **The org-less read being refused is the whole of BR-17.** Every
+ * file-declared document is org-scoped (`resourcesFromDocs` sets
+ * `scope: "org"`), and organization identity is unconditional — nothing
+ * declares it and nothing can opt out — so an org-less request is refused
+ * before it runs rather than running and resolving every document as
+ * unregistered. That older failure read as "the document was empty", which is
  * exactly the silent pass this lab exists to refuse.
  *
  * It is a DIRECT read: it writes nothing anywhere, which is what lets the
@@ -91,7 +91,6 @@ export type SeatFacts = z.infer<typeof seatFactsSchema>;
  */
 export const readOwnFacts = handler({
   name: "devforce-seat-facts",
-  requireOrg: true,
   inputSchema: z.object({}).optional(),
   outputSchema: seatFactsSchema,
   execute: async (_input: unknown, ctx: BlockContext): Promise<SeatFacts> => {

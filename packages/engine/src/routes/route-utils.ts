@@ -1,6 +1,7 @@
 /**
  * Shared utilities for route handlers: response builders, parsing, and validation helpers.
  */
+import { isOrgAttributed, UnattributedOrgError, type OrgAttributedRecord } from "../context/org-attribution";
 import type {
   ExternalResourceCollectionConfig,
   ExternalResourceContext,
@@ -696,21 +697,36 @@ export function resolveOwnerFlow(
 }
 
 /**
- * The `409 migration-required` for a record whose legacy history this
- * process cannot attribute to one instance, or `undefined` for any record
- * it can read. For a route that needs nothing from the record's flow — a
- * plain session read, edit, delete or request listing — this is the one
- * owner check it owes: an unattributed row is refused everywhere, not only
- * where a flow's declarations are read, so an operator meets the same stop
- * condition on every door (and, in an app where some flow authenticates, no
- * such row is served under a resolver that never governed it).
+ * The `409 migration-required` for a record this process cannot attribute, or
+ * `undefined` for any record it can read.
+ *
+ * Two axes, one answer. A record is unattributed when its legacy history names
+ * no single flow instance, OR — since FIX-1442 — when it names no organization.
+ * Both are the same situation from an operator's seat: data that predates a
+ * requirement, which the runtime preserves and refuses to serve rather than
+ * guess about, and which one offline migration pass fixes. Giving them one
+ * refusal is what makes "run the recipe until nothing 409s" a complete
+ * instruction.
+ *
+ * For a route that needs nothing from the record's flow — a plain session read,
+ * edit, delete or request listing — this is the one attribution check it owes:
+ * an unattributed row is refused at every door, not only where a flow's
+ * declarations are read (and, in an app where some flow authenticates, no such
+ * row is served under a resolver that never governed it).
  */
 export function refuseUnattributedRecord(
   registry: Pick<FlowRegistry, "get" | "list">,
-  record: OwnedRecord
+  record: OwnedRecord & OrgAttributedRecord
 ): Response | undefined {
   const owner = resolveRecordOwner(registry, record);
-  return !owner.ok && owner.reason === "migration-required"
-    ? jsonResponse(409, { error: "migration-required", message: owner.detail })
-    : undefined;
+  if (!owner.ok && owner.reason === "migration-required") {
+    return jsonResponse(409, { error: "migration-required", message: owner.detail });
+  }
+  if (!isOrgAttributed(record)) {
+    return jsonResponse(409, {
+      error: "migration-required",
+      message: new UnattributedOrgError("this route").message
+    });
+  }
+  return undefined;
 }

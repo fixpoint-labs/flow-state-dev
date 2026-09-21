@@ -5,6 +5,7 @@
  * completion lifecycle for durable actions.
  */
 import { buildReplayLog, collapseToCanonicalLog, defineFlow, handler, parseBlockInstanceId, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
@@ -55,6 +56,7 @@ describe("ctx.suspend() — initial suspension", () => {
     const { stores, provider } = createDurableStores();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "transfer",
       input: { amount: 1000 },
@@ -106,6 +108,7 @@ describe("ctx.suspend() — initial suspension", () => {
     const { stores, provider } = createDurableStores();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: {},
@@ -143,6 +146,7 @@ describe("ctx.suspend() — initial suspension", () => {
     const { stores, provider } = createDurableStores();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: {},
@@ -214,6 +218,7 @@ describe("resume after suspension", () => {
 
     // Phase 1: initial run → suspends
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "transfer",
       input: { amount: 500 },
@@ -244,6 +249,7 @@ describe("resume after suspension", () => {
 
     // Phase 2: resume run → completes
     const resumed = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "transfer",
       input: { amount: 500 },
@@ -291,6 +297,7 @@ describe("resume after suspension", () => {
 
     // Phase 1: suspend
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: {},
@@ -310,6 +317,7 @@ describe("resume after suspension", () => {
 
     // Phase 2: resume with rejection
     const resumed = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: {},
@@ -357,6 +365,7 @@ describe("suspension without durability provider", () => {
     const stores = createInMemoryStores();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: {},
@@ -444,6 +453,7 @@ describe("same-request continuation (FIX-811)", () => {
     const { stores, provider } = createDurableStores();
 
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "transfer",
       input: { amount: 500 },
@@ -530,6 +540,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: {},
@@ -602,6 +613,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: 21 },
@@ -660,6 +672,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -723,6 +736,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -793,6 +807,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -850,6 +865,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -910,6 +926,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: { request: "deploy" },
@@ -961,6 +978,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: { request: "deploy" },
@@ -1022,6 +1040,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1089,6 +1108,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1169,6 +1189,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1206,6 +1227,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: {},
@@ -1261,6 +1283,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: {},
@@ -1283,6 +1306,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     await expect(
       runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "ask",
         input: {},
@@ -1327,6 +1351,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1356,6 +1381,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     await expect(
       runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: {},
@@ -1400,6 +1426,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1476,6 +1503,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1488,6 +1516,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     // Legacy resume: bare resumeContext, new request id (no replayMode).
     const resumed = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1539,6 +1568,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "transfer",
       input: { amount: 500 },
@@ -1587,6 +1617,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: {},
@@ -1640,6 +1671,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
       input: {},

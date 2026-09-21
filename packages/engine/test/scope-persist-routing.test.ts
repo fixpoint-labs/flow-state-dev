@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createScopeStateOps,
   createStateContainer,
@@ -34,6 +35,7 @@ function makeRecord(
 ): SessionRecord {
   const ts = Date.now();
   return {
+    orgId: DEFAULT_ORG_ID,
     id: "s1",
     flowKind: "f",
     userId: "u",

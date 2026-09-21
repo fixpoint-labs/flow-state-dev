@@ -33,13 +33,21 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
   return {
     async upsert(row: ScheduleIndexRow): Promise<void> {
       await executor.query(
-        `INSERT INTO schedule_index (user_id, key, cron, timezone, next_fire_at)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO schedule_index (user_id, key, org_id, cron, timezone, next_fire_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (user_id, key) DO UPDATE SET
+           org_id = EXCLUDED.org_id,
            cron = EXCLUDED.cron,
            timezone = EXCLUDED.timezone,
            next_fire_at = EXCLUDED.next_fire_at`,
-        [row.userId, row.key, row.cron, row.timezone ?? null, row.nextFireAt]
+        [
+          row.userId,
+          row.key,
+          row.orgId ?? null,
+          row.cron,
+          row.timezone ?? null,
+          row.nextFireAt
+        ]
       );
     },
 
@@ -54,7 +62,7 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
       const tx = await executor.beginTx!();
       try {
         const sel = await tx.query(
-          `SELECT user_id, key, cron, timezone, next_fire_at
+          `SELECT user_id, key, org_id, cron, timezone, next_fire_at
              FROM schedule_index
             WHERE next_fire_at <= $1
             ORDER BY next_fire_at
@@ -70,6 +78,9 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
           const userId = row.user_id as string;
           const key = row.key as string;
           const cron = row.cron as string;
+          // A row written before schedules carried one reads back NULL, which
+          // the resolver quarantines rather than dispatching (BP-030).
+          const orgId = (row.org_id as string | null) ?? undefined;
           const timezone = (row.timezone as string | null) ?? undefined;
           const fired = Number(row.next_fire_at);
 
@@ -79,7 +90,7 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
             continue;
           }
 
-          claimed.push({ userId, key, cron, timezone, nextFireAt: fired });
+          claimed.push({ userId, orgId, key, cron, timezone, nextFireAt: fired });
           advances.push({ userId, key, next });
         }
 

@@ -17,6 +17,7 @@
  * pass the `"fail"` case and break the default, which is the more common one.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
@@ -86,6 +87,7 @@ async function handOffAndRunChild(kind: string, onError: "skip" | "fail") {
   const dispatched: RecordedDispatch[] = [];
 
   const parent = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "start",
     input: {},
@@ -114,6 +116,7 @@ async function handOffAndRunChild(kind: string, onError: "skip" | "fail") {
   expect(dispatched).toHaveLength(1);
 
   const child = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: dispatched[0]!.actionName as never,
     input: dispatched[0]!.input,

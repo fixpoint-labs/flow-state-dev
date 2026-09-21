@@ -123,7 +123,7 @@ const weeklyDigestFlow = defineFlow({
       if (ctx.source === "scheduled") {
         const resolver = createBearerSecretPrincipalResolver({
           secret: process.env.CRON_SECRET ?? "",
-          principal: { userId: "system" },
+          principal: { userId: "system", orgId: "org_test" },
         });
         return resolver(ctx);
       }

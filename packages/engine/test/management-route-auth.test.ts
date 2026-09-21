@@ -25,7 +25,7 @@
  * exposure.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowApiRouter,
@@ -58,7 +58,7 @@ function secureFlow(kind = "secure") {
         const user = context.request?.headers.get("x-verified-user");
         if (user === null || user === undefined) return null;
         const org = context.request?.headers.get("x-verified-org") ?? undefined;
-        return org === undefined ? { userId: user } : { userId: user, orgId: org };
+        return org === undefined ? { userId: user, orgId: "org_test" } : { userId: user, orgId: org };
       }
     }
   });
@@ -103,7 +103,7 @@ function buildRouterWithHostResolver(flows: ReturnType<typeof secureFlow>[]) {
     stores,
     resolvePrincipal: (context) => {
       const user = context.request?.headers.get("x-verified-user");
-      return user === null || user === undefined ? null : { userId: user };
+      return user === null || user === undefined ? null : { userId: user, orgId: "org_test" };
     }
   });
   return { router, stores };
@@ -111,13 +111,14 @@ function buildRouterWithHostResolver(flows: ReturnType<typeof secureFlow>[]) {
 
 async function seedSession(
   stores: StoreRegistry,
-  init: { id: string; flowKind: string; userId: string }
+  init: { id: string; flowKind: string; userId: string; orgId?: string }
 ): Promise<void> {
   const now = Date.now();
   const record: SessionRecord = {
     id: init.id,
     flowKind: init.flowKind,
     userId: init.userId,
+    orgId: init.orgId ?? "org_test",
     state: {},
     version: 0,
     createdAt: now,
@@ -133,6 +134,7 @@ async function seedRequest(
     id: string;
     flowKind: string;
     userId: string;
+    orgId?: string;
     status?: RequestRecord["status"];
   }
 ): Promise<void> {
@@ -142,6 +144,7 @@ async function seedRequest(
     flowKind: init.flowKind,
     actionName: "run",
     userId: init.userId,
+    orgId: init.orgId ?? "org_test",
     source: "http",
     status: init.status ?? "in_progress",
     startedAtMs: now,
@@ -294,7 +297,7 @@ describe("listings scoped to the caller", () => {
     // too, which is a working feature of that app.
     const { router, stores } = buildRouter([secureFlow(), openFlow()]);
     await seedSession(stores, { id: "s-secure", flowKind: "secure", userId: "alice" });
-    await seedSession(stores, { id: "s-open", flowKind: "open", userId: "alice" });
+    await seedSession(stores, { id: "s-open", flowKind: "open", userId: "alice", orgId: DEFAULT_ORG_ID });
 
     const res = await call(router, "GET", ["sessions"]);
     const body = (await res.json()) as { sessions: { id: string }[] };
@@ -309,7 +312,7 @@ describe("listings scoped to the caller", () => {
     // browser-facing flow stays open. One such flow must not take the session
     // list away from the whole app.
     const { router, stores } = buildRouter([openFlow("chat"), secureFlow("digest")]);
-    await seedSession(stores, { id: "s-chat", flowKind: "chat", userId: "alice" });
+    await seedSession(stores, { id: "s-chat", flowKind: "chat", userId: "alice", orgId: DEFAULT_ORG_ID });
 
     const res = await call(router, "GET", ["sessions"]);
     const body = (await res.json()) as { sessions: { id: string }[] };
@@ -404,6 +407,7 @@ describe("request-addressed routes", () => {
     const now = Date.now();
     await stores.activeRequests.register({
       requestId: "r-inflight",
+      orgId: "org_test",
       flowKind: "secure",
       actionName: "run",
       userId: "alice",
@@ -471,6 +475,7 @@ describe("request-addressed routes", () => {
     ]) {
       await stores.activeRequests.register({
         requestId,
+        orgId: "org_test",
         flowKind: "secure",
         actionName: "run",
         userId,
@@ -502,6 +507,7 @@ describe("user-addressed routes", () => {
       flowKind: init.flowKind,
       actionName: "run",
       userId: init.userId,
+      orgId: init.orgId ?? "org_test",
       source: "http",
       startedAt: now,
       lastHeartbeatAt: now
@@ -633,7 +639,7 @@ describe("apps on the framework default resolver", () => {
     // into the `open` flow is governed by that flow's (absent) resolver, so it
     // behaves as its author configured it.
     const { router, stores } = buildRouter([secureFlow(), openFlow()]);
-    await seedSession(stores, { id: "s-open", flowKind: "open", userId: "alice" });
+    await seedSession(stores, { id: "s-open", flowKind: "open", userId: "alice", orgId: DEFAULT_ORG_ID });
 
     const res = await call(router, "GET", ["sessions", "s-open"]);
 

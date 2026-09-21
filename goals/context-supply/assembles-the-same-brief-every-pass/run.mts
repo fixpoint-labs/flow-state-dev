@@ -20,6 +20,7 @@
  * Run: pnpm tsx goals/context-supply/assembles-the-same-brief-every-pass/run.mts
  */
 import { defineFlow, generator } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { goalSessionId, loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
@@ -166,6 +167,7 @@ async function assemble(
   })();
 
   const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "review" as never,
     input: {},

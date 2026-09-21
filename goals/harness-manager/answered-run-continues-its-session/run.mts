@@ -42,6 +42,7 @@
  * Run: pnpm tsx goals/harness-manager/answered-run-continues-its-session/run.mts
  */
 import { randomBytes } from "node:crypto";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
@@ -279,6 +280,7 @@ await runGoal(async () => {
 
     const call = async <T,>(action: string, input: unknown): Promise<T> => {
       const result = (await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: built.flow as never,
         actionName: action as never,
         input: input as never,

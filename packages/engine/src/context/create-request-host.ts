@@ -91,7 +91,13 @@ export type RequestHostInputs = {
   identity: {
     userId: string;
     tenantId: string | undefined;
-    orgId: string | undefined;
+    /**
+     * The organization the running request was admitted under. Required
+     * (FIX-1442) — everything this request spawns inherits it verbatim, and a
+     * running request that could not name one would have been refused at
+     * admission.
+     */
+    orgId: string;
     /** The running request's session — the parent of anything it spawns. */
     sessionId: string;
     /**
@@ -155,7 +161,13 @@ type ResolvedSession =
   | {
       ok: true;
       sessionId: string;
-      orgId: string | undefined;
+      /**
+       * Always the running request's own organization. For a delivery into an
+       * existing session it is the stored one, which the guard above has
+       * already proved equal — never borrowed from the recipient to repair a
+       * sender that lacked one (BR-11).
+       */
+      orgId: string;
       adopted: boolean;
       delivery: "child" | "existing";
       recipientLineageId?: string;
@@ -479,7 +491,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // session was validated against — see `DispatchOperation`.
       userId: identity.userId,
       ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
-      ...(session.orgId !== undefined ? { orgId: session.orgId } : {}),
+      orgId: session.orgId,
       // Server-assembled provenance for the request record: the address, the
       // sending block and session, the key (when a child was derived), the
       // recipient's approved lineage (when an existing session was addressed), and

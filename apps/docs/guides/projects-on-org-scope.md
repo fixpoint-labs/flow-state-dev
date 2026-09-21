@@ -90,24 +90,32 @@ await ctx.org!.resources.artifacts.set(`${activeProjectId}/note-${id}`, {
 });
 ```
 
-## Why org-bind every session
+## Which organization a session runs in
 
-Apps using this pattern usually want every session to be org-bound. Two ways to ensure that:
+The value comes from your app's configuration, never from the caller.
 
-1. **Single-org apps.** Set `orgId = userId` (or any derived stable value) at session creation. The framework doesn't help or hinder — `orgId` is an opaque, app-owned identifier just like `userId`.
-2. **Multi-org apps.** Resolve `orgId` from your app's auth or routing context and pass it on session create. To enforce that a flow rejects unbound sessions, set `requireOrg: true` on the action's root block; the HTTP route returns 400 `OrgRequired` if a request hits an unbound session.
+**Single-organization apps.** Configure no `resolvePrincipal` and everything runs under `DEFAULT_ORG_ID`, a reserved id exported from `@flow-state-dev/core`. That is a development identity, not a security boundary, so an app with real customers configures a resolver.
+
+**Multi-organization apps.** Resolve the organization from your own auth or routing context and return it from `resolvePrincipal`:
 
 ```ts
-const block = handler({
-  name: "project-action",
-  requireOrg: true,
-  execute: async (input, ctx) => {
-    // ctx.org is guaranteed to be defined here.
-    const activeProjectId = ctx.session.state.activeProjectId;
-    /* ... */
+import { defineFlow } from "@flow-state-dev/core";
+
+const flow = defineFlow({
+  kind: "project-app",
+  authentication: {
+    resolvePrincipal: async (ctx) => {
+      const session = await readSession(ctx.request!);
+      return { userId: session.userId, orgId: session.tenantId };
+    },
   },
+  /* session, org, actions as above */
 });
 ```
+
+An `orgId` posted in the request body, query or metadata is ignored, so a caller cannot name someone else's organization. A resolver that returns no organization, a blank one, or `DEFAULT_ORG_ID` is refused with `401`.
+
+Organization ids are opaque nonempty strings, app-owned like `userId`. [Authentication](/docs/server/authentication#every-request-runs-in-an-organization) covers the resolver in full.
 
 ## Switching projects mid-conversation
 

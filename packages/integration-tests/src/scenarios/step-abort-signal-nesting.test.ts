@@ -16,6 +16,7 @@
  * one-level case apart from the propagating one.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { runAction, createInMemoryStores } from "@flow-state-dev/engine";
@@ -62,6 +63,7 @@ function runWith(root: ReturnType<typeof sequencer>) {
   })({ id: "test" });
 
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     userId: "u",

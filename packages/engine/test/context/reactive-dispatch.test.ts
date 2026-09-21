@@ -7,6 +7,7 @@
  * the bound mutation fires, with the {@link ResourceChange} payload.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   defineFlow,
@@ -63,6 +64,7 @@ async function createCtx(
   })();
 
   const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId: "req_1",
@@ -341,6 +343,7 @@ describe("reactive dispatch: reactive-only (no emitter)", () => {
       actions: { run: { inputSchema: z.string(), block } },
     })();
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_1",

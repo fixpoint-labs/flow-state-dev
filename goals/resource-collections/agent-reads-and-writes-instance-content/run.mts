@@ -21,6 +21,7 @@ import {
   writeResourceContentTool,
 } from "@flow-state-dev/core";
 import { z } from "zod";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createInMemoryStores,
   createModelResolver,
@@ -115,6 +116,7 @@ await runGoal(async () => {
   const responseEmitter = createResponseEmitter({ requestId: "goal_req_1", onEvent: () => {} });
 
   const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     input: { message: "Please confirm the note." },

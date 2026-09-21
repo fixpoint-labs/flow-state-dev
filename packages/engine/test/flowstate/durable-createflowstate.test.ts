@@ -5,6 +5,7 @@
  * approval gate.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createFlowState, inMemoryStores, runAction } from "../../src";
@@ -48,6 +49,7 @@ describe("createFlowState durable: true — end to end", () => {
 
     // Phase 1: first run suspends at the approval gate.
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: approvalFlow as FlowInstance,
       actionName: "go",
       input: { request: "deploy" },
@@ -85,6 +87,7 @@ describe("createFlowState durable: true — end to end", () => {
 
     // Phase 2: resume run completes with the approved branch.
     const resumed = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: approvalFlow as FlowInstance,
       actionName: "go",
       input: { request: "deploy" },

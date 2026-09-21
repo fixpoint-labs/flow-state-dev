@@ -168,7 +168,7 @@ const knowledgeFlow = defineFlow({
     resolvePrincipal: process.env.KB_MCP_SECRET
       ? createBearerSecretPrincipalResolver({
           secret: process.env.KB_MCP_SECRET,
-          principal: { userId: "owner" }, // the single personal user the corpus binds to
+          principal: { userId: "owner", orgId: "org_test" }, // the single personal user the corpus binds to
         })
       : undefined,
   },

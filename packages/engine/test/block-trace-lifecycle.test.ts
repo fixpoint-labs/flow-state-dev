@@ -16,6 +16,7 @@
  * own emission logic.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
@@ -85,6 +86,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf1", now: () => Date.now() });
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { x: 1 },
@@ -168,6 +170,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf2", now: () => Date.now() });
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -218,6 +221,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf3", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -267,6 +271,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf4", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -302,6 +307,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf3", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { x: 1 },
@@ -331,6 +337,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf4", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { x: 2 },
@@ -380,6 +387,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf5", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { x: 7 },
@@ -430,6 +438,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf6", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 5,
@@ -492,6 +501,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf7", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { x: 3 },
@@ -530,6 +540,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf8", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_lf8",
@@ -574,6 +585,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf9", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_lf9",
@@ -627,6 +639,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_lf10", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_lf10",

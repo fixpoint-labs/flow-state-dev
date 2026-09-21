@@ -20,7 +20,7 @@
  * itself no longer returns a foreign-flow request.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowApiRouter,
@@ -50,7 +50,7 @@ function flow(kind: string, authenticated: boolean) {
     authentication: {
       resolvePrincipal: (context) => {
         const user = context.request?.headers.get("x-verified-user");
-        return user === null || user === undefined ? null : { userId: user };
+        return user === null || user === undefined ? null : { userId: user, orgId: "org_test" };
       }
     }
   });
@@ -64,6 +64,15 @@ function build(): { router: ReturnType<typeof createFlowApiRouter>; stores: Stor
   return { router: createFlowApiRouter({ registry, stores }), stores };
 }
 
+/**
+ * The organization a record on `flowKind` would really have been written with.
+ * The `open` flow configures no resolver, so the runtime stamps its records
+ * with the framework default; `protected` authenticates and names its own.
+ */
+function orgOf(flowKind: string): string {
+  return flowKind === "open" ? DEFAULT_ORG_ID : "org_test";
+}
+
 async function seedSession(
   stores: StoreRegistry,
   id: string,
@@ -73,6 +82,7 @@ async function seedSession(
     id,
     flowKind,
     userId: "alice",
+    orgId: orgOf(flowKind),
     state: {},
     version: 0,
     createdAt: 1,
@@ -93,6 +103,7 @@ async function seedRequest(
     flowKind,
     actionName: "run",
     userId: "alice",
+    orgId: orgOf(flowKind),
     sessionId,
     source: "http",
     status: "completed",

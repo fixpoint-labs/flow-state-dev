@@ -9,6 +9,7 @@
  * and resources survive subsequent runs.
  */
 import { createInMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
 import { cloneValue } from "@flow-state-dev/core/helpers";
 import {
@@ -166,7 +167,7 @@ export async function testFlow<TInput = unknown>(
     action: options.action,
     requestId,
     sessionId,
-    orgId,
+    orgId: orgId ?? DEFAULT_ORG_ID,
     userId: options.userId,
     seed: options.seed
   });
@@ -176,7 +177,7 @@ export async function testFlow<TInput = unknown>(
     actionName: options.action as keyof typeof options.flow.actions & string,
     input: options.input,
     sessionId,
-    orgId,
+    orgId: orgId ?? DEFAULT_ORG_ID,
     userId: options.userId,
     requestId,
     stores,

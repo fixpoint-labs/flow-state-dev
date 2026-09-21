@@ -56,7 +56,12 @@ export type CreateExecutionContextOptions<
   requestId: string;
   userId?: string;
   sessionId?: string;
-  orgId?: string;
+  /**
+   * The organization this execution runs under. **Required** (FIX-1442) —
+   * `runAction` validates it before building a context, so every context is
+   * built from an identity that already names one.
+   */
+  orgId: string;
   /** Optional tenant the request runs under (FIX-406 6D). */
   tenantId?: string;
   /**

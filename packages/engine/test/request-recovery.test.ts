@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { VoiceProvider } from "@flow-state-dev/core/types";
 import { createInMemoryStores } from "../src/stores";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
@@ -25,6 +26,7 @@ function makeRequestRecord(
 ): RequestRecord {
   const ts = Date.now();
   return {
+    orgId: DEFAULT_ORG_ID,
     id,
     flowKind: "chat",
     actionName: "run",
@@ -46,9 +48,59 @@ describe("detectInterruptedRequests", () => {
     stores = createInMemoryStores();
   });
 
+  it("skips an unattributed entry rather than rewriting a record it cannot attribute", async () => {
+    // BR-14, on the one path nobody asked for: the sweeper runs on its own, on
+    // a timer and at startup, and it WRITES — it moves `in_progress` to
+    // `interrupted`. A record stored before organizations were required is
+    // preserved and refused everywhere else; a scan that rewrote it anyway
+    // would be the single place the quarantine leaked, and it would do so with
+    // no caller to refuse and nothing in a log to connect it to.
+    await stores.activeRequests.register({
+      requestId: "req_legacy",
+      flowKind: "chat",
+      actionName: "run",
+      userId: "user_1",
+      startedAt: Date.now() - 60_000,
+      lastHeartbeatAt: Date.now() - 60_000
+    });
+    const legacy = makeRequestRecord("req_legacy");
+    delete (legacy as { orgId?: string }).orgId;
+    await stores.request.set("req_legacy", legacy, "any");
+
+    const interrupted = await detectInterruptedRequests({
+      stores,
+      staleThresholdMs: 30_000
+    });
+
+    expect(interrupted).toHaveLength(0);
+    expect((await stores.request.get("req_legacy"))?.status).toBe("in_progress");
+  });
+
+  it("still sweeps an attributed entry, so the skip above is not just an inert sweeper", async () => {
+    await stores.activeRequests.register({
+      requestId: "req_attributed",
+      flowKind: "chat",
+      actionName: "run",
+      userId: "user_1",
+      orgId: DEFAULT_ORG_ID,
+      startedAt: Date.now() - 60_000,
+      lastHeartbeatAt: Date.now() - 60_000
+    });
+    await stores.request.set("req_attributed", makeRequestRecord("req_attributed"), "any");
+
+    const interrupted = await detectInterruptedRequests({
+      stores,
+      staleThresholdMs: 30_000
+    });
+
+    expect(interrupted).toHaveLength(1);
+    expect((await stores.request.get("req_attributed"))?.status).toBe("interrupted");
+  });
+
   it("marks stale in_progress requests as interrupted", async () => {
     // Register a stale active request
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_stale",
       flowKind: "chat",
       actionName: "run",
@@ -80,6 +132,7 @@ describe("detectInterruptedRequests", () => {
 
   it("does not mark already completed requests", async () => {
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_done",
       flowKind: "chat",
       actionName: "run",
@@ -117,6 +170,7 @@ describe("detectInterruptedRequests", () => {
     const longAgo = Date.now() - 60_000;
 
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_alice",
       flowKind: "chat",
       actionName: "run",
@@ -131,6 +185,7 @@ describe("detectInterruptedRequests", () => {
     );
 
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_bob",
       flowKind: "chat",
       actionName: "run",
@@ -157,6 +212,81 @@ describe("detectInterruptedRequests", () => {
     // Bob's untouched
     expect((await stores.request.get("req_bob"))!.status).toBe("in_progress");
     expect(await stores.activeRequests.get("req_bob")).toBeDefined();
+  });
+
+  it("refuses a retry whose active entry names a different organization than the record", async () => {
+    // The durable record is authoritative. An active entry naming a different
+    // organization is an inconsistent identity, not a newer answer — and a
+    // retry is a re-EXECUTION, so taking the entry's value would run stored
+    // work in an organization the stored work does not belong to. The same
+    // file already refuses exactly this shape on the `flowId` axis.
+    runActionMock.mockClear();
+
+    await stores.request.set(
+      "req_org_mismatch",
+      makeRequestRecord("req_org_mismatch", { orgId: "org-acme" }),
+      "any"
+    );
+
+    const flow = { kind: "chat", actions: { run: {} } } as never;
+    const flowRegistry = { get: vi.fn(() => flow) } as never;
+
+    await expect(
+      retryRequest({
+        originalRequestId: "req_org_mismatch",
+        stores,
+        flowRegistry,
+        runtimeConfig: {},
+        registryEntry: {
+          requestId: "req_org_mismatch",
+          flowKind: "chat",
+          actionName: "run",
+          userId: "user_1",
+          orgId: "org-globex",
+          source: "http",
+          startedAt: Date.now(),
+          lastHeartbeatAt: Date.now()
+        }
+      })
+    ).rejects.toThrow(/organization/i);
+
+    // Nothing was dispatched: the refusal lands before any re-execution.
+    expect(runActionMock).not.toHaveBeenCalled();
+  });
+
+  it("retries normally when the entry and the record agree on the organization", async () => {
+    // The control for the refusal above — without it, "it threw" is also what a
+    // retry path that refuses everything would produce.
+    runActionMock.mockClear();
+
+    await stores.request.set(
+      "req_org_agree",
+      makeRequestRecord("req_org_agree", { orgId: "org-acme" }),
+      "any"
+    );
+
+    const flow = { kind: "chat", actions: { run: {} } } as never;
+    const flowRegistry = { get: vi.fn(() => flow) } as never;
+
+    await retryRequest({
+      originalRequestId: "req_org_agree",
+      stores,
+      flowRegistry,
+      runtimeConfig: {},
+      registryEntry: {
+        requestId: "req_org_agree",
+        flowKind: "chat",
+        actionName: "run",
+        userId: "user_1",
+        orgId: "org-acme",
+        source: "http",
+        startedAt: Date.now(),
+        lastHeartbeatAt: Date.now()
+      }
+    });
+
+    expect(runActionMock).toHaveBeenCalledTimes(1);
+    expect(runActionMock.mock.calls[0][0].orgId).toBe("org-acme");
   });
 
   it("prefers the per-flow voice provider over the router-level one on retry", async () => {
@@ -220,6 +350,7 @@ describe("detectInterruptedRequests", () => {
 
   it("skips entries with recent heartbeats", async () => {
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_fresh",
       flowKind: "chat",
       actionName: "run",

@@ -16,6 +16,7 @@
  *   cannot depend on adapter packages).
  */
 import { handler, defineFlow } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { NetworkError } from "../src/errors/flow-error";
 import {
@@ -104,6 +105,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
       const requestId = "req_runonce_retry";
       const response = createResponseEmitter({ requestId, now: () => Date.now() });
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: 10,
@@ -154,6 +156,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
       const requestId = "req_runonce_keys";
       const response = createResponseEmitter({ requestId, now: () => Date.now() });
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: 0,
@@ -199,6 +202,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
       const requestId = "req_idempkey";
       const response = createResponseEmitter({ requestId, now: () => Date.now() });
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: 1,
@@ -243,6 +247,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
       const firstReq = "req_first";
       const r1 = createResponseEmitter({ requestId: firstReq, now: () => Date.now() });
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: 0,
@@ -257,6 +262,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
       const secondReq = "req_second";
       const r2 = createResponseEmitter({ requestId: secondReq, now: () => Date.now() });
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: 0,
@@ -317,6 +323,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
     const requestId = "req_persist_fail";
     const response = createResponseEmitter({ requestId, now: () => Date.now() });
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 0,
@@ -366,6 +373,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
     const requestId = "req_runonce_concurrent";
     const response = createResponseEmitter({ requestId, now: () => Date.now() });
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 0,

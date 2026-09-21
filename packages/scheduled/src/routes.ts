@@ -149,7 +149,26 @@ export async function handleDispatch(
   // schedule.principal is the action's *target*; gateway is the *caller*.
   // Static framework cron jobs typically rely on the gateway fallback;
   // dynamic schedules almost always carry an explicit principal.
-  const effectivePrincipal: ResolvedPrincipal = schedule.principal ?? gatewayPrincipal;
+  //
+  // The organization falls back separately from the user (FIX-1442), and the
+  // two schedule kinds land on different sides of that on purpose:
+  //
+  //  - A STATIC schedule's principal is written in the flow definition. It is
+  //    the author's own trusted config, so naming a target user while leaving
+  //    the organization to the gateway that fires it is a complete statement,
+  //    not an omission.
+  //  - A DYNAMIC schedule's principal comes from stored data, and
+  //    `createResourceCollectionScheduleResolver` refuses to build one without
+  //    the organization the row was created under. So it never reaches this
+  //    fallback — which is the point of BR-19: a stored schedule must not pick
+  //    up whichever organization happens to be firing the beat.
+  const effectivePrincipal: ResolvedPrincipal =
+    schedule.principal === undefined
+      ? gatewayPrincipal
+      : {
+          ...schedule.principal,
+          orgId: schedule.principal.orgId ?? gatewayPrincipal.orgId
+        };
 
   const nominalFireTime = body.nominalFireTime ?? new Date().toISOString();
   let input: unknown;

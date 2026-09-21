@@ -21,6 +21,7 @@
  * top level.
  */
 import { describe, it, expect } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { bindTaskDispatcher, defineFlow, dispatcher, generator, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createInMemoryStores, runAction } from "../../src";
@@ -58,6 +59,7 @@ function runCarried(
   core: { block: unknown; onCompleted?: unknown; onErrored?: unknown }
 ) {
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "resolved-at-dispatch" as never,
     input: {},

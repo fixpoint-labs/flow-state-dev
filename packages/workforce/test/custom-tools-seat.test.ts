@@ -316,34 +316,6 @@ describe("what a seat's own map is refused for", () => {
     expect(outcome).toBe("handle worked");
   });
 
-  // The same axis as the resource refusal, and refused for the same reason: a
-  // seat's folder is one seat's, and `requiresOrg` is the KIND's — raising it
-  // from inside one worker's folder changes the admission rule for every
-  // sibling seat of that kind. The supported route is the one BR-16 already
-  // names for stores: the kind declares it, and the colocated block reads it.
-  it("refuses a registered block that declares `requireOrg`, naming the fix", () => {
-    const needsOrg = handler({
-      name: "needs-org",
-      description: "Wants org context.",
-      requireOrg: true,
-      inputSchema: z.object({}),
-      outputSchema: z.object({ ok: z.boolean() }),
-      execute: () => ({ ok: true }),
-    }) as BlockDefinition;
-
-    // The premise the refusal rests on.
-    expect((needsOrg as { requiresOrg?: boolean }).requiresOrg).toBe(true);
-
-    const message = refusalOf([record({ id: "support.org", body: "Org." })], {
-      kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
-      seatBlocks: { "support.org": { "needs-org": needsOrg } },
-    });
-
-    expect(message).toContain('worker "support.org"');
-    expect(message).toContain("needs-org");
-    expect(message).toContain("requireOrg");
-  });
-
   it("refuses a worker file that writes `seatTools:` itself", () => {
     const message = refusalOf(
       [record({ id: "support.sneaky", declared: { seatTools: [] }, body: "Sneaky." })],

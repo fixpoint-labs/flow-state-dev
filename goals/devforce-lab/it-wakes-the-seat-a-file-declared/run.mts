@@ -320,13 +320,10 @@ await runGoal(async () => {
         );
       }
       for (const [seatId, expected] of Object.entries(fixture.seats)) {
-        const seat = lab.seats[seatId] as { kind?: string; requiresOrg?: boolean } | undefined;
+        const seat = lab.seats[seatId] as { kind?: string } | undefined;
         if (seat === undefined) continue;
         if (seat.kind !== expected.kind) {
           note(`${seatId} was hired into kind "${String(seat.kind)}", not "${expected.kind}"`);
-        }
-        if (seat.requiresOrg !== true) {
-          note(`${seatId} does not require an org, so BR-17's refusal could never fire`);
         }
       }
 

@@ -54,7 +54,6 @@ flowRegistry.registerMany([...seats, ...instances]);
 await openChannels(roster.channels, {
   client: sessionClient,
   userId: "u_boot",
-  orgId: "org_acme",
 });
 
 await openInventory(
@@ -67,6 +66,8 @@ await openInventory(
   }
 );
 ```
+
+Only one of the two names an organization. `openInventory` writes org-scoped storage directly and takes the organization as an argument; a channel session takes its organization from the caller.
 
 The writer needs both halves:
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler, type FlowStateSettings } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createInMemoryStores, runAction } from "../../src";
@@ -30,6 +31,7 @@ async function runCapturingSettings(
   })();
 
   await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     input: {},

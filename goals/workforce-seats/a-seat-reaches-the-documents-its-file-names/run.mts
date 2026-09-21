@@ -15,6 +15,7 @@
  * Run: pnpm tsx goals/workforce-seats/a-seat-reaches-the-documents-its-file-names/run.mts
  */
 import { mkdtempSync } from "node:fs";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
@@ -38,7 +39,6 @@ type Fixture = {
 stripIntentOverrides();
 
 const fixture = loadFixture<Fixture>(import.meta.url);
-const ORG = "org_seat_resource_allowlist_goal";
 const roster = [fixture.seats.lead, fixture.seats.cfo, fixture.seats.chief];
 
 const tree = (name: string): string => join(fixtureDir(import.meta.url), name);
@@ -56,7 +56,11 @@ async function act(router: Router, address: string, sessionId: string): Promise<
   return router.POST(
     new Request(`http://goal/api/flows/${path.join("/")}`, {
       method: "POST",
-      body: JSON.stringify({ userId: fixture.userId, orgId: ORG, input: { note: fixture.note } })
+      // No `orgId` — the caller does not supply one (FIX-1442). The server
+      // binds the session's organization itself, and the seat's org-scoped
+      // documents are resolved against THAT. An org-injecting wrapper here
+      // would make this goal prove nothing about the framework.
+      body: JSON.stringify({ userId: fixture.userId, input: { note: fixture.note } })
     }),
     { params: { path } }
   );
@@ -141,6 +145,51 @@ await runGoal(async () => {
       if (status !== "completed") failures.push(`${seat.id}: request ended ${String(status)}`);
     }
     evidence.push("all three seats ran an action to completion through the real HTTP route, with no model call");
+
+    // ---- (b2) the STORED identity, and that it is stable ------------------
+    //
+    // The documents these seats read are org-scoped, so the organization the
+    // server bound each session to is what the whole check above resolves
+    // against. Nothing in this run supplied one: the property is that the
+    // framework did, that it is the development default, and — the part a
+    // single request cannot show — that a SECOND request on the same session
+    // resolves the same organization rather than a fresh one.
+    for (const seat of roster) {
+      const stored = await stores.session.get(sessions[seat.id]!);
+      if (stored?.orgId !== DEFAULT_ORG_ID) {
+        failures.push(
+          `${seat.id}: its session stored orgId ${JSON.stringify(stored?.orgId)}, wanted the framework default`
+        );
+      }
+    }
+
+    // A session of its own, so this probe does not disturb the per-seat run
+    // counts the checks below read.
+    const probeSession = "s_org_stability_probe";
+    const first = await act(router, roster[0]!.id, probeSession);
+    if (first.status === 202) {
+      const firstId = ((await first.json()) as { request?: { id: string } }).request?.id;
+      if (firstId !== undefined) await settled(stores, firstId);
+    }
+    const second = await act(router, roster[0]!.id, probeSession);
+    if (second.status !== 202) {
+      failures.push(
+        `a second request on an existing session was not admitted (${second.status}) — the organization the server resolves is not stable across requests`
+      );
+    } else {
+      // Settled before the store closes below, so the run does not outlive its
+      // own connection.
+      const secondId = ((await second.json()) as { request?: { id: string } }).request?.id;
+      if (secondId !== undefined) {
+        const status = await settled(stores, secondId);
+        if (status !== "completed") {
+          failures.push(`the second request on an existing session ended ${String(status)}`);
+        }
+      }
+    }
+    evidence.push(
+      `every seat's session was stored bound to "${DEFAULT_ORG_ID}" though no caller named one, and a second request on an existing session resolved the same organization and was admitted`
+    );
   }
 
   (stores as unknown as { close(): void }).close();

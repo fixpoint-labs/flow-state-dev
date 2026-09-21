@@ -814,6 +814,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
      * when a read is attempted without one.
      */
     externalResourceContext?: ExternalResourceContext;
+    /**
+     * The organization this execution runs under, surfaced to collection
+     * lifecycle hooks as `CollectionHookContext.orgId` (FIX-1442). Server-derived.
+     */
+    orgId: string;
   }
 ): ResourceRegistry<TResources> {
   // Null-prototype: keyed by author-supplied accessor names, and this is the
@@ -1308,6 +1313,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         },
         scopeType: options.scope,
         scopeId: options.scopeId,
+        orgId: options.orgId,
       };
 
       // FIX-701: prefix for this collection's list/count reads (e.g. "files/").

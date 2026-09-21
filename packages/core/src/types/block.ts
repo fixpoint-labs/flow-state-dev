@@ -922,14 +922,6 @@ export interface BlockConfig<
   rescue?: RescueHandlerSpec[];
 
   /**
-   * Opt-in flag declaring this block requires the session to be bound to an
-   * org. Bubbles up via `mergeDeclaredResources` so a flow rejects requests
-   * without `orgId` when any block in any action declares it. Per-block
-   * (not flow-wide) — block authors opt in deliberately.
-   */
-  requireOrg?: boolean;
-
-  /**
    * What this block requires of whatever flow installs it (FIX-1331): a Zod
    * schema the flow's create-time config bag must satisfy.
    *
@@ -1061,13 +1053,6 @@ export interface BlockDefinition<
    * own declarations without re-loading children's.
    */
   ownDeclaredResources?: DeclaredResources;
-  /**
-   * Computed at build time: true when this block declares `requireOrg: true`,
-   * or — for sequencers — when any child block requires it. Bubbled by
-   * `mergeDeclaredResources` and surfaced on the flow as `flow.requiresOrg`
-   * for HTTP-layer enforcement.
-   */
-  requiresOrg: boolean;
   /**
    * Every block this block statically composes: a sequencer's step/tap/branch
    * children and its chain-level rescue handlers, a router's routes, a rescue

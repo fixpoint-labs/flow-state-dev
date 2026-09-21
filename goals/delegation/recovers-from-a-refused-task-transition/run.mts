@@ -46,6 +46,7 @@ import {
   stripIntentOverrides,
 } from "../../lib/index.mts";
 import { defineFlow, generator } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { InitialSkill } from "@flow-state-dev/core";
 import {
   runAction,
@@ -322,6 +323,7 @@ function assignSteps(
 
 async function run(sessionId: string): Promise<Observed> {
   const res = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "intake" as never,
     input: { message: USER_TURN },

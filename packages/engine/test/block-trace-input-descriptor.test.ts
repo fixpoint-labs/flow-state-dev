@@ -4,6 +4,7 @@
  * `input.source` for sequential, fan-in, and forEach element sites.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -52,6 +53,7 @@ describe("block_trace input descriptor wiring", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_1", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { x: 1 },
@@ -123,6 +125,7 @@ describe("block_trace input descriptor wiring", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_2", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { x: 7 },
@@ -191,6 +194,7 @@ describe("block_trace input descriptor wiring", () => {
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_3", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: [2, 3],

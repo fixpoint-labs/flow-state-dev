@@ -13,6 +13,7 @@
  * pattern with a generator flow whose tool suspends.
  */
 import { collapseToCanonicalLog, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type {
   GeneratorModel,
   GeneratorModelCallOptions,
@@ -162,6 +163,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
@@ -220,6 +222,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
@@ -283,6 +286,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
@@ -338,6 +342,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
@@ -394,6 +399,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
@@ -461,6 +467,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
@@ -525,6 +532,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
@@ -589,6 +597,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
@@ -646,6 +655,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
@@ -706,6 +716,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
@@ -768,6 +779,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
@@ -804,6 +816,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
     });
