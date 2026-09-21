@@ -80,7 +80,6 @@ export type ExecuteActionRequestBody = {
   userId: string;
   sessionId?: string;
   requestId?: string;
-  orgId?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -150,7 +149,12 @@ export type SessionSummary = {
  * Session detail shape returned from session read/create endpoints.
  */
 export type SessionDetail = SessionSummary & {
-  orgId?: string;
+  /**
+   * The organization this session is bound to. Always present on a session the
+   * server admitted (FIX-1442) — the server decides it from the verified
+   * principal, and a client never sends one.
+   */
+  orgId: string;
   state?: Record<string, unknown>;
   version?: number;
   latestRequestId?: string;
@@ -222,6 +226,7 @@ export type SessionRequestSummary = {
   actionName: string;
   userId: string;
   sessionId?: string;
+  /** The organization the request ran in. Absent only on a legacy record. */
   orgId?: string;
   /**
    * Inbound transport provenance — see server `RequestRecord.source`.
@@ -430,7 +435,6 @@ export type FlowLike = {
 export type SendActionOptions = {
   sessionId?: string;
   requestId?: string;
-  orgId?: string;
   metadata?: Record<string, unknown>;
 };
 

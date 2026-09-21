@@ -5,6 +5,7 @@ import {
   sequencer
 } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createExecutionContext, createInMemoryStores, createResponseEmitter, executeBlock } from "../src";
@@ -50,6 +51,7 @@ async function createCtx(requestId: string) {
   });
 
   const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId,

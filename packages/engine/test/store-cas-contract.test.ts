@@ -15,6 +15,7 @@
  */
 
 import { mkdtemp, rm } from "node:fs/promises";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -32,6 +33,7 @@ import type { CASPersist } from "../src/stores/cas";
 function makeSession(id: string, version: number, state: Record<string, unknown> = {}): SessionRecord {
   const ts = Date.now();
   return {
+    orgId: DEFAULT_ORG_ID,
     id,
     flowKind: "flow-a",
     userId: "user_1",

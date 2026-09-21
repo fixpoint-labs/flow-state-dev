@@ -74,7 +74,7 @@ describe("createResourceCollectionScheduleResolver", () => {
     const records = new Map([
       [
         "user:u_1:schedules/weekly-digest",
-        JSON.stringify({ cron: "0 9 * * MON", kind: "sendDigest", input: { topic: "weekly" } })
+        JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON", kind: "sendDigest", input: { topic: "weekly" } })
       ]
     ]);
     const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
@@ -82,7 +82,7 @@ describe("createResourceCollectionScheduleResolver", () => {
     expect(config).not.toBeNull();
     expect(config?.cron).toBe("0 9 * * MON");
     expect(config?.block).toBe(sendDigest);
-    expect(config?.principal).toEqual({ userId: "u_1" });
+    expect(config?.principal).toEqual({ userId: "u_1", orgId: "org_sys" });
     expect(config?.input).toEqual({ topic: "weekly" });
   });
 
@@ -90,7 +90,7 @@ describe("createResourceCollectionScheduleResolver", () => {
     const records = new Map([
       [
         "user:u_1:schedules/weekly-digest",
-        JSON.stringify({ cron: "0 9 * * MON", kind: "unknownKind" })
+        JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON", kind: "unknownKind" })
       ]
     ]);
     const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
@@ -115,6 +115,7 @@ describe("createResourceCollectionScheduleResolver", () => {
       [
         "user:u_1:schedules/weekly-digest",
         JSON.stringify({
+          orgId: "org_sys",
           cron: "0 9 * * MON",
           kind: "sendDigest",
           enabled: false
@@ -135,7 +136,7 @@ describe("createResourceCollectionScheduleResolver", () => {
 
   it("returns null when required fields are missing", async () => {
     const records = new Map([
-      ["user:u_1:schedules/weekly-digest", JSON.stringify({ cron: "0 9 * * MON" })]
+      ["user:u_1:schedules/weekly-digest", JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON" })]
     ]);
     const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
     const config = await resolve("u_1/weekly-digest", buildCtx(records));
@@ -146,7 +147,7 @@ describe("createResourceCollectionScheduleResolver", () => {
     const records = new Map([
       [
         "user:u_42:schedules/lead-456",
-        JSON.stringify({ cron: "0 9 * * MON", kind: "followUp" })
+        JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON", kind: "followUp" })
       ]
     ]);
     const resolve = createResourceCollectionScheduleResolver({
@@ -160,7 +161,7 @@ describe("createResourceCollectionScheduleResolver", () => {
     });
     const config = await resolve("agent-followup:u_42:lead-456", buildCtx(records));
     expect(config?.block).toBe(followUp);
-    expect(config?.principal).toEqual({ userId: "u_42" });
+    expect(config?.principal).toEqual({ userId: "u_42", orgId: "org_sys" });
   });
 
   it("propagates timezone, onOverlap, description on the synthesized config", async () => {
@@ -168,6 +169,7 @@ describe("createResourceCollectionScheduleResolver", () => {
       [
         "user:u_1:schedules/weekly-digest",
         JSON.stringify({
+          orgId: "org_sys",
           cron: "0 9 * * MON",
           kind: "sendDigest",
           timezone: "America/New_York",

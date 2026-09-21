@@ -21,6 +21,7 @@
  *   enqueued, while a derived child is unaffected.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "../../src";
@@ -127,6 +128,7 @@ function run(
   sessionId = "s_sender"
 ) {
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName,
     input,
@@ -154,6 +156,10 @@ async function seedSession(
       updatedAt: ts,
       flowKind,
       userId: USER_ID,
+      // The recipient sits in the same organization as the sending request, so
+      // these tests exercise the delivery guards they are about rather than
+      // stopping at the org boundary (which `org-boundary-routes.test.ts` covers).
+      orgId: DEFAULT_ORG_ID,
       lineageId,
       journal: []
     },
@@ -388,6 +394,7 @@ describe("a failed enqueue-time materialization gives a `reject` key back", () =
 
       const send = (key: string, note: string) =>
         runAction({
+    orgId: DEFAULT_ORG_ID,
           flow,
           actionName: "spawn",
           input: { key, note },

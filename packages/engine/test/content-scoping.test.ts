@@ -8,6 +8,7 @@
  * no content read at all.
  */
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   defineFlow,
@@ -39,6 +40,7 @@ describe("content load scoped to declared resources (Slice B)", () => {
     const getSpy = vi.spyOn(stores.content, "get");
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_b",
@@ -78,6 +80,7 @@ describe("content load scoped to declared resources (Slice B)", () => {
     const getByPrefixSpy = vi.spyOn(stores.content, "getByPrefix");
 
     await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_c",
@@ -115,6 +118,7 @@ describe("content load scoped to declared resources (Slice B)", () => {
     const getByPrefixSpy = vi.spyOn(stores.content, "getByPrefix");
 
     await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_d",
@@ -147,6 +151,7 @@ describe("content load scoped to declared resources (Slice B)", () => {
     const getByPrefixSpy = vi.spyOn(stores.content, "getByPrefix");
 
     await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_e",

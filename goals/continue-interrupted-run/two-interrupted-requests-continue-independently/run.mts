@@ -15,6 +15,7 @@
  * Run: pnpm tsx goals/continue-interrupted-run/two-interrupted-requests-continue-independently/run.mts
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { continueRequest, runAction } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -77,6 +78,7 @@ async function runToInterrupted(
   runtimeConfig: unknown,
 ): Promise<{ requestId: string; failures: string[] }> {
   const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow: flow as never,
     actionName: "run",
     input: {},

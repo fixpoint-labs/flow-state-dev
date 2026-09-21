@@ -7,6 +7,7 @@
  * (the same path FIX-839 hardened for `block_trace`).
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { ContinuationItem } from "@flow-state-dev/core/items";
 import { createCheckpointDurabilityProvider, continueRequest, createFlowRegistry, runAction } from "@flow-state-dev/engine";
 import type { DurabilityProvider, StoreRegistry } from "@flow-state-dev/engine";
@@ -82,6 +83,7 @@ describe("continuation item persists and round-trips through SQLite (FIX-865)", 
     const stores = createSQLiteStores({ filename });
     const provider = providerFor(stores);
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

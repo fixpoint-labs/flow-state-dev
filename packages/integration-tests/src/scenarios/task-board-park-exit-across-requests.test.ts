@@ -22,6 +22,7 @@
  * containment after an unpark.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
@@ -253,6 +254,7 @@ async function run(
   input: JsonObject = {}
 ) {
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName,
     input,

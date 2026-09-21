@@ -22,6 +22,11 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { PrincipalResolutionError } from "../transports/errors";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
+import {
+  isOrgAttributed,
+  UnattributedOrgError,
+  type OrgAttributedRecord
+} from "../context/org-attribution";
 import { jsonResponse, loadTenantSession, refuseUnattributedRecord } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -175,8 +180,22 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
  */
 function ownerFlowOf(
   ctx: RouteAuthContext,
-  record: OwnedRecord
+  record: OwnedRecord & OrgAttributedRecord
 ): { flow?: FlowInstance; denied?: Response } {
+  // The organization axis is checked FIRST and independently of the owner
+  // (FIX-1442). A record can name its owning flow perfectly well and still
+  // predate organizations entirely — which is the common case, since `flowId`
+  // and `orgId` became required at different times. Folding this into the
+  // `!owner.ok` branch below would only refuse rows that failed BOTH, and the
+  // rows this rule exists for are exactly the ones that pass the first.
+  if (!isOrgAttributed(record)) {
+    return {
+      denied: jsonResponse(409, {
+        error: "migration-required",
+        message: new UnattributedOrgError("this route").message
+      })
+    };
+  }
   const owner = resolveRecordOwner(ctx.registry, record);
   if (owner.ok) return { flow: owner.flow };
   const denied = refuseUnattributedRecord(ctx.registry, record);
@@ -244,6 +263,10 @@ export async function authorizeManagementRoute(
   // authentication differs.
   let governing: FlowInstance | undefined;
   let owner: string | undefined;
+  // The record's organization, checked alongside its owner below. Undefined
+  // for a route that addresses no stored record (creating a session, a
+  // listing) — there is nothing to compare against yet.
+  let ownerOrgId: string | undefined;
   let sessionId: string | undefined;
 
   switch (subject.kind) {
@@ -258,6 +281,7 @@ export async function authorizeManagementRoute(
       if (resolved.denied !== undefined) return { denied: resolved.denied };
       governing = resolved.flow;
       owner = session.userId;
+      ownerOrgId = session.orgId;
       sessionId = subject.sessionId;
       break;
     }
@@ -268,6 +292,7 @@ export async function authorizeManagementRoute(
         if (resolved.denied !== undefined) return { denied: resolved.denied };
         governing = resolved.flow;
         owner = record.userId;
+        ownerOrgId = record.orgId;
         sessionId = record.sessionId;
         break;
       }
@@ -283,6 +308,7 @@ export async function authorizeManagementRoute(
       if (resolved.denied !== undefined) return { denied: resolved.denied };
       governing = resolved.flow;
       owner = active.userId;
+      ownerOrgId = active.orgId;
       sessionId = active.sessionId;
       break;
     }
@@ -357,6 +383,27 @@ export async function authorizeManagementRoute(
     return {
       denied: jsonResponse(403, {
         error: "Caller is not the owner of the requested resource"
+      })
+    };
+  }
+
+  // The organization boundary, checked as well as the owner and not instead of
+  // it (FIX-1442, BR-8).
+  //
+  // The user check above passes for the case this exists to stop: ONE person
+  // who belongs to two organizations, holding a session id from one and asking
+  // for it while acting as the other. Same `userId` on both sides, so ownership
+  // matched and the record was served straight across the boundary the app
+  // believed it had. Both axes must agree, because either alone admits a real
+  // caller to real data that is not theirs in this context.
+  //
+  // Read from the STORED record, never from the request (BP-031) — the whole
+  // point is that the caller does not get to say which organization they are
+  // in; the verified principal does.
+  if (ownerOrgId !== undefined && principal.orgId !== ownerOrgId) {
+    return {
+      denied: jsonResponse(403, {
+        error: "Caller's organization does not own the requested resource"
       })
     };
   }

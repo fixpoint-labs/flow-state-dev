@@ -10,6 +10,7 @@
  *   - Use the host fallback resolver when a flow has no `authentication`
  */
 import { describe, it, expect, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -73,20 +74,28 @@ describe("InboundTransportHost — per-flow authentication", () => {
     const { host } = buildHost([flow]);
 
     const principal = await host.resolvePrincipal(
-      mkContext("with-resolver", { userId: "ignored_body_user" })
+      mkContext("with-resolver", { userId: "ignored_body_user", orgId: "org_test" })
     );
     expect(principal).toEqual({ userId: "flow_user", orgId: "flow_org" });
     expect(flowResolver).toHaveBeenCalledTimes(1);
   });
 
-  it("falls through to defaultUserId when the resolver returns null", async () => {
+  it("refuses a resolver that returns null, rather than repairing it with defaultUserId", async () => {
+    // `defaultUserId` used to carry this case: a resolver returning `null`
+    // produced `{ userId: "system" }` and ran. It cannot any more (FIX-1442),
+    // and the reason is what `defaultUserId` actually is — a name for the
+    // system USER. It says nothing about which organization the work belongs
+    // to, so it cannot complete an identity that is missing one. A machine
+    // transport returns `{ orgId }` and keeps its `defaultUserId`; the test
+    // below covers that shape.
     const flow = buildFlow("default-only", {
       resolvePrincipal: () => null,
       defaultUserId: "system"
     });
     const { host } = buildHost([flow]);
-    const principal = await host.resolvePrincipal(mkContext("default-only", {}));
-    expect(principal).toEqual({ userId: "system" });
+    await expect(
+      host.resolvePrincipal(mkContext("default-only", {}))
+    ).rejects.toThrow(/organization/i);
   });
 
   it("falls through to defaultUserId when the resolver returns no userId", async () => {
@@ -141,10 +150,11 @@ describe("InboundTransportHost — per-flow authentication", () => {
       runtimeConfig: {}
     });
 
+    // The fallback is the framework default resolver (spied on, so it keeps
+    // its brand), which means this app authenticates nobody and runs under the
+    // development organization. `defaultUserId` still supplies the user.
     const principal = await host.resolvePrincipal(mkContext("system-flow", {}));
-    expect(principal).toEqual({ userId: "system" });
-    // Host fallback was called because the flow declares no resolver, but
-    // its null return triggers defaultUserId — that's the expected path.
+    expect(principal).toEqual({ userId: "system", orgId: DEFAULT_ORG_ID });
     expect(fallback).toHaveBeenCalledTimes(1);
   });
 
@@ -154,7 +164,9 @@ describe("InboundTransportHost — per-flow authentication", () => {
     const principal = await host.resolvePrincipal(
       mkContext("no-auth-config", { userId: "body_u", orgId: "body_o" })
     );
-    expect(principal).toEqual({ userId: "body_u", orgId: "body_o" });
+    // The fallback here is the framework default resolver, which reads the
+    // body for a userId and — since FIX-1442 — never for an organization.
+    expect(principal).toEqual({ userId: "body_u", orgId: DEFAULT_ORG_ID });
   });
 
   it("propagates PrincipalResolutionError thrown by the flow's resolver", async () => {
@@ -175,10 +187,10 @@ describe("InboundTransportHost — per-flow authentication", () => {
 
   it("supports async resolvers", async () => {
     const flow = buildFlow("async-resolver", {
-      resolvePrincipal: async () => ({ userId: "async_user" })
+      resolvePrincipal: async () => ({ userId: "async_user", orgId: "org_test" })
     });
     const { host } = buildHost([flow]);
     const principal = await host.resolvePrincipal(mkContext("async-resolver", {}));
-    expect(principal).toEqual({ userId: "async_user" });
+    expect(principal).toEqual({ userId: "async_user", orgId: "org_test" });
   });
 });

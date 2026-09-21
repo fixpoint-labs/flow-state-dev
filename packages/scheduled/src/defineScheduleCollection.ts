@@ -34,6 +34,16 @@ import type { ScheduleIndex, ScheduleIndexRow } from "./scheduleIndex";
  * the persisted record shape.
  */
 const SCHEDULE_RESOURCE_SCHEMA = z.object({
+  /**
+   * The organization this schedule fires into (FIX-1442).
+   *
+   * Must be the organization of the execution that writes the row. It is not a
+   * caller's choice: a row naming any other organization is refused from the
+   * index below and therefore never fires, and a row naming none is a legacy
+   * row, quarantined the same way. Nullable on the schema because both of
+   * those states have to be readable to be diagnosed (BP-030).
+   */
+  orgId: z.string().optional(),
   cron: z.string(),
   kind: z.string(),
   input: z.unknown().optional(),
@@ -86,7 +96,8 @@ export function defineScheduleCollection(
     onInstanceCreated: async (key, state, ctx) => {
       const typed = state as ScheduleCollectionState;
       if (typed.enabled === false) return;
-      const row = rowFromState(ctx.scopeId, bareKey(key), typed);
+      if (!bindingIsTrusted(typed, ctx.orgId, ctx.scopeId, bareKey(key))) return;
+      const row = rowFromState(ctx.scopeId, ctx.orgId, bareKey(key), typed);
       if (row !== null) await index.upsert(row);
     },
     onInstanceUpdated: async (key, state, _prev, ctx) => {
@@ -96,7 +107,16 @@ export function defineScheduleCollection(
         await index.remove(ctx.scopeId, k);
         return;
       }
-      const row = rowFromState(ctx.scopeId, k, typed);
+      // A rewrite that moves the binding is not an update to honour — it is an
+      // attempt to point somebody else's standing instruction somewhere new.
+      // The row comes OUT of the index rather than being indexed under either
+      // organization, so the schedule stops firing until it is written
+      // correctly (BR-19).
+      if (!bindingIsTrusted(typed, ctx.orgId, ctx.scopeId, k)) {
+        await index.remove(ctx.scopeId, k);
+        return;
+      }
+      const row = rowFromState(ctx.scopeId, ctx.orgId, k, typed);
       if (row !== null) {
         await index.upsert(row);
       } else {
@@ -131,8 +151,36 @@ function stripPrefix(storageKey: string, pattern: string): string {
  * parse — the write succeeds (the resource is durable), but no index
  * row is mirrored, so a broken row never fires.
  */
+/**
+ * Whether the row's stored organization is the one the writing execution was
+ * admitted under.
+ *
+ * The hook observes a write rather than transforming it, so the binding is
+ * enforced by refusing to index a row that disagrees — an unindexed schedule
+ * never fires, which is the same outcome as rejecting the write and does not
+ * require the hook to reach back into storage. A row with no organization at
+ * all is a legacy row and is refused for the same reason.
+ */
+function bindingIsTrusted(
+  state: ScheduleCollectionState,
+  executionOrgId: string,
+  userId: string,
+  key: string
+): boolean {
+  if (state.orgId === executionOrgId) return true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[flow-state/scheduled] schedule ${userId}/${key} is not indexed: its stored organization ` +
+      `does not match the organization of the execution that wrote it. A schedule fires into ` +
+      `the organization that created it; write the row from that organization, or attribute a ` +
+      `pre-existing row with the upgrade recipe in the persistence guide.`
+  );
+  return false;
+}
+
 function rowFromState(
   userId: string,
+  orgId: string,
   key: string,
   state: ScheduleCollectionState
 ): ScheduleIndexRow | null {
@@ -146,6 +194,7 @@ function rowFromState(
   }
   return {
     userId,
+    orgId,
     key,
     cron: state.cron,
     timezone: state.timezone,

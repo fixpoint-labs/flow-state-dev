@@ -18,6 +18,7 @@
  * dimension → mean + std recorded; a budget cap stops launching further calls.
  */
 import { defineFlow, utility, createModelResolver } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
@@ -210,6 +211,7 @@ async function judgeOnce(
   });
 
   const actionPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "judge",
     input: inputString,

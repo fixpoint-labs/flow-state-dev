@@ -15,6 +15,7 @@
  * receiving a plausible-looking wrong answer.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, dispatchThroughSeam, handler } from "@flow-state-dev/core";
 import { requireRequestHost } from "@flow-state-dev/core";
@@ -71,6 +72,7 @@ describe("request-host seam, end to end", () => {
     await stores.session.set(
       "s_e2e",
       {
+    orgId: DEFAULT_ORG_ID,
         id: "s_e2e",
         state: {},
         version: 0,
@@ -94,6 +96,7 @@ describe("request-host seam, end to end", () => {
     });
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { ask: ["req_sibling", "req_never_existed"] },
@@ -137,6 +140,7 @@ describe("request-host seam, end to end", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -175,6 +179,7 @@ describe("request-host seam, end to end", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -221,6 +226,7 @@ describe("request-host seam, end to end", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

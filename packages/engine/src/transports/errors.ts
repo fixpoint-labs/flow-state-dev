@@ -22,17 +22,25 @@ export class PrincipalResolutionError extends Error {
 }
 
 /**
- * Thrown by the transport host when a flow requires an org-bound session
- * but no orgId is present on the envelope, the principal, or the stored
- * session. Layer-agnostic — carries no HTTP `status` field; the HTTP
- * adapter maps it to 400 at the route level.
+ * Thrown when TRUSTED code submits an identity with no usable organization
+ * (FIX-1442) — a direct `runAction`, a pre-resolved adapter envelope, a CLI
+ * seed, a queued job replayed from a durable substrate.
+ *
+ * Distinct from {@link PrincipalResolutionError}, which answers an inbound
+ * *caller* and carries an HTTP status. This one answers the framework's own
+ * embedder, so it is layer-agnostic and carries no status: an adapter that
+ * chooses to expose a trusted-input failure over HTTP maps it to 400 itself.
+ * Reaching it means a call site skipped the resolver rather than that a caller
+ * failed to authenticate — which is why it names the seam, not the flow alone.
  */
 export class OrgRequiredError extends Error {
   readonly flowKind: string;
 
-  constructor(flowKind: string) {
+  constructor(flowKind: string, seam = "this call") {
     super(
-      `Flow "${flowKind}" requires an org-bound session. Create a new session with orgId.`
+      `${seam} requires an organization for flow "${flowKind}". Trusted direct ` +
+        `execution must pass a nonempty orgId — the verified organization for an ` +
+        `authenticated caller, or DEFAULT_ORG_ID for single-organization development.`
     );
     this.name = "OrgRequiredError";
     this.flowKind = flowKind;

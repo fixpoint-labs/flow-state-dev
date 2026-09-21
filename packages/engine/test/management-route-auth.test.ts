@@ -25,6 +25,7 @@
  * exposure.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -58,7 +59,7 @@ function secureFlow(kind = "secure") {
         const user = context.request?.headers.get("x-verified-user");
         if (user === null || user === undefined) return null;
         const org = context.request?.headers.get("x-verified-org") ?? undefined;
-        return org === undefined ? { userId: user } : { userId: user, orgId: org };
+        return org === undefined ? { userId: user, orgId: "org_test" } : { userId: user, orgId: org };
       }
     }
   });
@@ -103,7 +104,7 @@ function buildRouterWithHostResolver(flows: ReturnType<typeof secureFlow>[]) {
     stores,
     resolvePrincipal: (context) => {
       const user = context.request?.headers.get("x-verified-user");
-      return user === null || user === undefined ? null : { userId: user };
+      return user === null || user === undefined ? null : { userId: user, orgId: "org_test" };
     }
   });
   return { router, stores };
@@ -111,13 +112,15 @@ function buildRouterWithHostResolver(flows: ReturnType<typeof secureFlow>[]) {
 
 async function seedSession(
   stores: StoreRegistry,
-  init: { id: string; flowKind: string; userId: string }
+  init: { id: string; flowKind: string; userId: string; orgId?: string }
 ): Promise<void> {
   const now = Date.now();
   const record: SessionRecord = {
+    orgId: "org_test",
     id: init.id,
     flowKind: init.flowKind,
     userId: init.userId,
+    orgId: init.orgId ?? "org_test",
     state: {},
     version: 0,
     createdAt: now,
@@ -133,15 +136,18 @@ async function seedRequest(
     id: string;
     flowKind: string;
     userId: string;
+    orgId?: string;
     status?: RequestRecord["status"];
   }
 ): Promise<void> {
   const now = Date.now();
   const record: RequestRecord = {
+    orgId: DEFAULT_ORG_ID,
     id: init.id,
     flowKind: init.flowKind,
     actionName: "run",
     userId: init.userId,
+    orgId: init.orgId ?? "org_test",
     source: "http",
     status: init.status ?? "in_progress",
     startedAtMs: now,
@@ -404,6 +410,7 @@ describe("request-addressed routes", () => {
     const now = Date.now();
     await stores.activeRequests.register({
       requestId: "r-inflight",
+      orgId: "org_test",
       flowKind: "secure",
       actionName: "run",
       userId: "alice",
@@ -471,6 +478,7 @@ describe("request-addressed routes", () => {
     ]) {
       await stores.activeRequests.register({
         requestId,
+        orgId: "org_test",
         flowKind: "secure",
         actionName: "run",
         userId,
@@ -502,6 +510,7 @@ describe("user-addressed routes", () => {
       flowKind: init.flowKind,
       actionName: "run",
       userId: init.userId,
+    orgId: init.orgId ?? "org_test",
       source: "http",
       startedAt: now,
       lastHeartbeatAt: now

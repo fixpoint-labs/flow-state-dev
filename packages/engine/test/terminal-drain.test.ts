@@ -16,6 +16,7 @@
  * what makes the drain observable.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import { createInMemoryStores, runAction } from "../src";
@@ -135,6 +136,7 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     });
 
     const runPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -182,6 +184,7 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     });
 
     const runPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -228,6 +231,7 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     });
 
     const runPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -283,6 +287,7 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     });
 
     const runPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -331,6 +336,7 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     });
 
     const runPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -418,6 +424,7 @@ describe("FIX-1001 — the drain runs to quiescence, not one pass", () => {
     })();
 
     const runPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -493,6 +500,7 @@ describe("FIX-1001 — the drain runs to quiescence, not one pass", () => {
       })();
 
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: {},
@@ -532,6 +540,7 @@ describe("FIX-1001 — orderings the drain forces", () => {
     });
 
     const runPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -593,6 +602,7 @@ describe("FIX-1001 — orderings the drain forces", () => {
     });
 
     const runPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -645,6 +655,7 @@ describe("FIX-1001 — orderings the drain forces", () => {
     });
 
     const runPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

@@ -75,7 +75,20 @@ export type RunActionOptions<
   input: unknown;
   userId: string;
   sessionId?: string;
-  orgId?: string;
+  /**
+   * The organization this run belongs to. **Required** (FIX-1442).
+   *
+   * `runAction` is the trusted direct-execution seam: it runs BELOW principal
+   * resolution, so there is no resolver here to validate a caller and no
+   * verified identity to fall back on. A caller that reached this function has
+   * already decided who is running — the organization is part of that decision,
+   * not something the framework can infer afterwards.
+   *
+   * Pass the verified organization for an authenticated caller, or
+   * `DEFAULT_ORG_ID` from `@flow-state-dev/core` for deliberate
+   * single-organization development and system wiring.
+   */
+  orgId: string;
   tenantId?: string;
   requestId?: string;
   /**

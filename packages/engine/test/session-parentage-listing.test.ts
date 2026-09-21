@@ -9,6 +9,7 @@
  * and encode the bug.
  */
 import { mkdtemp, rm } from "node:fs/promises";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -25,6 +26,7 @@ function makeSessionRecord(
 ): SessionRecord {
   const ts = Date.now();
   return {
+    orgId: DEFAULT_ORG_ID,
     id,
     flowKind: "chat",
     userId: "user_1",

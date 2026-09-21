@@ -7,6 +7,8 @@
  * they go straight to failed without retries. All other errors follow the
  * queue's retry/backoff config.
  */
+import { isValidOrgId } from "@flow-state-dev/core";
+import { OrgRequiredError } from "@flow-state-dev/engine";
 import { Worker, UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
 import { runAction } from "@flow-state-dev/engine";
@@ -79,6 +81,16 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
       publisher = bridge.createPublisher(data.requestId ?? job.id ?? "unknown");
     }
 
+    // A job enqueued before organizations were required carries none, and a
+    // worker runs below principal resolution — there is nothing here that could
+    // recover one, and borrowing the worker's own would run somebody's work in
+    // an organization they never chose. Refused by name so the failure reads as
+    // "drain and attribute this queue", not as a flow error (BR-14, FIX-1442).
+    if (!isValidOrgId(data.orgId)) {
+      throw new OrgRequiredError(flow.kind, "this queued job");
+    }
+    const jobOrgId = data.orgId;
+
     let terminalPublished = false;
     try {
       const result = await runAction({
@@ -88,7 +100,7 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
         userId: data.userId,
         sessionId: data.sessionId,
         requestId: data.requestId,
-        orgId: data.orgId,
+        orgId: jobOrgId,
         tenantId: data.tenantId,
         source: data.source ?? "bullmq",
         metadata: data.metadata,

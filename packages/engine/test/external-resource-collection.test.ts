@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineExternalResourceCollection, defineFlow, handler } from "@flow-state-dev/core";
 import { parseResourceTemplate } from "@flow-state-dev/core/resource-template";
@@ -42,6 +43,7 @@ async function createCtx(coll: ReturnType<typeof makePositions>) {
     actions: { run: { inputSchema: z.string(), block } },
   })();
   const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId: "req_1",

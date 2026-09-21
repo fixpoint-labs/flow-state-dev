@@ -20,6 +20,7 @@
  * the assertion would flip.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
@@ -100,6 +101,7 @@ async function runWith(rootBlock: ReturnType<typeof sequencer>, signal?: AbortSi
   })({ id: "test" });
 
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     userId: "u",

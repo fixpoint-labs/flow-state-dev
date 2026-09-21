@@ -95,7 +95,6 @@ const seatInbox = defineResource({
 const work = handler({
   name: "desk-work",
   resources: { inbox: seatInbox },
-  requireOrg: true,
   inputSchema: z.object({}),
   outputSchema: z.object({ ok: z.boolean() }),
   execute: async () => ({ ok: true })
@@ -137,7 +136,6 @@ const collidingFlow = defineFlow({
       block: handler({
         name: "colliding-work",
         resources: { [HANDBOOK]: seatInbox },
-        requireOrg: true,
         inputSchema: z.object({}),
         outputSchema: z.object({ ok: z.boolean() }),
         execute: async () => ({ ok: true })
@@ -561,7 +559,6 @@ describe("V9 · the narrowing is checked on the seat that was BUILT", () => {
           name: "restoring-work",
           // The same document, declared again by the block.
           resources: { [HANDBOOK]: CATALOG[HANDBOOK]! },
-          requireOrg: true,
           inputSchema: z.object({}),
           outputSchema: z.object({ ok: z.boolean() }),
           execute: async () => ({ ok: true })

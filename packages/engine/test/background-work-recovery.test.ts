@@ -34,6 +34,7 @@
  * and cross-store recovery drive `/resume` with a `resumeContext`.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
@@ -120,6 +121,7 @@ describe("attached durable background-work recovery", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -205,6 +207,7 @@ describe("attached durable background-work recovery", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { items: ["a", "b", "c"] },
@@ -341,6 +344,7 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
     // Kick off the run but DON'T await it: the gate is parked, so the run stays
     // alive while we choreograph which iterations finish before the crash.
     const runPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { items: ["a", "b", "c", "d"] },
@@ -494,6 +498,7 @@ describe("attached durable background-work recovery — failed background task u
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -576,6 +581,7 @@ describe("attached durable background-work recovery — failed background task u
 
     // Don't await: `waitForSideChain` parks on `slow` inside `drainScope`.
     const runPromise = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

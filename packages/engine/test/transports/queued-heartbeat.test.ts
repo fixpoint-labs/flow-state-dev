@@ -82,7 +82,7 @@ function envelope(value: string) {
     action: "run",
     input: { value },
     sessionId: "s_q",
-    principal: { userId: "u_1" }
+    principal: { userId: "u_1", orgId: "org_test" }
   };
 }
 

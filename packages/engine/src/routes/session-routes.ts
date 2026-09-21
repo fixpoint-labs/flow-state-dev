@@ -2,6 +2,7 @@
  * Session CRUD route handlers: create, get, list, delete.
  */
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import type { ResolvedPrincipal } from "../transports/types";
@@ -65,6 +66,17 @@ export async function handleListSessions(
     // set past the principal. Without a principal (framework default
     // resolver) the param is the only filter there is, unchanged.
     userId: ctx.principal?.userId ?? getString(url.searchParams.get("userId")),
+    // The same rule on the organization axis (BR-9, FIX-1442), and for the
+    // same reason: one person in two organizations must not see one
+    // organization's rows while acting for the other. There is deliberately no
+    // `orgId` query fallback — unlike `userId`, an organization is never a
+    // caller's to name, so a query param here could only ever widen.
+    //
+    // The key is spread in rather than always present: the store reads
+    // "`orgId` in options" as the filter being ACTIVE, so passing an explicit
+    // `undefined` would filter the listing down to rows that have no
+    // organization — the exact legacy rows BR-14 withholds.
+    ...(ctx.principal?.orgId === undefined ? {} : { orgId: ctx.principal.orgId }),
     // Always pass the tenant (present, possibly undefined) so listing isolates
     // to the calling tenant's sessions (FIX-682).
     tenantId: ctx.tenantId,
@@ -185,11 +197,17 @@ export async function handleCreateSession(
     // re-entry and read on this session is admitted against it.
     flowId: flow.id,
     userId,
-    // Same rule as `userId` above, and it matters more here: `validateDispatch`
-    // reads the stored session's `orgId` to satisfy a flow's `requiresOrg`, so
-    // a caller-supplied one would become an org binding the runtime later
-    // trusts. An authenticated caller gets the principal's org or none.
-    orgId: ctx.principal === undefined ? getString(body.orgId) : ctx.principal.orgId,
+    // The organization this session is bound to for the rest of its life —
+    // and the one every later read, action and dispatched child is checked
+    // against (FIX-1442). `body.orgId` is deliberately not consulted, at all:
+    // it is caller-written, and a value taken from here would become a binding
+    // the runtime afterwards treats as verified (BP-031).
+    //
+    // No principal means no flow governing this route authenticates anybody,
+    // which is the same condition that puts the whole app on `DEFAULT_ORG_ID` —
+    // so that is what the session binds to, rather than binding to nothing and
+    // becoming a record the reads then have to refuse.
+    orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID,
     tenantId: ctx.tenantId,
     title: getString(body.title),
     description: getString(body.description),

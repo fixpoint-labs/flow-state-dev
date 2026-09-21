@@ -8,6 +8,7 @@
  * `actionName` need not exist on the flow.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createInMemoryStores, createResponseEmitter, runAction } from "../../src";
@@ -34,6 +35,7 @@ describe("runAction — carried action core", () => {
     });
 
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       // Name intentionally absent from flow.actions — proves the carried core
       // wins outright and no named-action lookup happens.
@@ -55,6 +57,7 @@ describe("runAction — carried action core", () => {
 
     await expect(
       runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "missing" as keyof typeof flow.actions & string,
         input: {},

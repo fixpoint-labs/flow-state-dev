@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores, executeBlock } from "@flow-state-dev/engine";
@@ -30,6 +31,7 @@ async function createCtx() {
   const stores = createInMemoryStores();
   const flow = makeTestFlow();
   const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId: "req_1",

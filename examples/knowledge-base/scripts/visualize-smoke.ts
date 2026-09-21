@@ -19,6 +19,7 @@ for (const key of Object.keys(process.env)) {
 }
 
 import { promises as fs } from "node:fs";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import * as os from "node:os";
 import * as path from "node:path";
 import { z } from "zod";
@@ -34,6 +35,7 @@ async function emptyCollection(): Promise<ResourceCollectionRef<ConceptState>> {
   const block = handler({ name: "noop", resources: { concepts: conceptCollection }, execute: () => "ok" });
   const flow = defineFlow({ kind: "okf-smoke", actions: { run: { inputSchema: z.string(), block } } })();
   const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId: "req",

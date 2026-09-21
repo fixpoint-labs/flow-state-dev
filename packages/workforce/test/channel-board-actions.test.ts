@@ -12,12 +12,15 @@
  *   this case a later reader is free to read the rule as members-only.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { channelInstances, type ChannelManifest } from "../src/index";
 
 const USER_ID = "u_boards";
-const ORG_ID = "org_boards";
+// The org the session route binds a channel to when no resolver is
+// configured; the harness must run its actions in the same one.
+const ORG_ID = DEFAULT_ORG_ID;
 
 function record(id: string, declared: Record<string, unknown> = {}): ChannelManifest {
   return { id, declared: { members: ["eng.em", "eng.coder"], ...declared }, body: "Charter." };
@@ -46,7 +49,7 @@ function sessionApi(stores: StoreRegistry) {
           flowKind: options.flowKind,
           flowId: options.flowKind,
           userId: options.userId,
-          orgId: options.orgId,
+          orgId: options.orgId ?? DEFAULT_ORG_ID,
           state: options.state ?? {},
           lineageId: `lin_${id}`,
           version: 0,
@@ -91,9 +94,7 @@ async function host(roster: ChannelManifest[], adapter: unknown = inMemoryStores
   const { openChannels } = await import("../src/index");
   await openChannels(roster, {
     client: sessionApi(runtime.stores),
-    userId: USER_ID,
-    orgId: ORG_ID
-  });
+    userId: USER_ID,  });
 
   /**
    * Run one action. A refusal the substrate THROWS (an action this kind does
@@ -416,9 +417,7 @@ describe("a board added to a channel that is already open", () => {
       const { openChannels } = await import("../src/index");
       await openChannels(roster, {
         client: sessionApi(runtime.stores),
-        userId: USER_ID,
-        orgId: ORG_ID
-      });
+        userId: USER_ID,      });
 
       const filed = (await runAction({
         flow: channel!,

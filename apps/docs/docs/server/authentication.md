@@ -22,8 +22,8 @@ the framework's HTTP handler.
 ## Who's responsible for what
 
 **Your job.** Verify the credentials your transport carries — session
-cookie, JWT, signed webhook header — and produce a `userId` (and optionally
-`orgId`) that the framework can trust. If the credential is missing or
+cookie, JWT, signed webhook header — and produce a `userId` and an `orgId`
+that the framework can trust. If the credential is missing or
 invalid, reject the request before it reaches the framework, or throw
 `PrincipalResolutionError` from inside the resolver.
 
@@ -48,6 +48,65 @@ is internally consistent with the rest of the runtime. Two checks:
 The framework does not — and cannot — verify that `userId: A` actually
 belongs to whoever sent the request. That's the credential your middleware
 or resolver verified before the framework ever saw the call.
+
+## Every request runs in an organization
+
+There is no such thing as a request without one. A session, a request, a
+dispatched child, a scheduled job: each carries an organization, and the
+server checks it on reads and on execution alongside the user.
+
+It comes from one of two places, and never from the caller:
+
+- **A configured resolver** returns the organization it verified. If it
+  returns none, a blank one, or the reserved default below, the request is
+  refused with 401. Returning `null` is refused too — `defaultUserId` fills in
+  a user, never an organization.
+- **No configured resolver at all**, which is the development case. The
+  framework supplies `DEFAULT_ORG_ID`, exported from `@flow-state-dev/core`,
+  and warns once per host that it has done so.
+
+```ts
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+```
+
+`DEFAULT_ORG_ID` is a reserved id for running a single organization without
+authentication. It is not a security boundary, and a configured resolver
+cannot claim it — an app that authenticates has its own organization to name.
+
+**A machine caller** with no end user returns the organization on its own and
+lets `defaultUserId` name the system user:
+
+```ts
+authentication: {
+  resolvePrincipal: async (ctx) => ({ orgId: await verifyServiceToken(ctx) }),
+  defaultUserId: "system"
+}
+```
+
+**Calling the runtime directly**, below any transport, means there is no
+resolver to supply an identity — so you pass one:
+
+```ts
+await runAction({
+  flow,
+  actionName: "chat",
+  input,
+  userId,
+  orgId: DEFAULT_ORG_ID, // or the organization you verified
+  stores
+});
+```
+
+Organizations are opaque, nonempty strings. A whitespace-only id is rejected
+rather than trimmed, and a valid one is stored exactly as given.
+
+A session's organization is fixed when the session is created, like its user.
+Reopening cannot move it; create a new session instead.
+
+Records written before this was required carry no organization. The server
+preserves them and refuses to serve them — `409 migration-required` — until an
+operator attributes them offline. See
+[Which organization a record belongs to](/docs/persistence/overview#which-organization-a-record-belongs-to).
 
 ## What `requireUser: true` does (and doesn't)
 
@@ -95,7 +154,9 @@ defineFlow({
 ```
 
 The resolver returns a `ResolvedPrincipal`, a partial `{ userId?, orgId? }`,
-or `null`. Throwing a `PrincipalResolutionError` lets you pick the response
+or `null`. Whichever shape it returns, it must yield an organization — see
+[Every request runs in an organization](#every-request-runs-in-an-organization).
+Throwing a `PrincipalResolutionError` lets you pick the response
 status (401 for invalid signature, 403 for valid signature on a forbidden
 resource, etc.).
 

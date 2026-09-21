@@ -119,7 +119,6 @@ afterAll(async () => {
 
 const work = handler({
   name: "desk-work",
-  requireOrg: true,
   inputSchema: z.object({}),
   outputSchema: z.object({ ok: z.boolean() }),
   execute: async () => ({ ok: true }),

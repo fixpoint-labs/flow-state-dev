@@ -26,6 +26,7 @@
  * Run: pnpm tsx goals/task-board/hands-a-row-to-a-worker-in-its-own-session/run.mts
  */
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import type { TaskWorker, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
@@ -146,6 +147,7 @@ await runGoal(async () => {
     };
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: flow as never,
       actionName: "run",
       input: {},

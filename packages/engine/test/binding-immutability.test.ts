@@ -18,6 +18,7 @@
  * (per spec §10.2 we throw rather than silently ignore).
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import {
@@ -50,6 +51,7 @@ describe("createExecutionContext binding immutability", () => {
 
       // Create session as user "alice".
       await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_init",
@@ -61,6 +63,7 @@ describe("createExecutionContext binding immutability", () => {
       // Subsequent request claims user "bob" — must throw.
       await expect(
         createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
           flow,
           actionName: "run",
           requestId: "req_bob_attempt",
@@ -76,6 +79,7 @@ describe("createExecutionContext binding immutability", () => {
       const stores = createInMemoryStores();
 
       await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_init",
@@ -85,6 +89,7 @@ describe("createExecutionContext binding immutability", () => {
       });
 
       const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_repeat",
@@ -131,6 +136,7 @@ describe("createExecutionContext binding immutability", () => {
       const stores = createInMemoryStores();
 
       await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_init",
@@ -178,7 +184,15 @@ describe("createExecutionContext binding immutability", () => {
       expect(ctx.org?.identity.id).toBe("org_a");
     });
 
-    it("accepts a request that omits orgId for an org-bound session (uses stored value)", async () => {
+    it("refuses a later request that names a different organization than the session's", async () => {
+      // This replaces "accepts a request that omits orgId (uses stored value)".
+      // A request can no longer omit the organization (FIX-1442), so the case
+      // that test described does not exist: what used to arrive as an absence
+      // now arrives as a different, concrete organization — most often the
+      // development default, from a caller that was never migrated. Reading the
+      // stored value would silently run it under `org_a` anyway, which is the
+      // immutability guarantee inverted: the binding would be deciding who the
+      // caller is instead of being checked against them.
       const flow = createTestFlow();
       const stores = createInMemoryStores();
 
@@ -192,12 +206,40 @@ describe("createExecutionContext binding immutability", () => {
         stores
       });
 
+      await expect(
+        createExecutionContext({
+          flow,
+          actionName: "run",
+          requestId: "req_omit",
+          sessionId: "sess_org_omit",
+          userId: "alice",
+          orgId: DEFAULT_ORG_ID,
+          stores
+        })
+      ).rejects.toThrow(/org_a/);
+    });
+
+    it("still admits a later request that names the session's own organization", async () => {
+      const flow = createTestFlow();
+      const stores = createInMemoryStores();
+
+      await createExecutionContext({
+        flow,
+        actionName: "run",
+        requestId: "req_init",
+        sessionId: "sess_org_same",
+        userId: "alice",
+        orgId: "org_a",
+        stores
+      });
+
       const ctx = await createExecutionContext({
         flow,
         actionName: "run",
-        requestId: "req_omit",
-        sessionId: "sess_org_omit",
+        requestId: "req_same",
+        sessionId: "sess_org_same",
         userId: "alice",
+        orgId: "org_a",
         stores
       });
       expect(ctx.org?.identity.id).toBe("org_a");

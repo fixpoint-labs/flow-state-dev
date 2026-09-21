@@ -24,6 +24,7 @@ import {
   handleGetCollectionItemContent,
 } from "../src/routes/resource-routes";
 
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 // ---------------------------------------------------------------------------
 // Harness
 // ---------------------------------------------------------------------------
@@ -74,6 +75,7 @@ async function setupCtx(
   const stores = createInMemoryStores();
   const sessionId = "sess_1";
   const session: SessionRecord = {
+    orgId: DEFAULT_ORG_ID,
     id: sessionId,
     flowKind: "notes-flow",
     userId: "user_1",

@@ -92,7 +92,7 @@ function secureReview(kind: string) {
     authentication: {
       resolvePrincipal: (context) => {
         const user = context.request?.headers.get("x-verified-user");
-        return user === null || user === undefined ? null : { userId: user };
+        return user === null || user === undefined ? null : { userId: user, orgId: "org_test" };
       }
     }
   });
@@ -213,6 +213,7 @@ describe("a session belongs to one instance", () => {
     const west = review({ id: "review-west" });
     await expect(
       runAction({
+    orgId: "org_test",
         flow: west,
         actionName: "run",
         input: {},
@@ -266,6 +267,7 @@ describe("a session belongs to one instance", () => {
 
     await expect(
       runAction({
+    orgId: "org_test",
         flow: review({ id: "review-west" }),
         actionName: "run",
         input: {},
@@ -336,6 +338,7 @@ describe("a refusal raised by the run itself", () => {
     const stores = createInMemoryStores();
     const now = Date.now();
     const eastOwned: SessionRecord = {
+    orgId: "org_test",
       id: "s_raced",
       flowKind: "queued",
       flowId: "queued-east",
@@ -400,6 +403,7 @@ describe("record-backed routes read the stored owner", () => {
     await stores.session.set(
       record.id,
       {
+    orgId: "org_test",
         flowKind: "review",
         userId: "u_1",
         state: {},
@@ -596,6 +600,7 @@ describe("record-backed routes read the stored owner", () => {
     });
 
     await runAction({
+    orgId: "org_test",
       flow: gateDefinition({ id: "gate-west" }),
       actionName: "ask",
       input: {},

@@ -15,6 +15,7 @@
  * refused by the substrate.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
@@ -49,6 +50,7 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[])
       flowKind: CHANNEL_KIND,
       flowId: CHANNEL_KIND,
       userId: USER_ID,
+      orgId: DEFAULT_ORG_ID,
       state: { members, instructions: "Charter.", transcript: [] },
       lineageId: `lin_${sessionId}`,
       version: 0,
@@ -125,6 +127,7 @@ describe("the fan-out slot", () => {
       await bind(runtime.stores, "engineering.standup", ["engineering.lead", "engineering.analyst"]);
 
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: instance,
         actionName: "post",
         input: { body: "shipped the reader" },
@@ -162,6 +165,7 @@ describe("the fan-out slot", () => {
 
       const post = (body: string) =>
         runAction({
+    orgId: DEFAULT_ORG_ID,
           flow: instance,
           actionName: "post",
           input: { body },
@@ -206,6 +210,7 @@ describe("the fan-out slot", () => {
       await bind(runtime.stores, "engineering.standup", ["engineering.analyst", "engineering.lead"]);
 
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: instance,
         actionName: "post",
         input: { body: "shipped the reader" },
@@ -275,6 +280,7 @@ describe("the fan-out slot", () => {
 
       const post = (body: string) =>
         runAction({
+    orgId: DEFAULT_ORG_ID,
           flow: instance,
           actionName: "post",
           input: { body },
@@ -323,6 +329,7 @@ describe("the fan-out slot", () => {
       expect(instance.internal?.actions.onPosted).toBeUndefined();
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: instance,
         actionName: "post",
         input: { body: "nobody is listening" },

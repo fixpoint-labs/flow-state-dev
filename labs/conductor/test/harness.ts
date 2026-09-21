@@ -10,6 +10,7 @@
  * can be staged independently.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -368,6 +369,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
         runtimeConfig: object;
       }> }).getRuntime();
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: built.flow as never,
         actionName: action as never,
         input: input as never,

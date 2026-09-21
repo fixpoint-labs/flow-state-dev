@@ -50,7 +50,7 @@ function flow(kind: string, authenticated: boolean) {
     authentication: {
       resolvePrincipal: (context) => {
         const user = context.request?.headers.get("x-verified-user");
-        return user === null || user === undefined ? null : { userId: user };
+        return user === null || user === undefined ? null : { userId: user, orgId: "org_test" };
       }
     }
   });
@@ -73,6 +73,7 @@ async function seedSession(
     id,
     flowKind,
     userId: "alice",
+    orgId: "org_test",
     state: {},
     version: 0,
     createdAt: 1,
@@ -93,6 +94,7 @@ async function seedRequest(
     flowKind,
     actionName: "run",
     userId: "alice",
+    orgId: "org_test",
     sessionId,
     source: "http",
     status: "completed",

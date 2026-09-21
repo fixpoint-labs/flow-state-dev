@@ -20,6 +20,7 @@
  * dispatcher offers none.
  */
 import { describe, it, expect, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createDispatchOperation } from "../../src/context/dispatch-operation";
@@ -38,7 +39,10 @@ const SPEC = {
   delivery: "child" as const,
   input: { note: "hand-off" },
   flowKind: "acceptance",
-  userId: "u_1"
+  userId: "u_1",
+  // The sending request's organization, which a child dispatch carries
+  // verbatim (BR-11) and `runAction` requires.
+  orgId: DEFAULT_ORG_ID
 };
 
 /** A host that hands back exactly the milestones the test wants to offer. */

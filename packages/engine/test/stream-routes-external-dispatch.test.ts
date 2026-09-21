@@ -93,7 +93,7 @@ describe("external dispatch — enqueue-time stream discoverability (FIX-828)", 
       action: "run",
       input: { value: "hi" },
       sessionId: "s_1",
-      principal: { userId: "u_1" }
+      principal: { userId: "u_1", orgId: "org_test" }
     });
 
     // Await acceptance structurally rather than relying on microtask ordering:

@@ -78,7 +78,13 @@ export interface InboundRequestEnvelope {
   sessionId?: string;
   /** Adapter-generated or framework-generated when absent. */
   requestId?: string;
-  /** Optional org binding (set if the adapter resolves one). */
+  /**
+   * Organization override for this dispatch, when the adapter resolved one
+   * that differs from `principal.orgId` — a trusted continuation or child
+   * carrying its parent's binding, say. Absent means "use the principal's",
+   * which is the normal case; it is never a way to arrive with no
+   * organization at all (FIX-1442).
+   */
   orgId?: string;
 
   /**
@@ -319,13 +325,13 @@ export interface InboundTransportHost {
 
   /**
    * Validate async flow-level pre-conditions before dispatch. Must be
-   * awaited between `resolvePrincipal` and `dispatch`. Currently enforces
-   * `requiresOrg`; future pre-conditions plug in here.
+   * awaited between `resolvePrincipal` and `dispatch`.
    *
-   * Throws `OrgRequiredError` when the flow requires an org-bound session
-   * but no orgId is present on the envelope, the principal, or the stored
-   * session. Also throws a plain `Error` for an unregistered `flowKind`
-   * (same shape as `dispatch`).
+   * Throws `OrgRequiredError` when the envelope reaches dispatch with no
+   * usable organization on either the envelope or its principal — which means
+   * a call site assembled an envelope without going through principal
+   * resolution, since resolution cannot produce one (FIX-1442). Also throws a
+   * plain `Error` for an unregistered `flowKind` (same shape as `dispatch`).
    */
   validateDispatch(envelope: InboundRequestEnvelope): Promise<void>;
 

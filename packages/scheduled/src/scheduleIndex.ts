@@ -24,6 +24,20 @@
  */
 export interface ScheduleIndexRow {
   userId: string;
+  /**
+   * The organization this schedule fires into (FIX-1442).
+   *
+   * The TARGET's organization, captured from the execution that created the
+   * row — not the organization of whichever scheduler gateway later fires it,
+   * and not whatever organization the target user happens to be acting as at
+   * fire time. A schedule is a standing instruction from one organization, so
+   * that is the binding it keeps.
+   *
+   * Optional on the type only because a row written before this existed has
+   * none. Such a row is quarantined rather than dispatched — see
+   * `createResourceCollectionScheduleResolver`.
+   */
+  orgId?: string;
   key: string;
   cron: string;
   timezone?: string;

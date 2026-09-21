@@ -1,4 +1,5 @@
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -44,6 +45,7 @@ describe("createExecutionContext", () => {
 
     await expect(
       createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_user_missing",
@@ -58,6 +60,7 @@ describe("createExecutionContext", () => {
     const stores = createInMemoryStores();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_1",
@@ -73,7 +76,9 @@ describe("createExecutionContext", () => {
     expect(ctx.request.identity.type).toBe("request");
     expect(ctx.user.identity.type).toBe("user");
     expect(ctx.session.identity.type).toBe("session");
-    expect(ctx.org).toBeUndefined();
+    // Every execution now runs in an organization, so the org scope is always
+    // present — an absent `ctx.org` is no longer a reachable state (BR-12).
+    expect(ctx.org?.identity.id).toBe(DEFAULT_ORG_ID);
 
     await ctx.request.patchState({ count: 2 });
     await ctx.user.patchState({ role: "admin" });
@@ -97,6 +102,7 @@ describe("createExecutionContext", () => {
     const stores = createInMemoryStores();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_no_session",
@@ -180,6 +186,7 @@ describe("createExecutionContext", () => {
     } as any, "any");
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_cur",
@@ -222,6 +229,7 @@ describe("createExecutionContext", () => {
 
     const stores = createInMemoryStores();
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_content",
@@ -254,6 +262,7 @@ describe("createExecutionContext", () => {
 
     const stores = createInMemoryStores();
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_null_content",
@@ -295,6 +304,7 @@ describe("createExecutionContext", () => {
 
     const stores = createInMemoryStores();
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_readonly_content",
@@ -380,6 +390,7 @@ describe("createExecutionContext", () => {
     } as any, "any");
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_tool_cur",
@@ -545,6 +556,7 @@ describe("loadLLMHistory — turn-aware windowing (FIX-608)", () => {
     }
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_current",

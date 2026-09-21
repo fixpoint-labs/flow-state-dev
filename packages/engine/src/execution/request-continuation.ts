@@ -12,6 +12,7 @@
  * This is the in-process counterpart to the host's `dispatch`: where `dispatch`
  * starts a fresh run, `continueRequest` resumes an existing one.
  */
+import { requireAttributedOrg } from "../context/org-attribution";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
@@ -127,6 +128,12 @@ export async function continueRequest(
 
   // Re-register the heartbeat under the SAME id so the stale-request sweeper
   // doesn't reap the continued run. Mirrors the field set the external-dispatch
+  // A resume is an addressed execution, so the stored record must name its
+  // organization before anything runs under it (BR-14). Refused here, above the
+  // activeRequests register, so a legacy row is not re-advertised as in-flight
+  // on its way to being refused.
+  const orgId = requireAttributedOrg(record, "resuming this request");
+
   // branch of `dispatch` uses, sourced from the loaded record.
   const now = Date.now();
   await stores.activeRequests.register({
@@ -136,7 +143,7 @@ export async function continueRequest(
     actionName: record.actionName,
     sessionId: record.sessionId,
     userId: record.userId,
-    orgId: record.orgId,
+    orgId,
     tenantId: record.tenantId,
     source: record.source ?? "http",
     input: record.input,
@@ -151,7 +158,7 @@ export async function continueRequest(
     input: record.input,
     userId: record.userId,
     sessionId: record.sessionId,
-    orgId: record.orgId,
+    orgId,
     tenantId: record.tenantId,
     requestId,
     source: record.source,

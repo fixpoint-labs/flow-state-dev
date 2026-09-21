@@ -1,4 +1,5 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createFlowState,
   inMemoryStores,
@@ -118,6 +119,7 @@ describe("withEvalRuntime", () => {
     const flow = resolved.registry.get("analysis");
     if (flow === undefined) throw new Error("synthetic analysis flow missing");
     const seeded = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "analyze",
       input: { value: "created-by-ui" },

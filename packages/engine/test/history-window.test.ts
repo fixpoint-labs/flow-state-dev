@@ -10,6 +10,7 @@
  * relies on.
  */
 import type { MessageItem, OutputItem } from "@flow-state-dev/core/items";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -71,6 +72,7 @@ describe("history windowing (Slice C)", () => {
     const listSpy = vi.spyOn(stores.request, "list");
 
     await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: makeFlow(),
       actionName: "run",
       requestId: "req_cur",
@@ -93,6 +95,7 @@ describe("history windowing (Slice C)", () => {
     const listSpy = vi.spyOn(stores.request, "list");
 
     await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: makeFlow({ turns: 7 }),
       actionName: "run",
       requestId: "req_cur",
@@ -109,6 +112,7 @@ describe("history windowing (Slice C)", () => {
     await seedTurns(stores, "sess_h", 5);
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: makeFlow({ turns: 3 }),
       actionName: "run",
       requestId: "req_cur",
@@ -133,6 +137,7 @@ describe("history windowing (Slice C)", () => {
     await seedTurns(stores, "sess_r", 5);
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: makeFlow({ turns: 50 }),
       actionName: "run",
       requestId: "req_cur",
@@ -162,6 +167,7 @@ describe("history windowing (Slice C)", () => {
     });
 
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: makeFlow(),
       actionName: "run",
       input: "x",

@@ -15,6 +15,7 @@
  * board nobody froze and watches the same write succeed.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineCapability, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
@@ -38,7 +39,9 @@ import {
 import { resolveChannelBoard } from "../src/channel/channel-board";
 
 const USER_ID = "u_tools";
-const ORG_ID = "org_tools";
+// The org the session route binds a channel to when no resolver is
+// configured; the harness must run its actions in the same one.
+const ORG_ID = DEFAULT_ORG_ID;
 
 function record(id: string, boards: string[]): ChannelManifest {
   return { id, declared: { members: ["eng.em", "eng.coder"], boards }, body: "Charter." };
@@ -65,7 +68,7 @@ function sessionApi(stores: any) {
           flowKind: options.flowKind,
           flowId: options.flowKind,
           userId: options.userId,
-          orgId: options.orgId,
+          orgId: options.orgId ?? DEFAULT_ORG_ID,
           state: options.state ?? {},
           lineageId: `lin_${id}`,
           version: 0,
@@ -121,9 +124,7 @@ async function lab(script: Array<Record<string, unknown>>) {
   const runtime = await state.getRuntime();
   await openChannels(roster, {
     client: sessionApi(runtime.stores),
-    userId: USER_ID,
-    orgId: ORG_ID
-  });
+    userId: USER_ID,  });
 
   const act = async (flow: unknown, sessionId: string, actionName: string, input: unknown) => {
     try {
@@ -281,9 +282,7 @@ describe("a seat holding two boards", () => {
       const runtime = await state.getRuntime();
       await openChannels(roster, {
         client: sessionApi(runtime.stores),
-        userId: USER_ID,
-        orgId: ORG_ID
-      });
+        userId: USER_ID,      });
 
       // Both ledgers really are installed — without this the assertions below
       // could pass on a seat that quietly dropped the second board.

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { VoiceProvider } from "@flow-state-dev/core/types";
 import { createInMemoryStores } from "../src/stores";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
@@ -25,6 +26,7 @@ function makeRequestRecord(
 ): RequestRecord {
   const ts = Date.now();
   return {
+    orgId: DEFAULT_ORG_ID,
     id,
     flowKind: "chat",
     actionName: "run",

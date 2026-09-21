@@ -239,20 +239,12 @@ export function router<
     extractDeclaredResources(config)
   );
 
-  // Bubble `requireOrg` up from any route block. Without this, a route
-  // declaring `requireOrg: true` would be silently lost — the router's
-  // requiresOrg would stay `false`, and the flow's HTTP layer wouldn't
-  // reject requests against unbound sessions as intended.
-  const routesRequireOrg = config.routes !== undefined
-    && config.routes.some((route) => route.requiresOrg);
-
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
     config: { ...config, stateSchema: effectiveStateSchema } as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     declaredResources,
     ownDeclaredResources,
     resolvedCapabilities,
-    requiresOrg: routesRequireOrg,
     // The routes ARE the router's children, so detached worker bindings bubble
     // up from them without a rail of their own (FIX-982). A board reached only
     // down one arm is still a board the flow must be able to route to after a

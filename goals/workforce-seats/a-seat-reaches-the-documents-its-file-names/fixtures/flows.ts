@@ -66,7 +66,6 @@ function probe(keys: readonly string[]) {
     // blocks rather than from its resource map. Without this the request is
     // admitted with no org, no org registry is built, and every document reads
     // as unregistered — a green `reach: []` for the wrong reason.
-    requireOrg: true,
     sessionStateSchema: seatState,
     execute: async (_input, ctx) => {
       const reach: string[] = [];

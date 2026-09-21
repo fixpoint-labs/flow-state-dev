@@ -31,6 +31,7 @@
  * Run: pnpm tsx goals/delegation-floor/runs-an-unassigned-task/run.mts
  */
 import { readFileSync } from "node:fs";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import {
   runAction,
@@ -142,6 +143,7 @@ function finalTaskState(items: unknown[]): Map<string, { status: string; output?
 
 async function drain(actionName: "drainOn" | "drainOff") {
   const res = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: actionName as never,
     input: undefined,

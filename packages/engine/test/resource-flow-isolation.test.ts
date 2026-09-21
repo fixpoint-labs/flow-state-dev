@@ -8,6 +8,7 @@
  * `{userId}:{flow.id}`; the shared resource is not dragged into isolation.
  */
 import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
@@ -54,6 +55,7 @@ describe("FIX-735: per-resource flowIsolation", () => {
     const stores = createInMemoryStores();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_a",
@@ -84,6 +86,7 @@ describe("FIX-735: per-resource flowIsolation", () => {
     const stores = createInMemoryStores();
 
     const ctxA = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: flowA,
       actionName: "run",
       requestId: "req_a",
@@ -95,6 +98,7 @@ describe("FIX-735: per-resource flowIsolation", () => {
 
     // A different flow that declares the same shared resource must read it.
     const ctxB = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: flowB,
       actionName: "run",
       requestId: "req_b",
@@ -128,6 +132,7 @@ describe("FIX-735: per-resource flowIsolation", () => {
     const stores = createInMemoryStores();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_c",
@@ -168,6 +173,7 @@ describe("FIX-735: per-resource flowIsolation", () => {
     const stores = createInMemoryStores();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_d",
@@ -244,6 +250,7 @@ describe("FIX-735: per-resource flowIsolation", () => {
     const stores = createInMemoryStores();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_e",
@@ -297,6 +304,7 @@ describe("FIX-735: per-resource flowIsolation", () => {
 
     await expect(
       createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_f",
@@ -346,12 +354,14 @@ describe("instance-isolated resources", () => {
     const stores = createInMemoryStores();
 
     const ctxA = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: a, actionName: "run", requestId: "req_a", sessionId: "sess_a", userId: "user_1", stores,
     });
     await ctxA.resources.notes.patchState({ text: "a-private" });
     await ctxA.resources.accounts.patchState({ balance: 100 });
 
     const ctxB = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: b, actionName: "run", requestId: "req_b", sessionId: "sess_b", userId: "user_1", stores,
     });
     // The opt-out resource carries A's write across; the private one does not.
@@ -386,6 +396,7 @@ describe("instance-isolated resources", () => {
       [b, "sess_b", "b-private"],
     ] as const) {
       const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow, actionName: "run", requestId: `req_${sessionId}`, sessionId, userId: "user_1", stores,
       });
       await ctx.resources.notes.patchState({ text });

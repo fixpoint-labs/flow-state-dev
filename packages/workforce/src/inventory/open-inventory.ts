@@ -32,6 +32,7 @@
  */
 
 import { kindOf, orderedById } from "../channel/channel-binder";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   INVENTORY_REGISTER_CHANNEL,
   INVENTORY_REGISTER_SEATS
@@ -213,19 +214,14 @@ export async function openInventory(
   const seats = orderedById(roster.seats);
   const channels = orderedById(roster.channels);
 
-  // Refused here rather than left to surface per row, and for the same reason
-  // `openChannels` refuses an org-less roster that declares boards: an
-  // org-scoped write with no org lands where no flow in this app resolves it,
-  // so every read comes back empty and points at the reader.
-  const orgId = options.orgId;
-  if (orgId === undefined) {
-    throw new Error(
-      `openInventory was given no \`orgId\`, but the inventory is org-scoped storage: ` +
-        `${seats.length} seat${seats.length === 1 ? "" : "s"} and ${channels.length} ` +
-        `channel${channels.length === 1 ? "" : "s"} would be written where no flow can read ` +
-        `them back. Pass the same \`orgId\` you passed \`openChannels\`.`
-    );
-  }
+  // `openInventory` writes through trusted direct execution, below any
+  // resolver, so it names the organization itself (BR-4). It used to REFUSE an
+  // absent one; it now falls back to the development default, matching what
+  // the server binds a channel session to when no resolver is configured
+  // (FIX-1442). An app that authenticates passes its verified organization —
+  // the same one its channel sessions are bound to — or the rows land where
+  // no flow reads them back.
+  const orgId = options.orgId ?? DEFAULT_ORG_ID;
 
   if (seats.length > 0 && options.seatWriter === undefined) {
     throw new Error(

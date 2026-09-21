@@ -22,6 +22,7 @@
  * Run: pnpm tsx goals/context-supply/inherits-parent-conversation/run.mts
  */
 import { defineFlow, generator } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { runAction, createInMemoryStores, createModelResolver } from "@flow-state-dev/engine";
 import { materializeWorker } from "@flow-state-dev/orchestration";
 import { z } from "zod";
@@ -91,6 +92,7 @@ const runtimeConfig = { modelResolver: createModelResolver() } as never;
 
 async function run(actionName: string, input: unknown, sessionId: string) {
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: actionName as never,
     input,

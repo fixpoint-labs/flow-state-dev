@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createInMemorySessionStore,
   type SessionRecord,
@@ -25,6 +26,7 @@ function makeSession(
 ): SessionRecord {
   const ts = Date.now();
   return {
+    orgId: DEFAULT_ORG_ID,
     id,
     flowKind: "flow-a",
     userId: "user_1",

@@ -13,6 +13,7 @@
  * than asserting on the branch in isolation.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores } from "../../src";
@@ -43,6 +44,7 @@ function raceLosingStores(winner: SessionRecord): StoreRegistry {
 function winnerRecord(overrides: Partial<SessionRecord>): SessionRecord {
   const ts = 1_700_000_000_000;
   return {
+    orgId: DEFAULT_ORG_ID,
     id: "s_contended",
     flowKind: flow.kind,
     userId: "u_winner",
@@ -62,6 +64,7 @@ describe("FIX-1068: the create-race loser is still bound-checked", () => {
 
     await expect(
       createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_loser",
@@ -77,6 +80,7 @@ describe("FIX-1068: the create-race loser is still bound-checked", () => {
 
     await expect(
       createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_loser",
@@ -95,6 +99,7 @@ describe("FIX-1068: the create-race loser is still bound-checked", () => {
     const stores = raceLosingStores(winnerRecord({ userId: "u_same" }));
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_loser",

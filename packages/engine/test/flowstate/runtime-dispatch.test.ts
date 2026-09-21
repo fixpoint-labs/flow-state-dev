@@ -30,6 +30,7 @@
  * Those two properties are independent.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, dispatchThroughSeam, handler, markDispatcher } from "@flow-state-dev/core";
 import type { DispatchOutcome, ModelResolver } from "@flow-state-dev/core/types";
@@ -230,6 +231,7 @@ async function runLikeCli(
   sessionId: string
 ): Promise<void> {
   await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "launch",
     input: {},
@@ -307,6 +309,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
         }) => {
           const target = runtime.registry.get(envelope.flowKind)!;
           const finished = runAction({
+    orgId: DEFAULT_ORG_ID,
             flow: target,
             actionName: envelope.actionName as never,
             input: envelope.input,
@@ -343,6 +346,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     // path nothing on this epic had ever exercised — every other test runs
     // in-process or replays a captured envelope.
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "launch",
       input: {},
@@ -846,6 +850,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     // config silently runs the app's default model — which defeats the flag
     // whose entire purpose is choosing the model.
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "launch",
       input: {},
@@ -1212,6 +1217,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     // The shape a request-scoped platform hook arrives in: derived onto the
     // config the launching request runs under, after the host was built.
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "launch",
       input: {},
@@ -1280,6 +1286,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     console.error = () => {};
     try {
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "launch",
         input: {},

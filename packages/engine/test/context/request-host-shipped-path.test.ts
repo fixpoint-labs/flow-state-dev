@@ -18,6 +18,7 @@
  *    missing seam.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, dispatchThroughSeam, handler, requireRequestHost } from "@flow-state-dev/core";
 import type { DispatchOutcome } from "@flow-state-dev/core/types";
@@ -161,6 +162,7 @@ describe("request-host seam on the shipped router path", () => {
     await stores.session.set(
       "s_live",
       {
+    orgId: DEFAULT_ORG_ID,
         id: "s_live",
         state: {},
         version: 0,
@@ -255,7 +257,7 @@ describe("request-host seam on the shipped router path", () => {
     expect(seen.hasHost).toBe(true);
   });
 
-  it("the seam binds the session's RESOLVED org, not the dispatch's omitted one", async () => {
+  it("the seam binds the session's RESOLVED org onto the child it creates", async () => {
     const seen: Seen = {};
     const registry = createFlowRegistry();
     registry.register(probeFlow("shipped-org", seen, []));
@@ -292,15 +294,19 @@ describe("request-host seam on the shipped router path", () => {
         updatedAt: ts,
         flowKind: "shipped-org",
         userId: "u_alice",
-        orgId: "org_acme",
+        // The organization this route resolves to. It used to be "org_acme"
+        // with the dispatch omitting an org entirely, which is what the test
+        // was named for — but a request cannot omit one now (FIX-1442), and a
+        // session bound to a DIFFERENT org than the caller resolved is a
+        // binding mismatch, covered by binding-immutability.test.ts. What this
+        // test is actually about survives unchanged: whatever org execution
+        // resolves, the seam must close over THAT and stamp it on the child.
+        orgId: DEFAULT_ORG_ID,
         journal: []
       },
       "any"
     );
 
-    // The dispatch OMITS orgId. That is legal — only a *differing* org is
-    // rejected — and execution resolves the authoritative org from the session
-    // record. The seam must close over that, not over the absent option.
     await post(router, "shipped-org", "s_org_bound");
 
     expect(seen.error).toBeUndefined();
@@ -310,11 +316,11 @@ describe("request-host seam on the shipped router path", () => {
     expect(started).toHaveLength(1);
 
     // The observable: the child the seam created carries the parent's org.
-    // Reading `options.orgId` here left it undefined, so the seam produced a
-    // child outside the parent's org — org-scoped child work then runs without
-    // the org context its inheritance contract promises.
+    // A seam that read its own options instead of the resolved identity would
+    // produce a child outside the parent's org, and org-scoped child work would
+    // then run without the org context its inheritance contract promises.
     const child = await stores.session.get(started[0]!);
-    expect(child?.orgId).toBe("org_acme");
+    expect(child?.orgId).toBe(DEFAULT_ORG_ID);
   });
 });
 
@@ -343,6 +349,7 @@ describe("request-host seam on the shipped worker path", () => {
     const runtime = await state.getRuntime();
 
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

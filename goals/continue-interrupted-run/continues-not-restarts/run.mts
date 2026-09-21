@@ -34,6 +34,7 @@
  * Run: pnpm tsx goals/continue-interrupted-run/continues-not-restarts/run.mts
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { continueRequest, runAction } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -120,6 +121,7 @@ await runGoal(async () => {
 
   // 1. Run to the first suspension.
   const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow: flow as never,
     actionName: "run",
     input: {},

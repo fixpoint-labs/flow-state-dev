@@ -5,6 +5,7 @@
 // ResourceCollectionRef (state store + content store + edge slot), not a mock.
 
 import { z } from "zod";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createExecutionContext, createInMemoryStores } from "@flow-state-dev/engine";
@@ -36,6 +37,7 @@ export async function makeConceptCollection(
 
   callCounter += 1;
   const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId: `req_${callCounter}`,

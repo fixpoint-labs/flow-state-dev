@@ -12,6 +12,7 @@
  * `unstable_` prefix — they are deliberately not part of the long-term
  * public API surface.
  */
+import { requireAttributedOrg } from "../context/org-attribution";
 import type {
   ExternalResourceCollectionConfig,
   ExternalResourceContext,
@@ -95,8 +96,17 @@ export function buildExternalResourceContextFromSession(
   sessionId: string,
   signal?: AbortSignal
 ): ExternalResourceContext {
+  // An org-scoped read against a session with no organization used to fall back
+  // to the empty string as its scope id — which is a real, writable bucket that
+  // EVERY unattributed session shared, so one org's external resource content
+  // was visible to the next (FIX-1442). There is no correct id to substitute
+  // here, so there is no fallback: the read is refused. The management routes
+  // refuse such a session before reaching this, and this is the invariant that
+  // keeps a future caller from reintroducing the shared bucket.
+  const orgId =
+    scope === "org" ? requireAttributedOrg(session, "reading an org-scoped resource") : session.orgId;
   const scopeId =
-    scope === "session" ? sessionId : scope === "user" ? session.userId : session.orgId ?? "";
+    scope === "session" ? sessionId : scope === "user" ? session.userId : (orgId as string);
   return {
     scope,
     scopeId,

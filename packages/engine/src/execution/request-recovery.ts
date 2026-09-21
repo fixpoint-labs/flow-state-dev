@@ -1,6 +1,7 @@
 /**
  * Interrupted request detection and recovery utilities.
  */
+import { requireAttributedOrg } from "../context/org-attribution";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type {
   ActiveRequestEntry,
@@ -173,6 +174,13 @@ export async function retryRequest(
     );
   }
 
+  // A retry is an addressed re-execution of stored work, so it is held to the
+  // same admission as the original: a request stored before organizations were
+  // required is refused rather than retried under a guess (BR-14). Checked
+  // before the flow is resolved and before any new request id is minted, so a
+  // refused retry leaves nothing behind.
+  const attributedOrgId = requireAttributedOrg({ orgId }, "retrying this request");
+
   const owner = resolveRecordOwner(flowRegistry, { flowKind, flowId });
   if (!owner.ok) {
     throw new Error(
@@ -204,7 +212,7 @@ export async function retryRequest(
     userId,
     sessionId,
     requestId: newRequestId,
-    orgId,
+    orgId: attributedOrgId,
     tenantId,
     source: retrySource,
     metadata: {

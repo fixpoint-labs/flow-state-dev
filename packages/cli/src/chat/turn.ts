@@ -18,6 +18,7 @@ import {
   type StoreRegistry,
 } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowActionTarget } from "./targets";
 import type { ChatRenderer } from "./render";
 
@@ -132,6 +133,7 @@ export function executeTurn(params: ExecuteTurnParams): RunningTurn {
     let errored = false;
     try {
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: target.actionName,
         input: { message: text },

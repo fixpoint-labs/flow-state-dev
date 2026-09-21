@@ -202,7 +202,9 @@ await runGoal(async () => {
               flowKind: options.flowKind,
               flowId: options.flowKind,
               userId: options.userId,
-              orgId: options.orgId,
+              // `openChannels` no longer names an org (FIX-1442); this
+              // stand-in for the session route binds what the real route binds.
+              orgId: options.orgId ?? ORG_ID,
               description: options.description,
               state: options.state ?? {},
               lineageId: `lin_${id}`,
@@ -232,7 +234,6 @@ await runGoal(async () => {
         }
       },
       userId: USER_ID,
-      orgId: ORG_ID
     });
 
     const act = async (flow: unknown, sessionId: string, actionName: string, input: unknown) =>

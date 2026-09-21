@@ -6,6 +6,7 @@
  * evidence that no write landed.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core/types";
@@ -44,6 +45,7 @@ async function makeCtx(stores: StoreRegistry) {
     }
   })();
   return createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId: "req_patch",

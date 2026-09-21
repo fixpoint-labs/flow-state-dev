@@ -91,7 +91,6 @@ export type SeatFacts = z.infer<typeof seatFactsSchema>;
  */
 export const readOwnFacts = handler({
   name: "devforce-seat-facts",
-  requireOrg: true,
   inputSchema: z.object({}).optional(),
   outputSchema: seatFactsSchema,
   execute: async (_input: unknown, ctx: BlockContext): Promise<SeatFacts> => {

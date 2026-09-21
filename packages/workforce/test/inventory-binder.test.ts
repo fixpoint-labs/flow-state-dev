@@ -17,6 +17,7 @@
  * is green merely because the writer read back its own objects.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
@@ -40,7 +41,7 @@ import {
 import { channelSessionStateSchema } from "../src/index";
 
 const USER_ID = "u_boot";
-const ORG_ID = "org_acme";
+const ORG_ID = DEFAULT_ORG_ID;
 const OTHER_ORG = "org_other";
 
 /** The kind a hand-rolled channel runs on when a case needs a second one. */
@@ -168,8 +169,7 @@ async function host(roster: ChannelManifest[], options: HostOptions = {}) {
 
   await openChannels(options.open ?? roster, {
     client: sessionApi(runtime.stores),
-    userId: USER_ID,
-    orgId: ORG_ID
+    userId: USER_ID
   });
 
   /**
@@ -285,7 +285,10 @@ function sessionApi(stores: any) {
           flowKind: options.flowKind,
           flowId: options.flowKind,
           userId: options.userId,
-          orgId: options.orgId,
+          // `openChannels` no longer names an org (FIX-1442). This stand-in for
+          // the session route binds what the real route binds when no resolver
+          // is configured, so the rows land where the reader looks.
+          orgId: options.orgId ?? DEFAULT_ORG_ID,
           state: options.state ?? {},
           lineageId: `lin_${id}`,
           version: 0,
@@ -461,22 +464,20 @@ describe("what the binder refuses to carry", () => {
     }
   });
 
-  it("refuses a run with no org rather than writing where nothing can read (BR-11)", async () => {
+  it("writes under the development default when no org is named, never into another org (BR-11)", async () => {
+    // This used to REFUSE a run with no `orgId`, because an org-scoped write
+    // with no org landed where nothing could read it. Since FIX-1442 there is
+    // no such place: an omitted org means the development default, which is
+    // exactly where the session route binds this app's channels. The property
+    // that still matters is the one the refusal was protecting — the rows must
+    // be readable, and must not appear in some other organization.
     const roster = [record("eng.standup")];
     const lab = await host(roster, { inventory: true });
     try {
-      await expect(bind(lab, { channels: roster, orgId: undefined })).rejects.toThrow(
-        /no `orgId`/
-      );
+      await bind(lab, { channels: roster, orgId: undefined });
 
-      // The red state is a binder that carried on: it would report success and
-      // leave an inventory every flow reads back empty. Both halves are checked
-      // — nothing under any org, and the same call under an org does write.
-      expect(await lab.keys()).toEqual([]);
-      expect(await lab.keys(OTHER_ORG)).toEqual([]);
-
-      await bind(lab, { channels: roster });
       expect((await lab.keys()).length).toBeGreaterThan(0);
+      expect(await lab.keys(OTHER_ORG)).toEqual([]);
     } finally {
       await lab.dispose();
     }

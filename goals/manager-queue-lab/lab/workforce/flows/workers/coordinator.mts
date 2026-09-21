@@ -183,7 +183,6 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
    */
   const readQueue = handler({
     name: "coordinator-read-queue",
-    requireOrg: true,
     resources: { [board.id]: board },
     inputSchema: z.object({}).optional(),
     outputSchema: queueOutputSchema,
@@ -203,7 +202,6 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
    */
   const readRows = handler({
     name: "coordinator-read-rows",
-    requireOrg: true,
     resources: { [board.id]: board },
     inputSchema: z.object({}).optional(),
     outputSchema: z.custom<Task[]>((value) => Array.isArray(value)),
@@ -223,7 +221,6 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
    */
   const settleRow = handler({
     name: "coordinator-settle-row",
-    requireOrg: true,
     resources: { [board.id]: board },
     inputSchema: z.object({ taskId: z.string() }),
     outputSchema: z.object({ settled: z.boolean(), refusal: z.string().optional() }),
@@ -251,7 +248,6 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
    */
   const blockRow = handler({
     name: "coordinator-block-row",
-    requireOrg: true,
     resources: { [board.id]: board },
     inputSchema: z.object({ taskId: z.string(), reason: z.string().min(1) }),
     outputSchema: z.object({ blocked: z.boolean(), refusal: z.string().optional() }),

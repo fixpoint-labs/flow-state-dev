@@ -17,6 +17,7 @@
  * reaches its post-gate step and completes, and the suspension stays resolved.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import { createFlowRegistry, createInMemoryStores, runAction } from "../src";
@@ -109,6 +110,7 @@ describe("resume — a throwing onBackgroundWork hook (FIX-1095)", () => {
 
     // Suspend for real, so the resume re-enters a genuine gate.
     const first = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: registry.get(FLOW_KIND)! as never,
       actionName: "transfer",
       input: { amount: 1000 },

@@ -19,6 +19,7 @@
  * That is visibility, and it is asserted in `engine`.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
@@ -114,6 +115,7 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
     //    it cannot have partially run.
     const dispatched: RecordedDispatch[] = [];
     const parent = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "start",
       input: {},
@@ -146,6 +148,7 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
     //    the work to completion. Nothing was lost — the cost of the first
     //    child's death was one lease of latency.
     const recovery = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "start",
       input: {},
@@ -179,6 +182,7 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
     //    one it was dispatched for. The worker runs once and settles the row.
     const second = dispatched[1]!;
     const child = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: second.action as never,
       input: second.input,
@@ -200,6 +204,7 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
     // already settled.
     const first = dispatched[0]!;
     const stale = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: first.action as never,
       input: first.input,

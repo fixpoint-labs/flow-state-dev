@@ -74,7 +74,7 @@ function secureFlow(kind: string) {
     authentication: {
       resolvePrincipal: (context) => {
         const user = context.request?.headers.get("x-verified-user");
-        return user === null || user === undefined ? null : { userId: user };
+        return user === null || user === undefined ? null : { userId: user, orgId: "org_test" };
       }
     }
   });
@@ -123,6 +123,7 @@ function sessionRecord(
 ): SessionRecord {
   const now = Date.now();
   return {
+    orgId: "org_test",
     id,
     flowKind: "chat",
     userId: "alice",
@@ -162,6 +163,7 @@ async function seedRequest(
     flowKind: "chat",
     actionName: "run",
     userId: "alice",
+    orgId: "org_test",
     source: "http",
     startedAtMs: now,
     state: {},
@@ -357,7 +359,11 @@ const DISPATCH_FLOW = dispatchableFlow("chat");
 const PARENT_IDENTITY = {
   userId: "alice",
   tenantId: undefined,
-  orgId: undefined,
+  // The running request's organization, which every child it dispatches
+  // inherits verbatim (BR-11). Matches what `seedSession` writes, so a
+  // dispatched child lands in the same organization its parent was listed
+  // under — which is what the listing then has to find.
+  orgId: "org_test",
   sessionId: "parent",
   lineageId: "lin_parent"
 };

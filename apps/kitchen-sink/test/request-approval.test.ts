@@ -10,6 +10,7 @@
  *   - REJECT runs the rejection block and none of the post-approval blocks.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow } from "@flow-state-dev/core";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type {
@@ -80,6 +81,7 @@ describe("requestApproval durable pipeline", () => {
   it("approve runs the post-approval blocks and replays the prepare step", async () => {
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: approvalFlow,
       actionName: "requestApproval",
       input: { request: "deploy v2" },
@@ -115,6 +117,7 @@ describe("requestApproval durable pipeline", () => {
   it("reject runs the rejection block and skips the post-approval blocks", async () => {
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: approvalFlow,
       actionName: "requestApproval",
       input: { request: "delete prod db" },

@@ -14,6 +14,7 @@
  * that is what these assert.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
@@ -44,6 +45,7 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[])
       flowKind: CHANNEL_KIND,
       flowId: CHANNEL_KIND,
       userId: USER_ID,
+      orgId: DEFAULT_ORG_ID,
       state: { members, instructions: "Charter.", transcript: [] },
       lineageId: `lin_${sessionId}`,
       version: 0,
@@ -89,6 +91,7 @@ describe("what the post entry's queue holds", () => {
       await bind(runtime.stores, "engineering.standup", ["a", "b"]);
 
       const posted = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: instance,
         actionName: "post",
         input: { body: "shipped the reader" },
@@ -130,6 +133,7 @@ describe("what the post entry's queue holds", () => {
 
       const post = (body: string) =>
         runAction({
+    orgId: DEFAULT_ORG_ID,
           flow: instance,
           actionName: "post",
           input: { body },

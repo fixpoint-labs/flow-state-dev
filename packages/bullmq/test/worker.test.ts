@@ -10,6 +10,7 @@
  * the final attempt is `attemptsMade + 1 >= opts.attempts`.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
 
@@ -54,6 +55,7 @@ function makeJob(overrides: Record<string, unknown> = {}): Job<FlowJobData> {
       actionName: "send",
       input: {},
       userId: "u1",
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_1"
     },
     attemptsMade: 0,
