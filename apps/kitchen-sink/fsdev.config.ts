@@ -107,8 +107,12 @@ const adminFlows: Record<string, FlowInstance<any, any>> = adminCredentialConfig
 
 // One instance per channel KIND the tree selected, never one per channel — a
 // channel kind is a singleton, so its address is its kind and every channel is
-// a named session on it. These replace the hand-registered built-in this app
-// used to carry: only the binder hands a kind the ledgers a roster minted, so
+// a named session on it. `seatFlows` above goes the other way, one entry per
+// seat, because a seat kind is a `collection` and every seat is its own
+// addressable copy. Both lines follow the kind's declared cardinality; neither
+// is this app choosing a convention.
+//
+// These replace the hand-registered built-in this app used to carry: only the binder hands a kind the ledgers a roster minted, so
 // an instance built by hand answers no board call however many `boards:` lines
 // the tree declares.
 const channelFlows = Object.fromEntries(
