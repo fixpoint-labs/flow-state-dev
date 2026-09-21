@@ -19,9 +19,9 @@ function decision(
   kind: string,
 ): TypeSafeEvaluateOutput {
   return {
-    model: "typesafe/jev-1.13-20260917",
+    model: "typesafe-ai/jev",
     answers: {
-      [MEMORY_STORE_QUESTION]: { type: "noul", noul: store },
+      [MEMORY_STORE_QUESTION]: { type: "boolean", probability: store },
       [MEMORY_SALIENCE_QUESTION]: {
         type: "score",
         score: salience,

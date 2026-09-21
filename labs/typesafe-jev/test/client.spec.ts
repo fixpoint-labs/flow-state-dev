@@ -1,89 +1,76 @@
 /**
- * OpenRouter Decisions client: payload shape, auth header, error mapping.
+ * AI SDK evaluate client + capability routing. No OpenRouter Decisions.
  */
 import { describe, expect, it } from "vitest";
-import { createOpenRouterDecisionsClient } from "../src/client";
-import { TypeSafeError } from "../src/errors";
-import { OPENROUTER_DECISIONS_URL } from "../src/schemas";
-import { BILLING_RESULT } from "./scripted-client";
+import { createAiSdkEvaluateClient } from "../src/client";
+import { isEvaluationCapable } from "../src/capability";
+import { toSdkQuestions } from "../src/sdk-map";
+import { boolean, choice, noul, score } from "../src/schemas";
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(typeof body === "string" ? body : JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
+describe("isEvaluationCapable", () => {
+  it("treats Gateway Jev and doEvaluate objects as evaluate-capable", () => {
+    expect(isEvaluationCapable("typesafe-ai/jev")).toBe(true);
+    expect(isEvaluationCapable("typesafe-ai/jev-latest")).toBe(true);
+    expect(isEvaluationCapable("~typesafe/jev-latest")).toBe(true);
+    expect(isEvaluationCapable({ doEvaluate: async () => ({}) })).toBe(true);
   });
-}
 
-describe("createOpenRouterDecisionsClient", () => {
-  it("POSTs model + state + questions to the Decisions URL with a Bearer key", async () => {
-    const seen: Array<{ url: string; init: RequestInit }> = [];
-    const client = createOpenRouterDecisionsClient({
-      apiKey: "or-test-key",
-      fetch: async (url, init) => {
-        seen.push({ url: String(url), init: init ?? {} });
-        return jsonResponse(200, BILLING_RESULT);
+  it("treats a language model id as System 2", () => {
+    expect(isEvaluationCapable("openai/gpt-5.4-mini")).toBe(false);
+    expect(isEvaluationCapable("anthropic/claude-sonnet-4.6")).toBe(false);
+  });
+});
+
+describe("createAiSdkEvaluateClient", () => {
+  it("maps noul questions to boolean and lifts confidence from providerMetadata", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const client = createAiSdkEvaluateClient({
+      evaluate: async (args) => {
+        seen.push(args as unknown as Record<string, unknown>);
+        return {
+          answers: {
+            urgent: { type: "boolean", probability: 0.91 },
+            team: { type: "choice", choice: "billing", probabilities: { billing: 0.9, other: 0.1 } },
+            severity: { type: "score", score: 1.2, probabilities: { "0": 0.1, "1": 0.8, "2": 0.1 } },
+          },
+          providerMetadata: { typesafe: { confidence: { team: 0.77, severity: 0.64 } } },
+        };
       },
     });
 
+    const questions = {
+      urgent: noul("Urgent?"),
+      team: choice("Which team?", { billing: "Pay", other: "Else" }),
+      severity: score("How bad?", ["low", "mid", "high"]),
+    };
+
     const out = await client.evaluate({
-      state: "Help ASAP",
-      questions: { urgent: { type: "noul", instructions: "Urgent?" } },
+      state: "charged twice",
+      questions,
     });
 
-    expect(out).toEqual(BILLING_RESULT);
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.url).toBe(OPENROUTER_DECISIONS_URL);
-    const headers = new Headers(seen[0]?.init.headers);
-    expect(headers.get("Authorization")).toBe("Bearer or-test-key");
-    expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
-      model: "~typesafe/jev-latest",
-      state: "Help ASAP",
-      questions: { urgent: { type: "noul", instructions: "Urgent?" } },
+    expect(seen[0]?.model).toBe("typesafe-ai/jev");
+    expect(seen[0]?.questions).toEqual(toSdkQuestions(questions));
+    expect(out.path).toBe("evaluate");
+    expect(out.answers.urgent).toEqual({ type: "noul", noul: 0.91 });
+    expect(out.answers.team).toMatchObject({
+      type: "choice",
+      choice: "billing",
+      confidence: 0.77,
     });
+    expect(out.answers.severity).toMatchObject({ type: "score", score: 1.2, confidence: 0.64 });
   });
 
-  it("maps a non-2xx into TypeSafeError.http without leaking the key in the message", async () => {
-    const client = createOpenRouterDecisionsClient({
-      apiKey: "or-secret-should-not-appear",
-      fetch: async () => jsonResponse(401, { error: "unauthorized" }),
-    });
-
-    await expect(
-      client.evaluate({
-        state: "x",
-        questions: { q: { type: "noul", instructions: "yes?" } },
+  it("keeps boolean answers as boolean when the question was boolean", async () => {
+    const client = createAiSdkEvaluateClient({
+      evaluate: async () => ({
+        answers: { refunded: { type: "boolean", probability: 0.2 } },
       }),
-    ).rejects.toMatchObject({
-      name: "TypeSafeError",
-      code: "http",
-      status: 401,
     });
-
-    try {
-      await client.evaluate({
-        state: "x",
-        questions: { q: { type: "noul", instructions: "yes?" } },
-      });
-    } catch (error) {
-      expect(error).toBeInstanceOf(TypeSafeError);
-      expect(String(error)).not.toContain("or-secret-should-not-appear");
-    }
-  });
-
-  it("rejects a 200 body that is not a TypeSafe answers map", async () => {
-    const client = createOpenRouterDecisionsClient({
-      apiKey: "or-test-key",
-      fetch: async () =>
-        jsonResponse(200, {
-          choices: [{ message: { content: "sure, billing" } }],
-        }),
+    const out = await client.evaluate({
+      state: "thanks",
+      questions: { refunded: boolean("Was a refund issued?") },
     });
-
-    await expect(
-      client.evaluate({
-        state: "x",
-        questions: { q: { type: "noul", instructions: "yes?" } },
-      }),
-    ).rejects.toMatchObject({ code: "invalid_response" });
+    expect(out.answers.refunded).toEqual({ type: "boolean", probability: 0.2 });
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Index-time facet helpers. Classify uses Jev; search never does.
+ * Index-time facet helpers. Classify uses the evaluator; search never does.
  */
 
 import { createHash } from "node:crypto";

@@ -1,5 +1,5 @@
 /**
- * Failures from the TypeSafe / OpenRouter Decisions call or its host config.
+ * Failures from the evaluate call, the System 2 fallback, or host config.
  * Extends FlowError so `code` survives engine normalization.
  */
 
@@ -15,8 +15,8 @@ export type TypeSafeErrorCode =
   | "invalid_response";
 
 /**
- * Typed failure for the decision client and the evaluate block.
- * `missing_api_key` means the host did not supply `OPENROUTER_API_KEY`.
+ * Typed failure for the evaluator. `missing_api_key` means the host did
+ * not supply a Gateway / TypeSafe / language-model credential.
  */
 export class TypeSafeError extends FlowError {
   override readonly code: TypeSafeErrorCode;

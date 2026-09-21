@@ -1,17 +1,18 @@
 /**
- * Demo: Jev as skill-activator tier 3.
+ * Demo: evaluator as skill-activator tier 3.
  *
  * `systemOne: true` injects `createSystemOneSkillClassifier` into
  * `createSkillActivator({ classifier })`. Tiers 1–2 and apply stay
- * orchestration's. `systemOne: false` is the package-off case —
+ * orchestration's. `systemOne: false` is the no-classifier case —
  * deterministic slash / keyword only (`enableLlmClassifier: false`).
+ * Optional = model capability, not package mount.
  */
 
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { InitialSkill } from "@flow-state-dev/core";
 import { createSkillActivator } from "@flow-state-dev/orchestration";
 import { z } from "zod";
-import type { TypeSafeDecisionsClient } from "./client";
+import type { EvaluateClient } from "./client";
 import {
   SKILLS_COLLECTION_KEY,
   SYSTEM_ONE_SKILL_CONFIDENCE,
@@ -49,7 +50,7 @@ export const DEMO_SKILLS: InitialSkill[] = [
 
 export interface SystemOneSkillActivatorOptions {
   systemOne?: boolean;
-  client?: TypeSafeDecisionsClient;
+  client?: EvaluateClient;
   apiKey?: string;
   name?: string;
   collectionKey?: string;

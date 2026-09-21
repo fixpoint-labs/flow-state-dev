@@ -1,12 +1,12 @@
 /**
- * typesafeEvaluate is a handler. Secrets stay on the host. Questions come
- * from the factory or the input — never a free-text prompt.
+ * evaluator is a handler stand-in. Secrets stay on the host. Questions
+ * come from the factory or the input — never a free-text prompt.
  */
 import { describe, expect, it } from "vitest";
 import { FlowError } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { typesafeEvaluate, jevDecide } from "../src/evaluate";
-import { choice, noul } from "../src/schemas";
+import { evaluator, jevDecide, typesafeEvaluate } from "../src/evaluate";
+import { boolean, choice, noul } from "../src/schemas";
 import { BILLING_RESULT, scriptedClient } from "./scripted-client";
 
 const QUESTIONS = {
@@ -17,17 +17,18 @@ const QUESTIONS = {
   urgent: noul("Is this urgent?"),
 };
 
-describe("typesafeEvaluate", () => {
-  it("returns a handler block, not a generator", () => {
-    const block = typesafeEvaluate({ name: "classify", questions: QUESTIONS });
+describe("evaluator", () => {
+  it("returns a handler block, not a generator, and keeps aliases", () => {
+    const block = evaluator({ name: "classify", questions: QUESTIONS });
     expect(block.kind).toBe("handler");
     expect(block.name).toBe("classify");
-    expect(jevDecide).toBe(typesafeEvaluate);
+    expect(typesafeEvaluate).toBe(evaluator);
+    expect(jevDecide).toBe(evaluator);
   });
 
   it("posts factory questions with the input state through the injected client", async () => {
     const { client, calls } = scriptedClient(BILLING_RESULT);
-    const block = typesafeEvaluate({
+    const block = evaluator({
       name: "classify",
       questions: QUESTIONS,
       client,
@@ -43,14 +44,14 @@ describe("typesafeEvaluate", () => {
     expect(calls[0]?.request).toMatchObject({
       state: "My card was charged twice.",
       questions: QUESTIONS,
-      model: "~typesafe/jev-latest",
+      model: "typesafe-ai/jev",
     });
   });
 
   it("lets input questions override the factory map", async () => {
     const { client, calls } = scriptedClient(BILLING_RESULT);
-    const override = { only: noul("Is this a billing issue?") };
-    const block = typesafeEvaluate({
+    const override = { only: boolean("Is this a billing issue?") };
+    const block = evaluator({
       name: "classify",
       questions: QUESTIONS,
       client,
@@ -66,7 +67,7 @@ describe("typesafeEvaluate", () => {
 
   it("throws when neither factory nor input supplies questions", async () => {
     const { client } = scriptedClient(BILLING_RESULT);
-    const block = typesafeEvaluate({ name: "classify", client });
+    const block = evaluator({ name: "classify", client });
 
     const result = await testBlock(block, {
       input: { state: "hello" },
@@ -79,7 +80,7 @@ describe("typesafeEvaluate", () => {
 
   it("does not read an apiKey smuggled on action input", async () => {
     const { client, calls } = scriptedClient(BILLING_RESULT);
-    const block = typesafeEvaluate({
+    const block = evaluator({
       name: "classify",
       questions: QUESTIONS,
       client,
@@ -97,11 +98,19 @@ describe("typesafeEvaluate", () => {
     expect(JSON.stringify(calls[0]?.request)).not.toContain("apiKey");
   });
 
-  it("refuses to call OpenRouter when no client is injected and no host key is set", async () => {
-    const previous = process.env.OPENROUTER_API_KEY;
+  it("refuses to call evaluate when no client is injected and no host key is set", async () => {
+    const previous = {
+      gateway: process.env.AI_GATEWAY_API_KEY,
+      typesafe: process.env.TYPESAFE_AI_API_KEY,
+      oidc: process.env.VERCEL_OIDC_TOKEN,
+      openrouter: process.env.OPENROUTER_API_KEY,
+    };
+    delete process.env.AI_GATEWAY_API_KEY;
+    delete process.env.TYPESAFE_AI_API_KEY;
+    delete process.env.VERCEL_OIDC_TOKEN;
     delete process.env.OPENROUTER_API_KEY;
     try {
-      const block = typesafeEvaluate({
+      const block = evaluator({
         name: "classify",
         questions: QUESTIONS,
       });
@@ -110,9 +119,13 @@ describe("typesafeEvaluate", () => {
       });
       expect(result.error).toBeInstanceOf(FlowError);
       expect((result.error as FlowError).code).toBe("missing_api_key");
-      expect(String(result.error)).toContain("OPENROUTER_API_KEY");
+      expect(String(result.error)).toContain("AI_GATEWAY_API_KEY");
+      expect(String(result.error)).not.toContain("OPENROUTER");
     } finally {
-      if (previous !== undefined) process.env.OPENROUTER_API_KEY = previous;
+      if (previous.gateway !== undefined) process.env.AI_GATEWAY_API_KEY = previous.gateway;
+      if (previous.typesafe !== undefined) process.env.TYPESAFE_AI_API_KEY = previous.typesafe;
+      if (previous.oidc !== undefined) process.env.VERCEL_OIDC_TOKEN = previous.oidc;
+      if (previous.openrouter !== undefined) process.env.OPENROUTER_API_KEY = previous.openrouter;
     }
   });
 });

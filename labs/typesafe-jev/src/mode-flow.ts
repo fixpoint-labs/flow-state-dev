@@ -7,8 +7,8 @@
 
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import type { TypeSafeDecisionsClient } from "./client";
-import { typesafeEvaluate } from "./evaluate";
+import type { EvaluateClient } from "./client";
+import { evaluator } from "./evaluate";
 import { systemOneRouter } from "./router";
 import { evaluateInputSchema, evaluateOutputSchema } from "./schemas";
 
@@ -27,7 +27,7 @@ export type ModeInput = z.infer<typeof modeInputSchema>;
 export type ModeOutput = z.infer<typeof modeOutputSchema>;
 
 export interface SystemOneDemoOptions {
-  client?: TypeSafeDecisionsClient;
+  client?: EvaluateClient;
   apiKey?: string;
   minConfidence?: number;
 }
@@ -74,7 +74,7 @@ export function createModeRouter(options: SystemOneDemoOptions = {}) {
  * Demo flow: `route` is the star; `evaluate` is the low-level primitive.
  */
 export function createSystemOneDemoFlow(options: SystemOneDemoOptions = {}) {
-  const evaluate = typesafeEvaluate({
+  const evaluate = evaluator({
     name: "evaluate",
     client: options.client,
     apiKey: options.apiKey,

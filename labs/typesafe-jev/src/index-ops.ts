@@ -1,11 +1,11 @@
 /**
  * Index-time operations. Shared by capability `fns` (`ctx.cap`) and the
- * handler / tool wrappers. Search never calls Decisions.
+ * handler / tool wrappers. Search never calls the evaluator.
  */
 
 import type { ResourceCollectionRef } from "@flow-state-dev/core";
 import { z } from "zod";
-import type { TypeSafeDecisionsClient } from "./client";
+import type { EvaluateClient } from "./client";
 import { TypeSafeError } from "./errors";
 import {
   INDEX_FACET_QUESTIONS,
@@ -28,11 +28,14 @@ import {
   type IndexedDocumentState,
 } from "./indexed-docs-resource";
 import { DEFAULT_MIN_CONFIDENCE } from "./route";
-import { runTypeSafeDecision } from "./run-decision";
+import { runEvaluate } from "./run-evaluate";
 
 export interface IndexOpOptions {
-  client?: TypeSafeDecisionsClient;
+  client?: EvaluateClient;
   apiKey?: string;
+  model?: unknown;
+  fallbackModel?: string;
+  mode?: "evaluate" | "system-2";
   collectionKey?: string;
   schemaVersion?: number;
   minConfidence?: number;
@@ -106,7 +109,7 @@ export function collectionOf(
   if (collection === undefined) {
     throw new TypeSafeError(
       "invalid_state",
-      `System One index collection "${collectionKey}" is not installed. ` +
+      `Index collection "${collectionKey}" is not installed. ` +
         "Attach createSystemOneIndexCapability() — there is no silent RAG stub.",
     );
   }
@@ -139,11 +142,14 @@ export async function ingestIndexedDocument(
     return { key: input.key, facets: existing.state.facets, wrote: false };
   }
 
-  const decision = await runTypeSafeDecision({
+  const decision = await runEvaluate({
     state: { title: input.title, body: input.body },
     questions: INDEX_FACET_QUESTIONS,
     apiKey: options.apiKey,
     client: options.client,
+    model: options.model,
+    fallbackModel: options.fallbackModel,
+    mode: options.mode,
   });
   const facets = facetsFromAnswers(decision.answers, contentHash, {
     schemaVersion,
@@ -187,11 +193,14 @@ export async function reindexIndexedCollection(
       skipped += 1;
       continue;
     }
-    const decision = await runTypeSafeDecision({
+    const decision = await runEvaluate({
       state: { title: ref.state.title, body: ref.state.body },
       questions: INDEX_FACET_QUESTIONS,
       apiKey: options.apiKey,
       client: options.client,
+      model: options.model,
+      fallbackModel: options.fallbackModel,
+      mode: options.mode,
     });
     const facets = facetsFromAnswers(decision.answers, contentHash, {
       schemaVersion,
@@ -210,11 +219,14 @@ export async function classifyQueryEscape(
   options: IndexOpOptions = {},
 ): Promise<ClassifyQueryOutput> {
   const minConfidence = options.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
-  const decision = await runTypeSafeDecision({
+  const decision = await runEvaluate({
     state: query,
     questions: INDEX_FACET_QUESTIONS,
     apiKey: options.apiKey,
     client: options.client,
+    model: options.model,
+    fallbackModel: options.fallbackModel,
+    mode: options.mode,
   });
   const facets = facetsFromAnswers(decision.answers, hashIndexedContent(query, ""), {
     minConfidence,

@@ -12,15 +12,15 @@ import {
   sequencer,
 } from "@flow-state-dev/core";
 import { z } from "zod";
-import type { TypeSafeDecisionsClient } from "./client";
-import { typesafeEvaluate } from "./evaluate";
+import type { EvaluateClient } from "./client";
+import { evaluator } from "./evaluate";
 import { TICKET_QUESTIONS } from "./questions";
 import { routeByChoice } from "./route";
 import {
   evaluateInputSchema,
   evaluateOutputSchema,
   isChoiceAnswer,
-  isNoulAnswer,
+  truthProbability,
 } from "./schemas";
 
 export const FLOW_KIND = "ticket-triage";
@@ -43,8 +43,8 @@ export type TriageOutput = z.infer<typeof triageOutputSchema>;
 const DESTINATIONS = ["billing", "technical", "sales", "escalate"] as const;
 
 export interface TicketTriageOptions {
-  /** Scripted client for tests. Host runs omit this and use OPENROUTER_API_KEY. */
-  client?: TypeSafeDecisionsClient;
+  /** Scripted client for tests. Host runs omit this and use Gateway / TypeSafe creds. */
+  client?: EvaluateClient;
   apiKey?: string;
 }
 
@@ -58,7 +58,7 @@ function destinationHandler(destination: (typeof DESTINATIONS)[number]) {
 }
 
 function buildTriagePipeline(options: TicketTriageOptions) {
-  const classify = typesafeEvaluate({
+  const classify = evaluator({
     name: "classify-ticket",
     questions: TICKET_QUESTIONS,
     client: options.client,
@@ -101,13 +101,13 @@ function buildTriagePipeline(options: TicketTriageOptions) {
           if (!isChoiceAnswer(department)) {
             throw new Error("department answer was not a choice.");
           }
-          if (!isNoulAnswer(urgent)) {
-            throw new Error("is_urgent answer was not a noul.");
+          if (truthProbability(urgent) === undefined) {
+            throw new Error("is_urgent answer was not a boolean or noul.");
           }
           const decision = routeByChoice({
             choice: department,
             minConfidence: 0.55,
-            escalateIf: { noul: urgent, whenAbove: 0.8, andChoice: "billing" },
+            escalateIf: { truth: urgent, whenAbove: 0.8, andChoice: "billing" },
           });
           return {
             destination: decision.destination,
@@ -125,7 +125,7 @@ function buildTriagePipeline(options: TicketTriageOptions) {
  * Ticket-triage flow used by `fsdev run` and the lab tests.
  */
 export function createTicketTriageFlow(options: TicketTriageOptions = {}) {
-  const evaluate = typesafeEvaluate({
+  const evaluate = evaluator({
     name: "evaluate",
     client: options.client,
     apiKey: options.apiKey,

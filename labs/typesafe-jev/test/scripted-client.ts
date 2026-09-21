@@ -1,19 +1,19 @@
 /**
- * Scripted OpenRouter Decisions client — no network.
+ * Scripted evaluate client — no network.
  */
 
-import type { TypeSafeDecisionsClient, TypeSafeRequest } from "../src/client";
+import type { EvaluateClient, EvaluateRequest } from "../src/client";
 import type { TypeSafeEvaluateOutput } from "../src/schemas";
 
 export interface ScriptedCall {
-  request: TypeSafeRequest;
+  request: EvaluateRequest;
 }
 
 export function scriptedClient(
-  result: TypeSafeEvaluateOutput | ((request: TypeSafeRequest) => TypeSafeEvaluateOutput),
+  result: TypeSafeEvaluateOutput | ((request: EvaluateRequest) => TypeSafeEvaluateOutput),
 ) {
   const calls: ScriptedCall[] = [];
-  const client: TypeSafeDecisionsClient = {
+  const client: EvaluateClient = {
     async evaluate(request) {
       calls.push({ request });
       return typeof result === "function" ? result(request) : result;
@@ -23,8 +23,9 @@ export function scriptedClient(
 }
 
 export const BILLING_RESULT: TypeSafeEvaluateOutput = {
-  model: "typesafe/jev-1.13-20260917",
+  model: "typesafe-ai/jev",
   provider: "TypeSafe",
+  path: "evaluate",
   answers: {
     department: {
       type: "choice",
@@ -45,7 +46,8 @@ export const BILLING_RESULT: TypeSafeEvaluateOutput = {
 };
 
 export const LOW_CONFIDENCE_RESULT: TypeSafeEvaluateOutput = {
-  model: "typesafe/jev-1.13-20260917",
+  model: "typesafe-ai/jev",
+  path: "evaluate",
   answers: {
     department: {
       type: "choice",

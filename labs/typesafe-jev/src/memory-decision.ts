@@ -1,18 +1,25 @@
 /**
- * Sketch: System One decisions for memory capture.
+ * Sketch: evaluator decisions for memory capture.
  *
- * Classify / salience / what-to-store / a coarse kind tag on a candidate
- * snippet. Memory does not import this module — the host passes the
- * block as `memory.system({ classifier })`. Omit it and capture stays
- * on today's generator. This is the inject seam only; capture is not
- * rewritten here.
+ * Store / salience / a coarse kind tag on a candidate snippet. Memory
+ * does not import this module — the host passes the block as
+ * `memory.system({ classifier })`. Omit it and capture stays on today's
+ * generator. Optional = model capability, not package mount. This is
+ * the inject seam only; capture is not rewritten here.
  */
 
 import { handler, type BlockDefinition } from "@flow-state-dev/core";
 import { z } from "zod";
-import type { TypeSafeDecisionsClient } from "./client";
-import { asTypeSafeState, runTypeSafeDecision } from "./run-decision";
-import { choice, isChoiceAnswer, isNoulAnswer, isScoreAnswer, noul, score } from "./schemas";
+import type { EvaluateClient } from "./client";
+import { asTypeSafeState, runEvaluate } from "./run-evaluate";
+import {
+  boolean,
+  choice,
+  isChoiceAnswer,
+  isScoreAnswer,
+  score,
+  truthProbability,
+} from "./schemas";
 
 export const MEMORY_STORE_QUESTION = "store";
 export const MEMORY_SALIENCE_QUESTION = "salience";
@@ -34,9 +41,11 @@ export type MemoryDecisionInput = z.infer<typeof memoryDecisionInputSchema>;
 export type MemoryDecisionOutput = z.infer<typeof memoryDecisionOutputSchema>;
 
 export interface SystemOneMemoryDecisionOptions {
-  client?: TypeSafeDecisionsClient;
+  client?: EvaluateClient;
   apiKey?: string;
-  model?: string;
+  model?: unknown;
+  fallbackModel?: string;
+  mode?: "evaluate" | "system-2";
   name?: string;
   storeThreshold?: number;
 }
@@ -54,10 +63,10 @@ export function createSystemOneMemoryDecision(
     inputSchema: memoryDecisionInputSchema,
     outputSchema: memoryDecisionOutputSchema,
     execute: async (input): Promise<MemoryDecisionOutput> => {
-      const result = await runTypeSafeDecision({
+      const result = await runEvaluate({
         state: asTypeSafeState(input.text),
         questions: {
-          [MEMORY_STORE_QUESTION]: noul(
+          [MEMORY_STORE_QUESTION]: boolean(
             "Should this be stored as a memory, or discarded?",
             {
               true: "This is a durable fact, preference, or identity detail worth keeping.",
@@ -81,13 +90,15 @@ export function createSystemOneMemoryDecision(
         client: options.client,
         apiKey: options.apiKey,
         model: options.model,
+        fallbackModel: options.fallbackModel,
+        mode: options.mode,
       });
 
       const storeAnswer = result.answers[MEMORY_STORE_QUESTION];
       const salienceAnswer = result.answers[MEMORY_SALIENCE_QUESTION];
       const kindAnswer = result.answers[MEMORY_KIND_QUESTION];
 
-      const storeScore = isNoulAnswer(storeAnswer) ? storeAnswer.noul : 0;
+      const storeScore = truthProbability(storeAnswer) ?? 0;
       const store = storeScore >= storeThreshold;
       const salience = isScoreAnswer(salienceAnswer)
         ? Math.min(1, Math.max(0, salienceAnswer.score / 2))

@@ -1,8 +1,8 @@
 /**
- * fsdev config for the System One POC lab.
+ * fsdev config for the evaluator POC lab.
  *
- * No generators — Jev is a Decisions call, not a chat model. The host key
- * is `OPENROUTER_API_KEY` (never action input).
+ * Evaluate goes through AI SDK `experimental_evaluate` (Gateway / Jev)
+ * or System 2 `generateObject`. Host keys are never action input.
  *
  *   cd labs/typesafe-jev
  *   pnpm fsdev run system-one route -i '{"message":"let us plan the launch"}'
@@ -24,7 +24,7 @@ import {
 
 function neverResolvesAModel(): never {
   throw new Error(
-    "typesafe-jev declares no generator actions; Jev is called through OpenRouter Decisions.",
+    "typesafe-jev demo actions do not resolve a chat model through fsdev; evaluate uses experimental_evaluate or System 2 generateObject.",
   );
 }
 

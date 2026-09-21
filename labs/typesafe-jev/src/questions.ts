@@ -1,7 +1,7 @@
 /**
  * Ticket-triage question set used by the demo flow.
  *
- * One call, three primitives: route (choice), urgency (noul), frustration (score).
+ * One call, three primitives: route (choice), urgency (noul/boolean), frustration (score).
  */
 
 import { choice, noul, score } from "./schemas";

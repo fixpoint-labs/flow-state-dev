@@ -1,20 +1,20 @@
 /**
- * systemOneRouter — the production-looking define surface for System One routing.
+ * Intent router driven by the evaluator (choice + confidence).
  *
- * One factory. Internally an FSD router: Jev Choice over described routes,
- * then the selected child runs with the same input. `default` is never a
- * Choice option; it is the fallback when confidence is below `minConfidence`
- * or the choice is not a described route.
+ * One factory. Internally an FSD router: evaluator Choice over described
+ * routes, then the selected child runs with the same input. `default` is
+ * never a Choice option; it is the fallback when confidence is below
+ * `minConfidence` or the choice is not a described route.
  *
- * Future home: `@flow-state-dev/system-one`.
+ * Composition on evaluator answers — not a System One package.
  */
 
 import { router, type BlockDefinition } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
-import type { TypeSafeDecisionsClient } from "./client";
+import type { EvaluateClient } from "./client";
 import { TypeSafeError } from "./errors";
 import { DEFAULT_MIN_CONFIDENCE } from "./route";
-import { asTypeSafeState, runTypeSafeDecision } from "./run-decision";
+import { asTypeSafeState, runEvaluate } from "./run-evaluate";
 import { choice, isChoiceAnswer } from "./schemas";
 
 /** Reserved route key. Never sent to Jev as a Choice option. */
@@ -66,9 +66,11 @@ export interface SystemOneRouterConfig<
    * Point `default` at an escalate pipeline if low confidence should escalate.
    */
   minConfidence?: number;
-  model?: string;
+  model?: unknown;
+  fallbackModel?: string;
+  mode?: "evaluate" | "system-2";
   apiKey?: string;
-  client?: TypeSafeDecisionsClient;
+  client?: EvaluateClient;
 }
 
 function isDescribedRoute<I extends ZodTypeAny, O extends ZodTypeAny>(
@@ -167,12 +169,14 @@ export function systemOneRouter<
     outputSchema,
     routes: routeBlocks,
     execute: async (input) => {
-      const result = await runTypeSafeDecision({
+      const result = await runEvaluate({
         state: asTypeSafeState(input),
         questions: {
           [SYSTEM_ONE_ROUTE_QUESTION]: choice(instructions, criteria),
         },
         model: config.model,
+        fallbackModel: config.fallbackModel,
+        mode: config.mode,
         apiKey: config.apiKey,
         client: config.client,
       });

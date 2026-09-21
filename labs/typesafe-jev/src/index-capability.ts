@@ -1,16 +1,16 @@
 /**
- * Optional System One index capability.
+ * Optional index-time facet capability — composition on evaluator answers.
  *
  * When a host `uses` this, classify-on-write and facet search light up on
  * `ctx.cap["system-one-index"]`. Generators also get the search tool
  * (default-on preset). Handlers that only want the fns drop it with
- * `.presets({ tools: false })`. When the package is absent, those tools
- * and fns are missing — there is no silent RAG / embeddings stub.
+ * `.presets({ tools: false })`. Omit it and those tools and fns are
+ * missing — there is no silent RAG / embeddings stub. Not a System One package.
  */
 
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core";
-import type { TypeSafeDecisionsClient } from "./client";
+import type { EvaluateClient } from "./client";
 import { type FacetQuery } from "./facets";
 import {
   SEARCH_INDEXED_DOCUMENTS_TOOL,
@@ -32,8 +32,11 @@ import {
 import { INDEXED_DOCS, indexedDocsResources } from "./indexed-docs-resource";
 
 export interface CreateSystemOneIndexCapabilityOptions {
-  client?: TypeSafeDecisionsClient;
+  client?: EvaluateClient;
   apiKey?: string;
+  model?: unknown;
+  fallbackModel?: string;
+  mode?: "evaluate" | "system-2";
   /** Resource accessor. Default `"indexed-docs"`. */
   collectionKey?: string;
   schemaVersion?: number;
@@ -61,7 +64,7 @@ export function systemOneIndexTools(
 }
 
 /**
- * Factory for the future `@flow-state-dev/system-one` index surface.
+ * Factory for index-time classify + deterministic facet search.
  *
  * Helpers live on `ctx.cap["system-one-index"]` — not a bag glued onto
  * the capability object.

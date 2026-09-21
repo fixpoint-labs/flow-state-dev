@@ -9,7 +9,7 @@
 
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import type { TypeSafeDecisionsClient } from "./client";
+import type { EvaluateClient } from "./client";
 import {
   classifyOnWrite,
   classifyQuery,
@@ -27,7 +27,7 @@ export const INDEXED_DOCS_FLOW_KIND = "system-one-index";
 export interface IndexedDocsFlowOptions {
   /** When false, facet search / classify-on-write are not installed. */
   systemOne?: boolean;
-  client?: TypeSafeDecisionsClient;
+  client?: EvaluateClient;
   apiKey?: string;
   schemaVersion?: number;
   minConfidence?: number;

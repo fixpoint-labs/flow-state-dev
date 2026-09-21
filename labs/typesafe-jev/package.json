@@ -7,7 +7,7 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "description": "POC lab incubating the future @flow-state-dev/system-one surface: systemOneRouter, typesafeEvaluate, index-time facet classify/search, and optional Jev skill-activator tier 3. Private / DNM.",
+  "description": "DNM lab: evaluator stand-in via AI SDK experimental_evaluate (Gateway / Jev) with System 2 structured-output fallback. Private. Not a published package.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root .",
@@ -19,6 +19,7 @@
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
+    "ai": "^7.0.105",
     "zod": "^3.25.76"
   },
   "devDependencies": {

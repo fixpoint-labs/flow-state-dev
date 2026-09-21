@@ -1,24 +1,38 @@
 /**
- * Future `@flow-state-dev/system-one` surface, incubated in this lab.
+ * Lab stand-in for a core `evaluator` block.
  *
- *   systemOneRouter     — intent + confidence-gated dispatch (the star)
- *   typesafeEvaluate    — low-level state + questions → answers
- *   systemOneChoice / systemOneScore / systemOneNoul — one-shot wrappers
- *   choice / score / noul — question builders
- *   createSystemOneIndexCapability — index-time classify + deterministic facet search
- *   createSystemOneSkillClassifier — optional Jev drop-in for skill-activator tier 3
- *   createSystemOneMemoryDecision — sketch: optional Jev store/salience/kind for memory
+ *   evaluator           — state + questions (choice/score/boolean) → answers
+ *   typesafeEvaluate    — alias of evaluator
+ *   systemOneRouter     — choice + confidence-gated dispatch (composition)
+ *   createSystemOneIndexCapability — index-time facets on evaluator answers
+ *   createSystemOneSkillClassifier — optional skill-activator tier 3
+ *   createSystemOneMemoryDecision — sketch: optional memory classifier
+ *
+ * Prefer AI SDK `experimental_evaluate` (Gateway / Jev) when the model
+ * is evaluation-capable; fall back to System 2 structured output when
+ * it is not. Not a published package. No OpenRouter Decisions client.
  */
 
 export {
-  createOpenRouterDecisionsClient,
-  resolveOpenRouterApiKey,
-  type OpenRouterDecisionsClientOptions,
+  createAiSdkEvaluateClient,
+  resolveEvaluateApiKey,
+  type AiSdkEvaluateClientOptions,
+  type EvaluateClient,
+  type EvaluateFn,
+  type EvaluateRequest,
   type TypeSafeDecisionsClient,
   type TypeSafeRequest,
 } from "./client";
 export { TypeSafeError, type TypeSafeErrorCode } from "./errors";
-export { jevDecide, typesafeEvaluate, type TypeSafeEvaluateConfig } from "./evaluate";
+export {
+  evaluator,
+  jevDecide,
+  typesafeEvaluate,
+  type EvaluatorBlock,
+  type EvaluatorConfig,
+  type TypeSafeEvaluateBlock,
+  type TypeSafeEvaluateConfig,
+} from "./evaluate";
 export {
   createTicketTriageFlow,
   FLOW_KIND,
@@ -42,9 +56,11 @@ export {
   type SystemOneDemoOptions,
 } from "./mode-flow";
 export {
+  systemOneBoolean,
   systemOneChoice,
   systemOneNoul,
   systemOneScore,
+  type SystemOneBooleanConfig,
   type SystemOneChoiceConfig,
   type SystemOneNoulConfig,
   type SystemOneScoreConfig,
@@ -158,17 +174,39 @@ export {
   type SkillCatalogEntry,
   type SystemOneSkillClassifierOptions,
 } from "./skill-classifier";
-export { asTypeSafeState, runTypeSafeDecision } from "./run-decision";
 export {
+  hasEvaluateCredentials,
+  hasSystem2Credentials,
+  isEvaluationCapable,
+  type EvaluateMode,
+} from "./capability";
+export { asTypeSafeState, runEvaluate, runTypeSafeDecision } from "./run-evaluate";
+export type { RunEvaluateOptions } from "./run-evaluate";
+export {
+  formatSystem2Prompt,
+  structuredAnswersSchema,
+  structuredToAnswers,
+  system2Evaluate,
+  type GenerateStructuredFn,
+  type StructuredAnswers,
+  type System2EvaluateOptions,
+} from "./system-2";
+export { fromSdkResult, toSdkQuestions } from "./sdk-map";
+export {
+  DEFAULT_EVALUATE_MODEL,
+  DEFAULT_SYSTEM2_MODEL,
   DEFAULT_TYPESAFE_MODEL,
-  OPENROUTER_DECISIONS_URL,
   answerSchema,
   answersSchema,
+  boolean,
+  booleanAnswerSchema,
+  booleanQuestionSchema,
   choice,
   choiceAnswerSchema,
   choiceQuestionSchema,
   evaluateInputSchema,
   evaluateOutputSchema,
+  isBooleanAnswer,
   isChoiceAnswer,
   isNoulAnswer,
   isScoreAnswer,
@@ -181,10 +219,14 @@ export {
   scoreAnswerSchema,
   scoreQuestionSchema,
   stateSchema,
+  truthProbability,
   type AnswerFor,
   type AnswersFor,
+  type BooleanAnswer,
+  type BooleanQuestion,
   type ChoiceAnswer,
   type ChoiceQuestion,
+  type EvaluatePath,
   type NoulAnswer,
   type NoulQuestion,
   type ScoreAnswer,

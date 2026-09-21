@@ -1,17 +1,20 @@
 /**
- * One-shot System One primitives. Each is a handler: the input is the state,
+ * One-shot evaluator wrappers. Each is a handler: the input is the state,
  * the output is one typed answer. Prefer these when you need a single
- * judgment; use typesafeEvaluate when you want several questions at once.
+ * judgment; use `evaluator` when you want several questions at once.
  */
 
 import { handler, type BlockDefinition } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
-import type { TypeSafeDecisionsClient } from "./client";
+import type { EvaluateClient } from "./client";
 import { TypeSafeError } from "./errors";
-import { asTypeSafeState, runTypeSafeDecision } from "./run-decision";
+import { asTypeSafeState, runEvaluate } from "./run-evaluate";
 import {
+  boolean,
+  booleanAnswerSchema,
   choice,
   choiceAnswerSchema,
+  isBooleanAnswer,
   isChoiceAnswer,
   isNoulAnswer,
   isScoreAnswer,
@@ -19,6 +22,8 @@ import {
   noulAnswerSchema,
   score,
   scoreAnswerSchema,
+  type BooleanAnswer,
+  type BooleanQuestion,
   type ChoiceAnswer,
   type NoulAnswer,
   type NoulQuestion,
@@ -28,9 +33,11 @@ import {
 interface OneshotBase<TInputSchema extends ZodTypeAny> {
   name: string;
   inputSchema: TInputSchema;
-  model?: string;
+  model?: unknown;
+  fallbackModel?: string;
+  mode?: "evaluate" | "system-2";
   apiKey?: string;
-  client?: TypeSafeDecisionsClient;
+  client?: EvaluateClient;
 }
 
 export interface SystemOneChoiceConfig<TInputSchema extends ZodTypeAny = ZodTypeAny>
@@ -43,6 +50,12 @@ export interface SystemOneNoulConfig<TInputSchema extends ZodTypeAny = ZodTypeAn
   extends OneshotBase<TInputSchema> {
   instructions: string;
   criteria?: NoulQuestion["criteria"];
+}
+
+export interface SystemOneBooleanConfig<TInputSchema extends ZodTypeAny = ZodTypeAny>
+  extends OneshotBase<TInputSchema> {
+  instructions: string;
+  criteria?: BooleanQuestion["criteria"];
 }
 
 export interface SystemOneScoreConfig<TInputSchema extends ZodTypeAny = ZodTypeAny>
@@ -62,12 +75,14 @@ export function systemOneChoice<TInputSchema extends ZodTypeAny>(
     inputSchema: config.inputSchema,
     outputSchema: choiceAnswerSchema,
     execute: async (input) => {
-      const result = await runTypeSafeDecision({
+      const result = await runEvaluate({
         state: asTypeSafeState(input),
         questions: {
           [config.name]: choice(config.instructions, config.criteria),
         },
         model: config.model,
+        fallbackModel: config.fallbackModel,
+        mode: config.mode,
         apiKey: config.apiKey,
         client: config.client,
       });
@@ -94,12 +109,14 @@ export function systemOneNoul<TInputSchema extends ZodTypeAny>(
     inputSchema: config.inputSchema,
     outputSchema: noulAnswerSchema,
     execute: async (input) => {
-      const result = await runTypeSafeDecision({
+      const result = await runEvaluate({
         state: asTypeSafeState(input),
         questions: {
           [config.name]: noul(config.instructions, config.criteria),
         },
         model: config.model,
+        fallbackModel: config.fallbackModel,
+        mode: config.mode,
         apiKey: config.apiKey,
         client: config.client,
       });
@@ -108,6 +125,40 @@ export function systemOneNoul<TInputSchema extends ZodTypeAny>(
         throw new TypeSafeError(
           "unexpected_answer",
           `systemOneNoul "${config.name}" expected a noul answer.`,
+        );
+      }
+      return answer;
+    },
+  });
+}
+
+/**
+ * One boolean question. Input is the state; output is `{ type: "boolean", probability }`.
+ */
+export function systemOneBoolean<TInputSchema extends ZodTypeAny>(
+  config: SystemOneBooleanConfig<TInputSchema>,
+): BlockDefinition<TInputSchema, typeof booleanAnswerSchema, unknown, BooleanAnswer> {
+  return handler({
+    name: config.name,
+    inputSchema: config.inputSchema,
+    outputSchema: booleanAnswerSchema,
+    execute: async (input) => {
+      const result = await runEvaluate({
+        state: asTypeSafeState(input),
+        questions: {
+          [config.name]: boolean(config.instructions, config.criteria),
+        },
+        model: config.model,
+        fallbackModel: config.fallbackModel,
+        mode: config.mode,
+        apiKey: config.apiKey,
+        client: config.client,
+      });
+      const answer = result.answers[config.name];
+      if (!isBooleanAnswer(answer)) {
+        throw new TypeSafeError(
+          "unexpected_answer",
+          `systemOneBoolean "${config.name}" expected a boolean answer.`,
         );
       }
       return answer;
@@ -126,12 +177,14 @@ export function systemOneScore<TInputSchema extends ZodTypeAny>(
     inputSchema: config.inputSchema,
     outputSchema: scoreAnswerSchema,
     execute: async (input) => {
-      const result = await runTypeSafeDecision({
+      const result = await runEvaluate({
         state: asTypeSafeState(input),
         questions: {
           [config.name]: score(config.instructions, config.criteria),
         },
         model: config.model,
+        fallbackModel: config.fallbackModel,
+        mode: config.mode,
         apiKey: config.apiKey,
         client: config.client,
       });

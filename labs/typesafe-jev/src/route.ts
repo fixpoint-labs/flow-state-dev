@@ -6,7 +6,8 @@
  * and https://docs.typesafe.ai/confidence.
  */
 
-import type { ChoiceAnswer, NoulAnswer } from "./schemas";
+import type { BooleanAnswer, ChoiceAnswer, NoulAnswer, TypeSafeAnswer } from "./schemas";
+import { truthProbability } from "./schemas";
 
 /** TypeSafe's documented "genuinely unsure" floor. */
 export const DEFAULT_MIN_CONFIDENCE = 0.5;
@@ -22,11 +23,13 @@ export interface RouteByChoiceOptions {
   /** Below this, do not act on the choice. */
   minConfidence?: number;
   /**
-   * Extra escalate: a noul (e.g. urgency) above `whenAbove`, optionally only
-   * when the choice matches `andChoice`.
+   * Extra escalate: a boolean / noul (e.g. urgency) above `whenAbove`,
+   * optionally only when the choice matches `andChoice`.
    */
   escalateIf?: {
-    noul: NoulAnswer;
+    truth?: TypeSafeAnswer;
+    noul?: NoulAnswer;
+    boolean?: BooleanAnswer;
     whenAbove: number;
     andChoice?: string;
   };
@@ -36,7 +39,8 @@ export interface RouteByChoiceOptions {
  * Intent-route a Choice answer, with confidence as a second axis.
  *
  * High confidence → the choice. Low confidence → `escalate`. An optional
- * noul can force escalate on a high-stakes combination (urgent + billing).
+ * A boolean / noul can force escalate on a high-stakes combination
+ * (urgent + billing).
  */
 export function routeByChoice(options: RouteByChoiceOptions): RouteDecision {
   const min = options.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
@@ -53,10 +57,14 @@ export function routeByChoice(options: RouteByChoiceOptions): RouteDecision {
   if (extra !== undefined) {
     const choiceMatches =
       extra.andChoice === undefined || extra.andChoice === choice;
-    if (choiceMatches && extra.noul.noul > extra.whenAbove) {
+    const probability =
+      truthProbability(extra.truth) ??
+      truthProbability(extra.boolean) ??
+      truthProbability(extra.noul);
+    if (choiceMatches && probability !== undefined && probability > extra.whenAbove) {
       return {
         destination: "escalate",
-        reason: `noul ${extra.noul.noul} > ${extra.whenAbove} with choice "${choice}"`,
+        reason: `truth ${probability} > ${extra.whenAbove} with choice "${choice}"`,
       };
     }
   }

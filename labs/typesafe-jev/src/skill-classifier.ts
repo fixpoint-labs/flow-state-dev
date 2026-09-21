@@ -1,21 +1,23 @@
 /**
- * Drop-in System One / Jev replacement for skill-activator tier 3.
+ * Drop-in evaluator replacement for skill-activator tier 3.
  *
  * Compatible with `createSkillActivator({ classifier })`. Orchestration
- * does not import this module — the host passes the block when System
- * One is installed. Tiers 1–2 (slash / keyword) and apply stay as-is.
+ * does not import this module — the host passes the block when an
+ * evaluate-capable (or System 2) classifier is installed. Tiers 1–2
+ * (slash / keyword) and apply stay as-is.
  *
  * Choice is over catalog skill names plus `none`. Criteria are each
  * skill's description / whenToUse. Confidence maps to the existing
  * 0.65 threshold. Invented names fail the catalog `validNames` guard.
+ * Optional = model capability, not package mount.
  */
 
 import { handler, type BlockDefinition } from "@flow-state-dev/core";
 import type { ResourceCollectionRef, SkillState } from "@flow-state-dev/core";
 import { defineSkillsCollection } from "@flow-state-dev/orchestration";
 import { z } from "zod";
-import type { TypeSafeDecisionsClient } from "./client";
-import { asTypeSafeState, runTypeSafeDecision } from "./run-decision";
+import type { EvaluateClient } from "./client";
+import { asTypeSafeState, runEvaluate } from "./run-evaluate";
 import { choice, isChoiceAnswer } from "./schemas";
 
 /** Matches `DEFAULT_CONFIDENCE_THRESHOLD` on the generator classifier. */
@@ -37,9 +39,11 @@ export interface SkillCatalogEntry {
 }
 
 export interface SystemOneSkillClassifierOptions {
-  client?: TypeSafeDecisionsClient;
+  client?: EvaluateClient;
   apiKey?: string;
-  model?: string;
+  model?: unknown;
+  fallbackModel?: string;
+  mode?: "evaluate" | "system-2";
   collectionKey?: string;
   collection?: ReturnType<typeof defineSkillsCollection>;
   confidenceThreshold?: number;
@@ -160,7 +164,7 @@ export function createSystemOneSkillClassifier(
           row.description || `Skill "${row.name}" in the catalog.`;
       }
 
-      const result = await runTypeSafeDecision({
+      const result = await runEvaluate({
         state: asTypeSafeState((input as { message: string }).message),
         questions: {
           [SYSTEM_ONE_SKILL_QUESTION]: choice(
@@ -171,6 +175,8 @@ export function createSystemOneSkillClassifier(
         client: options.client,
         apiKey: options.apiKey,
         model: options.model,
+        fallbackModel: options.fallbackModel,
+        mode: options.mode,
       });
 
       const answer = result.answers[SYSTEM_ONE_SKILL_QUESTION];

@@ -7,7 +7,7 @@
  */
 
 import { handler, type BlockDefinition } from "@flow-state-dev/core";
-import type { TypeSafeDecisionsClient } from "./client";
+import type { EvaluateClient } from "./client";
 import { type FacetQuery } from "./facets";
 import { INDEXED_DOCS, indexedDocsResources } from "./indexed-docs-resource";
 import {
@@ -35,8 +35,11 @@ import {
 } from "./index-ops";
 
 export interface IndexBlockOptions {
-  client?: TypeSafeDecisionsClient;
+  client?: EvaluateClient;
   apiKey?: string;
+  model?: unknown;
+  fallbackModel?: string;
+  mode?: "evaluate" | "system-2";
   collectionKey?: string;
   schemaVersion?: number;
   minConfidence?: number;
